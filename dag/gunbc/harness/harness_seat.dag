@@ -510,35 +510,22 @@ fn harness_turn_subject(request: ServingTurnRequest, attempt: NonEmptyStr, admis
 
 // THE ONLY ROUTE FROM A DEMAND TO select_supply's delay and buy-order. CONSUMER:
 // harness_placement_round; test.claim.harness_turn_admission_witness (serving-path
-// profile switch). Missing delay refuses; there is no profile default here.
-type HarnessPricedSelectionInputs
-  = HarnessPricedSelectionReady {
-      delay_valuation: MoneyPerSecond
-      maximum_buy_order: MoneyAmountMicro
-      budget_currency: CurrencyCode
-      objective_profile: DeclarationRef
-    }
-  | HarnessPricedSelectionRefused { cause: NonEmptyStr }
-
-fn harness_priced_selection_inputs(admission: AdmissionTerms) -> HarnessPricedSelectionInputs {
-  match demand_delay_valuation(objective: admission.objective) {
-    Absent =>
-      HarnessPricedSelectionRefused {
-        cause: "the demand's objective has no delay TermValuation" as NonEmptyStr,
-      }
-    Present { value: v } =>
-      HarnessPricedSelectionReady {
-        delay_valuation: v,
-        maximum_buy_order: admission.buy.maximum_buy_order,
-        budget_currency: admission.buy.currency,
-        objective_profile: admission.objective.profile,
-      }
-  }
+// profile switch). Delay is a required field of TermValuations; there is no profile default.
+type HarnessPricedSelectionInputs {
+  delay_valuation: MoneyPerSecond
+  maximum_buy_order: MoneyAmountMicro
+  budget_currency: CurrencyCode
+  objective_profile: DeclarationRef
 }
 
-type HarnessSupplySelection<P>
-  = HarnessSupplySelected { selection: SupplySelection<P> }
-  | HarnessSupplyAdmissionRefused { cause: NonEmptyStr }
+fn harness_priced_selection_inputs(admission: AdmissionTerms) -> HarnessPricedSelectionInputs {
+  HarnessPricedSelectionInputs {
+    delay_valuation: demand_delay_valuation(objective: admission.objective),
+    maximum_buy_order: admission.buy.maximum_buy_order,
+    budget_currency: admission.buy.currency,
+    objective_profile: admission.objective.profile,
+  }
+}
 
 fn harness_select_supply<P>(
   admission: AdmissionTerms,
@@ -547,28 +534,18 @@ fn harness_select_supply<P>(
   duration: GrantDuration,
   tie: EqualCostOfferTieBreak,
   affinity: PlacementAffinityKey,
-) -> HarnessSupplySelection<P> {
-  match harness_priced_selection_inputs(admission: admission) {
-    HarnessPricedSelectionRefused { cause: c } => HarnessSupplyAdmissionRefused { cause: c }
-    HarnessPricedSelectionReady {
-      delay_valuation: delay_valuation,
-      maximum_buy_order: maximum_buy_order,
-      budget_currency: budget_currency,
-      objective_profile: _,
-    } =>
-      HarnessSupplySelected {
-        selection: select_supply(
-          requirements: requirements,
-          candidates: candidates,
-          duration: duration,
-          maximum_buy_order: maximum_buy_order,
-          budget_currency: budget_currency,
-          delay_valuation: delay_valuation,
-          tie: tie,
-          affinity: affinity,
-        ),
-      }
-  }
+) -> SupplySelection<P> {
+  let priced = harness_priced_selection_inputs(admission: admission)
+  select_supply(
+    requirements: requirements,
+    candidates: candidates,
+    duration: duration,
+    maximum_buy_order: priced.maximum_buy_order,
+    budget_currency: priced.budget_currency,
+    delay_valuation: priced.delay_valuation,
+    tie: tie,
+    affinity: affinity,
+  )
 }
 
 // THE NORMALIZED REQUEST AN ENTRY POINT SUPPLIES. The interface is the wire shape the turn speaks.
@@ -1138,15 +1115,6 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
         tie: AffinityKeyedRendezvous,
         affinity: actor as PlacementAffinityKey,
       ) {
-        HarnessSupplyAdmissionRefused { cause: c } =>
-          PlacementRound {
-            done: Present { value: HarnessSeatRefused { detail: c as String } },
-            excluded: acc.excluded,
-            notes: notes,
-            retryable: retryable,
-          }
-        HarnessSupplySelected { selection: sel } =>
-      match sel {
         NoAdmissibleOffer { considered: _ } =>
           PlacementRound {
             done: Present { value: harness_nothing_placed(notes: notes, retryable: retryable) },
@@ -1180,7 +1148,6 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
                   PlacementRound { done: none, excluded: concat(acc.excluded, [k as String]), notes: concat(notes, [d]), retryable: true }
               }
           }
-      }
       }
     }
   }

@@ -2,7 +2,7 @@ module product.fabric.demand
 
 import std.types { NonEmptyStr, Timestamp, Bool, List, Int, brand }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyRate, money_amount_micro, money_amount_micro_count }
 import extdeps.currency.currency { CurrencyCode, Usd }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
@@ -12,14 +12,9 @@ import extdeps.external_authority { TranscribedUncited }
 import std.decision {
   ObjectiveTerm, ObjectiveMeasure, TermSetJoin, TermSetsJoinComplete,
   ObjectiveUnderModeled, ObjectiveDeclaresUnwarrantedTerms,
-  TermValuation, MoneyValuation, DelayValuation,
-  InterruptionValuation, AcceptedWorkValuation, ValuationAxes,
+  TermValuations, ValuationAxes,
   HardConstraint, term_set_join,
   ValuedObjectiveMeasure, NetValue, CostPerAcceptedUnit,
-}
-import std.observation_completeness {
-  ObservationComplete, ObservationRepeatedExpected, ObservationMissingExpected,
-  ObservationForeignObserved, ObservationRepeatedObserved, observation_completeness,
 }
 
 // Demand is WHO currently wants a result and WHERE to report it. Provider facts
@@ -82,10 +77,8 @@ type BudgetAccountId = NonEmptyStr where brand("BudgetAccountId")
 // or settlement. maximum_buy_order is the ceiling on a single grant's
 // liability - a refusal boundary, never a degradation: an ask above it refuses
 // rather than selecting something cheaper and unsuitable.
-// Delay valuation does not live here. AdmissionTerms.objective carries
-// DelayValuation as MoneyPerSecond, so the rate has a typed
-// carrier and a missing delay arm refuses through interpret_demand_objective
-// rather than silently pricing wait as free. Budget
+// Delay valuation does not live here. AdmissionTerms.objective.valuations.delay
+// is a required MoneyPerSecond field, so wait is never silently free. Budget
 // caps stay on this record; consumers project them into std.decision
 // HardConstraint rows (admission_hard_constraints) and must not duplicate
 // them onto DemandObjective.
@@ -128,7 +121,7 @@ type BuyTerms {
 // demand, demand-side selection ranks DEMANDS for one offer, and they take
 // different inputs and return different carriers.
 //
-// Delay valuation now lives on AdmissionTerms.objective as DelayValuation.
+// Delay valuation now lives on AdmissionTerms.objective.valuations.delay.
 // `deadline` remains a Timestamp with no ordering, so it is not an urgency
 // axis. A preemptibility statement still needs an execution-side carrier.
 //
@@ -141,7 +134,7 @@ type BuyTerms {
 // THE FOUR OBJECTIVE TERMS, one per unit the brief names. They are buyer-policy
 // identities, not cited physical figures: ground is TranscribedUncited naming
 // that fact. CONSUMERS: fabric_demand_objective_terms (the required join
-// population); each TermValuation arm on DemandObjective; Pareto axes in
+// population); TermValuations on every DemandObjective; Pareto axes in
 // test.claim.fabric.valued_objective_witness (same identities, so a valued
 // term is a funded axis).
 data term_money: ObjectiveTerm = ObjectiveTerm {
@@ -175,17 +168,8 @@ fn fabric_demand_required_term_ids() -> List<DeclarationRef> {
 
 type DemandObjective {
   profile: DeclarationRef
-  valuations: List<TermValuation>
+  valuations: TermValuations
   measure: ValuedObjectiveMeasure
-}
-
-fn valuation_axis_identity(valuation: TermValuation) -> DeclarationRef {
-  match valuation {
-    MoneyValuation { amount: _ } => term_money.identity
-    DelayValuation { rate: _ } => term_delay.identity
-    InterruptionValuation { amount: _ } => term_interruption.identity
-    AcceptedWorkValuation { amount: _ } => term_accepted_work.identity
-  }
 }
 
 fn fabric_valuation_axes() -> ValuationAxes {
@@ -201,8 +185,8 @@ fn demand_objective_as_measure(objective: DemandObjective) -> ObjectiveMeasure {
   ObjectiveMeasure {
     identity: objective.profile,
     goal: LowerIsBetter,
-    terms: map(objective.valuations, v => ObjectiveTerm {
-      identity: valuation_axis_identity(valuation: v),
+    terms: map(fabric_demand_objective_terms(), t => ObjectiveTerm {
+      identity: t.identity,
       ground: TranscribedUncited { read_obligation: "valuation rate is buyer policy" as NonEmptyStr },
     }),
   }
@@ -223,13 +207,13 @@ fn usd_rate(count: Nat) -> MoneyPerSecond {
   MoneyRate { amount: money_amount_micro(count: count), currency: Usd }
 }
 
-fn closed_valuations(money: Nat, delay: Nat, interruption: Nat, accepted_work: Nat) -> List<TermValuation> {
-  [
-    MoneyValuation { amount: money_amount_micro(count: money) },
-    DelayValuation { rate: usd_rate(count: delay) },
-    InterruptionValuation { amount: money_amount_micro(count: interruption) },
-    AcceptedWorkValuation { amount: money_amount_micro(count: accepted_work) },
-  ]
+fn closed_valuations(money: Nat, delay: Nat, interruption: Nat, accepted_work: Nat) -> TermValuations {
+  TermValuations {
+    money: money_amount_micro(count: money),
+    delay: usd_rate(count: delay),
+    interruption: money_amount_micro(count: interruption),
+    accepted_work: money_amount_micro(count: accepted_work),
+  }
 }
 
 data id_debt_payoff: DeclarationRef = decl_ref(module_path: "product.fabric.demand", decl_name: "debt_payoff_objective")
@@ -253,50 +237,8 @@ data latency_sensitive_objective: DemandObjective = DemandObjective {
   measure: NetValue,
 }
 
-type ObjectiveInterpretation
-  = ObjectiveInterpreted { rows: List<TermValuation>, measure: ValuedObjectiveMeasure }
-  | ObjectiveInterpretationRefused { cause: NonEmptyStr }
-
-fn interpret_demand_objective(objective: DemandObjective) -> ObjectiveInterpretation {
-  let observed = map(objective.valuations, v => valuation_axis_identity(valuation: v))
-  match observation_completeness(
-    expected: fabric_demand_required_term_ids(),
-    observed: observed,
-    key_eq: declaration_ref_eq,
-  ) {
-    ObservationRepeatedExpected { keys: _ } =>
-      ObjectiveInterpretationRefused { cause: "required term roster repeats a term" as NonEmptyStr }
-    ObservationMissingExpected { keys: _ } =>
-      ObjectiveInterpretationRefused { cause: "objective is missing a required term" as NonEmptyStr }
-    ObservationForeignObserved { keys: _ } =>
-      ObjectiveInterpretationRefused { cause: "objective declares a foreign term" as NonEmptyStr }
-    ObservationRepeatedObserved { keys: _ } =>
-      ObjectiveInterpretationRefused { cause: "objective repeats a term" as NonEmptyStr }
-    ObservationComplete =>
-      ObjectiveInterpreted { rows: objective.valuations, measure: objective.measure }
-  }
-}
-
-fn demand_delay_valuation(objective: DemandObjective) -> MoneyPerSecond? {
-  match interpret_demand_objective(objective: objective) {
-    ObjectiveInterpretationRefused { cause: _ } => none
-    ObjectiveInterpreted { rows: rows, measure: _ } =>
-      match (fold(rows, init: none, f: (found, v) =>
-        match found {
-          Present { value: r } => Present { value: r }
-          Absent =>
-            match v {
-              DelayValuation { rate: r } => Present { value: r }
-              MoneyValuation { amount: _ } => none
-              InterruptionValuation { amount: _ } => none
-              AcceptedWorkValuation { amount: _ } => none
-            }
-        }
-      )) {
-        Absent => none
-        Present { value: r } => Present { value: r }
-      }
-  }
+fn demand_delay_valuation(objective: DemandObjective) -> MoneyPerSecond {
+  objective.valuations.delay
 }
 
 data id_buy_order_constraint: DeclarationRef = decl_ref(module_path: "product.fabric.demand", decl_name: "buy_order_constraint")

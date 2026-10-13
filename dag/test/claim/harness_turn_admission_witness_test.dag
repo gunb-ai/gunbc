@@ -19,8 +19,8 @@ import gunbc.harness.harness_reasoning_wire { Glm53FlashOnVllm }
 import gunbc.harness.harness_seat {
   HarnessTurnSubject, AnyAdmittedModel, ExactServingUnit,
   harness_turn_subject, harness_turn_request, harness_execution_requirements, harness_placement_grant_duration,
-  harness_priced_selection_inputs, HarnessPricedSelectionReady, HarnessPricedSelectionRefused,
-  harness_select_supply, HarnessSupplySelected, HarnessSupplyAdmissionRefused, HarnessSupplySelection,
+  harness_priced_selection_inputs,
+  harness_select_supply,
 }
 import gunbc.harness.harness_cli { harness_model_request_inputs, harness_worker_system_prompt_at, harness_default_wire_shape, harness_seat_policy }
 import product.fabric.supply {
@@ -34,13 +34,12 @@ import product.fabric.selection {
   PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand,
   AvailableIndefinitely, PayAsYouGo, StartCostMeasured, NoTransitionRequired,
   OperatingCostBorneBySupplier, NoFeasibleAlternativeUse,
-  OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
+  OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SupplySelection,
 }
 import product.fabric.demand {
   AdmissionTerms, BuyTerms, DemandObjective,
   debt_payoff_objective, latency_sensitive_objective, demand_delay_valuation,
 }
-import std.decision { CostPerAcceptedUnit, MoneyValuation }
 import test.claim.fabric.provider_use_fixture {
   fixture_admitted_for_offer, fixture_route, fixture_demand_for, fixture_work_for,
 }
@@ -173,34 +172,20 @@ test fn the_placement_duration_carries_the_policy_seconds_as_a_second() -> Bool 
   }
 }
 
-fn delay_micros(admission: AdmissionTerms) -> Int? {
-  match harness_priced_selection_inputs(admission: admission) {
-    HarnessPricedSelectionRefused { cause: _ } => none
-    HarnessPricedSelectionReady { delay_valuation: v, maximum_buy_order: _, budget_currency: _, objective_profile: _ } =>
-      Present { value: money_rate_micros(q: v) as Int }
-  }
+fn delay_micros(admission: AdmissionTerms) -> Int {
+  money_rate_micros(q: harness_priced_selection_inputs(admission: admission).delay_valuation) as Int
 }
 
 // RED: a selector that ignores the demand and always reads latency_sensitive_objective returns
 // the same delay for both profiles. The wall is harness_priced_selection_inputs.
-fn red_hardcoded_latency_delay(_admission: AdmissionTerms) -> Int? {
-  match demand_delay_valuation(objective: latency_sensitive_objective) {
-    Absent => none
-    Present { value: v } => Present { value: money_rate_micros(q: v) as Int }
-  }
+fn red_hardcoded_latency_delay(_admission: AdmissionTerms) -> Int {
+  money_rate_micros(q: demand_delay_valuation(objective: latency_sensitive_objective)) as Int
 }
 
 test fn a_hardcoded_profile_cannot_discriminate_serving_demands() -> Bool {
   let wait = t_admission(objective: debt_payoff_objective)
   let move = t_admission(objective: latency_sensitive_objective)
-  match red_hardcoded_latency_delay(admission: wait) {
-    Absent => false
-    Present { value: a } =>
-      match red_hardcoded_latency_delay(admission: move) {
-        Absent => false
-        Present { value: b } => a == b
-      }
-  }
+  red_hardcoded_latency_delay(admission: wait) == red_hardcoded_latency_delay(admission: move)
 }
 
 test fn debt_and_latency_demands_reach_select_supply_with_different_delay_valuations() -> Bool {
@@ -216,29 +201,12 @@ test fn debt_and_latency_demands_reach_select_supply_with_different_delay_valuat
     attempt: "a-1" as NonEmptyStr,
     admission: move,
   )
-  match delay_micros(admission: wait_subject.admission) {
-    Absent => false
-    Present { value: wait_rate } =>
-      match delay_micros(admission: move_subject.admission) {
-        Absent => false
-        Present { value: move_rate } =>
-          wait_rate == 0
-            && move_rate > wait_rate
-            && declaration_ref_eq(a: wait_subject.admission.objective.profile, b: debt_payoff_objective.profile)
-            && declaration_ref_eq(a: move_subject.admission.objective.profile, b: latency_sensitive_objective.profile)
-      }
-  }
-}
-
-test fn a_demand_without_delay_valuation_refuses_priced_selection() -> Bool {
-  match harness_priced_selection_inputs(admission: AdmissionTerms {
-    deadline: none,
-    buy: t_buy(),
-    objective: DemandObjective { profile: debt_payoff_objective.profile, valuations: [], measure: CostPerAcceptedUnit },
-  }) {
-    HarnessPricedSelectionRefused { cause: _ } => true
-    HarnessPricedSelectionReady { delay_valuation: _, maximum_buy_order: _, budget_currency: _, objective_profile: _ } => false
-  }
+  let wait_rate = delay_micros(admission: wait_subject.admission)
+  let move_rate = delay_micros(admission: move_subject.admission)
+  wait_rate == 0
+    && move_rate > wait_rate
+    && declaration_ref_eq(a: wait_subject.admission.objective.profile, b: debt_payoff_objective.profile)
+    && declaration_ref_eq(a: move_subject.admission.objective.profile, b: latency_sensitive_objective.profile)
 }
 
 fn t_caps() -> CapabilityManifestRef {
@@ -342,7 +310,7 @@ fn t_priced_admission(objective: DemandObjective, currency: CurrencyCode) -> Adm
   }
 }
 
-fn t_select_for_admission(admission: AdmissionTerms) -> HarnessSupplySelection<NonEmptyStr> {
+fn t_select_for_admission(admission: AdmissionTerms) -> SupplySelection<NonEmptyStr> {
   harness_select_supply(
     admission: admission,
     requirements: t_requirements(),
@@ -353,45 +321,12 @@ fn t_select_for_admission(admission: AdmissionTerms) -> HarnessSupplySelection<N
   )
 }
 
-fn selected_offer_key(sel: HarnessSupplySelection<NonEmptyStr>) -> NonEmptyStr {
+fn selected_offer_key(sel: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
   match sel {
-    HarnessSupplyAdmissionRefused { cause: _ } => "refused"
-    HarnessSupplySelected { selection: s } =>
-      match s {
-        OfferSelected { candidate: c, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
-          c.candidate.offer.id.key as NonEmptyStr
-        NoAdmissibleOffer { considered: _ } => "none"
-        EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => "tie"
-      }
-  }
-}
-
-test fn missing_and_duplicate_terms_refuse_on_the_serving_path() -> Bool {
-  match harness_priced_selection_inputs(admission: AdmissionTerms {
-    deadline: none,
-    buy: t_buy(),
-    objective: DemandObjective {
-      profile: debt_payoff_objective.profile,
-      valuations: [
-        MoneyValuation { amount: money_amount_micro(count: 1) },
-      ],
-      measure: CostPerAcceptedUnit,
-    },
-  }) {
-    HarnessPricedSelectionReady { delay_valuation: _, maximum_buy_order: _, budget_currency: _, objective_profile: _ } => false
-    HarnessPricedSelectionRefused { cause: _ } =>
-      match t_select_for_admission(admission: AdmissionTerms {
-        deadline: none,
-        buy: t_buy(),
-        objective: DemandObjective {
-          profile: debt_payoff_objective.profile,
-          valuations: concat(debt_payoff_objective.valuations, debt_payoff_objective.valuations),
-          measure: CostPerAcceptedUnit,
-        },
-      }) {
-        HarnessSupplyAdmissionRefused { cause: _ } => true
-        HarnessSupplySelected { selection: _ } => false
-      }
+    OfferSelected { candidate: c, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
+      c.candidate.offer.id.key as NonEmptyStr
+    NoAdmissibleOffer { considered: _ } => "none"
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => "tie"
   }
 }
 
