@@ -1,9 +1,10 @@
 module gunbc.plans.ensure_closure_design
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownTableRow, CodeBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn code(text: String) -> MarkdownBlock { CodeBlock { code: text } }
 
@@ -224,7 +225,7 @@ fn ensure_closure_design_body() -> List<MarkdownBlock> {
 }
 
 data ensure_closure_design_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
   slug: "ensure-closure-design",
   title: "Completion, residual and closure: environmental dependencies derived from structure (D14)",
   body: ensure_closure_design_body(),

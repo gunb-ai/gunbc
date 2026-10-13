@@ -51,7 +51,7 @@ import product.pcb.copper {
   select_copper_layer,
   unrealized_nets,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data fixture_design: ElectricalDesignIdentity = "test.pcb_copper.fixture" as ElectricalDesignIdentity
 

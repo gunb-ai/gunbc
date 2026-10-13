@@ -27,7 +27,7 @@ import gunbc.guarantee_measurement {
 }
 import std.optional { Present, Absent }
 import v2.std.diagnostic { Diagnostics, None, Some, NonEmptyDiagnostics }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.node { Symbol, Node, content_hash }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,

@@ -5,7 +5,7 @@ import v2.compiler.reference_conservation_admission { conservation_subject_of_te
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import v2.lens.machine_shape { machine_shape_compile_gate }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   Atom,
   ComputationNode,

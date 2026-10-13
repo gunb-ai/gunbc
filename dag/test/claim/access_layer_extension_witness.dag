@@ -1,7 +1,7 @@
 module test.claim.access_layer_extension_witness
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 fn role_has_privilege(policy: extdeps.access.rbac.RbacPolicy, role: std.types.NonEmptyStr, privilege: std.types.NonEmptyStr) -> Bool {
   fold(policy.permission_assignments, init: false, f: fn(acc, pa) {

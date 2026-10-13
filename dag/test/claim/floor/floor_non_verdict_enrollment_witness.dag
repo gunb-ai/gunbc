@@ -1,14 +1,14 @@
 module test.claim.floor.floor_non_verdict_enrollment_witness
 
 import std.types { List, Int, Bool }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import gunbc.floor.floor_non_verdict_enrollment {
   NonVerdictCauseCount, PopulationBasis, MeasuredOnOneRun, BoundedByRefusal,
   floor_non_verdict_cause_census, floor_non_verdict_measured_total,
   floor_non_verdict_population_basis,
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 fn census_total(rows: List<NonVerdictCauseCount>) -> Int {
   fold_list(xs: rows, empty: 0, cons: fn(acc, r) { acc + r.identities })

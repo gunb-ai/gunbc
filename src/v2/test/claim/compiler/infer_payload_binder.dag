@@ -4,9 +4,8 @@ import v2.test.claim.compiler.infer_fold_member_instance { fmi_infer, fmi_reason
 import v2.std.node { Symbol }
 import v2.std.text { String }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, None, diagnostics_has_reason }
-import v2.std.algebra { contains, list_map }
 import v2.std.collection { List }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, contains, list_map }
 
 // SUBJECT: a match arm's payload binder takes the field type the SCRUTINEE'S arguments instantiate
 // (v2.compiler.resolve records the binder as owed its field's declared type, LexicalOwedFormal;

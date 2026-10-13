@@ -1,7 +1,7 @@
 module test.claim.host.host_phase_status_witness
 
 import gunbc.host.host_standup { PhaseDisposition }
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import std.upsert_decision { Conflict, Inaccessible, UnknownRefused }
 import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import gunbc.fleet.fleet_reach_endpoint { fleet_reach_probe_targets }
@@ -66,7 +66,7 @@ import gunbc.membership_reconcile {
 }
 import std.temporal_effect { StallWithinBudget }
 import std.upsert_decision { Conflict, Inaccessible, ObservationVerdict, UnknownRefused }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

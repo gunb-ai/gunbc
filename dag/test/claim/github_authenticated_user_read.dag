@@ -19,7 +19,7 @@ import gunbc.github_authenticated_user_read {
   GitHubAuthenticatedUserLoginAbsent,
   perform_github_authenticated_user_read,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,6 +1,6 @@
 module test.claim.rtx_pro_6000_catalog_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { bandwidth_count }
 import extdeps.gpu.nvidia {
   nvidia_rtx_pro_6000_workstation_catalog,
@@ -17,6 +17,7 @@ import std.decl_ref { decl_ref, DeclarationRef }
 import std.measure { hardware_thread_count, byte_size, second, money_amount_micro, MoneyPerHour }
 import extdeps.currency.currency { Usd }
 import product.fabric.provider_route { ProviderRegionObservation, ProviderRegionRead, ProviderRegionUnread }
+import std.decimal { ExactDecimal }
 import product.fabric.work { Shape }
 import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import extdeps.gpu.nvidia {
@@ -26,7 +27,7 @@ import extdeps.gpu.nvidia {
 }
 import product.fabric.supply { unmet_shape_axes, OfferQuote, QuotedPerHour, SupplierOffer }
 import product.fabric.isolation { IsolationProfile, DedicatedDevice, unsatisfied_isolation_guarantees }
-import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity }
+import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, WarmResidencyRequired }
 import product.fabric.selection { CandidateOffer }
 import test.claim.fabric.provider_use_fixture { fixture_admitted_for_offer, fixture_demand_for, fixture_work_for }
 import test.claim.fabric.selected_offer_fixture { bound, ranked }
@@ -92,6 +93,11 @@ fn vast_offer_arch(gpus: Int, arch: String?) -> VastAiOffer {
     id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: gpus,
     compute_cap: 1200, gpu_arch: arch,
     verification: "verified", geolocation: "US", rentable: true, rented: false, is_bid: Present { value: false },
+    min_bid: ExactDecimal { units: 32, fraction_digits: 1 },
+    dph_total: ExactDecimal { units: 32, fraction_digits: 1 },
+    storage_cost: ExactDecimal { units: 15, fraction_digits: 2 },
+    inet_up_cost: ExactDecimal { units: 1, fraction_digits: 2 },
+    inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
   }
 }
 
@@ -104,6 +110,11 @@ fn vast_offer_bid(bid: Bool?) -> VastAiOffer {
     id: 1, machine_id: 2, gpu_name: "RTX PRO 6000 S", num_gpus: 2,
     compute_cap: 1200, gpu_arch: Present { value: "nvidia" },
     verification: "verified", geolocation: "US", rentable: true, rented: false, is_bid: bid,
+    min_bid: ExactDecimal { units: 32, fraction_digits: 1 },
+    dph_total: ExactDecimal { units: 32, fraction_digits: 1 },
+    storage_cost: ExactDecimal { units: 15, fraction_digits: 2 },
+    inet_up_cost: ExactDecimal { units: 1, fraction_digits: 2 },
+    inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
   }
 }
 
@@ -376,6 +387,7 @@ fn requirement_with(offer: SupplierOffer<NonEmptyStr>, isolation: IsolationProfi
     capabilities: offer.capabilities,
     trust_domain: offer.trust_domain,
     isolation: isolation,
+    revocation: WarmResidencyRequired,
   }
 }
 

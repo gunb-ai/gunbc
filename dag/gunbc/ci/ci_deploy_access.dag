@@ -14,15 +14,13 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_posix_accounts {
   GroundedPosixPrincipal,
   PosixSudoGrant,
-  DeployRunnerPrincipal,
   FleetAccountCiRunner,
   FleetAccountOperator,
   ci_runner_sudoers_install_binaries,
+  ci_runner_sudo_binaries,
   ci_runner_sudo_binary_path,
   ci_runner_sudo_binary_probe,
-  srv1_ci_deploy_runner_principal,
   fleet_posix_principal,
-  fleet_deploy_job_principal,
   grounded_posix_principal_name,
   fleet_apt_get_binary_path,
   posix_sudo_grant_to_effect_grant,
@@ -60,15 +58,6 @@ type DeployAccess {
   transport: HostEffectTransport
   privileged_commands: List<PrivilegedCommand>
 }
-
-type DeployAccessJobPrincipalRefusal {
-  job_user: NonEmptyStr
-  runner: DeployRunnerPrincipal
-}
-
-type DeployAccessOrRefusal
-  = DeployAccessReady { access: DeployAccess }
-  | DeployAccessJobPrincipalRefused { refusal: DeployAccessJobPrincipalRefusal }
 
 type DeployAccessActor {
   observed_name: NonEmptyStr
@@ -115,6 +104,21 @@ fn posix_sudo_grant_to_privileged(g: PosixSudoGrant) -> PrivilegedCommand {
   PrivilegedCommand { grant: g }
 }
 
+// THE COMMANDS A LIVE-DEPLOY APPLY SPENDS UNDER `sudo -n`, whoever runs it: the deploy roster
+// (gunbc.fleet.fleet_posix_accounts ci_runner_sudo_binaries), which the drop-in grants the CI runner
+// principal for exactly this script. Built from the binaries, as the install scope below is.
+fn live_deploy_spent_privileged_commands() -> List<PrivilegedCommand> {
+  map(
+    ci_runner_sudo_binaries,
+    b => PrivilegedCommand {
+      grant: PosixSudoGrant {
+        command_path: ci_runner_sudo_binary_path(b: b),
+        probe: ci_runner_sudo_binary_probe(b: b),
+      }
+    }
+  )
+}
+
 // THE PRE-INSTALL SCOPE OF A DEPLOY WHOSE SCRIPT INSTALLS THE DROP-IN FIRST. The principal, host and
 // transport are unchanged; only the demanded commands narrow, to exactly what the install spends
 // (gunbc.fleet.fleet_posix_accounts ci_runner_sudoers_install_binaries). They are built from that list
@@ -140,49 +144,6 @@ fn deploy_access_sudoers_install_scope(access: DeployAccess) -> DeployAccess {
 
 fn grounded_principal_privileged_commands(p: GroundedPosixPrincipal) -> List<PrivilegedCommand> {
   map(p.sudo_grants, g => posix_sudo_grant_to_privileged(g: g))
-}
-
-// fleet_deploy_job_principal Absent is a typed refusal — never silently map to FleetAccountCiRunner and never fabricate a GroundedPosixPrincipal (no uid=0/gid=0 root-in-disguise). live_deploy/emit threads ci_deploy_srv1_access_or_refusal: Absent → deploy_access_job_principal_refused_emit_poison (un-emittable shell); Present → normal pipeline. srv1 closed roster resolves via witness_srv1_job_principal_resolves_from_runner.
-data deploy_job_principal_unresolved_emit_poison_prefix: String = "__GUNBC_DEPLOY_ACCESS_REFUSED__ job_user not in fleet roster — deploy shell is un-emittable"
-
-fn deploy_access_job_principal_refused_emit_poison(refusal: DeployAccessJobPrincipalRefusal) -> String {
-  concat(
-    concat(concat(deploy_job_principal_unresolved_emit_poison_prefix, ": job_user="), refusal.job_user as String),
-    concat(" unit_user=", refusal.runner.unit_user as String)
-  )
-}
-
-fn deploy_access_or_refusal_for_runner(
-  runner: DeployRunnerPrincipal,
-  host: ComputeHost,
-  transport: HostEffectTransport,
-) -> DeployAccessOrRefusal {
-  match fleet_deploy_job_principal(runner: runner) {
-    Present { value: p } =>
-      DeployAccessReady {
-        access: DeployAccess {
-          principal: p,
-          host: host,
-          transport: transport,
-          privileged_commands: grounded_principal_privileged_commands(p: p),
-        }
-      }
-    Absent =>
-      DeployAccessJobPrincipalRefused {
-        refusal: DeployAccessJobPrincipalRefusal {
-          job_user: runner.job_user,
-          runner: runner,
-        }
-      }
-  }
-}
-
-fn ci_deploy_srv1_access_or_refusal() -> DeployAccessOrRefusal {
-  deploy_access_or_refusal_for_runner(
-    runner: srv1_ci_deploy_runner_principal,
-    host: srv1_host,
-    transport: LocalShell,
-  )
 }
 
 // srv1 CI deploy access is roster-closed: witness_srv1_job_principal_resolves_from_runner proves fleet_deploy_job_principal(srv1_ci_deploy_runner_principal) == fleet_posix_principal(FleetAccountCiRunner). Authority is the roster row — never Optional-erase into a fabricated principal.
@@ -215,14 +176,23 @@ data ci_deploy_srv1_operator_access: DeployAccess = ci_deploy_srv1_operator_ssh_
 // binary, the source tree it syncs -- resolve against nothing in particular. `gunbc converge --mode
 // deploy` runs on srv1 from the checkout being deployed, so the transport is LocalShell exactly as
 // the CI path's is, and only the principal differs: the operator rather than the runner account.
-// The privileged-command roster is grounded on that principal by the same projection.
+//
+// ITS DEMAND IS WHAT ITS APPLY SPENDS, NOT WHAT THE OPERATOR IS GRANTED. privileged_commands is the
+// demand the gate and the preamble's post-install roster probe read, and the apply this access emits
+// is the same script the CI access emits, so it spends the same `sudo -n` commands:
+// live_deploy_spent_privileged_commands. Projected from the operator's own grant roster it was
+// hostnamectl alone (gunbc.fleet.fleet_posix_accounts fleet_posix_operator_sudo_grants, held there
+// by the 2026-08-13 operator ruling), so once the emitter read this access instead of a constant CI
+// one, the probe that refuses before any other mutation would have checked one command and let the
+// apply spend the rest unprobed. The GRANT side is unchanged: the drop-in renders each principal's
+// own sudo_grants (gunbc.ci.ci_deploy_sudoers deploy_sudoers_dropin_lines_for), so the operator is
+// granted nothing new, and whether it may spend the roster is the host fact the probe reads.
 fn ci_deploy_srv1_operator_local_shell_access() -> DeployAccess {
-  let principal = fleet_posix_operator_principal()
   DeployAccess {
-    principal: principal,
+    principal: fleet_posix_operator_principal(),
     host: srv1_host,
     transport: LocalShell,
-    privileged_commands: grounded_principal_privileged_commands(p: principal),
+    privileged_commands: live_deploy_spent_privileged_commands(),
   }
 }
 

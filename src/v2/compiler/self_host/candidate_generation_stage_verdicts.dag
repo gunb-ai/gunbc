@@ -4,8 +4,7 @@ import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer }
 import v2.compiler.self_host.candidate_generation { generate_translate_self_emit_candidate }
-import v2.std.algebra { Cons, Empty, fold_list }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, Cons, Empty, fold_list }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,

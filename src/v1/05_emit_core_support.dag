@@ -10,6 +10,7 @@ import v1.std.core {
 }
 
 import v1.compiler.artifact { RenderTarget }
+import std.unicode.scalar { ascii_lowercase, ascii_uppercase, ascii_uppercase_first }
 import gunbc.rust_emitted_edge { EmittedEdge, module_to_filename }
 import gunbc.rust_emitted_crate { EmittedRustCrate }
 
@@ -46,11 +47,60 @@ type TestProjection {
   type_env: TypeEnv
 }
 
+// Every code point below 0x20 is escaped (RFC 8259 section 7), so a data row holding a control
+// character serializes to JSON the emitted crate can parse back instead of panicking at run time.
+// The AUTHORITY is extdeps.languages.json.emit escape_json_string; this is the seed's own copy,
+// a stated divergence. Importing the authority adds extdeps_languages_json_emit, json_grammar and
+// numeric_base16 to the stage0 crate partition: the regen refuses with Stage0EmittedEdgesNotCovered
+// (57 emitted edge endpoints), growing the seed it is meant to shrink. The copy dissolves with v1.
+// A claim in the v1 claim tree holds this copy to the RFC 8259 section 7 spelling of every control
+// code point; it is not named here, because a path or module name in this comment would make the
+// claim an emitted edge of this module and grow the stage0 partition.
+type JsonControlEscape { delimiter: String, replacement: String }
+
+fn json_control_escapes() -> List<JsonControlEscape> {
+  [
+    JsonControlEscape { delimiter: "\u{0}", replacement: "\\u0000" },
+    JsonControlEscape { delimiter: "\u{1}", replacement: "\\u0001" },
+    JsonControlEscape { delimiter: "\u{2}", replacement: "\\u0002" },
+    JsonControlEscape { delimiter: "\u{3}", replacement: "\\u0003" },
+    JsonControlEscape { delimiter: "\u{4}", replacement: "\\u0004" },
+    JsonControlEscape { delimiter: "\u{5}", replacement: "\\u0005" },
+    JsonControlEscape { delimiter: "\u{6}", replacement: "\\u0006" },
+    JsonControlEscape { delimiter: "\u{7}", replacement: "\\u0007" },
+    JsonControlEscape { delimiter: "\u{8}", replacement: "\\b" },
+    JsonControlEscape { delimiter: "\u{b}", replacement: "\\u000B" },
+    JsonControlEscape { delimiter: "\u{c}", replacement: "\\f" },
+    JsonControlEscape { delimiter: "\u{d}", replacement: "\\r" },
+    JsonControlEscape { delimiter: "\u{e}", replacement: "\\u000E" },
+    JsonControlEscape { delimiter: "\u{f}", replacement: "\\u000F" },
+    JsonControlEscape { delimiter: "\u{10}", replacement: "\\u0010" },
+    JsonControlEscape { delimiter: "\u{11}", replacement: "\\u0011" },
+    JsonControlEscape { delimiter: "\u{12}", replacement: "\\u0012" },
+    JsonControlEscape { delimiter: "\u{13}", replacement: "\\u0013" },
+    JsonControlEscape { delimiter: "\u{14}", replacement: "\\u0014" },
+    JsonControlEscape { delimiter: "\u{15}", replacement: "\\u0015" },
+    JsonControlEscape { delimiter: "\u{16}", replacement: "\\u0016" },
+    JsonControlEscape { delimiter: "\u{17}", replacement: "\\u0017" },
+    JsonControlEscape { delimiter: "\u{18}", replacement: "\\u0018" },
+    JsonControlEscape { delimiter: "\u{19}", replacement: "\\u0019" },
+    JsonControlEscape { delimiter: "\u{1a}", replacement: "\\u001A" },
+    JsonControlEscape { delimiter: "\u{1b}", replacement: "\\u001B" },
+    JsonControlEscape { delimiter: "\u{1c}", replacement: "\\u001C" },
+    JsonControlEscape { delimiter: "\u{1d}", replacement: "\\u001D" },
+    JsonControlEscape { delimiter: "\u{1e}", replacement: "\\u001E" },
+    JsonControlEscape { delimiter: "\u{1f}", replacement: "\\u001F" },
+  ]
+}
+
 fn escape_json_string(s: String) -> String {
-  s |> split(delimiter: "\\") |> join(separator: "\\\\")
+  let named = s |> split(delimiter: "\\") |> join(separator: "\\\\")
     |> split(delimiter: "\"") |> join(separator: "\\\"")
     |> split(delimiter: "\n") |> join(separator: "\\n")
     |> split(delimiter: "\t") |> join(separator: "\\t")
+  fold(json_control_escapes(), init: named, f: fn(acc, row) {
+    join(split(s: acc, delimiter: row.delimiter), row.replacement)
+  })
 }
 
 type ModuleFilenameOwners {
@@ -135,14 +185,15 @@ fn to_snake(name: String) -> String {
   let result = chars_list |> enumerate |> map(pair =>
     let idx = pair.first
     let ch = pair.second
+    let spelled = substring(s: name, start: idx, end: idx + 1)
     if is_upper(ch: ch) {
       if idx == 0 {
-        to_lower_char(ch: ch)
+        ascii_lowercase(s: spelled)
       } else {
-        concat("_", to_lower_char(ch: ch))
+        concat("_", ascii_lowercase(s: spelled))
       }
     } else {
-      from_code_point(cp: ch)
+      spelled
     }
   )
   result |> join(separator: "")
@@ -150,31 +201,11 @@ fn to_snake(name: String) -> String {
 
 fn to_screaming_snake(name: String) -> String {
   let snake = to_snake(name: name)
-  snake |> chars |> map(ch => to_upper_char(ch: ch)) |> join(separator: "")
+  ascii_uppercase(s: snake)
 }
 
 fn is_upper(ch: Int) -> Bool {
   ch >= 65 && ch <= 90
-}
-
-fn to_lower_char(ch: Int) -> String {
-  let cp = ch
-  if cp >= 65 && cp <= 90 {
-    let lower_cp = cp + 32
-    from_code_point(cp: lower_cp)
-  } else {
-    from_code_point(cp: ch)
-  }
-}
-
-fn to_upper_char(ch: Int) -> String {
-  let cp = ch
-  if cp >= 97 && cp <= 122 {
-    let upper_cp = cp - 32
-    from_code_point(cp: upper_cp)
-  } else {
-    from_code_point(cp: ch)
-  }
 }
 
 fn sanitize_service_name(name: String) -> String {
@@ -204,13 +235,7 @@ fn capitalize_first(s: String) -> String {
   if chars_list |> count == 0 {
     ""
   } else {
-    chars_list |> enumerate |> map(pair =>
-      if pair.first == 0 {
-        to_upper_char(ch: pair.second)
-      } else {
-        from_code_point(cp: pair.second)
-      }
-    ) |> join(separator: "")
+    ascii_uppercase_first(s: s)
   }
 }
 

@@ -10,7 +10,7 @@ import std.artifact_store_scratch_grant {
   artifact_store_scratch_read_admissible,
   artifact_store_scratch_frame,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

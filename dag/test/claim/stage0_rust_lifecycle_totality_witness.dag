@@ -12,7 +12,7 @@ import gunbc.stage0.stage0_rust_lifecycle_totality {
   stage0_rust_lifecycle_totality_underived_axes
 }
 import gunbc.stage0.stage0_rust_source_lifecycle_scaffold { path_in_list }
-import v2.std.algebra { length }
+import std.algebra { length }
 
 test fn lifecycle_totality_note_cites_identity_join() -> Bool {
   string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "identity join")

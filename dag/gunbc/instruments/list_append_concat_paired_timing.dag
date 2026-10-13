@@ -1,14 +1,6 @@
 module gunbc.instruments.list_append_concat_paired_timing
 
-import v2.std.algebra {
-  Cons,
-  Empty,
-  FreeMonoid,
-  fold_list_right,
-  length,
-  zip_eq
-}
-import std.algebra { list_append }
+import std.algebra { list_append, Cons, Empty, FreeMonoid, fold_list_right, length, zip_eq }
 
 // Consumer: gunbc.recurring_failure_mode.lens_prices_the_authority_while_the_lane_runs_the_realization.
 // Re-derives the one-binary list_append concat vs reconstructed fold_list_right timing. Both arms

@@ -3,17 +3,21 @@ module test.claim.serving.rented_offer_admission_witness
 import std.types { Bool, String, NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.work { Shape }
 import product.fabric.offer_route { OfferRouteRow }
 import product.fabric.supply { SupplierOffer }
 import product.fabric.candidate_field { FieldRequest }
-import gunbc.serving.rented_replica { RentedReplicaIdentity }
+import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
+import std.nat { Nat }
 import gunbc.serving.turn_demand { serving_token_capability, serving_replica_trust_domain, serving_unstated_shape }
-import gunbc.serving.turn_admission { serving_isolation_profile, BatchQualityTolerant, SeatStandingRead, NoSessionRecord }
+import gunbc.serving.turn_admission { serving_isolation_profile, BatchQualityTolerant, SeatStandingRead, NoSessionRecord, QueueDepthRead, RouteAdmittingMore }
 import gunbc.serving.replica_incarnation { ReplicaIncarnationUnread }
-import gunbc.serving.replica_endpoint_launch { replica_incarnation_unverified_obligation }
+import gunbc.harness.harness_backend { HarnessEngineReading }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.serving.replica_endpoint_launch { ReplicaLaunchObserved, replica_endpoint_launch }
+import gunbc.serving.replica_endpoint_launch { replica_incarnation_unverified_obligation, ReplicaEndpointLaunch }
 import gunbc.serving.rented_offer_admission {
   OperatorPostureAttestation, RentedAdmissionSources, RentedOfferRead, RentedWorkScope, RentedWorkScopeReading, RentedWorkScopeDeclared, RentedWorkScopeUnread,
   rented_work_scope_unread_obligation, RentedOfferNotRead,
@@ -23,8 +27,12 @@ import gunbc.serving.rented_offer_admission {
   rented_rental_record_unread_obligation, rented_posture_unattested_obligation,
   rented_posture_attested_twice_obligation,
 }
-import gunbc.harness.harness_seat { HarnessCandidates, harness_add_serving_candidate, harness_candidate_for_key }
-import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
+import std.measure { gibibyte, gibibyte_to_byte_size }
+import product.fabric.envelope { ResourceEnvelope, GpuRequirement }
+import extdeps.gpu.types { Cuda }
+import gunbc.serving.rented_instance_offer { rented_replica_offer_reading, rented_replica_offer_key }
+import gunbc.harness.harness_seat { HarnessCandidate, HarnessCandidates, harness_add_serving_candidate, harness_candidate_for_key }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint, serving_route_endpoint_wire }
 import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
 import test.claim.fabric.spill_candidate_field_witness {
   s_request, s_hetzner_route, s_hetzner_sibling_route, s_facts, s_posture, s_customer_profile,
@@ -304,13 +312,12 @@ fn r_empty() -> HarnessCandidates {
 }
 
 fn r_place_on(acc: HarnessCandidates, replica: RentedReplicaIdentity, sources: RentedAdmissionSources) -> HarnessCandidates {
-  let field = "1789300000.12"
   harness_add_serving_candidate(
     acc_in: acc,
-    endpoint: ServingRouteEndpoint { replica: replica, address: "10.0.0.7" as NonEmptyStr, port: 8000 },
+    endpoint: r_endpoint_for(replica: replica),
     class: BatchQualityTolerant,
-    launch: w_launch(field: field),
-    engine: w_engine_with(field: field),
+    launch: r_launch_for(replica: replica),
+    engine: r_engine_for(replica: replica),
     seats: 4,
     seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
     session: NoSessionRecord,
@@ -341,4 +348,149 @@ test fn two_gpus_with_their_own_offers_yield_distinct_candidates() -> Bool {
 test fn two_gpus_sharing_one_offer_identity_place_only_the_first() -> Bool {
   let placed = r_two_gpu(key_b: "rented-offer-a")
   count(placed.candidates) == 1 && count(placed.notes) == 1
+}
+
+fn r_instance() -> FieldRequest<NonEmptyStr> {
+  let base = r_serving_request_keyed(key: "rented-instance-1")
+  let priced = s_request(key: "rented-instance-1", route: s_hetzner_route(), amount: money_amount_micro(count: 3000))
+  FieldRequest {
+    offer: SupplierOffer {
+      id: base.offer.id, executor: base.offer.executor, route: base.offer.route,
+      shape: Shape {
+        hard: base.offer.shape.hard,
+        envelope: ResourceEnvelope {
+          cpu: none,
+          gpu: Present { value: GpuRequirement { count: 2, min_vram: gibibyte_to_byte_size(g: gibibyte(count: 96)), runtimes: [Cuda] } },
+          memory: none, storage: none, network: none,
+        },
+      },
+      capabilities: base.offer.capabilities, trust_domain: base.offer.trust_domain, isolation: base.offer.isolation,
+      quantity_bound: base.offer.quantity_bound, ready_at: base.offer.ready_at, quote: priced.offer.quote,
+      billing_quantum: base.offer.billing_quantum, evidence: base.offer.evidence,
+    },
+    dispatch: base.dispatch,
+    delivery: base.delivery,
+  }
+}
+
+fn r_derived(replica: RentedReplicaIdentity) -> RentedOfferReading {
+  rented_replica_offer_reading(instance: r_instance().offer, inputs: r_instance().dispatch, replica: replica)
+}
+
+fn r_derived_id(reading: RentedOfferReading) -> List<OfferRouteRow<NonEmptyStr>> {
+  match reading {
+    RentedOfferRead { replica: _, request: q } => [OfferRouteRow { offer: q.offer.id, facts: s_facts(route: s_hetzner_route()) }]
+    RentedOfferNotRead { replica: _, obligation: _ } => []
+  }
+}
+
+fn r_derived_sources(replica: RentedReplicaIdentity) -> RentedAdmissionSources {
+  let reading = r_derived(replica: replica)
+  RentedAdmissionSources {
+    reading: reading,
+    work_scope: RentedWorkScopeDeclared { scope: r_work_scope() },
+    roster: r_derived_id(reading: reading),
+    attestations: [r_attestation()],
+    exercises: [s_hetzner_exercise(valid_through: 2000)],
+  }
+}
+
+fn r_endpoint_for(replica: RentedReplicaIdentity) -> ServingRouteEndpoint {
+  ServingRouteEndpoint { replica: replica, address: "10.0.0.7" as NonEmptyStr, port: 8000 + replica.device_index }
+}
+
+fn r_launch_for(replica: RentedReplicaIdentity) -> ReplicaEndpointLaunch {
+  replica_endpoint_launch(replica: replica, endpoint: serving_route_endpoint_wire(e: r_endpoint_for(replica: replica)), process_start_field: "1789300000.12" as NonEmptyStr)
+}
+
+fn r_engine_for(replica: RentedReplicaIdentity) -> HarnessEngineReading {
+  HarnessEngineReading {
+    queue: QueueDepthRead { waiting: 0, running: 0, pressure: RouteAdmittingMore },
+    launch: ReplicaLaunchObserved { launch: r_launch_for(replica: replica), receipt: "w" as ObservationReceiptRef },
+    progress: none,
+  }
+}
+
+fn r_place_coherent(acc: HarnessCandidates, replica: RentedReplicaIdentity, sources: RentedAdmissionSources) -> HarnessCandidates {
+  harness_add_serving_candidate(
+    acc_in: acc,
+    endpoint: r_endpoint_for(replica: replica),
+    class: BatchQualityTolerant,
+    launch: r_launch_for(replica: replica),
+    engine: r_engine_for(replica: replica),
+    seats: 4,
+    seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    session: NoSessionRecord,
+    incarnation: ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation },
+    sources: sources,
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1000,
+  )
+}
+
+fn r_coherent(c: HarnessCandidate) -> Bool {
+  rented_replica_wire(id: c.launch.replica) == rented_replica_wire(id: c.replica)
+    && rented_replica_wire(id: c.endpoint.replica) == rented_replica_wire(id: c.replica)
+    && (c.launch.endpoint as String) == (serving_route_endpoint_wire(e: c.endpoint) as String)
+}
+
+test fn a_launch_naming_another_endpoint_for_the_same_replica_places_nothing() -> Bool {
+  let b = r_replica_b()
+  let stale = replica_endpoint_launch(replica: b, endpoint: serving_route_endpoint_wire(e: r_endpoint_for(replica: w_replica)), process_start_field: "1789300000.12" as NonEmptyStr)
+  let placed = harness_add_serving_candidate(
+    acc_in: r_empty(),
+    endpoint: r_endpoint_for(replica: b),
+    class: BatchQualityTolerant,
+    launch: stale,
+    engine: r_engine_for(replica: b),
+    seats: 4,
+    seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    session: NoSessionRecord,
+    incarnation: ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation },
+    sources: r_derived_sources(replica: b),
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1000,
+  )
+  count(placed.candidates) == 0 && count(placed.notes) == 1
+}
+
+test fn a_launch_naming_another_replica_than_the_endpoint_places_nothing() -> Bool {
+  let placed = harness_add_serving_candidate(
+    acc_in: r_empty(),
+    endpoint: r_endpoint_for(replica: r_replica_b()),
+    class: BatchQualityTolerant,
+    launch: r_launch_for(replica: w_replica),
+    engine: r_engine_for(replica: w_replica),
+    seats: 4,
+    seats_held: SeatStandingRead { quality_held: 0, tolerant_held: 0 },
+    session: NoSessionRecord,
+    incarnation: ReplicaIncarnationUnread { obligation: replica_incarnation_unverified_obligation },
+    sources: r_derived_sources(replica: r_replica_b()),
+    subject: w_subject(),
+    model: "witness-model" as NonEmptyStr,
+    unit: Qwen3_8_27bOnNinfer,
+    now: 1000,
+  )
+  count(placed.candidates) == 0 && count(placed.notes) == 1
+}
+
+test fn one_two_gpu_instance_places_both_replicas_each_on_its_own_derived_offer() -> Bool {
+  let a = r_place_coherent(acc: r_empty(), replica: w_replica, sources: r_derived_sources(replica: w_replica))
+  let placed = r_place_coherent(acc: a, replica: r_replica_b(), sources: r_derived_sources(replica: r_replica_b()))
+  let key_a = rented_replica_offer_key(instance: r_instance().offer, replica: w_replica) as String
+  let key_b = rented_replica_offer_key(instance: r_instance().offer, replica: r_replica_b()) as String
+  count(placed.candidates) == 2
+    && key_a != key_b
+    && (match harness_candidate_for_key(candidates: placed.candidates, key: key_a as NonEmptyStr) {
+      Present { value: c } => c.replica.device_index == 0 && c.endpoint.replica.device_index == 0 && r_coherent(c: c)
+      Absent => false
+    })
+    && (match harness_candidate_for_key(candidates: placed.candidates, key: key_b as NonEmptyStr) {
+      Present { value: c } => c.replica.device_index == 1 && c.endpoint.replica.device_index == 1 && c.endpoint.port == 8001 && r_coherent(c: c)
+      Absent => false
+    })
 }

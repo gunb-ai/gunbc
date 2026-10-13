@@ -162,7 +162,7 @@ import gunbc.fleet_observation.observation_envelope {
   subject_agreement,
   source_byte_fact,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -32,7 +32,7 @@ import gunbc.membership_reconcile {
   membership_effects,
   MembershipTally, membership_tally,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -2,7 +2,7 @@ module gunbc.fleet.fleet_known_hosts_anchor
 
 import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe, brand }
 import std.measure { Second, second }
-import std.algebra { trim }
+import std.algebra { trim, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import std.content_hash {
   ContentHash,
   content_hash_of_value,
@@ -15,7 +15,6 @@ import std.content_hash {
 }
 import std.decl_ref { decl_ref }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import std.types { Int }
 import extdeps.ssh.client_options {
   SshClientOption,

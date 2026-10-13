@@ -15,7 +15,7 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
   HttpResourceBackend,
   FileResourceBackend,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

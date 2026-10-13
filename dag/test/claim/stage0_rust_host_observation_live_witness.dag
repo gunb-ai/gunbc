@@ -1,6 +1,6 @@
 module test.claim.stage0_rust_host_observation_live_witness
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.stage0.stage0_rust_source_lifecycle_scaffold {
   DerivedNewlyUnclassified,
   DerivedUnclassifiedTracked,

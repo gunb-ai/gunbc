@@ -1,7 +1,7 @@
 module test.claim.deleted_lanes_countable_witness
 
 import std.types { Bool, List, String }
-import v2.std.algebra { non_empty_to_list }
+import std.algebra { non_empty_to_list }
 import gunbc.witness.witness_floor_lanes { required_lanes_roster, witness_floor_lane_job_ids }
 
 // THE FABRIC LANE STILL RUNS AND NO LONGER GATES, AND THIS ROW ASSERTS BOTH HALVES.

@@ -19,7 +19,7 @@ import product.fs_box_published_claims {
   faq_lists_firefox, datasheet_lists_firefox, faq_attests_extended_compliance_rewrite,
   fs_box_internet_constraint_instruction, current_fs_box_internet_constraint_instruction,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 test fn v4_data_sheet_lists_qsfp28_and_qsfp_dd_but_not_qsfp56() -> Bool {
   sff_identifier_named_on_v4_data_sheet(id: transceiver_identifier_from_byte(code: 17))

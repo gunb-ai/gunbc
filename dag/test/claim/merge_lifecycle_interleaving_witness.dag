@@ -15,7 +15,7 @@ import gunbc.merge_admission {
   PerPrGateOnly, RequireUpToDateBase, KeyedReceipt, ReportedContextsAtMergeInstant,
 }
 import std.types { List, Bool, Int, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

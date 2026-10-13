@@ -1,8 +1,7 @@
 module test.claim.algebra_receiver_self_witness
 
 import std.types { Bool }
-import std.algebra { Empty, Cons }
-import v2.std.algebra { fold_list }
+import std.algebra { Empty, Cons, fold_list }
 
 // reverse needs ReceiverSelf, not an element argument. Other profile methods
 // must not contribute their evidence requirements to this lookup.

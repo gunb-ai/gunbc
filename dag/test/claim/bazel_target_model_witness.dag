@@ -61,7 +61,7 @@ import std.integer { Int }
 // so. Without the declaration the floor's fail-closed default reads the module as live-tree
 // reading and DECLINES it: discovered, counted, never run — a witness that looks like coverage
 // and executes nothing.
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 // ---------------------------------------------------------------------------------------------
 // LABEL GRAMMAR

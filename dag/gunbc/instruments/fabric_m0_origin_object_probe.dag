@@ -23,6 +23,7 @@ import product.fabric.work { MaterializedProgram,
   Work, WorkContract, WorkStep, ReceiptSatisfiable, ExecutionRequirements,
   Shape, HardRequirements, ControlPlaneCapacity, work_for,
   OutputObligation, OutputArtifactObligation, DeclaredOutputObligations,
+ WarmResidencyRequired,
 }
 import gunbc.fabric.fabric_m0_completion {
   ComputationSucceeded, CommittedOutput, ManifestMember, OriginObservation, ObligationSubject,
@@ -259,6 +260,7 @@ fn canary_work() -> Work<NonEmptyStr> {
       capacity_class: ControlPlaneCapacity,
       shape: Shape { hard: HardRequirements { threads: hardware_thread_count(8) }, envelope: unstated_envelope() },
       capabilities: "linux-arm64", trust_domain: "fleet-owned", isolation: shared_kernel_sandbox_profile(),
+      revocation: WarmResidencyRequired,
     },
   )
 }

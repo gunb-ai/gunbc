@@ -2,7 +2,7 @@ module test.claim.namespace_root_reference_edge_witness
 
 import std.types { Bool, List, String }
 import v2.lens.module_graph { ImportResolutionFact, reference_derived_import_resolution_facts_live }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

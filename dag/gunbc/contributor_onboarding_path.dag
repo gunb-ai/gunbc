@@ -352,7 +352,7 @@ data onboarding_obstacles: List<OnboardingObstacle> = [
     step_id: "clone" as NonEmptyStr,
     symptom: "The repository root offers DESIGN.md, and README.md and CLAUDE.md are symlinks to the same file. There is no CONTRIBUTING file and no first-day document." as NonEmptyStr,
     cause: "DESIGN.md is the single authority and is a serially-reasoned argument from axioms, loaded in full every session. Measured on the tree: it names no build command, no toolchain installer and no binary path, so the document a newcomer is pointed at cannot get them to a build." as NonEmptyStr,
-    disposition: RemediedByDerivation { how: "docs/onboarding.md is generated from this module, carries the ordered path with commands derived from their authorities, and is linked from the section of DESIGN.md that names the checks." as NonEmptyStr },
+    disposition: RemediedByDerivation { how: "docs/onboarding.md is generated from this module (`gunbc.instruments.docs_projection_gate` `regen`) and carries the ordered path with commands derived from their authorities. DESIGN.md names `gunbc.contributor_onboarding_path`, not the projection path." as NonEmptyStr },
     discoverable_from_symptom: false,
   },
   OnboardingObstacle {

@@ -19,7 +19,7 @@ import extdeps.ampere.mt_collins_product_brief.memory_population {
   mt_collins_population_role_of_pair,
   mt_collins_population_role_standing,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

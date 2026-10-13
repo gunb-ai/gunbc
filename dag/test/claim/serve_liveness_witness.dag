@@ -1,6 +1,6 @@
 module test.claim.serve_liveness_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, NonEmptyStr, CommitSha }
 import gunbc.serve_liveness {
   serve_liveness_path,

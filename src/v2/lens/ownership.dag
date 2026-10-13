@@ -13,8 +13,7 @@ import v2.lens.common.algebraic_composition {
 import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredTree }
-import v2.std.algebra { bag_eq }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, bag_eq }
 import v2.std.dependency {
   ClassifiedDependencyView,
   DependencyView,

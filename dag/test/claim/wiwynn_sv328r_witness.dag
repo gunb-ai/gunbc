@@ -26,7 +26,7 @@ import extdeps.memory.types { Registered }
 import extdeps.standards.nic_attachment { OnboardControllerUnstated, NamedOnboardController, OcpNic3 }
 import extdeps.standards.ocp_nic_3_0 { Sff, Lff }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

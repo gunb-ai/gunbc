@@ -10,7 +10,7 @@ import gunbc.rust_item_identity {
   rust_item_identity_note
 }
 import gunbc.seed_growth_admission { seed_growth_admission_note }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

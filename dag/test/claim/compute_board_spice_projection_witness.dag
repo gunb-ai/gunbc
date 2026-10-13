@@ -42,7 +42,7 @@ import product.compute_board.spice_projection {
   NetNotSpellableInTarget,
   project_analog_to_spice,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.compute_board.article { BoardArticleIdentity, article_identity_eq }
 
 data fixture_design: ElectricalDesignIdentity = "test.compute_board_spice_projection.fixture" as ElectricalDesignIdentity

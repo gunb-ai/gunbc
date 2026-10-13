@@ -7,7 +7,7 @@ import extdeps.github.log_annotations { log_annotation_message_line }
 import gunbc.machine_intake.megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
 import gunbc.machine_intake.megarac_boot_media_attach { megarac_stale_power_off_allowance }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_ipmi_read_bound }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value, millisecond, second }
 import std.optional { Present }

@@ -1,5 +1,6 @@
 module v2.test.claim.sql_create_table_fold
 
+
 import v2.extdeps.formats.sql {
   SqlColumnConstraints,
   SqlColumnDefaultAbsent,
@@ -53,7 +54,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Conj, Node, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -239,6 +240,6 @@ test fn sql_fold_single_col_uses_leaf_list_production_holds() -> Bool {
 }
 
 test fn sql_fold_direct_serialize_tier_holds() -> Bool {
-  sql_fold_stmt_kind_sentinel == from_code_point(cp: 2)
+  sql_fold_stmt_kind_sentinel == "\u{2}"
     && sql_fold_direct_serialize_single_col_holds()
 }
