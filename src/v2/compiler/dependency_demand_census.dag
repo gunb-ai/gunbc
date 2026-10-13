@@ -59,10 +59,13 @@ import v2.std.grammar { grammar_empty_node, node_atom_identity_optional, parse_p
 import v2.std.integer { Int }
 import std.types { Bool }
 import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Occupancy, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_lowered_from, node_rebuild, symbol_lexeme }
+import v2.std.provenance { node_occurrence_id_optional }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.symbol_index { SymbolIndex, symbol_index_declares_resource_at, symbol_index_lookup }
 import v2.std.text { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 
 // THE DEPENDENCY-DEMAND CENSUS (D13 step b2): for every fn that authors a `uses` clause, the
 // authored rows read from THAT fn's parse, paired with the demand v2.compiler.dependency_demand
@@ -119,6 +122,21 @@ type DemandCensusStripped {
   authored: List<AuthoredUsesFunction>
 }
 
+// CENSUS-ONLY ALIAS IMAGE. Resolve has no uses-clause model (production lowering refuses
+// body_lowering_reason_uses_clause_unmodeled), so the census cannot ask it which occurrences bind
+// the alias. This pass is that missing binder, used only to form DependencyDemand for the census
+// verdict. Dissolves when resolve admits the clause: aliases bind on the real path and this rewrite
+// is deleted. Operator sign-off of that admission is required (DESIGN section 5) before any Equal
+// this pass mints licenses a corpus deletion.
+data demand_census_alias_subst_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.body_lowering_fold",
+    decl_name: "body_lower_fn_uses_refusal_optional",
+    field: WholeDeclaration
+  }
+}
+
 fn demand_census_strip(tree: Node, owner: QualifiedName) -> DemandCensusStripped {
   let rewritten = demand_census_rewrite(node: tree, owner: owner)
   if is_empty(xs: rewritten.authored) {
@@ -169,7 +187,7 @@ fn demand_census_rewrite_uses_fn(node: Node, owner: QualifiedName, clause: Node)
     UsesAliasBindConflict => DemandCensusRewrite { tree: node, authored: Cons { head: authored, tail: Empty } }
     UsesAliasBindUnestablished => DemandCensusRewrite { tree: node, authored: Cons { head: authored, tail: Empty } }
     UsesAliasBindUnique =>
-      let subst = demand_census_subst(node: node, entries: entries, value_pos: false, shadowed: Empty)
+      let subst = demand_census_subst(node: node, entries: entries, value_pos: true, shadowed: Empty)
       if subst.established {
         DemandCensusRewrite { tree: subst.node, authored: Cons { head: authored, tail: Empty } }
       } else {
@@ -214,47 +232,50 @@ type DemandCensusSubst {
   established: Bool
 }
 
+type AliasUniqScan
+  = AliasScanUnique { seen: Map<Symbol, Bool> }
+  | AliasScanConflict
+  | AliasScanUnestablished
+
 fn demand_census_alias_uniqueness(entries: List<AuthoredUsesEntry>) -> UsesAliasBind {
-  let acc = fold_list(xs: entries, empty: Empty, cons: fn(names, e) {
-    match e.alias {
-      Absent => names
-      Present { value: a } => list_snoc_item(xs: names, item: a)
+  match fold_list(xs: entries, empty: AliasScanUnique { seen: empty_map() }, cons: fn(acc, e) {
+    match acc {
+      AliasScanConflict => acc
+      AliasScanUnestablished => acc
+      AliasScanUnique { seen: seen } =>
+        match e.alias {
+          Absent => AliasScanUnestablished
+          Present { value: a } =>
+            match map_lookup(m: seen, key: a) {
+              Present { value: _ } => AliasScanConflict
+              Absent => AliasScanUnique { seen: map_insert(m: seen, key: a, value: true) }
+            }
+        }
     }
-  })
-  if demand_census_alias_any_absent(entries: entries) {
-    UsesAliasBindUnestablished
-  } else if demand_census_alias_has_duplicate(names: acc) {
-    UsesAliasBindConflict
-  } else {
-    UsesAliasBindUnique
+  }) {
+    AliasScanUnique { seen: _ } => UsesAliasBindUnique
+    AliasScanConflict => UsesAliasBindConflict
+    AliasScanUnestablished => UsesAliasBindUnestablished
   }
-}
-
-fn demand_census_alias_any_absent(entries: List<AuthoredUsesEntry>) -> Bool {
-  fold_list(xs: entries, empty: false, cons: fn(acc, e) {
-    match e.alias {
-      Absent => true
-      Present { value: _ } => acc
-    }
-  })
-}
-
-fn demand_census_alias_has_duplicate(names: List<Symbol>) -> Bool {
-  fold_list(xs: names, empty: false, cons: fn(acc, n) {
-    acc || (demand_census_symbol_count(names: names, n: n) > 1)
-  })
-}
-
-fn demand_census_symbol_count(names: List<Symbol>, n: Symbol) -> Int {
-  fold_list(xs: names, empty: 0, cons: fn(c, x) { if x == n { c + 1 } else { c } })
 }
 
 fn demand_census_symbol_listed(names: List<Symbol>, n: Symbol) -> Bool {
   fold_list(xs: names, empty: false, cons: fn(acc, x) { acc || (x == n) })
 }
 
+fn demand_census_same_occurrence(a: Node, b: Node) -> Bool {
+  match node_occurrence_id_optional(node: a) {
+    Absent => false
+    Present { value: ia } =>
+      match node_occurrence_id_optional(node: b) {
+        Absent => false
+        Present { value: ib } => ia == ib
+      }
+  }
+}
+
 fn demand_census_among(node: Node, xs: List<Node>) -> Bool {
-  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (node.occurrence_id == x.occurrence_id) })
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || demand_census_same_occurrence(a: node, b: x) })
 }
 
 fn demand_census_postfix_members(node: Node) -> List<Node> {
@@ -291,6 +312,12 @@ fn demand_census_subst(node: Node, entries: List<AuthoredUsesEntry>, value_pos: 
         demand_census_subst_labelled(node: node, entries: entries, shadowed: shadowed)
       } else if id == ^dag_surface_primary_expr {
         demand_census_subst_children(node: node, entries: entries, value_pos: true, shadowed: shadowed)
+      } else if id == ^dag_surface_expr {
+        demand_census_subst_children(node: node, entries: entries, value_pos: true, shadowed: shadowed)
+      } else if id == ^dag_surface_stmt {
+        demand_census_subst_children(node: node, entries: entries, value_pos: true, shadowed: shadowed)
+      } else if id == ^dag_surface_stmt_seq {
+        demand_census_subst_children(node: node, entries: entries, value_pos: true, shadowed: shadowed)
       } else {
         demand_census_subst_atom_or_children(node: node, entries: entries, value_pos: value_pos, shadowed: shadowed)
       }
@@ -300,7 +327,7 @@ fn demand_census_subst(node: Node, entries: List<AuthoredUsesEntry>, value_pos: 
 
 fn demand_census_subst_postfix(node: Node, entries: List<AuthoredUsesEntry>, shadowed: List<Symbol>) -> DemandCensusSubst {
   match body_lower_postfix_chain_read(node: node) {
-    PostfixChainNotThisShape => DemandCensusSubst { node: node, established: false }
+    PostfixChainNotThisShape => demand_census_subst_children(node: node, entries: entries, value_pos: true, shadowed: shadowed)
     PostfixChainSuffixCarried { at: _ } => DemandCensusSubst { node: node, established: false }
     PostfixChainBare { segments: _ } => demand_census_subst_postfix_members(node: node, entries: entries, shadowed: shadowed)
     PostfixChainFound { steps: _ } => demand_census_subst_postfix_members(node: node, entries: entries, shadowed: shadowed)
@@ -1386,7 +1413,7 @@ fn demand_census_report(
     match s {
       DemandModuleResolveRefused { authored: fs, first_reason: reason, first_unbound: unbound } =>
         fold_list(xs: fs, empty: acc, cons: fn(a, f) {
-          list_snoc_item(xs: a, item: demand_census_row_unobserved(function: demand_census_function_path(authored: f), reason: UnobservedModuleResolveRefused { first_reason: reason, first_unbound: unbound }))
+          list_snoc_item(xs: a, item: demand_census_row_unobserved(function: demand_census_function_path(authored: f), reason: demand_census_alias_or_module_unobserved(authored: f, first_reason: reason, first_unbound: unbound)))
         })
       DemandModuleResolved { readings: rs } =>
         fold_list(xs: rs, empty: acc, cons: fn(a, r) { list_snoc_item(xs: a, item: demand_census_resolved_row(vocabulary: vocabulary, reading: r, demand: demand)) })
@@ -1406,6 +1433,14 @@ fn demand_census_report(
         DemandModuleResolved { readings: _ } => n
       }
     })
+  }
+}
+
+fn demand_census_alias_or_module_unobserved(authored: AuthoredUsesFunction, first_reason: Symbol, first_unbound: Optional<DemandCensusUnboundLocus>) -> DemandCensusUnobserved {
+  match authored.alias_bind {
+    UsesAliasBindConflict => UnobservedAliasConflict
+    UsesAliasBindUnestablished => UnobservedAliasUnestablished
+    UsesAliasBindUnique => UnobservedModuleResolveRefused { first_reason: first_reason, first_unbound: first_unbound }
   }
 }
 
