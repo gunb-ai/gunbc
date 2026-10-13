@@ -6,6 +6,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
 import std.types { List }
 import v2.std.integer { Int }
+import v2.std.node { Symbol }
 import v2.std.text { String }
 import v2.test.claim.cardinality_realization_specimens { specimen_tags }
 
@@ -40,8 +41,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type RealizationExpectation
   = Realizes
-  | RefusesWith { cause: String }
-  | ExpectedRed { owners: List<String>, defect: String }
+  | RefusesWith { causes: List<Symbol> }
+  | ExpectedRed { defects: List<Symbol> }
 
 type RealizationSupportRow {
   target: DeclarationRef
@@ -103,29 +104,40 @@ data all_targets: List<DeclarationRef> = [evaluator_target, seed_rust_target, na
 // The tag the evaluator path answers for each of nine specimens is asserted by the specimens module and the
 // List spelling's by v2.test.claim.cardinality_realization_list_specimen; the evaluator rows below
 // are the declared expectation that all ten are realized.
-data seed_rust_list_defect: String = "a List nested under an Optional is left unstamped by seed inference and the expected element type is not pushed into the literal, so render_rust_optional_carrier_inner falls back to () and the element payload is lost: the emitted type is Option<Rc<Vec<Option<()>>>> and the emitted crate fails to compile (rustc E0308, Option<()> against Option<i64>); the FreeMonoid spelling of the same fact (specimen 6) is stamped and realizes"
+// SPECIMEN 6 OVER List on seed Rust: a List nested under an Optional is left unstamped by seed
+// inference and the expected element type is not pushed into the literal, so
+// render_rust_optional_carrier_inner falls back to () and the payload is lost. The emitted type is
+// Option<Rc<Vec<Option<()>>>> and the emitted crate fails rustc E0308; the FreeMonoid spelling is
+// stamped and realizes. Owners: sunny-ibex-824 under tidy-ant-251 (inference stamping) and
+// merry-moth-118 under clever-crane-830 (the renderer); both lanes rot, the defect symbols do not.
+data seed_rust_list_defects: List<Symbol> = [^render_rust_optional_carrier_inner]
 
-data seed_rust_json_defect: String = "json_unescape_checked has no rt_function_registry row, so json_member_presence and json_field_string reach a primitive with no Rust realization and the emitted program PANICS at run time instead of refusing at emit time"
+// SPECIMENS 8 AND 9 on seed Rust: json_unescape_checked has no rt_function_registry row, so
+// json_member_presence and json_field_string reach a primitive with no Rust realization and the
+// emitted program PANICS at run time instead of refusing at emit time. Owner: clever-crane-830.
+data seed_rust_json_defects: List<Symbol> = [^json_unescape_checked]
 
-data seed_rust_json_owners: List<String> = ["clever-crane-830 (runtime realization registry)"]
-
-data seed_rust_list_owners: List<String> = [
-  "sunny-ibex-824 under tidy-ant-251 (seed inference stamping)",
-  "merry-moth-118 under clever-crane-830 (render_rust_optional_carrier_inner)"
+// NATIVE v2 CLI, every specimen: the source roots do not yield an exact closure. The entry's
+// closure does not front-end (std.decimal, via the JSON decoder import); a module importing only
+// v2.std.integer refuses at that module; one importing neither refuses on grounding. Located and
+// typed but CLOSURE-WIDE: it fires before any cardinality shape is reached, so it does not
+// discriminate the shapes.
+data native_closure_causes: List<Symbol> = [
+  ^body_lowering_reason_field_refinement_unmodeled,
+  ^normalized_tree_reason_wrapper_retention_not_normalized,
+  ^infer_grounding_not_derived
 ]
 
-data native_closure_cause: String = "the source roots did not yield an exact closure: the entry's dependency closure does not front-end (module std.decimal: body_lowering_reason_field_refinement_unmodeled via the JSON decoder import); a module importing only v2.std.integer refuses at that module (normalized_tree_reason_wrapper_retention_not_normalized), and one importing neither refuses infer_grounding_not_derived. The refusal is located and typed but CLOSURE-WIDE: it fires before any cardinality shape is reached, so it does not discriminate the shapes"
-
-fn refuses(target: DeclarationRef, specimen: DeclarationRef, cause: String) -> RealizationSupportRow {
-  RealizationSupportRow { target: target, specimen: specimen, expectation: RefusesWith { cause: cause } }
+fn refuses(target: DeclarationRef, specimen: DeclarationRef, causes: List<Symbol>) -> RealizationSupportRow {
+  RealizationSupportRow { target: target, specimen: specimen, expectation: RefusesWith { causes: causes } }
 }
 
 fn supported(target: DeclarationRef, specimen: DeclarationRef) -> RealizationSupportRow {
   RealizationSupportRow { target: target, specimen: specimen, expectation: Realizes }
 }
 
-fn expected_red(target: DeclarationRef, specimen: DeclarationRef, owners: List<String>, defect: String) -> RealizationSupportRow {
-  RealizationSupportRow { target: target, specimen: specimen, expectation: ExpectedRed { owners: owners, defect: defect } }
+fn expected_red(target: DeclarationRef, specimen: DeclarationRef, defects: List<Symbol>) -> RealizationSupportRow {
+  RealizationSupportRow { target: target, specimen: specimen, expectation: ExpectedRed { defects: defects } }
 }
 
 data realization_support_rows: List<RealizationSupportRow> = [
@@ -145,20 +157,20 @@ data realization_support_rows: List<RealizationSupportRow> = [
   supported(target: seed_rust_target, specimen: specimen_4_absent_collection),
   supported(target: seed_rust_target, specimen: specimen_5_present_empty_collection),
   supported(target: seed_rust_target, specimen: specimen_6_present_absent_entries),
-  expected_red(target: seed_rust_target, specimen: specimen_6_list_present_absent_list_entries, owners: seed_rust_list_owners, defect: seed_rust_list_defect),
+  expected_red(target: seed_rust_target, specimen: specimen_6_list_present_absent_list_entries, defects: seed_rust_list_defects),
   supported(target: seed_rust_target, specimen: specimen_7_foreign_missing),
-  expected_red(target: seed_rust_target, specimen: specimen_8_foreign_null, owners: seed_rust_json_owners, defect: seed_rust_json_defect),
-  expected_red(target: seed_rust_target, specimen: specimen_9_foreign_invalid, owners: seed_rust_json_owners, defect: seed_rust_json_defect),
-  refuses(target: native_v2_target, specimen: specimen_1_absent, cause: native_closure_cause),
-  refuses(target: native_v2_target, specimen: specimen_2_present_absent, cause: native_closure_cause),
-  refuses(target: native_v2_target, specimen: specimen_3_present_present, cause: native_closure_cause),
-  refuses(target: native_v2_target, specimen: specimen_4_absent_collection, cause: native_closure_cause),
-  refuses(target: native_v2_target, specimen: specimen_5_present_empty_collection, cause: native_closure_cause),
-  refuses(target: native_v2_target, specimen: specimen_6_present_absent_entries, cause: native_closure_cause),
-  refuses(target: native_v2_target, specimen: specimen_6_list_present_absent_list_entries, cause: native_closure_cause),
-  refuses(target: native_v2_target, specimen: specimen_7_foreign_missing, cause: native_closure_cause),
-  refuses(target: native_v2_target, specimen: specimen_8_foreign_null, cause: native_closure_cause),
-  refuses(target: native_v2_target, specimen: specimen_9_foreign_invalid, cause: native_closure_cause)
+  expected_red(target: seed_rust_target, specimen: specimen_8_foreign_null, defects: seed_rust_json_defects),
+  expected_red(target: seed_rust_target, specimen: specimen_9_foreign_invalid, defects: seed_rust_json_defects),
+  refuses(target: native_v2_target, specimen: specimen_1_absent, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_2_present_absent, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_3_present_present, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_4_absent_collection, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_5_present_empty_collection, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_6_present_absent_entries, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_6_list_present_absent_list_entries, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_7_foreign_missing, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_8_foreign_null, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_9_foreign_invalid, causes: native_closure_causes)
 ]
 
 fn row_matches(row: RealizationSupportRow, target: DeclarationRef, specimen: DeclarationRef) -> Bool {
@@ -197,8 +209,8 @@ fn target_is_covered(rows: List<RealizationSupportRow>, target: DeclarationRef) 
 fn expectation_is_realizes(l: RealizationLookup) -> Bool {
   match l {
     RealizationDeclared { expectation: Realizes } => true
-    RealizationDeclared { expectation: RefusesWith { cause: _ } } => false
-    RealizationDeclared { expectation: ExpectedRed { owners: _, defect: _ } } => false
+    RealizationDeclared { expectation: RefusesWith { causes: _ } } => false
+    RealizationDeclared { expectation: ExpectedRed { defects: _ } } => false
     RealizationUndeclared { target: _, specimen: _ } => false
   }
 }
@@ -228,11 +240,18 @@ test fn every_target_specimen_pair_has_a_declared_row() -> Bool {
   )
 }
 
+fn rows_without_pair(rows: List<RealizationSupportRow>, target: DeclarationRef, specimen: DeclarationRef) -> List<RealizationSupportRow> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, r) {
+    if declaration_ref_eq(a: r.target, b: target) && declaration_ref_eq(a: r.specimen, b: specimen) { acc } else { acc + [r] }
+  })
+}
+
 // THE DISCRIMINATING CONTROL: dropping one row makes that pair a typed refusal, so a missing pair
-// cannot read as support. The control removes the seed Rust row for specimen 4.
+// cannot read as support. The control filters the one seed Rust specimen-4 row out of realization_support_rows.
 test fn a_missing_pair_is_a_typed_refusal_not_support() -> Bool {
   !target_is_covered(rows: [], target: evaluator_target)
-    && !lookup_is_declared(l: realization_support(rows: [], target: seed_rust_target, specimen: specimen_4_absent_collection))
+    && !lookup_is_declared(l: realization_support(rows: rows_without_pair(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection), target: seed_rust_target, specimen: specimen_4_absent_collection))
+    && lookup_is_declared(l: realization_support(rows: rows_without_pair(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection), target: seed_rust_target, specimen: specimen_3_present_present))
     && lookup_is_declared(l: realization_support(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection))
 }
 
