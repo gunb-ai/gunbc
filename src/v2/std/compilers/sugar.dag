@@ -306,7 +306,10 @@ fn sugar_arm_type_body_is_nameless(variant: Node) -> Bool {
 // single authority for the spine's label set) is what tells them apart.
 fn sugar_where_carried_head_is_nameless(variant: Node) -> Bool {
   match sugar_named_child_optional(root: variant, name: ^dag_surface_type_expr) {
-    Absent => false
+    // The where-rebuild always carries its head under this edge, so Absent is the one shape it
+    // leaves unconfirmed: a where-suffix arm with no carried constructor head has no name, which is
+    // exactly the class this wall exists to refuse. Never count it as named.
+    Absent => true
     Present { value: head } =>
       match head.kind {
         TypeNode { connective: Atom { identity: _ } } => false
