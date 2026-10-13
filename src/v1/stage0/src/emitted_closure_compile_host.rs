@@ -855,9 +855,10 @@ fn write_probe_crate_files(
     )
 }
 
-/// Cargo over an already-emitted tree. The sharing census classifies declarations from the typed
-/// graph, then asks rustc only of closures that carry a different-sharing leaf collision; this is
-/// that rustc question, using the same writer and cargo invocation as the emit-compile probes.
+/// Cargo over an already-emitted tree, using the same writer and cargo invocation as the
+/// emit-compile probes. Callers decide whether to invoke it. The sharing census always does,
+/// once per subject: its standing is a subject-grain build (refuse / silent / green), not a
+/// rustc stamp gated on a different-sharing row.
 pub(crate) fn cargo_verdict_of_emit(
     entry: &str,
     emit: &crate::v1_compiler_emit_core_support::EmitResult,
