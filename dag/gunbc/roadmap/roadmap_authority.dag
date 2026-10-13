@@ -6441,6 +6441,12 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "compiler-source-exemption-removal", parent: "declared-conformance-grounding"),
     edge(child: "cardinality-vertical-slice", parent: "ladder-claims-carrier"),
     edge(child: "cardinality-vertical-slice", parent: "unforgeable-construction-capability"),
+    // Retirement deletes rival routes; it consumes the replacement each sibling delivers. Fan-in,
+    // not a chain: census does not wait; a deletion whose replacement has not landed is refused.
+    edge(child: "cardinality-absence-retirement", parent: "cardinality-optional-declaration"),
+    edge(child: "cardinality-absence-retirement", parent: "cardinality-native-closure-cutover"),
+    edge(child: "cardinality-absence-retirement", parent: "cardinality-carrier-consolidation"),
+    edge(child: "cardinality-absence-retirement", parent: "cardinality-realization-conformance"),
     edge(child: "v2-translate-underived-refusal", parent: "v2-self-grounding-frontier"),
     edge(child: "v2-inferred-tree-completeness", parent: "v2-translate-underived-refusal"),
     edge(child: "v2-target-realization-gate", parent: "primitive-identity-join"),
