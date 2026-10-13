@@ -94,6 +94,13 @@ data rtx_pro_6000_workstation_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data rtx_pro_6000_workstation_datasheet_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/content/dam/en-zz/Solutions/design-visualization/quadro-product-literature/workstation-datasheet-blackwell-rtx-pro6000-x-nvidia-us-3519208-web.pdf"
+  }
+}
+
 data rtx_pro_6000_max_q_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -118,7 +125,7 @@ data rtx_pro_6000_family_authority: ExternalAuthority = ExternalAuthority {
 data rtx_pro_6000_cuda_core_uncited_obligation: NonEmptyStr = "Read the CUDA core count off NVIDIA's RTX PRO 6000 Blackwell Max-Q product page or a Max-Q datasheet for this edition. The Workstation Edition datasheet (document 3519208) and the Server Edition page both state 24,064; the Max-Q product page states no count, and the equal value is assumed from the shared GB202 die, not read."
 
 data rtx_pro_6000_workstation_cuda_core_standing: CitedFigureStanding = CitedToAuthority {
-  authority: rtx_pro_6000_workstation_authority
+  authority: rtx_pro_6000_workstation_datasheet_authority
 }
 
 data rtx_pro_pcie5_x16_endpoint: PcieLink = PcieLink { generation: Gen5, lane_count: 16 }
@@ -229,11 +236,11 @@ data rtx_pro_6000_workstation_figure_citations: List<FactCitation> = [
   },
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_catalog", field_name: "interconnect"),
-    authority: rtx_pro_6000_workstation_authority,
+    authority: rtx_pro_6000_workstation_datasheet_authority,
   },
   FactCitation {
     fact: decl_field_ref(module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_pro_6000_workstation_catalog", field_name: "execution_lane_count"),
-    authority: rtx_pro_6000_workstation_authority,
+    authority: rtx_pro_6000_workstation_datasheet_authority,
   },
 ]
 

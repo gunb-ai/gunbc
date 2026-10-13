@@ -23,6 +23,7 @@ import extdeps.external_authority { CitedToAuthority, TranscribedUncited, Observ
 import extdeps.gpu.nvidia {
   rtx_pro_6000_workstation_cuda_core_standing, rtx_pro_6000_max_q_cuda_core_standing,
   rtx_pro_6000_server_cuda_core_standing, rtx_pro_6000_workstation_figure_citations,
+  rtx_pro_6000_workstation_datasheet_authority,
   rtx_pro_6000_max_q_figure_citations, rtx_pro_6000_server_figure_citations,
 }
 import product.fabric.supply { unmet_shape_axes, OfferQuote, QuotedPerHour, SupplierOffer }
@@ -310,7 +311,8 @@ test fn w_cuda_core_standing_is_cited_only_for_server() -> Bool {
   })
     && (match rtx_pro_6000_workstation_cuda_core_standing {
       TranscribedUncited { read_obligation: _ } => false
-      CitedToAuthority { authority: _ } => true
+      CitedToAuthority { authority: a } =>
+        (a.uri.locator as String) == (rtx_pro_6000_workstation_datasheet_authority.uri.locator as String)
       ObservedByReceipt { observed: _ } => false
     })
     && (match rtx_pro_6000_max_q_cuda_core_standing {
@@ -321,8 +323,8 @@ test fn w_cuda_core_standing_is_cited_only_for_server() -> Bool {
 }
 
 // Identity join, not a count: every cited figure sits on the row it names (list_cover is both
-// directions, so a citation list attached to no row, or a row figure no list states, is red), and the
-// server row alone carries the core-count citation its page states.
+// directions, so a citation list attached to no row, or a row figure no list states, is red).
+// Workstation CUDA cores and PCIe endpoint cite the 3519208 datasheet, not the product page.
 fn figure_citation_eq(a: FactCitation, b: FactCitation) -> Bool {
   a.fact == b.fact && a.authority == b.authority
 }
