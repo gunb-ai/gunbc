@@ -381,3 +381,69 @@ test fn persist_recovery_history_survives_resume_by_real_execution() -> Bool {
     && bound_trips
     && removed.success
 }
+
+// In-memory PersistIdempotent is not durable success. A second persist_waiting_durable against
+// a snapshot that already holds the waiting record must observe the CAS slot: matching bytes
+// are DurablePersistIdempotent; a deleted slot is written, not reported idempotent.
+test fn persist_idempotent_observes_the_slot_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let work = "logical-work-idempotent" as LogicalWorkId
+  let reservation = "grant-idempotent" as ReservationRef
+  let first = persist_waiting_durable(
+    root: root,
+    snapshot: empty_caller_backlog,
+    work: work,
+    reservation: reservation,
+    generation: 2,
+  )
+  let snap = match first {
+    DurableWaitingPersisted { record: r } => Present { value: CallerBacklogSnapshot { records: [r] } }
+    DurablePhasePersisted { record: _ } => none
+    DurablePersistIdempotent { record: _ } => none
+    DurablePersistRefusedTerminal { phase: _ } => none
+    DurablePersistStoreRefused { detail: _ } => none
+    DurablePersistKeyNotSlotAddressable { work: _ } => none
+    DurablePersistPayloadUnencodable { reason: _ } => none
+    DurablePersistUnknownWork => none
+    DurablePersistDuplicate => none
+  }
+  let confirmed = match snap {
+    Absent => false
+    Present { value: s } =>
+      match persist_waiting_durable(root: root, snapshot: s, work: work, reservation: reservation, generation: 2) {
+        DurablePersistIdempotent { record: r } => (r.work as String) == (work as String)
+        DurableWaitingPersisted { record: _ } => false
+        DurablePhasePersisted { record: _ } => false
+        DurablePersistRefusedTerminal { phase: _ } => false
+        DurablePersistStoreRefused { detail: _ } => false
+        DurablePersistKeyNotSlotAddressable { work: _ } => false
+        DurablePersistPayloadUnencodable { reason: _ } => false
+        DurablePersistUnknownWork => false
+        DurablePersistDuplicate => false
+      }
+  }
+  let slot = cas_file_slot_path(root: root, key: work as NonEmptyStr, generation: cas_generation_first())
+  let deleted = Filesystem.Delete(path: slot)
+  let rewritten = match snap {
+    Absent => false
+    Present { value: s } =>
+      match persist_waiting_durable(root: root, snapshot: s, work: work, reservation: reservation, generation: 2) {
+        DurableWaitingPersisted { record: r } => (r.work as String) == (work as String)
+        DurablePersistIdempotent { record: _ } => false
+        DurablePhasePersisted { record: _ } => false
+        DurablePersistRefusedTerminal { phase: _ } => false
+        DurablePersistStoreRefused { detail: _ } => false
+        DurablePersistKeyNotSlotAddressable { work: _ } => false
+        DurablePersistPayloadUnencodable { reason: _ } => false
+        DurablePersistUnknownWork => false
+        DurablePersistDuplicate => false
+      }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  match snap { Present { value: _ } => true  Absent => false }
+    && confirmed
+    && deleted.success
+    && rewritten
+    && removed.success
+}
