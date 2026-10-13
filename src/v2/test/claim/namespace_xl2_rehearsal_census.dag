@@ -1,4 +1,4 @@
-module test.claim.namespace_xl2_rehearsal_census
+module v2.test.claim.namespace_xl2_rehearsal_census
 
 import std.types { Bool, List }
 import v2.workflow.namespace_xl2_rehearsal_census {

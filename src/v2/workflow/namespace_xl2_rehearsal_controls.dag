@@ -14,7 +14,7 @@ import v2.workflow.namespace_xl2_rehearsal_census {
 }
 
 // THE REHEARSAL'S CONTROL SPECIMENS, ONE HOME: read by the hermetic claims
-// (test.claim.namespace_xl2_rehearsal_census) and, when it lands, by the native rehearsal instrument, so
+// (v2.test.claim.namespace_xl2_rehearsal_census) and, when it lands, by the native rehearsal instrument, so
 // the red the native run discriminates on is the same specimen the floor discriminates on, not a
 // second copy of it (DESIGN section 3).
 // THE CONTROLS THE BRIEF OWES, RUN THROUGH THE REHEARSAL'S OWN COMPOSITION: the typed strip
