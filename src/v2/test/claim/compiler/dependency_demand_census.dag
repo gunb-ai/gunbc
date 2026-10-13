@@ -14,6 +14,8 @@ import v2.compiler.dependency_demand_census {
   DemandCensusRow,
   DemandCensusVerdict,
   UnobservedModuleResolveRefused,
+  UnreadableAtParse,
+  UnreadableAtTokenize,
   demand_census_conserved,
   demand_census_deletable_rows,
   demand_census_out_of_vocabulary_agreeing,
@@ -184,7 +186,7 @@ test fn a_body_still_naming_its_alias_is_never_judged_a_restatement_RED() -> Boo
     Absent => false
     Present { value: v } =>
       match v {
-        CensusUnobserved { reason: UnobservedModuleResolveRefused } => true
+        CensusUnobserved { reason: UnobservedModuleResolveRefused { first_reason: _ } } => true
         CensusUnobserved { reason: _ } => false
         CensusEqual => false
         CensusMismatch { authored: _, derived: _ } => false
@@ -283,7 +285,19 @@ test fn a_call_through_a_function_value_is_undecided_on_the_real_route_RED() -> 
 test fn a_uses_file_refused_before_authorship_is_an_incomplete_population_RED() -> Bool {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
-    Accepted { value: r, diagnostics: _ } => (r.unreadable_files == 1) && (demand_census_exit(r: r) == 2)
+    Accepted { value: r, diagnostics: _ } =>
+      (r.unreadable_files == 1)
+        && (demand_census_exit(r: r) == 2)
+        && match r.unreadable {
+          Cons { head: u, tail: Empty } =>
+            (u.file_path == "dag/t/broken.dag")
+              && match u.stage {
+                UnreadableAtTokenize => true
+                UnreadableAtParse => false
+              }
+          Empty => false
+          Cons { head: _, tail: _ } => false
+        }
   }
 }
 
