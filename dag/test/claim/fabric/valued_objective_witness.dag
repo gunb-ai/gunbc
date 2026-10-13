@@ -338,8 +338,8 @@ test fn unread_valued_delay_needs_evidence_never_zero() -> Bool {
 }
 
 test fn serving_reads_the_demand_delay_valuation() -> Bool {
-  (money_rate_micros(q: demand_delay_valuation(objective: latency_sensitive_objective)) as Int)
-    > (money_rate_micros(q: demand_delay_valuation(objective: debt_payoff_objective)) as Int)
+  (money_rate_micros(q: demand_delay_valuation(objective: latency_sensitive_objective, currency: Usd)) as Int)
+    > (money_rate_micros(q: demand_delay_valuation(objective: debt_payoff_objective, currency: Usd)) as Int)
 }
 
 fn delay_bound_to_money_valuations(objective: DemandObjective) -> List<TermValuation> {

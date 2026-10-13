@@ -3,8 +3,8 @@ module product.fabric.demand
 import std.types { NonEmptyStr, Timestamp, Bool, List, Int, brand }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyRate, money_amount_micro, money_amount_micro_count, money_rate_micros }
-import extdeps.currency.currency { CurrencyCode, Usd }
+import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyRate, money_amount_micro, money_amount_micro_count }
+import extdeps.currency.currency { CurrencyCode }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
 import std.algebra { Cons, Empty }
 import std.pareto { HigherIsBetter, LowerIsBetter }
@@ -77,9 +77,10 @@ type BudgetAccountId = NonEmptyStr where brand("BudgetAccountId")
 // or settlement. maximum_buy_order is the ceiling on a single grant's
 // liability - a refusal boundary, never a degradation: an ask above it refuses
 // rather than selecting something cheaper and unsuitable.
-// Delay valuation does not live here. AdmissionTerms.objective.valuations.delay
-// is a required MoneyPerSecond field, so wait is never silently free. Budget
-// caps stay on this record; consumers project them into std.decision
+// Delay valuation does not live on BuyTerms. It is
+// AdmissionTerms.objective.valuations.delay, a MoneyAmountMicro per second in
+// buy.currency (stamped when demand_delay_valuation mints MoneyPerSecond).
+// Budget caps stay on this record; consumers project them into std.decision
 // HardConstraint rows (admission_hard_constraints) and must not duplicate
 // them onto DemandObjective.
 type BuyTerms {
@@ -121,8 +122,9 @@ type BuyTerms {
 // demand, demand-side selection ranks DEMANDS for one offer, and they take
 // different inputs and return different carriers.
 //
-// Delay valuation now lives on AdmissionTerms.objective.valuations.delay.
-// `deadline` remains a Timestamp with no ordering, so it is not an urgency
+// Delay valuation is AdmissionTerms.objective.valuations.delay, an amount per
+// second whose denomination is buy.currency, not a second CurrencyCode on the
+// rate. `deadline` remains a Timestamp with no ordering, so it is not an urgency
 // axis. A preemptibility statement still needs an execution-side carrier.
 //
 // AND NO CLASS HERE IMPLIES A LATENCY GUARANTEE. A class that promised one
@@ -168,10 +170,12 @@ fn fabric_demand_required_term_ids() -> List<DeclarationRef> {
 }
 
 // Fabric's four buyer-policy units. Missing, repeated and foreign terms are unwritable here;
-// std.decision scores the projection, not this record.
+// std.decision scores the projection, not this record. delay is micros per second in the
+// same denomination as money/interruption/accepted_work; CurrencyCode lives on BuyTerms
+// and is stamped onto MoneyPerSecond only at demand_delay_valuation.
 type TermValuations {
   money: MoneyAmountMicro
-  delay: MoneyPerSecond
+  delay: MoneyAmountMicro
   interruption: MoneyAmountMicro
   accepted_work: MoneyAmountMicro
 }
@@ -188,7 +192,7 @@ type DemandObjective {
 type InterpretedDemandObjective {
   profile: DeclarationRef
   valuations: List<TermValuation>
-  delay: MoneyPerSecond
+  delay: MoneyAmountMicro
   measure: ValuedObjectiveMeasure
 }
 
@@ -197,7 +201,7 @@ fn interpret_demand_objective(objective: DemandObjective) -> InterpretedDemandOb
     profile: objective.profile,
     valuations: [
       TermValuation { term: term_money.identity, scale_micro: money_amount_micro_count(m: objective.valuations.money) as Int, goal: LowerIsBetter },
-      TermValuation { term: term_delay.identity, scale_micro: money_rate_micros(q: objective.valuations.delay) as Int, goal: LowerIsBetter },
+      TermValuation { term: term_delay.identity, scale_micro: money_amount_micro_count(m: objective.valuations.delay) as Int, goal: LowerIsBetter },
       TermValuation { term: term_interruption.identity, scale_micro: money_amount_micro_count(m: objective.valuations.interruption) as Int, goal: LowerIsBetter },
       TermValuation { term: term_accepted_work.identity, scale_micro: money_amount_micro_count(m: objective.valuations.accepted_work) as Int, goal: HigherIsBetter },
     ],
@@ -215,14 +219,10 @@ fn valued_objective_policy(objective: DemandObjective) -> SelectionPolicy {
   }
 }
 
-fn usd_rate(count: Nat) -> MoneyPerSecond {
-  MoneyRate { amount: money_amount_micro(count: count), currency: Usd }
-}
-
 fn closed_valuations(money: Nat, delay: Nat, interruption: Nat, accepted_work: Nat) -> TermValuations {
   TermValuations {
     money: money_amount_micro(count: money),
-    delay: usd_rate(count: delay),
+    delay: money_amount_micro(count: delay),
     interruption: money_amount_micro(count: interruption),
     accepted_work: money_amount_micro(count: accepted_work),
   }
@@ -249,8 +249,11 @@ data latency_sensitive_objective: DemandObjective = DemandObjective {
   measure: NetValue,
 }
 
-fn demand_delay_valuation(objective: DemandObjective) -> MoneyPerSecond {
-  interpret_demand_objective(objective: objective).delay
+fn demand_delay_valuation(objective: DemandObjective, currency: CurrencyCode) -> MoneyPerSecond {
+  MoneyRate {
+    amount: interpret_demand_objective(objective: objective).delay,
+    currency: currency,
+  }
 }
 
 data id_buy_order_constraint: DeclarationRef = decl_ref(module_path: "product.fabric.demand", decl_name: "buy_order_constraint")

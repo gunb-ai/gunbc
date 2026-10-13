@@ -43,7 +43,7 @@ import product.fabric.demand {
 import test.claim.fabric.provider_use_fixture {
   fixture_admitted_for_offer, fixture_route, fixture_demand_for, fixture_work_for,
 }
-import extdeps.currency.currency { Usd, Eur, CurrencyCode }
+import extdeps.currency.currency { Usd, Eur, CurrencyCode, currency_code_eq }
 
 // ── A TURN IS PLACED AS ONE WORK AND ONE DEMAND ──
 //
@@ -179,7 +179,7 @@ fn delay_micros(admission: AdmissionTerms) -> Int {
 // RED: a selector that ignores the demand and always reads latency_sensitive_objective returns
 // the same delay for both profiles. The wall is harness_priced_selection_inputs.
 fn red_hardcoded_latency_delay(_admission: AdmissionTerms) -> Int {
-  money_rate_micros(q: demand_delay_valuation(objective: latency_sensitive_objective)) as Int
+  money_rate_micros(q: demand_delay_valuation(objective: latency_sensitive_objective, currency: Usd)) as Int
 }
 
 test fn a_hardcoded_profile_cannot_discriminate_serving_demands() -> Bool {
@@ -335,6 +335,13 @@ test fn debt_and_latency_demands_select_different_offers_through_harness_select_
   let move = t_priced_admission(objective: latency_sensitive_objective, currency: Usd)
   (selected_offer_key(sel: t_select_for_admission(admission: wait)) as String) == "offer-wait"
     && (selected_offer_key(sel: t_select_for_admission(admission: move)) as String) == "offer-move"
+}
+
+test fn delay_rate_denomination_is_the_buy_currency() -> Bool {
+  let usd = t_priced_admission(objective: debt_payoff_objective, currency: Usd)
+  let eur = t_priced_admission(objective: debt_payoff_objective, currency: Eur)
+  currency_code_eq(a: harness_priced_selection_inputs(admission: usd).delay_valuation.currency, b: Usd)
+    && currency_code_eq(a: harness_priced_selection_inputs(admission: eur).delay_valuation.currency, b: Eur)
 }
 
 test fn matching_buy_currency_is_admitted_and_a_mismatch_refuses() -> Bool {
