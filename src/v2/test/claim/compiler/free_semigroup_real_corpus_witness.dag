@@ -1,0 +1,61 @@
+module v2.test.claim.compiler.free_semigroup_real_corpus_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusNotRunnable,
+  CensusObserved,
+  census_rows_of_class,
+  census_total_count
+}
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, Int }
+import v2.std.text { String }
+
+// ReadsLiveTree: compile_dag_diagnostic_census resolves an authored source against the live checkout,
+// which is the only route here on which the REAL std.algebra FreeSemigroup and the `[]` literal's
+// head (std.algebra FreeMonoid, v2.std.list_introduction list_introduction_head_path) resolve. The
+// in-memory fixture closure of free_semigroup_empty_producer_witness holds only fixture modules, so
+// neither can resolve there (root cause, not a workaround).
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// PATH SCOPE (DESIGN 4b.1): this is the census path on the interpreted route. It is not the built
+// native binary and not either emitted closure; each of those is a separate path with its own reading.
+
+// -1 when the census could not run, so a harness failure never reads as zero refusals.
+fn fsr_class_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn fsr_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: rows)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data fsr_literal_formal_source: String = "module fsr_literal_formal\nimport std.algebra { FreeSemigroup }\nimport std.types { Int }\nfn fsr_take(xs: FreeSemigroup<Int>) -> Int { 1 }\nfn fsr_call() -> Int { fsr_take(xs: []) }\n"
+
+data fsr_empty_return_source: String = "module fsr_empty_return\nimport std.algebra { Empty, FreeSemigroup }\nimport std.types { Int }\nfn fsr_probe() -> FreeSemigroup<Int> { Empty }\n"
+
+data fsr_literal_return_source: String = "module fsr_literal_return\nimport std.algebra { FreeSemigroup }\nimport std.types { Int }\nfn fsr_probe() -> FreeSemigroup<Int> { [] }\n"
+
+data fsr_built_source: String = "module fsr_built\nimport std.algebra { FreeSemigroup }\nimport std.types { Int }\nfn fsr_take(xs: FreeSemigroup<Int>) -> Int { 1 }\nfn fsr_ok() -> Int { fsr_take(xs: FreeSemigroup { head: 1, tail: [] }) }\n"
+
+test fn fsr_the_empty_list_literal_at_a_real_free_semigroup_formal_refuses_holds() -> Bool {
+  fsr_class_count(source: fsr_literal_formal_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn fsr_empty_at_a_real_free_semigroup_return_refuses_holds() -> Bool {
+  fsr_class_count(source: fsr_empty_return_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn fsr_the_empty_list_literal_at_a_real_free_semigroup_return_refuses_holds() -> Bool {
+  fsr_class_count(source: fsr_literal_return_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+// POSITIVE CONTROL, same imports and formal: a constructed value is accepted with zero diagnostics of any severity.
+test fn fsr_a_constructed_real_free_semigroup_is_accepted_holds() -> Bool {
+  fsr_total(source: fsr_built_source) == 0
+}
