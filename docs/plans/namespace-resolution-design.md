@@ -778,14 +778,14 @@ gates on import→alias transmutation landing with-or-before it.
 module sees only its own declarations and its own imports. The superseded “builtins bind at
 root” reading is retired so it cannot license an ambient last-tier bind.
 
-**Declared frontier, not a present wall.** The one declaration for each collection callee is
+**Roster surface heads are import-scoped.** The one declaration for each collection callee is
 the `std.algebra` `collection_*_shape` row (no free `fn concat`; `kernel_mint_declaration_rows`
-is the Optional mint only). Today a bare `concat` still binds ambiently: `resolve_atom_unscoped`
-asks `collection_roster_primitive_call_row_optional` with no import check, then
-`resolve_atom_primitive_authority`. Trigger: delete that last-tier ambient bind so a roster
-spelling binds only when the module imported the template identity, reading the existing
-`collection_roster_rows` (one authority). Until then the plan does not claim those spellings
-are import-scoped. `map_insert` / `empty_map` / `map_lookup` wait on #13872's real fns.
+is the Optional mint only). A bare `concat` / `count` binds only when the module imported that
+template identity (or is `std.algebra`). Native: `resolve_atom_unscoped` reads
+`collection_roster_rows` and unbound-refuses a roster head that is not visible — it does not
+fall through to `resolve_atom_primitive_authority`. Seed: `infer_builtin_call_type` does not
+admit concat/count unless that identity is imported or locally declared. `map_insert` /
+`empty_map` / `map_lookup` wait on #13872's real fns.
 
 **RULED — the (Y) expected-type filter (operator, 2026-07-22; recorded in §4).** The re-adjudication
 is done: the pool-filter reading of (Y) dies with the `global_bare` tier (there is never a pool

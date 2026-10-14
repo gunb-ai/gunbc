@@ -1,6 +1,8 @@
 module v2.test.claim.compiler.kernel_op_declaration_import
 
-import std.types { Bool }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
+import std.types { Bool, NonEmptyStr }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra {
   collection_concat_shape,
@@ -9,7 +11,8 @@ import std.algebra {
   collection_first_shape,
   collection_join_shape,
   collection_map_get_shape,
-  collection_map_shape
+  collection_map_shape,
+  fold_list
 }
 import std.literal_elaboration {
   KernelMintDeclarationAbsent,
@@ -19,11 +22,20 @@ import std.literal_elaboration {
 }
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
 import std.decl_ref { decl_ref, declaration_ref_eq }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import std.optional { Absent, Present }
+import v2.std.node { node_subtree_nodes }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+import gunbc.instruments.multi_module_compile_fixture {
+  FixtureSource,
+  MultiModuleCompileFixture,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  compile_fixture
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-// Named std.algebra templates for kernel collection spellings that have no fn. Import-scoping of
-// the surface heads is a resolver last-tier deletion, not a kernel mint.
 
 test fn collection_shape_rows_carry_the_kernel_spellings() -> Bool {
   collection_concat_shape().name == "concat"
@@ -50,4 +62,43 @@ test fn optional_mint_row_is_unchanged() -> Bool {
     KernelMintDeclarationAbsent => false
     KernelMintDeclarationAmbiguous { row_count: _ } => false
   }
+}
+
+data kodi_concat_red: String = "module p\n\nimport v2.std.collection { List }\n\nfn f(a: List<Int>, b: List<Int>) -> List<Int> {\n  concat(a, b)\n}\n"
+
+data kodi_concat_green: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { collection_concat_shape }\n\nfn f(a: List<Int>, b: List<Int>) -> List<Int> {\n  concat(a, b)\n}\n"
+
+// NATIVE RESOLVE: last-tier roster bind deleted. Bare concat without the template identity is unbound.
+test fn native_bare_concat_without_import_is_unbound() -> Bool {
+  match fmi_assemble(src: kodi_concat_red) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+test fn native_concat_with_identity_import_binds_the_template() -> Bool {
+  match fmi_assemble(src: kodi_concat_green) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold_list(xs: node_subtree_nodes(root: tree.root), empty: false, cons: fn(acc, n) {
+        acc || (match declaration_reference_path_optional(node: n) {
+          Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_concat_shape"
+          Absent => false
+        })
+      })
+  }
+}
+
+fn kodi_seed_blocking_unresolved(source: String) -> Bool {
+  match compile_fixture(fixture: MultiModuleCompileFixture { sources: [FixtureSource { path: "p.dag" as NonEmptyStr, content: source }], entry: "p.dag" as NonEmptyStr }) {
+    FixtureInstrumentRefused { cause: _ } => false
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(rows |> filter(r => r.blocking && ((r.diagnostic_class as String) == "UnresolvedType" || (r.subject_name as String) == "concat"))) >= 1
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+  }
+}
+
+// SEED: concat is not an ambient builtin. Same source as the native RED.
+test fn seed_bare_concat_without_import_is_refused() -> Bool {
+  kodi_seed_blocking_unresolved(source: kodi_concat_red)
 }

@@ -14036,7 +14036,7 @@ match bare_s.clone() {
 }
 }
                             } else {
-                                if (!callee_is_body_binding.clone() && (crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) != std::option::Option::None)) {
+                                if (!callee_is_body_binding.clone() && (crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) != std::option::Option::None) && seed_collection_roster_surface_admitted(scope.clone(), func_name.clone())) {
                                     {
                                         let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name.clone(), typed_args.clone(), scope.clone(), span.clone());
 let bt = tier2b.bt.clone();
@@ -23640,6 +23640,27 @@ pub struct SigParamSplit {
     pub generic_names: Rc<Vec<String>>,
 }
 
+pub fn seed_collection_roster_surface_admitted(
+    scope: Rc<InferScope>,
+    surface: String,
+) -> bool {
+    let decl_name = if (surface.clone() == "concat".to_string()) {
+        "collection_concat_shape".to_string()
+    } else if (surface.clone() == "count".to_string()) {
+        "collection_count_shape".to_string()
+    } else {
+        "".to_string()
+    };
+    if (decl_name.clone() == "".to_string()) {
+        true
+    } else {
+        (v1_rt::map_get(&scope.type_env.clone().authored_import_names.clone(), decl_name.clone())
+            != std::option::Option::None)
+            || (v1_rt::map_get(&scope.type_env.clone().str_bindings.clone(), decl_name.clone())
+                != std::option::Option::None)
+    }
+}
+
 pub fn call_target_for_direct_call(
     scope: Rc<InferScope>,
     func_name: String,
@@ -23676,9 +23697,18 @@ pub fn call_target_for_direct_call(
             }
             FuncSigLookup::FuncSigUnresolved => {
                 match crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) {
-                    Some(_) => Rc::new(CallTargetOutcome::BuiltinCallableResolved {
-                        primitive_name: func_name.clone(),
-                    }),
+                    Some(_) => {
+                        if seed_collection_roster_surface_admitted(scope.clone(), func_name.clone())
+                        {
+                            Rc::new(CallTargetOutcome::BuiltinCallableResolved {
+                                primitive_name: func_name.clone(),
+                            })
+                        } else {
+                            Rc::new(CallTargetOutcome::CallableUnresolved {
+                                name: func_name.clone(),
+                            })
+                        }
+                    }
                     std::option::Option::None => {
                         match crate::v1_compiler_infer_lookup::census_declaration_identity(
                             scope.type_env.clone(),

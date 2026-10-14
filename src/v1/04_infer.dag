@@ -9172,7 +9172,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
-        } else if !callee_is_body_binding && infer_builtin_call_type(name: func_name) != none {
+        } else if !callee_is_body_binding && infer_builtin_call_type(name: func_name) != none && seed_collection_roster_surface_admitted(scope: scope, surface: func_name) {
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
           let bt = tier2b.bt
           let call_semantics = if func_name == "lookup" {
@@ -13834,6 +13834,25 @@ type SigParamSplit {
 // THOSE TWO MAPS ARE SEPARATE AUTHORITIES THAT AGREE BY CONSTRUCTION TODAY, so a name present in
 // one and absent from the other is a scope-construction defect rather than a case to absorb --
 // it REFUSES, and if that refusal ever fires it has found something real.
+// ROSTER SURFACE HEADS ARE NOT AMBIENT ON THE SEED PATH. concat/count type as builtins only when
+// this module imported or declared the one std.algebra template identity (same map as
+// v2.compiler.fold_lowering collection_roster_rows). Other builtin names are unchanged.
+fn seed_collection_roster_surface_admitted(scope: InferScope, surface: String) -> Bool {
+  let decl_name = if surface == "concat" {
+    "collection_concat_shape"
+  } else if surface == "count" {
+    "collection_count_shape"
+  } else {
+    ""
+  }
+  if decl_name == "" {
+    true
+  } else {
+    map_get(scope.type_env.authored_import_names, decl_name) != none
+      || map_get(scope.type_env.str_bindings, decl_name) != none
+  }
+}
+
 fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTargetOutcome {
   match map_get(scope.body_locals, func_name) {
     Present { value: _ } =>
@@ -13847,7 +13866,12 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
         FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
         FuncSigUnresolved =>
           match infer_builtin_call_type(name: func_name) {
-            Present { value: _ } => BuiltinCallableResolved { primitive_name: func_name }
+            Present { value: _ } =>
+              if seed_collection_roster_surface_admitted(scope: scope, surface: func_name) {
+                BuiltinCallableResolved { primitive_name: func_name }
+              } else {
+                CallableUnresolved { name: func_name }
+              }
             Absent =>
               match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
                 Present { value: bd } => DeclaredCallableIdentityResolved {
