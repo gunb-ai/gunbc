@@ -6383,10 +6383,38 @@ type CensusObligationRow {
   outcome: CensusObligationOutcome
 }
 
+// THE COMPARABLE PROJECTION: what census_run_diff reads of a record, as plain data. A published
+// record must read back into the run that compares against it, and the emitter refuses Deserialize to
+// any type that holds a sealed carrier (an occurrence id, a structural digest, a diagnostic chain), so
+// the full CensusRunRecord cannot be that baseline. This projection keeps exactly the fields the diff
+// compares -- module, stage, outcome kind, the fatal reason, the located site and the occurrence, each
+// rendered once by the functions below -- so reading a baseline back mints no sealed value, and the
+// full record stays what the run publishes for a reader.
+type CensusComparableOutcome
+  = CensusComparablePassed
+  | CensusComparableRefused { reason: String, at: String, occurrence: String }
+  | CensusComparableUnobservedBehindStage { stage: NativeCensusCauseStage }
+  | CensusComparableUnobservedBehindAcquisitionBlock
+
+type CensusComparableRow {
+  module: String
+  stage: NativeCensusCauseStage
+  outcome: CensusComparableOutcome
+}
+
+type CensusComparableRecord {
+  subject: String
+  revision: String
+  blocked: Bool
+  population: List<String>
+  rows: List<CensusComparableRow>
+  complete: Bool
+}
+
 type CensusModuleObligations {
-  front_end: Optional<CensusObligationRow>
-  resolve: Optional<CensusObligationRow>
-  infer: Optional<CensusObligationRow>
+  front_end: Optional<CensusComparableRow>
+  resolve: Optional<CensusComparableRow>
+  infer: Optional<CensusComparableRow>
 }
 
 type CensusRunCompletion
@@ -6405,22 +6433,22 @@ type CensusRunRecord {
 
 type CensusRunDiffFinding
   = CensusDiffClearedAndNewlyExposed {
-      cleared: CensusObligationRow
-      newly_exposed: CensusObligationRow
+      cleared: CensusComparableRow
+      newly_exposed: CensusComparableRow
     }
   | CensusDiffNowUnobservedBehindEarlierStage {
-      before: CensusObligationRow
+      before: CensusComparableRow
       behind: NativeCensusCauseStage
     }
   | CensusDiffScopeChanged { member: String }
   | CensusDiffUnobservedNotScopeChanged { member: String }
   | CensusDiffNewlyObservedNotRegression {
       member: String
-      refusal: CensusObligationRow
+      refusal: CensusComparableRow
     }
-  | CensusDiffNewlyRefusing { after: CensusObligationRow }
+  | CensusDiffNewlyRefusing { after: CensusComparableRow }
   | CensusDiffIncompleteEvidence { member: Optional<String> }
-  | CensusDiffLocationUpdate { before: CensusObligationRow, after: CensusObligationRow }
+  | CensusDiffLocationUpdate { before: CensusComparableRow, after: CensusComparableRow }
   | CensusDiffMemberAdded { member: String }
   | CensusDiffMemberRemoved { member: String }
   | CensusDiffDuplicateObligation { module: String, stage: NativeCensusCauseStage }
@@ -6431,8 +6459,8 @@ type CensusObligationIndex
 
 type CensusRunDiff {
   revision_changed: Bool
-  before_revision: Fnv1a64Structural
-  after_revision: Fnv1a64Structural
+  before_revision: String
+  after_revision: String
   members_added: List<String>
   members_removed: List<String>
   findings: List<CensusRunDiffFinding>
@@ -6630,6 +6658,63 @@ fn census_obligation_rows_from_member_block(block: CensusBlock) -> Optional<List
   }
 }
 
+// ── the projection: each compared field rendered once ───────────────────────────────────────────
+
+// A LOCATED SITE AS TEXT, one spelling per FileRefusalAt arm, so two sites are equal exactly when their
+// arms and payloads are: a moved line or column, or another file, invariant or declaration, differs.
+fn census_file_refusal_at_text(at: FileRefusalAt) -> String {
+  match at {
+    FileRefusalAtLine { line: l, byte_column: c } =>
+      concat(concat("line ", int_to_decimal_string(value: l)), concat(":", int_to_decimal_string(value: c.value)))
+    FileRefusalAtWholeFile => "whole-file"
+    FileRefusalAtOtherFile { file: f } => concat("other-file ", symbol_lexeme(sym: f))
+    FileRefusalAtInvariant { invariant: i } => concat("invariant ", symbol_lexeme(sym: i))
+    FileRefusalAtDeclaration { declaration: d } => concat("declaration ", qualified_name_to_dotted_string(qn: d))
+    FileRefusalAtUnresolvedNode => "unresolved-node"
+  }
+}
+
+// An occurrence id as its decimal value; "none" is never a decimal, so no id reads as absent.
+fn census_occurrence_text(occurrence: Optional<OccurrenceId>) -> String {
+  match occurrence {
+    Present { value: o } => int_to_decimal_string(value: o.value)
+    Absent => "none"
+  }
+}
+
+fn census_comparable_outcome(outcome: CensusObligationOutcome) -> CensusComparableOutcome {
+  match outcome {
+    CensusObligationPassed => CensusComparablePassed
+    CensusObligationRefused { reason: r, at: a, evidence: _, occurrence: o } =>
+      CensusComparableRefused {
+        reason: symbol_lexeme(sym: r),
+        at: census_file_refusal_at_text(at: a),
+        occurrence: census_occurrence_text(occurrence: o)
+      }
+    CensusObligationUnobservedBehindStage { stage: st } => CensusComparableUnobservedBehindStage { stage: st }
+    CensusObligationUnobservedBehindAcquisitionBlock => CensusComparableUnobservedBehindAcquisitionBlock
+  }
+}
+
+fn census_comparable_record(record: CensusRunRecord) -> CensusComparableRecord {
+  CensusComparableRecord {
+    subject: record.subject,
+    revision: record.revision.digest as String,
+    blocked: match record.scope {
+      NativeCensusScopeClosed { subject: _, members: _ } => false
+      NativeCensusScopeBlocked { subject: _, members: _, blocked_first: _, blocked_rest: _ } => true
+    },
+    population: record.population,
+    rows: list_map(xs: record.obligations, f: fn(row) {
+      CensusComparableRow { module: row.module, stage: row.stage, outcome: census_comparable_outcome(outcome: row.outcome) }
+    }),
+    complete: match record.completion {
+      CensusRunComplete => true
+      CensusRunIncomplete => false
+    }
+  }
+}
+
 fn census_name_set(names: List<String>) -> Map<String, Bool> {
   fold_list(xs: names, empty: empty_map(), cons: fn(acc, n) { map_insert(m: acc, key: n, value: true) })
 }
@@ -6652,7 +6737,7 @@ fn census_empty_module_obligations() -> CensusModuleObligations {
   }
 }
 
-fn census_put_obligation(triple: CensusModuleObligations, row: CensusObligationRow) -> CensusModuleObligations {
+fn census_put_obligation(triple: CensusModuleObligations, row: CensusComparableRow) -> CensusModuleObligations {
   match row.stage {
     NativeCensusCauseFrontEnd =>
       CensusModuleObligations { front_end: optional_present(value: row), resolve: triple.resolve, infer: triple.infer }
@@ -6663,7 +6748,7 @@ fn census_put_obligation(triple: CensusModuleObligations, row: CensusObligationR
   }
 }
 
-fn census_obligation_index(rows: List<CensusObligationRow>) -> CensusObligationIndex {
+fn census_obligation_index(rows: List<CensusComparableRow>) -> CensusObligationIndex {
   fold_list(xs: rows, empty: CensusObligationIndexReady { by_module: empty_map() }, cons: fn(acc, row) {
     match acc {
       CensusObligationIndexDuplicate { module: _, stage: _ } => acc
@@ -6690,7 +6775,7 @@ fn census_obligation_index(rows: List<CensusObligationRow>) -> CensusObligationI
   })
 }
 
-fn census_index_stage(triple: CensusModuleObligations, stage: NativeCensusCauseStage) -> Optional<CensusObligationRow> {
+fn census_index_stage(triple: CensusModuleObligations, stage: NativeCensusCauseStage) -> Optional<CensusComparableRow> {
   match stage {
     NativeCensusCauseFrontEnd => triple.front_end
     NativeCensusCauseResolve => triple.resolve
@@ -6698,21 +6783,21 @@ fn census_index_stage(triple: CensusModuleObligations, stage: NativeCensusCauseS
   }
 }
 
-fn census_first_refusal_in_triple(triple: CensusModuleObligations) -> Optional<CensusObligationRow> {
+fn census_first_refusal_in_triple(triple: CensusModuleObligations) -> Optional<CensusComparableRow> {
   match triple.front_end {
     Present { value: row } =>
       match row.outcome {
-        CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } => optional_present(value: row)
+        CensusComparableRefused { reason: _, at: _, occurrence: _ } => optional_present(value: row)
         _ =>
           match triple.resolve {
             Present { value: rrow } =>
               match rrow.outcome {
-                CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } => optional_present(value: rrow)
+                CensusComparableRefused { reason: _, at: _, occurrence: _ } => optional_present(value: rrow)
                 _ =>
                   match triple.infer {
                     Present { value: irow } =>
                       match irow.outcome {
-                        CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } => optional_present(value: irow)
+                        CensusComparableRefused { reason: _, at: _, occurrence: _ } => optional_present(value: irow)
                         _ => optional_absent()
                       }
                     Absent => optional_absent()
@@ -6722,7 +6807,7 @@ fn census_first_refusal_in_triple(triple: CensusModuleObligations) -> Optional<C
               match triple.infer {
                 Present { value: irow } =>
                   match irow.outcome {
-                    CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } => optional_present(value: irow)
+                    CensusComparableRefused { reason: _, at: _, occurrence: _ } => optional_present(value: irow)
                     _ => optional_absent()
                   }
                 Absent => optional_absent()
@@ -6733,12 +6818,12 @@ fn census_first_refusal_in_triple(triple: CensusModuleObligations) -> Optional<C
       match triple.resolve {
         Present { value: rrow } =>
           match rrow.outcome {
-            CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } => optional_present(value: rrow)
+            CensusComparableRefused { reason: _, at: _, occurrence: _ } => optional_present(value: rrow)
             _ =>
               match triple.infer {
                 Present { value: irow } =>
                   match irow.outcome {
-                    CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } => optional_present(value: irow)
+                    CensusComparableRefused { reason: _, at: _, occurrence: _ } => optional_present(value: irow)
                     _ => optional_absent()
                   }
                 Absent => optional_absent()
@@ -6748,7 +6833,7 @@ fn census_first_refusal_in_triple(triple: CensusModuleObligations) -> Optional<C
           match triple.infer {
             Present { value: irow } =>
               match irow.outcome {
-                CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } => optional_present(value: irow)
+                CensusComparableRefused { reason: _, at: _, occurrence: _ } => optional_present(value: irow)
                 _ => optional_absent()
               }
             Absent => optional_absent()
@@ -6757,68 +6842,14 @@ fn census_first_refusal_in_triple(triple: CensusModuleObligations) -> Optional<C
   }
 }
 
-fn census_file_refusal_at_eq(left: FileRefusalAt, right: FileRefusalAt) -> Bool {
-  match left {
-    FileRefusalAtLine { line: ll, byte_column: lc } =>
-      match right {
-        FileRefusalAtLine { line: rl, byte_column: rc } => ll == rl && lc.value == rc.value
-        _ => false
-      }
-    FileRefusalAtWholeFile =>
-      match right {
-        FileRefusalAtWholeFile => true
-        _ => false
-      }
-    FileRefusalAtOtherFile { file: lf } =>
-      match right {
-        FileRefusalAtOtherFile { file: rf } => lf == rf
-        _ => false
-      }
-    FileRefusalAtInvariant { invariant: li } =>
-      match right {
-        FileRefusalAtInvariant { invariant: ri } => li == ri
-        _ => false
-      }
-    FileRefusalAtDeclaration { declaration: ld } =>
-      match right {
-        FileRefusalAtDeclaration { declaration: rd } => ld == rd
-        _ => false
-      }
-    FileRefusalAtUnresolvedNode =>
-      match right {
-        FileRefusalAtUnresolvedNode => true
-        _ => false
-      }
-  }
-}
-
-fn census_occurrence_eq(left: Optional<OccurrenceId>, right: Optional<OccurrenceId>) -> Bool {
-  match left {
-    Absent =>
-      match right {
-        Absent => true
-        Present { value: _ } => false
-      }
-    Present { value: a } =>
-      match right {
-        Absent => false
-        Present { value: b } => a.value == b.value
-      }
-  }
-}
-
-fn census_diff_absent_member_findings(member: String, after: CensusRunRecord) -> List<CensusRunDiffFinding> {
+fn census_diff_absent_member_findings(member: String, after: CensusComparableRecord) -> List<CensusRunDiffFinding> {
   let removed = [CensusDiffMemberRemoved { member: member }]
-  match after.completion {
-    CensusRunIncomplete =>
-      list_append(removed, [CensusDiffIncompleteEvidence { member: optional_present(value: member) }])
-    CensusRunComplete =>
-      match after.scope {
-        NativeCensusScopeBlocked { subject: _, members: _, blocked_first: _, blocked_rest: _ } =>
-          list_append(removed, [CensusDiffUnobservedNotScopeChanged { member: member }])
-        NativeCensusScopeClosed { subject: _, members: _ } =>
-          list_append(removed, [CensusDiffScopeChanged { member: member }])
-      }
+  if !after.complete {
+    list_append(removed, [CensusDiffIncompleteEvidence { member: optional_present(value: member) }])
+  } else if after.blocked {
+    list_append(removed, [CensusDiffUnobservedNotScopeChanged { member: member }])
+  } else {
+    list_append(removed, [CensusDiffScopeChanged { member: member }])
   }
 }
 
@@ -6838,17 +6869,17 @@ fn census_diff_added_member_findings(
   }
 }
 
-fn census_diff_stage_pair(before_row: CensusObligationRow, after_row: CensusObligationRow) -> List<CensusRunDiffFinding> {
+fn census_diff_stage_pair(before_row: CensusComparableRow, after_row: CensusComparableRow) -> List<CensusRunDiffFinding> {
   match before_row.outcome {
-    CensusObligationRefused { reason: br, at: ba, evidence: _, occurrence: bo } =>
+    CensusComparableRefused { reason: br, at: ba, occurrence: bo } =>
       match after_row.outcome {
-        CensusObligationUnobservedBehindStage { stage: behind } =>
+        CensusComparableUnobservedBehindStage { stage: behind } =>
           [CensusDiffNowUnobservedBehindEarlierStage { before: before_row, behind: behind }]
-        CensusObligationUnobservedBehindAcquisitionBlock =>
+        CensusComparableUnobservedBehindAcquisitionBlock =>
           [CensusDiffNowUnobservedBehindEarlierStage { before: before_row, behind: NativeCensusCauseFrontEnd }]
-        CensusObligationRefused { reason: ar, at: aa, evidence: _, occurrence: ao } =>
+        CensusComparableRefused { reason: ar, at: aa, occurrence: ao } =>
           if br == ar {
-            if census_file_refusal_at_eq(left: ba, right: aa) && census_occurrence_eq(left: bo, right: ao) {
+            if ba == aa && bo == ao {
               []
             } else {
               [CensusDiffLocationUpdate { before: before_row, after: after_row }]
@@ -6856,27 +6887,27 @@ fn census_diff_stage_pair(before_row: CensusObligationRow, after_row: CensusObli
           } else {
             [CensusDiffNewlyRefusing { after: after_row }]
           }
-        CensusObligationPassed => []
+        CensusComparablePassed => []
       }
-    CensusObligationPassed =>
+    CensusComparablePassed =>
       match after_row.outcome {
-        CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } =>
+        CensusComparableRefused { reason: _, at: _, occurrence: _ } =>
           [CensusDiffNewlyRefusing { after: after_row }]
         _ => []
       }
-    CensusObligationUnobservedBehindStage { stage: _ } => []
-    CensusObligationUnobservedBehindAcquisitionBlock => []
+    CensusComparableUnobservedBehindStage { stage: _ } => []
+    CensusComparableUnobservedBehindAcquisitionBlock => []
   }
 }
 
-fn census_stage_behind_matches(outcome: CensusObligationOutcome, earlier: NativeCensusCauseStage) -> Bool {
+fn census_stage_behind_matches(outcome: CensusComparableOutcome, earlier: NativeCensusCauseStage) -> Bool {
   match outcome {
-    CensusObligationUnobservedBehindAcquisitionBlock =>
+    CensusComparableUnobservedBehindAcquisitionBlock =>
       match earlier {
         NativeCensusCauseFrontEnd => true
         _ => false
       }
-    CensusObligationUnobservedBehindStage { stage: s } =>
+    CensusComparableUnobservedBehindStage { stage: s } =>
       match earlier {
         NativeCensusCauseFrontEnd =>
           match s {
@@ -6899,10 +6930,10 @@ fn census_stage_behind_matches(outcome: CensusObligationOutcome, earlier: Native
 }
 
 fn census_diff_cleared_pair(
-  before_earlier: Optional<CensusObligationRow>,
-  after_earlier: Optional<CensusObligationRow>,
-  before_later: Optional<CensusObligationRow>,
-  after_later: Optional<CensusObligationRow>,
+  before_earlier: Optional<CensusComparableRow>,
+  after_earlier: Optional<CensusComparableRow>,
+  before_later: Optional<CensusComparableRow>,
+  after_later: Optional<CensusComparableRow>,
   earlier: NativeCensusCauseStage
 ) -> List<CensusRunDiffFinding> {
   match before_earlier {
@@ -6912,9 +6943,9 @@ fn census_diff_cleared_pair(
         Absent => []
         Present { value: ae } =>
           match be.outcome {
-            CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } =>
+            CensusComparableRefused { reason: _, at: _, occurrence: _ } =>
               match ae.outcome {
-                CensusObligationPassed =>
+                CensusComparablePassed =>
                   match before_later {
                     Absent => []
                     Present { value: bl } =>
@@ -6923,7 +6954,7 @@ fn census_diff_cleared_pair(
                         Present { value: al } =>
                           if census_stage_behind_matches(outcome: bl.outcome, earlier: earlier) {
                             match al.outcome {
-                              CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } =>
+                              CensusComparableRefused { reason: _, at: _, occurrence: _ } =>
                                 [CensusDiffClearedAndNewlyExposed { cleared: be, newly_exposed: al }]
                               _ => []
                             }
@@ -7001,7 +7032,13 @@ fn census_diff_common_member(
   )
 }
 
+// THE DIFF OF TWO RECORDS IS THE DIFF OF THEIR PROJECTIONS: one comparison, whichever side was read
+// back from a published file and whichever was built in this run.
 fn census_run_diff(before: CensusRunRecord, after: CensusRunRecord) -> CensusRunDiffResult {
+  census_comparable_diff(before: census_comparable_record(record: before), after: census_comparable_record(record: after))
+}
+
+fn census_comparable_diff(before: CensusComparableRecord, after: CensusComparableRecord) -> CensusRunDiffResult {
   if before.subject != after.subject {
     CensusRunDiffSubjectRefused { before: before.subject, after: after.subject }
   } else {
@@ -7009,8 +7046,8 @@ fn census_run_diff(before: CensusRunRecord, after: CensusRunRecord) -> CensusRun
     let after_set = census_name_set(names: after.population)
     let added = census_names_only_in(left: after.population, right: before_set)
     let removed = census_names_only_in(left: before.population, right: after_set)
-    let before_index = census_obligation_index(rows: before.obligations)
-    let after_index = census_obligation_index(rows: after.obligations)
+    let before_index = census_obligation_index(rows: before.rows)
+    let after_index = census_obligation_index(rows: after.rows)
     let duplicate_findings = match before_index {
       CensusObligationIndexDuplicate { module: m, stage: s } =>
         [CensusDiffDuplicateObligation { module: m, stage: s }]
@@ -7061,17 +7098,14 @@ fn census_run_diff(before: CensusRunRecord, after: CensusRunRecord) -> CensusRun
             })
         }
     }
-    let incomplete = match before.completion {
-      CensusRunIncomplete => [CensusDiffIncompleteEvidence { member: optional_absent() }]
-      CensusRunComplete =>
-        match after.completion {
-          CensusRunIncomplete => [CensusDiffIncompleteEvidence { member: optional_absent() }]
-          CensusRunComplete => Empty
-        }
+    let incomplete = if before.complete && after.complete {
+      []
+    } else {
+      [CensusDiffIncompleteEvidence { member: optional_absent() }]
     }
     CensusRunDiffCompared {
       diff: CensusRunDiff {
-        revision_changed: !content_hash_eq_structural(left: before.revision, right: after.revision),
+        revision_changed: before.revision != after.revision,
         before_revision: before.revision,
         after_revision: after.revision,
         members_added: added,

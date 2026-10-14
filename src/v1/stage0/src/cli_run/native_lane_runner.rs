@@ -4499,15 +4499,15 @@ fn latest_complete_census_record(
             continue;
         }
         // COMPLETE MEANS COMPARABLE (review 79938): a completed record the driver could not compare --
-        // one carrying no census_run_record row, as every record published before the row existed --
+        // one carrying no census_run_comparable row, as every record published before the row existed --
         // is named, never chosen, so --against is passed only for a record the diff can read.
         let carries_record = read["rows"].as_array().is_some_and(|rows| {
             rows.iter()
-                .any(|row| row.get("census_run_record").is_some())
+                .any(|row| row.get("census_run_comparable").is_some())
         });
         if !carries_record {
             choice.unreadable.push(format!(
-                "{}: completed, but carries no census_run_record row to compare",
+                "{}: completed, but carries no census_run_comparable row to compare",
                 path.display()
             ));
             continue;
@@ -5815,7 +5815,7 @@ mod tests {
         .is_err());
     }
 
-    // DISCRIMINATING (review 79938): a completed record with no census_run_record row is named and not
+    // DISCRIMINATING (review 79938): a completed record with no census_run_comparable row is named and not
     // chosen, so --against is never passed for a record the driver cannot compare.
     #[test]
     fn a_completed_record_without_a_record_row_is_not_a_baseline() {
@@ -5926,7 +5926,7 @@ mod tests {
         older
             .complete(
                 serde_json::json!({}),
-                &format!("{{\"census_run_record\":{{}}}}\n{SCOPED_TERMINAL}"),
+                &format!("{{\"census_run_comparable\":{{}}}}\n{SCOPED_TERMINAL}"),
             )
             .expect("older completes");
         std::thread::sleep(std::time::Duration::from_millis(2));
@@ -5935,7 +5935,7 @@ mod tests {
         newer
             .complete(
                 serde_json::json!({}),
-                &format!("{{\"census_run_record\":{{}}}}\n{SCOPED_TERMINAL}"),
+                &format!("{{\"census_run_comparable\":{{}}}}\n{SCOPED_TERMINAL}"),
             )
             .expect("newer completes");
         std::thread::sleep(std::time::Duration::from_millis(2));
@@ -5946,7 +5946,7 @@ mod tests {
         other
             .complete(
                 serde_json::json!({}),
-                &format!("{{\"census_run_record\":{{}}}}\n{SCOPED_TERMINAL}"),
+                &format!("{{\"census_run_comparable\":{{}}}}\n{SCOPED_TERMINAL}"),
             )
             .expect("other completes");
         let chosen = latest_complete_census_record(&root, "//v2/a:all").expect("root lists");
@@ -5971,7 +5971,7 @@ mod tests {
             CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("done");
         done.complete(
             serde_json::json!({}),
-            &format!("{{\"census_run_record\":{{}}}}\n{SCOPED_TERMINAL}"),
+            &format!("{{\"census_run_comparable\":{{}}}}\n{SCOPED_TERMINAL}"),
         )
         .expect("done completes");
         let corrupt = root.join(format!(
