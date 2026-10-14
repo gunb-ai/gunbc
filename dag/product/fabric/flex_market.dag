@@ -181,17 +181,22 @@ type FlexMarketMedian
   | FlexMedianEmpty
   | FlexMedianCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
 
+fn flex_nat_multiple_of(n: Nat, d: Nat) -> Bool {
+  (d != 0) && (((n / d) * d) == n)
+}
+
 fn flex_class_market_median(floors: List<MoneyPerHour>) -> FlexMarketMedian {
   let n = floors |> length
   if n == 0 {
     FlexMedianEmpty
   } else {
-    match fold(floors, init: none, f: (acc, row) =>
+    let currency_scan = fold(floors, init: none, f: (acc, row) =>
       match acc {
         Absent => Present { value: row.currency }
         Present { value: c } =>
-          if c != row.currency { acc } else { Present { value: c } }
-      }) {
+          if (c != row.currency) { acc } else { Present { value: c } }
+      })
+    match currency_scan {
       Absent => FlexMedianEmpty
       Present { value: c0 } =>
         if any(floors, r => r.currency != c0) {
@@ -218,7 +223,7 @@ fn flex_class_market_median(floors: List<MoneyPerHour>) -> FlexMarketMedian {
         } else {
           let sorted = floors |> sort_by(f => money_per_hour_micros(q: f))
           let target = n / 2
-          match fold(
+          let scan = fold(
             sorted,
             init: FlexMedianScan { index: 0, picked: none },
             f: (acc, d) =>
@@ -227,7 +232,8 @@ fn flex_class_market_median(floors: List<MoneyPerHour>) -> FlexMarketMedian {
               } else {
                 FlexMedianScan { index: acc.index + 1, picked: acc.picked }
               },
-          ).picked {
+          )
+          match scan.picked {
             Absent => FlexMedianEmpty
             Present { value: m } => FlexMedianFound { rate: m }
           }
@@ -303,7 +309,7 @@ fn flex_empty_tally(level: FlexBidLevel) -> FlexLevelTally {
 }
 
 fn flex_add_sample(tally: FlexLevelTally, row: FlexRentalSample) -> FlexLevelTally {
-  if !row.ended {
+  if (!row.ended) {
     tally
   } else {
     FlexLevelTally {
@@ -389,16 +395,17 @@ fn flex_level_from_identity(id: DeclarationRef) -> FlexBidLevel? {
 }
 
 fn flex_least_sampled_other(tallies: List<FlexLevelTally>, best: FlexBidLevel) -> FlexBidLevel? {
-  match fold(
+  let other = fold(
     filter(tallies, t => !flex_bid_level_eq(left: t.level, right: best)),
     init: none,
     f: (acc, t) =>
       match acc {
         Absent => Present { value: t }
         Present { value: cur } =>
-          if t.samples < cur.samples { Present { value: t } } else { Present { value: cur } }
+          if (t.samples < cur.samples) { Present { value: t } } else { Present { value: cur } }
       },
-  ) {
+  )
+  match other {
     Absent => none
     Present { value: t } => Present { value: t.level }
   }
@@ -489,7 +496,12 @@ fn flex_choose_bid_level(
 ) -> FlexLevelChoice {
   let tallies = map(flex_bid_levels(), l => flex_tally_level(rows: rows, class: class, level: l))
   match flex_young_levels(tallies: tallies).first() {
-    Present { value: young } => FlexLevelChosen { level: young, samples: fold(tallies, init: 0, f: (n, t) => if flex_bid_level_eq(left: t.level, right: young) { t.samples } else { n }) }
+    Present { value: young } =>
+      FlexLevelChosen {
+        level: young,
+        samples: fold(tallies, init: 0, f: (n, t) =>
+          if flex_bid_level_eq(left: t.level, right: young) { t.samples } else { n }),
+      }
     Absent =>
       match flex_select_scored_level(tallies: tallies, currency: quote_currency) {
         SelectionNeedsEvidence { needs: _ } => FlexLevelNeedsEvidence
@@ -501,7 +513,7 @@ fn flex_choose_bid_level(
           match flex_level_from_identity(id: c.identity) {
             Absent => FlexLevelSelectionRefused
             Present { value: best } =>
-              if rentals_so_far > 0 && (rentals_so_far % flex_explore_every) == 0 {
+              if (rentals_so_far > 0) && flex_nat_multiple_of(n: rentals_so_far, d: flex_explore_every) {
                 match flex_least_sampled_other(tallies: tallies, best: best) {
                   Absent => FlexLevelNeedsEvidence
                   Present { value: other } => FlexLevelExplore { level: other, best: best }
@@ -509,7 +521,8 @@ fn flex_choose_bid_level(
               } else {
                 FlexLevelChosen {
                   level: best,
-                  samples: fold(tallies, init: 0, f: (n, t) => if flex_bid_level_eq(left: t.level, right: best) { t.samples } else { n }),
+                  samples: fold(tallies, init: 0, f: (n, t) =>
+                    if flex_bid_level_eq(left: t.level, right: best) { t.samples } else { n }),
                 }
               }
           }
@@ -546,7 +559,7 @@ fn flex_level_entry(id: DeclarationRef, label: NonEmptyStr, tally: FlexLevelTall
 }
 
 fn flex_held_effective_rate(rate: MoneyPerHour, held: Bool) -> MoneyPerHour {
-  if !held {
+  if (!held) {
     rate
   } else {
     let frac = nonzero_nat_fraction_field(r: flex_switch_premium)
@@ -648,7 +661,7 @@ fn flex_cleanup_dead(cards: List<FlexOwnedCard>, ours: FlexOwnerLabel) -> List<F
     filter(cards, c => c.owner == ours && flex_card_dead(card: c)),
     c => FlexDestroy {
       id: c.id,
-      why: if c.outbid { FlexCleanupOutbid } else { FlexCleanupStaleLoading },
+      why: if (c.outbid) { FlexCleanupOutbid } else { FlexCleanupStaleLoading },
     },
   )
 }
@@ -692,9 +705,13 @@ fn flex_offer_driver_major(offer: VastAiOffer) -> Int? {
   match offer.driver_version {
     Absent => none
     Present { value: raw } =>
-      match parse_int(s: split(s: raw, delimiter: ".").first()) {
+      match split(s: raw, delimiter: ".").first() {
         Absent => none
-        Present { value: major } => if major < 0 { none } else { Present { value: major } }
+        Present { value: head } =>
+          match parse_int(s: head) {
+            Absent => none
+            Present { value: major } => if (major < 0) { none } else { Present { value: major } }
+          }
       }
   }
 }
