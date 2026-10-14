@@ -1171,6 +1171,10 @@ fn keyword_may_bind_as_pattern_name(text: String, env: ParseEnvironment) -> Bool
   }
 }
 
+fn reserved_keyword_pattern_binder_error(text: String, span: SourceSpan) -> ErrorNode {
+  parse_error(msg: concat("pattern binder '", text, "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier"), span: span)
+}
+
 fn shape_display_name(shape: TokenShape) -> String {
   match shape {
     ShKeyword => "keyword"
@@ -6457,7 +6461,7 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
               pattern: Wildcard,
               tokens: tokens,
               ctx: ctx,
-              err: Present { value: parse_error(msg: concat("pattern binder '", kw_text, "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier"), span: span) }
+              err: Present { value: reserved_keyword_pattern_binder_error(text: kw_text, span: span) }
             }
           }
         }
@@ -6516,7 +6520,7 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
             Present { value: _ } => {}
             Absent => {
               if !keyword_may_bind_as_pattern_name(text: t.text, env: ctx.env) {
-                return BindingsResult { field_bindings: [], tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("pattern binder '", t.text, "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier"), span: t.span) } }
+                return BindingsResult { field_bindings: [], tokens: tokens, ctx: ctx, err: Present { value: reserved_keyword_pattern_binder_error(text: t.text, span: t.span) } }
               }
             }
           }
@@ -6539,10 +6543,7 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
       let minted = mint_parsed_node_identity(ctx: r2.ctx, at: ConsumedWindow { from: binding_from, to: r2.tokens })
       let fb = make_field_binding_node(occurrence_identity: minted.identity, field_name: field_name, binding: r2.pattern, span: bind_span, name_span: field_name_span)
       parse_variant_bindings_brace_acc(tokens: tokens, ctx: minted.ctx, acc: list_push(acc, fb))
-    EatUnchanged { tokens: __eu } => {
-      if !keyword_may_bind_as_pattern_name(text: field_name, env: ctx.env) {
-        return BindingsResult { field_bindings: [], tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("pattern binder '", field_name, "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier"), span: field_name_span) } }
-      }
+    EatUnchanged { tokens: __eu } =>
       let e2 = eat(tokens: tokens, expected: ExpectComma)
       let tokens = skip_newlines(tokens: match e2 { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
       let declaration_mint = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: field_name_span })
@@ -6559,7 +6560,6 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
         name_span: field_name_span
       )
       parse_variant_bindings_brace_acc(tokens: tokens, ctx: field_mint.ctx, acc: list_push(acc, fb))
-    }
     }
   }
 }

@@ -2574,6 +2574,17 @@ pub fn keyword_may_bind_as_pattern_name(text: String, env: Rc<ParseEnvironment>)
     }
 }
 
+pub fn reserved_keyword_pattern_binder_error(text: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
+    parse_error(
+        v1_rt::concat(
+            v1_rt::concat("pattern binder '".to_string(), text),
+            "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier"
+                .to_string(),
+        ),
+        span,
+    )
+}
+
 pub fn shape_display_name(shape: TokenShape) -> String {
     match shape.clone() {
         TokenShape::ShKeyword => "keyword".to_string(),
@@ -17699,14 +17710,8 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                                 pattern: Rc::new(MatchPattern::Wildcard),
                                 tokens: tokens.clone(),
                                 ctx: ctx.clone(),
-                                err: Some(parse_error(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "pattern binder '".to_string(),
-                                            kw_text.clone(),
-                                        ),
-                                        "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier".to_string(),
-                                    ),
+                                err: Some(reserved_keyword_pattern_binder_error(
+                                    kw_text.clone(),
                                     span.clone(),
                                 )),
                             })
@@ -17932,14 +17937,8 @@ pub fn parse_variant_bindings_brace_acc(
                                         field_bindings: Rc::new(vec![]),
                                         tokens: tokens.clone(),
                                         ctx: ctx.clone(),
-                                        err: Some(parse_error(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "pattern binder '".to_string(),
-                                                    t.text.clone(),
-                                                ),
-                                                "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier".to_string(),
-                                            ),
+                                        err: Some(reserved_keyword_pattern_binder_error(
+                                            t.text.clone(),
                                             t.span.clone(),
                                         )),
                                     });
@@ -18003,17 +18002,6 @@ pub fn parse_variant_bindings_brace_acc(
                     }
                 }
                 EatResult::EatUnchanged { tokens: __eu, .. } => {
-                    if !keyword_may_bind_as_pattern_name(field_name.clone(), ctx.env.clone()) {
-                        return Rc::new(BindingsResult {
-                            field_bindings: Rc::new(vec![]),
-                            tokens: tokens.clone(),
-                            ctx: ctx.clone(),
-                            err: Some(parse_error(
-                                "pattern binder 'match' is a reserved keyword, not a binder name; rename it to a non-keyword identifier".to_string(),
-                                field_name_span.clone(),
-                            )),
-                        });
-                    }
                     let e2 = eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
                     tokens = skip_newlines(match (*e2.clone()).clone() {
                         EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
