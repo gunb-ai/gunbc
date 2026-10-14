@@ -269,7 +269,7 @@ test fn fse_append_law_does_not_prove_two_possibly_empty_sides_holds() -> Bool {
 }
 
 test fn fse_filter_law_floors_a_nonempty_receiver_holds() -> Bool {
-  !fse_law_proves_nonempty(operation: ^filter, operands: [cardinality_exact(count: fse_two())])
+  !fse_law_proves_nonempty(operation: ^collection_filter_shape, operands: [cardinality_exact(count: fse_two())])
 }
 
 test fn fse_map_law_preserves_a_nonempty_receiver_holds() -> Bool {
