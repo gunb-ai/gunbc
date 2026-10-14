@@ -12,7 +12,7 @@ import v2.test.claim.execution.dag_add_emit_round_trip {
   dag_add_target_model
 }
 import std.algebra { list_snoc_item, Empty, fold_list, is_empty }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.text { String }
 

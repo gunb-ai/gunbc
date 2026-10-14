@@ -20,7 +20,7 @@ module test.claim.scm.scm_intake_census_witness
 // scenes. The decode is the whole-store route, so the corrected-root equality is answered outright.
 
 import std.types { Bool, String, List, Int, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_object, json_kv, json_string, json_int }
 import gunbc.scm.json_member { read_member_value, MemberValue, MemberLookupFailed }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }

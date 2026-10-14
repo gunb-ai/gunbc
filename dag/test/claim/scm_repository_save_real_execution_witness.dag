@@ -3,7 +3,7 @@ module test.claim.scm_repository_save_real_execution_witness
 import std.types { Bool, String, FilePath }
 import std.optional { Present, Absent }
 import std.content_hash { content_hash_eq_structural }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { serialize_json }

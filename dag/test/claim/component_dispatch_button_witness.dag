@@ -14,7 +14,7 @@ import gunbc.roadmap.roadmap_component {
 }
 import extdeps.languages.typescript.program { serialize_ts_stmts_indented }
 import gunbc.roadmap.roadmap_belt_actuate { belt_dispatch_all_status_labels, belt_dispatch_ok_status_labels }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

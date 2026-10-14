@@ -15,14 +15,14 @@ import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.fabric.provider_route { ProviderRoute }
 import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, String, GitRef }
-import std.algebra { trim, HeadAbsent, HeadFound, list_head, list_tail }
+import std.algebra { trim, Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.currency.currency { Usd }
 import std.measure {
   MoneyAmountMicro, MoneyOnce, MoneyPerSecond, money_amount_micro,
   Second, second, hardware_thread_count,
 }
-import product.fabric.work { Shape, HardRequirements, ExecutionRequirements, ControlPlaneCapacity }
+import product.fabric.work { Shape, HardRequirements, ExecutionRequirements, ControlPlaneCapacity , WarmResidencyRequired }
 import product.fabric.envelope { unstated_envelope }
 import gunbc.runner.runner_slot_allocation { gunbc_runner_slot_offer_envelope }
 import product.fabric.isolation { IsolationProfile }
@@ -128,7 +128,7 @@ import gunbc.fabric.fabric_witness_run {
   required_witnesses_build_work, verify_git_commit_tree,
 }
 import extdeps.git.object_store { git_sha1_object_id }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, Optional }
 import gunbc.ownership { Owned, Ensured }
 import gunbc.instruments.fabric_ci_evidence {
   FabricCiEvidenceDecode, FabricCiEvidenceDecoded, FabricCiEvidenceUndecodable,
@@ -1734,6 +1734,7 @@ fn cp_probe_requirements() -> ExecutionRequirements {
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
     isolation: IsolationProfile { guarantees: [] },
+    revocation: WarmResidencyRequired,
   }
 }
 
@@ -2060,17 +2061,13 @@ fn fci1_cell_hold_end_wire(outcome: CellHoldEnd) -> String {
 data fci1_release_identity: NonEmptyStr = "FCI-1 instrument release"
 
 fn fci1_live_release_outcome(root: NonEmptyStr) -> CellHoldEnd {
-  match list_head(xs: cp_probe_held_account()) {
-    HeadAbsent => HoldEndAttemptRefused {
+  match cp_probe_held_account() {
+    Empty => HoldEndAttemptRefused {
       slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
       detail: "instrument could not derive the held money account",
     }
-    HeadFound { value: account } => match list_head(xs: list_tail(xs: cp_probe_held_account())) {
-      HeadFound { value: _ } => HoldEndAttemptRefused {
-        slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
-        detail: "instrument derived a non-singleton held money account",
-      }
-      HeadAbsent => release_reserved_cell_at(
+    Cons { head: account, tail: rest } => match rest {
+      Empty => release_reserved_cell_at(
         root: root,
         slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
         acquired_generation: fci1_observed_hold_generation(root: root),
@@ -2084,6 +2081,10 @@ fn fci1_live_release_outcome(root: NonEmptyStr) -> CellHoldEnd {
         released_at: "2026-08-29T00:00:00Z",
         account: account,
       )
+      Cons { head: _, tail: _ } => HoldEndAttemptRefused {
+        slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+        detail: "instrument derived a non-singleton held money account",
+      }
     }
   }
 }

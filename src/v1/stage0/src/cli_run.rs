@@ -87,6 +87,7 @@ mod active_workset;
 mod census_heads;
 mod checker_dependency;
 pub use checker_dependency::write_checker_inputs_record;
+mod claim_execution;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
@@ -95,6 +96,7 @@ mod native_lane_runner;
 mod native_product_cache;
 pub mod reach_base_standings;
 pub mod required_ci_measurement;
+pub use claim_execution::*;
 mod required_floor_runner;
 mod required_lane_roster;
 pub mod rostered_row_join;
@@ -103,18 +105,19 @@ mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use emitted_crate_workspace_host::{write_emitted_workspace, EmittedWorkspace};
 pub use native_lane_runner::{
-    emitted_build_not_clean_cause, run_native_claim_program, run_native_serve_program,
+    emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
+    run_native_claim_program, run_native_process_memory_runs, run_native_serve_program,
     run_required_v2_native, run_self_host, run_type_declaration_use_census_runs,
-    run_v2_demand_census, run_v2_native_census, run_v2_native_cli, run_v2_native_frontier,
-    CensusInferRun, NativeCensusRun, NativeClaimProgramAttempt, NativeClaimProgramRun,
-    NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome, NativeServeProgramRun,
-    SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
+    run_v2_demand_census, run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli,
+    run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
+    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
+    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
+    NativeServeProgramRun, SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
+    MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND, MEASURED_SPAWN_RECEIPT_ENV,
 };
+pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
+pub use required_floor_runner::floor_seam;
 pub(crate) use required_floor_runner::*;
-pub use required_floor_runner::{
-    floor_seam, make_eval_context, make_eval_context_with_runtime_options, run_claim_measured,
-    run_required_floor,
-};
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
 pub mod pre_entry_phase;
@@ -209,6 +212,7 @@ mod required_regen_host;
 // `gunbc.target_invocation_seed_growth`.
 #[path = "behavioral_receipt_host.rs"]
 pub mod behavioral_receipt_host;
+pub mod cgroup_memory;
 pub mod floor_memory_supervisor;
 
 #[path = "target_invocation_host.rs"]
@@ -6917,7 +6921,7 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if !skip_enabled {
         return Ok(false);
     }
-    // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
+    // Fail-closed on the substrate-declared disposition (std.live_tree): a
     // `ReadsLiveTree` entry reads state outside its resolved closure, so the diff
     // cannot bound its inputs — it never predict-skips. Replaces the deleted
     // entry-text classifier (`entry_text_indicates_live_host_scan`); the disposition
@@ -11262,11 +11266,11 @@ pub(crate) struct FloorRouteGapExpectation {
 /// against, not which figure exists.
 ///
 /// Named `RequiredFloorCostBasis`, not the bare `WitnessCostBasis` the ruling's prose uses,
-/// because `std_realization_schedule.rs` already declares a `WitnessCostBasis` for an
-/// unrelated concept (`MeasuredAtExactSubject | EstimatedFromSiblingClass`, a realization
-/// schedule's provenance for a cost figure, not a policy choice of which clock judges a
-/// completed claim). Two same-named public enums in one crate is the exact citation ambiguity
-/// DESIGN.md §3 rules against, so this type is scoped to the one lane that declares it.
+/// because `std.realization_schedule` already names `WitnessCostBasis` for an unrelated
+/// concept (`MeasuredAtExactSubject | EstimatedFromSiblingClass`, a realization schedule's
+/// provenance for a cost figure, not a policy choice of which clock judges a completed
+/// claim). Reusing that name here would be the citation ambiguity DESIGN.md §3 rules
+/// against, so this type is scoped to the one lane that declares it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequiredFloorCostBasis {
     CpuCost,
@@ -16238,7 +16242,7 @@ fn closure_name_census(
 /// gate parity by construction: it is exactly the module set the root's whole-tree
 /// gate compile holds in its closure census, so a bare name a module resolves
 /// under the gate resolves identically here (e.g. a dag witness's bare
-/// `LiveTreeDisposition`, declared only in `v2.std.live_tree` but import-reached
+/// `LiveTreeDisposition`, declared only in `std.live_tree` but import-reached
 /// from the dag tree). Built lazily, cached per root.
 fn tree_bare_census_for_root(
     index: &MultiEntryIndex,
@@ -22336,7 +22340,7 @@ pub struct DiscoveryRow {
     pub label: String,
     pub entry: String,
     pub function: String,
-    /// Declared live-tree disposition of this row's ENTRY file (`v2.std.live_tree`):
+    /// Declared live-tree disposition of this row's ENTRY file (`std.live_tree`):
     /// `true` = ReadsLiveTree (undeclared defaults here, fail-closed — never
     /// predict-skip), `false` = declared SubstrateInputsOnly (selection-eligible).
     pub reads_live_tree: bool,
@@ -22373,7 +22377,7 @@ pub struct DeferredDiscoveryRow {
     pub function: String,
     /// Which exclusion substring matched (`witness_exclusion_substrings` authority).
     pub exclude_reason: String,
-    /// Entry-grain live-tree disposition (`v2.std.live_tree`); undeclared = true.
+    /// Entry-grain live-tree disposition (`std.live_tree`); undeclared = true.
     pub reads_live_tree: bool,
 }
 
@@ -22962,41 +22966,50 @@ fn trim_retained_heap() -> Option<u64> {
     }
 }
 
-/// Peak resident set (high water mark) in bytes, read the PORTABLE way.
+/// This process's OWN peak resident set (high water mark) in bytes.
 ///
-/// Authority: `dag/extdeps/posix/rusage.dag` for the interface, with the unit answered by
-/// `dag/extdeps/linux/rusage.dag` (kibibytes) and `dag/extdeps/darwin/rusage.dag` (bytes).
+/// Authority: `dag/extdeps/posix/rusage.dag` for the interface and `dag/extdeps/linux/rusage.dag`
+/// / `dag/extdeps/darwin/rusage.dag` for the `ru_maxrss` unit (kibibytes / bytes).
 ///
-/// This used to be `proc_status_kb_field("VmHWM")` — a `/proc/self/status` read, which
-/// exists on exactly one kernel family. That made every consumer of peak RSS Linux-only and
-/// produced `VmHWM unavailable on this host` on macOS, a message read as "this platform
-/// cannot report peak residency". It can: POSIX `getrusage(RUSAGE_SELF)` returns the same
-/// quantity in `ru_maxrss` everywhere, and libc was already a dependency. The procfs read
-/// was a TRANSPORT choice, not a capability limit, and mistaking one for the other is what
-/// made the fact look unobservable.
-///
-/// POSIX deliberately leaves `ru_maxrss`'s unit unspecified, so the conversion is per
-/// implementation and permanent — no release reconciles them. Linux reports kibibytes,
-/// Darwin bytes; the Darwin figure was confirmed by execution (a bare python3 reported
-/// 15417344, which is 14.7 MiB read as bytes and an impossible 14.7 GiB read as kibibytes).
-/// Reading a Linux value as bytes would understate peak residency 1024x, in the direction
-/// that looks survivable.
+/// Linux reads `/proc/self/status` VmHWM, NOT `getrusage(RUSAGE_SELF).ru_maxrss`: Linux seeds
+/// `ru_maxrss` at exec from the high-water of the address space the exec replaced, so a process
+/// spawned from a large parent reads the parent's peak. VmHWM belongs to the mm the exec created.
+/// The ledger row is `gunbc.recurring_failure_mode`
+/// `a_child_peak_resident_inherits_the_predecessor_address_space`; the control is
+/// `peak_resident_inheritance_control_tests`. macOS keeps `getrusage` (the portable call,
+/// with the unit answered per implementation); whether its `ru_maxrss` is inherited across exec
+/// is unverified. Hosts other than Linux and macOS are unmodeled and answer `None`. Missing readings are `None`, never a fabricated zero.
 pub fn peak_rss_vhwm_bytes() -> Option<u64> {
+    // LINUX: THE NEW ADDRESS SPACE'S OWN HIGH-WATER, NOT `ru_maxrss`. Linux seeds a process's
+    // `ru_maxrss` at exec from the high-water of the address space it replaces, so a process spawned
+    // from a large parent reads the parent's peak (`gunbc.recurring_failure_mode`
+    // `a_child_peak_resident_inherits_the_predecessor_address_space`). `VmHWM` belongs to the mm the
+    // exec created and is not inherited. A missing field is None, never a fabricated zero.
+    #[cfg(target_os = "linux")]
+    {
+        return proc_status_kb_field("VmHWM").filter(|b| *b > 0);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        peak_rss_getrusage_bytes()
+    }
+    // Unmodeled hosts (the BSDs report kibibytes) refuse: no unit is guessed.
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        None
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn peak_rss_getrusage_bytes() -> Option<u64> {
     // SAFETY: `ru` is a live, fully-owned zeroed `rusage`; `getrusage` only writes it.
     let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
     let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
     if rc != 0 || ru.ru_maxrss <= 0 {
         return None;
     }
-    let raw = ru.ru_maxrss as u64;
-    #[cfg(target_os = "macos")]
-    {
-        Some(raw)
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Some(raw.saturating_mul(1024))
-    }
+    // Darwin reports bytes (extdeps.darwin.rusage).
+    Some(ru.ru_maxrss as u64)
 }
 
 fn path_matches_any_substring(path: &str, subs: &[String]) -> bool {
@@ -24755,7 +24768,7 @@ fn call_floor_row_precompute_would_skip(
 // `entry_text_indicates_live_host_scan` + the `floor:host_scaffold` marker) lived here.
 // It is dissolved into the substrate-declared `reads_live_tree` disposition: each
 // witness entry file declares `data live_tree_disposition: LiveTreeDisposition = ...`
-// (`v2.std.live_tree`); undeclared = ReadsLiveTree = never predict-skip (fail-closed).
+// (`std.live_tree`); undeclared = ReadsLiveTree = never predict-skip (fail-closed).
 // Declaration grade also closes the former cross-file deficit that was documented here
 // (a live read hidden behind an import was invisible to entry-text scanning): the
 // entry's own row asserts the fact for the whole evaluation, wherever the read hides.
@@ -24766,9 +24779,8 @@ fn call_floor_row_precompute_would_skip(
 // THAT CADENCE IS GONE: `falsifier.yml` was deleted by the 2026-08-15 floor cut and sits
 // on DESIGN's unguarded list awaiting its own re-add, so the sentence was true when
 // written and became false when the workflow died, with nothing to notice. One claim in
-// three places — here, `v2.std.live_tree` `live_tree_disposition_note`, and that module's
-// `live_tree_disposition_stamp_provenance` — all three corrected together, because a claim
-// with three homes corrected in one still has two authorities (DESIGN §3).
+// the authority module `std.live_tree` now carries it once as an annotation on
+// `LiveTreeDisposition` (DESIGN §3, §4c).
 //
 // WHAT IS LEFT IS NOT A WEAKER WALL, IT IS NO WALL. `reads_live_tree_effective` consults
 // this declaration FIRST and falls through to `effect_reach_derived_reads_live_tree_for_entry`
@@ -24807,7 +24819,7 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
         };
         let rest = rest.trim_start();
         // Qualification-invariant (namespace lane): the annotation may be the bare
-        // authority name or its qualified projection (v2.std.live_tree.LiveTreeDisposition);
+        // authority name or its qualified projection (std.live_tree.LiveTreeDisposition);
         // compare the last dot-segment, mirroring type_name_compatible's mixed-spelling
         // rule. The typechecked roster compile remains the authority behind this text scan.
         let (annotation, rest) = match rest.find(|c: char| c.is_whitespace() || c == '=') {
@@ -26395,7 +26407,7 @@ new file mode 100644
 
     #[test]
     fn live_tree_disposition_declared_substrate_only_is_selection_eligible() {
-        let source = "module m\n\nimport v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\ntest fn pure_holds() -> Bool { true }\n";
+        let source = "module m\n\nimport std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\ntest fn pure_holds() -> Bool { true }\n";
         assert!(!super::parse_entry_live_tree_disposition("m_test.dag", source).unwrap());
     }
 
@@ -41055,4 +41067,68 @@ mod collect_node_values_depth_tests {
 
     use crate::v1_compiler_infer_items::ResolvedGraph;
     use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+}
+
+/// THE CONTROL FOR `a_child_peak_resident_inherits_the_predecessor_address_space`: a tiny child under
+/// a large parent must read small. The parent touches 512 MiB and keeps it live, spawns this test
+/// binary as the child, and the child reports `peak_rss_vhwm_bytes` beside the raw `ru_maxrss` it
+/// would have reported before the fix. The child's own peak is a few MiB; the parent's is over 512.
+#[cfg(all(test, target_os = "linux"))]
+mod peak_resident_inheritance_control_tests {
+    const CHILD: &str = "GUNBC_PEAK_RSS_CONTROL_CHILD";
+    const PARENT_BYTES: usize = 512 * 1024 * 1024;
+
+    #[test]
+    fn peak_rss_vhwm_bytes_is_not_the_spawning_parents() {
+        if std::env::var(CHILD).is_ok() {
+            let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+            unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
+            println!(
+                "PEAK_CONTROL vmhwm={} raw_ru_maxrss={}",
+                super::peak_rss_vhwm_bytes().expect("VmHWM readable"),
+                (ru.ru_maxrss as u64) * 1024
+            );
+            return;
+        }
+        let mut big = vec![0u8; PARENT_BYTES];
+        for page in big.chunks_mut(4096) {
+            page[0] = 1;
+        }
+        let out = std::process::Command::new(std::env::current_exe().expect("test exe"))
+            .args([
+                "--exact",
+                "cli_run::peak_resident_inheritance_control_tests::peak_rss_vhwm_bytes_is_not_the_spawning_parents",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .expect("child process");
+        std::hint::black_box(&big);
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        let line = text
+            .lines()
+            .find_map(|l| l.find("PEAK_CONTROL").map(|at| &l[at..]))
+            .unwrap_or_else(|| panic!("child printed no reading: {text}"));
+        eprintln!("{line}");
+        let field = |name: &str| -> u64 {
+            line.split_whitespace()
+                .find_map(|f| f.strip_prefix(name))
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_else(|| panic!("no {name} in {line}"))
+        };
+        let vmhwm = field("vmhwm=");
+        // THE SETUP MUST BE ABLE TO FAIL: the raw `ru_maxrss` the old reader returned has to show the
+        // parent's peak here, or this host/harness no longer inherits and the pass below shows nothing.
+        let raw = field("raw_ru_maxrss=");
+        assert!(
+            raw >= (PARENT_BYTES as u64) / 2,
+            "the control child did not inherit the parent's peak, so this test discriminates nothing: {line}"
+        );
+        assert!(vmhwm > 0, "a Measured peak must exist: {line}");
+        assert!(
+            vmhwm < (PARENT_BYTES as u64) / 2,
+            "the child's own peak read as the parent's: {line}"
+        );
+    }
 }

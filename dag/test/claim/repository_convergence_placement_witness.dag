@@ -8,7 +8,7 @@ import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalReadOutcome,
   effective_posix_principal_observation,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name,

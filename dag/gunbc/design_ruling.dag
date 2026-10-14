@@ -133,6 +133,48 @@ data harness_default_requirement_places_on_operator_endpoint: DesignRuling = Des
   provenance: "Operator, in their own words to the lab session: 'could you just make our harness pick this pod, and for our dispatch to pick the harness instead of the claude backend'. It overrules the rule in gunbc.harness.harness_seat harness_requirement_placement that AnyAdmittedModel lands only on a fleet seat; dispatch already defaults to the harness.",
 }
 
+data cardinality_one_concept: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "cardinality_one_concept"),
+  decided: "2026-10-13",
+  section: "3b",
+  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): One cardinality concept, existing structural authorities. `std.optional.Optional`, `std.algebra.FreeMonoid` and `std.algebra.FreeSemigroup` remain the authorities for optional values, possibly-empty sequences and nonempty sequences. Cardinality facts compose at named structural positions and measures; they do not replace the value's structure or collapse nesting. Redundant flags and competing carriers are consolidated through complete consumer cuts. Applies to every layer and the whole repository. Subject of the permanent Cardinality / absence conformance domain.",
+}
+
+data dag_absence_is_one_meaning: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dag_absence_is_one_meaning"),
+  decided: "2026-10-13",
+  section: "3b",
+  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): One DAG absence meaning; foreign and domain meanings preserved. DAG absence uses the declared `Absent` constructor. The independent `none`/`null` typing and sentinel semantics are retired by complete cohorts. This does not delete faithful foreign null models, reason-bearing refusals, progress states or policy meanings; their conversion to Optional, when appropriate, is explicit and declared.",
+}
+
+data explicit_present_is_the_authoring_policy: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "explicit_present_is_the_authoring_policy"),
+  decided: "2026-10-13",
+  section: "3b",
+  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Explicit `Present` is the current authoring policy. Optional values are not implicitly wrapped or extracted through checker exceptions, branch-join tricks or target emission. A future implicit injection is permissible only through section 4's law (ruling `gunbc.design_ruling coercion_is_the_implicit_safe_subset`): a declared route that is total, exact, semantics-preserving, unique, pure and consent-free, represented in the typed program. Until such a route is admitted, author `Present` explicitly.",
+}
+
+data optional_sugar_is_declaration_bound: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "optional_sugar_is_declaration_bound"),
+  decided: "2026-10-13",
+  section: "3b",
+  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): `T?` is declaration-bound sugar. `T?` denotes the canonical Optional declaration application and introduces its precise acquisition dependency. Local homonyms cannot redirect it. A missing or incompatible authority refuses; it never recreates a kernel mint. This grants no broad ambient prelude and does not make constructor names available unqualified.",
+}
+
+data nonemptiness_is_constructed_or_proved: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "nonemptiness_is_constructed_or_proved"),
+  decided: "2026-10-13",
+  section: "3b",
+  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Nonemptiness is constructed or proved, then consumed. `FreeSemigroup` is used where a nonempty sequence is the value contract. A possibly-empty producer enters a nonempty consumer only through established evidence or explicit checked admission. A type name, arbitrary predicate callback or sealed wrapper alone does not establish the claimed guarantee. General bound propagation is delivered by roadmap node `cardinality-vertical-slice`; its Required activation is `extended-admission-cardinality`.",
+}
+
+data native_first_complete_cuts: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_first_complete_cuts"),
+  decided: "2026-10-13",
+  section: "3b",
+  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Native-first complete cuts, with eventual repository-wide retirement. Complete native consumer cohorts are prioritized; each migrated cohort uses one semantic authority across its participating layers and has no legacy fallback. The remainder is explicit, identity-based and shrink-only; counts are observations, not acceptance oracles. Whole-corpus naming cleanup and unrelated target completion do not gate the typed native closure. The parent roadmap node `cardinality-absence` cannot close until the retained paths are covered and the obsolete production authorities and migration allowances are gone.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     job_roster_closed_to_growth,
@@ -150,6 +192,12 @@ fn design_rulings() -> List<DesignRuling> {
     regeneration_jobs_added_to_roster,
     harness_default_requirement_places_on_operator_endpoint,
     project_documentation_projections_are_not_checkout_artifacts,
+    cardinality_one_concept,
+    dag_absence_is_one_meaning,
+    explicit_present_is_the_authoring_policy,
+    optional_sugar_is_declaration_bound,
+    nonemptiness_is_constructed_or_proved,
+    native_first_complete_cuts,
   ]
 }
 

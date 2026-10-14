@@ -25,7 +25,7 @@ import v2.std.parse_refusal_reason {
   ParseRefusalReason,
   parse_refusal_reason_symbol
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.text { String }

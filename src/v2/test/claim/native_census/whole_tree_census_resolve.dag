@@ -14,6 +14,7 @@ import v2.compiler.compile {
   native_census_module_resolution,
   native_census_modules,
   native_census_residual_rows,
+  native_census_position_table_empty,
   NativeCensusCauseGroup,
   NativeCensusCascadeNone,
   NativeCensusClosureIndexUnavailable,
@@ -45,7 +46,7 @@ import v2.std.diagnostic {
   diagnostics_fatal
 }
 import v2.compiler.resolve { ObservationComplete, ObservationIncomplete }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -207,7 +208,7 @@ fn census_probe_outcome_in(
 fn census_probe_unbound_rows(entry: NativeCensusModule, outcome: NativeCensusModuleOutcome) -> Int {
   match outcome {
     NativeCensusModuleResolveRefused { first: f, rest: r, observation: _ } =>
-      length(xs: native_census_residual_rows(entry: entry, first: f, rest: r))
+      length(xs: native_census_residual_rows(positions: native_census_position_table_empty(), entry: entry, first: f, rest: r))
     NativeCensusModuleFileRefused => 0
     NativeCensusModuleResolved => 0
   }
@@ -342,6 +343,7 @@ fn census_supplied_entry() -> NativeCensusModule {
 // the unbound fatal as its diagnostics_fatal.
 test fn census_advised_chain_is_one_row_carrying_its_chain_holds() -> Bool {
   let rows = native_census_residual_rows(
+    positions: native_census_position_table_empty(),
     entry: census_supplied_entry(),
     first: census_supplied_advised_chain(),
     rest: []
@@ -429,6 +431,7 @@ fn census_first_row_is_advised_then_bare(rows: List<NativeCensusResidualRow>) ->
 test fn census_advisory_stays_with_its_own_fatal_holds() -> Bool {
   census_first_row_is_advised_then_bare(
     rows: native_census_residual_rows(
+      positions: native_census_position_table_empty(),
       entry: census_supplied_entry(),
       first: census_supplied_advised_chain(),
       rest: [census_supplied_bare_chain()]
@@ -478,6 +481,7 @@ fn census_cause_group_of(groups: List<NativeCensusCauseGroup>, reason: Symbol) -
 
 test fn census_cause_groups_key_on_fatal_not_head_holds() -> Bool {
   let rows = native_census_residual_rows(
+    positions: native_census_position_table_empty(),
     entry: census_supplied_entry(),
     first: census_supplied_advised_chain(),
     rest: []

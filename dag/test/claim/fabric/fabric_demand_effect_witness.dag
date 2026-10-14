@@ -5,7 +5,7 @@ import test.claim.fabric.provider_use_fixture { fixture_route, fixture_permit_fo
 import extdeps.currency.currency { Usd }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { money_amount_micro, MoneyOnce }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey, ExecutionAttemptKey }
 import product.fabric.demand {
   Demand, SatisfactionRequirement, AdmissionTerms, BuyTerms, admission_terms,

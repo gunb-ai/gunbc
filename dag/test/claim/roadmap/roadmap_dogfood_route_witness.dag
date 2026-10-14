@@ -29,7 +29,7 @@ import product.capacity.event_chain { PartitionId }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import std.measure { token_count }
 import gunbc.roadmap.roadmap_belt_tick_cli { belt_start_record_exit }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.github { Repository }
 import gunbc.roadmap.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentPending, WorkflowSegmentFailed }
 import gunbc.roadmap.roadmap_submission {

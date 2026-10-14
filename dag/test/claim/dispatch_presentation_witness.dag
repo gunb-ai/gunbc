@@ -13,7 +13,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_dispatch_provider_label,
 }
 import gunbc.roadmap.roadmap_style { roadmap_css }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

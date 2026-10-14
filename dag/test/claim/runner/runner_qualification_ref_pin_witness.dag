@@ -1,7 +1,7 @@
 module test.claim.runner.runner_qualification_ref_pin_witness
 
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused }
 import extdeps.github.git_database { GitRefWire, GitRefObjectWire }
 import extdeps.github.actions {

@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.measure { hardware_thread_count }
 import std.content_hash { Sha256Digest }
 import std.scoped_authorization { AttemptIdentity }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.work { MaterializedProgram,
@@ -12,6 +12,7 @@ import product.fabric.work { MaterializedProgram,
   Shape, HardRequirements, ControlPlaneCapacity, work_for,
   OutputObligation, OutputArtifactObligation, TerminalResultObligation,
   DeclaredOutputObligations,
+ WarmResidencyRequired,
 }
 import std.durable_compare_and_set { CasSlotObservationRefused, CasStoreRefused, CasUnreadableReadRefused }
 import extdeps.github.checks {
@@ -115,6 +116,7 @@ fn fixture_requirements() -> ExecutionRequirements {
     capabilities: "linux-arm64",
     trust_domain: "fleet-owned",
     isolation: shared_kernel_sandbox_profile(),
+    revocation: WarmResidencyRequired,
   }
 }
 

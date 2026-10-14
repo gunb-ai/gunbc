@@ -18,7 +18,7 @@ import v2.std.witness_evaluation {
   WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
   evaluate_in_witness_frame,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.shell { ShellProcessExited }
 import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, filesystem_bindings }
 import gunbc.process_environment_model { ModeledVariable, environment_binding }

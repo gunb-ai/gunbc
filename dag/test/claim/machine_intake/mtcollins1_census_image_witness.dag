@@ -56,7 +56,7 @@ import gunbc.machine_intake.mtcollins1_census_image {
   mtcollins1_census_pinned_grub_cmdline,
   mtcollins1_census_grub_cmdline,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -6,7 +6,7 @@
 // differential's classifier and rendering), `extdeps.bazel.label` (the label grammar mirrored
 // here) and `extdeps.bazel.target_pattern` (the pattern grammar mirrored here). The SET forms
 // (`//pkg:all`, `//pkg:*`, `//pkg/...`) execute only inside a route's universe: the native test
-// route (`//v2/test/...`) or the claim route (`//test/claim/...`, the discovered witness claims,
+// route (`//v2/...`) or the claim route (`//test/claim/...`, the discovered witness claims,
 // evaluated by the floor's own discovery authority and claim evaluation). A set form outside both
 // is refused with status 2 (`test_operand_set_form_refusal_rendered`, mirroring
 // `gunbc.target_invocation`) and is never widened into another route. None of the
@@ -249,7 +249,39 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum V2NativeCensusReading {
     RefusalCensus,
+    /// `subject` is the bound PACKAGE's segments; rendered as a package pattern only at argv.
+    ScopedRefusalCensus {
+        subject: &'static [&'static str],
+    },
     TypeDeclarationUse,
+    NativeProcessMemory {
+        workload: NativeMeasuredWorkload,
+    },
+}
+
+/// `gunbc.instruments.native_process_memory_reading` `NativeCensusVerb`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeCensusVerb {
+    FrontEnd,
+    Infer,
+}
+
+impl NativeCensusVerb {
+    /// `native_census_verb_argv` and the `.dag` constructor name, in that order.
+    fn argv_and_variant(self) -> (&'static str, &'static str) {
+        match self {
+            Self::FrontEnd => ("census", "NativeCensusFrontEnd"),
+            Self::Infer => ("census-infer", "NativeCensusInfer"),
+        }
+    }
+}
+
+/// `gunbc.instruments.native_process_memory_reading` `NativeMeasuredWorkload`, narrowed to the arms a
+/// row binds today. `NativeSelfCompileWorkload` is a declared frontier there and gains an arm here
+/// when the native compile verb accepts the self-host closure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeMeasuredWorkload {
+    Census { verb: NativeCensusVerb },
 }
 
 /// `gunbc.target_binding` `TargetProducer`, narrowed to the members this seam realizes today.
@@ -269,7 +301,6 @@ pub enum TargetProducer {
     BehavioralReceiptSelftest,
     CompileCleanDiagnosticCensus,
     EvaluationStoreAddressExactHead,
-    FloorMemoryQualification,
     TypedGraphExclusiveBytes,
     TypedGraphExclusiveBytesFloorSubject,
     PrimitiveEgressCensus,
@@ -282,6 +313,7 @@ pub enum TargetProducer {
     DependencyDemandCensus,
     GenericIdentityCensus,
     InterpolationHoleCensus,
+    SharedTypeLeafCollisionCensus,
     RegenRoundCost,
     /// `NativeClaimProgramProducer { entry, deadline }`: the entry is carried so a second program
     /// of the same shape is a registry row, never another variant. The Millisecond deadline is
@@ -369,9 +401,33 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("v2-native-census-scoped"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::ScopedRefusalCensus {
+                    subject: &[
+                        "v2",
+                        "test",
+                        "claim",
+                        "parse",
+                        "expression_bodied_fn_decl_parse",
+                    ],
+                },
+            },
+        ),
+        (
             instrument_label("type-declaration-use-census"),
             TargetProducer::V2NativeCensus {
                 reading: V2NativeCensusReading::TypeDeclarationUse,
+            },
+        ),
+        (
+            instrument_label("native-process-memory-census"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::NativeProcessMemory {
+                    workload: NativeMeasuredWorkload::Census {
+                        verb: NativeCensusVerb::FrontEnd,
+                    },
+                },
             },
         ),
         (
@@ -409,6 +465,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-xl2-rehearsal"),
+            TargetProducer::NativeClaimProgram {
+                entry: "src/v2/workflow/namespace_xl2_rehearsal_native.dag",
+            },
+        ),
+        (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
@@ -423,10 +485,6 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
-        ),
-        (
-            instrument_label("floor-memory-qualification"),
-            TargetProducer::FloorMemoryQualification,
         ),
         (
             instrument_label("typed-graph-exclusive-bytes"),
@@ -475,6 +533,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("interpolation-hole-census"),
             TargetProducer::InterpolationHoleCensus,
+        ),
+        (
+            instrument_label("shared-type-leaf-collision-census"),
+            TargetProducer::SharedTypeLeafCollisionCensus,
         ),
         (
             instrument_label("regen-round-cost"),
@@ -863,8 +925,19 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             reading: V2NativeCensusReading::RefusalCensus,
         } => run_v2_native_census(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::ScopedRefusalCensus { subject },
+        } => run_v2_native_census_scoped(
+            &render_target_pattern(&TargetPattern::PackageTargets(
+                subject.iter().map(|s| s.to_string()).collect(),
+            )),
+            &self_host_source_roots(),
+        ),
+        TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_type_declaration_use_census(&self_host_source_roots()),
+        TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::NativeProcessMemory { workload },
+        } => run_native_process_memory(&self_host_source_roots(), workload),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::NativeServeProgram { entry } => run_native_serve_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
@@ -873,7 +946,6 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::EvaluationStoreAddressExactHead => {
             run_evaluation_store_address_exact_head()
         }
-        TargetProducer::FloorMemoryQualification => run_floor_memory_qualification(),
         TargetProducer::TypedGraphExclusiveBytes => run_typed_graph_exclusive_bytes(),
         TargetProducer::TypedGraphExclusiveBytesFloorSubject => {
             run_typed_graph_exclusive_bytes_floor_subject()
@@ -902,6 +974,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         }
         TargetProducer::InterpolationHoleCensus => {
             run_interpolation_hole_census(&self_host_source_roots())
+        }
+        TargetProducer::SharedTypeLeafCollisionCensus => {
+            run_shared_type_leaf_collision_census(&self_host_source_roots())
         }
         TargetProducer::RegenRoundCost => run_regen_round_cost_instrument(),
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
@@ -1132,7 +1207,7 @@ fn exact_head_standing_outcome(
 ///
 /// It calls the SAME producer `--v2-native-route` calls, so the two cannot disagree about whether
 /// the seed can build v2 -- only one of them decides it. That route then spends roughly nine
-/// further minutes executing the v2.test.* universe through the emitted binary, which is a
+/// further minutes executing the marked `v2` declarations through the emitted binary, which is a
 /// different claim (what the emitted compiler ANSWERS), and bundling it here would price the
 /// self-host question at the cost of a question nobody asked.
 ///
@@ -1200,8 +1275,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 /// no debt would be a vacuous pass. `not-a-measurement` means the receipt failed an integrity
 /// clause or the pattern was narrower than the universe, so the subject was not reached.
 fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
-    let pattern = native_route_default_pattern_text();
-    match cli_run::run_v2_native_frontier(source_roots, &pattern) {
+    match cli_run::run_v2_native_frontier(source_roots) {
         Ok(run) => {
             let termination = match run.frontier.as_str() {
                 "held" | "advanced" | "grew-by-owned-correctness-flip" => Termination::ObservationHeld,
@@ -1255,6 +1329,42 @@ fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
                 run.cause_groups,
                 run.roots,
                 run.type_census.word()
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// THE SCOPED V2-NATIVE CENSUS PRODUCER (`gunbc.instrument_targets` `v2_native_census_scoped_label`). A
+/// report on the same terms as `run_v2_native_census`: a completed run is held whether its closure is
+/// closed or blocked -- the scope is the finding, stated in the message -- and a run that did not
+/// complete, or completed for another subject, is the subject unreached.
+fn run_v2_native_census_scoped(subject: &str, source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_native_census_scoped(subject, source_roots) {
+        Ok(run) => InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message: format!(
+                "v2-native-census-scoped: subject={} scope={} modules={} file_refusals={} \
+                 advised_files={} residual_rows={} inferred={} infer_refused={} cause_groups={} \
+                 roots={}; the population is the subject's acquired closure (census_scope line \
+                 above), its rows grouped by fatal reason in the cause_group lines",
+                run.subject,
+                match run.scope {
+                    cli_run::NativeCensusScopeWord::Closed => "closed".to_string(),
+                    cli_run::NativeCensusScopeWord::Blocked { blocks } =>
+                        format!("blocked({blocks})"),
+                },
+                run.modules,
+                run.file_refusals,
+                run.advised_files,
+                run.residual_rows,
+                run.inferred,
+                run.infer_refused,
+                run.cause_groups,
+                run.roots
             ),
         },
         Err(cause) => InvocationOutcome {
@@ -1396,7 +1506,23 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
             }
         }
     };
-    match cli_run::classify_cli_wire(&value, &ctx) {
+    reader_standing_outcome(
+        &ctx,
+        &value,
+        label_name,
+        "type_declaration_use_census_standing",
+    )
+}
+
+/// A reader's `CliWireResponse`, as the invocation outcome: exit 0 held, 1 did not hold, any other
+/// code no observation. Shared by every producer whose standing a `.dag` reader decides.
+fn reader_standing_outcome(
+    ctx: &crate::v1_interpreter::InterpContext,
+    value: &crate::v1_interpreter::Value,
+    label_name: &str,
+    reader: &str,
+) -> InvocationOutcome {
+    match cli_run::classify_cli_wire(value, ctx) {
         cli_run::CliWireClass::Printable { bytes, exit } => {
             let (termination, verdict) = match exit {
                 cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
@@ -1413,7 +1539,10 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
                     format!("the reader returned `{type_name}`, not a ProcessExit"),
                 ),
             };
-            InvocationOutcome { termination, message: format!("{bytes}{label_name}: {verdict}") }
+            InvocationOutcome {
+                termination,
+                message: format!("{bytes}{label_name}: {verdict}"),
+            }
         }
         cli_run::CliWireClass::Unprintable { cause } => InvocationOutcome {
             termination: Termination::Refused,
@@ -1422,7 +1551,7 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
         cli_run::CliWireClass::NotCliWire { type_name } => InvocationOutcome {
             termination: Termination::Refused,
             message: format!(
-                "{label_name}: type_declaration_use_census_standing returned `{type_name}`, not a CliWireResponse"
+                "{label_name}: {reader} returned `{type_name}`, not a CliWireResponse"
             ),
         },
         cli_run::CliWireClass::MalformedCliWire { detail } => InvocationOutcome {
@@ -1430,6 +1559,149 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
             message: format!("{label_name}: malformed CliWireResponse: {detail}"),
         },
     }
+}
+
+/// THE NATIVE PROCESS MEMORY PRODUCER. The host writes the one-module control root from the reader's
+/// own rows, runs the workload's verb over it and over the source roots on ONE prepared binary, each
+/// child reaped by `wait4`, and hands both readings to `native_process_memory_standing`, which decides.
+fn run_native_process_memory(
+    source_roots: &[String],
+    workload: NativeMeasuredWorkload,
+) -> InvocationOutcome {
+    use crate::v1_interpreter::{str_value, Value};
+    let label_name = "native-process-memory-census";
+    let unreached = |message: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message,
+    };
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    const READER: &str = "dag/gunbc/instruments/native_process_memory_reading.dag";
+    let (graph, source_indices) =
+        match cli_run::resolve_entry_graph(&cli_run::default_source_roots(), READER) {
+            Ok(resolved) => resolved,
+            Err(cause) => {
+                return unreached(format!(
+                    "{label_name}: resolve failed for {READER}: {cause}"
+                ))
+            }
+        };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let read_str = |function: &str| -> Result<String, String> {
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true) {
+            Ok(v) => match &v {
+                Value::Str(s) => Ok(s.to_string()),
+                _ => Err(format!("{label_name}: {function} is not a String")),
+            },
+            Err(cause) => Err(format!("{label_name}: {function} failed: {cause}")),
+        }
+    };
+    let write_control = |run_dir: &std::path::Path| -> Result<std::path::PathBuf, String> {
+        let tree = run_dir
+            .join("control")
+            .join(read_str("native_process_memory_control_tree")?);
+        let target = tree.join(read_str("native_process_memory_control_path")?);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{label_name}: {e}"))?;
+        }
+        std::fs::write(&target, read_str("native_process_memory_control_content")?)
+            .map_err(|e| format!("{label_name}: {e}"))?;
+        Ok(tree)
+    };
+    let NativeMeasuredWorkload::Census { verb } = workload;
+    let (argv, verb_variant) = verb.argv_and_variant();
+    let runs = match cli_run::run_native_process_memory_runs(source_roots, argv, write_control) {
+        Ok(runs) => runs,
+        Err(cause) => return unreached(cause),
+    };
+    // THE INPUT IS OBSERVED OR SAID TO BE UNOBSERVED, never invented (the same rule
+    // `run_required_v2_native_inner` states for GITHUB_SHA).
+    let input_identity = format!(
+        "roots={} tree={}",
+        source_roots.join(","),
+        std::env::var("GITHUB_SHA").unwrap_or_else(|_| "unobserved(GITHUB_SHA unset)".to_string())
+    );
+    let reading = |r: &cli_run::NativeChildMeasured| {
+        let terminal = r
+            .stdout
+            .lines()
+            .rev()
+            .find(|l| l.contains("\"_terminal\""))
+            .unwrap_or("");
+        let peak = crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "native_child_maxrss",
+            &[(Some("raw_value".to_string()), Value::Int(r.maxrss_kib))],
+            true,
+        )
+        .map_err(|cause| format!("{label_name}: native_child_maxrss failed: {cause}"))?;
+        Ok::<Value, String>(Value::Record {
+            type_name: ctx.sym("NativeChildReading"),
+            fields: std::rc::Rc::new(vec![
+                (ctx.sym("peak"), peak),
+                (
+                    ctx.sym("elapsed"),
+                    Value::Record {
+                        type_name: ctx.sym("Measure"),
+                        fields: std::rc::Rc::new(vec![(
+                            ctx.sym("count"),
+                            Value::Int(r.elapsed_ns),
+                        )]),
+                    },
+                ),
+                (ctx.sym("exit_code"), Value::Int(i64::from(r.exit_code))),
+                (ctx.sym("signal"), Value::Int(i64::from(r.signal))),
+                (ctx.sym("terminal"), str_value(terminal)),
+            ]),
+        })
+    };
+    let (control_reading, workload_reading) =
+        match (reading(&runs.control), reading(&runs.workload)) {
+            (Ok(c), Ok(w)) => (c, w),
+            (Err(cause), _) | (_, Err(cause)) => return unreached(cause),
+        };
+    let variant = |type_name: &str, name: &str, fields: Vec<(&str, Value)>| Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(name),
+        fields: std::rc::Rc::new(fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect()),
+    };
+    let workload_value = variant(
+        "NativeMeasuredWorkload",
+        "NativeCensusWorkload",
+        vec![("verb", variant("NativeCensusVerb", verb_variant, vec![]))],
+    );
+    let args = [
+        (Some("workload".to_string()), workload_value),
+        (
+            Some("binary_identity".to_string()),
+            str_value(&runs.binary_identity),
+        ),
+        (
+            Some("input_identity".to_string()),
+            str_value(&input_identity),
+        ),
+        (Some("envelope".to_string()), str_value(&runs.envelope)),
+        (Some("control".to_string()), control_reading),
+        (Some("measured".to_string()), workload_reading),
+    ];
+    let value = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_process_memory_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => value,
+        Err(cause) => return unreached(format!("{label_name}: the reader failed: {cause}")),
+    };
+    reader_standing_outcome(&ctx, &value, label_name, "native_process_memory_standing")
 }
 
 /// THE V2-NATIVE CLI PRODUCER: does the v2-exclusive front door compile.
@@ -2084,23 +2356,23 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
     }
 }
 
-/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, mirrored: the native test
-/// route's whole universe, `//v2/test/...`. An operand CONTAINED in it belongs to that route.
+/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, READ from the file rendered from
+/// it: the native test route's whole universe. An operand CONTAINED in it belongs to that route.
 ///
-/// THIS IS THE ONLY SEED-SIDE SPELLING OF THAT UNIVERSE, and it is `pub` for exactly that reason.
-/// The lane's runner needs the same fact as TEXT (it is an argv word) and this verb needs it as a
-/// PATTERN, which is two renderings of one value, not two values. A bare `"//v2/test/..."` literal
-/// beside this one would be the second independently editable spelling DESIGN section 3 forbids,
-/// and the drift would be load-bearing rather than cosmetic: narrow one and not the other and the
-/// verb routes an operand native that the lane's default excludes, or the reverse.
-pub fn native_route_default_pattern() -> TargetPattern {
-    TargetPattern::SubtreeTargets(vec!["v2".to_string(), "test".to_string()])
-}
-
-/// The universe above as the argv word the emitted binary's `adjudicate` verb takes. Derived from
-/// the one pattern rather than spelled again.
-pub fn native_route_default_pattern_text() -> String {
-    render_target_pattern(&native_route_default_pattern())
+/// THIS SEED HAS NO SPELLING OF THAT UNIVERSE. `NATIVE_ROUTE_DEFAULT_PATTERN` is a constant of
+/// `native_route_seed_boundary_generated`, which `gunbc.native_route_seed_boundary_emit` renders from
+/// the one declaration and the generated-artifact drift wall holds to it: moving the boundary in
+/// `.dag` moves this routing at the next regeneration, and a hand edit of the constant is a drift
+/// finding that regeneration undoes.
+/// The declaration cannot be read here directly, because this decision is taken before any emitted
+/// binary exists. The text goes through this file's own pattern parser, and a text that does not
+/// parse is a refusal the caller reports, never a panic and never a fallback to some other universe.
+///
+/// The universe the EMITTED binary adjudicates by default is the same declaration read inside the
+/// compiler (`v2.compiler.compile`, `adjudicate` without `--pattern`); the seed passes it a pattern
+/// only when the operator wrote one, so nothing here is handed to it as text.
+fn native_route_default_pattern() -> Result<TargetPattern, TargetPatternRefusal> {
+    parse_target_pattern(crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN)
 }
 
 /// THE NATIVE TEST ROUTE, ENTERED WITH THE OPERAND'S OWN PATTERN.
@@ -2130,7 +2402,7 @@ pub fn native_route_default_pattern_text() -> String {
 /// `SubjectUnreached` while letting a definite member failure through unchanged.
 fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
     let rendered = render_target_pattern(pattern);
-    match cli_run::run_required_v2_native(&self_host_source_roots(), &rendered) {
+    match cli_run::run_required_v2_native(&self_host_source_roots(), Some(&rendered)) {
         cli_run::NativeRouteOutcome::LaneQualificationHeld { summary, members } => {
             native_member_outcome(
                 &rendered,
@@ -2649,6 +2921,24 @@ fn observe_binary_inputs() -> BinaryInputObservation {
 /// (`gunbc.target_invocation` `assess_binary_freshness`), then route. Kept beside `test_verb`
 /// rather than inside it so the routing tests stay a function of the operand alone.
 pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
+    // THE MEASURED-SPAWN TRAMPOLINE, BEFORE ANY WORK, so this process's address space is still small
+    // (`cli_run::measured_spawn_trampoline`). Entered only through its reserved operand, which only
+    // the native process memory producer emits; the receipt variable beside any other operand refuses.
+    match cli_run::measured_spawn_route(
+        operand,
+        std::env::var_os(cli_run::MEASURED_SPAWN_RECEIPT_ENV),
+    ) {
+        cli_run::MeasuredSpawnRoute::NotRequested => {}
+        cli_run::MeasuredSpawnRoute::Enter(receipt) => {
+            std::process::exit(cli_run::measured_spawn_trampoline(receipt))
+        }
+        cli_run::MeasuredSpawnRoute::Refuse(message) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message,
+            }
+        }
+    }
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --
     // the same bind claim_executor and claim_batch take) at gunbc.emitted_subject_build_gate
@@ -2840,8 +3130,8 @@ enum MemoryEnvelope {
     Bounded {
         grain: MemoryEnvelopeGrain,
         dir: std::path::PathBuf,
-        start: cli_run::floor_memory_supervisor::CgroupMemoryRead,
-        start_swap: cli_run::floor_memory_supervisor::CgroupSwapRead,
+        start: cli_run::cgroup_memory::CgroupMemoryRead,
+        start_swap: cli_run::cgroup_memory::CgroupSwapRead,
     },
 }
 
@@ -2899,20 +3189,18 @@ fn memory_envelope_requirement(
                         .to_string(),
                 );
             };
-            let start =
-                cli_run::floor_memory_supervisor::read_cgroup_memory(&dir).map_err(|refusal| {
-                    format!(
-                        "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
-                        refusal.render()
-                    )
-                })?;
-            let start_swap =
-                cli_run::floor_memory_supervisor::read_cgroup_swap(&dir).map_err(|refusal| {
-                    format!(
-                        "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
-                        refusal.render()
-                    )
-                })?;
+            let start = cli_run::cgroup_memory::read_cgroup_memory(&dir).map_err(|refusal| {
+                format!(
+                    "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
+                    refusal.render()
+                )
+            })?;
+            let start_swap = cli_run::cgroup_memory::read_cgroup_swap(&dir).map_err(|refusal| {
+                format!(
+                    "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
+                    refusal.render()
+                )
+            })?;
             Ok(MemoryEnvelope::Bounded {
                 grain,
                 dir,
@@ -2939,17 +3227,17 @@ fn memory_envelope_receipt(envelope: &MemoryEnvelope) -> Option<Result<String, S
     else {
         return None;
     };
-    let unreadable = |refusal: cli_run::floor_memory_supervisor::QualificationRefusal| {
+    let unreadable = |refusal: cli_run::cgroup_memory::QualificationRefusal| {
         format!(
             "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
             refusal.render()
         )
     };
-    let end = match cli_run::floor_memory_supervisor::read_cgroup_memory(dir) {
+    let end = match cli_run::cgroup_memory::read_cgroup_memory(dir) {
         Ok(read) => read,
         Err(refusal) => return Some(Err(unreadable(refusal))),
     };
-    let end_swap = match cli_run::floor_memory_supervisor::read_cgroup_swap(dir) {
+    let end_swap = match cli_run::cgroup_memory::read_cgroup_swap(dir) {
         Ok(read) => read,
         Err(refusal) => return Some(Err(unreadable(refusal))),
     };
@@ -3222,7 +3510,23 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
             };
         }
     };
-    if target_pattern_within(&pattern, &native_route_default_pattern()) {
+    let native_universe = match native_route_default_pattern() {
+        Ok(universe) => universe,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: format!(
+                    "gunbc test: the native route's boundary, {:?}, is not an admitted target pattern; \
+                     src/v1/stage0/src/native_route_seed_boundary_generated.rs is rendered from \
+                     gunbc.witness.v2_native_route native_route_default_pattern by \
+                     gunbc.native_route_seed_boundary_emit, so regenerate it rather than route without a boundary\n  cause: {}",
+                    crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN,
+                    target_pattern_refusal_text(&cause)
+                ),
+            };
+        }
+    };
+    if target_pattern_within(&pattern, &native_universe) {
         return run_native_test_route(&pattern);
     }
     if target_pattern_within(&pattern, &claim_route_universe()) {
@@ -3253,59 +3557,6 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
     }
 }
 
-/// THE SUBJECT IS OWNED HERE, IN RUST, AND THAT IS A MEASURED DECISION RATHER THAN A SHORTCUT.
-///
-/// Every sibling instrument keeps its subject in `gunbc.instrument_targets` and mirrors it here,
-/// and this one was built that way first: two rows, `floor_memory_qualification_source_roots` and
-/// `floor_memory_qualification_lane`, read through the interpreter before spawning the child so
-/// the model would be the single authority for what gets measured.
-///
-/// IT CORRUPTS THE MEASUREMENT, AND THE COST WAS MEASURED RATHER THAN FEARED. Reading those rows
-/// means resolving a corpus graph, and this supervisor shares its cgroup with the child BY
-/// DESIGN — that sharing is what lets `memory.peak` survive the child's death. So the resolve
-/// lands in the very counter the instrument reports. Three runs of the same failing floor, same
-/// tree, same binary, differing only in whether the subject was read from the model:
-///
-///   Rust-owned subject   peak 15746146304  (14.66 GiB)
-///   Rust-owned subject   peak 15704227840  (14.63 GiB)   <- 0.2% apart, reproducible
-///   read from the model  peak 22293544960  (20.76 GiB)   <- +6.1 GiB, 42% inflation
-///
-/// An instrument may not consult the authority from inside the cgroup it is measuring; the act of
-/// reading perturbs the reading. Netting the supervisor's footprint back out is not available
-/// either — that would replace a measured number with an adjusted one, which is the whole habit
-/// `gunbc.floor_memory_demand` exists to refuse.
-///
-/// SO THE TWO `.dag` ROWS ARE DELETED RATHER THAN LEFT UNCONSUMED. A modeled subject nothing reads
-/// is the DESIGN section 3c dangling declaration, and keeping it while Rust silently owned the
-/// real fact would be worse than owning it openly: two authorities, one of them decorative. The
-/// honest state is one authority, here, saying plainly that it is here and why.
-///
-/// WHAT WOULD RESTORE THE MODELED SUBJECT: any route that reads the rows OUTSIDE the measured
-/// cgroup — a supervisor that resolves the subject before entering the scope, or a scope created
-/// after the read rather than around it. Both need the cgroup lifecycle to be modeled, which is
-/// the same capability `gunbc.target_invocation_seed_growth` names as this subset's trigger.
-fn floor_memory_qualification_source_roots() -> Vec<String> {
-    vec!["dag".to_string(), "src/v2".to_string()]
-}
-
-fn floor_memory_qualification_lane() -> String {
-    "witnesses".to_string()
-}
-
-/// THE SUPERVISED MEMORY QUALIFICATION OF A REQUIRED-FLOOR RUN.
-///
-/// The three terminations are load-bearing and map onto `gunbc.floor_memory_demand`'s three arms:
-/// `DemandObserved` is ObservationHeld (0), `DemandBounded` is ObservationDidNotHold (1) — the
-/// peak is a LOWER BOUND, so the run produced a reading that may not size anything downward — and
-/// every refusal is Refused (2), no observation at all. An instrument that rendered "could not
-/// read" the same as "it fits" would reproduce one layer out the conflation it exists to remove.
-///
-/// THE PRECONDITION IS CHECKED BEFORE THE WORKLOAD, NOT AFTER. Resolving the measurement cgroup
-/// first means a 35-minute run is never spent producing a figure that cannot be qualified — and,
-/// more importantly, an invocation with no enforceable limit REFUSES instead of reporting a
-/// number. An unbounded run and a bounded one are indistinguishable in everything the workload
-/// itself emits, which is the class
-/// `gunbc.recurring_failure_mode.suppressed_precondition_failure_runs_the_workload_unconstrained`.
 /// THE MEASURED RUN BY PHASE: the child's seam beats, transcribed by the supervisor and folded by
 /// `gunbc.floor.floor_demand` `floor_phase_attribution`, one line per phase in the order the run entered
 /// them. `entry` is the held set the phase inherited, `peak` the largest over its own beats, and
@@ -3730,304 +3981,6 @@ fn typed_graph_exclusive_bytes_over(
     }
 }
 
-fn run_floor_memory_qualification() -> InvocationOutcome {
-    use cli_run::floor_memory_supervisor as sup;
-
-    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
-        return InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!(
-                "floor-memory-qualification: refused: could not anchor at the workspace root: {e}"
-            ),
-        };
-    }
-
-    let measured_roots = floor_memory_qualification_source_roots();
-    let measured_lane = floor_memory_qualification_lane();
-
-    let cgroup = match sup::resolve_measurement_cgroup() {
-        Ok(dir) => dir,
-        Err(refusal) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
-            };
-        }
-    };
-
-    // BOTH GUARDS RUN BEFORE THE WORKLOAD, not after: a 35-minute run that turns out to be
-    // unattributable is a wasted run, and worse, a tempting one to publish anyway.
-    match sup::children_of_cgroup(&cgroup) {
-        Ok(children) if !children.is_empty() => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!(
-                    "floor-memory-qualification: refused: {}",
-                    sup::QualificationRefusal::MeasurementCgroupHasChildren {
-                        dir: cgroup.to_string_lossy().to_string(),
-                        children,
-                    }
-                    .render()
-                ),
-            };
-        }
-        Ok(_) => {}
-        Err(refusal) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
-            };
-        }
-    }
-
-    match sup::strangers_in_cgroup(&cgroup) {
-        Ok(strangers) if !strangers.is_empty() => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!(
-                    "floor-memory-qualification: refused: {}",
-                    sup::QualificationRefusal::MeasurementCgroupShared {
-                        dir: cgroup.to_string_lossy().to_string(),
-                        strangers,
-                    }
-                    .render()
-                ),
-            };
-        }
-        Ok(_) => {}
-        Err(refusal) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
-            };
-        }
-    }
-
-    let baseline_peak = match sup::reset_or_baseline_peak(&cgroup) {
-        Ok(b) => b,
-        Err(refusal) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
-            };
-        }
-    };
-
-    let exe = match std::env::current_exe() {
-        Ok(p) => p.with_file_name("claim_executor"),
-        Err(e) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!(
-                    "floor-memory-qualification: refused: could not locate the measured binary \
-                     beside this one: {e}"
-                ),
-            };
-        }
-    };
-
-    let mut args = vec![
-        "--required-ci".to_string(),
-        "--required-lane".to_string(),
-        measured_lane.clone(),
-    ];
-    for root in measured_roots.iter().cloned() {
-        args.push("--source-root".to_string());
-        args.push(root);
-    }
-
-    let (termination, beat_lines) =
-        match sup::run_child_in_own_cgroup(&exe.to_string_lossy(), &args) {
-            Ok(t) => t,
-            Err(refusal) => {
-                return InvocationOutcome {
-                    termination: Termination::Refused,
-                    message: format!("floor-memory-qualification: refused: {}", refusal.render()),
-                };
-            }
-        };
-
-    let read = match sup::read_cgroup_memory(&cgroup) {
-        Ok(r) => r,
-        Err(refusal) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!("floor-memory-qualification: refused: {}", refusal.render()),
-            };
-        }
-    };
-
-    // THE PEAK MUST HAVE RISEN, or it is not this run's. Where the kernel refused to reset the
-    // counter, a post-run peak equal to the pre-run one says only that nothing here exceeded
-    // history — it says nothing about what this run demanded, and publishing it would attribute
-    // another workload's high-water mark to the floor.
-    if read.peak <= baseline_peak {
-        return InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!(
-                "floor-memory-qualification: refused: {}",
-                sup::QualificationRefusal::PeakDominatedByPriorHistory {
-                    dir: read.dir.clone(),
-                    before: baseline_peak,
-                    after: read.peak,
-                }
-                .render()
-            ),
-        };
-    }
-
-    // THE JUDGMENT IS THE `.dag` MODULE'S, NOT THIS FUNCTION'S. Reproducing the arms here in
-    // Rust would give one decision two authorities (DESIGN section 3); the host reads the
-    // counters and the substrate decides what they mean — including how to parse a `max` body,
-    // which `extdeps.linux.cgroup_v2_memory` already owns.
-    const ENTRY: &str = "dag/gunbc/floor_memory_demand.dag";
-    const FUNCTION: &str = "qualify_floor_memory_from_readings";
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&measured_roots, ENTRY) {
-        Ok(resolved) => resolved,
-        Err(cause) => {
-            return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
-                message: format!("floor-memory-qualification: resolve failed for {ENTRY}: {cause}"),
-            };
-        }
-    };
-    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
-        graph.diagnostics.clone(),
-    );
-    if !blocking.is_empty() {
-        return InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!(
-                "floor-memory-qualification: {ENTRY} has blocking diagnostics: {}",
-                blocking.iter().cloned().collect::<Vec<_>>().join("; ")
-            ),
-        };
-    }
-    let ctx = cli_run::make_eval_context(
-        graph.as_ref(),
-        source_indices,
-        crate::v1_interpreter::ExecutionMode::Wet,
-    );
-    let (signalled, code) = match &termination {
-        sup::SupervisedTermination::Exited { code } => (false, *code as i64),
-        sup::SupervisedTermination::Signalled { signal } => (true, *signal as i64),
-    };
-    let args: Vec<(Option<String>, crate::v1_interpreter::Value)> = vec![
-        (
-            Some("peak_bytes".to_string()),
-            crate::v1_interpreter::Value::Int(read.peak as i64),
-        ),
-        (
-            Some("limit_max_body".to_string()),
-            crate::v1_interpreter::Value::Str(read.limit_max.as_str().into()),
-        ),
-        (
-            Some("limit_high_body".to_string()),
-            crate::v1_interpreter::Value::Str(read.limit_high.as_str().into()),
-        ),
-        (
-            Some("high_events".to_string()),
-            crate::v1_interpreter::Value::Int(read.high_events as i64),
-        ),
-        (
-            Some("max_events".to_string()),
-            crate::v1_interpreter::Value::Int(read.max_events as i64),
-        ),
-        (
-            Some("oom_kills".to_string()),
-            crate::v1_interpreter::Value::Int(read.oom_kills as i64),
-        ),
-        (
-            Some("terminated_by_signal".to_string()),
-            crate::v1_interpreter::Value::Bool(signalled),
-        ),
-        (
-            Some("exit_code".to_string()),
-            crate::v1_interpreter::Value::Int(code),
-        ),
-    ];
-    let verdict = match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &args, true)
-    {
-        Ok(v) => v,
-        Err(cause) => {
-            return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
-                message: format!(
-                    "floor-memory-qualification: the judgment could not be reached: {cause}"
-                ),
-            };
-        }
-    };
-
-    let phases = floor_phase_attribution_rendered(&ctx, &beat_lines);
-
-    // The supervisor shares the cgroup with the child, so its own few MiB are inside this peak.
-    // Stated rather than netted out: subtracting an estimate would replace a measured number with
-    // an adjusted one.
-    let detail = format!(
-        "floor-memory-qualification: cgroup={} peak={} memory.max={} memory.high={} \
-         events=[high {} / max {} / oom_kill {}] termination={} lane={} \
-         (the supervisor shares this cgroup with the measured child, so its own footprint — a few \
-         MiB — is included in the peak rather than subtracted)\n{phases}",
-        read.dir,
-        read.peak,
-        read.limit_max,
-        read.limit_high,
-        read.high_events,
-        read.max_events,
-        read.oom_kills,
-        match &termination {
-            sup::SupervisedTermination::Exited { code } => format!("exited {code}"),
-            sup::SupervisedTermination::Signalled { signal } => format!("signalled {signal}"),
-        },
-        measured_lane,
-    );
-
-    // WILDCARD-FREE ON PURPOSE: a fourth arm added to `FloorMemoryQualification` must land here
-    // rather than inherit whichever termination a `_` happened to name.
-    match &verdict {
-        crate::v1_interpreter::Value::Variant { variant_name, .. }
-            if ctx.sym_eq(*variant_name, "DemandObserved") =>
-        {
-            InvocationOutcome {
-                termination: Termination::ObservationHeld,
-                message: format!(
-                    "{detail}\nDemandObserved — nothing held this run, so the peak is a DEMAND."
-                ),
-            }
-        }
-        crate::v1_interpreter::Value::Variant { variant_name, .. }
-            if ctx.sym_eq(*variant_name, "DemandBounded") =>
-        {
-            InvocationOutcome {
-                termination: Termination::ObservationDidNotHold,
-                message: format!(
-                    "{detail}\nDemandBounded — the peak is a LOWER BOUND, not a demand: the run \
-                     was killed, throttled, or pinned to a limit. It may not be used to size \
-                     anything downward."
-                ),
-            }
-        }
-        crate::v1_interpreter::Value::Variant { variant_name, .. }
-            if ctx.sym_eq(*variant_name, "DemandUnreadable") =>
-        {
-            InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!(
-                    "{detail}\nDemandUnreadable — the reading could not be qualified."
-                ),
-            }
-        }
-        other => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
-            message: format!(
-                "floor-memory-qualification: {FUNCTION} returned a value this seam does not \
-                 recognise as a FloorMemoryQualification: {other:?}"
-            ),
-        },
-    }
-}
-
 #[cfg(test)]
 mod native_route_termination_tests {
     use super::*;
@@ -4391,6 +4344,273 @@ fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
     }
 }
 
+/// `gunbc.instrument_targets` `shared_type_leaf_collision_census_label`.
+///
+/// TRANSPORT: load each measured closure, `compile_to_resolved`, emit, and ask cargo
+/// once per subject. Sharing rows and fixture standing are
+/// `v1.tests.claim.shared_type_leaf_collision_census`. Independent sharing is
+/// `v1.compiler.emit_rust` `maybe_mark_shared_type` per declaration. Standing is the
+/// three fixture cargo controls; the live rows are a report (sharing at declaration
+/// grain, rustc at subject grain). Completed cargo is a subject-grain finding;
+/// NotAttempted / DidNotComplete / DependencyFetchFailed are SubjectUnreached.
+fn shared_type_census_subject_build_from_cargo_verdict(
+    verdict: &crate::cli_run::emitted_closure_compile_host::CargoVerdict,
+) -> Result<
+    std::rc::Rc<crate::v1_tests_claim_shared_type_leaf_collision_census::SubjectBuild>,
+    String,
+> {
+    use crate::cli_run::emitted_closure_compile_host::{cargo_verdict_summary, CargoVerdict};
+    use crate::v1_tests_claim_shared_type_leaf_collision_census as census;
+    match verdict {
+        CargoVerdict::Completed { status, .. } if *status == 0 => Ok(census::build_accepted()),
+        CargoVerdict::Completed { .. } => Ok(census::build_refused(cargo_verdict_summary(verdict))),
+        CargoVerdict::NotAttempted { .. }
+        | CargoVerdict::DidNotComplete { .. }
+        | CargoVerdict::DependencyFetchFailed { .. } => Err(cargo_verdict_summary(verdict)),
+    }
+}
+
+fn shared_type_census_termination(
+    standing_held: bool,
+    mapping_controls_hold: bool,
+    live_unobserved: bool,
+) -> Termination {
+    if !standing_held || !mapping_controls_hold {
+        Termination::ObservationDidNotHold
+    } else if live_unobserved {
+        Termination::SubjectUnreached
+    } else {
+        Termination::ObservationHeld
+    }
+}
+
+fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationOutcome {
+    use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    use crate::v1_compiler_emit_rust::emit_rust;
+    use crate::v1_tests_claim_shared_type_leaf_collision_census as census;
+    use std::rc::Rc;
+
+    const PREFIX: &str = "shared-type-leaf-collision-census";
+    const FIXTURE_DIR: &str = "fixtures/shared_type_leaf_collision";
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("{PREFIX}: subject unreached: {detail}"),
+    };
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return unreached(format!("could not anchor at the workspace root: {e}"));
+    }
+
+    fn load_dir(dir: &str) -> Result<Vec<Rc<SourceFile>>, String> {
+        let mut out = Vec::new();
+        let entries = std::fs::read_dir(dir).map_err(|e| format!("{dir}: {e}"))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("{dir}: {e}"))?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+                continue;
+            }
+            let content =
+                std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            out.push(Rc::new(SourceFile {
+                path: path.to_string_lossy().to_string(),
+                content,
+            }));
+        }
+        if out.is_empty() {
+            return Err(format!("{dir}: no .dag files"));
+        }
+        out.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(out)
+    }
+
+    fn subject_build_of_cargo(
+        entry: &str,
+        graph: Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
+    ) -> Result<Rc<census::SubjectBuild>, String> {
+        let emit = emit_rust(graph);
+        match super::emitted_closure_compile_host::cargo_verdict_of_emit(entry, &emit) {
+            Err(cause) => Err(cause),
+            Ok(verdict) => shared_type_census_subject_build_from_cargo_verdict(&verdict),
+        }
+    }
+
+    fn print_report(kind: &str, subject: &str, report: Rc<census::SubjectCollisionReport>) {
+        println!(
+            "{PREFIX}: {}",
+            census::subject_summary_line(kind.to_string(), subject.to_string(), report.clone())
+        );
+        for row in report.rows.iter() {
+            println!(
+                "{PREFIX}: {}",
+                census::collision_report_line(subject.to_string(), row.clone())
+            );
+        }
+    }
+
+    fn classify_sources(
+        label: &str,
+        sources: Vec<Rc<SourceFile>>,
+    ) -> Result<Rc<census::SubjectCollisionReport>, String> {
+        let compiled = compile_to_resolved(Rc::new(sources.into()));
+        let graph = compiled
+            .graph
+            .clone()
+            .ok_or_else(|| format!("{label}: compile_to_resolved produced no graph"))?;
+        let rows = census::collisions_of_graph(graph.clone());
+        let build = subject_build_of_cargo(label, graph)?;
+        Ok(census::subject_report(rows, build))
+    }
+
+    let fixture_sources = match load_dir(FIXTURE_DIR) {
+        Ok(all) => all,
+        Err(e) => return unreached(e),
+    };
+    let select = |names: &[&str]| {
+        fixture_sources
+            .iter()
+            .filter(|s| {
+                let name = std::path::Path::new(&s.path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                names.iter().any(|want| name == *want)
+            })
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    let refuse_sources = select(&["copy_word.dag", "shared_word.dag", "red_entry.dag"]);
+    let silent_sources = select(&["silent_zcopy.dag", "silent_share.dag", "silent_entry.dag"]);
+    let green_sources = select(&["green_a.dag", "green_b.dag", "green_entry.dag"]);
+    if refuse_sources.len() != 3 {
+        return unreached("refuse fixture files missing".to_string());
+    }
+    if silent_sources.len() != 3 {
+        return unreached("silent fixture files missing".to_string());
+    }
+    if green_sources.len() != 3 {
+        return unreached("green fixture files missing".to_string());
+    }
+
+    let refuse_report = match classify_sources("stlc.red_entry", refuse_sources) {
+        Ok(report) => report,
+        Err(e) => return unreached(e),
+    };
+    let silent_report = match classify_sources("stlc.silent_entry", silent_sources) {
+        Ok(report) => report,
+        Err(e) => return unreached(e),
+    };
+    let green_report = match classify_sources("stlc.green_entry", green_sources) {
+        Ok(report) => report,
+        Err(e) => return unreached(e),
+    };
+    print_report("fixture", "stlc.red_entry", refuse_report.clone());
+    print_report("fixture", "stlc.silent_entry", silent_report.clone());
+    print_report("fixture", "stlc.green_entry", green_report.clone());
+
+    let standing = census::fixture_standing(
+        refuse_report.clone(),
+        silent_report.clone(),
+        green_report.clone(),
+    );
+    for line in standing.lines() {
+        println!("{PREFIX}: {line}");
+    }
+    let held = census::fixture_controls_hold(
+        refuse_report.clone(),
+        silent_report.clone(),
+        green_report.clone(),
+    );
+
+    use super::emitted_closure_compile_host::CargoVerdict;
+    let unobserved_mapped = [
+        CargoVerdict::NotAttempted {
+            reason: "bounded-control-unobserved".to_string(),
+        },
+        CargoVerdict::DidNotComplete {
+            detail: "bounded-control-unobserved".to_string(),
+        },
+        CargoVerdict::DependencyFetchFailed {
+            status: None,
+            stderr_tail: "bounded-control-unobserved".to_string(),
+        },
+    ]
+    .iter()
+    .all(|v| shared_type_census_subject_build_from_cargo_verdict(v).is_err());
+    let unobserved_live_control = unobserved_mapped && !census::observation_held(held, true);
+    let completed_nonzero_control = census::build_is_refused_finding(refuse_report.build.clone())
+        && census::build_is_reportable_finding(refuse_report.build.clone())
+        && census::observation_held(held, false);
+    println!(
+        "{PREFIX}: {}",
+        census::control_line(
+            "unobserved_live_with_standing_unreaches".to_string(),
+            unobserved_live_control,
+        )
+    );
+    println!(
+        "{PREFIX}: {}",
+        census::control_line(
+            "completed_nonzero_refusal_does_not_unreach".to_string(),
+            completed_nonzero_control,
+        )
+    );
+    let mapping_controls_hold = unobserved_live_control && completed_nonzero_control;
+
+    let mut subjects: Vec<(String, String)> = Vec::new();
+    for (label, producer) in instrument_registry() {
+        match producer {
+            TargetProducer::SelfHost => subjects.push((
+                label.target.clone(),
+                cli_run::native_compile_entry().to_string(),
+            )),
+            TargetProducer::V2NativeCli => subjects.push((
+                label.target.clone(),
+                cli_run::v2_native_cli_entry().to_string(),
+            )),
+            TargetProducer::NativeClaimProgram { entry } => {
+                subjects.push((label.target.clone(), entry.to_string()));
+            }
+            _ => {}
+        }
+    }
+
+    let mut reports_ok = true;
+    for (name, entry) in subjects {
+        match cli_run::load_sources_for_entry_with_pool_index(source_roots, &entry, false) {
+            Ok(sources) => match classify_sources(&name, sources) {
+                Ok(report) => print_report("closure", &name, report),
+                Err(e) => {
+                    reports_ok = false;
+                    println!("{PREFIX}: subject kind=closure name={name} unreached {e}");
+                }
+            },
+            Err(e) => {
+                reports_ok = false;
+                println!("{PREFIX}: subject kind=closure name={name} unreached {e}");
+            }
+        }
+    }
+
+    let live_unobserved = !reports_ok;
+    InvocationOutcome {
+        termination: shared_type_census_termination(
+            held,
+            mapping_controls_hold,
+            live_unobserved,
+        ),
+        message: format!(
+            "{PREFIX}: {} (controls over {FIXTURE_DIR}; report over required subjects and NativeClaimProgramProducer entries)",
+            if census::observation_held(held && mapping_controls_hold, live_unobserved) {
+                "STANDING held"
+            } else if live_unobserved && held && mapping_controls_hold {
+                "subject unreached"
+            } else {
+                "STANDING unmet"
+            }
+        ),
+    }
+}
+
 /// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
 /// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
 /// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
@@ -4530,5 +4750,81 @@ fn run_regen_round_cost_instrument() -> InvocationOutcome {
                 round.round_failures.join("; ")
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod shared_type_census_cargo_mapping_tests {
+    use super::*;
+    use crate::cli_run::emitted_closure_compile_host::CargoVerdict;
+    use crate::v1_tests_claim_shared_type_leaf_collision_census as census;
+
+    fn completed(status: i32) -> CargoVerdict {
+        CargoVerdict::Completed {
+            status,
+            stderr_tail: "error[E0204]: bounded-control".to_string(),
+            probe_line: None,
+            probe_diagnostic: None,
+            warning_count: 0,
+            warning_headers: Vec::new(),
+            cargo_network_retries: 0,
+            first_error: None,
+        }
+    }
+
+    #[test]
+    fn unobserved_cargo_outcomes_are_unreached_not_refused_findings() {
+        let not_attempted = CargoVerdict::NotAttempted {
+            reason: "live-subject-not-attempted".to_string(),
+        };
+        let did_not = CargoVerdict::DidNotComplete {
+            detail: "live-subject-did-not-complete".to_string(),
+        };
+        let fetch = CargoVerdict::DependencyFetchFailed {
+            status: Some(1),
+            stderr_tail: "live-subject-fetch-failed".to_string(),
+        };
+        let na = shared_type_census_subject_build_from_cargo_verdict(&not_attempted);
+        let dc = shared_type_census_subject_build_from_cargo_verdict(&did_not);
+        let ff = shared_type_census_subject_build_from_cargo_verdict(&fetch);
+        assert!(na.as_ref().unwrap_err().contains("NotAttempted"));
+        assert!(na
+            .as_ref()
+            .unwrap_err()
+            .contains("live-subject-not-attempted"));
+        assert!(dc.as_ref().unwrap_err().contains("DidNotComplete"));
+        assert!(dc
+            .as_ref()
+            .unwrap_err()
+            .contains("live-subject-did-not-complete"));
+        assert!(ff.as_ref().unwrap_err().contains("DependencyFetchFailed"));
+        assert!(ff
+            .as_ref()
+            .unwrap_err()
+            .contains("live-subject-fetch-failed"));
+        assert_eq!(
+            shared_type_census_termination(true, true, true),
+            Termination::SubjectUnreached
+        );
+        assert!(!census::observation_held(true, true));
+    }
+
+    #[test]
+    fn completed_nonzero_is_a_reportable_refusal_and_does_not_unreach() {
+        let build = shared_type_census_subject_build_from_cargo_verdict(&completed(101)).unwrap();
+        assert!(census::build_is_refused_finding(build.clone()));
+        assert!(census::build_is_reportable_finding(build));
+        assert!(census::observation_held(true, false));
+        assert_eq!(
+            shared_type_census_termination(true, true, false),
+            Termination::ObservationHeld
+        );
+    }
+
+    #[test]
+    fn completed_zero_is_accepted() {
+        let build = shared_type_census_subject_build_from_cargo_verdict(&completed(0)).unwrap();
+        assert!(!census::build_is_refused_finding(build.clone()));
+        assert!(census::build_is_reportable_finding(build));
     }
 }

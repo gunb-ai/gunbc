@@ -1,7 +1,7 @@
 module test.claim.workspace_commissioning_seal_witness
 
 import std.types { Bool, String, Int }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_census_probe { blocking_subject_count_for }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

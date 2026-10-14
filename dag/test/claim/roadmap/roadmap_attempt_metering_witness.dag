@@ -30,7 +30,7 @@ import gunbc.roadmap.roadmap_attempt_metering {
 // turn.completed. The reviewer's: one round (in 5, out 7), then turn.completed. The ledger acquires
 // the worker's seat at 1000 and releases it at 1042, and the reviewer's at 2000 -> 2010, interleaved
 // with an unrelated seat that must not be attributed.
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 fn reviewer_role() -> MeteredRole {
   MeteredReviewer { criterion_key: "r1-c1" as NonEmptyStr, head: "h1" as NonEmptyStr }

@@ -19,7 +19,7 @@ import extdeps.bmc.aspeed_ast2500 {
   ast2500_pollable_sensor_reading_path_count,
 }
 import extdeps.vendor.aspeed { aspeed }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

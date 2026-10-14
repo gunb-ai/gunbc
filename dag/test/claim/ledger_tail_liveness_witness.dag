@@ -1,6 +1,6 @@
 module test.claim.ledger_tail_liveness_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool }
 import std.nat { Nat }
 import std.observation {

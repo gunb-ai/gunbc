@@ -1,6 +1,6 @@
 module test.claim.observation_crawl_replay
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, NonEmptyStr, Bool, List }
 import std.measure { millisecond, millisecond_to_nanosecond, byte_size, basis_point }
 import std.symbols { Emoji }

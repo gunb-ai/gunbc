@@ -1,6 +1,8 @@
 module v2.test.std_text.carrier_claims
+import std.optional { Absent, Optional, Present }
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, HeadAbsent, HeadFound, length, list_head, skip }
+
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, length, list_head, skip }
 import v2.std.text {
   Char,
   CharAbsent,
@@ -20,7 +22,7 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -86,8 +88,8 @@ fn text_pair(first: Char, second: Char) -> String {
 
 fn text_field_at(fields: FreeMonoid<String>, index: Int) -> String {
   match list_head(xs: skip(xs: fields, n: index)) {
-    HeadFound { value: field } => field
-    HeadAbsent => Empty
+    Present { value: field } => field
+    Absent => Empty
   }
 }
 

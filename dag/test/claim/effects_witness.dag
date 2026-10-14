@@ -10,7 +10,7 @@ import extdeps.uri_path {
 import std.effects {
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
   CreateCause, PostAlways, CreateIfAbsent, KeylessFallback,
-  KeySource, PathParam, InputField,
+  KeySource, PathParam, InputField, CompositeKey,
   DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, MalformedPathInput, MethodHasNoOperationEffect,
   derive_op_effect, check_modifier_vs_derivation,
   compose_effects, OperationEffect, CompositionVerdict,
@@ -19,7 +19,7 @@ import std.effects {
   ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
   is_idempotent_effect, create_effect_is_dedupable, create_double_init_collapsible,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, DELETE }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -463,4 +463,21 @@ test fn effects_create_if_absent_modifier_witnesses() -> Bool {
       }
     MalformedPathTemplate => false
   }
+}
+
+// D1 derived-equality backfill (key_source_eq deleted): the hand fold delegated CompositeKey to
+// string_list_eq (element-wise structural); the other two arms compared fields directly. The
+// primitive structural == is exactly that. Discriminating RED: distinct variants / distinct field
+// values must compare unequal (a broken == would make this claim fail). Positive control: equal
+// values (each variant, including the recursive CompositeKey) compare equal.
+test fn key_source_derived_eq_red_and_positive_holds() -> Bool {
+  !(PathParam { param: "id" } == InputField { field: "id" })
+    && !(PathParam { param: "a" } == PathParam { param: "b" })
+    && !(InputField { field: "a" } == InputField { field: "b" })
+    && !(CompositeKey { fields: ["a", "b"] } == CompositeKey { fields: ["a", "c"] })
+    && !(CompositeKey { fields: ["a"] } == CompositeKey { fields: ["b"] })
+    && !(CompositeKey { fields: ["a", "b"] } == CompositeKey { fields: ["b", "a"] })
+    && (PathParam { param: "id" } == PathParam { param: "id" })
+    && (InputField { field: "id" } == InputField { field: "id" })
+    && (CompositeKey { fields: ["a", "b"] } == CompositeKey { fields: ["a", "b"] })
 }

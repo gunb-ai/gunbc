@@ -1,6 +1,6 @@
 module v2.test.lens_wiring_liveness.wiring_liveness
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node_reflection { resolve_type_node }
@@ -8,7 +8,7 @@ import v2.std.node { Symbol, Authored }
 
 // READS THE LIVE TREE AS OF THE REFLECTION CUTOVER. The reflection read now names pool roots and
 // consults the live declaration index through v2.std.decl_index, so SubstrateInputsOnly became
-// false for this entry. Correcting it is not a formality: v2.std.live_tree records that a row
+// false for this entry. Correcting it is not a formality: std.live_tree records that a row
 // declaring SubstrateInputsOnly while actually reading live state is re-checked by NOTHING, so a
 // stale row here would be a lie no consumer would catch.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

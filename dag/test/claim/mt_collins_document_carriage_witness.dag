@@ -25,7 +25,7 @@ import gunbc.upstream_document_carriage {
   carriage_permits_facts,
   upstream_fact_carriage,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -4,7 +4,7 @@ import std.types { Bool, List, String, NonEmptyStr }
 import std.measure { hardware_thread_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.scoped_authorization { AttemptIdentity }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import product.fabric.identity { WorkKey }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
@@ -15,6 +15,7 @@ import product.fabric.work { MaterializedProgram,
   DeclaredOutputObligations,
   resolve_output_obligations, ObligationsJudgedAtJobStart,
   OutputObligationsResolution,
+ WarmResidencyRequired,
 }
 import gunbc.fabric.fabric_m0_origin_readback {
   OriginReading,
@@ -83,6 +84,7 @@ fn fixture_requirements() -> ExecutionRequirements {
     capabilities: "linux-arm64",
     trust_domain: "fleet-owned",
     isolation: shared_kernel_sandbox_profile(),
+    revocation: WarmResidencyRequired,
   }
 }
 

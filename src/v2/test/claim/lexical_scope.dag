@@ -1,9 +1,11 @@
 module v2.test.claim.lexical_scope
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { Bool, List }
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.lexical_scope { ModuleRootBinding, declaration_names_value, module_root_bindings }
-import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_front_end }
+import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_env_over, acquisition_front_end }
 import v2.compiler.parse { PreparedGrammar, prepare_grammar }
 import v2.compiler.reference_site_collector {
   HeadBindingUndecided,
@@ -19,10 +21,10 @@ import v2.compiler.reference_site_collector {
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.compiler.tokenize { prepare_lex_rules }
 import v2.extdeps.languages.dag { dag_language_model }
-import std.algebra { HeadAbsent, HeadFound, list_head, list_map }
+import std.algebra { list_head, list_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { symbol_lexeme }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
@@ -52,12 +54,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `Box.tree` below is `unbound` and not `root`). The frames themselves are one producer both read.
 
 fn scope_env(prepared: PreparedGrammar) -> AcquisitionEnv {
-  AcquisitionEnv {
+  acquisition_env_over(
     layout: repository_storage_layout(),
     bindings: [],
     lex: prepare_lex_rules(rules: dag_language_model().lex),
     grammar: prepared
-  }
+  )
 }
 
 fn head_text(head: SiteHeadBinding) -> String {
@@ -79,8 +81,8 @@ fn head_of_site(content: String, spelling: String) -> String {
         Rejected { diagnostics: _ } => "front-end-refused"
         Accepted { value: front, diagnostics: _ } =>
           match list_head(xs: collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })).sites |> filter(fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) == spelling })) {
-            HeadAbsent => "no-site"
-            HeadFound { value: found } => head_text(head: found.head)
+            Absent => "no-site"
+            Present { value: found } => head_text(head: found.head)
           }
       }
   }
@@ -262,8 +264,8 @@ fn root_binding_of(content: String, name: String) -> String {
         Rejected { diagnostics: _ } => "front-end-refused"
         Accepted { value: front, diagnostics: _ } =>
           match list_head(xs: module_root_bindings(root: front.tree.root) |> filter(fn(b) { symbol_lexeme(sym: b.name) == name })) {
-            HeadAbsent => "no-binding"
-            HeadFound { value: found } => binding_kind(b: found)
+            Absent => "no-binding"
+            Present { value: found } => binding_kind(b: found)
           }
       }
   }

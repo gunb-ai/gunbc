@@ -1,4 +1,6 @@
 module v2.std.decl_ref_resolution
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { List }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
@@ -92,8 +94,8 @@ fn resolve_declaration_ref_over(
       }
     } else {
       match list_head(xs: matches) {
-        HeadAbsent => DeclarationRefDeclarationAbsent { reference: ref }
-        HeadFound { value: sole } =>
+        Absent => DeclarationRefDeclarationAbsent { reference: ref }
+        Present { value: sole } =>
           if decl_ref_named_field_present(ref: ref, fact: sole) {
             DeclarationRefResolved {
               declaration_identity: declaration_identity_from_fact(fact: sole)

@@ -13,7 +13,7 @@ import extdeps.llm.claude_agent_sdk_stream {
   parser_drop_fixture_sdk_parsed_types,
   parser_drop_red_control_parsed_types,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

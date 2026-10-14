@@ -18,6 +18,7 @@ import product.fabric.envelope { MemoryRequirement, StorageRequirement, Resource
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work {
   ExecutionRequirements, Shape, HardRequirements, ControlPlaneCapacity, TrustDomainRef,
+ WarmResidencyRequired,
 }
 
 data floor_demand_disposition: ConstructionMechanism = SingleAuthority
@@ -1609,11 +1610,11 @@ data gunbc_floor_job_wall_receipt_2026_09_19: FloorJobWallReceipt = FloorJobWall
 // next row's field and not a second quantity.
 // THE PRIMITIVE BOUNDARY IS DECLARED DEBT, NOT A MODELING CHOICE: every counter below is a byte
 // count or an event rate carried on bare Int only because the host cannot construct a std.measure
-// value as an argument, the same boundary gunbc.floor_memory_demand
-// qualify_floor_memory_from_readings states. The lift happens once, in floor_beat_of_reading,
+// value as an argument, the same boundary
+// the deleted floor-memory qualification stated. The lift happens once, in floor_beat_of_reading,
 // after floor_reading_has_negative_counter has refused any count below zero -- nat_magnitude alone
 // would turn a sign bug into a plausible positive byte count.
-data floor_beat_reading_primitive_boundary: DissolutionCondition = unbound_dissolution(description: "dissolve-on: feature:interpreter-constructed-measure-arguments -- FloorBeatReading carries its byte counters and stall rate as Int because run_in_context_with_args admits only primitives. DISSOLVES WHEN the interpreter's argument surface admits a constructed std.measure value (ByteSize, EventsPerMinute) from the host, at which point these fields become ByteSize / EventsPerMinute, the negative-count refusal moves to the host reader that knows the unit, and nat_magnitude leaves floor_beat_of_reading; the same trigger dissolves qualify_floor_memory_from_readings' primitive signature.")
+data floor_beat_reading_primitive_boundary: DissolutionCondition = unbound_dissolution(description: "dissolve-on: feature:interpreter-constructed-measure-arguments -- FloorBeatReading carries its byte counters and stall rate as Int because run_in_context_with_args admits only primitives. DISSOLVES WHEN the interpreter's argument surface admits a constructed std.measure value (ByteSize, EventsPerMinute) from the host, at which point these fields become ByteSize / EventsPerMinute, the negative-count refusal moves to the host reader that knows the unit, and nat_magnitude leaves floor_beat_of_reading.")
 
 type FloorBeatReading {
   beat: Int
@@ -1881,6 +1882,7 @@ fn floor_execution_requirements() -> ExecutionRequirements {
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: gunbc_internal_fleet_trust_domain,
     isolation: floor_isolation_requirement(),
+    revocation: WarmResidencyRequired,
   }
 }
 

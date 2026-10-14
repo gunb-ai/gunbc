@@ -568,7 +568,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded,
   continuation_decision,
 }
-import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity }
+import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking, ProviderAwaitingAcceptance }
 import extdeps.version { VersionIdentity }
 import std.content_hash {
   content_hash_tagged_structural,
@@ -8590,16 +8590,12 @@ fn belt_worker_process_terminal(evidence: WorkerProcessEvidence) -> Bool {
 }
 
 fn belt_provider_is_terminal(provider: ProviderExecutionState) -> Bool {
-  match provider {
-    ProviderNotStarted => false
-    ProviderStarting { activity: _ } => false
-    ProviderAwaitingSeat { detail: _ } => false
-    ProviderAwaitingAcceptance { handin: _ } => false
-    ProviderRunning { activity: _ } => false
-    ProviderCompleted { activity: _ } => true
-    ProviderFailed { activity: _, detail: _ } => true
-    ProviderBudgetSpent { activity: _, detail: _ } => true
-    ProviderEventsRefused { activity: _, detail: _ } => false
+  match provider_execution_terminality(state: provider) {
+    TerminalityCompleted { activity: _ } => true
+    TerminalityRefused => true
+    TerminalityEventsRefused => false
+    TerminalityNotStarted => false
+    TerminalityWorking => false
   }
 }
 

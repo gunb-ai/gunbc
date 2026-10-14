@@ -1,0 +1,85 @@
+module v2.test.claim.parse.request_authentication_witness_parse_probe
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.test.claim.parse.expression_bodied_fn_decl_parse { g_tokenize_parse }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  DeclarationLocus,
+  InvariantPortLocus,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  WholeFile,
+  diagnostics_fatal
+}
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.integer { Int }
+import v2.std.node { Node, Symbol, symbol_lexeme }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE FILE THAT VOIDED THE DEPENDENCY-DEMAND CENSUS (stage=parse, reason=parse_g0_tokens_remain)
+// is authored language: a tagged-record field pun `SessionStandingInvalid { standing }` among
+// otherwise admitted forms. v2.extdeps.languages.dag dag_grammar_field_init_pun_expr is the
+// production that admits that pun (gunbc#13820). This module does not re-claim the pun in the
+// abstract — v2.test.claim.parse.record_field_pun already does — it claims the census subject
+// itself parses, so a regression of that one file is a red rather than an exit-2 void.
+
+data request_authentication_witness_path: String = "dag/test/claim/request_authentication_witness.dag"
+
+fn parse_reason(text: String, file: Symbol) -> String {
+  match g_tokenize_parse(text: text, file: file) {
+    Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal(d: d).reason)
+  }
+}
+
+fn tokens_remain_start(parsed: Outcome<Node>) -> Int {
+  match parsed {
+    Rejected { diagnostics: d } =>
+      let fatal = diagnostics_fatal(d: d)
+      if fatal.reason == ^parse_g0_tokens_remain {
+        match fatal.at {
+          SourcePortLocus { anchor: _, file: _, extent: ByteRange { start: s, end: _ } } => s
+          SourcePortLocus { anchor: _, file: _, extent: WholeFile } => -1
+          Textual { file: _, extent: _ } => -1
+          NodeLocus { anchor: _ } => -1
+          InvariantPortLocus { anchor: _, invariant: _ } => -1
+          DeclarationLocus { declaration: _ } => -1
+        }
+      } else {
+        -1
+      }
+    Accepted { value: _, diagnostics: _ } => -1
+  }
+}
+
+fn rparen_start(src: String, file: Symbol) -> Int {
+  match tokenize_prepared(text: src, file: file, prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: _ } => -1
+    Accepted { value: ts, diagnostics: _ } =>
+      fold(ts.all, init: -1, f: fn(acc, t) { if t.lexeme == ")" { t.start } else { acc } })
+  }
+}
+
+data trailing_tokens_red_source: String = "module probe.raw\nfn f() -> Int { 1 }\n)\n"
+
+test fn request_authentication_witness_parses_on_the_native_parse_door_holds() -> Bool {
+  let read = Filesystem.Read(path: request_authentication_witness_path)
+  read.success && parse_reason(text: read.content, file: ^raw_witness) == "ACCEPTED"
+}
+
+// A leftover token after an otherwise admitted module still refuses as parse_g0_tokens_remain at
+// that token, not at the module header and not as an accept.
+test fn trailing_tokens_after_an_admitted_module_refuse_located_holds() -> Bool {
+  let src = trailing_tokens_red_source
+  let parsed = g_tokenize_parse(text: src, file: ^probe_trailing)
+  (tokens_remain_start(parsed: parsed) == rparen_start(src: src, file: ^probe_trailing))
+    && (tokens_remain_start(parsed: parsed) >= 0)
+}

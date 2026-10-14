@@ -10,7 +10,7 @@ import v2.workflow.floor_terminal_ledger {
   ClaimDisposition,
   Passed, Failed, KnownRedHeld, PassedOverBudget, BudgetRefusedBeforeVerdict, PanickedBeforeVerdict,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Every fixture below is authored in this source; the module reaches nothing outside the
 // substrate inputs.

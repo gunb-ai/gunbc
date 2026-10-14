@@ -1,4 +1,6 @@
 module v2.test.claim.module_acquisition
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { Bool, List, Map }
 import v2.compiler.module_acquisition {
@@ -20,6 +22,7 @@ import v2.compiler.module_acquisition {
   AcquisitionMarkersRefused,
   AcquisitionMemberRead,
   AcquisitionMemberRefused,
+  AcquisitionMemberIdentityDisagrees,
   AcquisitionMemberSitesUnreadable,
   AcquisitionLookupRefused,
   AcquisitionMemberReadOk,
@@ -35,14 +38,8 @@ import v2.compiler.module_acquisition {
   AcquisitionStepRefused,
   MemberParseRefused,
   MemberParses,
-  NamespaceModules,
-  NamespaceModulesListed,
-  NamespaceModulesRefused,
-  NamespaceWalk,
-  NamespaceWalkAbsent,
-  NamespaceWalkListed,
-  NamespaceWalkRefused,
   SourceRootBinding,
+  acquisition_env_over,
   acquisition_exactness,
   acquisition_ingest,
   acquisition_member_requests,
@@ -54,7 +51,6 @@ import v2.compiler.module_acquisition {
   bound_modules_prepended,
   namespace_directory_is_the_absent_path,
   namespace_module_name,
-  namespace_named_listing,
   namespace_relative_directory,
   namespace_top_level,
   top_level_namespaces
@@ -66,6 +62,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority {
   ModuleFileRef,
+  ReferenceModuleHeaderRefused,
   ReferenceModuleLineDisagrees,
   ReferenceModuleLineMissing,
   ReferenceNextReadDenied,
@@ -79,7 +76,7 @@ import v2.compiler.source_authority {
   reference_next_read,
   reference_prefixes
 }
-import std.algebra { HeadAbsent, HeadFound, length, list_head, list_map }
+import std.algebra { length, list_head, list_map }
 import v2.std.collection { empty_map, map_insert }
 import v2.std.cross_tree.import_model {
   CrossTreeFromTreeNotInRootSet,
@@ -89,7 +86,7 @@ import v2.std.cross_tree.import_model {
   DagTree,
   V2Tree,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -295,12 +292,12 @@ fn member_read_text(read: AcquisitionMemberRead) -> String {
 }
 
 fn member_env(prepared: PreparedGrammar) -> AcquisitionEnv {
-  AcquisitionEnv {
+  acquisition_env_over(
     layout: repository_storage_layout(),
     bindings: [],
     lex: prepare_lex_rules(rules: dag_language_model().lex),
     grammar: prepared
-  }
+  )
 }
 
 fn member_read_of(content: String) -> String {
@@ -406,12 +403,12 @@ fn member_read_under(env: AcquisitionEnv, content: String) -> AcquisitionMemberR
 // storage a lookup would search.
 fn env_for(prepared: PreparedGrammar, bound: Bool) -> AcquisitionEnv {
   if bound {
-    AcquisitionEnv {
+    acquisition_env_over(
       layout: repository_storage_layout(),
       bindings: [SourceRootBinding { tree: V2Tree {}, host_directory: "src/v2" }],
       lex: prepare_lex_rules(rules: dag_language_model().lex),
       grammar: prepared
-    }
+    )
   } else {
     member_env(prepared: prepared)
   }
@@ -750,8 +747,8 @@ fn marked_content_of(content: String, name: String) -> String {
 
 fn first_content_named(declarations: List<AcquisitionMarkedDeclaration>, name: String) -> String {
   match list_head(xs: declarations |> filter(fn(d) { d.name == name })) {
-    HeadAbsent => ""
-    HeadFound { value: d } => d.content
+    Absent => ""
+    Present { value: d } => d.content
   }
 }
 
@@ -884,40 +881,6 @@ test fn a_listing_is_added_ahead_of_the_names_already_listed() -> Bool {
   joined(bound_modules_prepended(listed: ["a.x", "a.y"], acc: ["b.z"])) == "a.x,a.y,b.z"
 }
 
-// ---- what a walk of one namespace directory means to a caller who named the namespace ------------------
-//
-// THE SUBJECT IS THE MAPPING FROM WHAT A DIRECTORY WALK OBSERVED TO WHAT A CALLER IS TOLD. A caller that
-// names one namespace asked for a population that must be there, so an absent directory refuses; the
-// population enumeration over every bound tree reads the same observation as an empty namespace instead,
-// and that reading is not stated here because it is a different caller of the same walk. The three
-// walk observations are supplied; the walk itself is carried by the native population verbs over a real
-// tree.
-
-fn named_listing_text(listing: NamespaceModules) -> String {
-  match listing {
-    NamespaceModulesListed { namespace: namespace, modules: modules } => concat("listed|", namespace, "|", joined(modules))
-    NamespaceModulesRefused { namespace: namespace, cause: cause } => concat("refused|", namespace, "|", cause)
-  }
-}
-
-test fn a_named_namespace_with_no_directory_is_refused_naming_the_directory() -> Bool {
-  named_listing_text(
-    listing: namespace_named_listing(walk: NamespaceWalkAbsent { namespace: "std", directory: "dag/std" })
-  ) == "refused|std|dag/std: the namespace has no directory under its tree"
-}
-
-test fn a_listed_namespace_hands_back_its_modules_in_the_order_the_walk_observed() -> Bool {
-  named_listing_text(
-    listing: namespace_named_listing(walk: NamespaceWalkListed { namespace: "std", modules: ["std.a", "std.b"] })
-  ) == "listed|std|std.a,std.b"
-}
-
-test fn a_namespace_whose_walk_failed_is_refused_with_the_walks_own_cause() -> Bool {
-  named_listing_text(
-    listing: namespace_named_listing(walk: NamespaceWalkRefused { namespace: "std", cause: "dag/std/x: permission_denied: denied" })
-  ) == "refused|std|dag/std/x: permission_denied: denied"
-}
-
 // ---- when a refused walk is the namespace directory itself being absent --------------------------------
 //
 // Only the namespace directory missing answers "no module of this namespace is stored here"; the same
@@ -948,21 +911,27 @@ test fn a_failure_kind_the_filesystem_authority_does_not_name_is_not_the_absent_
 // member, or accepted every member, is told apart.
 
 fn member_parse_text(content: String) -> String {
+  member_parse_at(file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content)
+}
+
+// THE VERDICT WITH ITS CAUSE, over a caller-chosen file, so a claim can hold the bytes fixed and vary
+// only the file key that acquisition_parsed interns into tokenization.
+fn member_parse_at(file: ModuleFileRef, content: String) -> String {
   match prepare_grammar(grammar: dag_language_model().grammar) {
     Rejected { diagnostics: _ } => "grammar-unprepared"
     Accepted { value: prepared, diagnostics: _ } =>
       match acquisition_parse(
-        env: AcquisitionEnv {
+        env: acquisition_env_over(
           layout: repository_storage_layout(),
           bindings: [],
           lex: prepare_lex_rules(rules: dag_language_model().lex),
           grammar: prepared
-        },
-        file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+        ),
+        file: file,
         content: content
       ) {
         MemberParses => "parses"
-        MemberParseRefused { cause: _ } => "refused"
+        MemberParseRefused { cause: cause } => concat("refused:", cause)
       }
   }
 }
@@ -972,7 +941,29 @@ test fn a_well_formed_member_parses() -> Bool {
 }
 
 test fn a_member_with_an_unclosed_body_is_refused() -> Bool {
-  member_parse_text(content: "module v2.test.subject\nfn subject() -> Bool { true\n") == "refused"
+  let verdict = member_parse_text(content: "module v2.test.subject\nfn subject() -> Bool { true\n")
+  (verdict != "parses") && (verdict != "grammar-unprepared")
+}
+
+// PATH-INDEPENDENCE OF THE VERDICT (the key a parse-verdict receipt is served under is bytes plus parser
+// identity and carries no file key): the same bytes under two different file keys, in different trees,
+// give the same verdict AND the same cause. A well-formed and a malformed subject, so a verdict that
+// agrees only because it never reads the content is told apart.
+fn parse_at_two_paths_agree(content: String) -> Bool {
+  member_parse_at(file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content)
+    == member_parse_at(file: ModuleFileRef { tree: DagTree {}, relative_path: "other/deeper/place.dag" }, content: content)
+}
+
+test fn a_well_formed_member_parses_the_same_at_two_paths() -> Bool {
+  parse_at_two_paths_agree(content: "module v2.test.subject\nfn subject() -> Bool { true }\n")
+    && (member_parse_text(content: "module v2.test.subject\nfn subject() -> Bool { true }\n") == "parses")
+}
+
+test fn a_refused_member_is_refused_the_same_at_two_paths() -> Bool {
+  let malformed = "module v2.test.subject\nfn subject() -> Bool { true\n"
+  parse_at_two_paths_agree(content: malformed)
+    && (member_parse_text(content: malformed) != "parses")
+    && (member_parse_text(content: malformed) != "grammar-unprepared")
 }
 
 fn idle_acquisition_state(known: Map<String, Bool>) -> AcquisitionState {
@@ -1059,6 +1050,7 @@ test fn a_forbidden_dag_to_v2_acquisition_refuses_without_reading() -> Bool {
                   ReferenceRefused { module: _, file: _, cause: _ } => false
                   ReferenceModuleLineMissing { module: _, file: _ } => false
                   ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
+                  ReferenceModuleHeaderRefused { module: _, file: _, cause: _ } => false
                 }
             AcquisitionGrammarUnprepared { diagnostics: _ } => false
             AcquisitionEntryUnderivable { entry: _, cause: _ } => false
@@ -1066,6 +1058,7 @@ test fn a_forbidden_dag_to_v2_acquisition_refuses_without_reading() -> Bool {
             AcquisitionUnknownModule { request: _ } => false
             AcquisitionMemberRefused { module: _, file: _, diagnostics: _ } => false
             AcquisitionMemberSitesUnreadable { module: _, file: _ } => false
+            AcquisitionMemberIdentityDisagrees { module: _, file: _, declared: _ } => false
           }
         AcquisitionAdvanced { state: _ } => false
       }

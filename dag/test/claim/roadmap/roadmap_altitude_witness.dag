@@ -15,7 +15,7 @@ import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_signed }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap.roadmap_status { RedControlExecuted, HandbackDelivered }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

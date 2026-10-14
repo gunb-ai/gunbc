@@ -20,7 +20,7 @@ import std.algebra { Cons, Empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.node { Symbol }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // FAST-LANE supplied-carrier controls for the mandatory-tag gate's lowered-member path (DESIGN section 3: a
 // witness discriminates at ONE interface, its inputs supplied rather than derived). No tokenize, parse or

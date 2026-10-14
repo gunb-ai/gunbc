@@ -24,7 +24,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 import v2.std.compilers.lexing { IdentContinueChar, IdentStartChar, TokenStream }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim, HeadAbsent, HeadFound, fold_list, is_empty, length, list_find_first, list_head, list_map, list_reverse, skip }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim, fold_list, is_empty, length, list_find_first, list_head, list_map, list_reverse, skip }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
@@ -74,11 +74,15 @@ import std.content_hash {
   ContentHashComparison,
   ContentHashEqual,
   Fnv1a64Structural,
+  HashFamily,
+  Sha1Hash,
+  Sha256Hash,
+  Sha512Hash,
   as_content_hash_structural,
   compare_content_hash,
   content_hash_atom,
   content_hash_combine_structural,
-  content_hash_eq_structural,
+  content_hash_family,
   content_hash_of_value,
   serialize_content_hash,
   Fnv1a64
@@ -148,29 +152,6 @@ type FrontierProbeDiscoveredClosure {
 // Closed probe-side closure carrier (operator ruling 2026-08-04): refs, population_digest, and
 // entry are one subject. population_digest is always derived from refs at seal time — never a
 // separate caller input.
-
-fn discovered_source_refs_digest_eq(
-  left: DiscoveredSourceRefsDigest,
-  right: DiscoveredSourceRefsDigest
-) -> Bool {
-  match left {
-    DiscoveredSourceRefsDigestFromList { digest: left_digest } =>
-      match right {
-        DiscoveredSourceRefsDigestFromList { digest: right_digest } =>
-          content_hash_eq_structural(left: left_digest, right: right_digest)
-        _ => false
-      }
-    DiscoveredSourceRefsDigestUnavailable {
-      cause: DiscoveredSourceRefsDigestNoRefList { reason: left_reason }
-    } =>
-      match right {
-        DiscoveredSourceRefsDigestUnavailable {
-          cause: DiscoveredSourceRefsDigestNoRefList { reason: right_reason }
-        } => left_reason == right_reason
-        _ => false
-      }
-  }
-}
 
 fn frontier_probe_discovered_closure_seal(
   refs: List<SourceRef>,
@@ -331,12 +312,14 @@ fn source_storage_identity_digest(storage: SourceStorageIdentity) -> Fnv1a64Stru
 
 type SourceRefContentHashStructural
   = SourceRefContentHashStructuralOk { digest: Fnv1a64Structural }
-  | SourceRefContentHashStructuralNonFnv1a64
+  | SourceRefContentHashStructuralNonFnv1a64 { family: HashFamily }
 
 fn source_ref_content_hash_structural(hash: ContentHash) -> SourceRefContentHashStructural {
   match hash {
     Fnv1a64(structural) => SourceRefContentHashStructuralOk { digest: structural }
-    _ => SourceRefContentHashStructuralNonFnv1a64
+    Sha256Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: content_hash_family(hash: hash) }
+    Sha1Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: content_hash_family(hash: hash) }
+    Sha512Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: content_hash_family(hash: hash) }
   }
 }
 
@@ -369,7 +352,7 @@ fn source_ref_list_digest_build(refs: List<SourceRef>) -> SourceRefListDigestBui
         SourceRefListDigestNonStructuralRefused { path: _ } => acc
         SourceRefListDigestOk { digest: prior } =>
           match source_ref_content_hash_structural(hash: ref.content_hash) {
-            SourceRefContentHashStructuralNonFnv1a64 =>
+            SourceRefContentHashStructuralNonFnv1a64 { family: _ } =>
               SourceRefListDigestNonStructuralRefused { path: ref.path }
             SourceRefContentHashStructuralOk { digest: structural } =>
               SourceRefListDigestOk {
@@ -1483,8 +1466,8 @@ type ModuleFileDerivation
 
 fn storage_namespace_root_for(layout: SourceStorageLayout, namespace: String) -> Optional<StorageNamespaceRoot> {
   match list_head(xs: filter(xs: layout.namespace_roots, predicate: fn(r) { r.namespace == namespace })) {
-    HeadFound { value: root } => optional_present(value: root)
-    HeadAbsent => optional_absent()
+    Present { value: root } => optional_present(value: root)
+    Absent => optional_absent()
   }
 }
 
@@ -1514,8 +1497,8 @@ fn module_name_has_non_identifier_segment(segments: List<String>) -> Bool {
 
 fn segment_or_empty(segments: List<String>, at: Int) -> String {
   match list_head(xs: skip(xs: segments, n: at)) {
-    HeadFound { value: segment } => segment
-    HeadAbsent => ""
+    Present { value: segment } => segment
+    Absent => ""
   }
 }
 
@@ -1574,8 +1557,8 @@ fn module_name_for_file(layout: SourceStorageLayout, file: ModuleFileRef) -> Mod
       r.elides_namespace && source_root_ref_label(tree: r.tree) == source_root_ref_label(tree: file.tree)
     })
     match list_head(xs: elided) {
-      HeadFound { value: root } => ModuleNameDerived { name: concat(root.namespace, concat(".", dotted)) }
-      HeadAbsent => ModuleNameDerived { name: dotted }
+      Present { value: root } => ModuleNameDerived { name: concat(root.namespace, concat(".", dotted)) }
+      Absent => ModuleNameDerived { name: dotted }
     }
   }
 }
@@ -1682,8 +1665,8 @@ fn reference_next_read(
   candidates: List<String>
 ) -> ReferenceNextRead {
   match list_head(xs: candidates) {
-    HeadAbsent => ReferenceNextReadNone { reference: reference }
-    HeadFound { value: candidate } =>
+    Absent => ReferenceNextReadNone { reference: reference }
+    Present { value: candidate } =>
       match module_file(layout: layout, name: candidate) {
         ModuleFileDerived { file: file } =>
           reference_next_read_derived(from_tree: from_tree, from_module: from_module, module: candidate, file: file, rest: skip(xs: candidates, n: 1))
@@ -1853,8 +1836,8 @@ fn take_segments_from(segments: List<String>, n: Int, acc: List<String>) -> List
     acc
   } else {
     match list_head(xs: segments) {
-      HeadAbsent => acc
-      HeadFound { value: segment } =>
+      Absent => acc
+      Present { value: segment } =>
         take_segments_from(segments: skip(xs: segments, n: 1), n: n - 1, acc: list_snoc_item(xs: acc, item: segment))
     }
   }

@@ -42,7 +42,7 @@ import gunbc.v2_compile_obligation_census {
   obligation_seed_escape_is_open,
   v2_compile_obligation_census
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.derived_obligation_row { WitnessSubject }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -219,12 +219,12 @@ test fn v2_compile_obligation_seed_escape_arms_are_distinguished_holds() -> Bool
 // that the flip "is this arm's intended dissolution, not a regression — the arm deletes then rather
 // than being repaired back to passing". The lane landed, the arm went red, and it is deleted rather
 // than weakened. What replaces it is the check that matters now: native standing is DERIVED from the
-// lane's own universe predicate intersected with floor discovery, so a row is reported as executing
+// lane's own boundary predicate intersected with floor discovery, so a row is reported as executing
 // natively only when the emitted binary's population actually contains its identity.
 //
-// THE NEGATIVE CONTROL IS AN EXCLUDED SUBJECT, NOT AN OUT-OF-PREFIX ONE, because the prefix half is
-// already covered by the gate-closure arm and because the excluded half is where the first cut of
-// this derivation was wrong: asking the lane's prefix predicate alone reported two carved-out
+// THE NEGATIVE CONTROL IS AN EXCLUDED SUBJECT, NOT AN OUT-OF-BOUNDARY ONE, because the boundary half
+// is already covered by the gate-closure arm and because the excluded half is where the first cut of
+// this derivation was wrong: asking the lane's boundary predicate alone reported two carved-out
 // obligations as natively executing.
 test fn v2_compile_obligation_native_standing_intersects_discovery_holds() -> Bool {
   witness_subject_in_native_lane(w: discovered_subject())

@@ -1,6 +1,6 @@
 module test.claim.host.host_standup_spine_witness
 
-import v2.std.live_tree { LiveTreeDisposition }
+import std.live_tree { LiveTreeDisposition }
 import gunbc.host.host_standup { GreenPlacePinCoherent, NodeRegistered, ResourcesPresent, RunnerSlotHealthy }
 import gunbc.srv3.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import gunbc.bmc.bmc_onboarding { FactoryCredentialActive, RotatedCredentialActive }
@@ -58,7 +58,7 @@ import gunbc.host.host_standup {
 }
 import gunbc.host.host_standup { ProviderGuestAdopted }
 import gunbc.host.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

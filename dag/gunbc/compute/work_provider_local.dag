@@ -1242,7 +1242,7 @@ fn compute_begin_launch(layout: ComputeLayout, gate: AttemptGate) -> AttemptGate
   match gate {
     AttemptGateRefused { detail: d } => AttemptGateRefused { detail: d }
     AttemptGateReady { record: rec, generation: g } =>
-      compute_gate_from_transition(t: attempt_begin_launch(root: layout.attempts_dir as NonEmptyStr, record: rec, expected: g), record: rec, what: "the launch")
+      compute_gate_from_transition(t: attempt_begin_launch(root: layout.attempts_dir as NonEmptyStr, reference: rec.reference as NonEmptyStr, expected: g), record: rec, what: "the launch")
   }
 }
 
@@ -1275,7 +1275,7 @@ fn compute_settle_attempt(layout: ComputeLayout, gate: AttemptGate, verdict: Att
   match gate {
     AttemptGateRefused { detail: d } => AttemptUnsettleable { detail: d }
     AttemptGateReady { record: rec, generation: g } =>
-      match attempt_terminate(root: layout.attempts_dir as NonEmptyStr, record: rec, expected: g, verdict: verdict, detail: detail) {
+      match attempt_terminate(root: layout.attempts_dir as NonEmptyStr, reference: rec.reference as NonEmptyStr, expected: g, verdict: verdict, detail: detail) {
         AttemptAdvanced { state: _, generation: _ } => AttemptSettled
         AttemptLostRace { expected: e, observed: o } =>
           AttemptNotSettled { detail: join(["the attempt slot for ", rec.reference, " could not be closed: expected ", e, " and it holds ", o, "; the attempt stays open in the store and the seat's settlement is recorded only here"], "") }
@@ -2606,7 +2606,7 @@ fn compute_recover_attempt(instance: HostDashboardInstance, reference: NonEmptyS
             RecoveryUnitNotEnded { lifecycle: u } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }) }
             RecoveryStateNotRecoverable { state: st } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryStateNotRecoverable { state: st }) }
             RecoveryMayTerminate { reason: why } =>
-              match attempt_terminate(root: attempts_root, record: rec, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
+              match attempt_terminate(root: attempts_root, reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
                 AttemptLostRace { expected: e, observed: o } =>
                   RecoveryRefused { detail: join(["the attempt moved while recovery was deciding: expected ", e, " and the slot holds ", o, "; the observation this recovery would act on is stale, so nothing is released"], "") }
                 AttemptTransitionRefused { detail: d } => RecoveryRefused { detail: join(["the attempt slot would not take the terminal generation: ", d], "") }

@@ -5,8 +5,8 @@ import std.coercion { unicode_scalar_fold }
 import v2.std.text { String }
 import std.algebra { for_all, length, list_map }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.compiler.module_header { ModuleHeaderAbsent, ModuleHeaderDeclared, ModuleHeaderReader, ModuleHeaderRefused }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.module_header { ModuleHeaderAbsent, ModuleHeaderDeclared, ModuleHeaderReader, ModuleHeaderRefused, module_header_reader }
 import v2.compiler.parse { PreparedVoidGrammar }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -73,13 +73,13 @@ fn layout() -> SourceStorageLayout {
 // dag_prepared_lex, dag_prepared_grammar). A grammar that does not prepare reads as void, which
 // refuses every header, so no control below can pass over a reader that read nothing.
 fn header_reader() -> ModuleHeaderReader {
-  ModuleHeaderReader {
+  module_header_reader(
     lex: dag_prepared_lex(),
     grammar: match dag_prepared_grammar() {
       Accepted { value: prepared, diagnostics: _ } => prepared
       Rejected { diagnostics: _ } => PreparedVoidGrammar
     }
-  }
+  )
 }
 
 fn dag_file(path: String) -> ModuleFileRef {

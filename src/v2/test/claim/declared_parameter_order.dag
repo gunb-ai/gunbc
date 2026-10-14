@@ -23,7 +23,7 @@ import v2.std.arrow_signature {
   arrow_declared_parameter_order
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   Arrow,
   Atom,

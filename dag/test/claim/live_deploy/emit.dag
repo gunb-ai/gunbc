@@ -7,7 +7,7 @@ import gunbc.live_deploy.member_identity {
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_emitted_steps_text, apply_empty_host_effects, claim_oidc_now }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_emitted_steps_text, apply_emitted_steps_text_at, apply_empty_host_effects, claim_oidc_now }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
@@ -49,6 +49,7 @@ import gunbc.live_deploy.spec {
   gunbc_roadmap_unit_name,
   ServeBinary,
   OwnedArtifactKind,
+  UpsertOwned, ComposeOwned,
   GunbcSourceTree,
   SystemdUnit,
   FleetConvergeTimerUnit,
@@ -102,9 +103,13 @@ import gunbc.live_deploy.operations {
   rm_force_recursive_command,
   systemctl_disable_now_command,
   deploy_stage_install_command,
+  deploy_stage_write_command,
   deploy_stage_write_expansion_command,
   install_directory_owned_command,
   install_file_owned_command,
+  deploy_stage_dir_var,
+  deploy_cap_stage_dir_var,
+  deploy_stage_dirs_exit_trap_command,
 }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command,
@@ -122,7 +127,11 @@ import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison, deployment_directory_demands }
 import gunbc.live_deploy.emit {
-  emit_artifact_upsert,
+  composed_artifact_upsert,
+  deploy_retract_stage_cleanup_frame_script,
+  deploy_apply_stage_cleanup_frame_script,
+  deploy_two_dir_trap_one_var_mutant_script,
+  retract_intent_fragments_for,
   approval_broker_tree_copy_steps,
   owned_directory_install_steps,
   owned_directory_apply_steps,
@@ -146,7 +155,20 @@ import gunbc.live_deploy.emit {
   live_deploy_retract_script_for,
   deploy_apply_preamble_steps,
   apply_intent_from_effects,
+  apply_intent_fragments,
+  compose_host_script,
+  compose_host_script_decide_steps,
+  compose_host_script_mutate_steps,
+  host_script_step_marker,
+  host_script_trace_steps,
+  HostScriptRefused,
+  HostScriptFragment,
+  Decide, Mutate,
+  memory_cap_withheld_line,
   deploy_apply_frame_steps,
+  deploy_apply_frame_decide_steps,
+  deploy_apply_frame_mutate_steps,
+  deploy_shell_merge_stderr_command,
   deploy_publication_principal_ensure_command,
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
@@ -154,6 +176,9 @@ import gunbc.live_deploy.emit {
   leftover_systemd_timer_retire_steps,
   leftover_systemd_timer_retire_dissolution,
   live_deploy_publication_path_unit_file,
+  deploy_memory_cap_apply_steps,
+  approval_broker_helper_sudoers_stage_name,
+  approval_broker_helper_sudoers_readback_stage_name,
 }
 import gunbc.live_deploy.release_locus {
   approval_broker_tree_receipt_path_for,
@@ -168,6 +193,7 @@ import gunbc.host.host_axis_caps {
   deploy_memory_cap_shadow_revert_script,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   deploy_memory_cap_apply_script_from_authorization,
+  deploy_runner_memory_cap_author_script,
   derived_runner_memory_cap_members,
   cap_converge_decision,
   CapConvergeDecision, CapConvergeWithheld,
@@ -176,6 +202,8 @@ import gunbc.host.host_axis_caps {
   runner_slot_service_units_for_host,
   RunnerSlotServiceUnits, ServiceUnitsDerived, ServiceUnitsWidthUnresolved,
 }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
 import v2.std.orchestration { Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call }
@@ -193,7 +221,7 @@ import gunbc.roadmap.roadmap_static_site {
   served_static_route_literal_path,
 }
 import extdeps.package_managers.apt { package_tailscale, package_tmux }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data witness_script_producers_note: String = "THE COMMITTED SCRIPT ARTIFACTS ARE GONE, SO THESE WITNESSES CALL THE EMITTER DIRECTLY. Nothing executed .github/live-deploy-srv1-apply.sh or -retract.sh — the real deploy runs live_deploy_apply_prod_role_wet through gunbc run — and their registry rows named a HostReconciler consumer that does not exist. A committed artifact nobody reads is not coverage; it is a false architectural claim that happened to be convenient as a byte oracle.\\n\\nThe coverage did not need the artifact. A fixture sha is forbidden in a committed PRODUCTION artifact, never in a witness, so these call live_deploy_apply_script_for with RevisionBoundAtEmission at the fixture revision and assert the same bytes the golden used to pin — with the ExecStart line now pinned EXACTLY, which the golden never did."
 
@@ -420,15 +448,27 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
   }
   let a = ci_deploy_srv1_access
   let pre = deploy_apply_preamble_steps(access: a, spec: spec)
+  let plan = deploy_witness_full_install_plan(spec: spec)
   let p = apply_intent_from_effects(
     spec: spec,
     effects: apply_empty_host_effects(spec: spec),
     access: a,
-    plan: deploy_witness_full_install_plan(spec: spec),
-    cap_authorization: CapConvergeWithheld { cause: "the route claim is not about the cap step" },
+    plan: plan,
+    cap_authorization: srv1_authorization(),
     oidc_now: claim_oidc_now(),
   )
-  pipeline_steps_text(steps: p.steps.skip(n: deploy_apply_frame_steps(spec: spec).length()).take(n: pre.length())) == pipeline_steps_text(steps: pre)
+  let frags = apply_intent_fragments(
+    spec: spec,
+    effects: apply_empty_host_effects(spec: spec),
+    access: a,
+    plan: plan,
+    cap_authorization: srv1_authorization(),
+    oidc_now: claim_oidc_now(),
+  )
+  let offset = compose_host_script_decide_steps(fragments: frags).length()
+    + host_script_trace_steps(kind: "Mutate", member: "frame" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps()).length()
+  let traced_pre = host_script_trace_steps(kind: "Mutate", member: "preamble" as NonEmptyStr, steps: pre)
+  pipeline_steps_text(steps: p.steps.skip(n: offset).take(n: traced_pre.length())) == pipeline_steps_text(steps: traced_pre)
 }
 
 // THE RETRACT FRAME ACKNOWLEDGES THE SHARED SUDOERS INSTALL. `live_deploy_retract_intent`
@@ -443,12 +483,12 @@ test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
 
 // THE PREAMBLE, READ SEPARATELY, SO AN ABSENCE CLAIM DOES NOT LOSE HALF ITS SUBJECT.
 //
-// `apply_emitted_steps_text` carries the deployment's own steps and not the program FRAME the fold
-// wraps them in. For a PRESENCE claim that costs nothing -- the string it looks for is in a step or
-// it is nowhere. For an ABSENCE claim it is the difference between a wall and a hole: the preamble
-// installs the sudoers drop-in and ensures the publication principal, which is exactly where an
-// elevation regression would land. So the one absence conjunct below that bans a shell elevation
-// reads both halves.
+// `apply_emitted_steps_text` is the compose-mutate half of `apply_intent_fragments`. Decide-only
+// frame comments stay outside it; Mutate preamble is inside it. For a PRESENCE claim that costs
+// nothing -- the string it looks for is in a step or it is nowhere. For an ABSENCE claim the
+// preamble is half the subject: it installs the sudoers drop-in and ensures the publication
+// principal, which is exactly where an elevation regression would land. So the one absence
+// conjunct below that bans a shell elevation still reads the preamble via the compose projection.
 //
 // THE TWO DEPENDENCY CONJUNCTS ASSERT THE COMMANDS AND NO LONGER ASSERT THE CONDITIONAL'S SPELLING.
 //
@@ -944,7 +984,7 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
   spec_owned_paths(spec: twin) == reverse(applied_paths)
 }
 
-data emitted_effect_twin_note: String = "THE PATH-LIST TWIN CLAIM WAS COVERAGE BY ILLUSION AND THIS IS ITS REPLACEMENT. The previous claim compared five declared artifact paths and pinned count == 5, so its proof was bounded by the symbolic footprint — and three destructive effects lived outside it: the systemd unit hardcoded --function roadmap_serve_handle so a twin would IDENTIFY as production, tree-sync installed and deleted one host-wide unit and env file, and teardown ran a node-global `tailscale serve reset`. Every one of those passes a declared-member comparison while the emitted script is unsafe (review, 2026-07-30).\\n\\nSo this reads the EMITTED TEXT rather than the declared member list. It asserts over what apply and retract actually emit that production's identifying strings — its handler, its unit, its tree-sync files — appear in production's emission and are ABSENT from the twin's, and that the twin's own names are absent from production's. A string a reviewer can see in the emitted output is exactly the grain the previous claim could not reach.\\n\\nTHE APPLY HALF READS THE STEP PROJECTION, NOT THE ASSEMBLED PROGRAM (2026-09-14). test.claim.live_deploy.apply_emission_projection apply_emitted_steps_text flat-maps `apply_step_effects` over `spec.steps` — the same function over the same population in the same order that `apply_intent_from_effects` uses — with ONE input mocked: the membership effects, which in production come from observing the host and here are an empty host. So the dispatch is production's, and the strings asserted below are the bytes production's own producers emit. What it drops is the program FRAME (the shell options line, the generated-by comments, the stage trap, the sudoers preamble, the cap step, the receipt), and no conjunct here names any of them. The reason is a cost ceiling rather than a modeling one, and it is stated at that module's header: one render of the assembled apply is ~194,000 eval steps against a per-claim ceiling of 72,300. The retract half still reads the assembled script, because retract has no such projection and no claim here needed one.\\n\\nThe negative direction is the load-bearing half. Asserting the twin contains its own names would pass even if it ALSO contained production's; only absence proves it cannot touch them. The tailscale conjunct asserts the refusal marker rather than a scoped command, because the CLI offers no per-port removal and the honest emission is a refusal — a claim expecting a scoped teardown would demand a widen that cannot be written safely."
+data emitted_effect_twin_note: String = "THE PATH-LIST TWIN CLAIM WAS COVERAGE BY ILLUSION AND THIS IS ITS REPLACEMENT. The previous claim compared five declared artifact paths and pinned count == 5, so its proof was bounded by the symbolic footprint — and three destructive effects lived outside it: the systemd unit hardcoded --function roadmap_serve_handle so a twin would IDENTIFY as production, tree-sync installed and deleted one host-wide unit and env file, and teardown ran a node-global `tailscale serve reset`. Every one of those passes a declared-member comparison while the emitted script is unsafe (review, 2026-07-30).\\n\\nSo this reads the EMITTED TEXT rather than the declared member list. It asserts over what apply and retract actually emit that production's identifying strings — its handler, its unit, its tree-sync files — appear in production's emission and are ABSENT from the twin's, and that the twin's own names are absent from production's. A string a reviewer can see in the emitted output is exactly the grain the previous claim could not reach.\\n\\nTHE APPLY HALF READS THE STEP PROJECTION, NOT THE ASSEMBLED PROGRAM (2026-09-14). test.claim.live_deploy.apply_emission_projection apply_emitted_steps_text is compose_host_script_mutate_steps over apply_intent_fragments — the mutate half apply_intent_from_effects hands to compose_host_script — with ONE input mocked: the membership effects, which in production come from observing the host and here are an empty host. So the dispatch is production's compose drop, and the strings asserted below are the bytes production's own producers emit when every Decide proceeds. Decide-only frame comments are outside this text. The reason is a cost ceiling rather than a modeling one, and it is stated at that module's header: one render of the assembled apply is ~194,000 eval steps against a per-claim ceiling of 72,300. The retract half still reads the assembled script, because retract has no such projection and no claim here needed one.\\n\\nThe negative direction is the load-bearing half. Asserting the twin contains its own names would pass even if it ALSO contained production's; only absence proves it cannot touch them. The tailscale conjunct asserts the refusal marker rather than a scoped command, because the CLI offers no per-port removal and the honest emission is a refusal — a claim expecting a scoped teardown would demand a widen that cannot be written safely."
 
 test fn production_apply_carries_its_own_handler_and_tree_sync_env() -> Bool {
   let live = apply_emitted_steps_text(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
@@ -1027,11 +1067,11 @@ fn serve_binary_parent_install_command(instance: HostDashboardInstance) -> Strin
 data teardown_disposition_after_the_mapping_started_acting_note: String = "THIS CLAIM ASSERTED THE WRONG ANSWER CONFIDENTLY, and it is worth keeping the record of how. review 45217 correctly found that the emitter was hand-walking three coproducts to decide teardown, and the repair lifted the fact to the model and gave the refusal a CAUSE — so the claim then pinned TailscaleServeMapping to TeardownWouldExceedOwnership and treated that as the discriminating half.\\n\\nThe discrimination was real and the cause was fiction. The mapping refused because the model asserted, with no citation, that the CLI's only removal verb is node-global; the upstream documents scoped removal. So a well-formed claim, over a well-modeled fact, faithfully pinned a false premise — and every conjunct here would have stayed green for as long as the premise went unchecked. A cause is only as good as its grounding, and nothing in a claim can supply that.\\n\\nWHAT SURVIVES is the shape rather than the cause list: every OWNED artifact acts, and the one surviving refusal is about ownership rather than tooling. TeardownWouldExceedOwnership is deleted with its premise, so the cause coproduct has one variant and this claim can no longer discriminate between two — it discriminates between the two LAYERS instead, which is the distinction that was always load-bearing.\\n\\nThe acting arms are the ratchet: if a future change made refusal the default for an owned artifact — the safe-looking direction — this reds instead of silently converting the retract into a no-op that still prints its convergence receipt."
 
 test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
-  let mapping = match owned_artifact_teardown_disposition(kind: TailscaleServeMapping) {
+  let mapping = match owned_artifact_teardown_disposition(kind: UpsertOwned { kind: TailscaleServeMapping }) {
     TeardownActs => true
     TeardownRefuses { cause: _ } => false
   }
-  let binary = match owned_artifact_teardown_disposition(kind: ServeBinary) {
+  let binary = match owned_artifact_teardown_disposition(kind: UpsertOwned { kind: ServeBinary }) {
     TeardownActs => true
     TeardownRefuses { cause: _ } => false
   }
@@ -1063,15 +1103,14 @@ data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN 
 // broker's two mounts are pinned byte-for-byte by test.claim.approval_broker_front_door_member_witness.
 test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
   let spec = deployment_spec_srv1()
-  let own = pipeline_steps_text(steps: emit_artifact_upsert(principal: fleet_posix_ci_runner_principal(), 
-    art: DeploymentArtifactStep {
-      kind: TailscaleServeMapping,
-      path: tailscale_serve_route_member_path(endpoint: spec.names.tailscale_serve_endpoint),
-    },
+  let own = pipeline_steps_text(steps: composed_artifact_upsert(
+    principal: fleet_posix_ci_runner_principal(),
+    kind: TailscaleServeMapping,
+    path: tailscale_serve_route_member_path(endpoint: spec.names.tailscale_serve_endpoint),
     spec: spec,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
     oidc_now: Absent,
-  ))
+  ).steps)
   let route = deployment_serve_route_script(endpoint: spec.names.tailscale_serve_endpoint, enabled: true)
   !string_contains(s: own, pattern: "tailscale")
     && string_contains(s: route, pattern: "'serve' '--bg' '--https=443' 'unix:")
@@ -1161,7 +1200,7 @@ test fn fleet_converge_timer_not_installed_by_deploy_apply() -> Bool {
   let live = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
   !any(
     deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons),
-    s => match s.kind { FleetConvergeTimerUnit => true  _ => false }
+    s => match s.kind { ComposeOwned { kind: FleetConvergeTimerUnit } => true  _ => false }
   )
     && !string_contains(s: live, pattern: "OnCalendar=*:0/15")
     && !string_contains(s: live, pattern: "ctrl-fleet-converge.timer")
@@ -1378,8 +1417,8 @@ test fn the_full_plan_lands_its_members_in_the_deployments_order() -> Bool {
   let verify_dest = join(["echo '5555555555555555555555555555555555555555555555555555555555555555  ", spec.service.serve_binary as String, "' | sha256sum -c -"], "")
   let steps = spec.steps
   three_markers_in_order(text: executable, first: verify_source, second: "target/release/gunbc' '", third: verify_dest)
-    && owned_step_index(steps: steps, kind: ServeBinary) < owned_step_index(steps: steps, kind: GunbcSourceTree)
-    && owned_step_index(steps: steps, kind: GunbcSourceTree) < owned_step_index(steps: steps, kind: SystemdUnit)
+    && owned_step_index(steps: steps, kind: UpsertOwned { kind: ServeBinary }) < owned_step_index(steps: steps, kind: UpsertOwned { kind: GunbcSourceTree })
+    && owned_step_index(steps: steps, kind: UpsertOwned { kind: GunbcSourceTree }) < owned_step_index(steps: steps, kind: ComposeOwned { kind: SystemdUnit })
     && member_fragment_text(member: ServiceProcess, plan: full) == ""
 }
 
@@ -1587,7 +1626,292 @@ test fn the_writer_reverts_only_the_authorized_target_units() -> Bool {
     && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__")
 }
 
+// SUPPLIED DECISION: a Refused Decide drops every Mutate, including ones listed after it.
+// RED on a compositor that still concatenates Mutate after an emit-time poison.
+test fn a_supplied_refused_decide_yields_zero_mutation_steps() -> Bool {
+  let planted = Mutate { member: "planted" as NonEmptyStr, steps: deploy_apply_frame_steps(spec: deployment_spec_srv1()) }
+  let fragments = [
+    Decide {
+      member: "refused" as NonEmptyStr,
+      standing: HostScriptRefused { cause: "approval-broker helper grant NOT EMITTED" },
+      steps: [],
+    },
+    planted,
+  ]
+  compose_host_script_mutate_steps(fragments: fragments).length() == 0
+    && !string_contains(s: pipeline_steps_text(steps: compose_host_script(fragments: fragments).steps), pattern: "mktemp")
+}
 
+// A nonzero names its fragment: compose prefixes every Decide/Mutate step with a marker derived
+// from the fragment's member and the step index. RED if compose concatenates raw steps.
+test fn compose_traces_each_decide_and_mutate_step() -> Bool {
+  let spec = deployment_spec_srv1()
+  let fragments = [
+    Decide {
+      member: "probe" as NonEmptyStr,
+      standing: HostScriptProceed,
+      steps: deploy_apply_frame_decide_steps(spec: spec),
+    },
+    Mutate { member: "probe" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps() },
+  ]
+  let text = pipeline_steps_text(steps: compose_host_script(fragments: fragments).steps)
+  string_contains(s: text, pattern: "__GUNBC_HOST_SCRIPT_STEP__ Decide probe 0")
+    && string_contains(s: text, pattern: "__GUNBC_HOST_SCRIPT_STEP__ Mutate probe 0")
+}
+
+// RED on the hand-built `printf '%s\n' '... <member> ...'` join: a `'` in member ends the
+// word. GREEN when the marker is one argv-serialized printf and the member survives as
+// POSIX `'\''` inside that word. Readers match `__GUNBC_HOST_SCRIPT_STEP__` on the printed
+// line, not the shell source; this claim pins the source shape those readers skip.
+test fn a_member_quote_does_not_split_the_step_marker() -> Bool {
+  let member = "path/o's" as NonEmptyStr
+  let cmd = pipeline_step_text(st: host_script_step_marker(kind: "Decide", member: member, index: 0))
+  let hand = join([
+    "printf '%s\\n' '__GUNBC_HOST_SCRIPT_STEP__ ",
+    "Decide",
+    " ",
+    member as String,
+    " ",
+    "0",
+    "'",
+  ], "")
+  cmd != hand
+    && starts_with(s: cmd, prefix: "'printf'")
+    && string_contains(s: cmd, pattern: "path/o'\\''s")
+    && string_contains(s: cmd, pattern: "__GUNBC_HOST_SCRIPT_STEP__ Decide path/o")
+}
+
+// INHABITANCE: withheld caps are a CONVERGE_WITHHELD report that still precedes binary/tree/unit
+// (Decide before Mutate) and does not drop those members (2026-09-17).
+test fn withheld_cap_report_precedes_and_keeps_binary_tree_and_unit_steps() -> Bool {
+  let a = ci_deploy_srv1_access
+  let spec = deployment_spec_srv1()
+  let cause = "surplus slots have not retired: actions-runner@srv1-12.service"
+  let cap = CapConvergeWithheld { cause: cause }
+  let text = pipeline_steps_text(steps: apply_intent_from_effects(
+    spec: spec,
+    effects: apply_empty_host_effects(spec: spec),
+    access: a,
+    plan: deploy_witness_full_install_plan(spec: spec),
+    cap_authorization: cap,
+    oidc_now: claim_oidc_now(),
+  ).steps)
+  string_contains(
+    s: text,
+    pattern: memory_cap_withheld_line(host: spec.target.host.identity, cause: cause),
+  )
+    && string_contains(s: text, pattern: "/opt/gunbc/bin")
+    && string_contains(s: text, pattern: "repository_converge")
+    && string_contains(s: text, pattern: spec.service.unit_name as String)
+    && string_contains(s: text, pattern: approval_broker_helper_sudoers_stage_name)
+    && string_contains(s: text, pattern: approval_broker_helper_sudoers_readback_stage_name)
+    && string_contains(s: text, pattern: "'cmp'")
+    && !string_contains(s: text, pattern: "__GUNBC_DEPLOY_REFUSED__ memory-cap apply WITHHELD")
+}
+
+// HOLD on this head: cap authoring names the private cap stage and not the apply-fold stage.
+// RECEIPT (RED): on a worktree at c22acb7, the real deploy_runner_memory_cap_author_script()
+// contains $_gunbc_stage (the apply-fold stage). The two conjuncts below are the live producer.
+// The former conjuncts 3-4 grepped a hand-built deploy_stage_write_command string and could
+// never fail.
+test fn cap_author_uses_a_private_stage_not_the_apply_fold_stage() -> Bool {
+  let current = deploy_runner_memory_cap_author_script()
+  string_contains(s: current, pattern: concat("$", deploy_cap_stage_dir_var))
+    && !string_contains(s: current, pattern: concat("$", deploy_stage_dir_var))
+}
+
+// DECISIVE DIFF (parent, after the c22acb7 rerun): same spec, CapConvergeWithheld vs authorized.
+// apply_intent_from_effects threads cap_authorization only into deploy_memory_cap_apply_steps, so
+// the full-script unique commands ARE this pair. Withheld-only: the CONVERGE_WITHHELD echo (exit 0).
+// Authorized-only: fleet-width author + revert. No grep/cmp/exit/false on the withheld side.
+// Position: the report is a Decide; unit install and daemon-reload are Mutate (and on c22acb7 the
+// echo sat before spec.steps). host_effect_apply maps only a nonzero shell exit.
+test fn withheld_only_prod_apply_commands_are_the_report() -> Bool {
+  let spec = deployment_spec_srv1()
+  let cause = "surplus slots have not retired: actions-runner@srv1-12.service"
+  let w_steps = deploy_memory_cap_apply_steps(
+    spec: spec,
+    authorization: CapConvergeWithheld { cause: cause },
+  )
+  let a_steps = deploy_memory_cap_apply_steps(spec: spec, authorization: srv1_authorization())
+  let w_texts = map(w_steps, st => pipeline_step_text(st: st))
+  let a_texts = map(a_steps, st => pipeline_step_text(st: st))
+  let w_only = filter(w_texts, t => !any(a_texts, x => x == t))
+  let a_only = filter(a_texts, t => !any(w_texts, x => x == t))
+  all(
+    w_only,
+    t =>
+      string_contains(s: t, pattern: "__GUNBC_CONVERGE_WITHHELD__")
+        && !string_contains(s: t, pattern: "grep")
+        && !string_contains(s: t, pattern: "cmp")
+        && !string_contains(s: t, pattern: "exit ")
+        && !string_contains(s: t, pattern: "false"),
+  )
+    && w_only.length() == 1
+    && any(a_only, t => string_contains(s: t, pattern: "20-fleet-width.conf"))
+    && any(
+      w_only,
+      t => t == memory_cap_withheld_line(host: spec.target.host.identity, cause: cause),
+    )
+}
+
+test fn apply_frame_merges_stderr_onto_stdout() -> Bool {
+  let line = deploy_shell_merge_stderr_command()
+  string_contains(
+    s: pipeline_steps_text(steps: deploy_apply_frame_decide_steps(spec: deployment_spec_srv1())),
+    pattern: line,
+  )
+    && line == "'exec' 2>&1"
+    && !string_contains(s: line, pattern: "__GUNBC_BASH_EMIT_REFUSED__")
+}
+
+test fn apply_stage_dirs_exit_trap_is_the_grammar_serialized_line() -> Bool {
+  let got = deploy_stage_dirs_exit_trap_command(dir_vars: [deploy_stage_dir_var, deploy_cap_stage_dir_var])
+  let retract = deploy_stage_dirs_exit_trap_command(dir_vars: [deploy_stage_dir_var])
+  let hand = "trap 'rm -rf \"$_gunbc_stage\" \"$_gunbc_cap_stage\"' EXIT"
+  got != hand
+    && retract != got
+    && starts_with(s: got, prefix: "'trap'")
+    && ends_with(s: got, suffix: "'EXIT'")
+    && string_contains(
+      s: pipeline_steps_text(steps: deploy_apply_frame_mutate_steps()),
+      pattern: got,
+    )
+    && !string_contains(
+      s: pipeline_steps_text(steps: deploy_apply_frame_mutate_steps()),
+      pattern: retract,
+    )
+}
+
+// MEASURED HOLE (bright-moth-475 srv1:~/bm475-prod-apply-c22acb7-2026-10-12.log): no
+// __GUNBC_DEPLOY_REFUSED__; visudo of gunbc-approval-broker-helpers succeeded; last on-disk
+// mutation that file at 04:12:13; roadmap unit already at 04:09:19; NeedDaemonReload=yes;
+// outer shell exit=2. RED if UnitFile still writes the roadmap unit before the helper grant.
+type UnitFileOrderScan
+  = LookingForHelperGrant
+  | LookingForRoadmapUnit
+  | HelperGrantBeforeRoadmapUnit
+  | RoadmapUnitBeforeHelperGrant
+
+test fn helper_grant_precedes_the_roadmap_unit_install() -> Bool {
+  let spec = deployment_spec_srv1()
+  let plan = deploy_witness_full_install_plan(spec: spec)
+  let steps = compose_host_script_mutate_steps(fragments: apply_intent_fragments(
+    spec: spec,
+    effects: apply_empty_host_effects(spec: spec),
+    access: ci_deploy_srv1_access,
+    plan: plan,
+    cap_authorization: CapConvergeWithheld { cause: "claim order scan" },
+    oidc_now: claim_oidc_now(),
+  ))
+  let roadmap = spec.service.unit_name as String
+  match fold(steps, init: LookingForHelperGrant, f: (acc, st) =>
+    match acc {
+      HelperGrantBeforeRoadmapUnit => HelperGrantBeforeRoadmapUnit
+      RoadmapUnitBeforeHelperGrant => RoadmapUnitBeforeHelperGrant
+      LookingForHelperGrant =>
+        if string_contains(s: pipeline_step_text(st: st), pattern: roadmap) {
+          RoadmapUnitBeforeHelperGrant
+        } else {
+          if string_contains(s: pipeline_step_text(st: st), pattern: "gunbc-approval-broker-helpers") {
+            LookingForRoadmapUnit
+          } else {
+            LookingForHelperGrant
+          }
+        }
+      LookingForRoadmapUnit =>
+        if string_contains(s: pipeline_step_text(st: st), pattern: roadmap) {
+          HelperGrantBeforeRoadmapUnit
+        } else {
+          LookingForRoadmapUnit
+        }
+    }
+  ) {
+    HelperGrantBeforeRoadmapUnit => true
+    LookingForHelperGrant => false
+    LookingForRoadmapUnit => false
+    RoadmapUnitBeforeHelperGrant => false
+  }
+}
+
+fn host_script_mutate_carries_refused_marker(f: HostScriptFragment) -> Bool {
+  match f {
+    Decide { member: _, standing: _, steps: _ } => false
+    Mutate { member: _, steps: s } => string_contains(s: pipeline_steps_text(steps: s), pattern: "_REFUSED__")
+  }
+}
+
+// Mutate still admits an authored string, so a poison remains writable. This claim is the
+// mechanical preventative: no apply member's Mutate steps contain a __GUNBC_*_REFUSED__ marker.
+test fn no_member_mutate_steps_carry_a_refused_marker() -> Bool {
+  let spec = deployment_spec_srv1()
+  let fragments = apply_intent_fragments(
+    spec: spec,
+    effects: apply_empty_host_effects(spec: spec),
+    access: ci_deploy_srv1_access,
+    plan: deploy_witness_full_install_plan(spec: spec),
+    cap_authorization: CapConvergeWithheld { cause: "mutate-marker census" },
+    oidc_now: claim_oidc_now(),
+  )
+  !any(fragments, f => host_script_mutate_carries_refused_marker(f: f))
+}
+
+fn fragment_is_refused_member(f: HostScriptFragment, name: String) -> Bool {
+  match f {
+    Decide { member: m, standing: s, steps: _ } =>
+      (m as String) == name && match s {
+        HostScriptRefused { cause: _ } => true
+        HostScriptProceed => false
+      }
+    Mutate { member: _, steps: _ } => false
+  }
+}
+
+// RED at 414c595: SystemdUnit upsert still daemon-reloaded / enabled / restarted after an OIDC
+// refuse. GREEN: composed apply and retract carry that refuse as Decide; no Mutate of a refused
+// member. emit_artifact_upsert no longer inhabits SystemdUnit.
+test fn a_refused_serve_unit_is_not_reloaded_enabled_or_restarted() -> Bool {
+  let a = ci_deploy_srv1_access
+  let spec = srv1_twin_spec()
+  let unit = spec.service.unit_name as String
+  let apply_frags = apply_intent_fragments(
+    spec: spec,
+    effects: apply_empty_host_effects(spec: spec),
+    access: a,
+    plan: deploy_witness_full_install_plan(spec: spec),
+    cap_authorization: CapConvergeWithheld { cause: "refuse-then-restart" },
+    oidc_now: Absent,
+  )
+  let apply_mutate = pipeline_steps_text(steps: compose_host_script_mutate_steps(fragments: apply_frags))
+  let retract_frags = retract_intent_fragments_for(spec: spec, access: a)
+  let retract_pipe = compose_host_script(fragments: retract_frags)
+  any(apply_frags, f => fragment_is_refused_member(f: f, name: "serve-unit"))
+    && any(apply_frags, f => fragment_is_refused_member(f: f, name: "oidc"))
+    && count(compose_host_script_mutate_steps(fragments: apply_frags)) == 0
+    && !string_contains(s: apply_mutate, pattern: "daemon-reload")
+    && !string_contains(s: apply_mutate, pattern: unit)
+    && !any(retract_frags, f => match f {
+      Mutate { member: m, steps: s } =>
+        count(s) > 0 && any(retract_frags, d => fragment_is_refused_member(f: d, name: m as String))
+      Decide { member: _, standing: _, steps: _ } => false
+    })
+    && !string_contains(s: pipeline_steps_text(steps: retract_pipe.steps), pattern: join(["restart ", unit], ""))
+}
+
+// THE SHARED PROJECTION MUST SEE COMPOSE'S DROP. A refusing OIDC clock (Absent) is one member's
+// Decide. compose_host_script_mutate_steps then emits no Mutate for any other member. RED if
+// apply_emitted_steps_text_at still flat-maps apply_step_effects: the twin's handler would remain
+// in the refused text after oidc emptied.
+test fn a_refused_oidc_clock_projects_no_other_member_mutates() -> Bool {
+  let spec = srv1_twin_spec()
+  let plan = deploy_witness_full_install_plan(spec: spec)
+  let other_member = "--function roadmap_serve_handle_srv1_lab "
+  let proceeding = apply_emitted_steps_text_at(spec: spec, plan: plan, oidc_now: claim_oidc_now())
+  let refused = apply_emitted_steps_text_at(spec: spec, plan: plan, oidc_now: Absent)
+  string_contains(s: proceeding, pattern: other_member)
+    && refused == ""
+    && !string_contains(s: refused, pattern: other_member)
+}
 
 // ── THE ADDITIVE INSTALL TOUCHES THE ROADMAP UNIT IN NO WAY ─────────────────────────────────
 // THIS IS THE CLAIM THE STAGE EXISTS TO SATISFY, not a hygiene check on a script. Roadmap

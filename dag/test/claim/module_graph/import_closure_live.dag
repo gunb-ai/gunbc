@@ -1,7 +1,9 @@
 module test.claim.module_graph.import_closure_live
+import std.optional { Absent, Optional, Present }
+
 
 import v2.lens.module_graph { ImportResolutionFact, import_resolution_facts_live, module_graph_exclude_substrings, no_paths }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -82,8 +84,8 @@ fn declared_with_bogus() -> FreeMonoid<String> {
 // directories of its members. Nothing here is a hand-listed directory.
 fn closure_parent_dir(path: String) -> String {
   match list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
-    TailAbsent => path
-    TailFound { tail: rest } => join(reverse(rest), "/")
+    Absent => path
+    Present { value: rest } => join(reverse(rest), "/")
   }
 }
 

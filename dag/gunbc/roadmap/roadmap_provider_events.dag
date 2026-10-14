@@ -714,55 +714,60 @@ fn provider_execution_fold_event(
   state: ProviderExecutionState,
   event: ProviderEvent,
 ) -> ProviderExecutionState {
-  match state {
-    ProviderCompleted { activity: _ } => state
-    ProviderFailed { activity: _, detail: _ } => state
-    ProviderBudgetSpent { activity: _, detail: _ } => state
-    ProviderEventsRefused { activity: _, detail: _ } => state
-    _ =>
-      match event.kind {
-        ThreadStarted => ProviderStarting { activity: "thread started" }
-        TurnStarted => ProviderRunning { activity: "agent started" }
-        HarnessRoundUsage => state
-        HarnessTransportRetry => state
-        HarnessWireLogUnwritable => state
-        HarnessPlacementWaiting => ProviderAwaitingSeat { detail: harness_placement_waiting_detail(raw: event.raw) }
-        HarnessSupervisionVerdict => state
-        HarnessHandedIn => ProviderAwaitingAcceptance { handin: harness_handed_in_id(raw: event.raw) }
-        HarnessRevisionStarted => ProviderRunning { activity: "Agent revising · acceptance requested changes" }
-        HarnessAccepted => state
-        HarnessAcceptanceUnavailable => ProviderFailed { activity: "acceptance unavailable", detail: event.raw }
-        HarnessStoppedBySupervision =>
-          ProviderFailed { activity: "stopped by supervision", detail: event.raw }
-        HarnessSupervisionUnavailable =>
-          ProviderFailed { activity: "supervision unavailable", detail: event.raw }
-        ItemStarted { activity } =>
-          ProviderRunning {
-            activity: join(
-              ["Agent working · ", provider_item_activity_label(activity: activity)],
-              "",
-            ),
-          }
-        ItemCompleted { activity } =>
-          ProviderRunning {
-            activity: match activity {
-              Reporting => "Agent finishing"
-              _ =>
-                join(
-                  ["Agent working · ", provider_item_activity_label(activity: activity)],
-                  "",
-                ),
-            },
-          }
-        TurnCompleted =>
-          ProviderCompleted { activity: "Agent complete" }
-        TurnFailed =>
-          ProviderFailed { activity: "agent turn failed", detail: event.raw }
-        HarnessBudgetExhausted =>
-          ProviderBudgetSpent { activity: "Agent stopped at its round budget", detail: event.raw }
-        ProviderStreamError =>
-          ProviderFailed { activity: "provider error", detail: event.raw }
+  match provider_execution_terminality(state: state) {
+    TerminalityCompleted { activity: _ } => state
+    TerminalityRefused => state
+    TerminalityEventsRefused => state
+    TerminalityNotStarted => provider_execution_event_step(state: state, event: event)
+    TerminalityWorking => provider_execution_event_step(state: state, event: event)
+  }
+}
+
+// THE EVENT STEP: what a still-open row absorbs from one provider event.
+// Written once and called by both unlocked terminality classes (NotStarted
+// and Working absorb identically) so the event arms are not cloned.
+fn provider_execution_event_step(
+  state: ProviderExecutionState,
+  event: ProviderEvent,
+) -> ProviderExecutionState {
+  match event.kind {
+    ThreadStarted => ProviderStarting { activity: "thread started" }
+    TurnStarted => ProviderRunning { activity: "agent started" }
+    HarnessRoundUsage => state
+    HarnessWireLogUnwritable => state
+    HarnessPlacementWaiting => ProviderAwaitingSeat { detail: harness_placement_waiting_detail(raw: event.raw) }
+    HarnessTransportRetry => state
+    HarnessSupervisionVerdict => state
+    HarnessHandedIn => ProviderAwaitingAcceptance { handin: harness_handed_in_id(raw: event.raw) }
+    HarnessRevisionStarted => ProviderRunning { activity: "Agent revising · acceptance requested changes" }
+    HarnessAccepted => state
+    HarnessAcceptanceUnavailable => ProviderFailed { activity: "acceptance unavailable", detail: event.raw }
+    HarnessStoppedBySupervision =>
+      ProviderFailed { activity: "stopped by supervision", detail: event.raw }
+    HarnessSupervisionUnavailable =>
+      ProviderFailed { activity: "supervision unavailable", detail: event.raw }
+    ItemStarted { activity } =>
+      ProviderRunning {
+        activity: join(
+          ["Agent working · ", provider_item_activity_label(activity: activity)],
+          "",
+        ),
       }
+    ItemCompleted { activity } => {
+      let label = match provider_item_activity_kind(activity: activity) {
+        ItemKindReporting => "Agent finishing"
+        ItemKindWorking => join(["Agent working · ", provider_item_activity_label(activity: activity)], "")
+      }
+      ProviderRunning { activity: label }
+    }
+    TurnCompleted =>
+      ProviderCompleted { activity: "Agent complete" }
+    TurnFailed =>
+      ProviderFailed { activity: "agent turn failed", detail: event.raw }
+    HarnessBudgetExhausted =>
+      ProviderBudgetSpent { activity: "Agent stopped at its round budget", detail: event.raw }
+    ProviderStreamError =>
+      ProviderFailed { activity: "provider error", detail: event.raw }
   }
 }
 
@@ -845,11 +850,94 @@ fn provider_execution_activity(state: ProviderExecutionState) -> String {
 }
 
 fn provider_execution_detail(state: ProviderExecutionState) -> String {
+  match provider_execution_carried_detail(state: state) {
+    Present { value: detail } => detail
+    none => ""
+  }
+}
+
+// TERMINALITY PARTITION: the ONE classifier over ProviderExecutionState that
+// every terminality reader folds over, instead of each matching the variant
+// list with its own arm set. The five classes are the least common refinement
+// of the three consumers' partitions:
+//   belt (belt_provider_is_terminal):        TerminalCompleted, TerminalRefused  => true
+//                                            EventsRefused, NotStarted, Working => false
+//   event fold (provider_execution_fold_event): the two Terminal* classes and EventsRefused are the
+//                                            locked arm (the event is over); NotStarted and Working
+//                                            are the unlocked arm (the event still folds)
+//   reconcile (provider_execution_reconcile_process): TerminalCompleted reconciles against the
+//                                            process evidence; the other four classes keep
+//                                            themselves (Working except for its not-started arm)
+// The EventsRefused difference that used to live in a comment (the belt keeps it
+// open, the event fold locks it) is a SEPARATE VARIANT here, so it lives in the
+// type: belt folds one way over TerminalRefused and another over
+// TerminalityEventsRefused, and the event fold folds them identically.
+// dag/std/algebra has no projection combinator, so this is hand-authored: a
+// total match over the closed coproduct's inhabitance onto a small typed
+// partition (the A3/A6 house shape — one total named classifier as the single
+// authority, every consumer folding over it).
+type ProviderExecutionTerminality
+  = TerminalityCompleted { activity: String }
+  | TerminalityRefused
+  | TerminalityEventsRefused
+  | TerminalityNotStarted
+  | TerminalityWorking
+
+fn provider_execution_terminality(state: ProviderExecutionState) -> ProviderExecutionTerminality {
   match state {
-    ProviderFailed { activity: _, detail } => detail
-    ProviderBudgetSpent { activity: _, detail } => detail
-    ProviderEventsRefused { activity: _, detail } => detail
-    ProviderAwaitingSeat { detail } => detail
-    _ => ""
+    ProviderNotStarted => TerminalityNotStarted
+    ProviderStarting { activity: _ } => TerminalityWorking
+    ProviderAwaitingSeat { detail: _ } => TerminalityWorking
+    ProviderAwaitingAcceptance { handin: _ } => TerminalityWorking
+    ProviderRunning { activity: _ } => TerminalityWorking
+    ProviderCompleted { activity } => TerminalityCompleted { activity }
+    ProviderFailed { activity: _, detail: _ } => TerminalityRefused
+    ProviderBudgetSpent { activity: _, detail: _ } => TerminalityRefused
+    ProviderEventsRefused { activity: _, detail: _ } => TerminalityEventsRefused
+  }
+}
+
+// REPORTING/WORKING ACTIVITY: the one split the ItemCompleted label makes —
+// Reporting finishes the item, the other eleven activities keep working. Same
+// house shape as the terminality partition above: a total match over the
+// closed coproduct's inhabitance onto a small typed partition, so the fold
+// names the Reporting case instead of defaulting the other eleven activities
+// behind a wildcard (and a new activity variant forces a decision here, once).
+type ProviderItemActivityKind
+  = ItemKindReporting
+  | ItemKindWorking
+
+fn provider_item_activity_kind(activity: ProviderItemActivity) -> ProviderItemActivityKind {
+  match activity {
+    Reporting => ItemKindReporting
+    RunningCommand => ItemKindWorking
+    EditingFiles => ItemKindWorking
+    UsingConnectedTool => ItemKindWorking
+    Searching => ItemKindWorking
+    UpdatingPlan => ItemKindWorking
+    ReasoningItem => ItemKindWorking
+    HarnessReadingFile => ItemKindWorking
+    HarnessWritingFile => ItemKindWorking
+    HarnessEditingFile => ItemKindWorking
+    HarnessRefusingUnrecognizedTool => ItemKindWorking
+    UnclassifiedItem => ItemKindWorking
+  }
+}
+
+// CARRIED DETAIL: the states that inhabit a detail string — the three refusals
+// and the awaiting-seat wait — and the value is that detail. std's Optional
+// carrier applied to this coproduct's inhabitance (A3/A6 house shape); the
+// reader matches the partition (Present/none) instead of re-listing the four
+// detail-carrying variants with a wildcard default.
+fn provider_execution_carried_detail(state: ProviderExecutionState) -> String? {
+  match state {
+    ProviderNotStarted => none
+    ProviderStarting { activity: _ } => none
+    ProviderAwaitingSeat { detail } => Present { value: detail }
+    ProviderRunning { activity: _ } => none
+    ProviderCompleted { activity: _ } => none
+    ProviderFailed { activity: _, detail } => Present { value: detail }
+    ProviderBudgetSpent { activity: _, detail } => Present { value: detail }
+    ProviderEventsRefused { activity: _, detail } => Present { value: detail }
   }
 }

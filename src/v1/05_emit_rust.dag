@@ -743,15 +743,31 @@ fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
 // (the E0599 .chars()/.split() class on the self-host closure). A fn definition's realization
 // follows its operands' representation: a structural-carrier declaration emits its own declared
 // body through ordinary emission, which already routes list_head/list_tail/is_empty/fold_list to
-// crate::v2_std_algebra. The one arm kept is `trim`, a host-String-on-host-String bridge
-// (std.algebra trim, kernel text both sides) with no structural operand in play; it is retained
-// as-is rather than widened, and dissolves when fn-body realization is keyed on declaration
-// identity rather than name (the same trigger checkpoint_table_bypasses_identity_note records).
-fn rust_host_string_op_fn_emit(name: String) -> String? {
+// crate::v2_std_algebra. `trim` remains the name-keyed residue of that class (not redesigned
+// here). `string_contains` is NOT selected by spelling: emit_fn_def asks this with the
+// declaration's module path, and the bridge fires only when std.primitive_projection has a row
+// for that exact DeclarationRef whose primitive is string_contains. A same-named fn in any
+// other module keeps its authored body. Dissolves when fn-body realization is keyed on
+// declaration identity rather than name for the remaining name-keyed arm (`trim`) — the same
+// trigger checkpoint_table_bypasses_identity_note records.
+fn rust_host_string_contains_bridge_applies(module_path: String, name: String) -> Bool {
+  match primitive_projection_row_for_declaration(declaration: decl_ref(module_path: module_path, decl_name: name)) {
+    Present { value: row } => primitive_identity_runtime_name(identity: row.primitive) == "string_contains"
+    Absent => false
+  }
+}
+
+fn rust_host_string_op_fn_emit(name: String, module_path: String) -> String? {
   if name == "trim" {
     Present { value: concat(
       "pub fn trim(s: String) -> String {\n",
       "    v1_rt::trim(s)\n",
+      "}\n"
+    ) }
+  } else if rust_host_string_contains_bridge_applies(module_path: module_path, name: name) {
+    Present { value: concat(
+      "pub fn ", name, "(s: String, pattern: String) -> bool {\n",
+      "    v1_rt::string_contains(&s, pattern)\n",
       "}\n"
     ) }
   } else {
@@ -9678,7 +9694,7 @@ fn rust_host_seam_is_unrealized(module_path: String, name: String, body: Node, s
 // nullary seam has no by-ref or result-wrapping choice to get wrong.
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
-  let host_text_op = rust_host_string_op_fn_emit(name: name)
+  let host_text_op = rust_host_string_op_fn_emit(name: name, module_path: scope.module_name)
   if host_text_op != none {
     return match host_text_op {
       Present { value: op_fn } => op_fn
@@ -18828,6 +18844,21 @@ fn emit_host_acquisition_rs(crate_name: String) -> String {
     "    }\n",
     "}\n",
     "\n",
+    "// THE SCOPED CENSUS ASKS FOR A SUBJECT'S CLOSURE, acquired around its blocks (native_lane_census_scoped_ingest).\n",
+    "fn read_census_scoped_ingest(subject: &str, source_roots: &[String]) -> Rc<NativeCensusScoped> {\n",
+    "    let filesystem = host_filesystem();\n",
+    "    let observed = host_executor().block_on(native_lane_census_scoped_ingest(subject.to_string(), Rc::new(source_roots.iter().cloned().collect()), &filesystem));\n",
+    "    match observed {\n",
+    "        Ok(outcome) => match &*outcome {\n",
+    "            Outcome::Accepted { value, .. } => value.clone(),\n",
+    "            Outcome::Rejected { diagnostics } => {\n",
+    "                eprintln!(\"CENSUS-SCOPED-ACQUISITION-REFUSED: {:#?}\", diagnostics); std::process::exit(1);\n",
+    "            }\n",
+    "        },\n",
+    "        Err(cause) => { eprintln!(\"REFUSED: native filesystem transport: {}\", cause); std::process::exit(2); }\n",
+    "    }\n",
+    "}\n",
+    "\n",
     "fn acquire_native_lane(source_roots: &[String], pattern: Rc<TargetPattern>) -> Rc<NativeLaneAcquisition> {\n",
     "    let filesystem = host_filesystem();\n",
     "    let observed = host_executor().block_on(native_lane_acquire(Rc::new(source_roots.iter().cloned().collect()), pattern, &filesystem));\n",
@@ -19439,7 +19470,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    native_census_cause_groups_add_module, native_census_cause_groups_from_file_refusals,", "\n",
       "    native_census_cause_group_rows, native_census_closure_index, native_census_roots_ranked,", "\n",
       "    native_demand_census_output,", "\n",
-      "    native_lane_acquire, native_lane_acquired, native_lane_census_ingest,", "\n",
+      "    native_lane_acquire, native_lane_acquired, native_lane_census_ingest, native_lane_census_scoped_ingest,", "\n",
+      "    NativeCensusScope, NativeCensusScoped,", "\n",
       "    native_lane_controls, native_lane_file_refusal_index, native_lane_receipt,", "\n",
       "    native_test_context_absorb,", "\n",
       "    native_test_context_finish, native_test_context_from_ingest, native_test_context_state_empty,", "\n",
@@ -19732,7 +19764,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                // written as they are decided rather than accumulated: the census is over the", "\n",
       "                // whole tree, and a population held to the end is a second corpus-sized", "\n",
       "                // allocation beside the context that produced it.", "\n",
-      "                for row in native_census_residual_rows(entry.clone(), first.clone(), rest.clone()).iter() \{", "\n",
+      "                for row in native_census_residual_rows(context.positions.clone(), entry.clone(), first.clone(), rest.clone()).iter() \{", "\n",
       "                    residual_rows += 1;", "\n",
       "                    println!(\"{}\", serde_json::json!(\{ \"census_residual\": row \}));", "\n",
 
@@ -19815,18 +19847,41 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "", "\n",
       "// THE FIFTH MODE: THE WHOLE TREE, RESOLVED AND INFERRED PER MODULE (`census-infer`).", "\n",
       "//", "\n",
-      "// Every decision is a .dag fold: the per-module step (v2.compiler.compile", "\n",
-      "// native_census_module_inference), the type-declaration census's contribution from it", "\n",
-      "// (native_census_infer_type_contribution), the run it accumulates into and the receipt and", "\n",
-      "// terminal that run decides (gunbc.instruments.type_declaration_use_census). This loop reads the", "\n",
-      "// roots, threads the context, prints and sets the status -- the operations no fold can. A module's", "\n",
-      "// trees live for one step; what is kept is the census's rows, not the trees.", "\n",
       "fn run_census_infer(source_roots: &[String]) \{", "\n",
       "    if source_roots.is_empty() \{", "\n",
       "        eprintln!(\"REFUSED: no source roots given\");", "\n",
       "        std::process::exit(2);", "\n",
       "    \}", "\n",
-      "    let reads = read_census_ingest(source_roots);", "\n",
+      "    census_infer_walk(read_census_ingest(source_roots), None);", "\n",
+      "\}", "\n",
+      "", "\n",
+      "// THE SIXTH MODE: ONE SUBJECT'S ACQUIRED CLOSURE, RESOLVED AND INFERRED PER MODULE (`census-scoped`).", "\n",
+      "//", "\n",
+      "// The population is the subject's closure as v2.compiler.module_acquisition acquires it around its", "\n",
+      "// blocks (v2.compiler.compile native_lane_census_scoped_ingest): acquisition's own reads, never a", "\n",
+      "// second walk of the roots. The scope line says whether that population is closed or blocked, and", "\n",
+      "// where. The walk is census-infer's, without the type-declaration census and without the subject", "\n",
+      "// annotation: every member is in the subject's closure by construction (gunbc.plans.census_scoped_run).", "\n",
+      "fn run_census_scoped(subject: &str, source_roots: &[String]) \{", "\n",
+      "    if source_roots.is_empty() \{", "\n",
+      "        eprintln!(\"REFUSED: no source roots given\");", "\n",
+      "        std::process::exit(2);", "\n",
+      "    \}", "\n",
+      "    let scoped = read_census_scoped_ingest(subject, source_roots);", "\n",
+      "    println!(\"\{\}\", serde_json::json!(\{ \"census_scope\": scoped.scope.clone() \}));", "\n",
+      "    census_infer_walk(scoped.ingest.iter().cloned().collect(), Some((subject.to_string(), scoped.scope.clone())));", "\n",
+      "\}", "\n",
+      "", "\n",
+      "// THE WALK BOTH CENSUS-INFER MODES SHARE. Every decision is a .dag fold: the per-module step (v2.compiler.compile", "\n",
+      "// native_census_module_inference), the type-declaration census's contribution from it", "\n",
+      "// (native_census_infer_type_contribution), the run it accumulates into and the receipt and", "\n",
+      "// terminal that run decides (gunbc.instruments.type_declaration_use_census). This loop reads the", "\n",
+      "// roots, threads the context, prints and sets the status -- the operations no fold can. A module's", "\n",
+      "// trees live for one step; what is kept is the census's rows, not the trees. `scope` is absent for", "\n",
+      "// the whole-corpus run, which also feeds the type census and marks each root against the subject", "\n",
+      "// closure; a scoped run does neither, and its terminal names its scope instead, with the label it was", "\n",
+      "// given so the instrument can check the subject it observed against the one it bound.", "\n",
+      "fn census_infer_walk(reads: Vec<Rc<DagSourceReadWitness>>, scope: Option<(String, Rc<NativeCensusScope>)>) \{", "\n",
       "    let corpus_reads = reads.len();", "\n",
       "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
       "    let mut context = match &*native_test_context_from_ingest(ingest.clone()) \{", "\n",
@@ -19838,10 +19893,10 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    \};", "\n",
       "    // THE FRONT-END POPULATION IS PRINTED IN THE SHAPE census-resolve PRINTS IT: the same context fact.", "\n",
       "    for refusal in context.file_refusals.iter() \{", "\n",
-      "        println!(\"{}\", serde_json::json!(\{ \"file_refusal\": refusal \}));", "\n",
+      "        println!(\"\{\}\", serde_json::json!(\{ \"file_refusal\": refusal \}));", "\n",
       "    \}", "\n",
       "    for advised in context.accepted_file_advisories.iter() \{", "\n",
-      "        println!(\"{}\", serde_json::json!(\{ \"accepted_file_advisories\": advised \}));", "\n",
+      "        println!(\"\{\}\", serde_json::json!(\{ \"accepted_file_advisories\": advised \}));", "\n",
       "    \}", "\n",
       "    let file_refusals = context.file_refusals.len();", "\n",
       "    let advised_files = context.accepted_file_advisories.len();", "\n",
@@ -19868,17 +19923,19 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            NativeInferCensusOutcome::NativeInferCensusFileRefused => \{ file_refused += 1; \"file_refused\" \}", "\n",
       "            NativeInferCensusOutcome::NativeInferCensusResolveRefused \{ first, rest, .. \} => \{", "\n",
       "                resolve_refused += 1;", "\n",
-      "                for row in native_census_residual_rows(entry.clone(), first.clone(), rest.clone()).iter() \{", "\n",
+      "                for row in native_census_residual_rows(context.positions.clone(), entry.clone(), first.clone(), rest.clone()).iter() \{", "\n",
       "                    residual_rows += 1;", "\n",
-      "                    println!(\"{}\", serde_json::json!(\{ \"census_residual\": row \}));", "\n",
+      "                    println!(\"\{\}\", serde_json::json!(\{ \"census_residual\": row \}));", "\n",
       "                \}", "\n",
       "                \"resolve_refused\"", "\n",
       "            \}", "\n",
       "            NativeInferCensusOutcome::NativeInferCensusInferred \{ .. \} => \{ inferred += 1; \"inferred\" \}", "\n",
       "            NativeInferCensusOutcome::NativeInferCensusInferRefused \{ .. \} => \{ infer_refused += 1; \"infer_refused\" \}", "\n",
       "        \};", "\n",
-      "        let contribution = native_census_infer_type_contribution(context.clone(), entry.clone(), step.outcome.clone());", "\n",
-      "        run = type_census_run_add(run, contribution);", "\n",
+      "        if scope.is_none() \{", "\n",
+      "            let contribution = native_census_infer_type_contribution(context.clone(), entry.clone(), step.outcome.clone());", "\n",
+      "            run = type_census_run_add(run, contribution);", "\n",
+      "        \}", "\n",
       "        eprintln!(\"[native-census-infer] \{\}\", serde_json::json!(\{", "\n",
       "            \"module\": entry.module.clone(),", "\n",
       "            \"path\": entry.path.clone(),", "\n",
@@ -19889,9 +19946,39 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    \}", "\n",
       "    let cause_groups = native_census_cause_group_rows(groups.clone());", "\n",
       "    for group in cause_groups.iter() \{", "\n",
-      "        println!(\"{}\", serde_json::json!(\{ \"cause_group\": group \}));", "\n",
+      "        println!(\"\{\}\", serde_json::json!(\{ \"cause_group\": group \}));", "\n",
       "    \}", "\n",
       "    let roots = native_census_roots_ranked(cause_groups.clone());", "\n",
+      "    if let Some((subject_label, scope)) = scope \{", "\n",
+      "        for root in roots.iter() \{", "\n",
+      "            println!(\"\{\}\", serde_json::json!(\{ \"census_root\": root \}));", "\n",
+      "        \}", "\n",
+      "        let (subject, acquisition, blocks) = match &*scope \{", "\n",
+      "            NativeCensusScope::NativeCensusScopeClosed \{ subject, .. \} => (subject.clone(), \"closed\", 0),", "\n",
+      "            NativeCensusScope::NativeCensusScopeBlocked \{ subject, blocked_rest, .. \} => (subject.clone(), \"blocked\", 1 + blocked_rest.len()),", "\n",
+      "        \};", "\n",
+      "        println!(\"\{\}\", serde_json::json!(\{", "\n",
+      "            \"_terminal\": \"complete\",", "\n",
+      "            \"mode\": \"census-scoped\",", "\n",
+      "            \"subject_label\": subject_label,", "\n",
+      "            \"subject\": subject,", "\n",
+      "            \"acquisition\": acquisition,", "\n",
+      "            \"blocks\": blocks,", "\n",
+      "            \"corpus_reads\": corpus_reads,", "\n",
+      "            \"modules\": modules.len(),", "\n",
+      "            \"file_refusals\": file_refusals,", "\n",
+      "            \"advised_files\": advised_files,", "\n",
+      "            \"file_refused\": file_refused,", "\n",
+      "            \"resolve_refused\": resolve_refused,", "\n",
+      "            \"residual_rows\": residual_rows,", "\n",
+      "            \"inferred\": inferred,", "\n",
+      "            \"infer_refused\": infer_refused,", "\n",
+      "            \"cause_groups\": cause_groups.len(),", "\n",
+      "            \"roots\": roots.len(),", "\n",
+      "            \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),", "\n",
+      "        \}));", "\n",
+      "        std::process::exit(0);", "\n",
+      "    \}", "\n",
       "    // EACH ROOT IS MARKED AGAINST THE NATIVE TEST TARGET'S CLOSURE (v2.compiler.compile", "\n",
       "    // native_census_subject_closure): derived from the label, never from a list.", "\n",
       "    let subject = native_census_subject_closure(closure.clone(), modules.clone(), native_census_subject_label());", "\n",
@@ -20626,6 +20713,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                NativeDriverVerb::NativeDriverCensusResolve \{ .. \} => run_census_resolve(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusInfer \{ .. \} => run_census_infer(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverDemandCensus \{ .. \} => run_demand_census(&source_roots),", "\n",
+      "                NativeDriverVerb::NativeDriverCensusScoped \{ subject, .. \} => run_census_scoped(subject, &source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverAdjudicate \{ facts_path, pattern, .. \} => run_adjudication(facts_path, Rc::new(TargetPattern::clone(pattern)), &source_roots),", "\n",
       "            \}", "\n",
       "        \}", "\n",

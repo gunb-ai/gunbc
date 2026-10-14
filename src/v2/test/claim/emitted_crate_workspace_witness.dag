@@ -9,7 +9,7 @@ import gunbc.rust_emitted_edge {
   rust_prelude_emitted_edges,
   semantic_source_reference_edge
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.emitted_crate_workspace {
   EmittedWorkspacePlanned,
   EmittedWorkspaceOutcome,

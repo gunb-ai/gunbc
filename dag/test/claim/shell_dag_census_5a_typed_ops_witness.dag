@@ -13,7 +13,7 @@ import extdeps.tools.hostname {
 import extdeps.systemd.systemctl
 import extdeps.tools.id
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

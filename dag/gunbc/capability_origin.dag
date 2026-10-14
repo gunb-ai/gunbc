@@ -1,11 +1,13 @@
 module gunbc.capability_origin
+import std.optional { Absent, Optional, Present }
+
 
 import extdeps.external_authority { ExternalAuthority }
 import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
 import std.decl_ref { DeclarationRef }
 import std.roster_frontier { declaration_ref_display_key }
 import std.types { Bool, List, String }
-import std.algebra { list_append, HeadAbsent, HeadFound, fold_list, list_head, list_map }
+import std.algebra { list_append, fold_list, list_head, list_map }
 
 // WHERE THE SEMANTICS CAME FROM IS A DIFFERENT QUESTION FROM WHETHER RUST OWNS A DECISION.
 //
@@ -297,8 +299,8 @@ fn probe_for_authority(probes: List<ModelEpochProbeResult>, authority: Declarati
     predicate: fn(p) { declaration_ref_display_key(ref: probe_authority(probe: p)) == wanted }
   )
   match list_head(xs: matching) {
-    HeadFound { value: p } => p
-    HeadAbsent => ProbeNotExecuted {
+    Present { value: p } => p
+    Absent => ProbeNotExecuted {
       authority: authority,
       detail: "no model-epoch probe row names this authority"
     }
@@ -341,13 +343,13 @@ fn bridge_for_item(bridges: List<AuthorizedTemporarySeedBridge>, item: Declarati
 // three questions are asked of every addition.
 fn item_origin_refusal(bridges: List<AuthorizedTemporarySeedBridge>, evidence: AdmissionEvidence, item: DeclarationRef) -> List<String> {
   match list_head(xs: bridge_for_item(bridges: bridges, item: item)) {
-    HeadAbsent => [
+    Absent => [
       concat(
         declaration_ref_display_key(ref: item),
         ": no AuthorizedTemporarySeedBridge states this item's capability origin"
       )
     ]
-    HeadFound { value: bridge } => {
+    Present { value: bridge } => {
       let origin = bridge_origin_verdict(bridge: bridge, evidence: evidence)
       let conformance = conformance_verdict(
         probe: conformance_probe_for_authority(
@@ -467,8 +469,8 @@ fn conformance_probe_for_authority(probes: List<ConformanceProbeResult>, authori
     predicate: fn(p) { declaration_ref_display_key(ref: conformance_probe_authority(probe: p)) == wanted }
   )
   match list_head(xs: matching) {
-    HeadFound { value: p } => p
-    HeadAbsent => ConformanceProbeNotExecuted {
+    Present { value: p } => p
+    Absent => ConformanceProbeNotExecuted {
       authority: authority,
       detail: "no realization-conformance probe row names this authority"
     }

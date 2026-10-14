@@ -10,7 +10,7 @@ import gunbc.roadmap.roadmap_nesting { RoadmapMembership }
 
 import std.types { Bool, String, Int, List, NonEmptyStr, CommitSha, FilePath }
 import std.minted_identity { minted_id_ordinal }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_submission {
   WorkerSubmission,

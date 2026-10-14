@@ -14,7 +14,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
 import gunbc.witness.witness_floor_workflow { witness_floor_workflow_name }
 import gunbc.required_ci_contract_epoch {
-  required_ci_contract_epoch,
+  required_ci_contract_epoch_yaml_value,
   required_ci_contract_epoch_env_key,
 }
 import gunbc.required_ci_epoch_observation {
@@ -32,7 +32,7 @@ import gunbc.fleet.fleet_revision_acceptance {
   CiContractEpochMismatch,
   accept_required_ci_merge_group_runs,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -105,7 +105,7 @@ fn build_epoch_fixture(repo: FilePath) -> EpochCommitPair {
   let initialized = git.Core.InitInRepo(repo: repo)
   let email = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.email", value: "witness@gunbc.invalid")
   let name = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.name", value: "gunbc contract epoch witness")
-  let matching = commit_epoch_fixture(repo: repo, epoch: required_ci_contract_epoch as String, branch: "matching")
+  let matching = commit_epoch_fixture(repo: repo, epoch: required_ci_contract_epoch_yaml_value(), branch: "matching")
   let mismatching = commit_epoch_fixture(repo: repo, epoch: fixture_mismatching_epoch, branch: "mismatching")
   EpochCommitPair {
     matching_sha: matching,
@@ -190,7 +190,7 @@ test fn a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_rea
     }
     && match e.admission {
       RequiredCiRefused { cause: CiContractEpochMismatch { observed: o, required: r } } =>
-        o == fixture_mismatching_epoch && r == (required_ci_contract_epoch as String)
+        o == fixture_mismatching_epoch && r == (required_ci_contract_epoch_yaml_value())
       _ => false
     }
 }
@@ -201,7 +201,7 @@ test fn a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution() -
   let e = run_epoch_experiment(mismatching: false)
   e.setup_ok
     && match e.observation {
-      RequiredCiEpochObserved { epoch: o } => (o as String) == (required_ci_contract_epoch as String)
+      RequiredCiEpochObserved { epoch: o } => (o as String) == (required_ci_contract_epoch_yaml_value())
       RequiredCiEpochUnobservable { cause: _ } => false
     }
     && match e.admission {
@@ -225,7 +225,7 @@ fn observe_in_fixture_repo(head_sha: String, commit_the_workflow: Bool) -> Requi
   let email = git.Core.ConfigLocalSetInRepo(repo: dir.path, key: "user.email", value: "witness@gunbc.invalid")
   let name = git.Core.ConfigLocalSetInRepo(repo: dir.path, key: "user.name", value: "gunbc contract epoch witness")
   let seeded = if commit_the_workflow {
-    commit_epoch_fixture(repo: dir.path, epoch: required_ci_contract_epoch as String, branch: "seeded")
+    commit_epoch_fixture(repo: dir.path, epoch: required_ci_contract_epoch_yaml_value(), branch: "seeded")
   } else {
     commit_unrelated_fixture(repo: dir.path)
   }

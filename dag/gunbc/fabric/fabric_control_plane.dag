@@ -32,7 +32,7 @@ import product.fabric.provider_admission {
 import product.fabric.selection {
   ResourceBudgetPolicy, ResourceBudgetSelection, select_resource_budget_supply, select_supply, CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability,
   OfferPriced, OfferNotFungible, OfferUnavailableForGrant, OfferCannotHoldAnUnboundedGrant, OfferNotPriceable,
-  OfferWrongCurrency, OfferUnaffordable, OfferLiabilityOverBuyOrder,
+  OfferWrongCurrency, OfferUnaffordable, OfferLiabilityOverBuyOrder, OfferRevocationNotAdmitted,
 }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.durable_exclusive_hold_file_store {
@@ -1092,5 +1092,6 @@ fn offer_candidacy_wire(candidacy: OfferCandidacy<NonEmptyStr>) -> NonEmptyStr {
     OfferWrongCurrency { offer: o, mismatch: _ } => join(["wrong-currency|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
     OfferUnaffordable { offer: o, affordability: _ } => join(["unaffordable|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
     OfferLiabilityOverBuyOrder { offer: o, liability: _, maximum: _ } => join(["over-buy-order|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
+    OfferRevocationNotAdmitted { offer: o } => join(["revocation-not-admitted|", o.principal as String, "|", o.key as String], "") as NonEmptyStr
   }
 }

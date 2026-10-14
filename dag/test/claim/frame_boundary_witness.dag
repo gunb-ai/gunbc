@@ -2,9 +2,8 @@ module test.claim.frame_boundary_witness
 
 import std.types { Bool, String, List }
 import std.effect_grant {
-  NamespaceTree, FilesystemPathTree, UriTree, ProcTree,
+  NamespaceTree, FilesystemPathTree, UriTree, ProcTree, ServiceOpTree, CodeNameTree,
   LifecycleGrade, LifecycleByConstruction, LifecycleByConvention,
-  namespace_tree_eq,
 }
 import std.frame_boundary {
   BoundaryClosure,
@@ -65,7 +64,7 @@ fn is_materialized_construction(a: BoundaryAdmission) -> Bool {
 fn is_unmaterialized_for(a: BoundaryAdmission, tree: NamespaceTree) -> Bool {
   match a {
     BoundaryMaterialized { grade: g } => false
-    BoundaryUnmaterialized { tree: t } => namespace_tree_eq(a: t, b: tree)
+    BoundaryUnmaterialized { tree: t } => t == tree
   }
 }
 
@@ -117,4 +116,21 @@ test fn frame_boundary_refusal_is_located() -> Bool {
          a: boundary_admits(required_trees: require_network, provided: fs_only_provided),
          tree: ProcTree
        )
+}
+
+// D1 derived-equality backfill (namespace_tree_eq deleted): the hand fold's job is now the
+// primitive structural ==. Discriminating RED: distinct variants must compare unequal (a broken
+// == that ignores the variant / returns true would make this claim fail). Positive control: the
+// same variant compares equal.
+test fn namespace_tree_derived_eq_red_and_positive_holds() -> Bool {
+  !(FilesystemPathTree == UriTree)
+    && !(UriTree == ProcTree)
+    && !(FilesystemPathTree == ProcTree)
+    && !(ServiceOpTree { service: "ipmi" } == ServiceOpTree { service: "redfish" })
+    && !(CodeNameTree == FilesystemPathTree)
+    && (FilesystemPathTree == FilesystemPathTree)
+    && (UriTree == UriTree)
+    && (ProcTree == ProcTree)
+    && (ServiceOpTree { service: "ipmi" } == ServiceOpTree { service: "ipmi" })
+    && (CodeNameTree == CodeNameTree)
 }
