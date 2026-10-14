@@ -187,7 +187,7 @@ import std.types { is_container_type, is_kernel_type, container_template_algebra
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -15954,6 +15954,34 @@ fn rust_operand_realization(operand: Node, scope: InferScope) -> OperandRealizat
   rust_operand_realization_of_type(rt: resolved_type(n: operand), scope: scope, fuel: 8)
 }
 
+// THE ONE ALIAS / REFINEMENT HOP. Continuation is the next type node to judge; absence means
+// this declaration is the structural residue. Fuel is the remaining chain budget; this fold
+// does not recurse — rust_operand_realization_of_type is the only recursive reader.
+fn rust_operand_alias_or_refinement_continue(rt: Node, scope: InferScope, fuel: Int) -> Node? {
+  if fuel <= 0 {
+    none
+  } else if is_where_refinement_type(ty: rt) {
+    match rt.children |> first {
+      Present { value: base } =>
+        match lookup_type_for(env: scope.type_env, node: base) {
+          Present { value: r } => Present { value: r }
+          Absent => Present { value: base }
+        }
+      Absent => none
+    }
+  } else {
+    let decl = match rt.inferred {
+      Present { value: Resolved { node: r } } => r
+      _ => rt
+    }
+    if is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) {
+      Present { value: resolved_type(n: decl) }
+    } else {
+      none
+    }
+  }
+}
+
 // AN ALIAS OR REFINEMENT DECLARATION REALIZES AS ITS TARGET. `type NonEmptyStr = String where
 // non_empty`, `type Char = Int where unicode_scalar, brand("Char")` and their like are alias items
 // (is_type_alias_item: a bare-leaf item whose resolved type is a type-alias return node) whose Rust
@@ -16005,24 +16033,9 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
       if declaration_realizes_natively_on_rust(declaration: d, spelling_decision: type_realization_decision(target: Rust, dag_name: d.decl_name as String, provenance: provenance)) {
         HostNumericOperand
       } else {
-        let decl = match rt.inferred {
-          Present { value: Resolved { node: r } } => r
-          _ => rt
-        }
-        if fuel > 0 && is_where_refinement_type(ty: rt) {
-          match rt.children |> first {
-            Present { value: base } =>
-              let base_resolved = match lookup_type_for(env: scope.type_env, node: base) {
-                Present { value: r } => r
-                Absent => base
-              }
-              rust_operand_realization_of_type(rt: base_resolved, scope: scope, fuel: fuel - 1)
-            Absent => StructuralOperand { declaration: d }
-          }
-        } else if fuel > 0 && is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) {
-          rust_operand_realization_of_type(rt: resolved_type(n: decl), scope: scope, fuel: fuel - 1)
-        } else {
-          StructuralOperand { declaration: d }
+        match rust_operand_alias_or_refinement_continue(rt: rt, scope: scope, fuel: fuel) {
+          Present { value: next } => rust_operand_realization_of_type(rt: next, scope: scope, fuel: fuel - 1)
+          Absent => StructuralOperand { declaration: d }
         }
       }
   }
@@ -16030,17 +16043,21 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
   }
 }
 
-
-// The operand's declaration is the one inference stamped on the node (std.operator_realization
+// The operand's declaration is the one inference stamped on the node (std.operator_realization)
 // OperandDeclaration); the rt-shape read below is the residue for a node that carries none.
+// Recover the declaration's type node by identity (symbol_index_lookup of module_path.decl_name)
+// and judge it with rust_operand_realization_of_type — the only hop is
+// rust_operand_alias_or_refinement_continue.
+fn rust_operand_realization_of_stamped_declaration(od: OperandDeclaration, scope: InferScope) -> OperandRealization {
+  match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: concat(od.declaration.module_path as String, ".", od.declaration.decl_name as String)) {
+    Present { value: resolved } => rust_operand_realization_of_type(rt: resolved, scope: scope, fuel: 8)
+    Absent => StructuralOperand { declaration: od.declaration }
+  }
+}
+
 fn binop_operator_realization(op: BinOp, operand: OperandDeclaration?, left: Node, scope: InferScope) -> OperatorRealization {
   let realization = match operand {
-    Present { value: od } =>
-      if declaration_realizes_natively_on_rust(declaration: od.declaration, spelling_decision: type_realization_decision(target: Rust, dag_name: od.declaration.decl_name as String, provenance: od.provenance)) {
-        HostNumericOperand
-      } else {
-        StructuralOperand { declaration: od.declaration }
-      }
+    Present { value: od } => rust_operand_realization_of_stamped_declaration(od: od, scope: scope)
     Absent => rust_operand_realization(operand: left, scope: scope)
   }
   operator_realization_for(op: op, operand: realization, ordering_rows: structural_ordering_rows)
