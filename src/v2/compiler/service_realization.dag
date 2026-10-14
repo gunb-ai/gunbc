@@ -5,9 +5,17 @@ import extdeps.ietf.http_semantics { HttpStatusClass, Informational, Successful,
 import extdeps.transports.shell_declared { ShellArgvContract, ShellExitCode, ShellExitNonzero, ShellExitPattern, ShellStringTemplateContract, shell_binding_field_contract, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
 import extdeps.transports.rest_declared { RestOtherContract, RestResponseStatus, RestStatusClass, RestStatusCode, RestStringTemplateContract, rest_binding_field_contract, rest_binding_field_of_key }
 import extdeps.transports.file_declared { FileOtherContract, FileStringTemplateContract, file_binding_field_contract, file_binding_field_of_key, file_output_channel_of_key }
+import extdeps.uri_path {
+  LiteralToken,
+  MalformedPathTemplate,
+  ParamToken,
+  ParsedPathTemplate,
+  UrlPathToken,
+  parse_path_template
+}
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node, dag_string_literal_value_optional }
 import std.types { http_status_of }
-import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, ArgvTemplate, BindingMalformed, ExecutablePositionNotLiteral, OperationInputName, UndeclaredInputBound }
+import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, ArgvTemplate, BindingMalformed, DuplicateInputBinding, ExecutablePositionNotLiteral, OperationInputName, UndeclaredInputBound }
 import v2.std.template { Template, TemplateHolePart, TemplateLiteralPart, TemplatePart, template_holes }
 import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.node_query { binder_node_parts }
@@ -532,7 +540,7 @@ fn realization_declared_field_refusal(kind: DeclaredTransport, op: Node, key: St
       match rest_binding_field_of_key(key: key) {
         Present { value: field } =>
           match rest_binding_field_contract(field: field) {
-            RestStringTemplateContract => transport_string_field_refusal(op: op, value: value)
+            RestStringTemplateContract => rest_path_field_refusal(op: op, value: value)
             RestOtherContract => optional_absent()
           }
         Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: value)
@@ -571,6 +579,66 @@ fn transport_string_field_refusal(op: Node, value: Node) -> Optional<Realization
         realization_first_refusal(acc: acc, next: fn() { transport_template_element_refusal(op: op, el: el) })
       })
     Absent => transport_template_element_refusal(op: op, el: value)
+  }
+}
+
+// A REST `path` is the upstream URI-template string (RFC 6570 simple `{name}` holes; the seed
+// decomposes the same spelling through extdeps.uri_path parse_path_template). Do not rewrite the
+// corpus into a list of concat parts: that would be a second surface for one form. A string literal
+// is that template; a list or a #13405 concat stays Template<OperationInputName> as before. An
+// unknown hole, an unclosed brace or a duplicate hole refuses located (DESIGN 5). REST `body` is
+// RestOtherContract (a record of fields), not this parser.
+fn rest_path_field_refusal(op: Node, value: Node) -> Optional<RealizationRefusal> {
+  match list_introduction_elements_optional(node: value) {
+    Present { value: elements } =>
+      fold(elements, init: optional_absent(), f: fn(acc, el) {
+        realization_first_refusal(acc: acc, next: fn() { rest_path_element_refusal(op: op, el: el) })
+      })
+    Absent => rest_path_element_refusal(op: op, el: value)
+  }
+}
+
+fn rest_path_element_refusal(op: Node, el: Node) -> Optional<RealizationRefusal> {
+  match dag_string_literal_value_optional(node: el) {
+    Present { value: text } =>
+      match rest_path_template_cause(inputs: operation_input_names(op: op), text: text) {
+        Present { value: cause } =>
+          optional_present(value: RealizationRefusal { reason: ^service_realization_argv_refused, at: el, argv: optional_present(value: cause) })
+        Absent => optional_absent()
+      }
+    Absent => transport_template_element_refusal(op: op, el: el)
+  }
+}
+
+fn rest_path_template_cause(inputs: List<Symbol>, text: String) -> Optional<ArgvRefusalCause> {
+  match parse_path_template(raw: text) {
+    MalformedPathTemplate { raw: _, segment: _, reason: r } =>
+      optional_present(value: BindingMalformed { detail: r })
+    ParsedPathTemplate { template: t } =>
+      rest_path_tokens_cause(inputs: inputs, tokens: t.tokens, seen: Empty)
+  }
+}
+
+fn rest_path_tokens_cause(inputs: List<Symbol>, tokens: List<UrlPathToken>, seen: List<Symbol>) -> Optional<ArgvRefusalCause> {
+  match tokens {
+    Empty => optional_absent()
+    Cons { head: tok, tail: rest } =>
+      match tok {
+        LiteralToken { text: _ } => rest_path_tokens_cause(inputs: inputs, tokens: rest, seen: seen)
+        ParamToken { name: n } =>
+          rest_path_param_cause(inputs: inputs, name: n, rest: rest, seen: seen)
+      }
+  }
+}
+
+fn rest_path_param_cause(inputs: List<Symbol>, name: String, rest: List<UrlPathToken>, seen: List<Symbol>) -> Optional<ArgvRefusalCause> {
+  let s = symbol_intern_lexeme(lexeme: name)
+  if symbol_in(xs: seen, s: s) {
+    optional_present(value: DuplicateInputBinding { name: name as OperationInputName })
+  } else if symbol_in(xs: inputs, s: s) {
+    rest_path_tokens_cause(inputs: inputs, tokens: rest, seen: list_snoc_item(xs: seen, item: s))
+  } else {
+    optional_present(value: UndeclaredInputBound { name: name as OperationInputName })
   }
 }
 

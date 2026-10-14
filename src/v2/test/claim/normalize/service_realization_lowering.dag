@@ -41,6 +41,10 @@ data srl_undeclared_hole_source: String = "module m\n\nservice S {\n  operation 
 data srl_template_hole_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport shell { argv: [\"echo\", \"\{path\}\"] }\n  }\n}\n"
 data srl_list_field_bound_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport rest { path: [\"/\", path] }\n  }\n}\n"
 data srl_list_field_undeclared_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport rest { path: [\"/\", other] }\n  }\n}\n"
+data srl_uri_template_bound_source: String = "module m\n\nservice S {\n  operation Run {\n    input { server_id: String }\n    transport rest { method: GET, path: \"/servers/\\\{server_id\\\}\" }\n  }\n}\n"
+data srl_uri_template_unknown_source: String = "module m\n\nservice S {\n  operation Run {\n    input { server_id: String }\n    transport rest { method: GET, path: \"/servers/\\\{other\\\}\" }\n  }\n}\n"
+data srl_uri_template_unclosed_source: String = "module m\n\nservice S {\n  operation Run {\n    input { server_id: String }\n    transport rest { method: GET, path: \"/servers/\\\{server_id\" }\n  }\n}\n"
+data srl_uri_template_duplicate_source: String = "module m\n\nservice S {\n  operation Run {\n    input { server_id: String }\n    transport rest { method: GET, path: \"/servers/\\\{server_id\\\}/also/\\\{server_id\\\}\" }\n  }\n}\n"
 
 fn srl_census(text: String) -> Outcome<CensusTree> {
   match conservation_subject_of_text(path: "probe_service_realization_lowering.dag", text: text).parsed {
@@ -186,4 +190,28 @@ test fn a_declared_input_hole_lowers_on_a_transport_list_field_holds() -> Bool {
 
 test fn an_undeclared_hole_in_a_transport_list_field_refuses_located_holds() -> Bool {
   srl_refused_as(o: srl_list_field_undeclared(), reason: ^service_realization_argv_refused)
+}
+
+fn srl_uri_template_bound() -> Outcome<CensusTree> { srl_census(text: srl_uri_template_bound_source) }
+fn srl_uri_template_unknown() -> Outcome<CensusTree> { srl_census(text: srl_uri_template_unknown_source) }
+fn srl_uri_template_unclosed() -> Outcome<CensusTree> { srl_census(text: srl_uri_template_unclosed_source) }
+fn srl_uri_template_duplicate() -> Outcome<CensusTree> { srl_census(text: srl_uri_template_duplicate_source) }
+
+// Hetzner-shaped REST path: the corpus writes the RFC 6570 string (`"/servers/{server_id}"`, braces
+// escaped so the string is a literal template, not a dag interpolation). Native lowering decomposes
+// it through extdeps.uri_path parse_path_template.
+test fn a_rest_uri_template_path_lowers_holds() -> Bool {
+  srl_has(n: srl_body(o: srl_uri_template_bound()), names: [realization_root_label(), ^S, ^Run, realization_transport_label(), ^path])
+}
+
+test fn a_rest_uri_template_unknown_hole_refuses_located_holds() -> Bool {
+  srl_refused_as(o: srl_uri_template_unknown(), reason: ^service_realization_argv_refused)
+}
+
+test fn a_rest_uri_template_unclosed_brace_refuses_located_holds() -> Bool {
+  srl_refused_as(o: srl_uri_template_unclosed(), reason: ^service_realization_argv_refused)
+}
+
+test fn a_rest_uri_template_duplicate_hole_refuses_located_holds() -> Bool {
+  srl_refused_as(o: srl_uri_template_duplicate(), reason: ^service_realization_argv_refused)
 }

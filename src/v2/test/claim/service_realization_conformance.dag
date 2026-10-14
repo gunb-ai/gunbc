@@ -327,6 +327,43 @@ test fn a_shell_argv_is_checked_in_the_shared_argv_vocabulary_holds() -> Bool {
     && sr_argv_cause_is(argv: sr_list(elements: [sr_string(value: "git"), sr_int(lexeme: "7")]), expected: "ArgvExpressionUnsupported")
 }
 
+fn sr_rest_path_entry(path: Node) -> Node {
+  sr_leaf(op: ^Run, entry: sr_conj(children: [sr_transport(kind: "rest", fields: [sr_named(name: ^method, target: sr_atom(id: ^GET)), sr_named(name: ^path, target: path)])]))
+}
+
+fn sr_rest_path_cause(path: Node) -> Optional<ArgvRefusalCause> {
+  match sr_refusal_of(realization: sr_rest_path_entry(path: path)) {
+    Present { value: r } => if r.reason == ^service_realization_argv_refused { r.argv } else { optional_absent() }
+    Absent => optional_absent()
+  }
+}
+
+fn sr_rest_path_cause_is(path: Node, expected: String) -> Bool {
+  match sr_rest_path_cause(path: path) {
+    Present { value: c } => sr_argv_cause_tag(c: c) == expected
+    Absent => false
+  }
+}
+
+// A REST path written as the upstream URI template (RFC 6570; extdeps.uri_path parse_path_template)
+// binds each `{param}` to a declared operation input by identity. The interface declares `x`.
+test fn a_rest_uri_template_path_binds_declared_holes_holds() -> Bool {
+  sr_admitted(realization: sr_rest_path_entry(path: sr_string(value: "/servers/\{x\}")))
+    && sr_admitted(realization: sr_rest_path_entry(path: sr_string(value: "/x")))
+}
+
+test fn a_rest_uri_template_unknown_hole_refuses_holds() -> Bool {
+  sr_rest_path_cause_is(path: sr_string(value: "/servers/\{y\}"), expected: "UndeclaredInputBound:y")
+}
+
+test fn a_rest_uri_template_unclosed_brace_refuses_holds() -> Bool {
+  sr_rest_path_cause_is(path: sr_string(value: "/servers/\{x"), expected: "BindingMalformed")
+}
+
+test fn a_rest_uri_template_duplicate_hole_refuses_holds() -> Bool {
+  sr_rest_path_cause_is(path: sr_string(value: "/servers/\{x\}/also/\{x\}"), expected: "DuplicateInputBinding")
+}
+
 // P2. One red for each remaining refusal reason, each differing from an accepted shape in that property.
 test fn each_remaining_refusal_has_its_red_holds() -> Bool {
   sr_refused_as(realization: sr_conj(children: [sr_named(name: ^Run, target: sr_shell_ok()), sr_named(name: ^Run, target: sr_shell_ok())]), reason: ^service_realization_entry_repeated)

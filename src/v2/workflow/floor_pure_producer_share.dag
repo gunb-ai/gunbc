@@ -1452,6 +1452,10 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "a_declared_input_hole_lowers_on_a_transport_list_field_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "an_undeclared_argv_hole_refuses_located_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "an_undeclared_hole_in_a_transport_list_field_refuses_located_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_rest_uri_template_duplicate_hole_refuses_located_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_rest_uri_template_path_lowers_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_rest_uri_template_unclosed_brace_refuses_located_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_rest_uri_template_unknown_hole_refuses_located_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "an_unrealizable_realization_refuses_located_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "the_realization_facts_lower_into_the_sibling_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "the_siblings_of_a_shared_prefix_merge_holds", standing: ActiveFillDebt }

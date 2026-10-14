@@ -194,6 +194,11 @@ fn match_path_template(template: PathTemplate, path: String) -> PathTemplateMatc
   match_path_tokens(tokens: template.tokens, segs: match_path_segments(path_only: path_only))
 }
 
+// RFC 6570 URI Templates (https://www.rfc-editor.org/rfc/rfc6570): the upstream path spelling is
+// the template string (`/servers/{server_id}`). This is the one parser of that form; native service
+// lowering (v2.compiler.service_realization rest_path_template_cause) and the seed's REST effect
+// derivation both call it. Level-1 simple `{name}` holes in a path segment; query after `?` is
+// stripped here, not parsed as a hole.
 fn parse_path_template(raw: String) -> PathTemplateParseResult {
   let path_only = match raw |> split(delimiter: "?") |> first {
     Present { value: p } => p
