@@ -406,9 +406,9 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "free_call.pure_dag_seam_unreachable" },
+      arm: InterpreterPrimitiveArmId { identity: "free_call.never" },
       form: FreeCall,
-      authored_spelling: "pure_dag_seam_unreachable",
+      authored_spelling: "never",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
       dispatch_emit_site: EvalBuiltinInnerSite,

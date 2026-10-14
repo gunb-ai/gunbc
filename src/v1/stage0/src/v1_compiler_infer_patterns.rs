@@ -954,7 +954,21 @@ pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Const
                         }),
                     })
                 } else {
-                    Rc::new(ConstructorRoster::ConstructorsOpen)
+                    if ((resolved.connective.clone() == NoConnective)
+                        && ((resolved.children.clone().len() as i64) == 0)
+                        && !crate::std_types::is_kernel_type(
+                            crate::v1_std_core::authored_name_at(
+                                env.source_indices.clone(),
+                                resolved.clone(),
+                            ),
+                        ))
+                    {
+                        Rc::new(ConstructorRoster::ConstructorsClosed {
+                            names: Rc::new(vec![]),
+                        })
+                    } else {
+                        Rc::new(ConstructorRoster::ConstructorsOpen)
+                    }
                 }
             }
         }

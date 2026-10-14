@@ -172,7 +172,17 @@ pub type Bool = bool;
 pub type Unit = ();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Never(pub std::marker::PhantomData<()>);
+pub enum Never {}
+
+#[allow(unreachable_code)]
+pub fn never() -> Never {
+    v1_rt::never()
+}
+
+#[allow(unreachable_code)]
+pub fn absurd<T>(n: Never) -> T {
+    match n {}
+}
 
 pub type Json = serde_json::Value;
 

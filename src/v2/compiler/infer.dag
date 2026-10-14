@@ -1,11 +1,11 @@
 module v2.compiler.infer
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
-import std.types { List }
+import std.types { List, is_kernel_type }
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
-import std.algebra { Cons, Empty, FreeMonoid, contains, length, list_map, list_snoc_item, list_tail, skip, zip_map }
+import std.algebra { Cons, Empty, FreeMonoid, contains, is_empty, length, list_map, list_snoc_item, list_tail, skip, zip_map }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -2923,6 +2923,7 @@ type InferMatchCoproduct {
 
 type InferMatchCoproductRead
   = CoproductRead { coproduct: InferMatchCoproduct }
+  | UninhabitedScrutinee
   | CoproductNotDeclared
   | CoproductArityMismatch
 
@@ -2971,6 +2972,16 @@ fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -
                     })
                   }
                 }
+              }
+            TypeNode { connective: Atom { identity: _ } } =>
+              match qualified_name_last_segment(qn: path) {
+                Absent => CoproductNotDeclared
+                Present { value: leaf } =>
+                  if is_kernel_type(name: symbol_lexeme(sym: leaf)) {
+                    CoproductNotDeclared
+                  } else {
+                    UninhabitedScrutinee
+                  }
               }
             TypeNode { connective: _ } => CoproductNotDeclared
             ComputationNode { behavior: _ } => CoproductNotDeclared
@@ -3379,6 +3390,19 @@ fn infer_match_coproduct(
                         match infer_match_coproduct_of_type(scrutinee_type: scrutinee_type, resolved: resolved) {
                           CoproductNotDeclared => outcome_rejected(infer_match_scrutinee_not_coproduct_diagnostic(node: scrutinee_target))
                           CoproductArityMismatch => outcome_rejected(infer_match_type_argument_arity_mismatch_diagnostic(node: scrutinee_target))
+                          UninhabitedScrutinee =>
+                            if is_empty(xs: arms) {
+                              match infer_descent_witness_for_node(n: node) {
+                                Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+                                Holds { value: descent_proof } =>
+                                  bind_outcome(
+                                    o: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof }),
+                                    f: fn(facts) { Accepted { value: facts, diagnostics: cd } }
+                                  )
+                              }
+                            } else {
+                              outcome_rejected(infer_match_scrutinee_not_coproduct_diagnostic(node: scrutinee_target))
+                            }
                           CoproductRead { coproduct: coproduct } =>
                             infer_match_coproduct_rows(
                               node: node,
@@ -8171,6 +8195,7 @@ fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGather
                 match infer_match_coproduct_of_type(scrutinee_type: scrutinee_type, resolved: resolved) {
                   CoproductNotDeclared => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
                   CoproductArityMismatch => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
+                  UninhabitedScrutinee => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
                   CoproductRead { coproduct: coproduct } => infer_match_arm_paid_frame(frame: frame, arm: edge.target, coproduct: coproduct)
                 }
             }

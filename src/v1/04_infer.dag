@@ -218,6 +218,8 @@ import v1.compiler.infer_patterns {
   pattern_subject_from_inferred, pattern_subject_from_node,
   lookup_result_subject, pattern_binding_type,
   check_match_exhaustiveness,
+  constructor_roster_for,
+  ConstructorRoster, ConstructorsClosed, ConstructorsOpen,
   expand_scrut_type_for_variant_lookup,
   pattern_matches_constructor,
   constructor_fields
@@ -9506,11 +9508,30 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       let result_type = unified_arm_type
       let empty_arms_diags = if count(arm_infer_results) == 0 {
-        [inference_error(
-          message: "match expression has no arms",
-          span: span,
-          module_name: scope.module_name
-        )]
+        match resolve_pattern_subject(scope: scope, scrutinee_subject: scrut_subject) {
+          PatternResolved { node: resolved_scrutinee } =>
+            match constructor_roster_for(type_node: resolved_scrutinee, env: scope.type_env) {
+              ConstructorsClosed { names: _ } => []
+              ConstructorsOpen =>
+                [inference_error(
+                  message: "match expression has no arms",
+                  span: span,
+                  module_name: scope.module_name
+                )]
+            }
+          PatternDynamic { span: _ } =>
+            [inference_error(
+              message: "match expression has no arms",
+              span: span,
+              module_name: scope.module_name
+            )]
+          PatternLookupBlocked =>
+            [inference_error(
+              message: "match expression has no arms",
+              span: span,
+              module_name: scope.module_name
+            )]
+        }
       } else {
         []
       }

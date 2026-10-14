@@ -7,7 +7,6 @@ pub use crate::std_algebra::string_concat_join;
 use crate::std_checked_arithmetic::CheckedInt::{CheckedIntOverflow, CheckedIntReady};
 pub use crate::std_checked_arithmetic::{checked_int_multiply, checked_int_subtract};
 pub use crate::std_checked_arithmetic::{CheckedInt, IntegerOverflow};
-pub use crate::std_error_primitives::pure_dag_seam_unreachable;
 pub use crate::std_render_repeat_string_bootstrap::repeat_string;
 pub use crate::std_types::range;
 pub use crate::std_types::Bool;
@@ -109,15 +108,13 @@ pub fn admit_exact_decimal(units: i64, fraction_digits: i64) -> Rc<ExactDecimalA
     }
 }
 
+#[allow(unreachable_code)]
 pub fn canonical_exact_decimal(mut __tco_loop_d: ExactDecimal) -> ExactDecimal {
     loop {
         #[allow(unused_mut)]
         let mut d = __tco_loop_d;
         if (d.fraction_digits.clone() < 0) {
-            break ExactDecimal {
-                units: v1_rt::pure_dag_seam_unreachable(),
-                fraction_digits: 0,
-            };
+            v1_rt::never()
         } else {
             if (d.fraction_digits.clone() == 0) {
                 break ExactDecimal {

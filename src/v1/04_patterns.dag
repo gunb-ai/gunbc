@@ -2,7 +2,7 @@ module v1.compiler.infer_patterns
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import std.types { SourceSpan }
+import std.types { SourceSpan, is_kernel_type }
 
 import std.syntax { LiteralValue }
 
@@ -544,6 +544,9 @@ fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
     ConstructorsClosed { names: ["Holds", "Violates"] }
   } else if is_coproduct {
     ConstructorsClosed { names: resolved.children |> map(c => authored_name_at(source_indices: env.source_indices, node: c)) }
+  } else if resolved.connective == NoConnective && (resolved.children |> count) == 0 && !is_kernel_type(name: authored_name_at(source_indices: env.source_indices, node: resolved)) {
+    // Zero constructors: Never, and a user's empty type declaration. Not a name check.
+    ConstructorsClosed { names: [] }
   } else {
     ConstructorsOpen
   }

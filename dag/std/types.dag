@@ -112,6 +112,21 @@ type Unit
 // (v2.std.cross_tree.import_model: dag may not import v2).
 type Never
 
+// THE ONE HOST PRODUCER OF NEVER. Never has no constructor, and checker narrowing is a separate
+// capability, so a HostRealizedSeam is the only way to name a Never value. Body is a self-call;
+// the interpreter refuses by this name if the seam is evaluated; emission is `!` / unreachable.
+fn never() -> Never {
+  never()
+}
+
+// THE ELIMINATOR. Zero arms are exhaustive iff the resolved scrutinee declaration has no
+// constructors (Never; also a user's empty coproduct). absurd inhabits every T; it cannot be
+// applied to an Int.
+fn absurd<T>(n: Never) -> T {
+  match (n) {
+  }
+}
+
 type Json
 type Bytes
 

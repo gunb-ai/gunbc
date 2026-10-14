@@ -1,0 +1,59 @@
+module test.claim.never_eliminator_witness
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+import std.types { Bool, Int, String }
+
+// RED/control pair for the Never eliminator (DESIGN 4b: discriminating RED plus positive control).
+// absurd needs a Never argument; an Int at that position must refuse. Empty match is exhaustive
+// iff the resolved scrutinee declaration has no constructors.
+//
+// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+
+fn never_eliminator_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "NonExhaustiveMatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn never_eliminator_no_arms_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "NonExhaustiveMatch")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+data absurd_int_source: String = "module neverprobe.red_int\n\nimport std.types { Int, absurd }\n\nfn f() -> Int {\n  absurd(0)\n}\n"
+
+test fn absurd_applied_to_int_must_refuse() -> Bool {
+  never_eliminator_blocking_count(source: absurd_int_source) >= 1
+}
+
+data absurd_never_control_source: String = "module neverprobe.pos\n\nimport std.types { Bool, Int, absurd, never }\n\nfn f(selector: Bool) -> Int {\n  if selector { 1 } else { absurd(never()) }\n}\n"
+
+test fn absurd_on_never_is_admitted() -> Bool {
+  never_eliminator_blocking_count(source: absurd_never_control_source) == 0
+}
+
+data empty_match_inhabited_source: String = "module neverprobe.inh\n\ntype T = A | B\n\nfn f(t: T) -> Int {\n  match (t) {\n  }\n}\n"
+
+test fn empty_match_on_inhabited_coproduct_must_refuse() -> Bool {
+  never_eliminator_no_arms_blocking_count(source: empty_match_inhabited_source) >= 1
+}
+
+data empty_match_never_source: String = "module neverprobe.nv\n\nimport std.types { Never, Int }\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
+
+test fn empty_match_on_never_is_admitted() -> Bool {
+  never_eliminator_no_arms_blocking_count(source: empty_match_never_source) == 0
+}

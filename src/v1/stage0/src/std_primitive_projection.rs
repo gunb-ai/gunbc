@@ -245,10 +245,19 @@ pub fn primitive_utf8_encode_bytes() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
-pub fn primitive_pure_dag_seam_unreachable() -> Rc<PrimitiveIdentity> {
+pub fn primitive_never() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("pure_dag_seam_unreachable".to_string())
+            primitive_identity_slug("never".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
+pub fn primitive_trim() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("trim".to_string())
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -393,9 +402,15 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
-            primitive_pure_dag_seam_unreachable(),
-            "std.error_primitives".to_string(),
-            "pure_dag_seam_unreachable".to_string(),
+            primitive_never(),
+            "std.types".to_string(),
+            "never".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
+            primitive_trim(),
+            "std.algebra".to_string(),
+            "trim".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(

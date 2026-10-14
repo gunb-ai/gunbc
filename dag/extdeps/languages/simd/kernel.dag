@@ -3,13 +3,12 @@ module extdeps.languages.simd.kernel
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
-import std.types { NonEmptyStr, Int, List, Float }
+import std.types { NonEmptyStr, Int, List, Float, absurd, never }
 import std.numerical_contract {
   FmaContractionPolicy,
   FmaContractionRefused,
   FmaContractionPermitted,
 }
-import std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -91,7 +90,7 @@ fn contiguous_loop_elementwise_kernel(
   b: List<Int>,
   c: List<Int>
 ) -> List<Int> {
-  [pure_dag_seam_unreachable()]
+  [absurd(never())]
 }
 
 fn contiguous_loop_elementwise_float_kernel(
@@ -101,7 +100,7 @@ fn contiguous_loop_elementwise_float_kernel(
   b: List<Float>,
   c: List<Float>
 ) -> List<Float> {
-  [pure_dag_seam_unreachable_float()]
+  [absurd(never())]
 }
 
 data simd_kernel_int_execution_host_realization_marker: Disposition = Scaffold {

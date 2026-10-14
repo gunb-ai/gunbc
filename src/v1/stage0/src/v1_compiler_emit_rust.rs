@@ -13638,7 +13638,41 @@ pub fn emit_zero_param_phantom_opaque_struct(
 ) -> String {
     {
         let item_text = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(crate::v1_compiler_trait_derive_emit::v1_with_map_key_requirement(crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits(), map_key_required.clone())), "\n".to_string()), rust_visibility_prefix()), rust_items().struct_keyword.clone()), " ".to_string()), item_text.clone()), "(pub std::marker::PhantomData<()>);".to_string())
+        let derive = v1_rt::concat(
+            crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
+                crate::v1_compiler_trait_derive_emit::v1_with_map_key_requirement(
+                    crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits(),
+                    map_key_required.clone(),
+                ),
+            ),
+            "\n".to_string(),
+        );
+        if crate::std_types::is_kernel_type(item_text.clone()) {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(derive, rust_visibility_prefix()),
+                            rust_items().struct_keyword.clone(),
+                        ),
+                        " ".to_string(),
+                    ),
+                    item_text.clone(),
+                ),
+                "(pub std::marker::PhantomData<()>);".to_string(),
+            )
+        } else {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(derive, rust_visibility_prefix()),
+                        "enum ".to_string(),
+                    ),
+                    item_text.clone(),
+                ),
+                " {}".to_string(),
+            )
+        }
     }
 }
 

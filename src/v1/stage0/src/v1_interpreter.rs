@@ -23545,9 +23545,9 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
-            arm "free_call.pure_dag_seam_unreachable" { "pure_dag_seam_unreachable" } => {
+            arm "free_call.never" { "never" } => {
                 Err(InterpError::TypeError {
-                    msg: "std.error_primitives pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated".to_string(),
+                    msg: "std.types never reached: an arm declared unreachable was evaluated".to_string(),
                 })
             },
 
