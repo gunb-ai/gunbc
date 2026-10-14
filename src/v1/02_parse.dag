@@ -5693,7 +5693,7 @@ fn parse_primary(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
           parsed_expr_result(from: entry, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLiteral { value: lv }, children: [], inferred: none, span: span))
         }
         Absent => {
-      if (kw_text == "match") { parse_match(tokens: tokens, ctx: ctx) }
+      if kw_text == "match" { parse_match(tokens: tokens, ctx: ctx) }
       else if kw_text == "if" { parse_if(tokens: tokens, ctx: ctx) }
       else if kw_text == "for" { parse_for(tokens: tokens, ctx: ctx) }
       else if kw_text == "let" { parse_let(tokens: tokens, ctx: ctx) }

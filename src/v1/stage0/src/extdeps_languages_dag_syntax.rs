@@ -204,8 +204,6 @@ pub fn dag_non_pattern_binder_keywords() -> Rc<HashMap<String, bool>> {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("match".to_string(), true);
-            __m.insert("acquire".to_string(), true);
-            __m.insert("release".to_string(), true);
             Rc::new(__m)
         };
     }

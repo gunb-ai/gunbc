@@ -73,12 +73,12 @@ data dag_non_name_keywords: Map<String, Bool> = {
   "acquire": true, "release": true
 }
 
-// Keywords that may be names in other positions but must not bind as pattern names.
-// `match` is name-admissible (tok_is_keyword_name) yet is a pattern binder refusal.
-// `acquire`/`release` are already non_name; they are listed here so both parse_pattern
-// and parse_variant_bindings_brace_acc classify by this row rather than a spelling.
+// Name-admissible keywords that still may not bind as pattern names.
+// keyword_may_bind_as_pattern_name refuses if the spelling is in dag_non_name_keywords
+// (true/false/none/null/acquire/release) OR in this row. This row is only the
+// name-admissible residue; acquire/release are not repeated here.
 data dag_non_pattern_binder_keywords: Map<String, Bool> = {
-  "match": true, "acquire": true, "release": true
+  "match": true
 }
 
 data dag_operators: List<OperatorSpec> = [
