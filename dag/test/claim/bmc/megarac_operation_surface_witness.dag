@@ -6,8 +6,13 @@ import std.measure { celsius, percent, percent_count, rpm }
 import extdeps.bmc.megarac_fan_policy {
   CoolingManagerAutomatic,
   CoolingManagerDisabledManual,
-  MegaRacDutyNotConvergedTachUnmoved,
+  MegaRacDutyConvergedEchoTachUnfaithful,
   MegaRacDutyConvergedTachMoved,
+  MegaRacDutyNotConvergedEchoMismatch,
+  MegaRacDutyNotConvergedGuardOpen,
+  MegaRacDutyNotConvergedTachUnmoved,
+  MegaRacTachFidelityEstablished,
+  MegaRacTachFidelityUnestablished,
   MegaRacFanPwmAllAdmitted,
   MegaRacFanPwmAllRefused,
   megarac_duty_converge_verdict,
@@ -32,9 +37,14 @@ import gunbc.machine_intake.megarac_fan_mode_observation {
   megarac_fan_bringup_phase_desire,
   HandSetDeclaredUnobserved,
   HandSetObserved,
+  MegaRacDutyAudible,
+  MegaRacDutyInaudible,
   mtcollins1_megarac_fan_mode_observation_2026_10_14,
   mtcollins1_megarac_fan_mode_observation_2026_10_14_220918,
+  mtcollins1_megarac_fan_mode_observation_2026_10_14_222352,
   mtcollins1_megarac_operator_hand_set_2026_10_14_2200,
+  mtcollins1_megarac_tach_fidelity,
+  mtcollins1_operator_duty_audibility_2026_10_14_2220,
   mtcollins1_megarac_thermal_snapshot_2026_10_14,
 }
 import gunbc.machine_intake.megarac_fan_thermal_guard {
@@ -144,25 +154,50 @@ test fn mtcollins1_grounded_read_is_automatic_with_two_live_pairs() -> Bool {
   }
 }
 
-test fn pwm_echo_without_tach_move_is_not_converged() -> Bool {
+test fn unestablished_tach_fidelity_admits_echo_converge() -> Bool {
   match megarac_duty_converge_verdict(
-    pwm_echo_matches_command: true,
+    fidelity: mtcollins1_megarac_tach_fidelity,
+    pwm_echo_matches_desired: true,
+    guard_holds_over_dwell: true,
     tach_before_rpm: [5700, 5700, 5700, 5700],
-    tach_after_rpm: [5600, 5700, 5700, 5700],
+    tach_after_rpm: [5700, 5700, 5700, 5800],
   ) {
-    MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: echo } =>
-      echo
-        && match megarac_duty_converge_verdict(
-          pwm_echo_matches_command: true,
-          tach_before_rpm: [5700, 5700, 5700, 5700],
-          tach_after_rpm: [4000, 4000, 4000, 4000],
-        ) {
-          MegaRacDutyConvergedTachMoved =>
-            mtcollins1_megarac_fan_mode_observation_2026_10_14_220918.fans
-              == mtcollins1_megarac_fan_mode_observation_2026_10_14.fans
-          MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
-        }
+    MegaRacDutyConvergedEchoTachUnfaithful { fidelity: f } =>
+      match f {
+        MegaRacTachFidelityUnestablished { clears_when: _ } =>
+          match megarac_duty_converge_verdict(
+            fidelity: MegaRacTachFidelityEstablished,
+            pwm_echo_matches_desired: true,
+            guard_holds_over_dwell: true,
+            tach_before_rpm: [5700, 5700, 5700, 5700],
+            tach_after_rpm: [5700, 5700, 5700, 5800],
+          ) {
+            MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: echo } =>
+              echo
+                && mtcollins1_megarac_fan_mode_observation_2026_10_14_222352.fans
+                  == mtcollins1_megarac_fan_mode_observation_2026_10_14_220918.fans
+                && match mtcollins1_operator_duty_audibility_2026_10_14_2220.first() {
+                  Present { value: MegaRacDutyInaudible { pwm: p20 } } =>
+                    p20 == percent(20)
+                      && match mtcollins1_operator_duty_audibility_2026_10_14_2220.skip(n: 1).first() {
+                        Present { value: MegaRacDutyAudible { pwm: p40 } } => p40 == percent(40)
+                        Present { value: MegaRacDutyInaudible { pwm: _ } } => false
+                        Absent => false
+                      }
+                  Present { value: MegaRacDutyAudible { pwm: _ } } => false
+                  Absent => false
+                }
+            MegaRacDutyConvergedTachMoved => false
+            MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
+            MegaRacDutyNotConvergedEchoMismatch => false
+            MegaRacDutyNotConvergedGuardOpen => false
+          }
+        MegaRacTachFidelityEstablished => false
+      }
     MegaRacDutyConvergedTachMoved => false
+    MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
+    MegaRacDutyNotConvergedEchoMismatch => false
+    MegaRacDutyNotConvergedGuardOpen => false
   }
 }
 
