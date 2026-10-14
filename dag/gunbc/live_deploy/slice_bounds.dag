@@ -254,10 +254,8 @@ data repository_convergence_slice_memory_swap_max: ByteSize = byte_size(0)
 // THESE UNITS LEAVE EVERY SYSTEM SLICE. systemd-run --user starts them under
 // user@1000.service/app.slice, which is not sessions.slice and not gunbc-roadmap.slice. A pid
 // cannot be moved across that delegation boundary. So this work needs its OWN declared slice,
-// swap 0. The slice MemoryMax is the pool appropriation (compute slots plus every concurrent
-// belt worker/reviewer/auditor/supervisor); charging that appropriation into the
-// runner envelope waits on the operator conservation ruling
-// (gunbc.rung_drop.user_work_slice_uncharged_in_runner_envelope).
+// swap 0. The slice MemoryMax is the charged appropriation (operator ruling 2026-10-14
+// option C: two 22 GiB slots). It is added in served_deployment_slice_allowance.
 //
 // THE NAME SHARES NO systemd HIERARCHY PREFIX with a serving slice (a dash is a parent edge).
 data user_work_slice_unit_name: NonEmptyStr = "gunbc-user-work.slice"

@@ -62,22 +62,38 @@ type HostSessionReservationSizing
   | ReservationSizingAbsent
 
 data srv1_session_aggregate_citation: SessionDemandReceiptCitation = SessionDemandReceiptCitation {
-  run_id: "33007869268",
-  source_revision: "04e07455233773f4006f932974fe1bf7435ea4e9",
-  collector_schema: "session-demand-observe-v1",
+  run_id: "local-cgroup-read-srv1-2026-10-14",
+  source_revision: "sleek-owl-397",
+  collector_schema: "session-demand-cgroup-join-v1",
   host: "srv1",
-  observed_at: "2026-08-26T20:03:33Z",
+  observed_at: "2026-10-14",
   parent_cgroup: "/sys/fs/cgroup/sessions.slice",
-  metric: "memory.peak",
+  metric: "memory.peak+memory.current",
 }
 
-// srv1's sessions.slice memory.peak read 55216033792 bytes over a COMPLETE census of 18 managed
-// sessions; the allowance is 55834574848. The gap is the ceiling to whole gibibytes and it is
-// POLICY, which is why it is not spelled as a measurement.
+// OPERATOR RULING 2026-10-14 (sleek-owl-397 via clever-crane-830): the allowance IS the live
+// sessions.slice MemoryMax of 128 GiB, today a hand set-property drop-in under
+// /etc/systemd/system.control/sessions.slice.d. The same reading: memory.current 71.2 GB SI
+// (71200000000), memory.peak 120.3 GB SI (120300000000). Peak is the evidence floor; current is
+// cited in the receipt metric, not as a second floor. MemoryHigh 112 GiB is the live throttle
+// and is authored beside the Max (session_slice_memory_high_for), not inside ReservationAllowance
+// which remains the Max.
 data srv1_session_aggregate_epoch_peak: SessionAggregateEvidence = SessionAggregateEpochPeakObserved {
-  peak: byte_size(55216033792),
-  epoch: "cgroup lifetime since creation or last reset; the observation did not reset it and cannot bound it to its own window, so it is a floor on demand rather than a bound on a window",
+  peak: byte_size(120300000000),
+  epoch: "cgroup lifetime; read 2026-10-14 by sleek-owl-397; did not reset memory.peak",
   citation: srv1_session_aggregate_citation,
+}
+
+data srv1_session_slice_memory_max: ByteSize = byte_size(137438953472)
+
+data srv1_session_slice_memory_high: ByteSize = byte_size(120259084288)
+
+fn session_slice_memory_high_for(host: HostIdentity) -> ByteSize? {
+  if (host as String) == (operator_host_srv1 as String) {
+    Present { value: srv1_session_slice_memory_high }
+  } else {
+    none
+  }
 }
 
 data srv2_session_aggregate_census_2026_09_12: SessionDemandReceiptCitation = SessionDemandReceiptCitation {
@@ -195,9 +211,9 @@ fn admit_sizing(s: HostSessionReservationSizing) -> HostSessionReservationSizing
 fn authored_session_reservation_sizing(host: HostIdentity) -> HostSessionReservationSizing {
   if (host as String) == (operator_host_srv1 as String) {
     ReservationAllowance {
-      bytes: byte_size(55834574848),
+      bytes: srv1_session_slice_memory_max,
       evidence_floor: srv1_session_aggregate_epoch_peak,
-      operator_reason: "temporary ceil-to-whole-gibibytes allowance above the observed epoch peak, pending a bounded concurrent series; the rounding is policy and the 51.42 GiB floor beneath it is the measurement",
+      operator_reason: "operator ruling 2026-10-14 (sleek-owl-397): match the live sessions.slice cap MemoryMax 128 GiB / MemoryHigh 112 GiB, replacing the hand set-property drop-in; 128 GiB is that live Max, not a ceil of the 120.3 GB peak",
     }
   } else if (host as String) == (operator_host_srv2 as String) {
     ReservationUnestablished {

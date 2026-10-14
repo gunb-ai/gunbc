@@ -1,54 +1,18 @@
 module gunbc.live_deploy.user_work_pool_slots
 
-import std.types { Int, List }
-import std.nat { Nat, nat_add, nat_mul }
-import std.checked_arithmetic { checked_int_to_nat }
-import gunbc.compute.host_capacity { compute_pool_slots }
-import gunbc.roadmap.roadmap_belt { roadmap_belt_default_capacity }
-import gunbc.roadmap.roadmap_review_criteria { review_criteria }
+import std.nat { Nat }
 
-// THE SLOT COUNT A USER-WORK SLICE MUST HOLD is every --user unit that
-// gunbc_user_work_transient_command / gunbc_user_work_wait_command / gunbc_user_work_scope_command
-// can attach at once. Compute (gunbc-compute-*) is compute_pool_slots. Each belt attempt can hold
-// the worker (gunbc-attempt-*), one reviewer per review_criteria row (belt_review_head_for_instance
-// maps plan.calls with no review-concurrency cap), the auditor, and the supervisor -- all of those
-// builders inject Slice= (review 79946). Each of those units already appropriates one
-// dispatch_worker_memory_max; the slice MemoryMax is that count times the same ceiling
-// (gunbc.live_deploy.slice_bounds user_work_slice_memory_max_of). A literal, or a sum of only
-// compute+belt, would under-count the members that actually join.
-//
-// THIS MODULE DOES NOT IMPORT slice_bounds: unit_bounds binds Slice= from that leaf, and
-// roadmap_belt imports the dispatch actuator which imports unit_bounds. Putting the count
-// fold here keeps that cycle unwritten.
-//
-// A FAILED NAT CONVERSION IS A REFUSAL, NOT A SMALLER SLICE. Dropping the belt term, or the
-// reviewer/auditor/supervisor terms, would size MemoryMax and the user@ backstop below the live
-// population and OOM-kill them with no cause (reviews 79922, 79946).
+// OPERATOR RULING 2026-10-14 (sleek-owl-397 via clever-crane-830), OPTION C MAXIMIZED.
+// The slice holds TWO concurrent 22 GiB units (gunbc_runner_slot_desired MemoryMax): belt
+// attempts, compute, and ad-hoc gunbc test/run share this envelope. That is smaller than the
+// concurrent review/audit/supervisor population that still injects Slice=; the cap is policy,
+// not a claim those members fit without queuing or OOM. Charging this appropriation (44 GiB)
+// into served_deployment_slice_allowance is the same ruling.
+data user_work_charged_slots: Nat = Succ { prev: Succ { prev: Zero } }
+
 type UserWorkPoolSlots
   = UserWorkPoolSlotsDerived { slots: Nat }
-  | BeltMaxConcurrentNotNatural { authored: Int }
-  | ReviewRosterCountNotNatural { authored: Int }
-
-fn user_work_worker_audit_supervisor_per_attempt() -> Nat {
-  Succ { prev: Succ { prev: Succ { prev: Zero } } }
-}
 
 fn user_work_pool_slots() -> UserWorkPoolSlots {
-  match checked_int_to_nat(n: roadmap_belt_default_capacity.max_concurrent) {
-    Absent => BeltMaxConcurrentNotNatural { authored: roadmap_belt_default_capacity.max_concurrent }
-    Present { value: belt } =>
-      match checked_int_to_nat(n: count(review_criteria)) {
-        Absent => ReviewRosterCountNotNatural { authored: count(review_criteria) }
-        Present { value: criteria } =>
-          UserWorkPoolSlotsDerived {
-            slots: nat_add(
-              a: compute_pool_slots,
-              b: nat_mul(
-                a: belt,
-                b: nat_add(a: criteria, b: user_work_worker_audit_supervisor_per_attempt()),
-              ),
-            ),
-          }
-      }
-  }
+  UserWorkPoolSlotsDerived { slots: user_work_charged_slots }
 }

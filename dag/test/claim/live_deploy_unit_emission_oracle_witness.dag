@@ -15,7 +15,7 @@ import gunbc.live_deploy.slice_bounds {
   user_work_slice_memory_max_of, user_work_slice_memory_high_of, user_work_slice_memory_swap_max,
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
 }
-import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, BeltMaxConcurrentNotNatural, ReviewRosterCountNotNatural }
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived }
 // THE FIXTURE IS IMPORTED, NOT MERELY NAMED. the_convergence_oneshot_does_not_join_the_broker_slice
 // used deploy_witness_release_revision with no import of its module, and the name RESOLVED anyway --
 // a .dag import list does not bind, so the file typechecked and read as correct. What it did not do
@@ -415,8 +415,6 @@ test fn the_convergence_slice_carries_its_own_bounds() -> Bool {
 
 test fn the_user_work_slice_carries_pool_derived_bounds_and_forbids_swap() -> Bool {
   match user_work_pool_slots() {
-    BeltMaxConcurrentNotNatural { authored: _ } => false
-    ReviewRosterCountNotNatural { authored: _ } => false
     UserWorkPoolSlotsDerived { slots } => {
       let max = user_work_slice_memory_max_of(slots: slots)
       match user_work_slice_unit_file() {

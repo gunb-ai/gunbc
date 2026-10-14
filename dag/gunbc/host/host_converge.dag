@@ -30,6 +30,7 @@ import gunbc.session_admission_policy {
 import gunbc.session_reservation_policy {
   ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
   session_reservation_bytes,
+  session_slice_memory_high_for,
 }
 import gunbc.ci.ci_fleet { fleet_intent_offers }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
@@ -37,7 +38,7 @@ import gunbc.live_deploy.spec { gunbc_service_uid }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_memory_max_of, user_slice_backstop_memory_max_of, user_slice_backstop_memory_swap_max,
 }
-import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, BeltMaxConcurrentNotNatural, ReviewRosterCountNotNatural }
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived }
 import gunbc.live_deploy.served_slice_charge {
   host_served_deployment_claim, ServedDeploymentClaimResolved, ServedDeploymentNotPlaced,
   ServedDeploymentClaimUnmeasured,
@@ -693,7 +694,7 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
 // which is no longer necessarily kill. The old name read as a constant, and
 // that is how the stale `desired: "true"` label survived the policy flip to
 // ManagedOomAuto -- apply_value was already derived, the label was not.
-fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<ConvergeKnob> {
+fn session_host_knobs(slice_max: ByteSize, slice_high: ByteSize, per_session: ByteSize) -> List<ConvergeKnob> {
   let pressure_value = managed_oom_action_value(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure)
   let pressure_kill_desired = if pressure_is_kill(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure) { "true" } else { "false" }
   let pct = to_string(percent_count(p: gunbc_oomd_sessions_pressure_limit))
@@ -704,6 +705,13 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
       unit: gunbc_oomd_sessions_slice,
       property: systemd_memory_max_property,
       value: byte_size_count(b: slice_max)
+    ),
+    slice_numeric_knob(
+      slice: SessionsSlice,
+      name: "slice_high_bytes",
+      unit: gunbc_oomd_sessions_slice,
+      property: systemd_memory_high_property,
+      value: byte_size_count(b: slice_high)
     ),
     legacy_converge_knob(
       slice: SessionsSlice,
@@ -784,13 +792,20 @@ fn session_knob_standing_for(host: HostIdentity) -> SessionKnobStanding {
         cause: concat("the session reservation for this host is unestablished, so no slice_max can be grounded: ", why),
       }
     ReservationBytes { bytes: agg_bytes } =>
-      match session_admission_oomd_ceiling(p: gunbc_session_admission_policy) {
+      match session_slice_memory_high_for(host: host) {
         Absent =>
           SessionKnobsUngrounded {
-            cause: "the fleet admission policy declares no oomd eviction ceiling, so the per-session half of the slice cannot be written",
+            cause: "sessions.slice MemoryHigh is not authored for this host, so a Max-only converge would leave the live High as a second authority",
           }
-        Present { value: ceiling } =>
-          SessionKnobsDerived { knobs: session_host_knobs(slice_max: agg_bytes, per_session: ceiling) }
+        Present { value: high } =>
+          match session_admission_oomd_ceiling(p: gunbc_session_admission_policy) {
+            Absent =>
+              SessionKnobsUngrounded {
+                cause: "the fleet admission policy declares no oomd eviction ceiling, so the per-session half of the slice cannot be written",
+              }
+            Present { value: ceiling } =>
+              SessionKnobsDerived { knobs: session_host_knobs(slice_max: agg_bytes, slice_high: high, per_session: ceiling) }
+          }
       }
   }
 }
@@ -853,14 +868,6 @@ fn user_manager_backstop_for(host: HostIdentity) -> UserManagerBackstop {
     ServedDeploymentClaimUnmeasured { cause } => UserManagerBackstopRefused { cause: cause }
     ServedDeploymentClaimResolved { memory: _ } =>
       match user_work_pool_slots() {
-        BeltMaxConcurrentNotNatural { authored: n } =>
-          UserManagerBackstopRefused {
-            cause: join(["belt max_concurrent ", to_string(n), " is not a natural number, so the user@ backstop cannot be derived"], ""),
-          }
-        ReviewRosterCountNotNatural { authored: n } =>
-          UserManagerBackstopRefused {
-            cause: join(["review roster count ", to_string(n), " is not a natural number, so the user@ backstop cannot be derived"], ""),
-          }
         UserWorkPoolSlotsDerived { slots } =>
           UserManagerBackstopDerived { knobs: user_manager_backstop_knobs_from_slots(slots: slots) }
       }
