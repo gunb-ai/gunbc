@@ -1,0 +1,132 @@
+module gunbc.harness.harness_shell_job_policy
+
+import std.types { Int, Bool }
+import std.measure { Second, second, second_count }
+
+// ── HOW LONG AN ARBITRARY SHELL MAY HOLD, WAIT, OR LIVE: the schedule, kept apart ─────────────
+//
+// Typed, trusted operations may block to their own budget (hand_in). Arbitrary shell can never be
+// known to terminate, so it stays bounded: an inline hold, then a background job under a backstop,
+// and a wait whose minimum makes polling unwritable. This module decides those durations. It is
+// policy, held apart from the spawn path so it can change without touching process lifecycle
+// (operator, 2026-10-14: keep it sequestered into its own policy area). The harness reads
+// harness_shell_job_schedule and the folds below; nothing else here.
+//
+// Termination is a fact of the TOOL'S TYPE, never of parsing a shell string. This row does not
+// name commands.
+type ShellJobSchedule {
+  inline_hold: Second
+  wait_base: Second
+  wait_factor: Int
+  wait_request_cap_factor: Int
+  wait_minimum: Second
+  backstop: Second
+}
+
+// Ctrl mini-agent: hold 90 s inline, wait 5/10/20/40 min (double), model may ask up to 4x the
+// previous, floor 1 min, hard backstop 6 h. A per-call timeout is this backstop, not the old 120 s
+// chat cap that killed builds and taught workers to poll at 115 s.
+data harness_shell_job_schedule: ShellJobSchedule = ShellJobSchedule {
+  inline_hold: second(count: 90),
+  wait_base: second(count: 300),
+  wait_factor: 2,
+  wait_request_cap_factor: 4,
+  wait_minimum: second(count: 60),
+  backstop: second(count: 21600),
+}
+
+type HarnessWaitPace
+  = WaitPaceReset
+  | WaitPaceAfterWait { seconds: Int }
+
+type HarnessWaitRequest
+  = WaitUseDefault
+  | WaitRequestedMinutes { minutes: Int }
+
+type HarnessWaitAdmission
+  = WaitAdmitted {
+      seconds: Int
+      clamped: Bool
+      raised_to_minimum: Bool
+      asked_seconds: Int
+    }
+  | WaitRefusedNotADuration { minutes: Int }
+
+fn schedule_seconds(s: Second) -> Int {
+  second_count(s: s) as Int
+}
+
+fn harness_wait_basis_seconds(schedule: ShellJobSchedule, pace: HarnessWaitPace) -> Int {
+  match pace {
+    WaitPaceReset => schedule_seconds(s: schedule.wait_base)
+    WaitPaceAfterWait { seconds } => seconds
+  }
+}
+
+fn harness_wait_fallback_seconds(schedule: ShellJobSchedule, pace: HarnessWaitPace) -> Int {
+  match pace {
+    WaitPaceReset => schedule_seconds(s: schedule.wait_base)
+    WaitPaceAfterWait { seconds } => seconds * schedule.wait_factor
+  }
+}
+
+// THE NEXT WAIT. A window change (job start or finish) is WaitPaceReset: start again at the base.
+// Otherwise the default doubles. A requested length in minutes is held to
+// [wait_minimum, wait_request_cap_factor × basis]. Below the minimum is RAISED, never a poll.
+// Above the cap is CLAMPED, and both departures are carried on the admission so the tool result
+// can say so. Zero or negative minutes are not a duration.
+fn harness_admit_wait(
+  schedule: ShellJobSchedule,
+  pace: HarnessWaitPace,
+  request: HarnessWaitRequest,
+) -> HarnessWaitAdmission {
+  let basis = harness_wait_basis_seconds(schedule: schedule, pace: pace)
+  let fallback = harness_wait_fallback_seconds(schedule: schedule, pace: pace)
+  let cap = basis * schedule.wait_request_cap_factor
+  let minimum = schedule_seconds(s: schedule.wait_minimum)
+  match request {
+    WaitUseDefault =>
+      WaitAdmitted {
+        seconds: fallback,
+        clamped: false,
+        raised_to_minimum: false,
+        asked_seconds: fallback,
+      }
+    WaitRequestedMinutes { minutes } =>
+      if minutes <= 0 {
+        WaitRefusedNotADuration { minutes: minutes }
+      } else {
+        let want = minutes * 60
+        if want < minimum {
+          WaitAdmitted {
+            seconds: minimum,
+            clamped: false,
+            raised_to_minimum: true,
+            asked_seconds: want,
+          }
+        } else if want > cap {
+          WaitAdmitted {
+            seconds: cap,
+            clamped: true,
+            raised_to_minimum: false,
+            asked_seconds: want,
+          }
+        } else {
+          WaitAdmitted {
+            seconds: want,
+            clamped: false,
+            raised_to_minimum: false,
+            asked_seconds: want,
+          }
+        }
+      }
+  }
+}
+
+fn harness_pace_after_window_change() -> HarnessWaitPace {
+  WaitPaceReset
+}
+
+fn harness_pace_after_expired_wait(seconds: Int) -> HarnessWaitPace {
+  WaitPaceAfterWait { seconds: seconds }
+}

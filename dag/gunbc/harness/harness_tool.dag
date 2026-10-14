@@ -7,16 +7,28 @@ import extdeps.languages.json.emit {
   json_kv, json_string, json_array, json_object,
 }
 import extdeps.languages.json.parse {
-  JsonMemberFound, json_object_unique_member,
+  JsonMemberFound, json_object_unique_member, json_field_int, FieldRead, FieldAbsent, FieldMalformed,
 }
-import extdeps.gunbc
 import gunbc.harness.harness_wire {
   HarnessWireBlock, WireToolUseBlock, HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape,
 }
 import gunbc.harness.harness_tool_kind {
   HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
+  WaitJobsTool, ReadJobOutputTool, KillJobTool,
   harness_tool_wire_name,
   HarnessToolRecognized, HarnessToolUnrecognized, harness_tool_of_wire_name,
+}
+import gunbc.harness.harness_shell_job_policy {
+  ShellJobSchedule, HarnessWaitPace, WaitPaceReset, WaitPaceAfterWait,
+  HarnessWaitRequest, WaitUseDefault, WaitRequestedMinutes, WaitAdmitted, WaitRefusedNotADuration,
+  harness_shell_job_schedule, harness_admit_wait, schedule_seconds,
+  harness_pace_after_window_change, harness_pace_after_expired_wait,
+}
+import gunbc.harness.harness_shell_job {
+  HarnessShellJob, HarnessShellSpawn, ShellSpawned, ShellSpawnFailed,
+  harness_start_shell_job, harness_await_pid, harness_command_table, harness_read_job_text,
+  harness_replace_job, harness_drop_job, harness_find_job, harness_wait_until_any,
+  WaitLoopFinished, WaitLoopExpired, harness_kill_process_group,
 }
 
 // THE HARNESS TOOL SURFACE, and the rule every disposition below is one instance of:
@@ -69,8 +81,8 @@ fn harness_disposition_text(d: HarnessToolDisposition) -> String {
       join(["working directory does not exist: ", path], "")
     DurationExceeded { limit_seconds } =>
       join([
-        "command exceeded its declared duration limit of ", to_string(value: limit_seconds),
-        "s and was killed; this is the harness's limit, not the command's own failure",
+        "command exceeded the shell-job backstop of ", to_string(value: limit_seconds),
+        "s and its process group was killed; this is the harness's backstop, not the command's own failure",
       ], "")
     StandardInputRequested { detail } =>
       join(["command attempted to read standard input, which this tool does not supply: ", detail], "")
@@ -102,11 +114,13 @@ type HarnessToolOutcome
       exit_code: Int
       standing: HarnessOutputStanding
     }
+  | ToolJob { id: String, text: String }
   | ToolRefused { disposition: HarnessToolDisposition }
 
 fn harness_outcome_is_error(outcome: HarnessToolOutcome) -> Bool {
   match outcome {
     ToolCompleted { text: _, exit_code: code, standing: _ } => !(code == 0)
+    ToolJob { id: _, text: _ } => false
     ToolRefused { disposition: _ } => true
   }
 }
@@ -126,15 +140,37 @@ fn harness_outcome_text(outcome: HarnessToolOutcome) -> String {
             ], "")
         },
       ], "")
+    ToolJob { id: _, text } => text
     ToolRefused { disposition: d } => harness_disposition_text(d: d)
   }
 }
 
+type HarnessToolStep {
+  environment: HarnessToolEnvironment
+  outcome: HarnessToolOutcome
+}
+
 // THE EXECUTION ENVIRONMENT THE TOOLS RUN IN, declared per call rather than inherited.
+// jobs / wait_pace are the attempt's shell-job resource set (see gunbc.harness.harness_shell_job).
 type HarnessToolEnvironment {
   working_directory: FilePath
   timeout_program: FilePath
   duration_limit_seconds: Int
+  jobs: List<HarnessShellJob>
+  wait_pace: HarnessWaitPace
+}
+
+fn harness_tool_environment(
+  working_directory: FilePath,
+  timeout_program: FilePath,
+) -> HarnessToolEnvironment {
+  HarnessToolEnvironment {
+    working_directory: working_directory,
+    timeout_program: timeout_program,
+    duration_limit_seconds: schedule_seconds(s: harness_shell_job_schedule.backstop),
+    jobs: [],
+    wait_pace: WaitPaceReset,
+  }
 }
 
 // GNU timeout exits 124 when it kills its child, which is what makes "the harness stopped this" a
@@ -179,30 +215,265 @@ fn harness_bounded_tool_text(text: String) -> HarnessBoundedToolText {
   }
 }
 
+fn harness_env_with_jobs(
+  environment: HarnessToolEnvironment,
+  jobs: List<HarnessShellJob>,
+  wait_pace: HarnessWaitPace,
+) -> HarnessToolEnvironment {
+  HarnessToolEnvironment {
+    working_directory: environment.working_directory,
+    timeout_program: environment.timeout_program,
+    duration_limit_seconds: environment.duration_limit_seconds,
+    jobs: jobs,
+    wait_pace: wait_pace,
+  }
+}
+
+fn harness_wait_note(seconds: Int, clamped: Bool, raised_to_minimum: Bool, asked_seconds: Int) -> String {
+  let clamped_note = if clamped {
+    join([
+      " [wait clamped from ", to_string(value: asked_seconds),
+      "s to ", to_string(value: seconds), "s (request above 4x previous)]",
+    ], "")
+  } else {
+    ""
+  }
+  let raised_note = if raised_to_minimum {
+    join([
+      " [wait raised from ", to_string(value: asked_seconds),
+      "s to the minimum ", to_string(value: seconds), "s; polling is refused]",
+    ], "")
+  } else {
+    ""
+  }
+  join([clamped_note, raised_note], "")
+}
+
+fn harness_text_with_table(text: String, jobs: List<HarnessShellJob>) -> HarnessToolOutcome {
+  let bounded = harness_bounded_tool_text(text: join([text, "\n", harness_command_table(jobs: jobs)], ""))
+  ToolCompleted {
+    text: bounded.text,
+    exit_code: 0,
+    standing: bounded.standing,
+  }
+}
+
+fn harness_run_command_scheduled(
+  environment: HarnessToolEnvironment,
+  command: String,
+  schedule: ShellJobSchedule,
+) -> HarnessToolStep {
+  let spawn = harness_start_shell_job(
+    worktree: environment.working_directory,
+    timeout_program: environment.timeout_program,
+    command: command,
+    schedule: schedule,
+    slot: list_length(items: environment.jobs),
+  )
+  match spawn {
+    ShellSpawnFailed { program, cause } =>
+      HarnessToolStep {
+        environment: environment,
+        outcome: ToolRefused {
+          disposition: ToolEffectRefused {
+            detail: join(["spawn refused for ", program as String, ": ", cause as String], ""),
+          },
+        },
+      }
+    ShellSpawned { job } => {
+      let hold = harness_await_pid(pid: job.pid, seconds_left: schedule_seconds(s: schedule.inline_hold))
+      match hold {
+        StillRunning => {
+          let jobs = harness_replace_job(jobs: environment.jobs, job: job)
+          HarnessToolStep {
+            environment: harness_env_with_jobs(
+              environment: environment,
+              jobs: jobs,
+              wait_pace: harness_pace_after_window_change(),
+            ),
+            outcome: ToolJob {
+              id: job.id,
+              text: join([
+                "started background job ", job.id,
+                " (still running after the inline hold of ",
+                to_string(value: schedule_seconds(s: schedule.inline_hold)),
+                "s; not killed). Wait with wait; read with job_output; stop with job_kill.\n",
+                harness_command_table(jobs: jobs),
+              ], ""),
+            },
+          }
+        }
+        Exited { code } =>
+          if code == harness_timeout_kill_exit_code {
+            HarnessToolStep {
+              environment: harness_env_with_jobs(
+                environment: environment,
+                jobs: environment.jobs,
+                wait_pace: harness_pace_after_window_change(),
+              ),
+              outcome: ToolRefused {
+                disposition: DurationExceeded { limit_seconds: schedule_seconds(s: schedule.backstop) },
+              },
+            }
+          } else {
+            let bounded = harness_bounded_tool_text(text: harness_read_job_text(job: job))
+            HarnessToolStep {
+              environment: harness_env_with_jobs(
+                environment: environment,
+                jobs: environment.jobs,
+                wait_pace: harness_pace_after_window_change(),
+              ),
+              outcome: ToolCompleted {
+                text: join([bounded.text, "\n", harness_command_table(jobs: environment.jobs)], ""),
+                exit_code: code,
+                standing: bounded.standing,
+              },
+            }
+          }
+        Signaled { signal } =>
+          HarnessToolStep {
+            environment: environment,
+            outcome: ToolRefused {
+              disposition: ToolEffectRefused {
+                detail: join(["command signaled ", to_string(value: signal)], ""),
+              },
+            },
+          }
+        ReapRefused { cause } =>
+          HarnessToolStep {
+            environment: environment,
+            outcome: ToolRefused { disposition: ToolEffectRefused { detail: cause as String } },
+          }
+      }
+    }
+  }
+}
+
 fn harness_run_command(
   environment: HarnessToolEnvironment,
   command: String,
-) -> HarnessToolOutcome {
-  let result = gunbc.WitnessBin.Run(
-    workdir: environment.working_directory,
-    bin_path: environment.timeout_program,
-    args: [
-      to_string(value: environment.duration_limit_seconds),
-      "/bin/sh", "-c", command, "--",
-    ],
+) -> HarnessToolStep {
+  harness_run_command_scheduled(
+    environment: environment,
+    command: command,
+    schedule: harness_shell_job_schedule,
   )
-  if result.exit_code == harness_timeout_kill_exit_code {
-    ToolRefused {
-      disposition: DurationExceeded { limit_seconds: environment.duration_limit_seconds },
+}
+
+fn harness_wait_jobs_scheduled(
+  environment: HarnessToolEnvironment,
+  schedule: ShellJobSchedule,
+  request: HarnessWaitRequest,
+) -> HarnessToolStep {
+  match harness_admit_wait(
+    schedule: schedule,
+    pace: environment.wait_pace,
+    request: request,
+  ) {
+    WaitRefusedNotADuration { minutes } =>
+      HarnessToolStep {
+        environment: environment,
+        outcome: ToolRefused {
+          disposition: ToolEffectRefused {
+            detail: join(["wait minutes must be a positive duration, got ", to_string(value: minutes)], ""),
+          },
+        },
+      }
+    WaitAdmitted { seconds, clamped, raised_to_minimum, asked_seconds } => {
+      let note = harness_wait_note(
+        seconds: seconds,
+        clamped: clamped,
+        raised_to_minimum: raised_to_minimum,
+        asked_seconds: asked_seconds,
+      )
+      match harness_wait_until_any(jobs: environment.jobs, seconds_left: seconds) {
+        WaitLoopFinished { observation: _ } =>
+          HarnessToolStep {
+            environment: harness_env_with_jobs(
+              environment: environment,
+              jobs: environment.jobs,
+              wait_pace: harness_pace_after_window_change(),
+            ),
+            outcome: harness_text_with_table(
+              text: join(["a job finished before the wait elapsed", note], ""),
+              jobs: environment.jobs,
+            ),
+          }
+        WaitLoopExpired =>
+          HarnessToolStep {
+            environment: harness_env_with_jobs(
+              environment: environment,
+              jobs: environment.jobs,
+              wait_pace: harness_pace_after_expired_wait(seconds: seconds),
+            ),
+            outcome: harness_text_with_table(
+              text: join(["wait elapsed with no job finishing", note], ""),
+              jobs: environment.jobs,
+            ),
+          }
+      }
     }
-  } else {
-    let bounded = harness_bounded_tool_text(
-      text: join([result.stdout, result.stderr], ""),
-    )
-    ToolCompleted {
-      text: bounded.text,
-      exit_code: result.exit_code,
-      standing: bounded.standing,
+  }
+}
+
+fn harness_wait_jobs(
+  environment: HarnessToolEnvironment,
+  request: HarnessWaitRequest,
+) -> HarnessToolStep {
+  harness_wait_jobs_scheduled(
+    environment: environment,
+    schedule: harness_shell_job_schedule,
+    request: request,
+  )
+}
+
+fn harness_read_job_output(environment: HarnessToolEnvironment, id: String) -> HarnessToolStep {
+  match harness_find_job(jobs: environment.jobs, id: id) {
+    Absent =>
+      HarnessToolStep {
+        environment: environment,
+        outcome: ToolRefused {
+          disposition: ToolEffectRefused { detail: join(["no job ", id], "") },
+        },
+      }
+    Present { value: job } => {
+      let bounded = harness_bounded_tool_text(text: harness_read_job_text(job: job))
+      HarnessToolStep {
+        environment: environment,
+        outcome: ToolCompleted {
+          text: join([bounded.text, "\n", harness_command_table(jobs: environment.jobs)], ""),
+          exit_code: 0,
+          standing: bounded.standing,
+        },
+      }
+    }
+  }
+}
+
+fn harness_kill_job(environment: HarnessToolEnvironment, id: String) -> HarnessToolStep {
+  match harness_find_job(jobs: environment.jobs, id: id) {
+    Absent =>
+      HarnessToolStep {
+        environment: environment,
+        outcome: ToolRefused {
+          disposition: ToolEffectRefused { detail: join(["no job ", id], "") },
+        },
+      }
+    Present { value: job } => {
+      let _killed = harness_kill_process_group(pid: job.pid)
+      let _reap = harness_await_pid(pid: job.pid, seconds_left: 5)
+      let jobs = harness_drop_job(jobs: environment.jobs, id: id)
+      HarnessToolStep {
+        environment: harness_env_with_jobs(
+          environment: environment,
+          jobs: jobs,
+          wait_pace: harness_pace_after_window_change(),
+        ),
+        outcome: harness_text_with_table(
+          text: join(["killed process group ", job.id], ""),
+          jobs: jobs,
+        ),
+      }
     }
   }
 }
@@ -217,7 +488,7 @@ fn harness_run_command_schema() -> JsonValue {
       json_kv(key: "command", value: json_object([
         json_kv(key: "type", value: json_string(s: "string")),
         json_kv(key: "description", value: json_string(
-          s: "Shell command to run. It runs in the declared working directory with no standard input and under a declared duration limit; both limits are reported in the result when they bind.",
+          s: "Shell command to run in the attempt working directory. A command that finishes within the inline hold returns its output here. One that does not becomes a background job (not killed at the hold); wait, job_output and job_kill follow it. The backstop is the only kill.",
         )),
       ])),
     ])),
@@ -250,15 +521,41 @@ fn harness_tool_use_input_string(block: HarnessWireBlock, member: String) -> Str
 // DISPATCH IS TOTAL. An unrecognized name and a missing required member are each their own refusal
 // carrying the offending name, so a malformed call is reported back to the model as a fact it can
 // act on rather than as an empty result it must interpret.
+fn harness_wait_request_from_block(block: HarnessWireBlock) -> HarnessWaitRequest {
+  match block {
+    WireToolUseBlock { id: _, name: _, input: input } =>
+      match json_field_int(obj: input, key: "minutes") {
+        FieldRead { value: n } => WaitRequestedMinutes { minutes: n }
+        FieldAbsent => WaitUseDefault
+        FieldMalformed { cause: _ } => WaitRequestedMinutes { minutes: 0 }
+      }
+    WireTextBlock { text: _ } => WaitUseDefault
+    WireThinkingBlock { thinking: _ } => WaitUseDefault
+  }
+}
+
+fn harness_unchanged_refusal(
+  environment: HarnessToolEnvironment,
+  disposition: HarnessToolDisposition,
+) -> HarnessToolStep {
+  HarnessToolStep {
+    environment: environment,
+    outcome: ToolRefused { disposition: disposition },
+  }
+}
+
 fn harness_execute_tool_use(
   environment: HarnessToolEnvironment,
   block: HarnessWireBlock,
-) -> HarnessToolOutcome {
+) -> HarnessToolStep {
   match block {
     WireToolUseBlock { id: _, name: name, input: _ } =>
       match harness_tool_of_wire_name(name: name) {
         HarnessToolUnrecognized { name: n } =>
-          ToolRefused { disposition: ToolUnrecognized { name: n } }
+          harness_unchanged_refusal(
+            environment: environment,
+            disposition: ToolUnrecognized { name: n },
+          )
         HarnessToolRecognized { tool: t } =>
           match t {
             RunCommandTool =>
@@ -266,38 +563,74 @@ fn harness_execute_tool_use(
                 Present { value: c } =>
                   harness_run_command(environment: environment, command: c)
                 Absent =>
-                  ToolRefused {
+                  harness_unchanged_refusal(
+                    environment: environment,
                     disposition: ToolInputMemberMissing { tool: "run_command", member: "command" },
-                  }
+                  )
+              }
+            WaitJobsTool =>
+              harness_wait_jobs(
+                environment: environment,
+                request: harness_wait_request_from_block(block: block),
+              )
+            ReadJobOutputTool =>
+              match harness_tool_use_input_string(block: block, member: "id") {
+                Present { value: id } => harness_read_job_output(environment: environment, id: id)
+                Absent =>
+                  harness_unchanged_refusal(
+                    environment: environment,
+                    disposition: ToolInputMemberMissing { tool: "job_output", member: "id" },
+                  )
+              }
+            KillJobTool =>
+              match harness_tool_use_input_string(block: block, member: "id") {
+                Present { value: id } => harness_kill_job(environment: environment, id: id)
+                Absent =>
+                  harness_unchanged_refusal(
+                    environment: environment,
+                    disposition: ToolInputMemberMissing { tool: "job_kill", member: "id" },
+                  )
               }
             ReadFileTool =>
-              ToolRefused {
+              harness_unchanged_refusal(
+                environment: environment,
                 disposition: ToolEffectRefused {
                   detail: harness_unimplemented_tool_detail(tool: ReadFileTool),
                 },
-              }
+              )
             WriteFileTool =>
-              ToolRefused {
+              harness_unchanged_refusal(
+                environment: environment,
                 disposition: ToolEffectRefused {
                   detail: harness_unimplemented_tool_detail(tool: WriteFileTool),
                 },
-              }
+              )
             EditFileTool =>
-              ToolRefused {
+              harness_unchanged_refusal(
+                environment: environment,
                 disposition: ToolEffectRefused {
                   detail: harness_unimplemented_tool_detail(tool: EditFileTool),
                 },
-              }
+              )
             HandInTool =>
-              ToolRefused {
+              harness_unchanged_refusal(
+                environment: environment,
                 disposition: ToolEffectRefused {
                   detail: "hand_in is realized by the turn, which binds the candidate and waits for its outcome; this dispatcher does not run it",
                 },
-              }
+              )
           }
       }
-    WireTextBlock { text: _ } => ToolRefused { disposition: ToolEffectRefused { detail: "block is not a tool use" } }
-    WireThinkingBlock { thinking: _ } => ToolRefused { disposition: ToolEffectRefused { detail: "block is not a tool use" } }
+    WireTextBlock { text: _ } =>
+      harness_unchanged_refusal(
+        environment: environment,
+        disposition: ToolEffectRefused { detail: "block is not a tool use" },
+      )
+    WireThinkingBlock { thinking: _ } =>
+      harness_unchanged_refusal(
+        environment: environment,
+        disposition: ToolEffectRefused { detail: "block is not a tool use" },
+      )
   }
 }
 
@@ -321,23 +654,38 @@ fn harness_unimplemented_tool_detail(tool: HarnessTool) -> String {
 type OfferedHarnessTool
   = OfferedRunCommandTool
   | OfferedHandInTool
+  | OfferedWaitJobsTool
+  | OfferedReadJobOutputTool
+  | OfferedKillJobTool
 
 fn harness_offered_tool_kind(tool: OfferedHarnessTool) -> HarnessTool {
   match tool {
     OfferedRunCommandTool => RunCommandTool
     OfferedHandInTool => HandInTool
+    OfferedWaitJobsTool => WaitJobsTool
+    OfferedReadJobOutputTool => ReadJobOutputTool
+    OfferedKillJobTool => KillJobTool
   }
 }
 
 fn harness_offered_tool_rows() -> List<OfferedHarnessTool> {
-  [OfferedRunCommandTool, OfferedHandInTool]
+  [
+    OfferedRunCommandTool, OfferedWaitJobsTool, OfferedReadJobOutputTool,
+    OfferedKillJobTool, OfferedHandInTool,
+  ]
 }
 
 fn harness_offered_tools() -> List<HarnessTool> {
   map(harness_offered_tool_rows(), t => harness_offered_tool_kind(tool: t))
 }
 
-data harness_run_command_description: String = "Run a shell command in the attempt's working directory and return its combined output and exit code."
+data harness_run_command_description: String = "Run a shell command in the attempt's working directory. Finishes inline if it exits within the hold; otherwise returns a background job. Do not poll with sleep."
+
+data harness_wait_description: String = "Sleep until any background job finishes, or until the admitted wait elapses. The next wait doubles; a request may be at most 4x the previous; the minimum is one minute so polling is impossible."
+
+data harness_job_output_description: String = "Read one finished or running job's output by id from the command table."
+
+data harness_job_kill_description: String = "Stop a background job and everything it started (its process group)."
 
 data harness_hand_in_description: String = "Hand in the ready candidate written to .gunbc-submission.json. This call blocks until acceptance returns; the tool result is Accepted, ChangesRequested with evidence, or Unavailable with its cause. Do not run the node's acceptance witness yourself."
 
@@ -349,10 +697,41 @@ fn harness_hand_in_schema() -> JsonValue {
   ])
 }
 
+fn harness_wait_schema() -> JsonValue {
+  json_object([
+    json_kv(key: "type", value: json_string(s: "object")),
+    json_kv(key: "properties", value: json_object([
+      json_kv(key: "minutes", value: json_object([
+        json_kv(key: "type", value: json_string(s: "integer")),
+        json_kv(key: "description", value: json_string(
+          s: "Requested wait in minutes. Omitted uses the next backoff. Below the minimum is raised; above 4x the previous is clamped; both are said in the result.",
+        )),
+      ])),
+    ])),
+    json_kv(key: "required", value: json_array(elements: [])),
+  ])
+}
+
+fn harness_job_id_schema(description: String) -> JsonValue {
+  json_object([
+    json_kv(key: "type", value: json_string(s: "object")),
+    json_kv(key: "properties", value: json_object([
+      json_kv(key: "id", value: json_object([
+        json_kv(key: "type", value: json_string(s: "string")),
+        json_kv(key: "description", value: json_string(s: description)),
+      ])),
+    ])),
+    json_kv(key: "required", value: json_array(elements: [json_string(s: "id")])),
+  ])
+}
+
 fn harness_offered_tool_schema(tool: OfferedHarnessTool) -> JsonValue {
   match tool {
     OfferedRunCommandTool => harness_run_command_schema()
     OfferedHandInTool => harness_hand_in_schema()
+    OfferedWaitJobsTool => harness_wait_schema()
+    OfferedReadJobOutputTool => harness_job_id_schema(description: "Job id from the command table.")
+    OfferedKillJobTool => harness_job_id_schema(description: "Job id whose process group to kill.")
   }
 }
 
@@ -360,6 +739,9 @@ fn harness_offered_tool_description(tool: OfferedHarnessTool) -> String {
   match tool {
     OfferedRunCommandTool => harness_run_command_description
     OfferedHandInTool => harness_hand_in_description
+    OfferedWaitJobsTool => harness_wait_description
+    OfferedReadJobOutputTool => harness_job_output_description
+    OfferedKillJobTool => harness_job_kill_description
   }
 }
 

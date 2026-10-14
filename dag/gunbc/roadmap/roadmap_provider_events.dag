@@ -17,6 +17,7 @@ import extdeps.languages.json.grammar {
 }
 import gunbc.harness.harness_tool_kind {
   HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
+  WaitJobsTool, ReadJobOutputTool, KillJobTool,
   ItemIsHarnessToolUse, ItemIsUnrecognizedToolUse, ItemIsNotAHarnessToolUse,
   harness_tool_item_read,
 }
@@ -57,6 +58,9 @@ type ProviderItemActivity
   | HarnessWritingFile
   | HarnessEditingFile
   | HarnessHandingIn
+  | HarnessWaitingOnJobs
+  | HarnessReadingJobOutput
+  | HarnessKillingJob
   | HarnessRefusingUnrecognizedTool
   | UnclassifiedItem
 
@@ -418,6 +422,9 @@ fn harness_tool_item_activity(tool: HarnessTool) -> ProviderItemActivity {
     WriteFileTool => HarnessWritingFile
     EditFileTool => HarnessEditingFile
     HandInTool => HarnessHandingIn
+    WaitJobsTool => HarnessWaitingOnJobs
+    ReadJobOutputTool => HarnessReadingJobOutput
+    KillJobTool => HarnessKillingJob
   }
 }
 
@@ -467,6 +474,9 @@ fn provider_item_activity_label(activity: ProviderItemActivity) -> String {
     HarnessWritingFile => "writing file"
     HarnessEditingFile => "editing file"
     HarnessHandingIn => "handing in"
+    HarnessWaitingOnJobs => "waiting on jobs"
+    HarnessReadingJobOutput => "reading job output"
+    HarnessKillingJob => "killing a job"
     HarnessRefusingUnrecognizedTool => "refusing an undeclared tool"
     UnclassifiedItem => "provider item"
   }
@@ -923,6 +933,9 @@ fn provider_item_activity_kind(activity: ProviderItemActivity) -> ProviderItemAc
     HarnessWritingFile => ItemKindWorking
     HarnessEditingFile => ItemKindWorking
     HarnessHandingIn => ItemKindWorking
+    HarnessWaitingOnJobs => ItemKindWorking
+    HarnessReadingJobOutput => ItemKindWorking
+    HarnessKillingJob => ItemKindWorking
     HarnessRefusingUnrecognizedTool => ItemKindWorking
     UnclassifiedItem => ItemKindWorking
   }

@@ -2257,6 +2257,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "a_command_over_the_inline_hold_returns_a_job_not_duration_exceeded" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "a_command_over_the_inline_hold_returns_a_job_not_duration_exceeded",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "wait_returns_when_a_job_finishes_before_the_timeout" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "wait_returns_when_a_job_finishes_before_the_timeout",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "the_backstop_kills_the_process_group" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "the_backstop_kills_the_process_group",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.live_deploy.approval_broker_helper_readback_real_execution", function: "a_clean_observable_snapshot_reaches_the_grant_by_real_execution" },
       entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution.dag",
       function: "a_clean_observable_snapshot_reaches_the_grant_by_real_execution",

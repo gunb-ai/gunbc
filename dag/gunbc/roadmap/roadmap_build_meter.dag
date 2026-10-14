@@ -7,7 +7,10 @@ import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_strin
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsObserved, RoundsUnobserved, RoundObservation, round_changed_path_count_rise,
 }
-import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool }
+import gunbc.harness.harness_tool_kind {
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
+  WaitJobsTool, ReadJobOutputTool, KillJobTool,
+}
 import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance, ProviderRunning,
   ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,
@@ -228,6 +231,9 @@ fn build_meter_tool_kind(tool: HarnessTool) -> BuildMeterKind {
     WriteFileTool => BuildMeterWrite
     EditFileTool => BuildMeterEdit
     HandInTool => BuildMeterReport
+    WaitJobsTool => BuildMeterRun
+    ReadJobOutputTool => BuildMeterRead
+    KillJobTool => BuildMeterRun
   }
 }
 

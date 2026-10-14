@@ -1,0 +1,136 @@
+module test.claim.harness_shell_job_wet_witness
+
+import std.types { Bool, String, List, FilePath, NonEmptyStr }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { second }
+import extdeps.shell
+import gunbc.harness.harness_shell_job_policy {
+  ShellJobSchedule, WaitUseDefault,
+}
+import gunbc.harness.harness_tool {
+  HarnessToolEnvironment, HarnessToolOutcome, ToolJob, ToolCompleted, ToolRefused, DurationExceeded,
+  harness_tool_environment, harness_run_command_scheduled, harness_wait_jobs_scheduled,
+  harness_kill_job, harness_outcome_text,
+}
+import gunbc.harness.harness_shell_job {
+  harness_observe_job, JobStillRunning, JobExited, JobSignaled, JobReapRefused,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_schedule() -> ShellJobSchedule {
+  ShellJobSchedule {
+    inline_hold: second(count: 1),
+    wait_base: second(count: 3),
+    wait_factor: 2,
+    wait_request_cap_factor: 4,
+    wait_minimum: second(count: 1),
+    backstop: second(count: 20),
+  }
+}
+
+fn wait_early_schedule() -> ShellJobSchedule {
+  ShellJobSchedule {
+    inline_hold: second(count: 0),
+    wait_base: second(count: 5),
+    wait_factor: 2,
+    wait_request_cap_factor: 4,
+    wait_minimum: second(count: 1),
+    backstop: second(count: 20),
+  }
+}
+
+fn env_at(dir: String) -> HarnessToolEnvironment {
+  harness_tool_environment(
+    working_directory: dir as FilePath,
+    timeout_program: "/usr/bin/timeout" as FilePath,
+  )
+}
+
+fn is_job(outcome: HarnessToolOutcome) -> Bool {
+  match outcome {
+    ToolJob { id: _, text: _ } => true
+    ToolCompleted { text: _, exit_code: _, standing: _ } => false
+    ToolRefused { disposition: _ } => false
+  }
+}
+
+fn is_duration_exceeded(outcome: HarnessToolOutcome) -> Bool {
+  match outcome {
+    ToolRefused { disposition: d } =>
+      match d {
+        DurationExceeded { limit_seconds: _ } => true
+        _ => false
+      }
+    ToolJob { id: _, text: _ } => false
+    ToolCompleted { text: _, exit_code: _, standing: _ } => false
+  }
+}
+
+test fn a_command_over_the_inline_hold_returns_a_job_not_duration_exceeded() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let step = harness_run_command_scheduled(
+    environment: env_at(dir: dir.path),
+    command: "sleep 20",
+    schedule: fixture_schedule(),
+  )
+  let ok = is_job(outcome: step.outcome) && !is_duration_exceeded(outcome: step.outcome)
+  let _stop = match step.environment.jobs.first() {
+    Absent => step
+    Present { value: j } => harness_kill_job(environment: step.environment, id: j.id)
+  }
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && ok
+}
+
+test fn wait_returns_when_a_job_finishes_before_the_timeout() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let started = harness_run_command_scheduled(
+    environment: env_at(dir: dir.path),
+    command: "sleep 1",
+    schedule: wait_early_schedule(),
+  )
+  let waited = harness_wait_jobs_scheduled(
+    environment: started.environment,
+    schedule: wait_early_schedule(),
+    request: WaitUseDefault,
+  )
+  let text = harness_outcome_text(outcome: waited.outcome)
+  let ok = text.contains("a job finished before the wait elapsed")
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && ok
+}
+
+test fn the_backstop_kills_the_process_group() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let tight = ShellJobSchedule {
+    inline_hold: second(count: 1),
+    wait_base: second(count: 6),
+    wait_factor: 2,
+    wait_request_cap_factor: 4,
+    wait_minimum: second(count: 1),
+    backstop: second(count: 2),
+  }
+  let started = harness_run_command_scheduled(
+    environment: env_at(dir: dir.path),
+    command: "sleep 30",
+    schedule: tight,
+  )
+  let waited = harness_wait_jobs_scheduled(
+    environment: started.environment,
+    schedule: tight,
+    request: WaitUseDefault,
+  )
+  let finished = match started.environment.jobs.first() {
+    Absent => is_duration_exceeded(outcome: started.outcome) || is_duration_exceeded(outcome: waited.outcome)
+    Present { value: j } =>
+      match harness_observe_job(job: j) {
+        JobStillRunning { job: _ } => false
+        JobExited { job: _, code } => code == 124
+        JobSignaled { job: _, signal: _ } => true
+        JobReapRefused { job: _, cause: _ } => true
+      }
+  }
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && finished
+}

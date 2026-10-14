@@ -1,0 +1,100 @@
+module test.claim.harness_shell_job_policy
+
+import std.types { Bool, Int }
+import std.measure { second }
+import gunbc.harness.harness_shell_job_policy {
+  ShellJobSchedule, HarnessWaitPace, WaitPaceReset, WaitPaceAfterWait,
+  WaitUseDefault, WaitRequestedMinutes, WaitAdmitted, WaitRefusedNotADuration,
+  harness_shell_job_schedule, harness_admit_wait, schedule_seconds,
+  harness_pace_after_window_change, harness_pace_after_expired_wait,
+}
+
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
+
+fn fx() -> ShellJobSchedule {
+  harness_shell_job_schedule
+}
+
+test fn the_production_schedule_is_the_ctrl_window() -> Bool {
+  schedule_seconds(s: fx().inline_hold) == 90
+    && schedule_seconds(s: fx().wait_base) == 300
+    && fx().wait_factor == 2
+    && fx().wait_request_cap_factor == 4
+    && schedule_seconds(s: fx().wait_minimum) == 60
+    && schedule_seconds(s: fx().backstop) == 21600
+}
+
+test fn a_reset_pace_defaults_to_the_base() -> Bool {
+  match harness_admit_wait(schedule: fx(), pace: WaitPaceReset, request: WaitUseDefault) {
+    WaitAdmitted { seconds, clamped, raised_to_minimum, asked_seconds: _ } =>
+      seconds == 300 && !clamped && !raised_to_minimum
+    WaitRefusedNotADuration { minutes: _ } => false
+  }
+}
+
+test fn the_backoff_doubles_after_an_expired_wait() -> Bool {
+  match harness_admit_wait(
+    schedule: fx(),
+    pace: harness_pace_after_expired_wait(seconds: 300),
+    request: WaitUseDefault,
+  ) {
+    WaitAdmitted { seconds, clamped, raised_to_minimum, asked_seconds: _ } =>
+      seconds == 600 && !clamped && !raised_to_minimum
+    WaitRefusedNotADuration { minutes: _ } => false
+  }
+}
+
+test fn a_request_above_4x_is_clamped_and_said() -> Bool {
+  match harness_admit_wait(
+    schedule: fx(),
+    pace: WaitPaceAfterWait { seconds: 300 },
+    request: WaitRequestedMinutes { minutes: 30 },
+  ) {
+    WaitAdmitted { seconds, clamped, raised_to_minimum, asked_seconds } =>
+      seconds == 1200 && clamped && !raised_to_minimum && asked_seconds == 1800
+    WaitRefusedNotADuration { minutes: _ } => false
+  }
+}
+
+test fn a_wait_shorter_than_the_minimum_is_raised_never_a_poll() -> Bool {
+  let high_floor = ShellJobSchedule {
+    inline_hold: fx().inline_hold,
+    wait_base: fx().wait_base,
+    wait_factor: fx().wait_factor,
+    wait_request_cap_factor: fx().wait_request_cap_factor,
+    wait_minimum: second(count: 120),
+    backstop: fx().backstop,
+  }
+  match harness_admit_wait(
+    schedule: high_floor,
+    pace: WaitPaceReset,
+    request: WaitRequestedMinutes { minutes: 1 },
+  ) {
+    WaitAdmitted { seconds, clamped, raised_to_minimum, asked_seconds } =>
+      seconds == 120 && !clamped && raised_to_minimum && asked_seconds == 60
+    WaitRefusedNotADuration { minutes: _ } => false
+  }
+    && (match harness_admit_wait(
+      schedule: fx(),
+      pace: WaitPaceReset,
+      request: WaitRequestedMinutes { minutes: 0 },
+    ) {
+      WaitRefusedNotADuration { minutes } => minutes == 0
+      WaitAdmitted { seconds: _, clamped: _, raised_to_minimum: _, asked_seconds: _ } => false
+    })
+}
+
+test fn a_window_change_resets_the_pace_to_the_base() -> Bool {
+  match harness_pace_after_window_change() {
+    WaitPaceReset =>
+      match harness_admit_wait(
+        schedule: fx(),
+        pace: harness_pace_after_window_change(),
+        request: WaitUseDefault,
+      ) {
+        WaitAdmitted { seconds, clamped: _, raised_to_minimum: _, asked_seconds: _ } => seconds == 300
+        WaitRefusedNotADuration { minutes: _ } => false
+      }
+    WaitPaceAfterWait { seconds: _ } => false
+  }
+}

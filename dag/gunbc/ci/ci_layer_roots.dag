@@ -344,6 +344,10 @@ data excl_process_lifecycle_reason: String = "SUBSTANTIATED per-row: the subject
 
 data excl_process_lifecycle_dissolve: DissolutionCondition = unbound_dissolution(description: "the spawn/reap boundary of extdeps.posix.process becomes executable under the execution-corpus scope prefix as ExecutionWitnessKind rows in gunbc.commit_workflow, the same terminal excl_bin_wet_dissolve names; then this row and its four schedule rows delete together. Publishing a mock_response for StartDetached or Reap does NOT discharge it: a replayed pid or a replayed lifecycle outcome re-checks the assertions against a fixture, not against a real process.")
 
+data excl_harness_shell_job_wet_reason: String = "SUBSTANTIATED: test.claim.harness_shell_job_wet_witness starts a real shell under posix.Process.StartDetached, holds, reaps, waits, and kills the process group. StartDetached/Reap/TerminateProcessGroup have no mock_response; a hermetic replay of a pid is a fabricated job."
+
+data excl_harness_shell_job_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "the shell-job spawn/wait/group-kill path becomes an ExecutionWitnessKind row under the execution-corpus prefix; then this exclusion and its wet schedule rows delete together. Mocking StartDetached does not discharge it.")
+
 // bin-execution witness class re-homed to the falsifier wet cadence (CI floor endgame D6): the
 // file's enrolled fn(s) exceed bin_witness_wet_per_row_wall_budget_seconds, so they are CLASSIFIED
 // as falsifier batch 5 via falsifier_rehomed_bin_wet_entries (typed frontier rows in
@@ -1054,6 +1058,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_process_lifecycle_reason,
     dissolution: excl_process_lifecycle_dissolve},
+  WitnessExclusionRow {
+    pattern: "harness_shell_job_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_harness_shell_job_wet_reason,
+    dissolution: excl_harness_shell_job_wet_dissolve},
   WitnessExclusionRow {
     pattern: "repo_local_git_config_real_execution.dag",
     classification: BinWitnessWet,

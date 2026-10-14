@@ -17,6 +17,9 @@ type HarnessTool
   | WriteFileTool
   | EditFileTool
   | HandInTool
+  | WaitJobsTool
+  | ReadJobOutputTool
+  | KillJobTool
 
 fn harness_tool_wire_name(tool: HarnessTool) -> String {
   match tool {
@@ -25,6 +28,9 @@ fn harness_tool_wire_name(tool: HarnessTool) -> String {
     WriteFileTool => "write_file"
     EditFileTool => "edit_file"
     HandInTool => "hand_in"
+    WaitJobsTool => "wait"
+    ReadJobOutputTool => "job_output"
+    KillJobTool => "job_kill"
   }
 }
 
@@ -32,7 +38,10 @@ fn harness_tool_wire_name(tool: HarnessTool) -> String {
 // below fold over it and compare against the forward function, so a spelling lives only in the
 // forward match and adding a tool is one variant, one match arm, and one entry here.
 fn all_harness_tools() -> List<HarnessTool> {
-  [RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool]
+  [
+    RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
+    WaitJobsTool, ReadJobOutputTool, KillJobTool,
+  ]
 }
 
 type HarnessToolRead
@@ -66,6 +75,9 @@ fn harness_tool_item_type(tool: HarnessTool) -> String {
     WriteFileTool => "file_write"
     EditFileTool => "file_edit"
     HandInTool => "session_hand_in"
+    WaitJobsTool => "job_wait"
+    ReadJobOutputTool => "job_output"
+    KillJobTool => "job_kill"
   }
 }
 

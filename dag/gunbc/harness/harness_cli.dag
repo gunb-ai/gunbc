@@ -11,7 +11,7 @@ import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
 import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.harness.harness_tool { HarnessToolEnvironment }
+import gunbc.harness.harness_tool { HarnessToolEnvironment, harness_tool_environment }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnStoppedBySupervision, TurnSupervisionUnavailable, TurnAcceptanceUnavailable, HarnessSupervision, Unsupervised, SupervisedRounds, HarnessAcceptanceRoute, harness_tool_contract_wire,
   CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
@@ -219,11 +219,10 @@ fn harness_turn_exit_released(outcome: HarnessTurnOutcome, seat: HarnessSeatRele
 data harness_default_system_prompt: String = harness_guidance_prose(rows: harness_probe_guidance())
 
 fn harness_macbook_environment() -> HarnessToolEnvironment {
-  HarnessToolEnvironment {
+  harness_tool_environment(
     working_directory: harness_macbook_working_directory,
     timeout_program: harness_macbook_timeout_program,
-    duration_limit_seconds: harness_default_duration_limit_seconds,
-  }
+  )
 }
 
 // THE WINDOW COMES FROM THE SURFACE THE HARNESS ACTUALLY POSTS TO. The first cut of this row read
@@ -680,11 +679,10 @@ fn harness_worker_config(
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
-    environment: HarnessToolEnvironment {
+    environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
-      duration_limit_seconds: harness_default_duration_limit_seconds,
-    },
+    ),
     completion: CompletesOnProviderStop,
     backend_access: backend.access,
     acceptance_capacity: acceptance_capacity,
@@ -884,11 +882,10 @@ fn harness_reviewer_config(
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
-    environment: HarnessToolEnvironment {
+    environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
-      duration_limit_seconds: harness_default_duration_limit_seconds,
-    },
+    ),
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
     acceptance_capacity: KeepBindingAlive,
@@ -969,11 +966,10 @@ fn harness_auditor_config(
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
-    environment: HarnessToolEnvironment {
+    environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
-      duration_limit_seconds: harness_default_duration_limit_seconds,
-    },
+    ),
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
     acceptance_capacity: KeepBindingAlive,
