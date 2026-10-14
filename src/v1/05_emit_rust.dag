@@ -2306,9 +2306,9 @@ fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List
     }
   }
   if type_node_is_nominal(n: n) {
-    // A variant arm renders with its own parameters (`Present<_>` inside `Option<..>`); an arm without
-    // parameters (the kernel Bool's `True`) spells nothing, so only parameters are read from the arms.
-    return type_node_spelled_atoms_unbound(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices) || (!type_node_has_applied_binding(n: n, source_indices: source_indices) && n.children |> any(c => type_node_spelled_atoms_unbound(n: child_type_node(ch: c), generic_param_names: generic_param_names, env: env, source_indices: source_indices)))
+    // A variant arm renders with its payload (`Present<_>` inside `Option<..>`) when that payload is an unbound
+    // type variable; an arm without payload (the kernel Bool's `True`) spells nothing.
+    return type_node_spelled_atoms_unbound(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices) || (!type_node_has_applied_binding(n: n, source_indices: source_indices) && n.children |> any(c => type_node_has_unbound_type_variable(n: child_type_node(ch: c), generic_param_names: generic_param_names, source_indices: source_indices)))
   }
   if n.children |> any(c => type_node_has_closure_unbound_generic_atom(n: child_type_node(ch: c), generic_param_names: generic_param_names, env: env, source_indices: source_indices)) {
     true
