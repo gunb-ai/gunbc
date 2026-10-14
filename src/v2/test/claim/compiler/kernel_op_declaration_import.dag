@@ -30,10 +30,9 @@ import v2.std.node { node_subtree_nodes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUBJECT: ruling B (2026-10-14) — kernel collection ops are std.algebra collection_*_shape
-// identities, bound on kernel_mint_declaration_rows, imported explicitly. No free fn concat
-// (method table). Native concat() binds the template only when collection_concat_shape is imported.
-// Deleting that import reds concat() and greens the bare-concat claim.
+// SUBJECT (i): a bare authored concat(a, b) binds to the one declaration
+// std.algebra.collection_concat_shape when that identity is imported; without the import it
+// refuses. No free fn concat. kernel_mint_declaration_rows stays Optional-only.
 
 data kodi_algebra_peer: String = "module std.algebra\n\nfn collection_concat_shape() -> Int { 0 }\n"
 
@@ -53,20 +52,10 @@ test fn collection_shape_rows_carry_the_kernel_spellings() -> Bool {
     && collection_map_insert_shape().name == "map_insert"
 }
 
-test fn concat_mint_binds_collection_concat_shape() -> Bool {
+test fn concat_has_no_kernel_mint_row() -> Bool {
   match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "concat") {
-    KernelMintDeclarationFound { declaration: d } =>
-      declaration_ref_eq(a: d, b: decl_ref(module_path: "std.algebra", decl_name: "collection_concat_shape"))
-    KernelMintDeclarationAbsent => false
-    KernelMintDeclarationAmbiguous { row_count: _ } => false
-  }
-}
-
-test fn map_get_mint_binds_collection_map_get_shape() -> Bool {
-  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "map_get") {
-    KernelMintDeclarationFound { declaration: d } =>
-      declaration_ref_eq(a: d, b: decl_ref(module_path: "std.algebra", decl_name: "collection_map_get_shape"))
-    KernelMintDeclarationAbsent => false
+    KernelMintDeclarationAbsent => true
+    KernelMintDeclarationFound { declaration: _ } => false
     KernelMintDeclarationAmbiguous { row_count: _ } => false
   }
 }
