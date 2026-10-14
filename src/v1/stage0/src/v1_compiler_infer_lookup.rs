@@ -627,8 +627,9 @@ pub fn func_decl_binding_for_call(
                     );
                     match (*located).clone() {
                         ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable {
-                            ..
-                        } => Rc::new(
+                            identity,
+                            cause: _,
+                        } if identity.owner_module_path == "v2.std.collection" => Rc::new(
                             ConstructorDeclarationLookup::NotAdmissionBearingReference {},
                         ),
                         other => Rc::new(other),

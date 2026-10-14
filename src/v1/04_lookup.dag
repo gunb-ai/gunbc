@@ -614,8 +614,12 @@ fn func_decl_binding_for_call(
           ) {
             ExactConstructorDeclaration { identity: identity, declaration: declaration } =>
               ExactConstructorDeclaration { identity: identity, declaration: declaration }
-            AdmissionBearingDeclarationUnavailable { identity: _, cause: _ } =>
-              NotAdmissionBearingReference {}
+            AdmissionBearingDeclarationUnavailable { identity: identity, cause: cause } =>
+              if identity.owner_module_path == "v2.std.collection" {
+                NotAdmissionBearingReference {}
+              } else {
+                AdmissionBearingDeclarationUnavailable { identity: identity, cause: cause }
+              }
             NotAdmissionBearingReference {} => NotAdmissionBearingReference {}
           }
         BorrowedCensusDeclAmbiguous { candidates: _ } => NotAdmissionBearingReference {}
