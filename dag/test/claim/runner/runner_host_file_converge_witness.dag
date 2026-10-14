@@ -215,7 +215,7 @@ test fn the_live_teardown_pair_renders_differently_and_can_orphan() -> Bool {
     && !lifecycle_intent_stops_finished_incarnation(intent: live, main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends)
     && !lifecycle_intent_stops_finished_incarnation(intent: exittype_cgroup_dropin, main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends)
     && serialize_systemd_drop_in(drop_in: runner_unit_teardown_dropin(intent: exittype_cgroup_dropin)) != expected_teardown_dropin_text
-    && lifecycle_intent_stops_finished_incarnation(expect: fixture_expect(), main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends)
+    && lifecycle_intent_stops_finished_incarnation(intent: gunbc_runner_lifecycle_intent, main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends)
 }
 
 // The needrestart snippet, against upstream's syntax: an assignment into the override_rc hashref,
@@ -1188,6 +1188,7 @@ test fn a_read_uid_delivers_the_fragment_with_no_makeflags() -> Bool {
           && string_contains(s: f.content, pattern: "\nEnvironment=CARGO_BUILD_JOBS=")
           && !string_contains(s: f.content, pattern: "MAKEFLAGS")
           && !string_contains(s: f.content, pattern: "ctrl-jobserver"))
+  }
 }
 
 // ── The retired ctrl-jobserver residue ─────────────────────────────────────────────────────────────

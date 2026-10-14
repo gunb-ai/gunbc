@@ -21,6 +21,7 @@ import gunbc.ci.ci_runner_placement {
   RunnerCpuBoundary, CapacityQuota, NoCpuCeiling,
   runner_deployment_plan,
   runner_host_deployment_for,
+  host_deployment_refusal_text,
   workload_class_cpu_weight,
   WorkloadClass,
   BatchLatencyTolerant,
@@ -896,26 +897,10 @@ fn approval_broker_runtime_caps_for(host: HostIdentity) -> ApprovalBrokerRuntime
   }
 }
 
-// cpu_quota IS OPTIONAL BECAUSE ONLY ONE OF THE TWO SLICES HAS A MODELED CPU SHARE. sessions.slice
-// carries gunbc.ci.ci_runner_placement host_cpu_allocation's sessions_cpu_cap -- the sessions' CPU
-// share is their memory share, derived in the same fold that divides the rest among runner slots
-// (operator ruling 2026-10-14, "slots need a CPU cap"). The approval-broker slice has no CPU
-// allocation in the model and is not given one here. A host whose runner deployment refuses has no
-// derived split, so its sessions slice converges memory only and the CPU is left as observed; that
-// host's deployment refusal is reported by the runner plan, never silently replaced by a default.
 type SliceControlCaps {
   unit: NonEmptyStr
   memory_max: ByteSize
   memory_high: ByteSize
-  cpu_quota: HardwareThreadCount?
-}
-
-fn sessions_slice_cpu_quota_for(host: HostIdentity) -> HardwareThreadCount? {
-  match runner_host_deployment_for(p: runner_deployment_plan(), host: host) {
-    HostRunnerDeploymentRefused { refusal: _ } => none
-    HostRunnerDeploymentDerived { deployment: d } =>
-      if hardware_thread_count_value(t: d.sessions_cpu_cap) == 0 { none } else { Present { value: d.sessions_cpu_cap } }
-  }
 }
 
 fn slice_control_caps_for(host: HostIdentity) -> List<SliceControlCaps> {
@@ -935,7 +920,6 @@ fn slice_control_caps_for(host: HostIdentity) -> List<SliceControlCaps> {
                   unit: gunbc_oomd_sessions_slice,
                   memory_max: max,
                   memory_high: high,
-                  cpu_quota: sessions_slice_cpu_quota_for(host: host),
                 },
               ]
             }
@@ -949,11 +933,50 @@ fn slice_control_caps_for(host: HostIdentity) -> List<SliceControlCaps> {
           unit: gunbc_approval_broker_slice_unit_name,
           memory_max: approval_broker_slice_memory_max,
           memory_high: approval_broker_slice_memory_high,
-          cpu_quota: none,
         },
       ]
     },
   )
+}
+
+// THE SESSIONS SLICE'S CPU CAP RIDES ITS CONTROL SEQUENCE AND IS OWED, NOT OPTIONAL. The sessions'
+// CPU share is their memory share, derived with the runner slots' quota in one fold
+// (gunbc.ci.ci_runner_placement host_cpu_allocation; operator ruling 2026-10-14, "slots need a CPU
+// cap"). The control sequence REVERTS the unit before setting it, so a sessions slice converged
+// without its CPU cap would silently drop whatever cap it held: a sessions derivation that cannot
+// produce the cap refuses the whole sessions unit. The approval-broker slice has no CPU allocation
+// in the model; that is a different fact, carried by a different arm, not an absent field.
+type SliceControlUnit
+  = SessionsSliceControl { caps: SliceControlCaps, cpu_quota: HardwareThreadCount }
+  | UncappedSliceControl { caps: SliceControlCaps }
+  | SliceControlRefused { unit: NonEmptyStr, cause: String }
+
+fn sessions_slice_control_for(host: HostIdentity, caps: SliceControlCaps) -> SliceControlUnit {
+  match runner_host_deployment_for(p: runner_deployment_plan(), host: host) {
+    HostRunnerDeploymentRefused { refusal: r } =>
+      SliceControlRefused {
+        unit: caps.unit,
+        cause: concat("the sessions slice is owed a CPU cap and the host CPU allocation that derives it refuses: ", host_deployment_refusal_text(c: r.cause)),
+      }
+    HostRunnerDeploymentDerived { deployment: d } =>
+      if hardware_thread_count_value(t: d.sessions_cpu_cap) == 0 {
+        SliceControlRefused {
+          unit: caps.unit,
+          cause: "the sessions slice is owed a CPU cap and its derived share is zero threads, which systemd would read as no CPU at all",
+        }
+      } else {
+        SessionsSliceControl { caps: caps, cpu_quota: d.sessions_cpu_cap }
+      }
+  }
+}
+
+fn slice_control_units_for(host: HostIdentity) -> List<SliceControlUnit> {
+  map(slice_control_caps_for(host: host), c =>
+    if (c.unit as String) == (gunbc_oomd_sessions_slice as String) {
+      sessions_slice_control_for(host: host, caps: c)
+    } else {
+      UncappedSliceControl { caps: c }
+    })
 }
 
 fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, backstop_knobs: List<ConvergeKnob>) -> HostConverge {

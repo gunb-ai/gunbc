@@ -25,6 +25,8 @@ import gunbc.host.host_converge {
   gunbc_runner_control_dropin_dir_prefix,
   slice_control_caps_for,
   SliceControlCaps,
+  SliceControlUnit, SessionsSliceControl, UncappedSliceControl, SliceControlRefused,
+  slice_control_units_for,
 }
 import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
@@ -659,7 +661,7 @@ fn slice_control_set_property_stmt(unit: NonEmptyStr, property: NonEmptyStr, byt
 // set-property drop-ins), then persistent set-property so the model owns system.control.
 // Two properties cannot each revert: the second revert would undo the first set-property.
 fn slice_control_converge_stmts_for_caps(caps: SliceControlCaps) -> List<Node> {
-  concat([
+  [
     deploy_control_shadow_revert_stmt(u: control_shadow_unit(unit: caps.unit)),
     slice_control_set_property_stmt(
       unit: caps.unit,
@@ -671,23 +673,38 @@ fn slice_control_converge_stmts_for_caps(caps: SliceControlCaps) -> List<Node> {
       property: systemd_memory_high_property as NonEmptyStr,
       bytes: caps.memory_high,
     ),
-  ], match caps.cpu_quota {
-    Absent => []
-    Present { value: t } => [
-      shell_privileged_command_intent(
-        argv: systemctl_set_property_argv(
-          unit: caps.unit,
-          property: systemd_cpu_quota_property as NonEmptyStr,
-          value: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }) as NonEmptyStr,
-        )
+  ]
+}
+
+// The sessions CPU cap is appended after MemoryHigh, inside the same single revert: a second revert
+// would undo the memory set-properties. A refused sessions unit emits a refusal, never its memory
+// half alone.
+fn slice_control_converge_stmts_for_unit(u: SliceControlUnit) -> List<Node> {
+  match u {
+    UncappedSliceControl { caps: c } => slice_control_converge_stmts_for_caps(caps: c)
+    SessionsSliceControl { caps: c, cpu_quota: t } =>
+      concat(slice_control_converge_stmts_for_caps(caps: c), [
+        shell_privileged_command_intent(
+          argv: systemctl_set_property_argv(
+            unit: c.unit,
+            property: systemd_cpu_quota_property as NonEmptyStr,
+            value: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }) as NonEmptyStr,
+          )
+        ),
+      ])
+    SliceControlRefused { unit: un, cause: why } => [
+      bash_build_with_redir(
+        inner: shell_command_intent(words: ["echo", join(["slice-control refused for ", un as String, ": ", why], "")]),
+        redir: ^bash_production_fold_redir_stdout_to_stderr,
       ),
+      bash_build_exit(code: "1"),
     ]
-  })
+  }
 }
 
 fn slice_control_converge_stmts(host: HostIdentity) -> List<Node> {
-  fold(slice_control_caps_for(host: host), init: [], f: (acc, caps) =>
-    concat(acc, slice_control_converge_stmts_for_caps(caps: caps))
+  fold(slice_control_units_for(host: host), init: [], f: (acc, u) =>
+    concat(acc, slice_control_converge_stmts_for_unit(u: u))
   )
 }
 
