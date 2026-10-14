@@ -52,6 +52,12 @@ data kab_fn_data_source: String = "module v2.test.kab.fn_data\n\ndata n: Int = 1
 
 data kab_fn_data_user_source: String = "module v2.test.kab.fn_data_user\n\nimport v2.test.kab.fn_data { n, k }\nfn h() -> Int { n }\nfn g() -> Int { k() }\n"
 
+data kab_alias_types_source: String = "module v2.test.kab.alias_types\n\ntype FsIntList = FsIntEmpty | FsIntCons { head: Int, tail: FsIntList }\n\ntype FsIntNonEmpty {\n  head: Int\n  tail: FsIntList\n}\n\ntype FsIntAlias = FsIntNonEmpty\n"
+
+data kab_alias_return_source: String = "module v2.test.kab.alias_return\n\nimport v2.test.kab.alias_types { FsIntAlias, FsIntNonEmpty, FsIntEmpty }\nfn fse_alias_ok() -> FsIntAlias { FsIntNonEmpty { head: 1, tail: FsIntEmpty } }\n"
+
+data kab_alias_formal_source: String = "module v2.test.kab.alias_formal\n\nimport v2.test.kab.alias_types { FsIntAlias, FsIntNonEmpty }\nfn f(x: FsIntAlias) -> FsIntNonEmpty { x }\n"
+
 data kab_qual_type_source: String = "module v2.test.kab.qual_type\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.card { Optional }\ntype Unit = | U\nfn f(x: v2.test.kab.type_opt.Optional<Unit>) -> Unit { U }\n"
 
 data kab_qual_ctor_source: String = "module v2.test.kab.qual_ctor\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.card { Card, Optional }\nfn g() -> Card { v2.test.kab.card.Optional }\n"
@@ -99,6 +105,9 @@ fn kab_context() -> Outcome<NativeTestContext> {
     kab_read(text: kab_data_n_as_type_source, id: ^kab_data_n_as_type, path: "src/v2/test/fixture/kab/data_n_as_type.dag"),
     kab_read(text: kab_fn_data_source, id: ^kab_fn_data, path: "src/v2/test/fixture/kab/fn_data.dag"),
     kab_read(text: kab_fn_data_user_source, id: ^kab_fn_data_user, path: "src/v2/test/fixture/kab/fn_data_user.dag"),
+    kab_read(text: kab_alias_types_source, id: ^kab_alias_types, path: "src/v2/test/fixture/kab/alias_types.dag"),
+    kab_read(text: kab_alias_return_source, id: ^kab_alias_return, path: "src/v2/test/fixture/kab/alias_return.dag"),
+    kab_read(text: kab_alias_formal_source, id: ^kab_alias_formal, path: "src/v2/test/fixture/kab/alias_formal.dag"),
     kab_read(text: kab_qual_type_source, id: ^kab_qual_type, path: "src/v2/test/fixture/kab/qual_type.dag"),
     kab_read(text: kab_qual_ctor_source, id: ^kab_qual_ctor, path: "src/v2/test/fixture/kab/qual_ctor.dag"),
     kab_read(text: kab_rec_source, id: ^kab_rec, path: "src/v2/test/fixture/kab/rec.dag"),
@@ -122,6 +131,8 @@ type KabVerdicts {
   data_n_user: NativeModuleResolveVerdict
   data_n_as_type: NativeModuleResolveVerdict
   fn_data_user: NativeModuleResolveVerdict
+  alias_return: NativeModuleResolveVerdict
+  alias_formal: NativeModuleResolveVerdict
   qual_type: NativeModuleResolveVerdict
   qual_ctor: NativeModuleResolveVerdict
   rec_user: NativeModuleResolveVerdict
@@ -148,6 +159,8 @@ fn kab_verdicts() -> Optional<KabVerdicts> {
           data_n_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.data_n_user", path: ^kab_data_n_user).verdict,
           data_n_as_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.data_n_as_type", path: ^kab_data_n_as_type).verdict,
           fn_data_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.fn_data_user", path: ^kab_fn_data_user).verdict,
+          alias_return: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.alias_return", path: ^kab_alias_return).verdict,
+          alias_formal: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.alias_formal", path: ^kab_alias_formal).verdict,
           qual_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_type", path: ^kab_qual_type).verdict,
           qual_ctor: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_ctor", path: ^kab_qual_ctor).verdict,
           rec_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.rec_user", path: ^kab_rec_user).verdict,
@@ -245,6 +258,23 @@ test fn an_imported_fn_and_data_value_from_the_same_module_resolve() -> Bool {
   match kab_verdicts() {
     Absent => false
     Present { value: vs } => kab_accepted(v: vs.fn_data_user)
+  }
+}
+
+// ALIAS-TYPED FORMAL (#13832 regression): fill treated NotATypeDecl as "no members", so a fn Arrow
+// was never descended and `x` was not indexed. Body `{ x }` refused parameter_path_not_indexed;
+// return-position alias has no parameter path and stayed green.
+test fn an_alias_typed_formal_resolves_and_its_body_x_binds() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.alias_formal)
+  }
+}
+
+test fn an_alias_in_return_position_still_resolves() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.alias_return)
   }
 }
 

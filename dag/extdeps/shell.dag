@@ -560,6 +560,21 @@ service shell.Move {
     }
   }
 
+  // SAME-DIRECTORY REPLACE. `mv -f --` on one filesystem is rename(2) onto an existing name
+  // (extdeps.filesystem.linux RenameReplaceWithinTargetDirectory). Filesystem.Write is an in-place
+  // truncate-and-write: a crash can leave an empty destination. This operation is the rename that
+  // does not.
+  operation Replace {
+    requires none
+    input { source: FilePath, destination: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["mv", "-f", "--", "{source}", "{destination}"] }
+    exit {
+      0 => Unit
+      nonzero => String "mv -f replace failed"
+    }
+  }
+
   operation NoReplaceDirectory {
     requires none
     input { source: FilePath, destination: FilePath }

@@ -15208,9 +15208,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                 elem.clone(),
                                             )
                                         }
-                                        std::option::Option::None => {
-                                            type_variable_node("empty_list_element".to_string())
-                                        }
+                                        std::option::Option::None => type_variable_node("empty_list_element".to_string()),
                                     }
                                 } else {
                                     type_variable_node("empty_list_element".to_string())
@@ -31895,6 +31893,7 @@ pub fn build_emit_graph_info(
             data_variant_wire_spellings: v1_rt::rc_empty_map::<String, Rc<DataVariantWireSpelling>>(
             ),
             fn_decl_items: built.fn_decl_items.clone(),
+            fn_map_key_bounds: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: variant_shapes.fielded.clone(),
             positional_payload_variants: variant_shapes.positional_payload.clone(),
@@ -31912,6 +31911,8 @@ pub fn build_emit_graph_info(
             fn_type_env: crate::v1_compiler_infer_env::empty_type_env(),
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
+            tco_cursor_param: "".to_string(),
+            tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
         })
     }
 }

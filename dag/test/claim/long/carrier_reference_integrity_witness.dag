@@ -1,7 +1,7 @@
 module test.claim.long.carrier_reference_integrity_witness
 
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.roster_registry { ByDerivation, RosterRegistration, roster_decl, roster_registry }
+import gunbc.roster_registry { ByDerivation, RosterRegistration, roster_decl, roster_registry, single_roster }
 import gunbc.lambda_argument_typing_gate {
   AbsentFromRoster,
   LambdaTypingGateSite,
@@ -116,7 +116,7 @@ test fn roster_registry_ref_population_is_not_empty() -> Bool {
 test fn roster_registry_dangling_predicate_red_control_refuses() -> Bool {
   let planted = [
     RosterRegistration {
-      roster: roster_decl(module_path: "v2.std.node", decl_name: "NodeKind"),
+      roster: single_roster(module_path: "v2.std.node", decl_name: "NodeKind"),
       unit_kind: "planted control unit",
       membership: ByDerivation {
         predicate: roster_decl(

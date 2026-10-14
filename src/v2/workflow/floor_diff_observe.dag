@@ -528,8 +528,8 @@ fn floor_base_paths_present(paths_nul: String) -> Map<String, Bool> {
 // ONE FILE AT THE RESOLVED DIFF BASE, read through the same listing + show effects the
 // test-declaration census uses: absent at base is its own arm (a file the diff adds), never an
 // empty file, and a failed listing or show refuses. Consumer: the required floor's typed
-// non-fold-residue check, which compares the gunbc.non_fold_residue roster at base and head so a
-// row the diff adds or deletes brings its subject module into the typed scope.
+// non-fold-residue check, which unions co-located `non_fold_residue_frontier` lists at base and
+// head so a row the diff adds or deletes brings its subject module into the typed scope.
 type FloorBaseFileRead
   = BaseFileAbsent
   | BaseFileRead { content: String }
