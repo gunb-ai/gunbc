@@ -784,9 +784,12 @@ pairs Optional plus those callee spellings to the one identity each). Path (i): 
 that row when the module imported the row’s declaration name
 (`collection_concat_shape` / `collection_count_shape`); without the import it refuses. That
 gate is `v2.compiler.resolve` `collection_roster_identity_imported`, and it covers only the
-roster’s primitive-call heads (concat, count). `first`, `map`, `filter`, `join`, `map_get`
-have the named template homes; last-tier does not yet bind those spellings. Trigger: extend
-that import gate to those heads, or path (ii) rewrite callers to the declared form. Until
+roster’s primitive-call heads (concat, count). `first`, `map`, `filter`, `join`
+have the named template homes; last-tier does not yet bind those spellings. `map_insert` /
+`empty_map` / `map_lookup` are missing imports of the real `std.algebra` fns landing in
+#13872 — they are not mint pairings. `map_get` is the kernel spelling of that same total
+lookup as `map_lookup`; callers move to `map_lookup` rather than a second template. Trigger:
+extend that import gate to those heads, or path (ii) rewrite callers to the declared form. Until
 then the plan does not claim those spellings are imported-and-bound.
 
 **RULED — the (Y) expected-type filter (operator, 2026-07-22; recorded in §4).** The re-adjudication

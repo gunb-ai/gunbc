@@ -160,14 +160,6 @@ pub fn kernel_mint_declaration_rows() -> Rc<Vec<Rc<KernelMintDeclaration>>> {
                         minted_name: "join".to_string(),
                         declaration: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "collection_join_shape".to_string()),
                     }),
-                    Rc::new(KernelMintDeclaration {
-                        minted_name: "map_get".to_string(),
-                        declaration: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "collection_map_get_shape".to_string()),
-                    }),
-                    Rc::new(KernelMintDeclaration {
-                        minted_name: "map_insert".to_string(),
-                        declaration: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "collection_map_insert_shape".to_string()),
-                    }),
                 ])
             };
         }

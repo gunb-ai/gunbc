@@ -10,8 +10,6 @@ import std.algebra {
   collection_filter_shape,
   collection_first_shape,
   collection_join_shape,
-  collection_map_get_shape,
-  collection_map_insert_shape,
   collection_map_shape,
   fold_list
 }
@@ -43,8 +41,6 @@ test fn collection_shape_rows_carry_the_kernel_spellings() -> Bool {
     && collection_filter_shape().name == "filter"
     && collection_first_shape().name == "first"
     && collection_join_shape().name == "join"
-    && collection_map_get_shape().name == "map_get"
-    && collection_map_insert_shape().name == "map_insert"
 }
 
 test fn concat_mint_row_binds_the_algebra_template() -> Bool {
@@ -68,6 +64,24 @@ test fn undeclared_mint_name_is_not_admitted() -> Bool {
 test fn unbound_mint_name_has_no_row() -> Bool {
   match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "not_a_kernel_mint") {
     KernelMintDeclarationAbsent => true
+    KernelMintDeclarationFound { declaration: _ } => false
+    KernelMintDeclarationAmbiguous { row_count: _ } => false
+  }
+}
+
+// #13872 declares empty_map / map_insert / map_lookup as real std.algebra fns. Minting map_insert
+// would be two declarations for one concept. map_get is the kernel spelling of the same total
+// lookup as map_lookup (Map, key → Optional<V>); callers move to map_lookup, no new template.
+test fn map_insert_and_map_get_are_not_mint_pairings() -> Bool {
+  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "map_insert") {
+    KernelMintDeclarationAbsent =>
+      match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "map_get") {
+        KernelMintDeclarationAbsent =>
+          !kernel_operation_mint_admitted(minted_name: "map_insert", decl_name: "collection_map_insert_shape")
+            && !kernel_operation_mint_admitted(minted_name: "map_get", decl_name: "collection_map_get_shape")
+        KernelMintDeclarationFound { declaration: _ } => false
+        KernelMintDeclarationAmbiguous { row_count: _ } => false
+      }
     KernelMintDeclarationFound { declaration: _ } => false
     KernelMintDeclarationAmbiguous { row_count: _ } => false
   }
