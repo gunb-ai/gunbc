@@ -3,6 +3,8 @@ module gunbc.compute.work_provider_local
 import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs, Seconds }
+import std.env_binding { EnvBinding }
+import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import std.measure { byte_size_count }
@@ -483,7 +485,10 @@ fn compute_operation_env(op: WorkOperation) -> List<SystemdSetenvBinding> {
   }
 }
 
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, granted: Kibibyte) -> ComputeUnitRunReading {
+// launcher_env is applied to the systemd-run process via env(1), not as unit --setenv. Empty is
+// inherit; a cold instrument supplies XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS when the job env
+// has none. One fold: production and the instrument both call this.
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeUnitRunExecuted { run: ComputeUnitRun {
@@ -508,9 +513,12 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
         ComputeUnitRunRefused { cause: why }
       SystemdSummaryPrintingWaitReady { wait: launcher } => {
         let r = compute_exec(
-          program: systemd_run,
+          program: env_absolute_program().invocation as String,
           workdir: layout.checkout,
-          args: systemd_summary_printing_wait_argv(w: launcher),
+          args: env_prefixed_args(
+            bindings: launcher_env,
+            command_argv: concat([systemd_run], systemd_summary_printing_wait_argv(w: launcher)),
+          ),
         )
         ComputeUnitRunExecuted { run: ComputeUnitRun {
           exec: r,
@@ -2387,7 +2395,7 @@ fn compute_spawn_and_collect(
   grant_was_ceiling: Bool,
   launched: AttemptGate,
 ) -> ComputeAttempt {
-  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), granted: granted) {
+  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },

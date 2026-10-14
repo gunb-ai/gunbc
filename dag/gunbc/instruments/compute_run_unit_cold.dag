@@ -3,16 +3,15 @@ module gunbc.instruments.compute_run_unit_cold
 import std.types { String, Bool, Int, List, FilePath, GitRef, NonEmptyStr }
 import std.algebra { trim, starts_with }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.measure { kibibyte, Kibibyte }
+import std.measure { kibibyte }
 import std.optional { Present, Absent }
 import std.env_binding { EnvSet, EnvBinding }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.roadmap.roadmap_dashboard_instance { fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
-  compute_command_argv, compute_operation_env, ComputeUnitRunExecuted, ComputeUnitRunRefused, ComputeUnitRun,
-  ComputeUnitRunReading, NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire,
-  compute_unit_name, compute_unit_properties,
+  compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
+  NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire,
 }
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_request { work_default_build }
@@ -20,22 +19,17 @@ import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
 import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.linux.procfs { procfs_status_effective_uid }
 import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
-import extdeps.cache.sccache { sccache_installed_binary_path }
-import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import extdeps.systemd.systemd_run {
   SystemdRunWaitSummary, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   ServiceResultFormatNotGrounded, SummaryNoInvocation, SummarySuppressedByQuietLauncher,
   SummaryCaptureEmpty, SummaryLineAbsent, SystemdSetenvBinding,
-  systemd_run_user_wait_command, systemd_summary_printing_wait_argv,
-  SystemdSummaryPrintingWaitReady, SystemdSummaryPrintingWaitRefused,
-  summary_format_standing, systemd_run_wait_summary,
-  MemoryPeakNotReported,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
-// WAVE-0 B: drive compute_run_unit's systemd-run --user through a cold cargo release of
-// work_default_build. Bus presence, refusal, and launcher env are THIS FOLD, not seed process
-// mutation. No bus is ExitFailure code 2 (gunbc test: no observation). Each run's instance root is
+// WAVE-0 B: drive the real compute_run_unit through a cold cargo release of work_default_build.
+// Bus presence, refusal, and launcher_env bindings are THIS FOLD; the unit launch is
+// gunbc.compute.work_provider_local compute_run_unit, not a copy. No bus is ExitFailure code 2
+// (gunbc test: no observation). Each run's instance root is
 // <git-toplevel>/.gunbc-compute-hermetic/<unix-millis>, so target_dir is empty at start.
 
 type HermeticUserSessionRuntime
@@ -142,58 +136,6 @@ fn prepare_checkout(instance: HostDashboardInstance, layout: ComputeLayout, head
   }
 }
 
-fn launch_user_unit(
-  instance: HostDashboardInstance,
-  layout: ComputeLayout,
-  identity: String,
-  argv: List<String>,
-  unit_env: List<SystemdSetenvBinding>,
-  launcher_env: List<EnvBinding>,
-  granted: Kibibyte,
-) -> ComputeUnitRunReading {
-  let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
-  if systemd_run == "" {
-    ComputeUnitRunExecuted { run: ComputeUnitRun {
-      exec: ComputeExecFailed { exit_code: 127, stdout: "", stderr: "this instance's toolchain declares no systemd-run; the local provider runs only under systemd" },
-      summary: SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } },
-    } }
-  } else {
-    let standing = summary_format_standing(version_line: match compute_exec(program: systemd_run, workdir: layout.checkout, args: ["--version"]) {
-      ComputeExecOk { stdout: v, stderr: _ } => v
-      ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""
-    })
-    match systemd_run_user_wait_command(
-      unit: compute_unit_name(identity_hex: identity),
-      properties: compute_unit_properties(layout: layout, granted: granted),
-      setenv_bindings: concat([
-        SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
-        SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path as NonEmptyStr },
-      ], unit_env),
-      command_argv: argv,
-    ) {
-      SystemdSummaryPrintingWaitRefused { cause: why } =>
-        ComputeUnitRunRefused { cause: why }
-      SystemdSummaryPrintingWaitReady { wait: launcher } => {
-        let r = compute_exec(
-          program: env_absolute_program().invocation as String,
-          workdir: layout.checkout,
-          args: env_prefixed_args(
-            bindings: launcher_env,
-            command_argv: concat([systemd_run], systemd_summary_printing_wait_argv(w: launcher)),
-          ),
-        )
-        ComputeUnitRunExecuted { run: ComputeUnitRun {
-          exec: r,
-          summary: systemd_run_wait_summary(launcher: launcher, standing: standing, stderr: match r {
-            ComputeExecOk { stdout: _, stderr } => stderr
-            ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
-          }),
-        } }
-      }
-    }
-  }
-}
-
 fn no_observation(bytes: String, reason: String) -> CliWireResponse {
   CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: reason } }
 }
@@ -265,12 +207,12 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
                 } else {
                   let granted = kibibyte(count: 16777216)
                   let op = work_default_build()
-                  match launch_user_unit(
+                  match compute_run_unit(
                     instance: instance,
                     layout: layout,
-                    identity: identity,
+                    identity_hex: identity,
                     argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency),
-                    unit_env: concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
+                    env: concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
                     launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
                     granted: granted,
                   ) {
