@@ -1,5 +1,6 @@
 module v2.compiler.primitive_authority
 
+import std.algebra { collection_concat_shape }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node { Node, Symbol, symbol_lexeme }
 import v2.std.data_initializer_identity { projection_named_child_optional }

@@ -15,7 +15,8 @@ import std.algebra {
   Equal,
   Greater,
   Less,
-  Ordering
+  Ordering,
+  collection_concat_shape
 }
 import std.types { List }
 

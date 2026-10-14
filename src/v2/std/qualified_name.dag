@@ -13,7 +13,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init, collection_concat_shape, collection_count_shape }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.optional {

@@ -2,7 +2,7 @@ module v2.std.type_binder
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
-import std.algebra { Cons, Empty, list_snoc_item, zip_map }
+import std.algebra { Cons, Empty, list_snoc_item, zip_map, collection_concat_shape, collection_count_shape }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.arrow_contract { arrow_contract_conforms }
 import v2.std.arrow_signature { signature_order_edge, arrow_signature_order_head_is_list_introduction }

@@ -13,10 +13,9 @@ import v2.std.type_binder { type_param_names }
 import v2.std.node_query { find_named_child, node_positional_child_targets, find_labeled_child }
 import v2.std.witness { map_get_checked }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.algebra { Empty, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional }
+import std.algebra { Empty, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional, collection_count_shape }
 import v2.std.text { String }
 import v2.std.grammar { grammar_relation_row_reverse_parse_selection, node_atom_identity_optional }
-
 // THE SOURCE SERIALIZER, APART FROM THE TRANSLATE STAGE. Serializing an emitted node against a
 // TargetModel is a grammar fold over the target's relation rows and concrete-syntax projections: it
 // needs no inference, resolution or ingest. While it lived inside v2.compiler.translate, every module

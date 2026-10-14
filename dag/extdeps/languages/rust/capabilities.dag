@@ -15,7 +15,8 @@ import std.trait_derive_shape {
 }
 import std.algebra {
   Cons,
-  Empty
+  Empty,
+  collection_concat_shape
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }

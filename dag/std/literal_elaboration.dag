@@ -1,6 +1,7 @@
 module std.literal_elaboration
 
 import std.optional { Present, Absent }
+import std.algebra { collection_concat_shape }
 import std.types { List, String, Bool, Int, NonEmptyStr, range }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }

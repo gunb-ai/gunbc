@@ -1,6 +1,7 @@
 module extdeps.uri_path
 
 import std.optional { Present, Absent }
+import std.algebra { collection_concat_shape, collection_count_shape }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 

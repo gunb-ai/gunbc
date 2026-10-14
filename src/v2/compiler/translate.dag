@@ -201,7 +201,8 @@ import std.algebra {
   fold_list,
   is_empty,
   length,
-  list_at_optional
+  list_at_optional,
+  collection_count_shape
 }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.text {

@@ -1,4 +1,5 @@
 module std.operator_realization
+import std.algebra { collection_concat_shape }
 import std.optional { Absent, Optional, Present }
 
 

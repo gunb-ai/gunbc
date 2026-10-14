@@ -1,5 +1,6 @@
 module extdeps.numeric.base16
 
+import std.algebra { collection_concat_shape }
 import std.types { Int, String, List, Bool }
 import std.integer { QualifiedOctets, qualified_octets, qualified_octet_members }
 import extdeps.external_authority { ExternalAuthority }

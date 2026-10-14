@@ -1,5 +1,6 @@
 module v2.std.arrow_contract
 
+import std.algebra { collection_count_shape }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
 import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }

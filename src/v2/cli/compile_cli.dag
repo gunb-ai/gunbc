@@ -3,7 +3,7 @@ module v2.cli.compile_cli
 import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, collection_concat_shape }
 import v2.compiler.self_host.closure_emission {
   closure_emission_first_refusal,
   closure_emission_json,

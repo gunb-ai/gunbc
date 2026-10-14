@@ -39,7 +39,7 @@ import v2.std.cross_tree.resolution {
   source_root_index_empty,
   source_root_index_insert
 }
-import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list, list_map }
+import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list, list_map, collection_count_shape }
 import v2.std.diagnostic {
   Accepted,
   Diagnostics,

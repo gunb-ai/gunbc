@@ -1,5 +1,6 @@
 module v2.std.data_initializer_identity
 
+import std.algebra { collection_concat_shape }
 import std.types { List }
 import std.algebra { list_snoc_item }
 import v2.std.node { named_edge_sort_key, symbol_lexeme, Disj, Arrow, Occupancy, Instantiation, ComputationNode, Conj, Atom }

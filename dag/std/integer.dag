@@ -1,7 +1,7 @@
 module std.integer
 import std.optional { Absent, Present }
 
-import std.algebra { AbelianGroup, GroupCompletion }
+import std.algebra { AbelianGroup, GroupCompletion, collection_concat_shape }
 import std.nat { Nat, DecimalDigit, D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, decimal_digit_value, decimal_digit_glyph, decimal_digit_successor, DecimalDigitNext, DecimalDigitCarry }
 import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 import std.measure { bit_width, bit_width_count, bits_per_byte }

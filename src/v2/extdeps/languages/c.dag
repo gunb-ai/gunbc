@@ -32,7 +32,8 @@ import std.algebra {
   length,
   fold_list,
   empty_map,
-  map_insert
+  map_insert,
+  collection_concat_shape
 }
 import std.graph {
   CallGraph,

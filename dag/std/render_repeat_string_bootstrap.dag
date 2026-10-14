@@ -1,5 +1,6 @@
 module std.render_repeat_string_bootstrap
 
+import std.algebra { collection_concat_shape }
 fn repeat_string_loop(acc: String, s: String, remaining: Int) -> String {
   if remaining <= 0 {
     acc
