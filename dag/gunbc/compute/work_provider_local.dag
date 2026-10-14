@@ -1194,7 +1194,7 @@ fn compute_run_opened(
         verdict: AttemptWorkEnded { ending: work_outcome_ending_of(o: attempt.outcome) },
         detail: join(["grant exceeded (oom-kill); ", compute_release_wire(r: returned), "; retried at the ceiling as ", retry_reference as String], ""))
       provide_result_with_host_record(
-        r: match compute_open_attempt(layout: layout, identity: identity, reference: retry_reference, granted: ceiling, owner: compute_gate_owner(gate: attempt.gate)) {
+        r: match compute_open_retry_attempt(layout: layout, identity: identity, reference: retry_reference, granted: ceiling, first: attempt.gate) {
           AttemptGateRefused { detail: d } =>
             compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: StoreUnavailable { detail: join(["the retry's attempt slot could not be opened, so nothing was reserved: ", d], "") })
           AttemptGateReady { record: rec, generation: g } => {
@@ -2217,10 +2217,13 @@ fn compute_open_attempt_minted(layout: ComputeLayout, identity: String, granted:
   }
 }
 
-fn compute_gate_owner(gate: AttemptGate) -> AttemptOwner {
-  match gate {
-    AttemptGateReady { record: r, generation: _ } => r.owner
-    AttemptGateRefused { detail: _ } => DirectInvocation { why: "the first attempt's gate was not open, so no owner was recorded to inherit" }
+// The retry inherits the first attempt's RECORDED owner. A first gate that never opened recorded no
+// owner, and inventing one (DirectInvocation) would place the retry's seat at the flat attempts root
+// where exit-driven discharge under dispatch-<key>/ never looks -- so the retry is refused instead.
+fn compute_open_retry_attempt(layout: ComputeLayout, identity: String, reference: NonEmptyStr, granted: Kibibyte, first: AttemptGate) -> AttemptGate {
+  match first {
+    AttemptGateReady { record: r, generation: _ } => compute_open_attempt(layout: layout, identity: identity, reference: reference, granted: granted, owner: r.owner)
+    AttemptGateRefused { detail: d } => AttemptGateRefused { detail: join(["the first attempt's gate was not open, so no owner was recorded for the retry to inherit: ", d], "") }
   }
 }
 
