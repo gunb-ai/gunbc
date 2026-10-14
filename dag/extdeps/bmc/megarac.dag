@@ -129,7 +129,7 @@ data megarac_op_fan_get_manager_status: MegaRacApiOperation = MegaRacApiOperatio
 data megarac_op_fan_get_fan_info: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "GET",
   path: "/api/fan_control/get_fan_info",
-  contract_note: "same UI bundle; JSON list of {id, fan_number, fan_speed, fan_pwm}; UI labels speed as PWM percentage; executed 21:50Z and 22:09:18Z. The pwm field is an echo, not converge readback: both reads showed fans 5-6 at 20 while SDR FAN4/FAN5 stayed near 5700 rpm",
+  contract_note: "same UI bundle; JSON list of {id, fan_number, fan_speed, fan_pwm}; UI labels speed as PWM percentage. On mtcollins1 this pwm echo is duty readback while tach fidelity is unestablished: operator hearing tracked 20 vs 40 PWM while SDR FAN*_Speed stayed near 5700 rpm (21:50Z, 22:09Z, 22:23:52Z)",
 }
 
 data megarac_op_fan_set_manager_status: MegaRacApiOperation = MegaRacApiOperation {
