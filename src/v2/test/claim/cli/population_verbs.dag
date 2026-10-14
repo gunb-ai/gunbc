@@ -16,8 +16,8 @@ import v2.cli.population_verbs {
   population_parse_begin,
   population_parse_refused,
   population_parse_report,
-  parse_verdict_receipt_line_prefix
 }
+import gunbc.parse_verdict_schema { parse_verdict_receipt_line_prefix }
 import std.algebra { fold_list, length, list_head }
 import v2.std.collection { empty_map }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

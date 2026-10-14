@@ -5,6 +5,7 @@ import std.algebra { Cons, fold_list, is_empty, length, list_head, list_map, lis
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
+import gunbc.parse_verdict_schema { parse_verdict_receipt_line_prefix }
 import gunbc.source_layout_namespaces { layout_namespaces }
 import gunbc.source_root_read {
   SourceRootPathsRead,
@@ -206,8 +207,6 @@ type PopulationParse {
   refusals: List<String>
   accepted_receipts: List<String>
 }
-
-data parse_verdict_receipt_line_prefix: String = "parse-verdict\t"
 
 type RosterBuild {
   ordered_reversed: List<DeclaredRefusal>

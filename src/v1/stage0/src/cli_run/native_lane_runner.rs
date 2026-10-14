@@ -243,6 +243,7 @@ struct EmittedPreparation {
     binary_path: PathBuf,
     binary_identity: String,
     closure_identity: String,
+    parse_compiler_identity: String,
     seed_identity: String,
     build: EmittedBuildObserved,
     /// THE RUN'S OWN PROBE ROOT TRAVELS WITH THE PREPARATION, so the directory the artifact was
@@ -518,10 +519,18 @@ fn prepare_emitted_compiler_for_entry(
                      binary_sha256={binary_identity} — reconcile, emit, build and red skipped",
                     key.digest, key.axes
                 );
+                let parse_compiler_identity = parse_compiler_identity_digest(
+                    source_roots,
+                    &super::process_workspace_root(),
+                    None,
+                    &manifest.rustc_identity,
+                    Some(&binary_identity),
+                )?;
                 return Ok(EmittedPreparation {
                     binary_path,
                     binary_identity,
                     closure_identity: manifest.closure_identity,
+                    parse_compiler_identity,
                     seed_identity,
                     build: EmittedBuildObserved {
                         cargo_argv: manifest.cargo_argv,
@@ -812,10 +821,23 @@ fn prepare_emitted_compiler_for_entry(
         }
     }
 
+    let parse_compiler_identity = parse_compiler_identity_digest(
+        source_roots,
+        &workspace,
+        Some(&emitted),
+        &build.rustc_identity,
+        None,
+    )?;
+    eprintln!(
+        "v2-native-route: parse-compiler identity {parse_compiler_identity} \
+         (tokenize+parse+schema import_closure_live; emitted rust of those modules; \
+         src/v1/stage0_runtime; rustc)"
+    );
     Ok(EmittedPreparation {
         binary_path,
         binary_identity,
         closure_identity,
+        parse_compiler_identity,
         seed_identity,
         build,
         _probe_root: probe_root,
@@ -3400,6 +3422,159 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     Ok(())
 }
 
+const PARSE_COMPILER_TOKENIZE_ENTRY: &str = "src/v2/compiler/tokenize.dag";
+const PARSE_COMPILER_PARSE_ENTRY: &str = "src/v2/compiler/parse.dag";
+const PARSE_COMPILER_SCHEMA_ENTRY: &str = "dag/gunbc/parse_verdict_schema.dag";
+const PARSE_COMPILER_RUNTIME_CRATE: &str = "src/v1/stage0_runtime";
+
+fn parse_compiler_identity_entries() -> [&'static str; 3] {
+    [
+        PARSE_COMPILER_TOKENIZE_ENTRY,
+        PARSE_COMPILER_PARSE_ENTRY,
+        PARSE_COMPILER_SCHEMA_ENTRY,
+    ]
+}
+
+fn feed_identity_file(hasher: &mut sha2::Sha256, rel: &str, bytes: &[u8]) {
+    use sha2::Digest;
+    hasher.update(rel.as_bytes());
+    hasher.update([0u8]);
+    hasher.update((bytes.len() as u64).to_le_bytes());
+    hasher.update(bytes);
+}
+
+fn dag_module_name(source: &str) -> Option<String> {
+    source.lines().find_map(|line| {
+        line.strip_prefix("module ")
+            .map(|rest| rest.trim().to_string())
+            .filter(|name| !name.is_empty())
+    })
+}
+
+fn feed_runtime_crate(hasher: &mut sha2::Sha256, workspace: &Path) -> Result<(), String> {
+    let root = workspace.join(PARSE_COMPILER_RUNTIME_CRATE);
+    if !root.is_dir() {
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=IdentityUnknown: missing runtime crate {}",
+            root.display()
+        ));
+    }
+    let mut files = Vec::new();
+    let mut stack = vec![root.clone()];
+    while let Some(dir) = stack.pop() {
+        let entries = std::fs::read_dir(&dir).map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=IdentityUnknown: read {}: {e}",
+                dir.display()
+            )
+        })?;
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                format!(
+                    "V2-NATIVE REFUSAL cause=IdentityUnknown: read {}: {e}",
+                    dir.display()
+                )
+            })?;
+            let path = entry.path();
+            let name = entry.file_name();
+            if name == "target" || name == ".git" {
+                continue;
+            }
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.is_file() {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    for path in files {
+        let rel = path
+            .strip_prefix(workspace)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_else(|_| path.display().to_string());
+        let bytes = std::fs::read(&path).map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=IdentityUnknown: read {}: {e}",
+                path.display()
+            )
+        })?;
+        feed_identity_file(hasher, &rel, &bytes);
+    }
+    Ok(())
+}
+
+/// Source import_closure_live of tokenize+parse+schema, plus emitted Rust for those
+/// modules, the v1-stage0-runtime crate, and rustc identity.
+fn parse_compiler_identity_digest(
+    source_roots: &[String],
+    workspace: &Path,
+    emitted: Option<&super::EmittedWorkspace>,
+    rustc_identity: &str,
+    restored_binary_identity: Option<&str>,
+) -> Result<String, String> {
+    use sha2::Digest;
+    let mut paths: Vec<String> = Vec::new();
+    for entry in parse_compiler_identity_entries() {
+        let mut closure = super::entry_resolve::import_closure_live_paths(entry, source_roots)
+            .map_err(|e| {
+                format!("V2-NATIVE REFUSAL cause=IdentityUnknown: import_closure_live {entry}: {e}")
+            })?;
+        paths.append(&mut closure);
+    }
+    paths.sort();
+    paths.dedup();
+    let mut hasher = sha2::Sha256::new();
+    for rel in &paths {
+        let path = workspace.join(rel);
+        let bytes = std::fs::read(&path).map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=IdentityUnknown: read parse-closure source {}: {e}",
+                path.display()
+            )
+        })?;
+        feed_identity_file(&mut hasher, rel, &bytes);
+        if let Some(emitted) = emitted {
+            let Some(module_name) = std::fs::read_to_string(&path)
+                .ok()
+                .as_deref()
+                .and_then(dag_module_name)
+            else {
+                return Err(format!(
+                    "V2-NATIVE REFUSAL cause=IdentityUnknown: {rel} has no module line"
+                ));
+            };
+            let want = format!(
+                "{}.rs",
+                crate::gunbc_rust_emitted_edge::rust_module_emit_filename(module_name)
+            );
+            let Some(emitted_rel) = emitted
+                .files
+                .iter()
+                .find(|p| Path::new(p).file_name().is_some_and(|n| n == want.as_str()))
+            else {
+                return Err(format!(
+                    "V2-NATIVE REFUSAL cause=IdentityUnknown: no emitted Rust {want} for {rel}"
+                ));
+            };
+            let emitted_path = emitted.root.join(emitted_rel);
+            let emitted_bytes = std::fs::read(&emitted_path).map_err(|e| {
+                format!(
+                    "V2-NATIVE REFUSAL cause=IdentityUnknown: read {}: {e}",
+                    emitted_path.display()
+                )
+            })?;
+            feed_identity_file(&mut hasher, emitted_rel, &emitted_bytes);
+        }
+    }
+    feed_runtime_crate(&mut hasher, workspace)?;
+    feed_identity_file(&mut hasher, "rustc_identity", rustc_identity.as_bytes());
+    if let Some(binary) = restored_binary_identity {
+        feed_identity_file(&mut hasher, "restored_binary_sha256", binary.as_bytes());
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
 /// THE GENERATION-ONE EXECUTABLE OUTLIVES THE RUN, because generation two is that executable
 /// emitting `v2.compiler.compile` and nothing else may stand in for it. The probe root is NOT
 /// retained: once the executable is copied out and its copy re-hashes to the identity the run
@@ -3450,6 +3625,17 @@ fn keep_generation_one_executable(prepared: &EmittedPreparation) -> Result<PathB
         format!(
             "V2-NATIVE REFUSAL cause=GenOneExecutableNotKept — write {}: {e}",
             identity_path.display()
+        )
+    })?;
+    let parse_identity_path = PathBuf::from(format!("{}.parse_compiler_identity", kept.display()));
+    std::fs::write(
+        &parse_identity_path,
+        prepared.parse_compiler_identity.as_bytes(),
+    )
+    .map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=GenOneExecutableNotKept — write {}: {e}",
+            parse_identity_path.display()
         )
     })?;
     Ok(kept)
