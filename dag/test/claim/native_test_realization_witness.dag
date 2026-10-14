@@ -1,0 +1,223 @@
+module test.claim.native_test_realization_witness
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.algebra { contains, length }
+import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom, content_hash_equal }
+import std.materialization_provider {
+  EvaluationIdentity,
+  EvaluationResultBinding,
+  EvaluationResultConsistent,
+  EvaluationContentConflict,
+  EvaluationResultHashFamilyIncomparable,
+  EvaluationResultUnverifiable,
+  ResultContentIdentity,
+  evaluation_identity_canonical,
+  result_content_identity
+}
+import std.native_test_realization {
+  RustNativeRealization,
+  NoAdmittedEmitterForTarget,
+  RustNative,
+  CUnavailable,
+  SwiftUnavailable,
+  NativeTestRealizationHandler,
+  RealizationProductIdentity,
+  RealizationProductFormed,
+  RealizationProductRefused,
+  RealizationProductFormation,
+  NativeTestEvaluationSubject,
+  CompositionIndependenceUnadmitted,
+  CompositionIndependenceAdmitted,
+  SemanticVerdictKey,
+  ProductScopedVerdictKey,
+  VerdictLookupKey,
+  ProductServed,
+  ProductRebuilt,
+  RealizationReceipt,
+  ReceiptsJudged,
+  ReceiptsJudgeDifferentEvaluations,
+  RealizationReceiptJoin,
+  PerTestEvaluationResultBinding,
+  NativeModuleVerdictManifest,
+  native_test_evaluation_identity,
+  form_realization_product,
+  verdict_lookup_key,
+  join_realization_receipts
+}
+
+// Supplied identities at the std.native_test_realization interface (DESIGN section 3: a witness
+// discriminates at one interface). The executing producer is the native verdict route's realization
+// step, which does not exist yet; its inhabitance claim lands with it (roadmap node
+// native-test-verdict-realization, B3/B4).
+
+fn ntr_hash(v: String) -> ContentHash {
+  as_content_hash_structural(structural: content_hash_atom(value: v as NonEmptyStr))
+}
+
+fn ntr_result(text: String) -> ResultContentIdentity {
+  result_content_identity(bucket: ntr_hash(v: concat("result:", text)), canonical_preimage: text as NonEmptyStr)
+}
+
+fn ntr_rust(generator: String, toolchain: String) -> RustNativeRealization {
+  RustNativeRealization { generator: ntr_hash(v: generator), target_model: ntr_hash(v: "rust-target"), toolchain: ntr_hash(v: toolchain) }
+}
+
+fn ntr_subject(test: String, reached: String) -> NativeTestEvaluationSubject {
+  NativeTestEvaluationSubject {
+    test: test as NonEmptyStr,
+    context: ntr_hash(v: "module-context"),
+    reached_declarations: ntr_hash(v: reached),
+    read_set: ntr_hash(v: "read-set"),
+    semantics_version: ntr_hash(v: "semantics-v1")
+  }
+}
+
+fn ntr_canon(e: EvaluationIdentity) -> String {
+  evaluation_identity_canonical(evaluation: e) as String
+}
+
+fn ntr_decls(names: List<String>) -> List<ContentHash> {
+  names |> map(n => ntr_hash(v: n))
+}
+
+fn ntr_product(realization: RustNativeRealization, partition: String, decls: List<String>) -> RealizationProductIdentity {
+  RealizationProductIdentity { realization: realization, partition: ntr_hash(v: partition), build_configuration: ntr_hash(v: "release"), packaged_declarations: ntr_decls(names: decls) }
+}
+
+fn ntr_hash_lists_equal(a: List<ContentHash>, b: List<ContentHash>) -> Bool {
+  length(xs: a) == length(xs: b)
+    && (a |> all(x => contains(xs: b, item: x, eq: content_hash_equal)))
+    && (b |> all(x => contains(xs: a, item: x, eq: content_hash_equal)))
+}
+
+fn ntr_products_equal(a: RealizationProductIdentity, b: RealizationProductIdentity) -> Bool {
+  content_hash_equal(left: a.realization.generator, right: b.realization.generator)
+    && content_hash_equal(left: a.realization.target_model, right: b.realization.target_model)
+    && content_hash_equal(left: a.realization.toolchain, right: b.realization.toolchain)
+    && content_hash_equal(left: a.partition, right: b.partition)
+    && content_hash_equal(left: a.build_configuration, right: b.build_configuration)
+    && ntr_hash_lists_equal(a: a.packaged_declarations, b: b.packaged_declarations)
+}
+
+fn ntr_receipt(e: EvaluationIdentity, p: RealizationProductIdentity, result: String) -> RealizationReceipt {
+  RealizationReceipt { evaluation: e, product: p, result: ntr_result(text: result), provenance: ProductRebuilt }
+}
+
+// (1) REALIZATION FACTS KEY THE PRODUCT, NEVER THE EVALUATION. A different generator, toolchain or
+// partition is a different product; the test's EvaluationIdentity is formed from its subject alone.
+test fn realization_facts_rekey_the_product_and_not_the_evaluation() -> Bool {
+  let e = native_test_evaluation_identity(subject: ntr_subject(test: "t1", reached: "decls-a"))
+  let e_again = native_test_evaluation_identity(subject: ntr_subject(test: "t1", reached: "decls-a"))
+  let base = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1", "d2"])
+  let toolchain = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-2"), partition: "crate-a", decls: ["d1", "d2"])
+  let generator = ntr_product(realization: ntr_rust(generator: "seed-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1", "d2"])
+  let partition = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-b", decls: ["d1", "d2"])
+  (ntr_canon(e: e) == ntr_canon(e: e_again))
+    && !ntr_products_equal(a: base, b: toolchain)
+    && !ntr_products_equal(a: base, b: generator)
+    && !ntr_products_equal(a: base, b: partition)
+    && ntr_products_equal(a: base, b: base)
+}
+
+// (2) TWO PRODUCTS, ONE EVALUATION, ONE CONTENT: consistent.
+test fn two_receipts_with_one_content_under_one_evaluation_are_consistent() -> Bool {
+  let e = native_test_evaluation_identity(subject: ntr_subject(test: "t1", reached: "decls-a"))
+  let p1 = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1"])
+  let p2 = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-2"), partition: "crate-a", decls: ["d1"])
+  match join_realization_receipts(first: ntr_receipt(e: e, p: p1, result: "pass"), second: ntr_receipt(e: e, p: p2, result: "pass")) {
+    ReceiptsJudged { outcome: EvaluationResultConsistent } => true
+    ReceiptsJudged { outcome: _ } => false
+    ReceiptsJudgeDifferentEvaluations => false
+  }
+}
+
+// (3) ONE EVALUATION, DIFFERENT CONTENT: a conflict, never two answers. Receipts for different
+// evaluations are not compared at all.
+test fn different_content_under_one_evaluation_is_a_conflict() -> Bool {
+  let e = native_test_evaluation_identity(subject: ntr_subject(test: "t1", reached: "decls-a"))
+  let other = native_test_evaluation_identity(subject: ntr_subject(test: "t2", reached: "decls-a"))
+  let p = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1"])
+  let conflict = match join_realization_receipts(first: ntr_receipt(e: e, p: p, result: "pass"), second: ntr_receipt(e: e, p: p, result: "fail")) {
+    ReceiptsJudged { outcome: EvaluationContentConflict { binding: _, observed: _ } } => true
+    ReceiptsJudged { outcome: _ } => false
+    ReceiptsJudgeDifferentEvaluations => false
+  }
+  let apart = match join_realization_receipts(first: ntr_receipt(e: e, p: p, result: "pass"), second: ntr_receipt(e: other, p: p, result: "fail")) {
+    ReceiptsJudgeDifferentEvaluations => true
+    ReceiptsJudged { outcome: _ } => false
+  }
+  conflict && apart
+}
+
+// (4) C AND SWIFT REFUSE AT ADMISSION: no product identity forms, so emission never begins. Rust forms.
+test fn c_and_swift_refuse_before_any_product_forms() -> Bool {
+  let c = form_realization_product(handler: CUnavailable { cause: NoAdmittedEmitterForTarget }, partition: ntr_hash(v: "p"), build_configuration: ntr_hash(v: "release"), packaged_declarations: [])
+  let swift = form_realization_product(handler: SwiftUnavailable { cause: NoAdmittedEmitterForTarget }, partition: ntr_hash(v: "p"), build_configuration: ntr_hash(v: "release"), packaged_declarations: [])
+  let rust = form_realization_product(handler: RustNative { realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1") }, partition: ntr_hash(v: "p"), build_configuration: ntr_hash(v: "release"), packaged_declarations: [])
+  let c_refused = match c {
+    RealizationProductRefused { cause: NoAdmittedEmitterForTarget } => true
+    RealizationProductFormed { product: _ } => false
+  }
+  let swift_refused = match swift {
+    RealizationProductRefused { cause: NoAdmittedEmitterForTarget } => true
+    RealizationProductFormed { product: _ } => false
+  }
+  let rust_formed = match rust {
+    RealizationProductFormed { product: _ } => true
+    RealizationProductRefused { cause: _ } => false
+  }
+  c_refused && swift_refused && rust_formed
+}
+
+// (5) CHANGING ONE TEST'S REACHED DECLARATIONS REKEYS THAT TEST ONLY. Its binding and the module
+// manifest change; the other test's EvaluationIdentity and binding stay addressable as they were.
+test fn changing_one_test_rekeys_only_that_test_and_the_manifest() -> Bool {
+  let t1 = native_test_evaluation_identity(subject: ntr_subject(test: "t1", reached: "decls-a"))
+  let t1_edited = native_test_evaluation_identity(subject: ntr_subject(test: "t1", reached: "decls-a-edited"))
+  let t2_before = native_test_evaluation_identity(subject: ntr_subject(test: "t2", reached: "decls-b"))
+  let t2_after = native_test_evaluation_identity(subject: ntr_subject(test: "t2", reached: "decls-b"))
+  let t2_binding = PerTestEvaluationResultBinding { test: "t2" as NonEmptyStr, binding: EvaluationResultBinding { evaluation_identity: t2_before, result_content_identity: ntr_result(text: "pass") } }
+  let before = NativeModuleVerdictManifest {
+    module: ntr_hash(v: "m"),
+    bindings: [PerTestEvaluationResultBinding { test: "t1" as NonEmptyStr, binding: EvaluationResultBinding { evaluation_identity: t1, result_content_identity: ntr_result(text: "pass") } }, t2_binding],
+    preparation_diagnostics: ntr_hash(v: "no-diagnostics")
+  }
+  let after = NativeModuleVerdictManifest {
+    module: ntr_hash(v: "m"),
+    bindings: [PerTestEvaluationResultBinding { test: "t1" as NonEmptyStr, binding: EvaluationResultBinding { evaluation_identity: t1_edited, result_content_identity: ntr_result(text: "pass") } }, t2_binding],
+    preparation_diagnostics: ntr_hash(v: "no-diagnostics")
+  }
+  let manifest_keys_before = before.bindings |> map(b => ntr_canon(e: b.binding.evaluation_identity))
+  let manifest_keys_after = after.bindings |> map(b => ntr_canon(e: b.binding.evaluation_identity))
+  (ntr_canon(e: t1) != ntr_canon(e: t1_edited))
+    && (ntr_canon(e: t2_before) == ntr_canon(e: t2_after))
+    && (manifest_keys_before != manifest_keys_after)
+    && contains(xs: manifest_keys_after, item: ntr_canon(e: t2_before), eq: fn(a, b) { a == b })
+}
+
+// (6) WITHOUT ADMITTED COMPOSITION INDEPENDENCE THE LOOKUP KEY CARRIES THE CRATE. Unadmitted, the key is
+// product-scoped and a different crate is a different key. Admitted for a population covering the
+// crate, the semantic EvaluationIdentity answers. Admitted for a population that misses one packaged
+// declaration, the key widens back to the crate rather than serving a narrower one.
+test fn without_admitted_independence_the_lookup_key_carries_the_crate() -> Bool {
+  let e = native_test_evaluation_identity(subject: ntr_subject(test: "t1", reached: "decls-a"))
+  let p = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1", "d2"])
+  let p_wider = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1", "d2", "neighbour"])
+  let unadmitted = match verdict_lookup_key(evaluation: e, product: p, standing: CompositionIndependenceUnadmitted) {
+    ProductScopedVerdictKey { evaluation: _, packaged_declarations: ds } => ntr_hash_lists_equal(a: ds, b: p.packaged_declarations)
+    SemanticVerdictKey { evaluation: _ } => false
+  }
+  let neighbour_rekeys = match verdict_lookup_key(evaluation: e, product: p_wider, standing: CompositionIndependenceUnadmitted) {
+    ProductScopedVerdictKey { evaluation: _, packaged_declarations: ds } => !ntr_hash_lists_equal(a: ds, b: p.packaged_declarations)
+    SemanticVerdictKey { evaluation: _ } => false
+  }
+  let covered = match verdict_lookup_key(evaluation: e, product: p, standing: CompositionIndependenceAdmitted { population: ntr_decls(names: ["d1", "d2", "d3"]) }) {
+    SemanticVerdictKey { evaluation: _ } => true
+    ProductScopedVerdictKey { evaluation: _, packaged_declarations: _ } => false
+  }
+  let uncovered = match verdict_lookup_key(evaluation: e, product: p_wider, standing: CompositionIndependenceAdmitted { population: ntr_decls(names: ["d1", "d2"]) }) {
+    ProductScopedVerdictKey { evaluation: _, packaged_declarations: ds } => ntr_hash_lists_equal(a: ds, b: p_wider.packaged_declarations)
+    SemanticVerdictKey { evaluation: _ } => false
+  }
+  unadmitted && neighbour_rekeys && covered && uncovered
+}
