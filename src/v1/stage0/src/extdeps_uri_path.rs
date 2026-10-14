@@ -493,6 +493,65 @@ pub fn uri_query_string(path: String) -> String {
     }
 }
 
+pub fn parse_query_template(raw: String) -> Rc<PathTemplateParseResult> {
+    {
+        let q = uri_query_string(raw.clone());
+        if (q.clone() == "".to_string()) {
+            Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                template: Rc::new(PathTemplate {
+                    tokens: Rc::new(vec![]),
+                }),
+            })
+        } else {
+            Rc::new(
+                q.clone()
+                    .split(&"&".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                    template: Rc::new(PathTemplate {
+                        tokens: Rc::new(vec![]),
+                    }),
+                }),
+                |acc: Rc<PathTemplateParseResult>, pair: String| match (*acc.clone()).clone() {
+                    PathTemplateParseResult::MalformedPathTemplate { .. } => acc.clone(),
+                    PathTemplateParseResult::ParsedPathTemplate { template: t, .. } => {
+                        if (pair.clone() == "".to_string()) {
+                            Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                                template: t.clone(),
+                            })
+                        } else {
+                            match (*parse_segment_tokens(pair.clone())).clone() {
+                                PathSegmentTokensResult::MalformedPathSegment {
+                                    segment: s,
+                                    reason: r,
+                                    ..
+                                } => Rc::new(PathTemplateParseResult::MalformedPathTemplate {
+                                    raw: raw.clone(),
+                                    segment: s.clone(),
+                                    reason: r.clone(),
+                                }),
+                                PathSegmentTokensResult::ParsedSegmentTokens {
+                                    tokens: toks,
+                                    ..
+                                } => Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                                    template: Rc::new(PathTemplate {
+                                        tokens: v1_rt::concat(t.tokens.clone(), toks.clone()),
+                                    }),
+                                }),
+                            }
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
 pub fn uri_query_param(path: String, key: String) -> String {
     {
         let pairs = Rc::new(
