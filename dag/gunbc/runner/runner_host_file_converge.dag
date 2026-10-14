@@ -1,7 +1,9 @@
 module gunbc.runner.runner_host_file_converge
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
-import std.algebra { trim, list_head, HeadFound, HeadAbsent }
+import std.algebra { trim, list_head }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
