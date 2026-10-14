@@ -1,0 +1,126 @@
+module v2.test.claim.optional_sugar_declaration_bound
+
+import v2.compiler.resolve { ResolvedTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.algebra { Cons, Empty, fold_list }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Edge, Instantiation, Node, Occupancy, TypeNode }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.symbol_index { symbol_index_lookup }
+import std.optional { Absent, Optional, Present }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.types { Bool, Int, List }
+
+// `T?` AND AN IDENTITY-RESOLVED `Optional<T>` ARE ONE NODE (ruling gunbc.design_ruling optional_sugar_is_declaration_bound),
+// over the real assembly route: the sugar lowers to Occupancy, an explicit application whose head resolves to
+// std.optional.Optional is rewritten to it, and a local type that merely shares the leaf name stays an Instantiation.
+data osd_artifact: Artifact = Artifact { kind: SourceFile, id: ^osd_artifact, file_path: "src/v2/pilot/osd_pilot.dag" }
+data osd_std_artifact: Artifact = Artifact { kind: SourceFile, id: ^osd_std_artifact, file_path: "src/v2/pilot/osd_std_pilot.dag" }
+
+fn osd_witness(src: String, artifact: Artifact) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: artifact,
+    compilation_unit: ^osd_cu,
+    source_root: V2Tree
+  }
+}
+
+fn osd_std_optional() -> String {
+  "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present { value: T }\n"
+}
+
+fn osd_assemble(sources: List<DagSourceReadWitness>) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: sources,
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn osd_with_std(body: String) -> Outcome<ResolvedTree> {
+  osd_assemble(sources: [
+    osd_witness(src: osd_std_optional(), artifact: osd_std_artifact),
+    osd_witness(src: concat("module p\n\nimport std.optional { Optional }\n\ntype Foreign\n  = Alien\n\n", body), artifact: osd_artifact)
+  ])
+}
+
+fn osd_without_std(body: String) -> Outcome<ResolvedTree> {
+  osd_assemble(sources: [osd_witness(src: concat("module p\n\ntype Foreign\n  = Alien\n\n", body), artifact: osd_artifact)])
+}
+
+fn osd_is_occupancy(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Occupancy } => true
+    _ => false
+  }
+}
+
+fn osd_is_instantiation(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Instantiation } => true
+    _ => false
+  }
+}
+
+fn osd_any(n: Node, pred: fn(Node) -> Bool) -> Bool {
+  fold_list(
+    xs: node_positional_child_targets(node: n),
+    empty: pred(n),
+    cons: fn(acc, c) { acc || osd_any(n: c, pred: pred) }
+  )
+}
+
+fn osd_declared(o: Outcome<ResolvedTree>, name: String) -> Optional<Node> {
+  match o {
+    Accepted { value: tree, diagnostics: _ } =>
+      symbol_index_lookup(index: tree.symbol_index, qualified_path: qualified_name_from_dotted_string(dotted: name))
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn osd_holds(o: Outcome<ResolvedTree>, name: String, pred: fn(Node) -> Bool) -> Bool {
+  match osd_declared(o: o, name: name) {
+    Present { value: n } => osd_any(n: n, pred: pred)
+    Absent => false
+  }
+}
+
+test fn osd_sugar_lowers_to_occupancy() -> Bool {
+  osd_holds(o: osd_with_std(body: "type U = Foreign?\n"), name: "p.U", pred: osd_is_occupancy)
+}
+
+test fn osd_identity_resolved_optional_application_is_occupancy() -> Bool {
+  osd_holds(o: osd_with_std(body: "type U = Optional<Foreign>\n"), name: "p.U", pred: osd_is_occupancy)
+}
+
+test fn osd_identity_resolved_optional_application_leaves_no_instantiation() -> Bool {
+  !osd_holds(o: osd_with_std(body: "type U = Optional<Foreign>\n"), name: "p.U", pred: osd_is_instantiation)
+}
+
+test fn osd_nested_optional_application_is_two_layers() -> Bool {
+  osd_holds(o: osd_with_std(body: "type U = Optional<Optional<Foreign>>\n"), name: "p.U", pred: fn(n) { osd_is_occupancy(n: n) && osd_any(n: n, pred: fn(c) { osd_is_occupancy(n: c) && !(c == n) }) })
+}
+
+test fn osd_local_homonym_is_not_occupancy() -> Bool {
+  !osd_holds(o: osd_assemble(sources: [osd_witness(src: "module p\n\ntype Foreign\n  = Alien\n\ntype Optional<T>\n  = Nothing\n\ntype U = Optional<Foreign>\n", artifact: osd_artifact)]), name: "p.U", pred: osd_is_occupancy)
+}
+
+test fn osd_local_homonym_stays_an_application() -> Bool {
+  osd_holds(o: osd_assemble(sources: [osd_witness(src: "module p\n\ntype Foreign\n  = Alien\n\ntype Optional<T>\n  = Nothing\n\ntype U = Optional<Foreign>\n", artifact: osd_artifact)]), name: "p.U", pred: osd_is_instantiation)
+}
+
+fn osd_is_authored_occupancy(n: Node) -> Bool {
+  osd_is_occupancy(n: n) && !(n.occurrence_id == OccurrenceSynthetic)
+}
+
+test fn osd_rewritten_occupancy_keeps_the_application_occurrence() -> Bool {
+  osd_holds(o: osd_with_std(body: "type U = Optional<Foreign>\n"), name: "p.U", pred: osd_is_authored_occupancy)
+}
