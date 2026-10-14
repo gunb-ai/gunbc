@@ -312,7 +312,9 @@ fn systemd_run_system_scope_command(properties: List<SystemdRunProperty>, comman
 
 // USER-MANAGER SCOPE: `systemd-run --user --scope --property=... -- CMD`. The floor-demand
 // measurement recipe used this shape without a Slice=; gunbc.compute.unit_bounds
-// gunbc_user_work_scope_command is the production wrap that always binds the declared slice.
+// gunbc_user_work_scope_command binds the declared slice. Production consumers:
+// gunbc.gunbc_cli_command gunbc_test_user_work_scope_command / gunbc_run_user_work_scope_command,
+// realized by the seed Test/Run trampoline (cli_run::user_work_scope).
 fn systemd_run_user_scope_command(properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_command_of(options: list_append(left: [RunUserManager, RunScope], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
 }

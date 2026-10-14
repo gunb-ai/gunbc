@@ -132,12 +132,6 @@ fn served_deployment_placement() -> ServedDeploymentPlacement {
 // two 22 GiB slots, MemoryMax 44 GiB. Charging it into served_deployment_slice_allowance
 // subtracts it from the runner memory envelope; runner_host_deploy_of writes the derived
 // gunbc_runner_committed_width as runner_count.
-fn user_work_slice_budget_appropriation() -> ByteSize? {
-  match user_work_pool_slots() {
-    UserWorkPoolSlotsDerived { slots } => Present { value: user_work_slice_memory_max_of(slots: slots) }
-  }
-}
-
 fn user_work_charged_in_served_allowance() -> ByteSize {
   match user_work_pool_slots() {
     UserWorkPoolSlotsDerived { slots } => user_work_slice_memory_max_of(slots: slots)

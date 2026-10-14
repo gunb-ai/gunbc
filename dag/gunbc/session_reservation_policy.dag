@@ -32,9 +32,13 @@ import gunbc.session_residency {
 // later one either. Given that this whole lane exists because a stale binary produced numbers
 // nobody could attribute, the executing revision is load-bearing rather than decorative -- so the
 // citation is a typed record and the value is authored beside the citation that produced it.
+type SessionDemandCitationOrigin
+  = CollectorRevision { revision: NonEmptyStr }
+  | OperatorCgroupRead { session: NonEmptyStr }
+
 type SessionDemandReceiptCitation {
-  run_id: NonEmptyStr
-  source_revision: NonEmptyStr
+  observation_id: NonEmptyStr
+  origin: SessionDemandCitationOrigin
   collector_schema: NonEmptyStr
   host: NonEmptyStr
   observed_at: NonEmptyStr
@@ -62,8 +66,8 @@ type HostSessionReservationSizing
   | ReservationSizingAbsent
 
 data srv1_session_aggregate_citation: SessionDemandReceiptCitation = SessionDemandReceiptCitation {
-  run_id: "local-cgroup-read-srv1-2026-10-14",
-  source_revision: "sleek-owl-397",
+  observation_id: "local-cgroup-read-srv1-2026-10-14",
+  origin: OperatorCgroupRead { session: "sleek-owl-397" },
   collector_schema: "session-demand-cgroup-join-v1",
   host: "srv1",
   observed_at: "2026-10-14",
@@ -99,8 +103,8 @@ fn session_slice_memory_high_for(host: HostIdentity) -> ByteSize? {
 }
 
 data srv2_session_aggregate_census_2026_09_12: SessionDemandReceiptCitation = SessionDemandReceiptCitation {
-  run_id: "local-cgroup-read-srv2-2026-09-12",
-  source_revision: "975706293d0f02c83ecda5f978607ad9e54b11b8",
+  observation_id: "local-cgroup-read-srv2-2026-09-12",
+  origin: CollectorRevision { revision: "975706293d0f02c83ecda5f978607ad9e54b11b8" },
   collector_schema: "session-demand-cgroup-join-v1",
   host: "srv2",
   observed_at: "2026-09-12T08:00:00Z",
@@ -109,8 +113,8 @@ data srv2_session_aggregate_census_2026_09_12: SessionDemandReceiptCitation = Se
 }
 
 data srv2_session_aggregate_citation: SessionDemandReceiptCitation = SessionDemandReceiptCitation {
-  run_id: "33007871049",
-  source_revision: "04e07455233773f4006f932974fe1bf7435ea4e9",
+  observation_id: "33007871049",
+  origin: CollectorRevision { revision: "04e07455233773f4006f932974fe1bf7435ea4e9" },
   collector_schema: "session-demand-observe-v1",
   host: "srv2",
   observed_at: "2026-08-26T20:03:40Z",

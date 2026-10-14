@@ -88,6 +88,8 @@ fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, p
 // THE AD-HOC gunbc test/run WRAP. The historical floor-demand recipe was
 // `systemd-run --user --scope -p MemoryMax=64G` with no Slice=. This builder always injects
 // the declared slice and swap 0; a scope without them is not this function.
+// Consumers: gunbc.gunbc_cli_command gunbc_test_user_work_scope_command /
+// gunbc_run_user_work_scope_command; seed Test/Run (cli_run::user_work_scope).
 fn gunbc_user_work_scope_command(properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_user_scope_command(properties: user_work_run_properties(rest: properties), command_argv: command_argv)
 }

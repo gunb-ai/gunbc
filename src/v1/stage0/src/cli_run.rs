@@ -214,6 +214,7 @@ mod required_regen_host;
 pub mod behavioral_receipt_host;
 pub mod cgroup_memory;
 pub mod floor_memory_supervisor;
+pub mod user_work_scope;
 
 #[path = "target_invocation_host.rs"]
 pub mod target_invocation_host;
@@ -2559,6 +2560,7 @@ impl WorkspaceRootBasis {
 pub fn bind_process_workspace_root(
     source_roots: &[String],
 ) -> Result<(PathBuf, WorkspaceRootBasis), String> {
+    user_work_scope::reexec_into_user_work_slice_if_owed();
     if let Some((root, basis)) = PROCESS_WORKSPACE_ROOT.get() {
         return Ok((root.clone(), *basis));
     }

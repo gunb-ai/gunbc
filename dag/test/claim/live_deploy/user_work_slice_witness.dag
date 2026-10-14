@@ -1,7 +1,6 @@
 module test.claim.live_deploy.user_work_slice_witness
 
 import std.types { Bool, String, List, NonEmptyStr, Int }
-import std.optional { Present, Absent }
 import std.measure { byte_size_count, kibibyte, byte_size }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd { systemd_unit_property_wire }
@@ -18,13 +17,14 @@ import gunbc.live_deploy.slice_bounds {
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, user_work_charged_slots }
 import gunbc.live_deploy.served_slice_charge {
-  user_work_slice_budget_appropriation, user_work_charged_in_served_allowance,
+  user_work_charged_in_served_allowance,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.compute.unit_bounds {
   compute_grant_unit_properties, gunbc_user_work_scope_command,
   gunbc_user_work_wait_command, gunbc_user_work_transient_command,
 }
+import gunbc.gunbc_cli_command { gunbc_test_user_work_scope_command }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_properties }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
 import gunbc.host.host_converge {
@@ -58,10 +58,6 @@ test fn user_work_slice_max_is_pool_slots_times_the_runner_ceiling() -> Bool {
       slots == user_work_charged_slots
         && byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
           == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * 2
-        && match user_work_slice_budget_appropriation() {
-          Absent => false
-          Present { value: a } => byte_size_count(b: a) == byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
-        }
         && byte_size_count(b: user_work_charged_in_served_allowance())
           == byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
   }
@@ -135,6 +131,17 @@ test fn the_ad_hoc_scope_wrap_injects_the_slice_the_raw_builder_omits() -> Bool 
         && filter(argv_words(command: command), w => string_contains(s: w, pattern: "MemorySwapMax=0")).length() == 1
         && any(argv_words(command: command), w => w == "--user")
         && any(argv_words(command: command), w => w == "--scope")
+  }
+}
+
+test fn the_gunbc_test_user_work_scope_is_the_declared_wrap() -> Bool {
+  match gunbc_test_user_work_scope_command(label: "//gunbc/instruments:self-host") {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command } =>
+      slice_hits(words: argv_words(command: command)) == 1
+        && any(argv_words(command: command), w => w == "--user")
+        && any(argv_words(command: command), w => w == "--scope")
+        && any(argv_words(command: command), w => w == "test")
   }
 }
 

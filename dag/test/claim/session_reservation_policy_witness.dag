@@ -32,6 +32,7 @@ import gunbc.session_reservation_policy {
   allowance_covers_its_evidence, evidence_floor_bytes,
   sizing_against_present_residency, sizing_against_absent_residency,
   srv1_session_aggregate_epoch_peak, srv1_session_aggregate_citation,
+  OperatorCgroupRead, CollectorRevision,
 }
 import gunbc.session_residency { SessionsObservedAbsent }
 import gunbc.ci.ci_runner_placement {
@@ -209,7 +210,11 @@ test fn an_unestablished_denominator_grounds_no_floor() -> Bool {
 // receipt cannot distinguish one invocation from another, which is exactly the failure that made
 // step 4A necessary.
 test fn the_evidence_names_its_execution() -> Bool {
-  srv1_session_aggregate_citation.run_id == "local-cgroup-read-srv1-2026-10-14"
+  srv1_session_aggregate_citation.observation_id == "local-cgroup-read-srv1-2026-10-14"
+    && match srv1_session_aggregate_citation.origin {
+      OperatorCgroupRead { session } => session == "sleek-owl-397"
+      CollectorRevision { revision: _ } => false
+    }
     && srv1_session_aggregate_citation.metric == "memory.peak+memory.current"
     && srv1_session_aggregate_citation.host == "srv1"
 }
