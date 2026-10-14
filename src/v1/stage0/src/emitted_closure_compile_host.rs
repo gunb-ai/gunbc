@@ -1320,9 +1320,13 @@ pub(crate) fn run_cargo(
     }
 }
 
-/// The rust module basenames the emitted `lib.rs` declares, in its own order -- public or not: a
-/// private `mod` (the host shell's `#[cfg(test)] mod compiler_tests;`) is a module of the crate as
-/// much as a `pub mod` is, and an edge from it is covered by this crate.
+/// The rust module basenames the BINARY's `lib.rs` declares, in its own order -- public or not:
+/// a private `mod` is a module of the crate as much as a `pub mod` is. A `mod` item whose
+/// attribute run carries `#[cfg(test)]` is NOT: it is never compiled into the seed binary (the
+/// host shell's `#[cfg(test)] mod compiler_tests;`), so reporting it would name a test-only file
+/// as seed membership and make the regen model refuse its generated mirror
+/// (`NonSeedGeneratedOutput` over `SeedEmbedded`). The attribute run is tracked across lines
+/// because `#[allow(...)]` between the cfg and the `mod` spans several.
 ///
 /// AN UNREADABLE MANIFEST IS RETURNED, NOT RENDERED AS AN EMPTY CLOSURE. An empty vector reads as
 /// `this crate declares no modules`, so a caller would answer `entry module not declared` for a
@@ -1330,16 +1334,52 @@ pub(crate) fn run_cargo(
 /// emission.
 pub(crate) fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
     let content = std::fs::read_to_string(lib_rs).map_err(|e| e.to_string())?;
-    Ok(content
-        .lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            line.strip_prefix("pub mod ")
-                .or_else(|| line.strip_prefix("mod "))
-                .and_then(|rest| rest.strip_suffix(';'))
-                .map(|m| m.trim().to_string())
-        })
-        .collect())
+    Ok(closure_modules_of_source(&content))
+}
+
+fn closure_modules_of_source(content: &str) -> Vec<String> {
+    let mut modules = Vec::new();
+    let mut attrs = String::new();
+    let mut depth: i32 = 0;
+    for line in content.lines() {
+        let line = line.trim();
+        if depth > 0 || line.starts_with("#[") || line.starts_with("#![") {
+            attrs.push_str(line);
+            depth += line.matches('[').count() as i32 - line.matches(']').count() as i32;
+            continue;
+        }
+        if line.is_empty() || line.starts_with("//") {
+            continue;
+        }
+        let test_only = attrs.replace(' ', "").contains("cfg(test)");
+        attrs.clear();
+        if let Some(m) = line
+            .strip_prefix("pub mod ")
+            .or_else(|| line.strip_prefix("mod "))
+            .and_then(|rest| rest.strip_suffix(';'))
+        {
+            if !test_only {
+                modules.push(m.trim().to_string());
+            }
+        }
+    }
+    modules
+}
+
+#[cfg(test)]
+mod closure_modules_tests {
+    use super::closure_modules_of_source;
+
+    // DISCRIMINATING: the multi-line #[allow(...)] sits between the cfg(test) and the mod, exactly
+    // as lib.rs spells compiler_tests. The control rows (plain, pub) must stay counted.
+    #[test]
+    fn a_cfg_test_mod_is_not_a_seed_module() {
+        let lib = "mod plain;\npub mod public;\n#[cfg(test)]\n#[allow(\n    dead_code,\n    clippy::all\n)]\nmod compiler_tests;\n#[allow(dead_code)]\nmod after_allow;\n";
+        assert_eq!(
+            closure_modules_of_source(lib),
+            vec!["plain", "public", "after_allow"]
+        );
+    }
 }
 
 /// THE UNATTRIBUTED REFUSAL CARRIES THE FAULTED RUN'S OWN OUTPUT. It names the class, and without
