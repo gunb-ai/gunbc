@@ -2,7 +2,7 @@ module v2.test.claim.field_projection.field_projection_stages
 
 import v2.compiler.resolve { Namespace, ResolvedTree, empty_namespace, root_binding_names_value }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
-import v2.std.collection { map_insert }
+import v2.std.collection { empty_map, map_insert }
 import v2.compiler.infer { infer }
 import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -30,13 +30,28 @@ import v2.compiler.infer {
   inferred_facts_resolved_type
 }
 import v2.compiler.inferred_tree { InferredFacts }
-import v2.compiler.eval { eval_field_projection }
+import v2.compiler.eval {
+  FieldProjectionAggregate,
+  FieldProjectionNotAggregate,
+  RuntimeFieldProjectionReceiver,
+  eval_field_projection,
+  eval_field_projection_of_receiver,
+  runtime_field_projection_receiver
+}
 import v2.std.runtime {
+  EvaluationEnvironment,
   RuntimeAggregate,
   RuntimeAggregateValue,
+  RuntimeClosure,
+  RuntimeClosureValue,
   RuntimeFieldValue,
+  RuntimeIdentity,
   RuntimePrimitive,
   RuntimePrimitiveValue,
+  RuntimeReference,
+  RuntimeReferenceValue,
+  RuntimeUnit,
+  RuntimeUnitValue,
   RuntimeValue
 }
 import v2.std.integer { Int, integer_int_to_signed_i32_le_bytes, integer_signed_i32_le_bytes_to_int }
@@ -633,6 +648,90 @@ test fn fps_eval_refuses_a_non_aggregate_receiver_holds() -> Bool {
   match fps_eval_projection_of(field: ^tree, receiver: fps_int_primitive(n: 7)) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn fps_unit_value() -> RuntimeValue {
+  RuntimeUnit { value: RuntimeUnitValue { unit_type: fps_atom(s: ^fps_unit_type) } }
+}
+
+fn fps_reference_value() -> RuntimeValue {
+  RuntimeReference {
+    value: RuntimeReferenceValue {
+      reference_type: fps_atom(s: ^fps_ref_type),
+      identity: RuntimeIdentity { identity: ^fps_ref_id },
+      referent_type: fps_atom(s: ^fps_int_type)
+    }
+  }
+}
+
+fn fps_closure_value() -> RuntimeValue {
+  RuntimeClosure {
+    value: RuntimeClosureValue {
+      arrow_type: fps_atom(s: ^fps_arrow_type),
+      arrow: fps_atom(s: ^fps_arrow_body),
+      environment: EvaluationEnvironment { bindings: empty_map() }
+    }
+  }
+}
+
+fn fps_receiver_is_aggregate(v: RuntimeValue) -> Bool {
+  match runtime_field_projection_receiver(receiver: v) {
+    FieldProjectionAggregate { value: _ } => true
+    FieldProjectionNotAggregate => false
+  }
+}
+
+fn fps_projection_of_receiver_refuses_not_aggregate(v: RuntimeValue) -> Bool {
+  match eval_field_projection_of_receiver(
+    node: fps_atom(s: ^fps_projection_site),
+    projection: fps_projection_over(field: ^tree),
+    receiver: v
+  ) {
+    Rejected { diagnostics: d } => d.head.reason == ^eval_rejected_projection_receiver_not_aggregate
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn fps_projection_misarm_treats_unit_as_aggregate(v: RuntimeValue) -> RuntimeFieldProjectionReceiver {
+  match v {
+    RuntimeUnit { value: _ } => FieldProjectionAggregate {
+      value: RuntimeAggregateValue { aggregate_type: fps_atom(s: ^fps_box_type), fields: Empty }
+    }
+    RuntimeAggregate { value: a } => FieldProjectionAggregate { value: a }
+    RuntimePrimitive { value: _ } => FieldProjectionNotAggregate
+    RuntimeReference { value: _ } => FieldProjectionNotAggregate
+    RuntimeClosure { value: _ } => FieldProjectionNotAggregate
+  }
+}
+
+test fn fps_runtime_field_projection_receiver_pins_every_variant() -> Bool {
+  fps_receiver_is_aggregate(v: fps_box_value())
+    && !fps_receiver_is_aggregate(v: fps_int_primitive(n: 7))
+    && !fps_receiver_is_aggregate(v: fps_unit_value())
+    && !fps_receiver_is_aggregate(v: fps_reference_value())
+    && !fps_receiver_is_aggregate(v: fps_closure_value())
+}
+
+test fn fps_eval_field_projection_of_receiver_pins_every_non_aggregate() -> Bool {
+  fps_evaluates_to(
+    o: eval_field_projection_of_receiver(
+      node: fps_atom(s: ^fps_projection_site),
+      projection: fps_projection_over(field: ^tree),
+      receiver: fps_box_value()
+    ),
+    n: 7
+  )
+    && fps_projection_of_receiver_refuses_not_aggregate(v: fps_int_primitive(n: 7))
+    && fps_projection_of_receiver_refuses_not_aggregate(v: fps_unit_value())
+    && fps_projection_of_receiver_refuses_not_aggregate(v: fps_reference_value())
+    && fps_projection_of_receiver_refuses_not_aggregate(v: fps_closure_value())
+}
+
+test fn fps_receiver_misarm_unit_as_aggregate_disagrees() -> Bool {
+  match fps_projection_misarm_treats_unit_as_aggregate(v: fps_unit_value()) {
+    FieldProjectionAggregate { value: _ } => !fps_receiver_is_aggregate(v: fps_unit_value())
+    FieldProjectionNotAggregate => false
   }
 }
 

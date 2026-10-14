@@ -62,6 +62,7 @@ import v2.std.runtime {
   ValueInterpreter,
   Return,
   RuntimeAggregate,
+  RuntimeAggregateValue,
   RuntimeFieldFound,
   RuntimeFieldMissing,
   runtime_aggregate_field_selection,
@@ -2574,13 +2575,27 @@ fn eval_field_projection(
 // access -- measured: reading `aggregate.fields` inline produced a runtime type error while the
 // non-aggregate arm, which reads no field, passed. Naming the parameter is what restores the type, and it
 // is the same shape v2.std.runtime runtime_fields_list_node already uses for its own element.
+type RuntimeFieldProjectionReceiver
+  = FieldProjectionAggregate { value: RuntimeAggregateValue }
+  | FieldProjectionNotAggregate
+
+fn runtime_field_projection_receiver(receiver: RuntimeValue) -> RuntimeFieldProjectionReceiver {
+  match receiver {
+    RuntimeAggregate { value: aggregate } => FieldProjectionAggregate { value: aggregate }
+    RuntimePrimitive { value: _ } => FieldProjectionNotAggregate
+    RuntimeReference { value: _ } => FieldProjectionNotAggregate
+    RuntimeClosure { value: _ } => FieldProjectionNotAggregate
+    RuntimeUnit { value: _ } => FieldProjectionNotAggregate
+  }
+}
+
 fn eval_field_projection_of_receiver(
   node: Node,
   projection: FieldProjection,
   receiver: RuntimeValue
 ) -> Outcome<RuntimeValue> {
-  match receiver {
-    RuntimeAggregate { value: aggregate } =>
+  match runtime_field_projection_receiver(receiver: receiver) {
+    FieldProjectionAggregate { value: aggregate } =>
       match runtime_aggregate_field_selection(fields: aggregate.fields, name: projection.field) {
         RuntimeFieldFound { value: field_value } =>
           Accepted { value: field_value, diagnostics: None }
@@ -2592,7 +2607,7 @@ fn eval_field_projection_of_receiver(
             )
           )
       }
-    _ =>
+    FieldProjectionNotAggregate =>
       outcome_rejected(
         d: eval_diagnostic(reason: ^eval_rejected_projection_receiver_not_aggregate, node: node)
       )
@@ -3630,16 +3645,7 @@ fn eval_test_claim_subject(
   }
 }
 
-data nfr_reason_eval_projection_receiver_not_aggregate: String = "field projection at eval: RuntimeAggregate is the one RuntimeValue variant that carries named fields, and every other variant refuses with the same located eval_rejected_projection_receiver_not_aggregate; enumerating them would clone one refusal arm per variant. Landed with gunbc#12506's field-projection eval route; declared at landing so the ratchet arms with the code"
-
-data nfr_dissolve_eval_projection_receiver_not_aggregate: DissolutionCondition = unbound_dissolution(description: "RuntimeValue exposes a typed field-bearing projection (derived from its declaration, dag/std/algebra) so eval reads fields without a per-variant match, and this row deletes")
-
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "eval_node_is_callee_reference" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "eval_node_is_transform" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow {
-      subject: PathSubject { path: "eval_field_projection_of_receiver" },
-      reason: nfr_reason_eval_projection_receiver_not_aggregate,
-      dissolution: nfr_dissolve_eval_projection_receiver_not_aggregate,
-    },
 ]
