@@ -138,7 +138,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchLiveSession,
   DispatchSpawnCommands,
   DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer,
-  dispatch_worker_unit_properties_for_plan, dispatch_worker_unit_command,
+  dispatch_worker_unit_properties_for_plan,
   dispatch_attempt_unit_name,
   attempt_unit_observation,
   worker_process_from_attempt_unit,
@@ -241,6 +241,10 @@ import gunbc.worker_lifecycle {
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
 import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import extdeps.systemd.systemd_run { systemd_run_user_transient_command, SystemdRunProperty, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
+import gunbc.roadmap.attempt_system_unit_launch {
+  attempt_system_unit_start_facts_from_plan, attempt_system_unit_encode_start,
+  attempt_system_unit_write_pending, attempt_system_unit_launch_host_argv,
+}
 import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
 import std.measure { byte_size_count }
 import gunbc.deploy_transition {
@@ -1459,14 +1463,24 @@ fn belt_session_container_create(
               match session_placement_begin_launch(stores: held.stores, grant: held.grant) {
                 SessionLaunchRefused { detail } => ExecStepFailed { step: "session-launch-gate", detail: detail }
                 SessionLaunchAdmitted { grant: launched } =>
-                  match dispatch_worker_unit_command(instance: instance, plan: plan, granted: launched.amount, process_bounds: session_process_bounds) {
-                    SystemdRunCommandRefused { cause: why } =>
-                      ExecStepFailed { step: "harness-unit-start", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
-                    SystemdRunCommandReady { command: command } =>
-                      belt_exec_steps(
-                        steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_unit_exec_argv(command: command, resolved_program: plan.systemd_run_program) }],
-                        workdir: workdir,
-                      )
+                  if !attempt_system_unit_write_pending(
+                    instance_root: instance.instance_root as String,
+                    body: attempt_system_unit_encode_start(
+                      facts: attempt_system_unit_start_facts_from_plan(
+                        instance: instance,
+                        plan: plan,
+                        granted: launched.amount,
+                        node_id: plan.node_id,
+                        attempt_key: plan.attempt_key,
+                      ),
+                    ),
+                  ) {
+                    ExecStepFailed { step: "harness-unit-start", detail: "pending attempt-system-unit request could not be written" }
+                  } else {
+                    belt_exec_steps(
+                      steps: [BeltExecStep { step: "harness-unit-start", command: attempt_system_unit_launch_host_argv(instance: instance) }],
+                      workdir: workdir,
+                    )
                   }
               }
           }
@@ -5138,7 +5152,7 @@ fn belt_sessions_observe() -> BeltObserve {
 // THE REALIZATION-NEUTRAL OCCURRENCE POPULATION (branch review 2026-09-23, blocker 1). The launch
 // census ran the tmux observation alone, so a production attempt held by a systemd transient unit
 // was invisible to AlreadyLive and to capacity. This observer unions the tmux sessions, the
-// user-manager's gunbc-attempt-*/gunbc-supervisor-* units (each read through the same per-unit
+// system-manager gunbc-attempt-* units and user-manager gunbc-supervisor-* units (each read through the same per-unit
 // observation the convene gate uses), and the durable attempt records (the attempts ledger joined
 // with each attempt's persisted launch identity), and the pure producer
 // (gunbc.roadmap.roadmap_attempt_occurrence) assigns every discovered container to exactly one
@@ -5150,9 +5164,9 @@ type BeltOccurrencePopulation
   = OccurrencePopulationObserved { occurrences: List<DispatchAttemptOccurrence> }
   | OccurrencePopulationRefused { reason: String }
 
-// One unit name per gunbc attempt/supervisor unit, user manager, all loaded states.
+// Attempt workers live on the system manager; supervisors remain user-manager transients.
 fn belt_occurrence_unit_names() -> List<String>? {
-  let attempts = systemd.Systemctl.ListUnitsUserAllLoaded(pattern: "gunbc-attempt-*" as NonEmptyStr)
+  let attempts = systemd.Systemctl.ListUnitsAllLoaded(pattern: "gunbc-attempt-*" as NonEmptyStr)
   if !attempts.success {
     none
   } else {
