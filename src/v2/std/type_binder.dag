@@ -6,6 +6,11 @@ import std.optional { Optional, Present, Absent, optional_present, optional_abse
 import v2.std.arrow_contract { arrow_contract_conforms }
 import v2.std.arrow_signature { signature_order_edge, arrow_signature_order_head_is_list_introduction }
 import v2.std.node_query { binder_node_parts, named_child_lookup, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }
+import v2.extdeps.languages.dag_surface_item_standing {
+  DagSurfaceNonTypeDeclaration,
+  DagSurfaceTypeDeclaration,
+  dag_surface_item_standing
+}
 import v2.std.node {
   MatchArmScopeExitEdge,
   arrow_named_edge_is_non_binder,
@@ -188,18 +193,6 @@ fn type_opaque_wrapper_is(n: Node) -> Bool {
   type_decl_wrapper_params_once(n: n) && (count(n.children) == 1)
 }
 
-fn type_decl_surface_is_not_a_type_item(id: Symbol) -> Bool {
-  (id == ^dag_surface_import_decl)
-    || (id == ^dag_surface_import_block)
-    || (id == ^dag_surface_fn_decl)
-    || (id == ^dag_surface_test_fn_decl)
-    || (id == ^dag_surface_data_decl)
-    || (id == ^dag_surface_module)
-    || (id == ^dag_surface_top_level_item)
-    || (id == ^dag_surface_service_decl)
-    || (id == ^dag_surface_resource_decl)
-}
-
 fn type_decl_identity_atom_optional(n: Node) -> Optional<Symbol> {
   match named_child_lookup(root: n, name: ^grammar_production_identity_node_projection) {
     NamedChildFound { target: id_node } =>
@@ -210,33 +203,6 @@ fn type_decl_identity_atom_optional(n: Node) -> Optional<Symbol> {
       }
     NamedChildMissing => optional_absent()
     NamedChildAmbiguous => optional_absent()
-  }
-}
-
-fn type_decl_carrier_identity_optional(n: Node) -> Optional<Symbol> {
-  match type_decl_identity_atom_optional(n: n) {
-    Present { value: id } => optional_present(value: id)
-    Absent =>
-      fold(n.children, init: optional_absent(), f: fn(found, e) {
-        match found {
-          Present { value: _ } => found
-          Absent =>
-            match type_decl_identity_atom_optional(n: e.target) {
-              Present { value: id } => optional_present(value: id)
-              Absent =>
-                match e.target.kind {
-                  TypeNode { connective: Atom { identity: id } } =>
-                    if type_decl_surface_is_not_a_type_item(id: id) {
-                      optional_present(value: id)
-                    } else {
-                      optional_absent()
-                    }
-                  TypeNode { connective: _ } => optional_absent()
-                  ComputationNode { behavior: _ } => optional_absent()
-                }
-            }
-        }
-      })
   }
 }
 
@@ -255,8 +221,6 @@ fn type_decl_view_by_wrapper(target: Node) -> TypeDeclView {
     OpaqueTypeDecl {
       binders: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_params(e: e) })
     }
-  } else if type_decl_node_carries_parse_projection(n: target) {
-    NotATypeDecl
   } else {
     match target.kind {
       TypeNode { connective: Arrow } => NotATypeDecl
@@ -295,14 +259,23 @@ fn type_decl_node_carries_parse_projection(n: Node) -> Bool {
 }
 
 fn type_decl_view(target: Node) -> TypeDeclView {
-  match type_decl_carrier_identity_optional(n: target) {
-    Present { value: id } =>
-      if type_decl_surface_is_not_a_type_item(id: id) {
-        NotATypeDecl
-      } else {
-        type_decl_view_by_wrapper(target: target)
-      }
-    Absent => type_decl_view_by_wrapper(target: target)
+  if type_decl_wrapper_is(n: target) || type_alias_wrapper_is(n: target) || type_opaque_wrapper_is(n: target) {
+    type_decl_view_by_wrapper(target: target)
+  } else {
+    match type_decl_identity_atom_optional(n: target) {
+      Present { value: id } =>
+        match dag_surface_item_standing(id: id) {
+          Present { value: DagSurfaceNonTypeDeclaration } => NotATypeDecl
+          Present { value: DagSurfaceTypeDeclaration } => type_decl_view_by_wrapper(target: target)
+          Absent => NotATypeDecl
+        }
+      Absent =>
+        if type_decl_node_carries_parse_projection(n: target) {
+          NotATypeDecl
+        } else {
+          type_decl_view_by_wrapper(target: target)
+        }
+    }
   }
 }
 

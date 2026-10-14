@@ -1048,8 +1048,8 @@ fn resolve_ctx_type_role(ctx: ResolveContext, scope: Scope) -> ResolveContext {
 // declaration edge (DeclaringAt the module qn): type_decl_view's PlainTypeDecl arm is
 // a type member, and NotATypeDecl (import/fn/data carriers) inherits, so using the view
 // on every Authored child would still walk construct field atoms as TypeOccurrence if
-// they were PlainTypeDecl (DESIGN section 5). TypeBodyEdge / TypeAliasEdge cover generic
-// members and alias RHS. Nested walks inherit the category.
+// they were PlainTypeDecl. TypeBodyEdge / TypeAliasEdge cover generic members and alias
+// RHS. Nested walks inherit the category.
 fn resolve_type_decl_member_child_walk(ctx: ResolveContext, e: Edge) -> TypeDeclChildWalk {
   match ctx.declaring {
     DeclaringAt { path: path } =>

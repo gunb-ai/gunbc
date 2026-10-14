@@ -743,11 +743,11 @@ fn symbol_index_lexical_lookup(
 }
 
 // ONE CLASSIFICATION OF A TYPE-DECL VIEW, TWO PROJECTIONS. Lookup kind and "are this node's
-// children type positions" were two arm tables over the same type_decl_view + member.kind
-// (review 79474). They disagreed on Atom: TypeOccurrence as a declaration (a module-level
-// `type T = Name`) vs not a type-child walk (the same Atom shape is a construct field). A
-// PlainTypeDecl Conj is a record only when the declaring path is RecordTypePayload — an
-// import residual is also a Conj. Those are two projections of one shape, not two facts.
+// children type positions" were two arm tables over the same type_decl_view + member.kind.
+// They disagreed on Atom: TypeOccurrence as a declaration (a module-level `type T = Name`)
+// vs not a type-child walk (the same Atom shape is a construct field). A PlainTypeDecl Conj
+// is a record only when the declaring path is RecordTypePayload — an import residual is also
+// a Conj. Those are two projections of one shape, not two facts.
 type TypeDeclMemberShape
   = TypeDeclShapeRecordOrCoproduct
   | TypeDeclShapeAliasAtom
