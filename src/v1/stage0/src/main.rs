@@ -588,10 +588,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                     }
                     cli_run::CompileDisposition::Refused { phase, cause } => {
                         eprintln!(
-                            "resolved {} sources ({}), {} indexed modules in the name census only",
+                            "resolved {} sources ({})",
                             run.closure_modules,
                             run.subject.scope_receipt().render(),
-                            run.census_modules
                         );
                         // The tree is NOT written on a refusal: writing a partial tree the
                         // compiler has disowned is a fabricated plausible output (DESIGN §5).
@@ -603,10 +602,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                     }
                     cli_run::CompileDisposition::Completed { emitted_count } => {
                         eprintln!(
-                            "resolved {} sources ({}), {} indexed modules in the name census only",
+                            "resolved {} sources ({})",
                             run.closure_modules,
                             run.subject.scope_receipt().render(),
-                            run.census_modules
                         );
                         // NOTHING IS MATERIALIZED UNTIL EVERY TARGET HAS COMPLETED. The
                         // disposition above is over the whole emission set, so reaching here
@@ -690,7 +688,6 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 Some(dir) => format!("compile of {dir}"),
                 None => "compile".to_string(),
             };
-            let census_only_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
             let sources = if let Some(dir) = source_dir {
                 // Legacy: flat directory scan (backward compatibility)
                 let mut dag_paths = Vec::new();
@@ -719,10 +716,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 std::process::exit(1);
             };
 
-            let pipeline_options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
-                analyze_complexity: false,
-                census_only_sources: Rc::new(census_only_sources.into()),
-            });
+            let pipeline_options = v1_compiler_compile::default_compile_pipeline_options();
             if render_targets.len() == 1 {
                 let result = v1_compiler_compile::compile_sources_with_options(
                     Rc::new(sources.into()),
