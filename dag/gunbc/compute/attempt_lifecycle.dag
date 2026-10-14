@@ -165,24 +165,6 @@ fn attempt_state_wire(s: AttemptState) -> String {
 // lease terms and now_epoch_seconds carry, so the comparison recovery makes against the deadline is
 // between two values of one type. The unit and the epoch appear as bare numbers only at the JSON
 // boundary below, where the wire keeps its spelling (granted_kib) and the decode re-admits them.
-type AttemptLifecycleCore {
-  identity: String
-  reference: String
-  opened_at: EpochSecs
-  launch_deadline: EpochSecs
-  state: AttemptState
-}
-
-type AttemptCapacityBody {
-  unit: String
-  granted: Kibibyte
-}
-
-type AttemptSlot<P> {
-  lifecycle: AttemptLifecycleCore
-  payload: P
-}
-
 type AttemptRecord {
   identity: String
   reference: String
@@ -191,46 +173,6 @@ type AttemptRecord {
   opened_at: EpochSecs
   launch_deadline: EpochSecs
   state: AttemptState
-}
-
-fn attempt_lifecycle_of_record(r: AttemptRecord) -> AttemptLifecycleCore {
-  AttemptLifecycleCore {
-    identity: r.identity,
-    reference: r.reference,
-    opened_at: r.opened_at,
-    launch_deadline: r.launch_deadline,
-    state: r.state,
-  }
-}
-
-fn attempt_capacity_of_record(r: AttemptRecord) -> AttemptCapacityBody {
-  AttemptCapacityBody { unit: r.unit, granted: r.granted }
-}
-
-fn attempt_slot_of_record(r: AttemptRecord) -> AttemptSlot<AttemptCapacityBody> {
-  AttemptSlot { lifecycle: attempt_lifecycle_of_record(r: r), payload: attempt_capacity_of_record(r: r) }
-}
-
-fn attempt_record_of_slot(slot: AttemptSlot<AttemptCapacityBody>) -> AttemptRecord {
-  AttemptRecord {
-    identity: slot.lifecycle.identity,
-    reference: slot.lifecycle.reference,
-    unit: slot.payload.unit,
-    granted: slot.payload.granted,
-    opened_at: slot.lifecycle.opened_at,
-    launch_deadline: slot.lifecycle.launch_deadline,
-    state: slot.lifecycle.state,
-  }
-}
-
-fn attempt_lifecycle_with_state(core: AttemptLifecycleCore, state: AttemptState) -> AttemptLifecycleCore {
-  AttemptLifecycleCore {
-    identity: core.identity,
-    reference: core.reference,
-    opened_at: core.opened_at,
-    launch_deadline: core.launch_deadline,
-    state: state,
-  }
 }
 
 fn attempt_record_json(r: AttemptRecord) -> JsonValue {
@@ -417,17 +359,6 @@ fn attempt_commit_bytes(root: NonEmptyStr, reference: String, state: AttemptStat
   }
 }
 
-fn attempt_capacity_encode(slot: AttemptSlot<AttemptCapacityBody>) -> NonEmptyStr {
-  attempt_record_wire(r: attempt_record_of_slot(slot: slot)) as NonEmptyStr
-}
-
-fn attempt_capacity_decode(text: NonEmptyStr) -> AttemptSlot<AttemptCapacityBody>? {
-  match attempt_record_decode(text: text as String) {
-    Absent => none
-    Present { value: r } => Present { value: attempt_slot_of_record(r: r) }
-  }
-}
-
 // THE CEILING ON A SELF-DECLARED BOUND, AND WHY A DECLARATION IS NOT ENOUGH ON ITS OWN.
 //
 // The launch deadline is declared by the party it protects. A producer says what it needs for
@@ -452,8 +383,50 @@ fn attempt_capacity_decode(text: NonEmptyStr) -> AttemptSlot<AttemptCapacityBody
 // mysterious reclaim.
 data compute_pre_launch_ceiling_seconds: Seconds = 300
 
-fn attempt_slot_open<P>(root: NonEmptyStr, slot: AttemptSlot<P>, encode: fn(AttemptSlot<P>) -> NonEmptyStr) -> AttemptTransition {
-  let declared = slot.lifecycle.launch_deadline - slot.lifecycle.opened_at
+fn attempt_advance(
+  root: NonEmptyStr,
+  reference: NonEmptyStr,
+  expected: CasGeneration,
+  next_state: AttemptState,
+) -> AttemptTransition {
+  match observe_cas_slot_state(root: root, key: reference) {
+    CasObservedUnreadable { cause: c } =>
+      AttemptTransitionRefused { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
+    CasObservedReadable { readable: r } =>
+      match r {
+        CasReadableAbsent =>
+          AttemptLostRace { expected: join(["generation ", to_string(value: cas_generation_count(g: expected))], ""), observed: "an absent slot" }
+        CasReadablePresent { version: v } =>
+          match attempt_record_decode(text: v.value as String) {
+            Absent =>
+              AttemptTransitionRefused {
+                detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], ""),
+              }
+            Present { value: rec } =>
+              if rec.reference != (reference as String) {
+                AttemptTransitionRefused {
+                  detail: join(["the attempt slot keyed ", reference as String, " names reference ", rec.reference], ""),
+                }
+              } else {
+                let next = attempt_record_with_state(r: rec, state: next_state)
+                attempt_commit_bytes(
+                  root: root,
+                  reference: reference as String,
+                  state: next_state,
+                  payload: attempt_record_wire(r: next) as NonEmptyStr,
+                  expected: ExpectSlotGeneration { generation: expected })
+              }
+          }
+      }
+  }
+}
+
+// OPENING: the attempt declares itself Reserved, and it must be the FIRST writer of this reference.
+// ExpectSlotAbsent is what makes a duplicated reference a refusal rather than a silent overwrite of
+// somebody else's attempt. Unit and grant are established here and never resupplied on later
+// transitions.
+fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
+  let declared = record.launch_deadline - record.opened_at
   if declared > compute_pre_launch_ceiling_seconds {
     AttemptTransitionRefused {
       detail: join([
@@ -465,124 +438,38 @@ fn attempt_slot_open<P>(root: NonEmptyStr, slot: AttemptSlot<P>, encode: fn(Atte
   } else if declared < 0 {
     AttemptTransitionRefused {
       detail: join([
-        "the attempt declared a launch deadline of ", to_string(value: slot.lifecycle.launch_deadline),
-        " which precedes the instant it opened, ", to_string(value: slot.lifecycle.opened_at),
+        "the attempt declared a launch deadline of ", to_string(value: record.launch_deadline),
+        " which precedes the instant it opened, ", to_string(value: record.opened_at),
         "; a window that has already closed would be reclaimable the moment it is written",
       ], ""),
     }
   } else {
-    let reserved = AttemptSlot {
-      lifecycle: attempt_lifecycle_with_state(core: slot.lifecycle, state: AttemptReserved),
-      payload: slot.payload,
-    }
+    let reserved = attempt_record_with_state(r: record, state: AttemptReserved)
     attempt_commit_bytes(
       root: root,
-      reference: reserved.lifecycle.reference,
+      reference: reserved.reference,
       state: AttemptReserved,
-      payload: encode(reserved),
+      payload: attempt_record_wire(r: reserved) as NonEmptyStr,
       expected: ExpectSlotAbsent)
   }
 }
 
-fn attempt_slot_advance<P>(
-  root: NonEmptyStr,
-  reference: NonEmptyStr,
-  expected: CasGeneration,
-  next_state: AttemptState,
-  encode: fn(AttemptSlot<P>) -> NonEmptyStr,
-  decode: fn(NonEmptyStr) -> AttemptSlot<P>?,
-) -> AttemptTransition {
-  match observe_cas_slot_state(root: root, key: reference) {
-    CasObservedUnreadable { cause: c } =>
-      AttemptTransitionRefused { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
-    CasObservedReadable { readable: r } =>
-      match r {
-        CasReadableAbsent =>
-          AttemptLostRace { expected: join(["generation ", to_string(value: cas_generation_count(g: expected))], ""), observed: "an absent slot" }
-        CasReadablePresent { version: v } =>
-          match decode(v.value) {
-            Absent =>
-              AttemptTransitionRefused {
-                detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], ""),
-              }
-            Present { value: slot } =>
-              if slot.lifecycle.reference != (reference as String) {
-                AttemptTransitionRefused {
-                  detail: join(["the attempt slot keyed ", reference as String, " names reference ", slot.lifecycle.reference], ""),
-                }
-              } else {
-                let next = AttemptSlot {
-                  lifecycle: attempt_lifecycle_with_state(core: slot.lifecycle, state: next_state),
-                  payload: slot.payload,
-                }
-                attempt_commit_bytes(
-                  root: root,
-                  reference: reference as String,
-                  state: next_state,
-                  payload: encode(next),
-                  expected: ExpectSlotGeneration { generation: expected })
-              }
-          }
-      }
-  }
-}
-
-fn attempt_slot_begin_launch<P>(
-  root: NonEmptyStr,
-  reference: NonEmptyStr,
-  expected: CasGeneration,
-  encode: fn(AttemptSlot<P>) -> NonEmptyStr,
-  decode: fn(NonEmptyStr) -> AttemptSlot<P>?,
-) -> AttemptTransition {
-  attempt_slot_advance(
-    root: root, reference: reference, expected: expected, next_state: AttemptLaunching, encode: encode, decode: decode)
-}
-
-fn attempt_slot_terminate<P>(
-  root: NonEmptyStr,
-  reference: NonEmptyStr,
-  expected: CasGeneration,
-  verdict: AttemptVerdict,
-  detail: String,
-  encode: fn(AttemptSlot<P>) -> NonEmptyStr,
-  decode: fn(NonEmptyStr) -> AttemptSlot<P>?,
-) -> AttemptTransition {
-  attempt_slot_advance(
-    root: root,
-    reference: reference,
-    expected: expected,
-    next_state: AttemptTerminal { verdict: verdict, detail: detail },
-    encode: encode,
-    decode: decode)
-}
-
-// OPENING: the attempt declares itself Reserved, and it must be the FIRST writer of this reference.
-// ExpectSlotAbsent is what makes a duplicated reference a refusal rather than a silent overwrite of
-// somebody else's attempt. The payload is established here and never resupplied.
-fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
-  attempt_slot_open(root: root, slot: attempt_slot_of_record(r: record), encode: attempt_capacity_encode)
-}
-
 // THE LAUNCH GATE. Called BEFORE the reader is admitted, never after. It reads the current slot,
-// changes only lifecycle.state, and re-encodes the payload the open wrote. A caller cannot hand
-// another unit, grant or path into this generation.
+// changes only state, and re-encodes the unit and grant the open wrote. A caller cannot hand
+// another unit or grant into this generation.
 fn attempt_begin_launch(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration) -> AttemptTransition {
-  attempt_slot_begin_launch(
-    root: root, reference: reference, expected: expected, encode: attempt_capacity_encode, decode: attempt_capacity_decode)
+  attempt_advance(root: root, reference: reference, expected: expected, next_state: AttemptLaunching)
 }
 
 // THE TERMINAL TRANSITION. Carries the verdict AND why, so the generation that records the end also
-// records the reason -- history the next reader can act on rather than a bare flag. Same read-and
-// state-only rewrite as begin_launch: the payload is not a parameter.
+// records the reason -- history the next reader can act on rather than a bare flag. Same read and
+// state-only rewrite as begin_launch: unit and grant are not parameters.
 fn attempt_terminate(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration, verdict: AttemptVerdict, detail: String) -> AttemptTransition {
-  attempt_slot_terminate(
+  attempt_advance(
     root: root,
     reference: reference,
     expected: expected,
-    verdict: verdict,
-    detail: detail,
-    encode: attempt_capacity_encode,
-    decode: attempt_capacity_decode)
+    next_state: AttemptTerminal { verdict: verdict, detail: detail })
 }
 
 fn attempt_transition_wire(t: AttemptTransition) -> String {
