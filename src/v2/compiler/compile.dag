@@ -192,6 +192,7 @@ import v2.compiler.dependency_demand_census {
   DemandCensusUnreadableStage,
   UnboundNamed,
   UnboundShaped,
+  DemandModuleImporteeRefused,
   DemandModuleResolveRefused,
   DemandModuleResolved,
   UnreadableAtParse,
@@ -3570,6 +3571,25 @@ fn native_demand_census_readings(context: NativeTestContext, module_qn: Qualifie
   }
 }
 
+// A refused resolve is filed at its root. When the module's import target was refused at ingest, every
+// name it imports is unbound only because the target never entered the member index, so the standing names
+// the refused importee and its cause (native_import_target_attribution, the same decision the production
+// lane reports as native_prepare_reason_import_target_file_refused); only otherwise is the first unbound
+// name the finding.
+fn native_demand_census_resolve_refused(context: NativeTestContext, module_qn: QualifiedName, authored: List<AuthoredUsesFunction>, d: NonEmptyDiagnostics) -> DemandCensusModuleStanding {
+  match native_import_target_attribution(context: context, module: module_qn) {
+    NativeImportTargetRefused { target: t } =>
+      DemandModuleImporteeRefused { authored: authored, importee_file: t.path, importee_cause: native_test_file_refusal_fatal_reason(fr: t) }
+    NativeImportTargetsAdmitted => native_demand_census_unbound_standing(authored: authored, d: d)
+    NativeImportTargetsUnreadable { reason: _ } => native_demand_census_unbound_standing(authored: authored, d: d)
+    NativeImportTargetNotAsked => native_demand_census_unbound_standing(authored: authored, d: d)
+  }
+}
+
+fn native_demand_census_unbound_standing(authored: List<AuthoredUsesFunction>, d: NonEmptyDiagnostics) -> DemandCensusModuleStanding {
+  DemandModuleResolveRefused { authored: authored, first_reason: diagnostics_fatal_reason(d: d), first_unbound: native_demand_census_unbound_locus(d: d) }
+}
+
 fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, authored: List<AuthoredUsesFunction>) -> NativeDemandCensusWalk {
   match qualified_name_from_module_node(root: root.root) {
     Rejected { diagnostics: _ } => w
@@ -3583,11 +3603,7 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
             functions: w.functions,
             operations: w.operations,
             audited: w.audited,
-            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused {
-              authored: mine,
-              first_reason: diagnostics_fatal_reason(d: d),
-              first_unbound: native_demand_census_unbound_locus(d: d)
-            })
+            standings: list_snoc_item(xs: w.standings, item: native_demand_census_resolve_refused(context: step.context, module_qn: module_qn, authored: mine, d: d))
           }
         Accepted { value: resolved, diagnostics: _ } =>
           let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
