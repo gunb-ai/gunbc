@@ -40,7 +40,7 @@ import v2.compiler.inferred_tree {
 }
 import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration }
 import v2.std.model_core { AlgebraInhabitanceDecl }
-import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
+import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, KernelStringLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
 import gunbc.structural_realization_bindings { kernel_grounding_rows, literal_homomorphism_rows }
 import std.decl_ref { DeclarationRef, decl_ref }
 import v2.std.grammar { node_atom_identity_optional }
@@ -4099,8 +4099,11 @@ fn infer_declared_type_obligation(
 // Nat, and Nat carries no algebra row, so `n + 1` refuses at the operator either way, while `==`/`<` are not
 // judged at all (gunbc.recurring_failure_mode comparison_operands_never_judged_in_v2_infer).
 //
-// SCOPE, STATED: integer literals. A string literal at the free monoid over Char (the Unicode scalar row) is
-// not elaborated here; that crossing stays the text-boundary lane's (DESIGN section 4, Ruling 3).
+// SCOPE, STATED: integer and string literals. A string literal is host text; at a declared type whose alias-normalized
+// structure is one instantiated head over one element it crosses only through the homomorphism row keyed on exactly
+// that (head, element) -- the declared Unicode scalar unfold, std.algebra FreeMonoid over std.types Char (DESIGN
+// section 4, the text ruling) -- and any other structure has no row, so the ordinary relation judges host text
+// there and refuses it. Kernel grounding has no string arm: host text is not a grounded carrier's value.
 type InferLiteralElaboration
   = InferLiteralElaboratesTo { destination_type: Node }
   | InferLiteralNotElaborated
@@ -4180,7 +4183,35 @@ fn infer_literal_elaborates_at(literal_node: Node, expected: Node, declarations:
         DagCanonicalIntLiteral { magnitude: m } => infer_int_literal_value_at(value: m, expected: expected, declarations: declarations)
         DagCanonicalBoolLiteral { value: _ } => InferLiteralNotElaborated
         DagCanonicalSymbolLiteral { symbol: _ } => InferLiteralNotElaborated
-        DagCanonicalStringLiteral { value: _ } => InferLiteralNotElaborated
+        DagCanonicalStringLiteral { value: _ } => infer_string_literal_at(expected: expected, declarations: declarations)
+      }
+  }
+}
+
+// A string literal at an expected type: the homomorphism row keyed on the expected type's alias-normalized
+// (head, element), or nothing. The key is read the way the row states it -- the structure, not the spelling:
+// v2.std.text `type String = FreeMonoid<Char>` presents std.algebra FreeMonoid at std.types Char, and Char, a
+// refinement, is not unfolded (infer_alias_is_refined). A head with no single element, or a (head, element)
+// no row names -- FreeMonoid over Int, or over a Char declared elsewhere -- is not elaborated, and the
+// relation then refuses host text there.
+fn infer_string_literal_at(expected: Node, declarations: SymbolIndex) -> InferLiteralElaboration {
+  let wanted = infer_type_alias_normalized(t: expected, declarations: declarations)
+  match infer_type_declaration_ref(t: wanted) {
+    Absent => InferLiteralNotElaborated
+    Present { value: destination } =>
+      match infer_type_head_and_args(t: wanted).args {
+        Cons { head: element_type, tail: Empty } =>
+          match infer_type_declaration_ref(t: element_type) {
+            Absent => InferLiteralNotElaborated
+            Present { value: element } =>
+              match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelStringLiteral, destination: destination, element: optional_present(value: element), destination_realizes_natively: false) {
+                ViaHomomorphism { homomorphism: _ } => InferLiteralElaboratesTo { destination_type: wanted }
+                DirectLiteral => InferLiteralNotElaborated
+                LiteralElaborationRefused { cause: c } => InferLiteralElaborationRefused { cause: infer_literal_elaboration_refusal_reason(cause: c) }
+              }
+          }
+        Cons { head: _, tail: _ } => InferLiteralNotElaborated
+        Empty => InferLiteralNotElaborated
       }
   }
 }
