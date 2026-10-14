@@ -1,0 +1,157 @@
+module v2.workflow.keyed_roster_build_eval_steps
+
+import v2.std.integer { Int, int_eq, int_lt, int_ge, int_mul }
+import std.measure {
+  EvalStepCount, eval_step_count, eval_step_count_value,
+}
+import std.types { Bool, NonEmptyStr }
+
+// THE BASELINE INSTRUMENT ROW FOR THE QUADRATIC COST OF `std.keyed_roster` `keyed_roster_build`.
+//
+// WHY THIS ROW EXISTS. `keyed_roster_build` folds `keyed_roster_insert_into_unique`, which performs
+// one linear `keyed_row_find` scan plus one growing `concat(rows, [incoming])` per element, so
+// building a roster of n keys costs O(n^2) interpreted work. The cause is the signature, not the
+// body: `key_eq` is an arbitrary caller-supplied `fn K K -> Bool`, and an arbitrary predicate cannot
+// be indexed. `gunbc.repository_census_coverage` measured that function wall-clock at 85ms, 318ms
+// and 1273ms over 256, 512 and 1024 keys (3.74x then 4.00x per doubling), but wall-clock is a
+// property of the runner, not of the work. This row re-derives the same work as a count of
+// interpreter eval-steps -- the host-independent quantity the required floor enforces, and the
+// unit in which K4's linear regrounding will be judged.
+//
+// WHAT IT PINS, AND WHAT THAT IS NOT. The three `eval_steps_*_keys` readings are the per-function
+// eval-step deltas of the specimen's three claims, taken on main (commit a1b1a3515f; `keyed_roster.dag`,
+// `keyed_row.dag` and every std module on the specimen's measured path are byte-identical from that
+// commit through 44c9426e36, and K4 #13947 is not merged there). They are DETERMINISTIC: a
+// per-function delta of a counter that `v1_interpreter` advances once per dagglet expression entry
+// and never gates on host state, and the specimen's input is built by the long-list-on-the-left
+// idiom so it costs O(n) eval-steps and cannot move under the row. They are not a measurement of the
+// live floor population (DESIGN section 5): the specimen's key count is a literal in the specimen
+// module, so the reading is a property of that file, reproducible on any host, in any run.
+//
+// THE RE-READING PROTOCOL. To re-derive the readings, run the `instrument` command and read the
+// `[witness] <fn>: ... eval_steps=...` line of each of the three functions. After K4 regrounds
+// `keyed_roster_build` onto a key-to-identity projection (the census's `dissolve-on` condition), the
+// SAME command re-run on the regrounded tree is what K4's PR must show: the two doublings drop from
+// ~4x to ~2x, and this row is re-pinned with the new readings and the new shape. That re-pin is the
+// consumer this row was built for; until it lands, the row stands as the baseline every comparison
+// in that lane is made against.
+type KeyedRosterBuildEvalStepsBaseline {
+  specimen: NonEmptyStr
+  instrument: NonEmptyStr
+  measured_at_main: NonEmptyStr
+  eval_steps_256_keys: EvalStepCount
+  eval_steps_512_keys: EvalStepCount
+  eval_steps_1024_keys: EvalStepCount
+}
+
+data keyed_roster_build_eval_steps_baseline: KeyedRosterBuildEvalStepsBaseline = KeyedRosterBuildEvalStepsBaseline {
+  specimen: "dag/test/claim/keyed_roster_build_eval_steps_specimen.dag (claim fns: keyed_roster_build_256_keys_performs_its_declared_work, keyed_roster_build_512_keys_performs_its_declared_work, keyed_roster_build_1024_keys_performs_its_declared_work)" as NonEmptyStr,
+  instrument: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/keyed_roster_build_eval_steps_specimen.dag --functions keyed_roster_build_256_keys_performs_its_declared_work,keyed_roster_build_512_keys_performs_its_declared_work,keyed_roster_build_1024_keys_performs_its_declared_work, read from its [witness] lines (one eval_steps=... per function)" as NonEmptyStr,
+  measured_at_main: "a1b1a3515f" as NonEmptyStr,
+  eval_steps_256_keys: eval_step_count(count: 304280),
+  eval_steps_512_keys: eval_step_count(count: 1198360),
+  eval_steps_1024_keys: eval_step_count(count: 4755992),
+}
+
+// THE ONE ACCESSOR PER FIELD, so a consumer reaches a reading through a match on the carrier
+// rather than by a bare field access that would bind a second spelling of the same read.
+fn eval_steps_256_keys_of(baseline: KeyedRosterBuildEvalStepsBaseline) -> EvalStepCount {
+  match baseline {
+    KeyedRosterBuildEvalStepsBaseline {
+      specimen: _, instrument: _, measured_at_main: _,
+      eval_steps_256_keys: s, eval_steps_512_keys: _, eval_steps_1024_keys: _,
+    } => s
+  }
+}
+
+fn eval_steps_512_keys_of(baseline: KeyedRosterBuildEvalStepsBaseline) -> EvalStepCount {
+  match baseline {
+    KeyedRosterBuildEvalStepsBaseline {
+      specimen: _, instrument: _, measured_at_main: _,
+      eval_steps_256_keys: _, eval_steps_512_keys: s, eval_steps_1024_keys: _,
+    } => s
+  }
+}
+
+fn eval_steps_1024_keys_of(baseline: KeyedRosterBuildEvalStepsBaseline) -> EvalStepCount {
+  match baseline {
+    KeyedRosterBuildEvalStepsBaseline {
+      specimen: _, instrument: _, measured_at_main: _,
+      eval_steps_256_keys: _, eval_steps_512_keys: _, eval_steps_1024_keys: s,
+    } => s
+  }
+}
+
+// THE SHAPE THE READINGS ARE CARRIED UNDER, AND THE ONE K4'S RE-PIN MOVES. The two doublings of
+// the three cardinalities are classified as a ratio, in integer arithmetic (no division, no
+// floating point): a doubling is QUADRATIC when the reading triples or more (next >= 3*prev, the
+// census's 4.00x band), LINEAR when it grows by between 1.25x and 3x (5*prev <= 4*next < 12*prev,
+// the census's 2.00x band with headroom for the specimen's O(n) input construction), and FLAT
+// below that. The shape is the highest band either doubling falls in: a single quadratic doubling
+// is quadratic-dominant, so it is reported as such rather than glossed.
+type KeyedRosterBuildDoublingShape =
+    FlatDoubling
+  | LinearDoubling
+  | QuadraticDoubling
+
+fn doubling_band_code(prev: Int, next: Int) -> Int {
+  if int_ge(a: next, b: int_mul(a: 3, b: prev)) {
+    2
+  } else if int_ge(a: int_mul(a: 4, b: next), b: int_mul(a: 5, b: prev)) {
+    1
+  } else {
+    0
+  }
+}
+
+fn doubling_shape(eval_steps_256: Int, eval_steps_512: Int, eval_steps_1024: Int) -> KeyedRosterBuildDoublingShape {
+  let r1 = doubling_band_code(prev: eval_steps_256, next: eval_steps_512)
+  let r2 = doubling_band_code(prev: eval_steps_512, next: eval_steps_1024)
+  if int_eq(a: r1, b: 2) {
+    QuadraticDoubling {}
+  } else if int_eq(a: r2, b: 2) {
+    QuadraticDoubling {}
+  } else if int_eq(a: r1, b: 1) {
+    LinearDoubling {}
+  } else if int_eq(a: r2, b: 1) {
+    LinearDoubling {}
+  } else {
+    FlatDoubling {}
+  }
+}
+
+// THE GROUNDING A RE-PIN RUNS: given the three readings the `instrument` command produced, does
+// the row still classify as the quadratic baseline? This is the join the module header promises --
+// the readings have an independent referent (the witness lines) and this classifier sees the
+// failure a hand-edit of the three literals would otherwise hide: one reading tampered by more
+// than a doubling's worth of headroom moves the shape, and this fn reds rather than rescales.
+fn baseline_shape(baseline: KeyedRosterBuildEvalStepsBaseline) -> KeyedRosterBuildDoublingShape {
+  doubling_shape(
+    eval_steps_256: eval_step_count_value(s: eval_steps_256_keys_of(baseline: baseline)),
+    eval_steps_512: eval_step_count_value(s: eval_steps_512_keys_of(baseline: baseline)),
+    eval_steps_1024: eval_step_count_value(s: eval_steps_1024_keys_of(baseline: baseline)),
+  )
+}
+
+// THE EXECUTABLE CHECK. The pinned row is strictly increasing and classifies as the quadratic
+// baseline: 304280 < 1198360 < 4755992, with doublings of 3.94x and 3.97x -- both in the >= 3x
+// band. It is the reading K4's PR is measured against: when the regrounded tree re-runs the
+// instrument, these three literals are re-pinned and this check re-runs against the new shape.
+test fn keyed_roster_build_baseline_is_the_quadratic_reading_holds() -> Bool {
+  let r = keyed_roster_build_eval_steps_baseline
+  let s256 = eval_step_count_value(s: eval_steps_256_keys_of(baseline: r))
+  let s512 = eval_step_count_value(s: eval_steps_512_keys_of(baseline: r))
+  let s1024 = eval_step_count_value(s: eval_steps_1024_keys_of(baseline: r))
+  if int_lt(a: s256, b: s512) {
+    if int_lt(a: s512, b: s1024) {
+      match baseline_shape(baseline: r) {
+        QuadraticDoubling {} => true
+        _ => false
+      }
+    } else {
+      false
+    }
+  } else {
+    false
+  }
+}
