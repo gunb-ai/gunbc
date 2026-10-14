@@ -1586,13 +1586,59 @@ fn infer_declaration_reference_facts_indexed(
       }
 }
 
-// A NULLARY COPRODUCT-ARM REFERENCE IS TYPED BY THE DECLARING COPRODUCT, the same claimant
-// chase infer_coproduct_path_of_variant_arm uses for constructs. Callable evidence is the wrong
-// derivation: an arm is not an Arrow, so the previous arm left CliTargetRust underived and the
-// list (and data cli_default_emit_target) fatally demanded a grounding. A missing claimant
-// refuses declaration_identity_unavailable, located. A payload-bearing arm used bare is still
-// not a value of the coproduct — it stays GroundingNotDerived, as before. Expected-type
-// checking mode is not this repair.
+// THE VALUE TYPE OF A VARIANT-ARM REFERENCE IS THE DECLARING COPRODUCT, never the arm's
+// payload Conj. That Conj is the constructor's input shape. One function answers for both
+// the declaration-reference facts fold and the operand-type reader: a missing claimant
+// refuses declaration_identity_unavailable; a payload-bearing arm used bare stays
+// GroundingNotDerived; a nullary arm is the coproduct. Expected-type checking is not this
+// repair, and the payload answer is not a reachable alternative.
+type InferVariantArmReferenceValue
+  = VariantArmReferenceValueCoproduct { coproduct: QualifiedName }
+  | VariantArmReferenceValueNotDerived
+  | VariantArmReferenceValueIdentityUnavailable
+
+fn infer_variant_arm_reference_value(
+  index: SymbolIndex,
+  arm_path: QualifiedName,
+  declared: Node
+) -> InferVariantArmReferenceValue {
+  match infer_coproduct_path_of_variant_arm(index: index, arm_path: arm_path) {
+    Absent => VariantArmReferenceValueIdentityUnavailable
+    Present { value: coproduct } =>
+      if infer_empty_product_shape(node: declared) {
+        VariantArmReferenceValueCoproduct { coproduct: coproduct }
+      } else {
+        VariantArmReferenceValueNotDerived
+      }
+  }
+}
+
+fn infer_variant_arm_reference_value_optional(
+  node: Node,
+  resolved: ResolvedTree
+) -> Optional<InferVariantArmReferenceValue> {
+  match declaration_reference_path_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: path } =>
+      match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
+        Absent => optional_absent()
+        Present { value: declared } =>
+          match symbol_index_declared_payload_at(index: resolved.resolved_declarations, qualified_path: path) {
+            Present { value: VariantArmPayload } =>
+              optional_present(
+                value: infer_variant_arm_reference_value(
+                  index: resolved.resolved_declarations,
+                  arm_path: path,
+                  declared: declared
+                )
+              )
+            Present { value: RecordTypePayload } => optional_absent()
+            Absent => optional_absent()
+          }
+      }
+  }
+}
+
 fn infer_variant_arm_value_reference_facts(
   n: Node,
   resolved: ResolvedTree,
@@ -1600,26 +1646,28 @@ fn infer_variant_arm_value_reference_facts(
   declared: Node,
   descent_proof: TerminationProof
 ) -> Outcome<InferredFacts> {
-  match infer_coproduct_path_of_variant_arm(index: resolved.resolved_declarations, arm_path: path) {
-    Absent =>
+  match infer_variant_arm_reference_value(
+    index: resolved.resolved_declarations,
+    arm_path: path,
+    declared: declared
+  ) {
+    VariantArmReferenceValueIdentityUnavailable =>
       outcome_rejected(infer_declaration_identity_unavailable_diagnostic(at: n))
-    Present { value: coproduct } =>
-      if infer_empty_product_shape(node: declared) {
-        infer_reference_facts_or_frontier(
-          o: infer_facts_denoting(
-            o: inferred_facts_from_derived_type(
-              node: n,
-              derived_type: declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic),
-              descent: Holds { value: descent_proof }
-            ),
-            declaration: declared
+    VariantArmReferenceValueNotDerived =>
+      inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+    VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
+      infer_reference_facts_or_frontier(
+        o: infer_facts_denoting(
+          o: inferred_facts_from_derived_type(
+            node: n,
+            derived_type: declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic),
+            descent: Holds { value: descent_proof }
           ),
-          n: n,
-          descent_proof: descent_proof
-        )
-      } else {
-        inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
-      }
+          declaration: declared
+        ),
+        n: n,
+        descent_proof: descent_proof
+      )
   }
 }
 
@@ -2057,27 +2105,40 @@ fn infer_branch_operand_resolved_type_with_entries(
     Accepted { value: literal, diagnostics: _ } =>
       infer_binding_value_type_witness(binding: infer_literal_type_binding(literal: literal), at: node)
     Rejected { diagnostics: _ } =>
-      match resolved_tree_lexical_binding(tree: resolved, reference: node) {
-        Present { value: binding } =>
-          match binding.standing {
-            LexicalDeclared { node: declared } =>
-              match infer_operand_declared_type_instantiated(declared: declared, instances: instances) {
-                Present { value: instantiated } => Holds { value: instantiated }
-                Absent =>
+      match infer_variant_arm_reference_value_optional(node: node, resolved: resolved) {
+        Present { value: verdict } =>
+          match verdict {
+            VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
+              Holds {
+                value: declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic)
+              }
+            VariantArmReferenceValueNotDerived => inferred_facts_resolved_type(facts: facts)
+            VariantArmReferenceValueIdentityUnavailable =>
+              Violates { diagnostic: infer_declaration_identity_unavailable_diagnostic(at: node) }
+          }
+        Absent =>
+          match resolved_tree_lexical_binding(tree: resolved, reference: node) {
+            Present { value: binding } =>
+              match binding.standing {
+                LexicalDeclared { node: declared } =>
+                  match infer_operand_declared_type_instantiated(declared: declared, instances: instances) {
+                    Present { value: instantiated } => Holds { value: instantiated }
+                    Absent =>
+                      match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
+                        Present { value: value_type } => Holds { value: value_type }
+                        Absent => inferred_facts_resolved_type(facts: facts)
+                      }
+                  }
+                LexicalValued { node: _ } =>
                   match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
                     Present { value: value_type } => Holds { value: value_type }
                     Absent => inferred_facts_resolved_type(facts: facts)
                   }
+                LexicalOwedFormal { field_type: _ } => inferred_facts_resolved_type(facts: facts)
+                LexicalUntyped => inferred_facts_resolved_type(facts: facts)
               }
-            LexicalValued { node: _ } =>
-              match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
-                Present { value: value_type } => Holds { value: value_type }
-                Absent => inferred_facts_resolved_type(facts: facts)
-              }
-            LexicalOwedFormal { field_type: _ } => inferred_facts_resolved_type(facts: facts)
-            LexicalUntyped => inferred_facts_resolved_type(facts: facts)
+            Absent => inferred_facts_resolved_type(facts: facts)
           }
-        Absent => inferred_facts_resolved_type(facts: facts)
       }
   }
 }
