@@ -40,7 +40,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "www.sudo.ws/docs/man/visudo.man/"
   }
 }
-data visudo_authority: ExternalAuthority = extdeps_external_authority_anchor
 
 data visudo_binary_path: NonEmptyStr = "/usr/sbin/visudo"
 
