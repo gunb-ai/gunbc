@@ -135,7 +135,7 @@ test fn fn_field_record_as_map_key_refuses() -> Bool {
 // String, so no key bound may be fabricated.
 fn w_generic_nested_in_a_key_type_argument_earns_eq_and_hash() -> Bool {
   compile_dag_rust_emit_check(
-    "module map_key_witness.nested_generic\nimport v2.std.collection { Map, map_lookup }\nimport std.optional { Optional }\ntype Wrapper<K> {\n  subject: K\n}\nfn nested_probe<K, V>(m: Map<Wrapper<K>, V>, key: Wrapper<K>) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\n",
+    "module map_key_witness.nested_generic\ntype Wrapper<K> {\n  subject: K\n}\nfn nested_probe<K, V>(m: Map<Wrapper<K>, V>, key: Wrapper<K>) -> Map<Wrapper<K>, V> {\n  m\n}\n",
     "src/map_key_witness_nested_generic.rs",
     ["std::cmp::Eq + std::hash::Hash, V"],
     ["pub fn nested_probe<K: Clone, V", "pub fn nested_probe<K, V"]
@@ -144,7 +144,7 @@ fn w_generic_nested_in_a_key_type_argument_earns_eq_and_hash() -> Bool {
 
 fn w_generic_caller_reaching_the_map_only_through_a_callee_earns_it() -> Bool {
   compile_dag_rust_emit_check(
-    "module map_key_witness.callee_forwarded\nimport v2.std.collection { Map, map_lookup, empty_map }\nimport std.optional { Optional }\ntype Wrapper<K> {\n  subject: K\n}\nfn inner_probe<K, V>(m: Map<Wrapper<K>, V>, key: Wrapper<K>) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\nfn outer_probe<A, B>(key: Wrapper<A>) -> Optional<B> {\n  inner_probe(m: empty_map(), key: key)\n}\n",
+    "module map_key_witness.callee_forwarded\ntype Wrapper<K> {\n  subject: K\n}\nfn inner_probe<K, V>(m: Map<Wrapper<K>, V>) -> Int {\n  0\n}\nfn outer_probe<A, B>(key: Wrapper<A>) -> Int {\n  let m: Map<Wrapper<A>, B> = empty_map()\n  inner_probe(m: m)\n}\n",
     "src/map_key_witness_callee_forwarded.rs",
     ["std::cmp::Eq + std::hash::Hash, B"],
     ["pub fn outer_probe<A: Clone, B", "pub fn outer_probe<A, B"]
