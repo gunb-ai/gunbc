@@ -16,7 +16,6 @@ import std.keyed_roster {
   keyed_roster_locate_duplicate,
   keyed_roster_distinct,
   keyed_roster_duplicated,
-  keyed_roster_contains,
   keyed_roster_insert,
   keyed_roster_locate_duplicate,
   keyed_roster_union,
@@ -345,8 +344,8 @@ test fn total_index_three_way_repeat_reports_three_occurrences() -> Bool {
     && count(keyed_roster_index_occurrences(index: index, key: SubjectKey { subject: "z" })) == 0
     && count(keyed_roster_distinct(index: index)) == 2
     && count(keyed_roster_duplicated(index: index)) == 1
-    && keyed_roster_contains(index: index, key: SubjectKey { subject: "b" })
-    && !keyed_roster_contains(index: index, key: SubjectKey { subject: "z" })
+    && match map_get(index.slots, SubjectKey { subject: "b" }) { Present { value: _ } => true, Absent => false }
+    && match map_get(index.slots, SubjectKey { subject: "z" }) { Present { value: _ } => false, Absent => true }
 }
 
 test fn total_index_occurrences_keep_authored_order() -> Bool {

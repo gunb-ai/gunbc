@@ -54,7 +54,6 @@ fn path_occurrence_count(paths: List<String>, target: String) -> Int {
 type KeyedRosterSlot<K, V> {
   first_position: Int
   first: KeyedRow<SubjectKey<K>, V>
-  second: KeyedRow<SubjectKey<K>, V>?
   later_reversed: List<KeyedRow<SubjectKey<K>, V>>
   count: Int
 }
@@ -106,7 +105,6 @@ fn keyed_roster_index_step<K, V>(
           KeyedRosterSlot {
             first_position: build.position,
             first: row,
-            second: none,
             later_reversed: [],
             count: 1,
           },
@@ -140,7 +138,6 @@ fn keyed_roster_index_step<K, V>(
           KeyedRosterSlot {
             first_position: slot.first_position,
             first: slot.first,
-            second: if repeats { Present { value: row } } else { slot.second },
             later_reversed: concat([row], slot.later_reversed),
             count: slot.count + 1,
           },
@@ -205,13 +202,6 @@ fn keyed_roster_index<K, V>(rows: List<KeyedRow<SubjectKey<K>, V>>) -> KeyedRost
 
 fn keyed_roster_index_operations<K, V>(index: KeyedRosterIndex<K, V>) -> Int {
   index.map_lookups + index.map_inserts + index.key_prepends + index.order_reversals
-}
-
-fn keyed_roster_contains<K, V>(index: KeyedRosterIndex<K, V>, key: SubjectKey<K>) -> Bool {
-  match map_get(index.slots, key) {
-    Present { value: _ } => true
-    Absent => false
-  }
 }
 
 // K5/K6 read surface: every distinct key in first-occurrence order (full set even with duplicates).

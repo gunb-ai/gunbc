@@ -85,20 +85,12 @@ fn retired_flattened_serve_flags_key(subject: TailscaleServeRouteSubject) -> Non
   join(tailscale_serve_endpoint_flags(endpoint: subject.endpoint), " ") as NonEmptyStr
 }
 
-fn retired_flattened_serve_flags_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  a as String == b as String
-}
-
 data retired_flattened_serve_flags_key_relation: KeyRelation<RetiredFlattenedServeFlagsKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, NonEmptyStr> = key_relation_global(
   key_of: retired_flattened_serve_flags_key,
 )
 
 fn tailscale_enable_argv_identity_key(subject: TailscaleServeRouteSubject) -> NonEmptyStr {
   join(tailscale_serve_enable_argv(endpoint: subject.endpoint), " ") as NonEmptyStr
-}
-
-fn tailscale_enable_argv_identity_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  a as String == b as String
 }
 
 data tailscale_enable_argv_identity_key_relation: KeyRelation<TailscaleEnableArgvIdentityKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, NonEmptyStr> = key_relation_global(
