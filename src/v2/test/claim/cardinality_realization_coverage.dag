@@ -26,12 +26,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // that rots; the evidence is running each path and comparing its outcome with the row. Two keys are
 // identities, not text: the target is the DeclarationRef of the path's realization authority and the
 // specimen is the DeclarationRef of the specimen's own declaration, so a renamed or deleted specimen
-// is a located unresolved citation and no parallel shape enum forks the specimens.
+// is a DECLARED identity; the guarantee is explicit DeclarationRef identity coverage, NOT that each
+// reference resolves: renaming a key and its row to one nonexistent declaration still joins. No
+// parallel shape enum forks the specimens.
 //
 // WHAT EXECUTES WHAT, honestly, per path (DESIGN 4b, rung honesty: a class's rung is the minimum
 // across its in-scope paths):
-//   evaluator       gated: the claims in this module and in the specimens module run every specimen
-//                   on the interpreter and compare with the declared Realizes rows.
+//   evaluator       the claims in this module and in the specimens module execute the specimens'
+//                   tag functions on the claim evaluator and join the declared Realizes rows. They do
+//                   NOT invoke eval_test_claim_subject, which is the target's identity key, not a
+//                   called route; the required workflow does not run this population either.
 //   seed Rust emit  NOT GATED. `gunbc compile --target rust` over the specimens module, cargo run of
 //                   the emitted crate, each specimen separately; observed locally, recorded in the PR.
 //   native v2 CLI   NOT GATED. `compile_cli emit --entry <specimens module>`; CI builds the CLI but
@@ -53,6 +57,7 @@ type RealizationSupportRow {
 type RealizationLookup
   = RealizationDeclared { expectation: RealizationExpectation }
   | RealizationUndeclared { target: DeclarationRef, specimen: DeclarationRef }
+  | RealizationDuplicated { target: DeclarationRef, specimen: DeclarationRef }
 
 data specimens_module: String = "v2.test.claim.cardinality_realization_specimens"
 
@@ -183,7 +188,11 @@ fn realization_support(rows: List<RealizationSupportRow>, target: DeclarationRef
     empty: RealizationUndeclared { target: target, specimen: specimen },
     cons: fn(acc, row) {
       if row_matches(row: row, target: target, specimen: specimen) {
-        RealizationDeclared { expectation: row.expectation }
+        match acc {
+          RealizationUndeclared { target: _, specimen: _ } => RealizationDeclared { expectation: row.expectation }
+          RealizationDeclared { expectation: _ } => RealizationDuplicated { target: target, specimen: specimen }
+          RealizationDuplicated { target: _, specimen: _ } => acc
+        }
       } else {
         acc
       }
@@ -195,6 +204,7 @@ fn lookup_is_declared(l: RealizationLookup) -> Bool {
   match l {
     RealizationDeclared { expectation: _ } => true
     RealizationUndeclared { target: _, specimen: _ } => false
+    RealizationDuplicated { target: _, specimen: _ } => false
   }
 }
 
@@ -212,6 +222,7 @@ fn expectation_is_realizes(l: RealizationLookup) -> Bool {
     RealizationDeclared { expectation: RefusesWith { causes: _ } } => false
     RealizationDeclared { expectation: ExpectedRed { defects: _ } } => false
     RealizationUndeclared { target: _, specimen: _ } => false
+    RealizationDuplicated { target: _, specimen: _ } => false
   }
 }
 
@@ -249,10 +260,28 @@ fn rows_without_pair(rows: List<RealizationSupportRow>, target: DeclarationRef, 
 // THE DISCRIMINATING CONTROL: dropping one row makes that pair a typed refusal, so a missing pair
 // cannot read as support. The control filters the one seed Rust specimen-4 row out of realization_support_rows.
 test fn a_missing_pair_is_a_typed_refusal_not_support() -> Bool {
-  !target_is_covered(rows: [], target: evaluator_target)
-    && !lookup_is_declared(l: realization_support(rows: rows_without_pair(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection), target: seed_rust_target, specimen: specimen_4_absent_collection))
+  !lookup_is_declared(l: realization_support(rows: rows_without_pair(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection), target: seed_rust_target, specimen: specimen_4_absent_collection))
     && lookup_is_declared(l: realization_support(rows: rows_without_pair(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection), target: seed_rust_target, specimen: specimen_3_present_present))
     && lookup_is_declared(l: realization_support(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection))
+}
+
+fn rows_reversed(rows: List<RealizationSupportRow>) -> List<RealizationSupportRow> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, r) { [r] + acc })
+}
+
+// EXACTLY ONE ROW PER PAIR. A second row for a pair that is declared ExpectedRed (here a Realizes row
+// for seed Rust specimen 8) makes the pair Duplicated, which is not declared and not support, in
+// either row order; and the unique rows give the same answer whatever their order.
+test fn a_duplicate_pair_is_refused_in_either_order() -> Bool {
+  let dup = supported(target: seed_rust_target, specimen: specimen_8_foreign_null)
+  let a = realization_support_rows + [dup]
+  let b = [dup] + realization_support_rows
+  !lookup_is_declared(l: realization_support(rows: a, target: seed_rust_target, specimen: specimen_8_foreign_null))
+    && !lookup_is_declared(l: realization_support(rows: b, target: seed_rust_target, specimen: specimen_8_foreign_null))
+    && !target_is_covered(rows: a, target: seed_rust_target)
+    && !expectation_is_realizes(l: realization_support(rows: a, target: seed_rust_target, specimen: specimen_8_foreign_null))
+    && target_realizes_all(rows: rows_reversed(rows: realization_support_rows), target: evaluator_target)
+    && !target_realizes_all(rows: rows_reversed(rows: realization_support_rows), target: seed_rust_target)
 }
 
 // A path that is expected to be red is not green: the seed Rust target does not realize every

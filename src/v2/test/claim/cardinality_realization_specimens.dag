@@ -27,7 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE NINE CONTROLLED SPECIMENS of roadmap node cardinality-realization-conformance, each reduced
 // to ONE Int tag by an elimination that keeps every distinction the specimen exists to test, so two
 // specimens that a realization conflates read as one tag and the pairwise claim reds. This module
-// covers the EVALUATOR PATH as gated claims. The other paths are declared per (target, specimen) in
+// covers the EVALUATOR PATH as claims executing the tag functions (not eval_test_claim_subject itself). The other paths are declared per (target, specimen) in
 // v2.test.claim.cardinality_realization_coverage, which also holds the rung: the seed Rust emit
 // realizes 1-6 and 7 and does NOT realize the List spelling of specimen 6 or specimens 8 and 9 (each
 // enrolled ExpectedRed with its owners), and the native v2 CLI refuses the whole closure before any
