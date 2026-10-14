@@ -2250,15 +2250,41 @@ fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List
 // applied binding but never `params`, so a declaration node with no applied binding answered
 // "bound" and the closure annotation was written. With no applied binding, a formal outside the
 // fn's generic scope is as unbound as any other atom, and the annotation defers to `_`.
-// A KERNEL MINT IS NOT A BARE-NAME ATOM. The walk descends a resolved declaration, and the kernel's
-// Bool (`True | False`) is a declaration whose variant arms are kernel-minted leaves named `True` and
-// `False`. They are not type references, and lookup_type_by_name answers only for a scope that
-// happens to bind a type spelling those arms, so `Map<String, Bool>` in `FirstDuplicateScan<T>`
-// read as unbound in a closure whose std.list scope binds none (rustc E0282, `|acc: _, x: _|`) and as
-// bound where another module did. The kernel identifies its own mints, so they never take the scope lookup.
+// A DECLARATION CONTRIBUTES WHAT THE RENDERER SPELLS FOR IT, NOT ITS ARMS. render_rust_type writes a
+// declaration as its name plus its applied args (or, with none, its own formals, which the
+// bare-constructor accumulator above needs) and never reads its variants or fields. A declaration node
+// (connective Disj or Conj) reaches this walk both through `Resolved` and as a type child itself
+// (`Map<String, Bool>` holds the kernel Bool declaration as its second child), and its children are
+// variants, never type arguments. Walking them judged atoms the annotation never spells: for
+// `FirstDuplicateScan<T>` the kernel Bool's `True` arm, which type_leaf_is_unbound_in_closure_scope
+// answers "unbound" when lookup_type_by_name("True") is Absent, as it is once more than one module of
+// the closure declares that variant (std.list with std.logic; std.list alone keeps the annotation).
+// The annotation erased to `_`, rustc E0282. A declaration is checked by its spelled atoms only.
+fn type_node_is_nominal(n: Node) -> Bool {
+  match n.connective {
+    Disj => true
+    Conj => true
+    _ => false
+  }
+}
+
+fn type_node_has_applied_binding(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn type_node_spelled_atoms_unbound(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+    Present { value: applied } => applied.children |> any(c => type_node_has_closure_unbound_generic_atom(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
+    Absent => n.params |> any(p => !type_var_in_fn_generic_scope(id: generic_param_name_at(n: p, source_indices: source_indices), generic_param_names: generic_param_names))
+  }
+}
+
 fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let leaf_name = authored_name_at(source_indices: source_indices, node: n)
-  if n.children |> count == 0 && leaf_name != "" && !(n.inferred == none && node_is_kernel_mint(n: n)) {
+  if n.children |> count == 0 && leaf_name != "" {
     if type_leaf_is_unbound_in_closure_scope(name: leaf_name, generic_param_names: generic_param_names, env: env) { return true }
   }
   if n.inferred != none {
@@ -2266,17 +2292,21 @@ fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List
       TypeVariable { id: tv } =>
         if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
       Resolved { node: rt } =>
-        if type_node_has_closure_unbound_generic_atom(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
+        if type_node_is_nominal(n: rt) {
+          if !type_node_has_applied_binding(n: n, source_indices: source_indices) && type_node_spelled_atoms_unbound(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
+        } else {
+          if type_node_has_closure_unbound_generic_atom(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
+        }
       _ => ()
     }
+  }
+  if type_node_is_nominal(n: n) {
+    return type_node_spelled_atoms_unbound(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices)
   }
   if n.children |> any(c => type_node_has_closure_unbound_generic_atom(n: child_type_node(ch: c), generic_param_names: generic_param_names, env: env, source_indices: source_indices)) {
     true
   } else {
-    match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
-      Present { value: applied } => applied.children |> any(c => type_node_has_closure_unbound_generic_atom(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
-      Absent => n.params |> any(p => !type_var_in_fn_generic_scope(id: generic_param_name_at(n: p, source_indices: source_indices), generic_param_names: generic_param_names))
-    }
+    type_node_spelled_atoms_unbound(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices)
   }
 }
 
