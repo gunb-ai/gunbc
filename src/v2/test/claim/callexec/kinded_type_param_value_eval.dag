@@ -151,3 +151,25 @@ test fn kpu_explicit_literal_assembles() -> Bool { match cref_inferred_of(o: cre
   Absent => false } }
 test fn kpu_explicit_variant_assembles() -> Bool { match cref_inferred_of(o: cref_assemble(src: kpu_src(call: "width_of<Pointer>()"))) { Present { value: _ } => true
   Absent => false } }
+
+fn kpv_reason() -> Optional<Symbol> {
+  match cref_eval_of_call_to(o: cref_assemble(src: kpr_src()), name: ^mk8) {
+    Present { value: Rejected { diagnostics: d } } => Present { value: diagnostics_fatal_reason(d: d) }
+    _ => Absent
+  }
+}
+test fn kpv_type_node() -> Bool { kpv_reason() == Present { value: ^eval_rejected_type_node } }
+test fn kpv_unsupported_callee() -> Bool { kpv_reason() == Present { value: ^eval_rejected_unsupported_callee } }
+test fn kpv_runtime_value_node_unrepresentable() -> Bool { kpv_reason() == Present { value: ^eval_rejected_runtime_value_node_unrepresentable } }
+test fn kpv_argument_bind_absent() -> Bool { kpv_reason() == Present { value: ^eval_rejected_argument_bind_absent } }
+test fn kpv_bind_value_absent() -> Bool { kpv_reason() == Present { value: ^eval_rejected_bind_value_absent } }
+test fn kpv_invalid_node() -> Bool { kpv_reason() == Present { value: ^eval_rejected_invalid_node } }
+test fn kpv_callee_absent() -> Bool { kpv_reason() == Present { value: ^eval_rejected_callee_absent } }
+test fn kpv_canonical_mismatch() -> Bool { kpv_reason() == Present { value: ^eval_rejected_canonical_mismatch } }
+test fn kpv_grounding_node_mismatch() -> Bool { kpv_reason() == Present { value: ^eval_rejected_grounding_node_mismatch } }
+test fn kpv_resolved_type_mismatch() -> Bool { kpv_reason() == Present { value: ^eval_rejected_resolved_type_mismatch } }
+test fn kpv_inhabitance_mismatch() -> Bool { kpv_reason() == Present { value: ^eval_rejected_inhabitance_mismatch } }
+test fn kpv_function_value_body() -> Bool { kpv_reason() == Present { value: ^eval_rejected_function_value_body } }
+test fn kpv_grounding_not_derived() -> Bool { kpv_reason() == Present { value: ^eval_rejected_grounding_not_derived } }
+test fn kpv_parameter_reference_unbound() -> Bool { kpv_reason() == Present { value: ^eval_rejected_parameter_reference_unbound } }
+test fn kpv_absent() -> Bool { kpv_reason() == Absent }
