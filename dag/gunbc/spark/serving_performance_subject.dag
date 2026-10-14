@@ -1,7 +1,7 @@
 module gunbc.spark.serving_performance_subject
 
 import std.types { Bool, String, NonEmptyStr, List }
-import std.optional { Present, Absent, optional_both_present_unequal }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value, Watt, watt_count }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
@@ -617,17 +617,16 @@ fn either_side_unknown_axes(left: ServingPerformanceSubject, right: ServingPerfo
   filter(serving_subject_axes, a => subject_axis_is_unknown(s: left, a: a) || subject_axis_is_unknown(s: right, a: a))
 }
 
-fn ninfer_kv_known_wire(d: NinferKvDtype?) -> String? {
-  match d {
-    Absent => none
-    Present { value: x } => Present { value: ninfer_kv_dtype_wire(d: x) as String }
-  }
-}
-
-fn ninfer_spec_known_wire(s: NinferSpeculation?) -> String? {
-  match s {
-    Absent => none
-    Present { value: x } => Present { value: ninfer_speculation_wire(s: x) as String }
+// BOTH SIDES READ A T, AND THE Ts DISAGREE. Absent is unread nested evidence, not a mismatch.
+// Compared by inhabitance equality of T; a wire is a renderer and is not this question.
+fn both_read_unequal<T>(left: Optional<T>, right: Optional<T>) -> Bool {
+  match left {
+    Absent => false
+    Present { value: a } =>
+      match right {
+        Absent => false
+        Present { value: b } => a != b
+      }
   }
 }
 
@@ -642,10 +641,10 @@ fn engine_known_parts_differ(left: ServingEngineRequest, right: ServingEngineReq
       match right {
         EngineVllm { kv_cache_dtype: _, speculative: _, indexer_kv_dtype: _, scheduler_admission: _ } => true
         EngineNinfer { kv_dtype: kv2, speculation: sp2, max_concurrency: c2, kv_capacity_auto: auto2 } =>
-          optional_both_present_unequal(left: ninfer_kv_known_wire(d: kv), right: ninfer_kv_known_wire(d: kv2))
-            || optional_both_present_unequal(left: ninfer_spec_known_wire(s: sp), right: ninfer_spec_known_wire(s: sp2))
-            || optional_both_present_unequal(left: c, right: c2)
-            || optional_both_present_unequal(left: auto, right: auto2)
+          both_read_unequal(left: kv, right: kv2)
+            || both_read_unequal(left: sp, right: sp2)
+            || both_read_unequal(left: c, right: c2)
+            || both_read_unequal(left: auto, right: auto2)
       }
   }
 }
@@ -657,15 +656,8 @@ fn host_link_known_parts_differ(left: ServingHostLink, right: ServingHostLink) -
       match right {
         HostLinkUnread => false
         HostLinkNegotiated { link: b } =>
-          (pcie_generation_wire(g: a.generation) != pcie_generation_wire(g: b.generation)) || a.lane_count != b.lane_count
+          a.generation != b.generation || a.lane_count != b.lane_count
       }
-  }
-}
-
-fn watt_count_reading(w: Watt?) -> Nat? {
-  match w {
-    Absent => none
-    Present { value: x } => Present { value: watt_count(w: x) }
   }
 }
 
@@ -686,7 +678,7 @@ fn accelerator_known_parts_differ(left: ServingAcceleratorAxis, right: ServingAc
           !gpu_catalog_row_eq(a: a.sku, b: b.sku)
             || a.count != b.count
             || host_link_known_parts_differ(left: a.host_link, right: b.host_link)
-            || optional_both_present_unequal(left: watt_count_reading(w: a.applied_power_limit), right: watt_count_reading(w: b.applied_power_limit))
+            || both_read_unequal(left: a.applied_power_limit, right: b.applied_power_limit)
       }
   }
 }

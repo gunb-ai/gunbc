@@ -21,7 +21,7 @@ import gunbc.spark.serving_performance_subject {
 }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_server_catalog }
 import extdeps.gpu.types { GpuModelCatalogRow }
-import extdeps.storage.types { PcieLink, Gen5 }
+import extdeps.storage.types { PcieLink, Gen4, Gen5 }
 import extdeps.ninfer.ninfer_serve { NinferKvFp8, NinferKvInt8, NinferKvNvfp4, NinferMtp, NinferKvDtype }
 
 data fx_socket: NcclRealizedTransport = NcclTransportSocket { read_from: "fixture" as NonEmptyStr }
@@ -232,6 +232,18 @@ test fn w_negotiated_pcie_width_is_an_accelerator_axis() -> Bool {
   let j = serving_subject_reads(
     measurement_subject: fx_cited(sku: nvidia_rtx_pro_6000_workstation_catalog, watts: 600, lanes: 16),
     decision_subject: fx_cited(sku: nvidia_rtx_pro_6000_workstation_catalog, watts: 600, lanes: 8))
+  join_is_different(j: j) && join_names_axis(j: j, a: AxisAccelerator)
+}
+
+test fn w_negotiated_pcie_generation_is_an_accelerator_axis() -> Bool {
+  let j = serving_subject_reads(
+    measurement_subject: fx_cited(sku: nvidia_rtx_pro_6000_workstation_catalog, watts: 600, lanes: 16),
+    decision_subject: fx_vllm(accel: AcceleratorCited { realization: serving_accelerator_realization(
+      sku: nvidia_rtx_pro_6000_workstation_catalog,
+      count: 1,
+      host_link: HostLinkNegotiated { link: PcieLink { generation: Gen4, lane_count: 16 } },
+      applied_power_limit: Present { value: watt(count: 600) },
+    ) }))
   join_is_different(j: j) && join_names_axis(j: j, a: AxisAccelerator)
 }
 
