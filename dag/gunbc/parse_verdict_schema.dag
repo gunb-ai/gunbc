@@ -28,8 +28,6 @@ fn parse_compiler_identity_entries() -> List<String> {
   [parse_compiler_tokenize_entry, parse_compiler_parse_entry, parse_compiler_schema_entry]
 }
 
-data parse_compiler_runtime_crate_dir: String = "src/v1/stage0_runtime"
-
 // I_head vs I_base by the same identity fold; prefix restore of the GHA blob.
 type ParseVerdictReuse
   = Reused { compiler: String }

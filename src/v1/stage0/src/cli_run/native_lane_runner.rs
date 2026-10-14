@@ -550,18 +550,14 @@ fn prepare_emitted_compiler_for_entry(
                      binary_sha256={binary_identity} — reconcile, emit, build and red skipped",
                     key.digest, key.axes
                 );
-                let parse_compiler_identity = parse_compiler_identity_digest(
-                    source_roots,
-                    &super::process_workspace_root(),
-                    None,
-                    &manifest.rustc_identity,
-                    Some(&binary_identity),
-                )?;
+                // THE GATED PARSE-COMPILER IDENTITY NEEDS EMITTED RUST. A product HIT has the
+                // binary and not the per-module .rs, so it must not write `.parse_compiler_identity`
+                // under a second preimage (source + binary sha). The required job is always fresh.
                 return Ok(EmittedPreparation {
                     binary_path,
                     binary_identity,
                     closure_identity: manifest.closure_identity,
-                    parse_compiler_identity,
+                    parse_compiler_identity: String::new(),
                     seed_identity,
                     build: EmittedBuildObserved {
                         cargo_argv: manifest.cargo_argv,
@@ -867,7 +863,6 @@ fn prepare_emitted_compiler_for_entry(
         &workspace,
         Some(&emitted),
         &build.rustc_identity,
-        None,
     )?;
     eprintln!(
         "v2-native-route: parse-compiler identity {parse_compiler_identity} \
@@ -3552,7 +3547,6 @@ fn parse_compiler_identity_digest(
     workspace: &Path,
     emitted: Option<&super::EmittedWorkspace>,
     rustc_identity: &str,
-    restored_binary_identity: Option<&str>,
 ) -> Result<String, String> {
     use sha2::Digest;
     let mut paths: Vec<String> = Vec::new();
@@ -3610,9 +3604,6 @@ fn parse_compiler_identity_digest(
     }
     feed_runtime_crate(&mut hasher, workspace)?;
     feed_identity_file(&mut hasher, "rustc_identity", rustc_identity.as_bytes());
-    if let Some(binary) = restored_binary_identity {
-        feed_identity_file(&mut hasher, "restored_binary_sha256", binary.as_bytes());
-    }
     Ok(format!("{:x}", hasher.finalize()))
 }
 
@@ -3668,17 +3659,20 @@ fn keep_generation_one_executable(prepared: &EmittedPreparation) -> Result<PathB
             identity_path.display()
         )
     })?;
-    let parse_identity_path = PathBuf::from(format!("{}.parse_compiler_identity", kept.display()));
-    std::fs::write(
-        &parse_identity_path,
-        prepared.parse_compiler_identity.as_bytes(),
-    )
-    .map_err(|e| {
-        format!(
-            "V2-NATIVE REFUSAL cause=GenOneExecutableNotKept — write {}: {e}",
-            parse_identity_path.display()
+    if !prepared.parse_compiler_identity.is_empty() {
+        let parse_identity_path =
+            PathBuf::from(format!("{}.parse_compiler_identity", kept.display()));
+        std::fs::write(
+            &parse_identity_path,
+            prepared.parse_compiler_identity.as_bytes(),
         )
-    })?;
+        .map_err(|e| {
+            format!(
+                "V2-NATIVE REFUSAL cause=GenOneExecutableNotKept — write {}: {e}",
+                parse_identity_path.display()
+            )
+        })?;
+    }
     Ok(kept)
 }
 
