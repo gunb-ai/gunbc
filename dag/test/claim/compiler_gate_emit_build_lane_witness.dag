@@ -17,6 +17,8 @@ import gunbc.witness.compiler_gate_workflow {
 import gunbc.parse_verdict_publish {
   materialization_publish_if,
   parse_verdict_identity_step,
+  parse_verdict_identity_blob_step,
+  parse_verdict_identity_blob_save_step,
   parse_verdict_publish_walk_step,
   parse_verdict_publish_save_step,
   parse_verdict_identity_step_name,
@@ -26,7 +28,10 @@ import gunbc.parse_verdict_publish {
   parse_verdict_publish_step_id,
   parse_verdict_compiler_output,
 }
-import gunbc.parse_verdict_schema { parse_verdict_request_family }
+import gunbc.parse_verdict_schema {
+  parse_verdict_request_family,
+  parse_compiler_sha_identity_cache_prefix,
+}
 import gunbc.required_ci_contract_epoch {
   required_ci_context_name,
   required_ci_emitted_subject_obligations,
@@ -532,6 +537,8 @@ test fn a_pr_head_run_never_publishes() -> Bool {
   (step_if_condition(step: parse_verdict_identity_step()) == guard)
     && (step_if_condition(step: parse_verdict_publish_walk_step()) == guard)
     && (step_if_condition(step: parse_verdict_publish_save_step()) == guard)
+    && (step_if_condition(step: parse_verdict_identity_blob_step()) == guard)
+    && (step_if_condition(step: parse_verdict_identity_blob_save_step()) == guard)
     && string_contains(s: guard, pattern: "refs/heads/main")
     && string_contains(s: guard, pattern: "push")
     && (string_contains(s: guard, pattern: "pull_request") == false)
@@ -550,9 +557,18 @@ fn step_with_keys(step: Step) -> List<String> {
 
 test fn the_publish_save_does_not_restore() -> Bool {
   let keys = step_with_keys(step: parse_verdict_publish_save_step())
+  let id_keys = step_with_keys(step: parse_verdict_identity_blob_save_step())
   any(keys, k => k == "key")
     && any(keys, k => k == "path")
     && (any(keys, k => k == "restore-keys") == false)
+    && any(id_keys, k => k == "key")
+    && any(id_keys, k => k == "path")
+    && (any(id_keys, k => k == "restore-keys") == false)
+}
+
+test fn the_sha_identity_save_key_is_sha_only() -> Bool {
+  string_contains(s: parse_compiler_sha_identity_cache_prefix, pattern: "gunbc-parse-identity-")
+    && (step_if_condition(step: parse_verdict_identity_blob_save_step()) == materialization_publish_if())
 }
 
 test fn the_gha_object_key_carries_compiler_identity_and_sha() -> Bool {
