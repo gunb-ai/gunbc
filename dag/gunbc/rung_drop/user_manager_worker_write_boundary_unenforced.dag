@@ -1,0 +1,34 @@
+module gunbc.rung_drop.user_manager_worker_write_boundary_unenforced
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// Grain: write confinement of dashboard attempt workers started as systemd --user transients.
+// The corpus reported mechanical preventability from rendered ProtectSystem/ReadWritePaths;
+// on srv1 those options are dropped without error (apparmor_restrict_unprivileged_userns=1).
+// DESIGN 4b(1): the rung is the minimum across in-scope paths. This row is that minimum.
+
+data user_manager_worker_write_boundary_unenforced: RungDrop = RungDrop {
+  identity: "user_manager_worker_write_boundary_unenforced" as NonEmptyStr,
+
+  subject: "Whether a dispatched attempt worker started as a systemd user-manager transient cannot write outside its declared ReadWritePaths — assessed at the KERNEL/MANAGER PATH that runs on srv1, not at the rendered property list",
+
+  declared: "2026-10-14",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "an enforcing realization of ProtectSystem/ProtectHome/ReadWritePaths for dashboard workers. The operator chooses among (1) system-manager units with User= via a narrow privileged launcher, (2) an AppArmor allowance that lets the user manager build the mount namespace, (3) a microVM. None of those is built until that choice. A property-membership witness is not the replacement.",
+    },
+    population: [
+      "every dashboard attempt worker started through systemd-run --user on srv1, including gunbc-attempt-* transients under the live and lab instances",
+      "VERIFIED 2026-10-14 by bright-moth-475 on srv1 (issuecomment-6175000334): systemd-run --user -p ProtectHome=read-only -p ProtectSystem=strict sh -c \"touch $HOME/x\" succeeds, including with PrivateUsers=yes; a live unit wrote <IR>/bin which is not in its ReadWritePaths",
+      "NOT in the population: system-manager units (PID 1) where those properties do apply; hosts where unprivileged userns is not restricted; the dry membership claims in test.claim.roadmap.dispatch_worker_confinement_witness, which remain true of the rendered plan and do not establish this rung",
+    ],
+    restoration_trigger: "THE CAPABILITY: a dispatched worker on srv1, started with the production unit properties, is refused when it writes a path outside ReadWritePaths, observed by execution of test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox going green on that host. WHAT DOES NOT RETIRE THIS ROW: rendering Protect* correctly; narrowing ReadWritePaths; adding another hermetic membership claim; choosing among launcher/AppArmor/microVM without that choice running on srv1.",
+  },
+}
