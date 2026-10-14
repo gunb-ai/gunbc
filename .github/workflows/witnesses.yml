@@ -154,7 +154,7 @@ jobs:
       - name: Resolve parse-verdict compiler identity
         id: publish_parse_verdicts
         run: |+
-          # dissolve-on: parse_verdict_publish_walk_step -- hand-shell run carrier for locating the generation-one executable, walking parse-population, and stamping compiler onto Accepted receipt lines. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders this step from modeled bash_build statements rather than a joined command string, at which point this row and the comment it projects delete together.
+          # dissolve-on: parse_verdict_publish_walk_step -- hand-shell run carrier for locating the generation-one executable and writing GITHUB_OUTPUT. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders this step from modeled bash_build statements rather than a joined command string, at which point this row and the comment it projects delete together.
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
           'set' '+e'
           'set' '-o' 'pipefail'
@@ -179,19 +179,13 @@ jobs:
         env:
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      - name: Save parse-verdict receipts to Actions cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: .gunbc/parse-verdicts
-          key: gunbc-materialization-parse-verdict-${{ steps.publish_parse_verdicts.outputs.compiler_identity }}-${{ github.sha }}
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Walk parse-population and publish verdict receipts
         run: |+
-          # dissolve-on: parse_verdict_publish_walk_step -- hand-shell run carrier for locating the generation-one executable, walking parse-population, and stamping compiler onto Accepted receipt lines. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders this step from modeled bash_build statements rather than a joined command string, at which point this row and the comment it projects delete together.
+          # dissolve-on: parse_verdict_publish_walk_step -- hand-shell run carrier for locating the generation-one executable and writing GITHUB_OUTPUT. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders this step from modeled bash_build statements rather than a joined command string, at which point this row and the comment it projects delete together.
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
           'set' '+e'
           'set' '-o' 'pipefail'
-          ('sh' '-e' '-c' 'set -o pipefail; bin="${{ steps.publish_parse_verdicts.outputs.parser_bin }}"; compiler="${{ steps.publish_parse_verdicts.outputs.compiler_identity }}"; if [ -z "$bin" ] || [ ! -x "$bin" ] || [ -z "$compiler" ]; then echo "::error::IdentityUnknown: parser identity or generation-one executable missing after the identity step"; exit 1; fi; mkdir -p ".gunbc/parse-verdicts"; "$bin" parse-population --source-root dag --source-root src/v2 | tee ".gunbc/parse-verdicts/walk.txt"; while IFS= read -r line; do fam=$(printf %s "$line" | cut -f1); digest=$(printf %s "$line" | cut -f2); verdict=$(printf %s "$line" | cut -f3); if [ "$fam" = parse-verdict ] && [ "$verdict" = Accepted ]; then printf "parse-verdict\t%s\t%s\tAccepted\n" "$digest" "$compiler"; fi; done < ".gunbc/parse-verdicts/walk.txt" > ".gunbc/parse-verdicts/receipts.tsv"; if [ ! -s ".gunbc/parse-verdicts/receipts.tsv" ]; then echo "::error::ParseVerdictReceiptsEmpty: stamp matched no Accepted walk lines"; exit 1; fi') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          ('sh' '-e' '-c' 'set -o pipefail; bin="${{ steps.publish_parse_verdicts.outputs.parser_bin }}"; compiler="${{ steps.publish_parse_verdicts.outputs.compiler_identity }}"; if [ -z "$bin" ] || [ ! -x "$bin" ] || [ -z "$compiler" ]; then echo "::error::IdentityUnknown: parser identity or generation-one executable missing after the identity step"; exit 1; fi; mkdir -p ".gunbc/parse-verdicts"; "$bin" parse-population --compiler "$compiler" --source-root dag --source-root src/v2 > ".gunbc/parse-verdicts/receipts.tsv"') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
           GUNBC_FLOOR_EXIT="$?"
           GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
           GUNBC_FLOOR_CLASS='structural'
@@ -211,6 +205,12 @@ jobs:
 
         env:
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Save parse-verdict receipts to Actions cache
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: .gunbc/parse-verdicts
+          key: gunbc-materialization-parse-verdict-${{ steps.publish_parse_verdicts.outputs.compiler_identity }}-${{ github.sha }}
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Why this lane is red, and what would be a real finding
         run: |-

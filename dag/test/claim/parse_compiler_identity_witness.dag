@@ -11,6 +11,8 @@ import gunbc.parse_verdict_schema {
   parse_verdict_receipt_accepted,
   parse_verdict_receipt_line_prefix,
   parse_verdict_walk_accepted_line,
+  parse_verdict_stored_accepted_line,
+  parse_verdict_pr2_restore_frontier,
   parse_verdict_reuse_from,
   parse_verdict_reuse_may_save,
   Reused,
@@ -55,6 +57,16 @@ test fn the_walk_line_is_family_digest_and_accepted() -> Bool {
   parse_verdict_receipt_line_prefix() == join([parse_verdict_request_family, "\t"], "")
     && parse_verdict_walk_accepted_line(source_digest: "abc")
       == join([parse_verdict_request_family, "\tabc\t", parse_verdict_receipt_accepted], "")
+}
+
+test fn the_stored_line_stamps_compiler() -> Bool {
+  parse_verdict_stored_accepted_line(source_digest: "abc", compiler: "cid")
+    == join([parse_verdict_request_family, "\tabc\tcid\t", parse_verdict_receipt_accepted], "")
+}
+
+test fn pr2_is_the_named_restore_consumer() -> Bool {
+  (parse_verdict_pr2_restore_frontier.declaration.decl_name == "parse_verdict_request_family")
+    && ((parse_verdict_pr2_restore_frontier.named_consumer as String) != parse_verdict_pr2_restore_frontier.declaration.decl_name)
 }
 
 test fn main_may_save_after_a_fresh_identity_walk() -> Bool {

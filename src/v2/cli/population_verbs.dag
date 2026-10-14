@@ -5,7 +5,10 @@ import std.algebra { Cons, Empty, fold_list, is_empty, length, list_head, list_m
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
-import gunbc.parse_verdict_schema { parse_verdict_walk_accepted_line }
+import gunbc.parse_verdict_schema {
+  parse_verdict_stored_accepted_line,
+  parse_verdict_receipts_empty_detail,
+}
 import gunbc.source_layout_namespaces { layout_namespaces }
 import gunbc.source_root_read { SourceRootPathsRead, SourceRootPathsRefused, SourceRootWalkTask, source_root_child_path, source_root_walk }
 import v2.cli.repository_layout { repository_storage_layout }
@@ -170,6 +173,7 @@ type PopulationParse {
   judged: Map<String, Bool>
   refusals: List<String>
   accepted_receipts: List<String>
+  compiler: Optional<String>
 }
 
 type RosterBuild {
@@ -201,7 +205,7 @@ type PopulationBegin
   = PopulationBegun { tally: PopulationParse }
   | PopulationDeclarationDuplicated { keys: List<String> }
 
-fn population_parse_begin(classes: List<RefusalClass>) -> PopulationBegin {
+fn population_parse_begin(classes: List<RefusalClass>, compiler: Optional<String>) -> PopulationBegin {
   let no_causes: Map<String, String> = empty_map()
   let no_judged: Map<String, Bool> = empty_map()
   let built = fold_list(
@@ -219,7 +223,8 @@ fn population_parse_begin(classes: List<RefusalClass>) -> PopulationBegin {
         roster: DeclaredRoster { ordered: list_reverse(xs: built.ordered_reversed), causes: built.causes },
         judged: no_judged,
         refusals: [],
-        accepted_receipts: []
+        accepted_receipts: [],
+        compiler: compiler
       }
     }
   } else {
@@ -258,7 +263,8 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
           roster: tally.roster,
           judged: population_parse_judged(tally: tally, key: key),
           refusals: tally.refusals,
-          accepted_receipts: tally.accepted_receipts
+          accepted_receipts: tally.accepted_receipts,
+          compiler: tally.compiler
         }
       } else {
         PopulationParse {
@@ -270,7 +276,8 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
             head: concat(key, ": ", cause, "; gunbc.parse_population_refusals declares it refused for ", declared_cause),
             tail: tally.refusals
           },
-          accepted_receipts: tally.accepted_receipts
+          accepted_receipts: tally.accepted_receipts,
+          compiler: tally.compiler
         }
       }
     Absent =>
@@ -280,7 +287,8 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
         roster: tally.roster,
         judged: tally.judged,
         refusals: Cons { head: concat(key, ": ", cause), tail: tally.refusals },
-        accepted_receipts: tally.accepted_receipts
+        accepted_receipts: tally.accepted_receipts,
+        compiler: tally.compiler
       }
   }
 }
@@ -300,7 +308,8 @@ fn population_parse_accepted(tally: PopulationParse, key: String, source_digest:
           head: concat(key, ": parses, but gunbc.parse_population_refusals declares it refused for ", declared_cause, "; remove it from its class"),
           tail: tally.refusals
         },
-        accepted_receipts: tally.accepted_receipts
+        accepted_receipts: tally.accepted_receipts,
+        compiler: tally.compiler
       }
     Absent =>
       PopulationParse {
@@ -309,10 +318,14 @@ fn population_parse_accepted(tally: PopulationParse, key: String, source_digest:
         roster: tally.roster,
         judged: tally.judged,
         refusals: tally.refusals,
-        accepted_receipts: Cons {
-          head: parse_verdict_walk_accepted_line(source_digest: source_digest),
-          tail: tally.accepted_receipts
-        }
+        accepted_receipts: match tally.compiler {
+          Absent => tally.accepted_receipts
+          Present { value: compiler } => Cons {
+            head: parse_verdict_stored_accepted_line(source_digest: source_digest, compiler: compiler),
+            tail: tally.accepted_receipts
+          }
+        },
+        compiler: tally.compiler
       }
   }
 }
@@ -326,7 +339,8 @@ fn population_parse_member(env: AcquisitionEnv, name: String, tally: PopulationP
         roster: tally.roster,
         judged: tally.judged,
         refusals: Cons { head: concat(name, ": ", cause), tail: tally.refusals },
-        accepted_receipts: tally.accepted_receipts
+        accepted_receipts: tally.accepted_receipts,
+        compiler: tally.compiler
       }
     PopulationMemberRead { member: member } =>
       match acquisition_parse(env: env, file: member.file, content: member.content) {
@@ -393,30 +407,33 @@ fn population_parse_report(tally: PopulationParse) -> PopulationReport {
       detail: "the bound trees store no module under the declared namespaces; a parse over nothing is not a parse of zero"
     }
   } else {
-    PopulationReport {
-      text: if is_empty(xs: tally.accepted_receipts) {
-        concat(
-          "population parses: ",
-          int_to_decimal_string(value: tally.parsed),
-          " module(s); ",
-          int_to_decimal_string(value: tally.declared),
-          " refusal(s) declared by gunbc.parse_population_refusals, each met"
-        )
-      } else {
-        concat(
-          concat(
+    match tally.compiler {
+      Present { value: _ } =>
+        if is_empty(xs: tally.accepted_receipts) {
+          PopulationReport {
+            text: "",
+            held: false,
+            detail: parse_verdict_receipts_empty_detail
+          }
+        } else {
+          PopulationReport {
+            text: join(list_reverse(xs: tally.accepted_receipts), "\n"),
+            held: true,
+            detail: "every enumerated module parsed or is refused exactly as declared, and every declared refusal was met"
+          }
+        }
+      Absent =>
+        PopulationReport {
+          text: concat(
             "population parses: ",
             int_to_decimal_string(value: tally.parsed),
             " module(s); ",
             int_to_decimal_string(value: tally.declared),
             " refusal(s) declared by gunbc.parse_population_refusals, each met"
           ),
-          "\n",
-          join(list_reverse(xs: tally.accepted_receipts), "\n")
-        )
-      },
-      held: true,
-      detail: "every enumerated module parsed or is refused exactly as declared, and every declared refusal was met"
+          held: true,
+          detail: "every enumerated module parsed or is refused exactly as declared, and every declared refusal was met"
+        }
     }
   }
 }
@@ -429,14 +446,14 @@ fn population_declaration_duplicated_report(keys: List<String>) -> PopulationRep
   }
 }
 
-fn parse_population_listed(env: AcquisitionEnv, modules: List<String>) -> PopulationReport {
-  match population_parse_begin(classes: parse_population_declared_refusal_classes()) {
+fn parse_population_listed(env: AcquisitionEnv, modules: List<String>, compiler: Optional<String>) -> PopulationReport {
+  match population_parse_begin(classes: parse_population_declared_refusal_classes(), compiler: compiler) {
     PopulationDeclarationDuplicated { keys: keys } => population_declaration_duplicated_report(keys: keys)
     PopulationBegun { tally: tally } => population_parse_report(tally: population_parse_go(env: env, pending: modules, tally: tally))
   }
 }
 
-fn parse_population_prepared(env: AcquisitionEnv) -> PopulationReport {
+fn parse_population_prepared(env: AcquisitionEnv, compiler: Optional<String>) -> PopulationReport {
   match enumerate_bound_modules(layout: env.layout, bindings: env.bindings, namespaces: layout_namespaces()) {
     BoundModulesRefused { subject: subject, cause: cause } =>
       PopulationReport {
@@ -444,14 +461,14 @@ fn parse_population_prepared(env: AcquisitionEnv) -> PopulationReport {
         held: false,
         detail: concat("could not enumerate the modules of ", subject)
       }
-    BoundModulesListed { modules: modules } => parse_population_listed(env: env, modules: modules)
+    BoundModulesListed { modules: modules } => parse_population_listed(env: env, modules: modules, compiler: compiler)
   }
 }
 
-fn parse_population(bindings: List<SourceRootBinding>) -> PopulationReport {
+fn parse_population(bindings: List<SourceRootBinding>, compiler: Optional<String>) -> PopulationReport {
   match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
     AcquisitionEnvUnprepared { diagnostics: _ } =>
       PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module was observed" }
-    AcquisitionEnvReady { env: env } => parse_population_prepared(env: env)
+    AcquisitionEnvReady { env: env } => parse_population_prepared(env: env, compiler: compiler)
   }
 }

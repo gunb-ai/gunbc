@@ -478,7 +478,7 @@ test fn the_required_job_binds_the_parse_verdict_publisher() -> Bool {
     && any(names, n => n == parse_verdict_save_step_name())
     && string_contains(
       s: join(names, "\n"),
-      pattern: join([parse_verdict_identity_step_name, "\n", parse_verdict_save_step_name(), "\n", parse_verdict_publish_step_name], "")
+      pattern: join([parse_verdict_identity_step_name, "\n", parse_verdict_publish_step_name, "\n", parse_verdict_save_step_name()], "")
     )
 }
 

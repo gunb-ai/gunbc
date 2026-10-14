@@ -179,7 +179,7 @@ type CliVerb
   = CliEmitClosure { entry: String, source_roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliIfArmReaderDifferential { source_roots: FreeMonoid<String> }
   | CliCheckLayout { source_roots: FreeMonoid<String> }
-  | CliParsePopulation { source_roots: FreeMonoid<String> }
+  | CliParsePopulation { source_roots: FreeMonoid<String>, compiler: Optional<String> }
 
 // THE VERBS WHOSE ONLY OPTION IS --source-root. They parse identically and differ in spelling, usage
 // and the verb they select, so the parser carries which of them it is walking instead of one pair of
@@ -200,7 +200,14 @@ fn cli_roots_verb_spelling(kind: CliRootsVerb) -> String {
 }
 
 fn cli_roots_verb_usage(kind: CliRootsVerb) -> String {
-  concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
+  match kind {
+    CliRootsParsePopulation =>
+      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]... [--compiler <identity>]")
+    CliRootsDifferential =>
+      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
+    CliRootsCheckLayout =>
+      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
+  }
 }
 
 fn cli_roots_verb_of_spelling(spelling: String) -> Optional<CliRootsVerb> {
@@ -213,11 +220,11 @@ fn cli_roots_verb_of_spelling(spelling: String) -> Optional<CliRootsVerb> {
   )
 }
 
-fn cli_roots_verb_selected(kind: CliRootsVerb, roots: FreeMonoid<String>) -> CliVerb {
+fn cli_roots_verb_selected(kind: CliRootsVerb, roots: FreeMonoid<String>, compiler: Optional<String>) -> CliVerb {
   match kind {
     CliRootsDifferential => CliIfArmReaderDifferential { source_roots: roots }
     CliRootsCheckLayout => CliCheckLayout { source_roots: roots }
-    CliRootsParsePopulation => CliParsePopulation { source_roots: roots }
+    CliRootsParsePopulation => CliParsePopulation { source_roots: roots, compiler: compiler }
   }
 }
 
@@ -241,11 +248,14 @@ type CliParseState
   | CliParseSeekRootValue { entry: String, roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliParseSeekEntryValue { entry: String, roots: FreeMonoid<String>, target: CliEmitTarget }
   | CliParseSeekTargetValue { entry: String, roots: FreeMonoid<String> }
-  | CliParseSeekRootsOption { kind: CliRootsVerb, roots: FreeMonoid<String> }
-  | CliParseSeekRootsValue { kind: CliRootsVerb, roots: FreeMonoid<String> }
+  | CliParseSeekRootsOption { kind: CliRootsVerb, roots: FreeMonoid<String>, compiler: Optional<String> }
+  | CliParseSeekRootsValue { kind: CliRootsVerb, roots: FreeMonoid<String>, compiler: Optional<String> }
+  | CliParseSeekCompilerValue { kind: CliRootsVerb, roots: FreeMonoid<String> }
   | CliParseFailed { reason: Symbol, detail: String }
 
 data cli_option_source_root: String = "--source-root"
+
+data cli_option_compiler: String = "--compiler"
 
 data cli_option_entry: String = "--entry"
 
@@ -276,7 +286,7 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
         CliParseSeekOption { entry: "", roots: Empty, target: cli_default_emit_target }
       } else {
         match cli_roots_verb_of_spelling(spelling: arg) {
-          Present { value: kind } => CliParseSeekRootsOption { kind: kind, roots: Empty }
+          Present { value: kind } => CliParseSeekRootsOption { kind: kind, roots: Empty, compiler: none }
           Absent =>
             CliParseFailed {
               reason: ^cli_unknown_verb,
@@ -284,23 +294,48 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
             }
         }
       }
-    CliParseSeekRootsOption { kind: kind, roots: roots } =>
+    CliParseSeekRootsOption { kind: kind, roots: roots, compiler: compiler } =>
       if arg == cli_option_source_root {
-        CliParseSeekRootsValue { kind: kind, roots: roots }
+        CliParseSeekRootsValue { kind: kind, roots: roots, compiler: compiler }
       } else {
-        CliParseFailed {
-          reason: ^cli_unknown_option,
-          detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+        if arg == cli_option_compiler {
+          match kind {
+            CliRootsParsePopulation => CliParseSeekCompilerValue { kind: kind, roots: roots }
+            CliRootsDifferential =>
+              CliParseFailed {
+                reason: ^cli_unknown_option,
+                detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+              }
+            CliRootsCheckLayout =>
+              CliParseFailed {
+                reason: ^cli_unknown_option,
+                detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+              }
+          }
+        } else {
+          CliParseFailed {
+            reason: ^cli_unknown_option,
+            detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+          }
         }
       }
-    CliParseSeekRootsValue { kind: kind, roots: roots } =>
-      if cli_arg_is_option(arg: arg) {
+    CliParseSeekCompilerValue { kind: kind, roots: roots } =>
+      if cli_arg_is_option(arg: arg) || arg == cli_option_compiler {
+        CliParseFailed {
+          reason: ^cli_compiler_missing_value,
+          detail: concat(cli_option_compiler, " takes the parse-compiler identity, and an option followed it")
+        }
+      } else {
+        CliParseSeekRootsOption { kind: kind, roots: roots, compiler: Present { value: arg } }
+      }
+    CliParseSeekRootsValue { kind: kind, roots: roots, compiler: compiler } =>
+      if cli_arg_is_option(arg: arg) || arg == cli_option_compiler {
         CliParseFailed {
           reason: ^cli_source_root_missing_value,
           detail: concat(cli_option_source_root, " takes a directory, and an option followed it")
         }
       } else {
-        CliParseSeekRootsOption { kind: kind, roots: Cons { head: arg, tail: roots } }
+        CliParseSeekRootsOption { kind: kind, roots: Cons { head: arg, tail: roots }, compiler: compiler }
       }
     CliParseSeekRootValue { entry: entry, roots: roots, target: target } =>
       if cli_arg_is_option(arg: arg) {
@@ -360,7 +395,7 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
 }
 
 fn cli_arg_is_option(arg: String) -> Bool {
-  (arg == cli_option_source_root) || (arg == cli_option_entry) || (arg == cli_option_target)
+  (arg == cli_option_source_root) || (arg == cli_option_entry) || (arg == cli_option_target) || (arg == cli_option_compiler)
 }
 
 fn cli_parse_finish(state: CliParseState) -> CliPlan {
@@ -384,19 +419,24 @@ fn cli_parse_finish(state: CliParseState) -> CliPlan {
         reason: ^cli_target_missing_value,
         detail: concat(cli_option_target, " takes a target name, and none followed it")
       }
-    CliParseSeekRootsValue { kind: _, roots: _ } =>
+    CliParseSeekCompilerValue { kind: _, roots: _ } =>
+      CliPlanRefused {
+        reason: ^cli_compiler_missing_value,
+        detail: concat(cli_option_compiler, " takes the parse-compiler identity, and none followed it")
+      }
+    CliParseSeekRootsValue { kind: _, roots: _, compiler: _ } =>
       CliPlanRefused {
         reason: ^cli_source_root_missing_value,
         detail: concat(cli_option_source_root, " takes a directory, and none followed it")
       }
-    CliParseSeekRootsOption { kind: kind, roots: roots } =>
+    CliParseSeekRootsOption { kind: kind, roots: roots, compiler: compiler } =>
       if length(xs: roots) == 0 {
         CliPlanRefused {
           reason: ^cli_no_source_root,
           detail: concat(cli_roots_verb_spelling(kind: kind), " needs at least one source root -- ", cli_roots_verb_usage(kind: kind))
         }
       } else {
-        CliPlanParsed { verb: cli_roots_verb_selected(kind: kind, roots: list_reverse(xs: roots)) }
+        CliPlanParsed { verb: cli_roots_verb_selected(kind: kind, roots: list_reverse(xs: roots), compiler: compiler) }
       }
     CliParseSeekOption { entry: entry, roots: roots, target: target } =>
       if length(xs: roots) == 0 {
@@ -437,7 +477,7 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
         CliEmitClosure { entry: _, source_roots: roots, target: _ } => roots
         CliIfArmReaderDifferential { source_roots: roots } => roots
         CliCheckLayout { source_roots: roots } => roots
-        CliParsePopulation { source_roots: roots } => roots
+        CliParsePopulation { source_roots: roots, compiler: _ } => roots
       }
   }
 }
@@ -496,7 +536,7 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
             cli_if_arm_reader_differential_outcome(census: if_arm_reader_differential(ingest: ingest))
           }
         CliCheckLayout { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_check_layout)
-        CliParsePopulation { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_parse_population)
+        CliParsePopulation { source_roots: _, compiler: _ } => cli_verb_takes_no_ingest(verb: cli_verb_parse_population)
         CliEmitClosure { entry: entry, source_roots: _, target: target } =>
           if length(xs: ingest) == 0 {
             CliRunRefused {
@@ -674,7 +714,8 @@ fn cli_run_bound(plan: CliPlan, verb: CliVerb, bindings: List<SourceRootBinding>
       cli_run_acquired(plan: plan, bindings: bindings, entries: [entry])
     CliIfArmReaderDifferential { source_roots: _ } => cli_run_differential(plan: plan, bindings: bindings)
     CliCheckLayout { source_roots: _ } => cli_population_reported(report: check_layout(bindings: bindings))
-    CliParsePopulation { source_roots: _ } => cli_population_reported(report: parse_population(bindings: bindings))
+    CliParsePopulation { source_roots: _, compiler: compiler } =>
+      cli_population_reported(report: parse_population(bindings: bindings, compiler: compiler))
   }
 }
 
