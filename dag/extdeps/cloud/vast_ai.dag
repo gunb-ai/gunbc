@@ -3,7 +3,7 @@ module extdeps.cloud.vast_ai
 import std.resources { Network }
 import std.types { Int, Bool, NonEmptyStr, String, Secret, List }
 import std.nat { Nat }
-import std.algebra { trim }
+import std.algebra { trim, list_head }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.decimal { ExactDecimal }
 import std.measure {
@@ -143,7 +143,7 @@ fn vast_ai_driver_version_from_search_offers_text(raw: String?) -> VastAiDriverV
       if trim(s: text) == "" {
         VastAiDriverVersionMalformed { raw: text }
       } else {
-        match split(s: trim(s: text), delimiter: ".").first() {
+        match list_head(xs: split(s: trim(s: text), delimiter: ".")) {
           Absent => VastAiDriverVersionMalformed { raw: text }
           Present { value: head } =>
             match parse_int(s: head) {
