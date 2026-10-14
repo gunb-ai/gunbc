@@ -46,7 +46,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type RealizationExpectation
   = Realizes
   | RefusesWith { causes: List<Symbol> }
-  | ExpectedRed { defects: List<Symbol> }
+  | ExpectedRed { defects: List<Symbol>, owner: DeclarationRef }
 
 type RealizationSupportRow {
   target: DeclarationRef
@@ -113,13 +113,20 @@ data all_targets: List<DeclarationRef> = [evaluator_target, seed_rust_target, na
 // inference and the expected element type is not pushed into the literal, so
 // render_rust_optional_carrier_inner falls back to () and the payload is lost. The emitted type is
 // Option<Rc<Vec<Option<()>>>> and the emitted crate fails rustc E0308; the FreeMonoid spelling is
-// stamped and realizes. Owners: sunny-ibex-824 under tidy-ant-251 (inference stamping) and
-// merry-moth-118 under clever-crane-830 (the renderer); both lanes rot, the defect symbols do not.
+// stamped and realizes. Repair lanes at the time of writing (inference stamping, the renderer) are
+// not recorded as owners; the owner is list_erasure_owner.
+// THE OWNER OF AN EXPECTED RED is the durable carrier that tracks the defect, by identity: the
+// recurring_failure_mode row whose class the defect instantiates. Sessions are ephemeral and are not
+// owners. A red row cannot be written without one (the field is required, with no absent arm).
+data list_erasure_owner: DeclarationRef = decl_ref(module_path: "gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target", decl_name: "accepted_source_emits_uncompilable_target")
+
+data json_registry_owner: DeclarationRef = decl_ref(module_path: "gunbc.recurring_failure_mode.emit_bridge_without_runtime_body", decl_name: "emit_bridge_without_runtime_body")
+
 data seed_rust_list_defects: List<Symbol> = [^render_rust_optional_carrier_inner]
 
 // SPECIMENS 8 AND 9 on seed Rust: json_unescape_checked has no rt_function_registry row, so
 // json_member_presence and json_field_string reach a primitive with no Rust realization and the
-// emitted program PANICS at run time instead of refusing at emit time. Owner: clever-crane-830.
+// emitted program PANICS at run time instead of refusing at emit time. Owner: json_registry_owner.
 data seed_rust_json_defects: List<Symbol> = [^json_unescape_checked]
 
 // NATIVE v2 CLI, every specimen: the source roots do not yield an exact closure. The entry's
@@ -141,8 +148,8 @@ fn supported(target: DeclarationRef, specimen: DeclarationRef) -> RealizationSup
   RealizationSupportRow { target: target, specimen: specimen, expectation: Realizes }
 }
 
-fn expected_red(target: DeclarationRef, specimen: DeclarationRef, defects: List<Symbol>) -> RealizationSupportRow {
-  RealizationSupportRow { target: target, specimen: specimen, expectation: ExpectedRed { defects: defects } }
+fn expected_red(target: DeclarationRef, specimen: DeclarationRef, defects: List<Symbol>, owner: DeclarationRef) -> RealizationSupportRow {
+  RealizationSupportRow { target: target, specimen: specimen, expectation: ExpectedRed { defects: defects, owner: owner } }
 }
 
 data realization_support_rows: List<RealizationSupportRow> = [
@@ -162,10 +169,10 @@ data realization_support_rows: List<RealizationSupportRow> = [
   supported(target: seed_rust_target, specimen: specimen_4_absent_collection),
   supported(target: seed_rust_target, specimen: specimen_5_present_empty_collection),
   supported(target: seed_rust_target, specimen: specimen_6_present_absent_entries),
-  expected_red(target: seed_rust_target, specimen: specimen_6_list_present_absent_list_entries, defects: seed_rust_list_defects),
+  expected_red(target: seed_rust_target, specimen: specimen_6_list_present_absent_list_entries, defects: seed_rust_list_defects, owner: list_erasure_owner),
   supported(target: seed_rust_target, specimen: specimen_7_foreign_missing),
-  expected_red(target: seed_rust_target, specimen: specimen_8_foreign_null, defects: seed_rust_json_defects),
-  expected_red(target: seed_rust_target, specimen: specimen_9_foreign_invalid, defects: seed_rust_json_defects),
+  expected_red(target: seed_rust_target, specimen: specimen_8_foreign_null, defects: seed_rust_json_defects, owner: json_registry_owner),
+  expected_red(target: seed_rust_target, specimen: specimen_9_foreign_invalid, defects: seed_rust_json_defects, owner: json_registry_owner),
   refuses(target: native_v2_target, specimen: specimen_1_absent, causes: native_closure_causes),
   refuses(target: native_v2_target, specimen: specimen_2_present_absent, causes: native_closure_causes),
   refuses(target: native_v2_target, specimen: specimen_3_present_present, causes: native_closure_causes),
@@ -220,7 +227,7 @@ fn expectation_is_realizes(l: RealizationLookup) -> Bool {
   match l {
     RealizationDeclared { expectation: Realizes } => true
     RealizationDeclared { expectation: RefusesWith { causes: _ } } => false
-    RealizationDeclared { expectation: ExpectedRed { defects: _ } } => false
+    RealizationDeclared { expectation: ExpectedRed { defects: _, owner: _ } } => false
     RealizationUndeclared { target: _, specimen: _ } => false
     RealizationDuplicated { target: _, specimen: _ } => false
   }
