@@ -494,15 +494,13 @@ fn publication_helper_credential() -> PublicationCredentialSource {
 // decode is not skipped: skipping it would leave the requester waiting forever on a document only
 // the helper can see, which is a deadlock whose observable form is an ordinary Pending lamp.
 //
-// UNREADABLE AND REFUSED ARE TWO CLASSES WITH OPPOSITE REMEDIES, and an earlier revision carried
-// only the first name for both. `HelperRequestUnreadable` is a failed READ -- a permission, a race,
-// a listing that named an entry that then went away -- and it is transient: the same document may
-// read cleanly on the next run, so the request stays pending and is retried. `HelperRequestRefused`
-// is a failed DECODE, which is a pure function of bytes that will not change, so the judgment is
-// terminal and the document leaves the pending set. Collapsing them meant the terminal class
-// inherited the transient class's remedy -- retry -- which is precisely how one bad document came
-// to stop the line on every tick forever. Both still stop the line; they differ in what happens to
-// the request, and that is the distinction the two names carry.
+// UNREADABLE AND REFUSED ARE TWO CLASSES, and an earlier revision carried only the first name
+// for both. `HelperRequestUnreadable` is a failed READ -- a permission, a race, a listing that
+// named an entry that then went away. `HelperRequestRefused` is a failed DECODE, a pure function
+// of bytes that will not change. Collapsing the names let one document's class drift; both still
+// stop the line, and both leave the pending set via publication_helper_retire_request. A retire
+// that itself fails is HelperRequestNotQuarantined. The two names carry the cause, not opposite
+// remedies.
 type PublicationHelperOutcome
   = HelperAnswered { key: String, outcome_key: String }
   | HelperRequestNotConsumed { key: String, detail: String }
