@@ -170,6 +170,23 @@ test fn the_unit_binding_is_read_back_from_the_record_the_attempt_wrote() -> Boo
     && recovered.unit != record.identity
 }
 
+// A SLOT KEYED ON ONE REFERENCE THAT DECODES ANOTHER MUST NOT ADVANCE. The store key is the
+// reservation; the record.reference is the binding the attempt wrote. Skipping that check would
+// let begin_launch rewrite a foreign record under the expected generation.
+test fn begin_launch_refuses_a_record_whose_reference_is_not_the_slot_key() -> Bool {
+  let root = fresh_root()
+  let planted = Filesystem.Write(
+    path: join([root, "/attempt-mismatch.1"], ""),
+    content: "{\"identity\":\"abcdef0123456789\",\"reference\":\"attempt-other\",\"unit\":\"u\",\"granted_kib\":1,\"opened_at\":5,\"launch_deadline\":100,\"state\":\"reserved\"}")
+  let t = attempt_begin_launch(root: root as NonEmptyStr, reference: "attempt-mismatch" as NonEmptyStr, expected: cas_generation_first())
+  planted.success
+    && (match t {
+      AttemptTransitionRefused { detail: d } => string_contains(s: d, pattern: "names reference")
+      AttemptAdvanced { state: _, generation: _ } => false
+      AttemptLostRace { expected: _, observed: _ } => false
+    })
+}
+
 // CRITERION 6: THE TERMINAL GENERATION CARRIES WHY, AND THE EARLIER GENERATIONS STILL EXIST. The
 // store is generation-suffixed and append-only, so settling does not erase what it settled -- a
 // reader can still see the attempt was reserved and launched before it ended. Recovery that

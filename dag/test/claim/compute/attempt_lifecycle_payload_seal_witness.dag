@@ -9,6 +9,12 @@ data payload_resupply_source: String = probe_hdr + "fn resupply(root: NonEmptySt
 
 data lawful_begin_launch_source: String = probe_hdr + "fn resupply(root: NonEmptyStr, rec: AttemptRecord, g: CasGeneration) -> AttemptTransition {\n  attempt_begin_launch(root: root, reference: rec.reference as NonEmptyStr, expected: g)\n}\n"
 
+data commit_probe_imports: String = "module probe_commit_bytes_caller\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasExpectation, ExpectSlotAbsent }\nimport gunbc.compute.attempt_lifecycle { AttemptRecord, AttemptTransition, attempt_commit_bytes, attempt_open }\n"
+
+data unadmitted_commit_source: String = commit_probe_imports + "fn forge(root: NonEmptyStr, rec: AttemptRecord) -> AttemptTransition {\n  attempt_commit_bytes(root: root, record: rec, expected: ExpectSlotAbsent)\n}\n"
+
+data lawful_open_source: String = commit_probe_imports + "fn forge(root: NonEmptyStr, rec: AttemptRecord) -> AttemptTransition {\n  attempt_open(root: root, record: rec)\n}\n"
+
 fn blocking_delta(hostile: String, safe: String) -> Int {
   let h = total_blocking_count_for(source: hostile)
   let s = total_blocking_count_for(source: safe)
@@ -26,4 +32,12 @@ test fn handing_a_payload_to_begin_launch_is_refused_at_compile() -> Bool {
 
 test fn a_begin_launch_that_names_only_the_slot_is_not_refused() -> Bool {
   blocking_subject_count_for(source: lawful_begin_launch_source, wanted_class: "CallArgumentNameUnknown", wanted_subject: "record") == 0
+}
+
+test fn a_module_outside_attempt_lifecycle_cannot_call_attempt_commit_bytes() -> Bool {
+  blocking_subject_count_for(source: unadmitted_commit_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_commit_bytes") >= 1
+}
+
+test fn an_admitted_open_is_not_refused_as_an_unadmitted_commit() -> Bool {
+  blocking_subject_count_for(source: lawful_open_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "attempt_commit_bytes") == 0
 }

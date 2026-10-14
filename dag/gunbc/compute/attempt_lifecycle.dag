@@ -16,6 +16,7 @@ import gunbc.durable_cas_file_store {
   CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly,
   observe_cas_slot_state,
 }
+import std.decl_ref { decl_ref }
 import gunbc.compute.work_request { WorkEnding, work_ending_wire, work_ending_decode }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.languages.json.parse {
@@ -329,9 +330,15 @@ type AttemptTransition
   | AttemptLostRace { expected: String, observed: String }
   | AttemptTransitionRefused { detail: String }
 
-fn attempt_commit_bytes(root: NonEmptyStr, reference: String, state: AttemptState, payload: NonEmptyStr, expected: CasExpectation) -> AttemptTransition {
+fn attempt_commit_bytes(root: NonEmptyStr, record: AttemptRecord, expected: CasExpectation) -> AttemptTransition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open"),
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_advance"),
+  ]
+{
+  let payload = attempt_record_wire(r: record) as NonEmptyStr
   match admit_cas_attempt(attempt: cas_attempt(
-    key: reference as NonEmptyStr,
+    key: record.reference as NonEmptyStr,
     expected: expected,
     proposed: payload,
     proposed_content: content_hash_of_value(value: payload),
@@ -341,7 +348,7 @@ fn attempt_commit_bytes(root: NonEmptyStr, reference: String, state: AttemptStat
     CasAttemptDigestIncomparable { claimed: _, actual: _ } => AttemptTransitionRefused { detail: "the attempt record's digest was incomparable" }
     CasAttemptAdmitted { verified: v } =>
       match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
-        CasCommitted { committed: c } => AttemptAdvanced { state: state, generation: c.generation }
+        CasCommitted { committed: c } => AttemptAdvanced { state: record.state, generation: c.generation }
         CasPreconditionFailed { expected: e, observed: o } =>
           AttemptLostRace {
             expected: match e { ExpectSlotGeneration { generation: g } => join(["generation ", to_string(value: cas_generation_count(g: g))], "")  ExpectSlotAbsent => "an absent slot" },
@@ -408,12 +415,9 @@ fn attempt_advance(
                   detail: join(["the attempt slot keyed ", reference as String, " names reference ", rec.reference], ""),
                 }
               } else {
-                let next = attempt_record_with_state(r: rec, state: next_state)
                 attempt_commit_bytes(
                   root: root,
-                  reference: reference as String,
-                  state: next_state,
-                  payload: attempt_record_wire(r: next) as NonEmptyStr,
+                  record: attempt_record_with_state(r: rec, state: next_state),
                   expected: ExpectSlotGeneration { generation: expected })
               }
           }
@@ -444,12 +448,9 @@ fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
       ], ""),
     }
   } else {
-    let reserved = attempt_record_with_state(r: record, state: AttemptReserved)
     attempt_commit_bytes(
       root: root,
-      reference: reserved.reference,
-      state: AttemptReserved,
-      payload: attempt_record_wire(r: reserved) as NonEmptyStr,
+      record: attempt_record_with_state(r: record, state: AttemptReserved),
       expected: ExpectSlotAbsent)
   }
 }
