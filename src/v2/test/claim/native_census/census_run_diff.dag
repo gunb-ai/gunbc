@@ -292,7 +292,35 @@ test fn census_diff_records_a_different_revision() -> Bool {
 test fn census_diff_cleared_resolve_newly_exposes_infer() -> Bool {
   let before = closed_complete(population: ["a"], obligations: resolve_then_infer(module: "a"), revision: rev_a())
   let after = closed_complete(population: ["a"], obligations: infer_refused_rows(module: "a"), revision: rev_a())
-  findings_contain(findings: findings_of(result: census_run_diff(before: before, after: after)), predicate: is_cleared_and_exposed)
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: is_cleared_and_exposed)
+    && !findings_contain(findings: findings, predicate: is_newly_refusing)
+}
+
+test fn census_diff_cleared_member_block_newly_exposes_without_newly_refusing() -> Bool {
+  let before = closed_complete(
+    population: ["a"],
+    obligations: census_three_stage_rows(
+      module: "a",
+      front_end: planted_refused(reason: ^parse_failed, at: planted_at(line: 1), occurrence: occ(n: 1)),
+      resolve: CensusObligationUnobservedBehindAcquisitionBlock,
+      infer: CensusObligationUnobservedBehindAcquisitionBlock
+    ),
+    revision: rev_a()
+  )
+  let after = closed_complete(
+    population: ["a"],
+    obligations: census_three_stage_rows(
+      module: "a",
+      front_end: CensusObligationPassed,
+      resolve: planted_refused(reason: ^resolve_unbound, at: planted_at(line: 4), occurrence: occ(n: 2)),
+      infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+    ),
+    revision: rev_a()
+  )
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: is_cleared_and_exposed)
+    && !findings_contain(findings: findings, predicate: is_newly_refusing)
 }
 
 test fn census_diff_infer_masked_behind_resolve_is_not_cleared() -> Bool {

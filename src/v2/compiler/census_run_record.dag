@@ -574,23 +574,18 @@ fn census_diff_stage_pair(before_row: CensusObligationRow, after_row: CensusObli
           [CensusDiffNewlyRefusing { after: after_row }]
         _ => []
       }
-    CensusObligationUnobservedBehindStage { stage: _ } =>
-      match after_row.outcome {
-        CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } =>
-          [CensusDiffNewlyRefusing { after: after_row }]
-        _ => []
-      }
-    CensusObligationUnobservedBehindAcquisitionBlock =>
-      match after_row.outcome {
-        CensusObligationRefused { reason: _, at: _, evidence: _, occurrence: _ } =>
-          [CensusDiffNewlyRefusing { after: after_row }]
-        _ => []
-      }
+    CensusObligationUnobservedBehindStage { stage: _ } => []
+    CensusObligationUnobservedBehindAcquisitionBlock => []
   }
 }
 
 fn census_stage_behind_matches(outcome: CensusObligationOutcome, earlier: NativeCensusCauseStage) -> Bool {
   match outcome {
+    CensusObligationUnobservedBehindAcquisitionBlock =>
+      match earlier {
+        NativeCensusCauseFrontEnd => true
+        _ => false
+      }
     CensusObligationUnobservedBehindStage { stage: s } =>
       match earlier {
         NativeCensusCauseFrontEnd =>
@@ -664,12 +659,21 @@ fn census_diff_cleared_and_exposed(before_t: CensusModuleObligations, after_t: C
       after_later: after_t.resolve,
       earlier: NativeCensusCauseFrontEnd
     ),
-    census_diff_cleared_pair(
-      before_earlier: before_t.resolve,
-      after_earlier: after_t.resolve,
-      before_later: before_t.infer,
-      after_later: after_t.infer,
-      earlier: NativeCensusCauseResolve
+    list_append(
+      census_diff_cleared_pair(
+        before_earlier: before_t.resolve,
+        after_earlier: after_t.resolve,
+        before_later: before_t.infer,
+        after_later: after_t.infer,
+        earlier: NativeCensusCauseResolve
+      ),
+      census_diff_cleared_pair(
+        before_earlier: before_t.front_end,
+        after_earlier: after_t.front_end,
+        before_later: before_t.infer,
+        after_later: after_t.infer,
+        earlier: NativeCensusCauseFrontEnd
+      )
     )
   )
 }
