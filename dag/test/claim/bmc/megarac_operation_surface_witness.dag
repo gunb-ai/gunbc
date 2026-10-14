@@ -159,8 +159,8 @@ test fn unestablished_tach_fidelity_admits_echo_converge() -> Bool {
     fidelity: mtcollins1_megarac_tach_fidelity,
     pwm_echo_matches_desired: true,
     guard_holds_over_dwell: true,
-    tach_before_rpm: [5700, 5700, 5700, 5700],
-    tach_after_rpm: [5700, 5700, 5700, 5800],
+    tach_before_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(5700)],
+    tach_after_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(5800)],
   ) {
     MegaRacDutyConvergedEchoTachUnfaithful { fidelity: f } =>
       match f {
@@ -169,8 +169,8 @@ test fn unestablished_tach_fidelity_admits_echo_converge() -> Bool {
             fidelity: MegaRacTachFidelityEstablished,
             pwm_echo_matches_desired: true,
             guard_holds_over_dwell: true,
-            tach_before_rpm: [5700, 5700, 5700, 5700],
-            tach_after_rpm: [5700, 5700, 5700, 5800],
+            tach_before_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(5700)],
+            tach_after_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(5800)],
           ) {
             MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: echo } =>
               echo
