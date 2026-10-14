@@ -67,6 +67,8 @@ fn fe_is_arrow(n: Node) -> Bool {
 
 // #13905: std.optional Absent and NamedEdgeTargetLookup's miss arm are both in scope here.
 // The miss arm is NotFound so the two constructors no longer collide; this match names both.
+// Binders here are never named `loop`: it is a keyword (^dag_token_kw_loop), and the native parser
+// refuses it as a pattern binder (parse_g0_tokens_remain), which the seed parser tolerates.
 fn fe_lookup_target(l: NamedEdgeTargetLookup) -> Optional<Node> {
   match l {
     Found { target: t } => Present { value: t }
