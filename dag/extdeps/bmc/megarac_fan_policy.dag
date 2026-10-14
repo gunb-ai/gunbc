@@ -44,10 +44,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // which takes the family's authority as a REFERENCE rather than enumerating families.
 //
 // IT IS A SEPARATE FILE FROM extdeps.bmc.megarac for the reason that module's own header gives:
-// rows there are the SP-X REST operation shapes this repository has executed. Fan policy is a
-// different subject: the REST surface is bound and executed; AMI's failsafe document is still
-// uncited. Mixing those two standings in the operation-shape module is how an uncited failsafe
-// claim gets read as an executed one.
+// megarac_api_operations is the SP-X REST shape this repository has executed (session, media,
+// fan GETs). Fan policy is a different subject: those GET rows are Bound; AMI's failsafe
+// document is still uncited; UI-cited fan POSTs stay off that executed list until a wet
+// caller exists. Mixing those standings in the operation-shape module is how an uncited
+// failsafe or an unexecuted write gets read as an executed one.
 //
 // This is the §4d instrument used for exactly its purpose. It would be easy to write a plausible
 // family row here - 'MegaRAC runs a vendor thermal loop that reaches full duty when host sensors are

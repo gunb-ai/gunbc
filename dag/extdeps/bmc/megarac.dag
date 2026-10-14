@@ -132,16 +132,20 @@ data megarac_op_fan_get_fan_info: MegaRacApiOperation = MegaRacApiOperation {
   contract_note: "same UI bundle; JSON list of {id, fan_number, fan_speed, fan_pwm}; UI labels speed as PWM percentage. On mtcollins1 this pwm echo is duty readback while tach fidelity is unestablished: operator hearing tracked 20 vs 40 PWM while SDR FAN*_Speed stayed near 5700 rpm (21:50Z, 22:09Z, 22:23:52Z)",
 }
 
+// UI-CITED WRITES, NOT MEMBERS OF megarac_api_operations. That list is the executed SP-X shape.
+// These POSTs are read from the served UI bundle and have no wet caller in this repository
+// (megarac_fan_converge_route stays Unbound until one exists). Keeping them off the executed
+// population and off megarac.FanControl is the §4d split: a cited path is not an executed POST.
 data megarac_op_fan_set_manager_status: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "POST",
   path: "/api/fan_control/set_manager_status",
-  contract_note: "same UI bundle; JSON {manager_disabled: r} with r in {0,1}; UI confirms before both directions; cited as the write that enables or disables the Cooling Manager, not yet executed by this repository",
+  contract_note: "same UI bundle; JSON {manager_disabled: r} with r in {0,1}; UI confirms before both directions; cited as the write that enables or disables the Cooling Manager, not yet executed by this repository; not a megarac_api_operations row and not a FanControl transport",
 }
 
 data megarac_op_fan_set_fan_speed: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "POST",
   path: "/api/fan_control/set_fan_speed",
-  contract_note: "FanControlView updateFanPWMs in source.min.js (gzip sha256 prefix ee9b14cbf7141b78): JSON.stringify({fan_pwm_all: r}) where r is the string from select#fan_all_speed (example fan_pwm_all: \"25\"); no per-fan write; UI offers 20..100 step 5; takes effect only while manager_disabled is 1; success handler re-reads get_fan_info",
+  contract_note: "FanControlView updateFanPWMs in source.min.js (gzip sha256 prefix ee9b14cbf7141b78): JSON.stringify({fan_pwm_all: r}) where r is the string from select#fan_all_speed (example fan_pwm_all: \"25\"); no per-fan write; UI offers 20..100 step 5; takes effect only while manager_disabled is 1; success handler re-reads get_fan_info; not yet executed by this repository; not a megarac_api_operations row and not a FanControl transport",
 }
 
 // THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the
@@ -167,8 +171,6 @@ data megarac_api_operations: List<MegaRacApiOperation> = [
   megarac_op_media_status,
   megarac_op_fan_get_manager_status,
   megarac_op_fan_get_fan_info,
-  megarac_op_fan_set_manager_status,
-  megarac_op_fan_set_fan_speed,
 ]
 
 // THE PARAMETER THE START-MEDIA CONTRACT CALLS REQUIRED, AS A TYPE. megarac_op_media_start
@@ -458,32 +460,6 @@ service megarac.FanControl {
     exit {
       0 => Unit
       nonzero => String "megarac fan get_fan_info GET failed"
-    }
-  }
-
-  operation SetManagerStatus {
-    requires Network
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
-    output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/fan_control/set_manager_status"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "megarac fan set_manager_status POST failed"
-    }
-  }
-
-  operation SetFanSpeed {
-    requires Network
-    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
-    output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
-    transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/fan_control/set_fan_speed"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "megarac fan set_fan_speed POST failed"
     }
   }
 }
