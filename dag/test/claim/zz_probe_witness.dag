@@ -1,0 +1,18 @@
+module test.claim.zz_probe_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn src() -> String {
+  "module map_key_witness.unkeyed_generic\nimport v2.std.collection { Map }\ntype Tagged<K> {\n  subject: K\n}\nfn unkeyed_probe<K, V>(m: Map<String, V>, tag: Tagged<K>) -> Map<String, V> {\n  m\n}\n"
+}
+fn chk(inc: List<String>) -> Bool {
+  compile_dag_rust_emit_check(src(), "src/map_key_witness_unkeyed_generic.rs", inc, [])
+}
+test fn p_k_clone() -> Bool { chk(["unkeyed_probe<K: Clone,"]) }
+test fn p_k_bare() -> Bool { chk(["unkeyed_probe<K,"]) }
+test fn p_k_eqhash() -> Bool { chk(["unkeyed_probe<K: Clone + std::cmp::Eq + std::hash::Hash"]) }
+test fn p_v_eqhash() -> Bool { chk(["V: Clone + std::cmp::Eq + std::hash::Hash"]) }
+test fn p_hash_anywhere() -> Bool { chk(["std::hash::Hash"]) }
+test fn p_tagged_hash() -> Bool { chk(["std::hash::Hash)]\npub struct Tagged"]) }
