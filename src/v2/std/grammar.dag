@@ -42,11 +42,16 @@ import v2.std.node_query {
 import v2.std.compilers.lexing { LexRules }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.node {
+  Arrow,
   Atom,
+  ComputationNode,
   Conj,
+  Disj,
   Edge,
+  Instantiation,
   Authored,
   Node,
+  Occupancy,
   Positional,
   Symbol,
   TypeNode,
@@ -279,7 +284,7 @@ fn grammar_expr_infix_table(
   InfixTable { operand: operand, continuation_guard: continuation_guard, operators: operators }
 }
 
-fn grammar_infix_row_lookup(rows: List<InfixOperatorRow>, token_class: Symbol) -> Optional<InfixOperatorRow> {
+fn grammar_infix_row_lookup(rows: List<InfixOperatorRow>, token_class: Symbol) -> std.optional.Optional<InfixOperatorRow> {
   match list_head(xs: rows) {
     HeadAbsent => optional_absent()
     HeadFound { value: row } =>
@@ -311,7 +316,7 @@ fn grammar_infix_right_min_power(row: InfixOperatorRow) -> Int {
   row.binding_power + 1
 }
 
-fn grammar_infix_operator_choice(rows: List<InfixOperatorRow>) -> Optional<GrammarExpr> {
+fn grammar_infix_operator_choice(rows: List<InfixOperatorRow>) -> std.optional.Optional<GrammarExpr> {
   match list_head(xs: rows) {
     HeadAbsent => optional_absent()
     HeadFound { value: row } =>
@@ -3828,7 +3833,7 @@ fn grammar_emit_parse_tree(root: GrammarRoot, tree: ParseTree) -> Outcome<List<G
 // v2.compiler.parse parse_wrap_production_captured builds); Absent for any node that is not a
 // production wrapper. Shared by the .dag language's surface readers and the parser's annotation
 // region roster, which both key on "is this a production".
-fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
+fn parse_production_emitted_identity_optional(node: Node) -> std.optional.Optional<Symbol> {
   match named_child_lookup(root: node, name: ^grammar_production_identity_node_projection) {
     NamedChildFound { target: id_node } => node_atom_identity_optional(node: id_node)
     NamedChildMissing => Absent

@@ -10,7 +10,12 @@ import extdeps.github.push_event { PushRefUpdate }
 import extdeps.github.workflow_run_event { WorkflowRunEvent }
 import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
 import std.contract_identity { ContractIdentity, ContractNamingSurface, ContractName, ContractEpoch, contract_epoch_eq }
-import gunbc.required_ci_contract_epoch { required_ci_contract_epoch }
+import gunbc.required_ci_contract_epoch {
+  required_ci_contract_epoch_derivation,
+  RequiredCiEpochDerived,
+  RequiredCiObligationIdentityDuplicated,
+  RequiredCiMemoryRequirementUnreadable,
+}
 import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved, RequiredCiEpochUnobservable, RequiredCiEpochUnobserved, required_ci_epoch_unobserved_message }
 import gunbc.repository { gunbc_repository }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
@@ -70,15 +75,31 @@ type RequiredCiContract = | RequiredCiContractSubject
 
 type RequiredCiContractIdentity = ContractIdentity<RequiredCiContract>
 
+type RequiredCiContractResult
+  = RequiredCiContractReady { identity: RequiredCiContractIdentity }
+  | RequiredCiContractUnwritable { identity: NonEmptyStr }
+  | RequiredCiContractMemoryRequirementUnreadable { raw: String }
+
 // The naming surface is the repository, the name is the workflow the contract IS, and the epoch is
 // its declared effective version. Each component reads its own authority: none is spelled here, and
 // the epoch deliberately comes from gunbc.required_ci_contract_epoch rather than from this module,
-// so the side that JUDGES does not also author what it requires.
-fn required_ci_contract() -> RequiredCiContractIdentity {
-  ContractIdentity {
-    surface: fleet_repository_full_name() as ContractNamingSurface,
-    name: artifact_path(a: WitnessFloorYamlArtifact) as ContractName,
-    epoch: required_ci_contract_epoch,
+// so the side that JUDGES does not also author what it requires. A duplicated obligation identity
+// is Unwritable — not a ContractIdentity whose epoch field was filled with the identity text.
+// An unreadable memory requirement is its own arm, not a fabricated Unwritable identity.
+fn required_ci_contract() -> RequiredCiContractResult {
+  match required_ci_contract_epoch_derivation {
+    RequiredCiEpochDerived { epoch: epoch } =>
+      RequiredCiContractReady {
+        identity: ContractIdentity {
+          surface: fleet_repository_full_name() as ContractNamingSurface,
+          name: artifact_path(a: WitnessFloorYamlArtifact) as ContractName,
+          epoch: epoch,
+        }
+      }
+    RequiredCiObligationIdentityDuplicated { identity: identity } =>
+      RequiredCiContractUnwritable { identity: identity }
+    RequiredCiMemoryRequirementUnreadable { raw: raw } =>
+      RequiredCiContractMemoryRequirementUnreadable { raw: raw }
   }
 }
 
@@ -98,6 +119,23 @@ fn required_ci_contract() -> RequiredCiContractIdentity {
 // the authority for branch facts explicitly and carries the perturbation oracle, while
 // Repository.default_branch is part of the upstream API shape this project instantiates. Whether
 // those should be one row is a real question and not this cut's to settle.
+fn required_ci_admit<E>(revision: GitObjectId, evidence: E) -> RequiredCiAdmission<E> {
+  match required_ci_contract() {
+    RequiredCiContractReady { identity: identity } =>
+      RequiredCiAdmitted {
+        succeeded: RequiredCiSucceeded {
+          revision: revision,
+          contract: identity,
+          evidence: evidence,
+        }
+      }
+    RequiredCiContractUnwritable { identity: identity } =>
+      RequiredCiRefused { cause: CiContractObligationIdentityDuplicated { identity: identity as String } }
+    RequiredCiContractMemoryRequirementUnreadable { raw: raw } =>
+      RequiredCiRefused { cause: CiContractMemoryRequirementUnreadable { raw: raw } }
+  }
+}
+
 fn fleet_repository_full_name() -> String {
   gunbc_repository.full_name
 }
@@ -171,6 +209,8 @@ type RequiredCiRefusal
   | CiHeadShaUndecodable { observed: String }
   | CiContractEpochMismatch { observed: String, required: String }
   | CiContractEpochUnobservable { cause: RequiredCiEpochUnobserved }
+  | CiContractObligationIdentityDuplicated { identity: String }
+  | CiContractMemoryRequirementUnreadable { raw: String }
   | RequiredCiMergeGroupRunAbsent { revision: GitObjectId }
   | RequiredCiMergeGroupRunsTruncated { observed: Int, total: Int }
   | RequiredCiMergeGroupRunUnconcluded { revision: GitObjectId, run_ids: List<Int> }
@@ -221,19 +261,26 @@ type ContractEpochVerdict
   | ContractEpochRefused { cause: RequiredCiRefusal }
 
 fn required_ci_epoch_verdict(observed: RequiredCiEpochObservation) -> ContractEpochVerdict {
-  match observed {
-    RequiredCiEpochUnobservable { cause: c } =>
-      ContractEpochRefused { cause: CiContractEpochUnobservable { cause: c } }
-    RequiredCiEpochObserved { epoch: e } =>
-      if (e as String) == (required_ci_contract_epoch as String) {
-        ContractEpochAgrees
-      } else {
-        ContractEpochRefused {
-          cause: CiContractEpochMismatch {
-            observed: e as String,
-            required: required_ci_contract_epoch as String,
-          },
-        }
+  match required_ci_contract_epoch_derivation {
+    RequiredCiObligationIdentityDuplicated { identity: identity } =>
+      ContractEpochRefused { cause: CiContractObligationIdentityDuplicated { identity: identity as String } }
+    RequiredCiMemoryRequirementUnreadable { raw: raw } =>
+      ContractEpochRefused { cause: CiContractMemoryRequirementUnreadable { raw: raw } }
+    RequiredCiEpochDerived { epoch: required } =>
+      match observed {
+        RequiredCiEpochUnobservable { cause: c } =>
+          ContractEpochRefused { cause: CiContractEpochUnobservable { cause: c } }
+        RequiredCiEpochObserved { epoch: e } =>
+          if (e as String) == (required as String) {
+            ContractEpochAgrees
+          } else {
+            ContractEpochRefused {
+              cause: CiContractEpochMismatch {
+                observed: e as String,
+                required: required as String,
+              },
+            }
+          }
       }
   }
 }
@@ -289,13 +336,7 @@ fn accept_required_ci_workflow_run<E>(
             Success =>
               match decode_event_revision(event: event) {
                 RevisionDecoded { revision: oid } =>
-                  RequiredCiAdmitted {
-                    succeeded: RequiredCiSucceeded {
-                      revision: oid,
-                      contract: required_ci_contract(),
-                      evidence: evidence,
-                    },
-                  }
+                  required_ci_admit(revision: oid, evidence: evidence)
                 RevisionUndecodable { observed: raw } =>
                   RequiredCiRefused { cause: CiHeadShaUndecodable { observed: raw } }
               }
@@ -516,13 +557,10 @@ fn accept_required_ci_merge_group_runs(
             cause: RequiredCiMergeGroupRunUnconcluded { revision: revision, run_ids: map(floor_runs, r => r.id) },
           }
         } else if length(others) == 0 {
-          RequiredCiAdmitted {
-            succeeded: RequiredCiSucceeded {
-              revision: revision,
-              contract: required_ci_contract(),
-              evidence: concat("merge_group runs ", run_id_list_text(ids: map(successes, r => r.id))) as NonEmptyStr,
-            },
-          }
+          required_ci_admit(
+            revision: revision,
+            evidence: concat("merge_group runs ", run_id_list_text(ids: map(successes, r => r.id))) as NonEmptyStr,
+          )
         } else if length(successes) == 0 {
           RequiredCiRefused {
             cause: RequiredCiMergeGroupRunsNotSuccess { revision: revision, run_ids: map(others, r => r.id) },
@@ -586,6 +624,10 @@ fn required_ci_refusal_message(cause: RequiredCiRefusal) -> String {
       join(["the run executed the contract at epoch ", o, ", not the required epoch ", r, " -- a different contract, not a failed run of this one"], "")
     CiContractEpochUnobservable { cause: c } =>
       join(["the contract epoch could not be observed at the run's commit: ", required_ci_epoch_unobserved_message(cause: c)], "")
+    CiContractObligationIdentityDuplicated { identity: identity } =>
+      join(["the required CI obligation rows duplicate identity ", identity, ", so no contract epoch is admitted"], "")
+    CiContractMemoryRequirementUnreadable { raw: raw } =>
+      join(["the required memory-envelope requirement is unreadable (", raw, "), so no contract epoch is admitted"], "")
     CiActivityNotCompleted { observed: o } =>
       concat("the workflow_run activity is not completed: ", o)
     CiConclusionNotSuccess { observed: _ } =>
