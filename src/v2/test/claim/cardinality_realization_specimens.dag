@@ -16,7 +16,7 @@ import extdeps.languages.json.parse {
   parse_json_document
 }
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length }
+import std.algebra { FreeMonoid, fold_list, length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
 import v2.std.integer { Int }
