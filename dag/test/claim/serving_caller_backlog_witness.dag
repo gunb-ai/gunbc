@@ -33,6 +33,14 @@ import gunbc.serving.caller_backlog {
   persist_before_offer_basis, retriable_refusal_basis, stable_turn_identity_basis, idempotent_retry_basis,
   no_expiry_on_long_wait_basis, durable_cancellation_basis, no_double_execution_basis,
   caller_backlog_basis_refs,
+  AttemptCommit, rebind_reservation, ReservationRebound, RebindRefusedTerminal, RebindUnknownWork, RebindDuplicate,
+}
+import product.capacity.event_chain { PartitionId, EventId, ChainEvent, ChainEnvelope }
+import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased }
+import product.capacity.lease { LeasePolicy, QuiescenceRequired }
+import gunbc.harness.harness_seat {
+  HarnessCallerTurn, harness_caller_turn, harness_current_grant_in, harness_commit_fence,
+  HarnessCommitFenceReady, HarnessCommitGrantUnread, HarnessCommitClockUnread,
 }
 import std.decl_ref { DeclarationRef }
 import v2.std.decl_index { decl_facts_at }
@@ -259,7 +267,7 @@ test fn w_modeled_rows_are_durable_and_the_serving_route_is_not_and_has_no_route
   })
     && (match caller_backlog_standing(rows: serving_route_caller_retry_rows) {
       DurableCallerBacklog => false
-      ExternalRetryObligation { unmet: us } => length(us) == 7
+      ExternalRetryObligation { unmet: us } => length(us) == 2
       CallerBacklogRosterMalformed { duplicated: _ } => false
     })
     && established_basis(p: PersistBeforeOffer) == (persist_before_offer_basis as String)
@@ -510,4 +518,108 @@ test fn w_work_key_is_stable_across_process_attempts_and_ordinals_differ() -> Bo
     && derived_id_text(key: k1) != derived_id_text(key: k2)
     && derived_id_text(key: k1) != derived_id_text(key: other)
     && !derived_id_text(key: k1).contains("/")
+}
+
+// ── THE HARNESS SEAT'S DURABLE CONSUMPTION (flex item 7) ──────────────────────────────────────────────
+//
+// Controls for the seat wiring. Each discriminates a wrong fold from the right one: the supplied chain
+// holds TWO acquisitions of the same work's seat, the old one released, so a fold that fenced against
+// the binding's own (or the first) grant would admit the old holder.
+
+fn rebind_phase_is_terminal(s: RebindStanding) -> Bool {
+  match s {
+    RebindRefusedTerminal { phase: _ } => true
+    ReservationRebound { record: _ } => false
+    RebindUnknownWork => false
+    RebindDuplicate => false
+  }
+}
+
+test fn w_rebind_after_cancel_refuses_and_never_revives() -> Bool {
+  let cancelled = snapshot_after_cancel(snapshot: persisted_waiting(), standing: cancel_work(snapshot: persisted_waiting(), work: work_a))
+  rebind_phase_is_terminal(s: rebind_reservation(snapshot: cancelled, work: work_a, reservation: "grant-work-a-2" as ReservationRef))
+    && !is_waiting(s: cancelled)
+}
+
+test fn w_commit_under_the_previous_reservation_after_a_rebind_refuses() -> Bool {
+  match rebind_reservation(snapshot: persisted_waiting(), work: work_a, reservation: "grant-work-a-2" as ReservationRef) {
+    ReservationRebound { record: r } => {
+      let rebound = snapshot_after_persist(snapshot: empty_caller_backlog, standing: WaitingPersisted { record: r })
+      let previous = commit_attempt(snapshot: rebound, fence: SeatLeaseFence { grant: seat_grant_gen2, holder: seat_holder(generation: 2, grant: "evt-1"), at: 10 }, work: work_a)
+      (r.reservation as String) == "grant-work-a-2"
+        && (match previous { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
+    }
+    RebindRefusedTerminal { phase: _ } => false
+    RebindUnknownWork => false
+    RebindDuplicate => false
+  }
+}
+
+fn seat_event(id: String, at: EpochSecs, payload: PoolEvent) -> ChainEnvelope<PoolEvent> {
+  ChainEnvelope {
+    id: id as EventId,
+    event: ChainEvent { partition: "seat-partition" as PartitionId, parent: none, recorded_at: at, actor: "test" as NonEmptyStr, payload: payload },
+  }
+}
+
+// Position 1: seat-1 acquired. Position 2: seat-1 released. Position 3: seat-2 acquired (the re-placement).
+data seat_chain: List<ChainEnvelope<PoolEvent>> = [
+  seat_event(id: "evt-a", at: 0, payload: PoolAcquired { reference: "seat-1" as NonEmptyStr, amount: 1, term_seconds: 60 }),
+  seat_event(id: "evt-r", at: 5, payload: PoolReleased { reference: "seat-1" as NonEmptyStr, reason: "done" as NonEmptyStr }),
+  seat_event(id: "evt-b", at: 10, payload: PoolAcquired { reference: "seat-2" as NonEmptyStr, amount: 1, term_seconds: 60 }),
+]
+
+fn seat_rebound_to(reference: String) -> CallerBacklogSnapshot {
+  match rebind_reservation(snapshot: persisted_waiting(), work: work_a, reservation: reference as ReservationRef) {
+    ReservationRebound { record: r } => snapshot_after_persist(snapshot: empty_caller_backlog, standing: WaitingPersisted { record: r })
+    RebindRefusedTerminal { phase: _ } => empty_caller_backlog
+    RebindUnknownWork => empty_caller_backlog
+    RebindDuplicate => empty_caller_backlog
+  }
+}
+
+fn fence_commit(current: LeaseGrant?, presented: LeaseFence, at: EpochSecs?) -> AttemptCommit {
+  match harness_commit_fence(current: current, presented: presented, at: at) {
+    HarnessCommitFenceReady { fence: f } => commit_attempt(snapshot: seat_rebound_to(reference: "seat-2"), fence: f, work: work_a)
+    HarnessCommitGrantUnread => AttemptUnknownWork
+    HarnessCommitClockUnread => AttemptUnknownWork
+  }
+}
+
+fn committed(s: AttemptCommit) -> Bool {
+  match s { AttemptCommitted { record: _ } => true  AttemptFenceRefused => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false }
+}
+
+fn fence_refused(s: AttemptCommit) -> Bool {
+  match s { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false }
+}
+
+test fn w_old_holder_refuses_against_the_current_grant_read_from_the_chain() -> Bool {
+  let current = harness_current_grant_in(oldest_first: seat_chain, reference: "seat-2" as NonEmptyStr)
+  let old_holder = LeaseFence { grant: "evt-a" as GrantIdentity, generation: 1 }
+  let live_holder = LeaseFence { grant: "evt-b" as GrantIdentity, generation: 3 }
+  (match current { Present { value: g } => g.fence.generation == 3  Absent => false })
+    && fence_refused(s: fence_commit(current: current, presented: old_holder, at: Present { value: 20 }))
+    && committed(s: fence_commit(current: current, presented: live_holder, at: Present { value: 20 }))
+}
+
+test fn w_an_unread_grant_or_clock_cannot_authorize_completion() -> Bool {
+  let current = harness_current_grant_in(oldest_first: seat_chain, reference: "seat-2" as NonEmptyStr)
+  let live_holder = LeaseFence { grant: "evt-b" as GrantIdentity, generation: 3 }
+  (match harness_commit_fence(current: current, presented: live_holder, at: none) { HarnessCommitClockUnread => true  HarnessCommitGrantUnread => false  HarnessCommitFenceReady { fence: _ } => false })
+    && (match harness_commit_fence(current: harness_current_grant_in(oldest_first: seat_chain, reference: "seat-never" as NonEmptyStr), presented: live_holder, at: Present { value: 20 }) { HarnessCommitGrantUnread => true  HarnessCommitClockUnread => false  HarnessCommitFenceReady { fence: _ } => false })
+}
+
+test fn w_completion_time_is_observed_not_copied_from_acquisition() -> Bool {
+  let current = harness_current_grant_in(oldest_first: seat_chain, reference: "seat-2" as NonEmptyStr)
+  let live_holder = LeaseFence { grant: "evt-b" as GrantIdentity, generation: 3 }
+  committed(s: fence_commit(current: current, presented: live_holder, at: Present { value: 10 }))
+    && fence_refused(s: fence_commit(current: current, presented: live_holder, at: Present { value: 70 }))
+}
+
+test fn w_harness_caller_turn_refuses_empty_node_root_and_negative_ordinal() -> Bool {
+  (match harness_caller_turn(dispatch_node: "node://n", turn_ordinal: 2, state_root: "/r") { Present { value: _ } => true  Absent => false })
+    && (match harness_caller_turn(dispatch_node: "", turn_ordinal: 2, state_root: "/r") { Present { value: _ } => false  Absent => true })
+    && (match harness_caller_turn(dispatch_node: "node://n", turn_ordinal: 2, state_root: " ") { Present { value: _ } => false  Absent => true })
+    && (match harness_caller_turn(dispatch_node: "node://n", turn_ordinal: -1, state_root: "/r") { Present { value: _ } => false  Absent => true })
 }

@@ -594,6 +594,7 @@ fn persist_derived_phase(
 ) -> DurablePersistStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "cancel_work_durable"),
+    decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "rebind_reservation_durable"),
     decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "commit_attempt_durable"),
     decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "note_recovery_durable"),
   ]
@@ -769,10 +770,9 @@ type AttemptCommit
 // (docs/plans/serving-capacity-home-ruling.md) and is fenced by the generation of its
 // product.capacity.lease LeaseGrant: the replica presents its LeaseFence (grant identity and generation),
 // fence_verdict must find it current, the grant must be the work's reservation, and unexpired at `at`.
-// CONSUMERS (§3c): declared frontier, not consumed in this change. SeatLeaseFence and
-// logical_work_id_of/DispatchTurnKey are consumed by the harness serving-seat wiring, which
-// supplies (dispatch node id, turn ordinal) and the seat's LeaseGrant; that wiring is owned by
-// session bright-moth-475 and is dispatched once these symbols land. Trigger: the harness serving-seat wiring calling logical_work_id_of and building SeatLeaseFence; until then the basis of StableTurnIdentity stays resume_waiting_durable and is not moved onto the unconsumed key.
+// CONSUMERS (§3c): SeatLeaseFence and logical_work_id_of/DispatchTurnKey are consumed by the harness
+// serving seat (gunbc.harness.harness_seat harness_complete_caller_turn, harness_caller_admit), which
+// builds the fence from the grant it reads out of the seat partition at completion.
 type AttemptFence
   = ComputeCellFence { account: MoneyAccount, presented: Int }
   | SeatLeaseFence { grant: LeaseGrant, holder: LeaseFence, at: EpochSecs }
@@ -924,6 +924,89 @@ fn cancel_work_durable(
             DurablePersistPayloadUnencodable { reason: r } => DurableCancelStoreRefused { detail: r }
             DurablePersistUnknownWork => DurableCancelUnknownWork
             DurablePersistDuplicate => DurableCancelStoreRefused {
+              detail: "snapshot has duplicate records for this work" as NonEmptyStr
+            }
+          }
+      }
+  }
+}
+
+// A RESERVATION IS PER ATTEMPT, THE WORK IS NOT. A seat reference is unique over the pool's whole
+// history, so every placement of the same logical work after a released seat is granted under a
+// new reference. The record takes that reference here, from WorkWaiting only: a cancelled,
+// completed or bound-exceeded record is never revived by a later grant, and a commit presenting
+// the PREVIOUS reservation after a rebind meets attempt_fence_admits against the new one and
+// refuses. After the rebind record.reservation IS the current grant reference, so the work-to-grant
+// relation lives in this record once and no reader parses it out of a reference string.
+type RebindStanding
+  = ReservationRebound { record: CallerWorkRecord }
+  | RebindRefusedTerminal { phase: CallerWorkPhase }
+  | RebindUnknownWork
+  | RebindDuplicate
+
+fn rebind_reservation(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, reservation: ReservationRef) -> RebindStanding {
+  match lookup_record(snapshot: snapshot, work: work) {
+    CallerRecordAbsent => RebindUnknownWork
+    CallerRecordDuplicated => RebindDuplicate
+    CallerRecordFound { record: head } =>
+      match head.phase {
+        WorkWaiting =>
+          ReservationRebound {
+            record: CallerWorkRecord {
+              work: head.work,
+              reservation: reservation,
+              generation: head.generation,
+              phase: WorkWaiting,
+              recovery: head.recovery,
+            },
+          }
+        WorkCompleted => RebindRefusedTerminal { phase: head.phase }
+        WorkCancelled => RebindRefusedTerminal { phase: head.phase }
+        WorkRecoveryBoundExceeded { deficit: _ } => RebindRefusedTerminal { phase: head.phase }
+      }
+  }
+}
+
+type DurableRebindStanding
+  = DurableReservationRebound { record: CallerWorkRecord }
+  | DurableRebindRefusedTerminal { phase: CallerWorkPhase }
+  | DurableRebindUnknownWork
+  | DurableRebindStoreRefused { detail: NonEmptyStr }
+  | DurableRebindKeyNotSlotAddressable { work: LogicalWorkId }
+
+fn rebind_reservation_durable(
+  root: NonEmptyStr,
+  work: LogicalWorkId,
+  reservation: ReservationRef,
+) -> DurableRebindStanding {
+  match observe_durable_record(root: root, work: work) {
+    DurableSlotAbsent => DurableRebindUnknownWork
+    DurableSlotUnreadable { detail: d } => DurableRebindStoreRefused { detail: d }
+    DurableSlotUndecodable => DurableRebindStoreRefused {
+      detail: "slot payload is not a waiting record" as NonEmptyStr
+    }
+    DurableSlotWorkMismatch => DurableRebindStoreRefused {
+      detail: "slot payload names different work" as NonEmptyStr
+    }
+    DurableSlotKeyNotSlotAddressable { work: w } => DurableRebindKeyNotSlotAddressable { work: w }
+    DurableSlotPresent { record: held, generation: g } =>
+      match rebind_reservation(snapshot: singleton_snapshot(record: held), work: work, reservation: reservation) {
+        RebindUnknownWork => DurableRebindUnknownWork
+        RebindDuplicate => DurableRebindStoreRefused {
+          detail: "snapshot has duplicate records for this work" as NonEmptyStr
+        }
+        RebindRefusedTerminal { phase: p } => DurableRebindRefusedTerminal { phase: p }
+        ReservationRebound { record: next } =>
+          match persist_derived_phase(root: root, generation: g, record: next) {
+            DurablePhasePersisted { record: stored } => DurableReservationRebound { record: stored }
+            DurablePersistIdempotent { record: stored } => DurableReservationRebound { record: stored }
+            DurableWaitingPersisted { record: stored } => DurableReservationRebound { record: stored }
+            DurablePersistRefusedTerminal { phase: p } => DurableRebindRefusedTerminal { phase: p }
+            DurablePersistStoreRefused { detail: d } => DurableRebindStoreRefused { detail: d }
+            DurablePersistKeyNotSlotAddressable { work: w } => DurableRebindKeyNotSlotAddressable { work: w }
+            DurablePersistPayloadUnencodable { reason: r } => DurableRebindStoreRefused { detail: r }
+            DurablePersistUnknownWork => DurableRebindUnknownWork
+            DurablePersistDuplicate => DurableRebindStoreRefused {
               detail: "snapshot has duplicate records for this work" as NonEmptyStr
             }
           }
