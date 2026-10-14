@@ -21,9 +21,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   CARGO_TERM_COLOR: always
-  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-10-10.1
+  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 6eef1638a85753a8
 jobs:
-  witnesses:
+  v2-bootstrap:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
@@ -153,7 +153,7 @@ jobs:
           GUNBC_MEMORY_ENVELOPE_REQUIRED: slot
       - name: Why this lane is red, and what would be a real finding
         run: |-
-          printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.'
+          printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `v2-bootstrap`.'
           printf '%s\n' 'No standing break is declared, so a red here is a REAL FINDING -- most likely yours.'
           printf '%s\n' 'This step ran inside the fleet slot'\''s memory envelope (gunbc.runner.runner_slot_desired: MemoryMax 23622320128 bytes, no swap once converged), which gunbc test required (GUNBC_MEMORY_ENVELOPE_REQUIRED=slot) and receipted at exit.'
           printf '%s\n' 'The per-step trip at 21474836480 bytes is not asked for: a fleet job runs as the setpriv'\''d job user under a root unit (gunbc.runner.runner_host_deploy unit_user and job_user) and memory_governor apply_memory_cgroup_bind creates its leaf at the cgroup root, so no process of a job can create or join a bounded cgroup; the first required run that asked refused in four seconds (run 38002497388, MemoryCgroupBindRefused) (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership; the climb is gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall).'

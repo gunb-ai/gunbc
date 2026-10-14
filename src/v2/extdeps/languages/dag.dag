@@ -4,7 +4,7 @@ import std.coercion { unicode_scalar_unfold }
 import std.types { Char, List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
-import v2.std.algebra_structure_signature { boolean_algebra_node, free_monoid_structure_node, ordered_ring_node }
+import v2.std.algebra_structure_signature { boolean_algebra_node, equivalence_node, free_monoid_structure_node, ordered_ring_node }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured, TargetEmitHostRuntimeRow }
@@ -1893,16 +1893,25 @@ fn dag_grammar_postfix_as_suffix_expr() -> GrammarExpr {
 // An index suffix `[e]` is a postfix step beside the dotted and cast ones, so `xs[i]` is ONE
 // postfix expression. Before it the suffix did not exist and `xs[i]` parsed as `xs` followed by the
 // list literal `[i]`, two juxtaposed expressions that lowering read as the first alone or as a
-// second statement -- a silent misread (DESIGN section 5). v1 reads a `[` after any complete
-// operand as an index (02_parse parse_postfix, ExprIndex), so the juxtaposition this production
-// claims was never a program v1 accepted; the only reading it removes is that one. A slice `[a..b]`
-// has no production and refuses at parse, as it did.
+// second statement -- a silent misread (DESIGN section 5). A slice `[a..b]` has no production and
+// refuses at parse, as it did.
+//
+// THE `[` IS ON THE OPERAND'S LINE. v1 reads a `[` as an index only when it is the very next token
+// after a complete operand (02_parse parse_postfix, ExprIndex), and v1's token stream carries the
+// newline, so a `[` that opens the next line is not an index there: it begins the next statement, a
+// list literal. `let wire = f(value: value)` followed on the next line by `[a, b]` is a binding and
+// the block's value (src/v2/std/integer.dag integer_int_to_signed_i32_le_bytes). Without this
+// predicate the suffix read across the line break and parsed it as `f(..)[a, b]` with no body after
+// the let -- a different program, which normalize then refused for the missing body.
 fn dag_grammar_postfix_index_suffix_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
+    left: grammar_expr_not_predicate(element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_lbracket))),
     right: dag_grammar_sequence(
-      left: dag_grammar_expr_list_helper(),
-      right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
+      left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
+      right: dag_grammar_sequence(
+        left: dag_grammar_expr_list_helper(),
+        right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
+      )
     )
   )
 }
@@ -4865,12 +4874,35 @@ fn dag_host_text_free_monoid_inhabitance() -> AlgebraInhabitanceDecl {
   }
 }
 
+// Int and Symbol inhabit Equivalence: `==` and `!=` over them are judged through eq, whose result is Bool. Int's
+// eq is v2.std.integer int_eq, decided by its total order; Symbol's is v2.std.node symbol_eq, identity of the
+// interned symbol. A carrier with no such row has no equality to judge, and a comparison over it is refused
+// as an operand mismatch (v2.compiler.infer infer_transform_binary_infix).
+fn dag_int_equivalence_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = integer_int_type_node()
+  AlgebraInhabitanceDecl {
+    algebra: equivalence_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.std.integer.int_eq"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_symbol_equivalence_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = symbol_type_node()
+  AlgebraInhabitanceDecl {
+    algebra: equivalence_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.std.node.symbol_eq"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
 fn dag_algebra_inhabitance_row_type_params() -> List<Symbol> {
   [^dag_free_monoid_row_element]
 }
 
 fn dag_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance(), dag_free_monoid_free_monoid_inhabitance(), dag_host_text_free_monoid_inhabitance()]
+  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance(), dag_free_monoid_free_monoid_inhabitance(), dag_host_text_free_monoid_inhabitance(),
+   dag_int_equivalence_inhabitance(), dag_symbol_equivalence_inhabitance()]
 }
 
 fn dag_kernel_value_type_binding(row: KernelValueType) -> Optional<Symbol> {

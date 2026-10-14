@@ -24,6 +24,7 @@ import v2.std.diagnostic {
   Textual,
   Unavailable,
   UserInputBoundary,
+  WholeFile,
   diagnostics_singleton,
   node_locus,
   outcome_accepted,
