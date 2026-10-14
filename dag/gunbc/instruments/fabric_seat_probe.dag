@@ -1,6 +1,7 @@
 module gunbc.instruments.fabric_seat_probe
 
 import std.types { String, Bool, Int, NonEmptyStr, FilePath }
+import std.durable_compare_and_set { cas_generation_count }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { Measure }
@@ -70,7 +71,7 @@ fn fabric_seat_probe(receipt: NonEmptyStr) -> ProcessExit {
         "host=", short, " group=", gw, " launch=", launch.process_start_field as String,
         " class=", serving_co_tenancy_class_wire(c: c) as String, " model=", m as String,
         " partition=", p as String, " url=", u,
-        " reference=", g.reference as String, " fence=", g.fence.grant as String, "@", to_string(g.fence.generation),
+        " reference=", g.reference as String, " fence=", g.fence.grant as String, "@", to_string(cas_generation_count(g: g.fence.generation)),
         " granted_at=", to_string(g.granted_at), " expires_at=", to_string(g.expires_at), "\n",
       ], "")
       let seat_release = harness_release_seat(binding: binding, reason: "seat-probe complete" as NonEmptyStr)

@@ -33,7 +33,7 @@ import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
 import gunbc.roadmap.roadmap_result_returned { ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved }
 import gunbc.roadmap.roadmap_event_log { AttemptResultOutcome, ResultVerificationFailed, LegacyEmailPrincipal, RoadmapEventId }
 import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
-import std.durable_compare_and_set { cas_generation_first }
+import std.durable_compare_and_set { CasGeneration, cas_generation_first }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
@@ -282,7 +282,7 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
     unit: session_unit(node_id: node_id, attempt_key: attempt_key),
     lease: LeaseGrant {
       reference: session_unit(node_id: node_id, attempt_key: attempt_key),
-      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: 7 },
+      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: 7 as CasGeneration },
       granted_at: 1000,
       maximum_duration_seconds: 14400,
       expires_at: 15400,

@@ -1,6 +1,7 @@
 module gunbc.fabric.fabric_quota
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.durable_compare_and_set { cas_generation_count }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { Measure, Second, second, second_count }
@@ -186,7 +187,7 @@ fn fabric_quota_settle_at(lease: QuotaLease, actual: Nat, now: EpochSecs) -> Quo
 
 fn quota_lease_wire(l: QuotaLease) -> String {
   match l {
-    QuotaLeased { grant: g, partition: p, store: _, limit: _ } => join(["leased ", g.reference as String, " on ", p as String, " fence=", g.fence.grant as String, "@", to_string(g.fence.generation), " expires_at=", to_string(g.expires_at)], "")
+    QuotaLeased { grant: g, partition: p, store: _, limit: _ } => join(["leased ", g.reference as String, " on ", p as String, " fence=", g.fence.grant as String, "@", to_string(cas_generation_count(g: g.fence.generation)), " expires_at=", to_string(g.expires_at)], "")
     QuotaFull { wire: w } => join(["full ", w], "")
     QuotaLeaseRefused { detail: d } => join(["refused ", d], "")
   }

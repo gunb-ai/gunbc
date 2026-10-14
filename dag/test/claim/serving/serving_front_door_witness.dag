@@ -14,7 +14,7 @@ import gunbc.harness.harness_seat {
   HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_pool_identity_at,
   harness_seat_reference_record, harness_seat_reference_wire,
 }
-import std.durable_compare_and_set { cas_generation_first }
+import std.durable_compare_and_set { CasGeneration, cas_generation_first }
 import std.durable_exclusive_hold { HolderObservedDead, HolderLivenessUnobservable }
 import std.resource_release_law { QuiescenceRequired }
 import product.capacity.lease { LeaseGrant, GrantIdentity, LeasePolicy, lease_grant, lease_fence_of }
@@ -129,7 +129,7 @@ fn good_permit() -> ServingSeatPermit? {
 
 // A KEY HOLDER'S FORGERY: claims written by hand and signed with the REAL key. Every field is the
 // forger's choice; only the ledger and the redemption chain can refuse it.
-fn forged_with(seat: HarnessSeatReference, partition: PartitionId, class: ServingCoTenancyClass, generation: Nat, expires_at: EpochSecs) -> ServingSeatPermit? {
+fn forged_with(seat: HarnessSeatReference, partition: PartitionId, class: ServingCoTenancyClass, generation: CasGeneration, expires_at: EpochSecs) -> ServingSeatPermit? {
   let c = claims_on(launch: group_b_launch, replica_wire: rented_replica_wire(id: door_replica))
   permit_of(claims: ServingSeatPermitClaims {
     protocol: c.protocol, replica: c.replica, partition: partition, class: class,
@@ -139,7 +139,7 @@ fn forged_with(seat: HarnessSeatReference, partition: PartitionId, class: Servin
 }
 
 fn forged(seat: HarnessSeatReference, partition: PartitionId, expires_at: EpochSecs) -> ServingSeatPermit? {
-  forged_with(seat: seat, partition: partition, class: InteractiveQualitySensitive, generation: 1, expires_at: expires_at)
+  forged_with(seat: seat, partition: partition, class: InteractiveQualitySensitive, generation: cas_generation_first(), expires_at: expires_at)
 }
 
 fn envelope_by(id: NonEmptyStr, at: EpochSecs, actor: NonEmptyStr, payload: PoolEvent) -> ChainEnvelope<PoolEvent> {
@@ -393,7 +393,7 @@ test fn a_permit_naming_another_replicas_seat_partition_is_refused() -> Bool {
 }
 
 test fn a_permit_whose_class_and_partition_disagree_is_refused() -> Bool {
-  match door_verdict(evidence: service_caller, presented: forged_with(seat: witness_seat, partition: witness_partition, class: BatchQualityTolerant, generation: 1, expires_at: 1600), at: 1100, history: held_history) {
+  match door_verdict(evidence: service_caller, presented: forged_with(seat: witness_seat, partition: witness_partition, class: BatchQualityTolerant, generation: cas_generation_first(), expires_at: 1600), at: 1100, history: held_history) {
     FrontDoorRefused { cause: DoorPermitPartitionNotThisPool { partition: _, pool_partition: _ } } => true
     _ => false
   }
@@ -401,7 +401,7 @@ test fn a_permit_whose_class_and_partition_disagree_is_refused() -> Bool {
 
 test fn a_permit_for_a_class_the_door_serves_no_pool_for_is_refused() -> Bool {
   let quality_only = FrontDoorIdentity { replica: door_replica, launch: group_b_launch, suite: HmacSha256, pools: [quality_pool] }
-  let presented = forged_with(seat: witness_seat, partition: tolerant_pool.partition, class: BatchQualityTolerant, generation: 1, expires_at: 1600)
+  let presented = forged_with(seat: witness_seat, partition: tolerant_pool.partition, class: BatchQualityTolerant, generation: cas_generation_first(), expires_at: 1600)
   match front_door_admit(
     evidence: service_caller, presented: presented, mac_result: mac_for(presented: presented), door: quality_only, observed_at: 1100, request: request_one,
     ledger: fn(pool, reference, grant, generation) { seat_grant_currency_of(pool: pool, walk: held_history, reference: reference, grant: grant, generation: generation) },
@@ -432,7 +432,7 @@ test fn a_reference_acquired_twice_is_refused_rather_than_resolved() -> Bool {
 }
 
 test fn a_permit_claiming_another_fence_generation_is_refused() -> Bool {
-  match door_verdict(evidence: service_caller, presented: forged_with(seat: witness_seat, partition: witness_partition, class: InteractiveQualitySensitive, generation: 2, expires_at: 1600), at: 1100, history: held_history) {
+  match door_verdict(evidence: service_caller, presented: forged_with(seat: witness_seat, partition: witness_partition, class: InteractiveQualitySensitive, generation: 2 as CasGeneration, expires_at: 1600), at: 1100, history: held_history) {
     FrontDoorRefused { cause: DoorSeatFenceGenerationDisagrees { claimed: _, recorded: _ } } => true
     _ => false
   }

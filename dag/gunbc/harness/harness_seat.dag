@@ -4,6 +4,7 @@ import product.host_identity { HostIdentity }
 import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
 import gunbc.serving.session_store { ServingSessionEntry, serving_session_record_for_request }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import std.nat { Nat, nat_range_inclusive, nat_min }
 import std.measure { Measure, Count, One, money_amount_micro, second, measure_count, TokenCount, Second, second_count, MoneyPerSecond, MoneyAmountMicro }
 import extdeps.accounting.encumbrance { Held, Expended, Released }
@@ -1443,7 +1444,7 @@ type HarnessReleaseCapability {
   ceiling: Nat
   reference: NonEmptyStr
   grant: GrantIdentity
-  generation: Nat
+  generation: CasGeneration
 }
 
 // THE CONSTRUCTOR IS TOTAL OVER THE GRANT, not optional over the binding. An earlier spelling took
@@ -1464,7 +1465,7 @@ fn harness_release_capability(partition: PartitionId, ceiling: Nat, grant: Lease
 }
 
 fn harness_release_capability_wire(c: HarnessReleaseCapability) -> String {
-  join([c.partition as String, "/", c.reference as String, "/", c.grant as String, "/", to_string(c.generation), "/", to_string(c.ceiling)], "")
+  join([c.partition as String, "/", c.reference as String, "/", c.grant as String, "/", to_string(cas_generation_count(g: c.generation)), "/", to_string(c.ceiling)], "")
 }
 
 fn harness_release_held(short_hostname: String, capability: HarnessReleaseCapability, reason: NonEmptyStr) -> HarnessSeatRelease {
@@ -1519,11 +1520,11 @@ fn admitting_event_for(walk: ChainWalk<PoolEvent>, reference: NonEmptyStr) -> Ev
 }
 
 fn harness_release_fenced(store: FabricStorageBinding, capability: HarnessReleaseCapability, observed: Nat, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease {
-  if observed < capability.generation {
+  if (observed as Int) < cas_generation_count(g: capability.generation) {
     HarnessSeatReleaseRefused {
       detail: join([
         "the seat pool at ", capability.partition as String, " reads generation ", to_string(observed),
-        " while the grant was issued at ", to_string(capability.generation),
+        " while the grant was issued at ", to_string(cas_generation_count(g: capability.generation)),
         ", so this capability does not name the pool that is standing",
       ], ""),
     }
