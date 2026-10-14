@@ -2,6 +2,8 @@ module test.claim.live_deploy.user_work_slice_witness
 
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.measure { byte_size_count, kibibyte, byte_size }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io
 import extdeps.exec.command { argv_words }
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run {
@@ -9,7 +11,7 @@ import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWaitReady, SystemdSummaryPrintingWaitRefused, systemd_summary_printing_wait_argv,
 }
 import gunbc.live_deploy.slice_bounds {
-  user_work_slice_unit_name,
+  user_work_slice_unit_name, user_work_slice_memory_swap_max,
   user_work_slice_memory_max_of, user_work_slice_memory_high_of,
   user_slice_backstop_memory_max_of, user_manager_remainder,
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
@@ -23,6 +25,7 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.compute.unit_bounds {
   compute_grant_unit_properties, gunbc_user_work_scope_command,
   gunbc_user_work_wait_command, gunbc_user_work_transient_command,
+  user_work_scope_wrap_prefix_argv,
 }
 import gunbc.gunbc_cli_command { gunbc_test_user_work_scope_command }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_properties }
@@ -35,6 +38,9 @@ import gunbc.host.host_converge {
   slice_control_caps_for,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data seed_user_work_scope_path: String = "src/v1/stage0/src/cli_run/user_work_scope.rs"
 
 fn property_words(props: List<SystemdRunProperty>) -> List<String> {
   props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
@@ -132,6 +138,32 @@ test fn the_ad_hoc_scope_wrap_injects_the_slice_the_raw_builder_omits() -> Bool 
         && any(argv_words(command: command), w => w == "--user")
         && any(argv_words(command: command), w => w == "--scope")
   }
+}
+
+test fn the_seed_trampoline_mirrors_the_declared_wrap_prefix() -> Bool {
+  let seed = filesystem_read(path: seed_user_work_scope_path).content
+  let prefix = user_work_scope_wrap_prefix_argv()
+  let swap_word = join(["--property=MemorySwapMax=", to_string(byte_size_count(b: user_work_slice_memory_swap_max))], "")
+  let slice_word = join(["--property=Slice=", user_work_slice_unit_name as String], "")
+  prefix.length() > 0
+    && any(prefix, w => w == "systemd-run")
+    && any(prefix, w => w == "--user")
+    && any(prefix, w => w == "--scope")
+    && any(prefix, w => w == slice_word)
+    && any(prefix, w => w == swap_word)
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.live_deploy.slice_bounds user_work_slice_unit_name`")
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.live_deploy.slice_bounds user_work_slice_memory_swap_max`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_slice_unit_name as String, "\"")))
+    && string_contains(
+      s: seed,
+      pattern: concat(
+        "const USER_WORK_SLICE_MEMORY_SWAP_MAX_BYTES: u64 = ",
+        concat(to_string(byte_size_count(b: user_work_slice_memory_swap_max)), ";"),
+      ),
+    )
+    && string_contains(s: seed, pattern: "CgroupUnreadable")
+    && string_contains(s: seed, pattern: "UserManagerProbeFailed")
+    && string_contains(s: seed, pattern: "std::process::exit(2)")
 }
 
 test fn the_gunbc_test_user_work_scope_is_the_declared_wrap() -> Bool {

@@ -5,8 +5,10 @@ import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count }
 import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
+import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReading, SystemdSummaryPrintingWaitReading,
+  SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdSummaryPrintingWaitReading,
   SystemdSetenvBinding, systemd_run_user_scope_command, systemd_run_user_transient_command,
   systemd_run_user_wait_command,
 }
@@ -92,6 +94,19 @@ fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, p
 // gunbc_run_user_work_scope_command; seed Test/Run (cli_run::user_work_scope).
 fn gunbc_user_work_scope_command(properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_user_scope_command(properties: user_work_run_properties(rest: properties), command_argv: command_argv)
+}
+
+// THE WRAP PREFIX THE SEED TRAMPOLINE MUST PROJECT. Seed cannot eval this fold at wrap time
+// (bootstrap: wrap runs before the corpus is resolved). The executing join is
+// test.claim.live_deploy.user_work_slice_witness the_seed_trampoline_mirrors_the_declared_wrap_prefix:
+// it derives the prefix from this function and requires those words in the retained
+// cli_run/user_work_scope.rs source. Editing slice name or swap here without the seed is RED.
+fn user_work_scope_wrap_prefix_argv() -> List<String> {
+  match gunbc_user_work_scope_command(properties: [], command_argv: ["__placeholder__"]) {
+    SystemdRunCommandRefused { cause: _ } => []
+    SystemdRunCommandReady { command } =>
+      filter(argv_words(command: command), w => w != "__placeholder__")
+  }
 }
 
 fn gunbc_user_work_transient_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
