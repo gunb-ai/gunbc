@@ -156,3 +156,15 @@ test fn fb_e_q7_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
   }
 }
+test fn fb_d_accepted_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_d")) {
+    RcfInferAccepted { diagnostics: _ } => true
+    _ => false
+  }
+}
+test fn fb_e_accepted_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_e")) {
+    RcfInferAccepted { diagnostics: _ } => true
+    _ => false
+  }
+}
