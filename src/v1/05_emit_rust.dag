@@ -187,7 +187,7 @@ import std.types { is_container_type, is_kernel_type, container_template_algebra
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_by_name_in_module_scope, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name_local, binding_declares_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -2230,9 +2230,17 @@ fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List
   if type_var_in_fn_generic_scope(id: name, generic_param_names: generic_param_names) {
     false
   } else {
-    match lookup_type_by_name_in_module_scope(env: env, name: name) {
-      Present { value: resolved_node } =>
-        if resolved_node.inferred != none && is_type_variable(inferred: resolved_node.inferred.value) { true } else { false }
+    match lookup_binding_by_name_local(env: env, name: name) {
+      Present { value: binding } =>
+        // A name its binding does not declare is a variant constructor (Present, Absent): no Rust type
+        // carries that spelling, so the annotation cannot name it.
+        if !(contains(name, ".") || binding_declares_name(binding: binding, name: name, source_indices: env.source_indices)) {
+          true
+        } else if binding.resolved.inferred != none && is_type_variable(inferred: binding.resolved.inferred.value) {
+          true
+        } else {
+          false
+        }
       Absent => true
     }
   }

@@ -757,18 +757,6 @@ fn lookup_binding_by_name_local(env: TypeEnv, name: String) -> TypeBinding? {
   }
 }
 
-// The module's own scope: the scope chain and interned bindings, answering for this module and its
-// imports only. lookup_binding_by_name adds the whole-pool bare-name fallback below it, which answers
-// by which OTHER modules the emission closure held.
-fn lookup_binding_in_module_scope(env: TypeEnv, name: String) -> TypeBinding? {
-  match lookup_binding_by_name_local(env: env, name: name) {
-    Present { value: binding } =>
-      if listed_import_required_bare_call_blocked(env: env, name: name) { none }
-      else { Present { value: binding } }
-    Absent => Absent
-  }
-}
-
 fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
   match lookup_binding_by_name_local(env: env, name: name) {
     Present { value: binding } =>
@@ -1205,16 +1193,7 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
 // one, never folded into it.
 
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
-  type_of_name_binding(env: env, name: name, found: lookup_binding_by_name(env: env, name: name))
-}
-
-// lookup_type_by_name over the module's own scope alone.
-fn lookup_type_by_name_in_module_scope(env: TypeEnv, name: String) -> Node? {
-  type_of_name_binding(env: env, name: name, found: lookup_binding_in_module_scope(env: env, name: name))
-}
-
-fn type_of_name_binding(env: TypeEnv, name: String, found: TypeBinding?) -> Node? {
-  match found {
+  match lookup_binding_by_name(env: env, name: name) {
     Present { value: binding } =>
       match contains(name, ".") || binding_declares_name(binding: binding, name: name, source_indices: env.source_indices) {
         true => Present { value: binding.resolved }
