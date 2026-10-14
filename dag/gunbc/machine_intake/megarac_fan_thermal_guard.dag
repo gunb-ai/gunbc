@@ -2,12 +2,11 @@ module gunbc.machine_intake.megarac_fan_thermal_guard
 
 import std.types { Bool, List, NonEmptyStr }
 import std.optional { Present, Absent }
-import std.measure { Celsius, Percent, celsius_count }
+import std.measure { Celsius, Percent, celsius, celsius_count }
 import extdeps.external_authority {
   CitedFigureStanding,
   CitedToAuthority,
   TranscribedUncited,
-  cited_figure_read_obligation,
 }
 import extdeps.cpu.ampere {
   ampere_altra_max_m12830_thermal_limits,
@@ -23,19 +22,14 @@ import extdeps.bmc.megarac_fan_policy {
   megarac_set_manager_status_body,
 }
 import gunbc.machine_intake.megarac_fan_mode_observation {
-  FanPolicyPhase,
-  BootThroughTerminal,
-  HostBringupAndAfter,
   MegaRacFanPhaseDesire,
   megarac_fan_boot_phase_desire,
-  megarac_fan_bringup_phase_desire,
 }
 
-// MANUAL LOW DUTY ON MEGARAC IS ADMITTED ONLY UNDER A THERMAL GUARD READ FROM THE SAME CONTROLLER.
-// Guard trip or an unreadable required temperature re-enables the Cooling Manager. A run exit
-// (including refusal and timeout) restores that phase's declared desire and is a separate path:
-// mid-boot restores the 20-30 percent band, bringup restores automatic. DIMM, VRD and outlet
-// ceilings are not Ampere figures; they stay TranscribedUncited and cannot mint a trip.
+// MANUAL LOW DUTY IS ADMITTED ONLY WHILE A RUN IS ALIVE TO GUARD IT. Trip, unread temperature,
+// or any run exit (success mid-phase, refusal, timeout, kill) leaves the Cooling Manager
+// enabled (manager_disabled 0) and that is the readback. Uncited DIMM/VRD/outlet figures MAY
+// trip toward automatic: the epistemic bar is against using them to justify lower cooling.
 
 data megarac_manual_duty_soc_sensor: NonEmptyStr = "CPU0_SOC_Temp"
 
@@ -47,16 +41,68 @@ fn megarac_manual_duty_soc_ceiling() -> Celsius {
   ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature
 }
 
-data megarac_manual_duty_dimm_ceiling_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "JEDEC or DIMM-vendor operating-temperature ceiling for the parts fitted on this unit. No DIMM trip may fire until this is CitedToAuthority.",
+// POLICY MARGIN, NOT A DATASHEET FIGURE. Ampere cites 100C continuous junction; a trip at that
+// wall is too late for manual low duty. Fifteen degrees is the same span the fleet quiet curve
+// uses between emergency full duty (85C) and that junction maximum.
+data megarac_manual_duty_soc_trip_margin: Celsius = celsius(15)
+
+fn megarac_manual_duty_soc_trip() -> Celsius {
+  celsius(celsius_count(megarac_manual_duty_soc_ceiling()) - celsius_count(megarac_manual_duty_soc_trip_margin))
 }
+
+data megarac_manual_duty_dimm_trip: Celsius = celsius(85)
+
+data megarac_manual_duty_dimm_ceiling_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "JEDEC or DIMM-vendor operating-temperature ceiling for the parts fitted on this unit. The 85C trip is policy toward restoring automatic control, not a cited wall against cooling.",
+}
+
+data megarac_manual_duty_vrd_trip: Celsius = celsius(90)
 
 data megarac_manual_duty_vrd_ceiling_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "VRD-vendor operating-temperature ceiling for the VRDs this BMC names. No VRD trip may fire until this is CitedToAuthority.",
+  read_obligation: "VRD-vendor operating-temperature ceiling for the VRDs this BMC names. The 90C trip is policy toward restoring automatic control, not a cited wall against cooling.",
 }
 
+data megarac_manual_duty_outlet_trip: Celsius = celsius(70)
+
 data megarac_manual_duty_outlet_ceiling_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Foxconn Mt. Collins outlet-temperature limit from the chassis or BMC thermal documentation. No outlet trip may fire until this is CitedToAuthority.",
+  read_obligation: "Foxconn Mt. Collins outlet-temperature limit from the chassis or BMC thermal documentation. The 70C trip is policy toward restoring automatic control, not a cited wall against cooling.",
+}
+
+type MegaRacGuardSensorClass
+  = SocJunction
+  | DimmChannel
+  | VoltageRegulator
+  | ChassisOutlet
+
+fn megarac_guard_sensor_class(sensor: NonEmptyStr) -> MegaRacGuardSensorClass? {
+  if (sensor as String) == "CPU0_SOC_Temp" {
+    Present { value: SocJunction }
+  } else if (sensor as String) == "CPU0_DIMMG0_Temp" || (sensor as String) == "CPU0_DIMMG1_Temp" {
+    Present { value: DimmChannel }
+  } else if (sensor as String) == "CPU0_SOC_VRDTemp" || (sensor as String) == "CPU0_DIMMVRDTemp" {
+    Present { value: VoltageRegulator }
+  } else if (sensor as String) == "Outlet_1_Temp" || (sensor as String) == "Outlet_2_Temp" {
+    Present { value: ChassisOutlet }
+  } else {
+    Absent
+  }
+}
+
+fn megarac_guard_trip_celsius(kind: MegaRacGuardSensorClass) -> Celsius {
+  match kind {
+    SocJunction => megarac_manual_duty_soc_trip()
+    DimmChannel => megarac_manual_duty_dimm_trip
+    VoltageRegulator => megarac_manual_duty_vrd_trip
+    ChassisOutlet => megarac_manual_duty_outlet_trip
+  }
+}
+
+fn megarac_temperature_trips(sensor: NonEmptyStr, temperature: Celsius) -> Bool {
+  match megarac_guard_sensor_class(sensor: sensor) {
+    Absent => false
+    Present { value: kind } =>
+      celsius_count(temperature) >= celsius_count(megarac_guard_trip_celsius(kind: kind))
+  }
 }
 
 data megarac_manual_duty_required_sensors: List<NonEmptyStr> = [
@@ -114,34 +160,51 @@ type MegaRacThermalGuardVerdict
   | MegaRacThermalGuardTrip { sensor: NonEmptyStr, temperature: Celsius }
   | MegaRacThermalGuardUnread { sensor: NonEmptyStr }
 
-fn megarac_thermal_guard_verdict(readings: List<MegaRacTempReading>) -> MegaRacThermalGuardVerdict {
-  match megarac_first_unread(
-    readings: readings,
-    required: megarac_manual_duty_required_sensors,
-  ) {
-    Present { value: s } => MegaRacThermalGuardUnread { sensor: s }
-    Absent => match megarac_temp_for(readings: readings, sensor: megarac_manual_duty_soc_sensor) {
-      Absent => MegaRacThermalGuardUnread { sensor: megarac_manual_duty_soc_sensor }
+fn megarac_first_trip(
+  readings: List<MegaRacTempReading>,
+  required: List<NonEmptyStr>,
+) -> MegaRacThermalGuardVerdict {
+  match required.first() {
+    Absent => MegaRacThermalGuardHolds
+    Present { value: s } => match megarac_temp_for(readings: readings, sensor: s) {
+      Absent => MegaRacThermalGuardUnread { sensor: s }
       Present { value: r } => match r {
         MegaRacTempUnreadable { sensor: u } => MegaRacThermalGuardUnread { sensor: u }
         MegaRacTempObserved { sensor: n, value: t } =>
-          if celsius_count(t) >= celsius_count(megarac_manual_duty_soc_ceiling()) {
+          if megarac_temperature_trips(sensor: n, temperature: t) {
             MegaRacThermalGuardTrip { sensor: n, temperature: t }
           } else {
-            MegaRacThermalGuardHolds
+            megarac_first_trip(readings: readings, required: required.skip(n: 1))
           }
       }
     }
   }
 }
 
+fn megarac_thermal_guard_verdict(readings: List<MegaRacTempReading>) -> MegaRacThermalGuardVerdict {
+  match megarac_first_unread(
+    readings: readings,
+    required: megarac_manual_duty_required_sensors,
+  ) {
+    Present { value: s } => MegaRacThermalGuardUnread { sensor: s }
+    Absent => megarac_first_trip(
+      readings: readings,
+      required: megarac_manual_duty_required_sensors,
+    )
+  }
+}
+
 type MegaRacFanRestoreCause
   = ThermalGuardTripped { sensor: NonEmptyStr, temperature: Celsius }
   | TemperatureUnreadable { sensor: NonEmptyStr }
+  | RunExited
 
 type MegaRacFanPolicyRestore
   = ReEnableCoolingManager { cause: MegaRacFanRestoreCause }
-  | RestoreDeclaredPhase { phase: FanPolicyPhase, desire: MegaRacFanPhaseDesire }
+
+fn megarac_fan_exit_manager_readback_body() -> NonEmptyStr {
+  megarac_set_manager_status_body(standing: CoolingManagerAutomatic)
+}
 
 fn megarac_fan_safety_restore(verdict: MegaRacThermalGuardVerdict) -> MegaRacFanPolicyRestore? {
   match verdict {
@@ -161,17 +224,8 @@ fn megarac_fan_safety_restore(verdict: MegaRacThermalGuardVerdict) -> MegaRacFan
   }
 }
 
-fn megarac_fan_run_exit_restore(phase: FanPolicyPhase) -> MegaRacFanPolicyRestore {
-  match phase {
-    BootThroughTerminal => RestoreDeclaredPhase {
-      phase: BootThroughTerminal,
-      desire: megarac_fan_boot_phase_desire,
-    }
-    HostBringupAndAfter => RestoreDeclaredPhase {
-      phase: HostBringupAndAfter,
-      desire: megarac_fan_bringup_phase_desire,
-    }
-  }
+fn megarac_fan_run_exit_restore() -> MegaRacFanPolicyRestore {
+  ReEnableCoolingManager { cause: RunExited }
 }
 
 type MegaRacFanPhaseWritePlan
@@ -198,20 +252,4 @@ fn megarac_fan_phase_write_plan(desire: MegaRacFanPhaseDesire) -> MegaRacFanPhas
 
 fn megarac_fan_boot_phase_write_plan() -> MegaRacFanPhaseWritePlan {
   megarac_fan_phase_write_plan(desire: megarac_fan_boot_phase_desire)
-}
-
-fn megarac_uncited_component_ceilings_cannot_trip() -> Bool {
-  match cited_figure_read_obligation(standing: megarac_manual_duty_dimm_ceiling_standing) {
-    Absent => false
-    Present { value: _ } => match cited_figure_read_obligation(standing: megarac_manual_duty_vrd_ceiling_standing) {
-      Absent => false
-      Present { value: _ } => match cited_figure_read_obligation(standing: megarac_manual_duty_outlet_ceiling_standing) {
-        Absent => false
-        Present { value: _ } => match cited_figure_read_obligation(standing: megarac_manual_duty_soc_ceiling_standing) {
-          Present { value: _ } => false
-          Absent => true
-        }
-      }
-    }
-  }
 }

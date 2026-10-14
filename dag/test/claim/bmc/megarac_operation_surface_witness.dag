@@ -41,16 +41,16 @@ import gunbc.machine_intake.megarac_fan_thermal_guard {
   MegaRacThermalGuardTrip,
   MegaRacThermalGuardUnread,
   ReEnableCoolingManager,
-  RestoreDeclaredPhase,
+  RunExited,
   TemperatureUnreadable,
   ThermalGuardTripped,
   MegaRacFanPhasePwmRefused,
   MegaRacFanPhaseWritesReady,
   megarac_fan_boot_phase_write_plan,
+  megarac_fan_exit_manager_readback_body,
   megarac_fan_run_exit_restore,
   megarac_fan_safety_restore,
   megarac_thermal_guard_verdict,
-  megarac_uncited_component_ceilings_cannot_trip,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac }
@@ -183,16 +183,20 @@ fn megarac_guard_readable_fixture(soc: Int) -> List<MegaRacTempReading> {
 }
 
 test fn thermal_guard_trip_re_enables_the_cooling_manager() -> Bool {
-  match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 100)) {
+  match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 85)) {
     MegaRacThermalGuardTrip { sensor: s, temperature: t } =>
       (s as String) == "CPU0_SOC_Temp"
-        && match megarac_fan_safety_restore(
-          verdict: MegaRacThermalGuardTrip { sensor: s, temperature: t },
-        ) {
-          Present { value: ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } } =>
-            true
-          Present { value: RestoreDeclaredPhase { phase: _, desire: _ } } => false
-          Absent => false
+        && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 84)) {
+          MegaRacThermalGuardHolds =>
+            match megarac_fan_safety_restore(
+              verdict: MegaRacThermalGuardTrip { sensor: s, temperature: t },
+            ) {
+              Present { value: ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } } =>
+                true
+              Absent => false
+            }
+          MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
+          MegaRacThermalGuardUnread { sensor: _ } => false
         }
     MegaRacThermalGuardHolds => false
     MegaRacThermalGuardUnread { sensor: _ } => false
@@ -217,7 +221,6 @@ test fn unreadable_temperature_re_enables_the_cooling_manager() -> Bool {
         ) {
           Present { value: ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } } =>
             true
-          Present { value: RestoreDeclaredPhase { phase: _, desire: _ } } => false
           Absent => false
         }
     MegaRacThermalGuardHolds => false
@@ -237,18 +240,42 @@ test fn boot_job_admits_the_fan_pwm_all_write_plan() -> Bool {
   }
 }
 
-test fn mid_boot_exit_restores_the_boot_phase_policy() -> Bool {
-  match megarac_fan_run_exit_restore(phase: BootThroughTerminal) {
-    RestoreDeclaredPhase { phase: p, desire: d } =>
-      p == BootThroughTerminal
-        && d == megarac_fan_boot_phase_desire
-        && d.manager == CoolingManagerDisabledManual
+test fn mid_boot_exit_leaves_the_cooling_manager_enabled() -> Bool {
+  match megarac_fan_run_exit_restore() {
+    ReEnableCoolingManager { cause: RunExited } =>
+      (megarac_fan_exit_manager_readback_body() as String) == "{\"manager_disabled\":0}"
         && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 36)) {
-          MegaRacThermalGuardHolds => megarac_uncited_component_ceilings_cannot_trip()
+          MegaRacThermalGuardHolds => true
           MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
           MegaRacThermalGuardUnread { sensor: _ } => false
         }
-    ReEnableCoolingManager { cause: _ } => false
+    ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } => false
+    ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } => false
+  }
+}
+
+test fn dimm_over_uncited_ceiling_re_enables_the_manager() -> Bool {
+  let readings = [
+    MegaRacTempObserved { sensor: "CPU0_SOC_Temp", value: celsius(36) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG0_Temp", value: celsius(85) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG1_Temp", value: celsius(32) },
+    MegaRacTempObserved { sensor: "CPU0_SOC_VRDTemp", value: celsius(36) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMVRDTemp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_1_Temp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_2_Temp", value: celsius(35) },
+  ]
+  match megarac_thermal_guard_verdict(readings: readings) {
+    MegaRacThermalGuardTrip { sensor: s, temperature: _ } =>
+      (s as String) == "CPU0_DIMMG0_Temp"
+        && match megarac_fan_safety_restore(
+          verdict: MegaRacThermalGuardTrip { sensor: s, temperature: celsius(85) },
+        ) {
+          Present { value: ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } } =>
+            true
+          Absent => false
+        }
+    MegaRacThermalGuardHolds => false
+    MegaRacThermalGuardUnread { sensor: _ } => false
   }
 }
 
