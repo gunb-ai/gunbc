@@ -12,8 +12,7 @@ import std.measure {
 }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.currency.currency { CurrencyCode }
-import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ExternalAuthority }
-import extdeps.uri { Uri, Https }
+import extdeps.external_authority { TranscribedUncited }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.demand {
   term_money, term_delay, term_interruption, term_accepted_work, debt_payoff_objective,
@@ -382,10 +381,6 @@ data flex_term_vram_hour: ObjectiveTerm = ObjectiveTerm {
   ground: TranscribedUncited { read_obligation: "card rank is money per VRAM-byte-hour after the held switch premium, not fabric accepted-work" as NonEmptyStr },
 }
 
-data flex_market_physical_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/search/search-offers" }
-}
-
 fn flex_level_identity(level: FlexBidLevel) -> DeclarationRef {
   match level {
     FlexBidLevelThreeFifths => flex_level_id_three_fifths
@@ -451,7 +446,7 @@ fn flex_market_assessment() -> DecisionAssessment {
         variable: flex_market_var,
         region: DecisionRegion { identity: flex_market_region },
         relation: MonotoneDecreasing,
-        coupling: CitedToAuthority { authority: flex_market_physical_authority },
+        coupling: TranscribedUncited { read_obligation: "interruptible bid-level term-variable coupling is a flex policy bet; Vast search-offers documents the offer wire, not this monotone" as NonEmptyStr },
       }
     ),
     constraints: [
@@ -515,7 +510,7 @@ fn flex_rank_assessment() -> DecisionAssessment {
         variable: flex_rank_var,
         region: DecisionRegion { identity: flex_rank_region },
         relation: MonotoneDecreasing,
-        coupling: CitedToAuthority { authority: flex_market_physical_authority },
+        coupling: TranscribedUncited { read_obligation: "VRAM-byte-hour rank sensitivity is a flex policy bet; Vast search-offers documents the offer wire, not this monotone" as NonEmptyStr },
       }
     ],
     constraints: [
