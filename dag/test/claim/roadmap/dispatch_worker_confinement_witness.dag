@@ -20,12 +20,14 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import std.measure { kibibyte }
 import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance,
   srv2_deploy_dashboard_instance,
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
 }
+import gunbc.host.host_layout { attempt_exit_spool_root }
 
 // The claims are about WHICH SETTINGS the unit binds; rendering the typed properties back to their
 // wire words here is a test observation, not a builder -- nothing hands these words to systemd-run.
@@ -40,7 +42,7 @@ fn has_property(props: List<SystemdRunProperty>, needle: String) -> Bool {
 test fn the_worker_unit_confines_writes_to_the_instance_root() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
   let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "mkdir -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr)
-  let expected = dispatch_worker_writable_paths(instance: inst)
+  let expected = dispatch_worker_writable_paths(instance: inst, working_directory: "/wt", scratch_directory: "/wt")
   has_property(props: props, needle: "ProtectSystem=strict")
     && !has_property(props: props, needle: join(["Slice=", user_work_slice_unit_name as String], ""))
     && match gunbc_user_work_transient_command(unit: "gunbc-attempt-t.service" as NonEmptyStr, properties: props, setenv_bindings: [], command_argv: ["true"]) {
@@ -52,29 +54,37 @@ test fn the_worker_unit_confines_writes_to_the_instance_root() -> Bool {
     && has_property(props: props, needle: "ProtectHome=read-only")
     && has_property(props: props, needle: "PrivateTmp=yes")
     && has_property(props: props, needle: join(["ReadWritePaths=", expected], ""))
-    && has_property(props: props, needle: "/.git/worktrees")
-    && any(dispatch_worker_writable_path_list(instance: inst), p => p == dashboard_instance_dispatch_worktree_root(instance: inst) as String)
-    && any(dispatch_worker_writable_path_list(instance: inst), p => p == dashboard_instance_dispatch_attempt_state_root(instance: inst) as String)
+    && has_property(props: props, needle: "/.git")
+    && any(dispatch_worker_writable_path_list(instance: inst, working_directory: "/wt", scratch_directory: "/wt"), p => p == "/wt")
+    && any(dispatch_worker_writable_path_list(instance: inst, working_directory: "/wt", scratch_directory: "/wt"), p => p == join([inst.repo_root as String, "/.git"], ""))
 }
 
 // DISCRIMINATING ON THE PRODUCTION INSTANCE: ReadWritePaths=/opt/gunbc covered /opt/gunbc/bin and
-// the deployed checkout. The writable set is the dispatch-state roots plus .git/worktrees, so a
-// write to the binary or the tree root is not a carved-out path.
+// the deployed checkout. The writable set is this attempt's worktree, its scratch directory, and
+// the common git dir (commit/stash/fetch), so a write to the binary or a source file is not a
+// carved-out path. Sibling attempts, the attempt-state root, and the exit spool are not either.
 test fn the_srv1_worker_cannot_write_the_deployed_binary_or_tree() -> Bool {
   let inst = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
-  let wt = dashboard_instance_dispatch_worktree_root(instance: inst) as String
-  !dispatch_worker_path_is_writable(instance: inst, path: "/opt/gunbc")
-    && !dispatch_worker_path_is_writable(instance: inst, path: "/opt/gunbc/bin")
-    && !dispatch_worker_path_is_writable(instance: inst, path: inst.serve_binary as String)
-    && !dispatch_worker_path_is_writable(instance: inst, path: inst.repo_root as String)
-    && !dispatch_worker_path_is_writable(instance: inst, path: join([inst.repo_root as String, "/README.md"], ""))
-    && dispatch_worker_path_is_writable(instance: inst, path: wt)
-    && dispatch_worker_path_is_writable(instance: inst, path: join([wt, "/session/probe"], ""))
-    && dispatch_worker_path_is_writable(instance: inst, path: dashboard_instance_dispatch_attempt_state_root(instance: inst) as String)
-    && dispatch_worker_path_is_writable(instance: inst, path: join([inst.repo_root as String, "/.git/worktrees/attempt"], ""))
-    && !dispatch_worker_path_is_writable(instance: lab, path: lab.serve_binary as String)
-    && dispatch_worker_path_is_writable(instance: lab, path: dashboard_instance_dispatch_worktree_root(instance: lab) as String)
+  let wt = join([dashboard_instance_dispatch_worktree_root(instance: inst) as String, "/probe-a-key"], "")
+  let scratch = join([dashboard_instance_dispatch_attempt_state_root(instance: inst) as String, "/probe-a-key"], "")
+  let lab_wt = join([dashboard_instance_dispatch_worktree_root(instance: lab) as String, "/probe-a-key"], "")
+  let lab_scratch = join([dashboard_instance_dispatch_attempt_state_root(instance: lab) as String, "/probe-a-key"], "")
+  !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: "/opt/gunbc")
+    && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: "/opt/gunbc/bin")
+    && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: inst.serve_binary as String)
+    && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: inst.repo_root as String)
+    && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/README.md"], ""))
+    && dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: wt)
+    && dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: join([wt, "/session/probe"], ""))
+    && dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: scratch)
+    && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: dashboard_instance_dispatch_attempt_state_root(instance: inst) as String)
+    && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: dashboard_instance_dispatch_worktree_root(instance: inst) as String)
+    && dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/.git/worktrees/attempt"], ""))
+    && dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/.git/objects"], ""))
+    && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: attempt_exit_spool_root(instance_root: inst.instance_root as String))
+    && !dispatch_worker_path_is_writable(instance: lab, working_directory: lab_wt, scratch_directory: lab_scratch, path: lab.serve_binary as String)
+    && dispatch_worker_path_is_writable(instance: lab, working_directory: lab_wt, scratch_directory: lab_scratch, path: lab_wt)
 }
 
 // THE SAME DEFECT, ONE DIRECTORY OVER. The verify pass writes the current verification selection
