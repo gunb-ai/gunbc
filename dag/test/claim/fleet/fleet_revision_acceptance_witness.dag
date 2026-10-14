@@ -1,14 +1,17 @@
 module test.claim.fleet.fleet_revision_acceptance_witness
 
 import std.types { String, NonEmptyStr, Bool }
+import std.contract_identity { ContractEpoch }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success, Failure, Cancelled }
 import extdeps.github.workflow_run_event { WorkflowRunEvent }
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
-import gunbc.required_ci_contract_epoch { required_ci_contract_epoch }
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch_yaml_value }
 import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved }
 import gunbc.fleet.fleet_revision_acceptance {
-  RequiredCiContractIdentity,
+  RequiredCiContractReady,
+  RequiredCiContractUnwritable,
+  RequiredCiContractMemoryRequirementUnreadable,
   required_ci_contract,
   RequiredCiSucceeded,
   DefaultBranchRevisionObserved,
@@ -43,7 +46,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // The epoch dimension is exercised by its own two REDs; every other admission witness here
 // holds it at the required value so a refusal in this file names the dimension it is about.
 fn fixture_epoch_match() -> RequiredCiEpochObservation {
-  RequiredCiEpochObserved { epoch: required_ci_contract_epoch }
+  RequiredCiEpochObserved { epoch: required_ci_contract_epoch_yaml_value() as ContractEpoch }
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -394,8 +397,13 @@ test fn a_failed_run_of_the_wrong_workflow_refuses_as_the_wrong_workflow() -> Bo
 // phase roster: the fleet asks whether the exact contract succeeded for the exact revision, and
 // adding a phase to the floor must not break fleet admission.
 test fn the_contract_identity_is_the_emitted_workflow_not_a_phase_roster() -> Bool {
-  (required_ci_contract().name as String) == artifact_path(a: WitnessFloorYamlArtifact)
-    && (required_ci_contract().name as String) == ".github/workflows/witnesses.yml"
-    && (required_ci_contract().surface as String) == "gunb-ai/gunbc"
-    && (required_ci_contract().epoch as String) == (required_ci_contract_epoch as String)
+  match required_ci_contract() {
+    RequiredCiContractReady { identity: identity } =>
+      (identity.name as String) == artifact_path(a: WitnessFloorYamlArtifact)
+        && (identity.name as String) == ".github/workflows/witnesses.yml"
+        && (identity.surface as String) == "gunb-ai/gunbc"
+        && (identity.epoch as String) == required_ci_contract_epoch_yaml_value()
+    RequiredCiContractUnwritable { identity: _ } => false
+    RequiredCiContractMemoryRequirementUnreadable { raw: _ } => false
+  }
 }
