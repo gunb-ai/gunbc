@@ -804,7 +804,11 @@ fn harness_worker_completion(turn: HarnessCallerTurn?, binding: HarnessSeatBindi
 fn harness_worker_exit_completed(outcome: HarnessTurnOutcome, seat: HarnessSeatRelease, completion: String?) -> ProcessExit {
   match completion {
     Absent => harness_turn_exit_released(outcome: outcome, seat: seat)
-    Present { value: d } => ExitFailure { code: 1, reason: join([harness_outcome_label(outcome: outcome), "; the caller's durable record was not committed: ", d], "") }
+    Present { value: d } => ExitFailure { code: 1, reason: join([harness_outcome_label(outcome: outcome), "; the caller's durable record was not committed: ", d, match seat {
+      HarnessSeatReleased { partition: _ } => ""
+      HarnessHostedCredentialRemoved => ""
+      HarnessSeatReleaseRefused { detail: _ } => join(["; seat ", harness_seat_release_wire(r: seat)], "")
+    }], "") }
   }
 }
 
