@@ -196,7 +196,7 @@ test fn persist_cancel_and_commit_resume_as_terminal_by_real_execution() -> Bool
   let committed = match commit_snap {
     Absent => false
     Present { value: snap } =>
-      match commit_attempt_durable(root: root, snapshot: snap, fence: ComputeCellFence { account: account }, work: commit_work, presented: 2) {
+      match commit_attempt_durable(root: root, snapshot: snap, fence: ComputeCellFence { account: account, presented: 2 }, work: commit_work) {
         DurableAttemptCommitted { record: r } =>
           match r.phase {
             WorkCompleted => true
@@ -509,9 +509,8 @@ test fn stale_waiting_snapshot_cannot_commit_over_cancel_by_real_execution() -> 
       match commit_attempt_durable(
         root: root,
         snapshot: snap,
-        fence: ComputeCellFence { account: wet_account(reservation: reservation, generation: 2) },
+        fence: ComputeCellFence { account: wet_account(reservation: reservation, generation: 2), presented: 2 },
         work: work,
-        presented: 2,
       ) {
         DurableAttemptNotWaiting { phase: p } =>
           match p {

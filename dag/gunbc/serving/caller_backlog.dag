@@ -14,7 +14,7 @@ import extdeps.languages.json.parse {
 }
 import product.fabric.execution { ReservationRef }
 import product.fabric.budget { MoneyAccount, fence_admits }
-import product.capacity.lease { LeaseGrant, LeaseFence, FenceCurrent, FenceObsolete, FenceForeignGrant, fence_verdict, lease_grant_expired_at }
+import product.capacity.lease { LeaseGrant, LeaseFence, FenceCurrent, FenceObsolete, FenceAhead, FenceForeignGrant, fence_verdict, lease_grant_expired_at }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
 import std.bytes { bytes_qualified_octets, utf8_encode_bytes }
 import std.encoding { base64_encode, UrlSafe }
@@ -774,20 +774,28 @@ type AttemptCommit
 // supplies (dispatch node id, turn ordinal) and the seat's LeaseGrant; that wiring is owned by
 // session bright-moth-475 and is dispatched once these symbols land. Trigger: the harness serving-seat wiring calling logical_work_id_of and building SeatLeaseFence; until then the basis of StableTurnIdentity stays resume_waiting_durable and is not moved onto the unconsumed key.
 type AttemptFence
-  = ComputeCellFence { account: MoneyAccount }
+  = ComputeCellFence { account: MoneyAccount, presented: Int }
   | SeatLeaseFence { grant: LeaseGrant, holder: LeaseFence, at: EpochSecs }
 
-fn attempt_fence_admits(fence: AttemptFence, reservation: ReservationRef, presented: Int) -> Bool {
+// The generation a replica presents lives in its fence, once: the compute-cell arm carries it
+// beside the account, the seat arm carries it as the holder's LeaseFence.
+fn attempt_fence_generation(fence: AttemptFence) -> Int {
   match fence {
-    ComputeCellFence { account: a } => fence_admits(a: a, reference: reservation, presented: presented)
+    ComputeCellFence { account: _, presented: g } => g
+    SeatLeaseFence { grant: _, holder: h, at: _ } => h.generation as Int
+  }
+}
+
+fn attempt_fence_admits(fence: AttemptFence, reservation: ReservationRef) -> Bool {
+  match fence {
+    ComputeCellFence { account: a, presented: g } => fence_admits(a: a, reference: reservation, presented: g)
     SeatLeaseFence { grant: g, holder: h, at: now } =>
       (g.reference as String) == (reservation as String)
         && !lease_grant_expired_at(grant: g, at: now)
-        && (h.generation as Int) == presented
-        && (h.generation as Int) == (g.fence.generation as Int)
         && (match fence_verdict(current: g.fence, presented: h) {
           FenceCurrent => true
           FenceObsolete { presented: _, current: _ } => false
+          FenceAhead { presented: _, current: _ } => false
           FenceForeignGrant { presented: _, current: _ } => false
         })
   }
@@ -801,7 +809,6 @@ fn commit_attempt(
   snapshot: CallerBacklogSnapshot,
   fence: AttemptFence,
   work: LogicalWorkId,
-  presented: Int,
 ) -> AttemptCommit {
   match lookup_record(snapshot: snapshot, work: work) {
     CallerRecordAbsent => AttemptUnknownWork
@@ -809,14 +816,14 @@ fn commit_attempt(
     CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting =>
-          if !attempt_fence_admits(fence: fence, reservation: head.reservation, presented: presented) {
+          if !attempt_fence_admits(fence: fence, reservation: head.reservation) {
             AttemptFenceRefused
           } else {
             AttemptCommitted {
               record: CallerWorkRecord {
                 work: head.work,
                 reservation: head.reservation,
-                generation: presented,
+                generation: attempt_fence_generation(fence: fence),
                 phase: WorkCompleted,
                 recovery: head.recovery,
               },
@@ -937,7 +944,6 @@ fn commit_attempt_durable(
   snapshot: CallerBacklogSnapshot,
   fence: AttemptFence,
   work: LogicalWorkId,
-  presented: Int,
 ) -> DurableAttemptStanding {
   match observe_durable_record(root: root, work: work) {
     DurableSlotAbsent => DurableAttemptUnknownWork
@@ -954,7 +960,6 @@ fn commit_attempt_durable(
         snapshot: singleton_snapshot(record: held),
         fence: fence,
         work: work,
-        presented: presented,
       ) {
         AttemptUnknownWork => DurableAttemptUnknownWork
         AttemptDuplicate => DurableAttemptStoreRefused {
