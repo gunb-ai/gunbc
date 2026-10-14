@@ -25920,7 +25920,8 @@ pub fn emit_rust_expr_record_lit(
 }
 
 pub fn rust_expr_is_grounded_shared_value(expr: String) -> bool {
-    (expr.clone() == emit_freemonoid_empty_rc_value())
+    ((expr.clone() == emit_freemonoid_empty_rc_value())
+        || v1_rt::starts_with(&expr, rust_shared_wrap_ctor_prefix()))
 }
 
 pub fn emit_rust_expr_string_interp(
@@ -34536,7 +34537,7 @@ pub fn emit_typed_record_lit(
                                 "compile_error!(\"FreeMonoid Cons missing tail field\")".to_string()
                             }
                         };
-                        return v1_rt::concat(
+                        return rust_shared_wrap_ctor(v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
@@ -34548,7 +34549,7 @@ pub fn emit_typed_record_lit(
                                 head_val.clone(),
                             ),
                             "); __cons_v }".to_string(),
-                        );
+                        ));
                     }
                 }
                 let optional_variant = (is_optional_variant_name(variant_surface_name.clone())
