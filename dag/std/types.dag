@@ -114,7 +114,7 @@ type Never
 
 // THE ONE HOST PRODUCER OF NEVER. Never has no constructor, and checker narrowing is a separate
 // capability, so a HostRealizedSeam is the only way to name a Never value. Body is a self-call;
-// the interpreter refuses by this name if the seam is evaluated; emission is `!` / unreachable.
+// the interpreter refuses by this name if the seam is evaluated; emission is unreachable! by this name.
 fn never() -> Never {
   never()
 }

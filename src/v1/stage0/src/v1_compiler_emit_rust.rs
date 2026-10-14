@@ -13631,9 +13631,14 @@ pub fn is_parametric_opaque_type_decl_item(
         ) || is_self_referential_opaque_type_resolved(item.clone(), source_indices.clone())))
 }
 
+pub fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> bool {
+    (module_path == "std.types") && (name == "Never")
+}
+
 pub fn emit_zero_param_phantom_opaque_struct(
     item: Rc<Node>,
     map_key_required: bool,
+    module_path: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -13647,7 +13652,18 @@ pub fn emit_zero_param_phantom_opaque_struct(
             ),
             "\n".to_string(),
         );
-        if crate::std_types::is_kernel_type(item_text.clone()) {
+        if rust_uninhabited_empty_enum_decl(module_path.clone(), item_text.clone()) {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(derive, rust_visibility_prefix()),
+                        "enum ".to_string(),
+                    ),
+                    item_text.clone(),
+                ),
+                " {}".to_string(),
+            )
+        } else {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
@@ -13660,17 +13676,6 @@ pub fn emit_zero_param_phantom_opaque_struct(
                     item_text.clone(),
                 ),
                 "(pub std::marker::PhantomData<()>);".to_string(),
-            )
-        } else {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(derive, rust_visibility_prefix()),
-                        "enum ".to_string(),
-                    ),
-                    item_text.clone(),
-                ),
-                " {}".to_string(),
             )
         }
     }
@@ -15963,6 +15968,7 @@ pub fn emit_typed_item(
                                                 item_text.clone(),
                                             ),
                                         ),
+                                        env.module_path.clone(),
                                         env.source_indices.clone(),
                                     )
                                 } else {

@@ -8,6 +8,9 @@ import gunbc.compile_diagnostic_census {
   census_total_count,
 }
 import std.types { Bool, Int, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // RED/control pair for the Never eliminator (DESIGN 4b: discriminating RED plus positive control).
 // absurd needs a Never argument; an Int at that position must refuse. Empty match is exhaustive
@@ -46,6 +49,12 @@ test fn absurd_on_never_is_admitted() -> Bool {
   never_eliminator_blocking_count(source: absurd_never_control_source) == 0
 }
 
+data absurd_never_string_control_source: String = "module neverprobe.pos_str\n\nimport std.types { Bool, String, absurd, never }\n\nfn f(selector: Bool) -> String {\n  if selector { \"ok\" } else { absurd(never()) }\n}\n"
+
+test fn absurd_on_never_at_string_is_admitted() -> Bool {
+  never_eliminator_blocking_count(source: absurd_never_string_control_source) == 0
+}
+
 data empty_match_inhabited_source: String = "module neverprobe.inh\n\ntype T = A | B\n\nfn f(t: T) -> Int {\n  match (t) {\n  }\n}\n"
 
 test fn empty_match_on_inhabited_coproduct_must_refuse() -> Bool {
@@ -75,4 +84,37 @@ fn never_eliminator_any_blocking_count(source: String) -> Int {
 
 test fn deleted_error_primitives_projections_are_unbound() -> Bool {
   never_eliminator_any_blocking_count(source: deleted_projections_unbound_source) >= 1
+}
+
+data never_emit_source: String = "module neverprobe.emit_never\n\nimport std.types { Never }\n\nfn f(n: Never) -> Never {\n  n\n}\n"
+
+test fn emitted_never_is_empty_enum() -> Bool {
+  compile_dag_rust_emit_check(
+    never_emit_source,
+    "src/std_types.rs",
+    ["enum Never {}"],
+    ["pub struct Never(", "type Never = !"]
+  )
+}
+
+data never_fn_emit_source: String = "module neverprobe.emit_never_fn\n\nimport std.types { Never, never }\n\nfn f() -> Never {\n  never()\n}\n"
+
+test fn emitted_never_fn_calls_the_named_host_arm() -> Bool {
+  compile_dag_rust_emit_check(
+    never_fn_emit_source,
+    "src/std_types.rs",
+    ["v1_rt::never()"],
+    ["compile_error!"]
+  )
+}
+
+data handle_emit_source: String = "module neverprobe.emit_handle\n\ntype Handle\n\nfn id(h: Handle) -> Handle {\n  h\n}\n"
+
+test fn emitted_opaque_handle_is_not_an_empty_enum() -> Bool {
+  compile_dag_rust_emit_check(
+    handle_emit_source,
+    "src/neverprobe_emit_handle.rs",
+    ["struct Handle"],
+    ["enum Handle {}"]
+  )
 }

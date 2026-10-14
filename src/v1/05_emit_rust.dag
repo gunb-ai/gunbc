@@ -6730,14 +6730,19 @@ fn is_parametric_opaque_type_decl_item(item: Node, source_indices: Map<String, N
     )
 }
 
-fn emit_zero_param_phantom_opaque_struct(item: Node, map_key_required: Bool, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> Bool {
+  // Uninhabitedness is the declaration, not opaque+zero-param. Host handles and other
+  // host-realized opaques have values; an empty enum would make them unconstructible.
+  module_path == "std.types" && name == "Never"
+}
+
+fn emit_zero_param_phantom_opaque_struct(item: Node, map_key_required: Bool, module_path: String, source_indices: Map<String, NewlineIndex>) -> String {
   let item_text = authored_name_at(source_indices: source_indices, node: item)
   let derive = concat(rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: phantom_opaque_carrier_derive_traits(), map_key_required: map_key_required)), "\n")
-  if is_kernel_type(name: item_text) {
-    concat(derive, rust_visibility_prefix(), rust_items().struct_keyword, " ", item_text, "(pub std::marker::PhantomData<()>);")
-  } else {
-    // Uninhabited non-kernel opaque (Never, a user's empty type): empty enum, so match n {} compiles.
+  if rust_uninhabited_empty_enum_decl(module_path: module_path, name: item_text) {
     concat(derive, rust_visibility_prefix(), "enum ", item_text, " {}")
+  } else {
+    concat(derive, rust_visibility_prefix(), rust_items().struct_keyword, " ", item_text, "(pub std::marker::PhantomData<()>);")
   }
 }
 
@@ -7668,7 +7673,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
-          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), source_indices: env.source_indices)
+          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), module_path: env.module_path, source_indices: env.source_indices)
         } else {
           match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
             Present { value: host } =>
