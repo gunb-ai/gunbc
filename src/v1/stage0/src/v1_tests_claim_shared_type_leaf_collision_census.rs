@@ -9,6 +9,7 @@ use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_compile::compile_to_resolved;
 pub use crate::v1_compiler_compile::SourceFile;
 pub use crate::v1_compiler_emit_rust::maybe_mark_shared_type;
+pub use crate::v1_compiler_emit_rust::merged_module_source_indices;
 pub use crate::v1_compiler_infer::build_emit_graph_info;
 use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{
     TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared,
@@ -119,6 +120,8 @@ pub fn declaration_would_share(
     summary: Rc<TypeSummary>,
     recursive_type_set: Rc<BTreeSet<String>>,
     needs_sharing: bool,
+    type_decl_items: Rc<crate::v1_compiler_infer_emit_info::TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     v1_rt::set_contains(
         &crate::v1_compiler_emit_rust::maybe_mark_shared_type(
@@ -126,8 +129,8 @@ pub fn declaration_would_share(
             summary.clone(),
             recursive_type_set.clone(),
             needs_sharing.clone(),
-            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
-            v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>(),
+            type_decl_items.clone(),
+            source_indices.clone(),
         ),
         summary.key.clone(),
     )
@@ -137,6 +140,7 @@ pub fn would_share_of_identity(
     info: Rc<EmitGraphInfo>,
     identity: String,
     needs_sharing: bool,
+    source_indices: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     match (*crate::v1_compiler_infer_emit_info::type_summary_at_key(
         info.type_summaries.clone(),
@@ -150,6 +154,8 @@ pub fn would_share_of_identity(
             summary.clone(),
             info.recursive_type_set.clone(),
             needs_sharing.clone(),
+            info.type_decl_items.clone(),
+            source_indices.clone(),
         ),
         TypeSummaryLookup::TypeSummaryNotDeclared => false,
         TypeSummaryLookup::TypeSummaryLeafAmbiguous { leaf: _, .. } => false,
@@ -160,6 +166,7 @@ pub fn collision_row_of_leaf(
     info: Rc<EmitGraphInfo>,
     leaf: String,
     needs_sharing: bool,
+    source_indices: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Option<Rc<LeafCollisionRow>> {
     {
         let declarers = Rc::new({
@@ -189,6 +196,7 @@ pub fn collision_row_of_leaf(
                             info.clone(),
                             identity.clone(),
                             needs_sharing.clone(),
+                            source_indices.clone(),
                         ));
                     }
                     __result
@@ -214,6 +222,7 @@ pub fn collisions_of_graph(graph: Rc<ResolvedGraph>) -> Rc<Vec<Rc<LeafCollisionR
             graph.modules.clone(),
             graph.item_registry.clone(),
         );
+        let source_indices = merged_module_source_indices(graph.modules.clone());
         let needs_sharing = crate::v1_compiler_languages::sharing_for_target(RenderTarget::Rust)
             .needs_sharing
             .clone();
@@ -239,6 +248,7 @@ pub fn collisions_of_graph(graph: Rc<ResolvedGraph>) -> Rc<Vec<Rc<LeafCollisionR
                 info.clone(),
                 leaf.clone(),
                 needs_sharing.clone(),
+                source_indices.clone(),
             ) {
                 std::option::Option::None => acc.clone(),
                 Some(row) => v1_rt::rc_list_push(acc.clone(), row.clone()),
