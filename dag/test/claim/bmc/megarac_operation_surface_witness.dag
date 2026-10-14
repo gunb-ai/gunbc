@@ -27,7 +27,10 @@ import gunbc.machine_intake.megarac_fan_mode_observation {
   HostBringupAndAfter,
   megarac_fan_boot_phase_desire,
   megarac_fan_bringup_phase_desire,
+  HandSetDeclaredUnobserved,
+  HandSetObserved,
   mtcollins1_megarac_fan_mode_observation_2026_10_14,
+  mtcollins1_megarac_operator_hand_set_2026_10_14_2200,
   mtcollins1_megarac_thermal_snapshot_2026_10_14,
 }
 import gunbc.machine_intake.megarac_fan_thermal_guard {
@@ -118,6 +121,11 @@ test fn mtcollins1_grounded_read_is_automatic_with_two_live_pairs() -> Bool {
               && (megarac_set_manager_status_body(standing: CoolingManagerAutomatic) as String)
                 == "{\"manager_disabled\":0}"
               && mtcollins1_megarac_thermal_snapshot_2026_10_14.system_inlet_suspect
+              && match mtcollins1_megarac_operator_hand_set_2026_10_14_2200 {
+                HandSetDeclaredUnobserved { declared_at: t, read_obligation: _ } =>
+                  (t as String) == "2026-10-14T22:00:00Z"
+                HandSetObserved { observation: _ } => false
+              }
           MegaRacManagerDisabledRefused { wire: _ } => false
         }
     CoolingManagerDisabledManual => false
