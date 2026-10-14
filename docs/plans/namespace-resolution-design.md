@@ -783,8 +783,9 @@ the `std.algebra` `collection_*_shape` row (no free `fn concat`; `kernel_mint_de
 is the Optional mint only). A bare `concat` / `count` binds only when the module imported that
 template identity (or is `std.algebra`). Native: `resolve_atom_unscoped` reads
 `collection_roster_rows` and unbound-refuses a roster head that is not visible — it does not
-fall through to `resolve_atom_primitive_authority`. Seed: `infer_builtin_call_type` does not
-admit concat/count unless that identity is imported or locally declared. `map_insert` /
+fall through to `resolve_atom_primitive_authority`. Seed: `infer_builtin_call_type` / the
+builtin registry still admit concat/count (v1 semantics-frozen). That seed/native split is a
+declared short window; it closes when the generated import sweep (#14017) lands. `map_insert` /
 `empty_map` / `map_lookup` wait on #13872's real fns.
 
 **RULED — the (Y) expected-type filter (operator, 2026-07-22; recorded in §4).** The re-adjudication
