@@ -4255,6 +4255,8 @@ pub struct NativeCensusScopedRun {
     pub advised_files: u64,
     pub inferred: u64,
     pub infer_refused: u64,
+    /// The terminal's comparison word: `compared` against the baseline, or `none` when there was none.
+    pub diff: String,
 }
 
 /// `gunbc test //gunbc/instruments:v2-native-census-scoped`: the emitted compiler's `census-scoped`
@@ -4319,6 +4321,7 @@ pub fn run_v2_native_census_scoped(
         output.status.code(),
         subject_label,
         &record.path,
+        against.is_some(),
     )?;
     record.complete(
         serde_json::json!({
@@ -4495,6 +4498,20 @@ fn latest_complete_census_record(
         if read["status"] != "complete" || read["subject_label"] != subject_label {
             continue;
         }
+        // COMPLETE MEANS COMPARABLE (review 79938): a completed record the driver could not compare --
+        // one carrying no census_run_record row, as every record published before the row existed --
+        // is named, never chosen, so --against is passed only for a record the diff can read.
+        let carries_record = read["rows"].as_array().is_some_and(|rows| {
+            rows.iter()
+                .any(|row| row.get("census_run_record").is_some())
+        });
+        if !carries_record {
+            choice.unreadable.push(format!(
+                "{}: completed, but carries no census_run_record row to compare",
+                path.display()
+            ));
+            continue;
+        }
         if best.map_or(true, |t| started > t) {
             best = Some(started);
             choice.chosen = Some(path);
@@ -4527,6 +4544,7 @@ fn decode_native_census_scoped_output(
     exit: Option<i32>,
     subject_label: &str,
     record: &Path,
+    against: bool,
 ) -> Result<NativeCensusScopedRun, String> {
     let terminal = decode_census_terminal(stdout, exit, "census-scoped")?;
     let need_u64 = |key: &str| census_terminal_u64(&terminal, key);
@@ -4551,6 +4569,23 @@ fn decode_native_census_scoped_output(
             ))
         }
     };
+    // A RUN GIVEN A BASELINE OWES A COMPARISON (review 79938, plan section 7): its terminal's `diff` word
+    // must be `compared`, or the instrument would green a run whose comparison never happened. A run
+    // given none must say `none`.
+    let diff = need_str("diff")?;
+    match (against, diff.as_str()) {
+        (true, "compared") | (false, "none") => {}
+        (true, word) => {
+            return Err(format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=BaselineNotCompared — a baseline was passed and the run's diff is {word:?}, not compared (its census_diff_unavailable or census_run_diff row above says why): {terminal}"
+            ))
+        }
+        (false, word) => {
+            return Err(format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=DiffWithoutBaseline — no baseline was passed and the run's diff is {word:?}: {terminal}"
+            ))
+        }
+    }
     Ok(NativeCensusScopedRun {
         subject: need_str("subject")?,
         record: record.to_path_buf(),
@@ -4563,6 +4598,7 @@ fn decode_native_census_scoped_output(
         advised_files: need_u64("advised_files")?,
         inferred: need_u64("inferred")?,
         infer_refused: need_u64("infer_refused")?,
+        diff,
     })
 }
 
@@ -5687,7 +5723,7 @@ mod tests {
     const SCOPED_TERMINAL: &str = "{\"_terminal\":\"complete\",\"mode\":\"census-scoped\",\
         \"subject_label\":\"//v2/a:all\",\"subject\":\"v2.a\",\"acquisition\":\"blocked\",\"blocks\":2,\
         \"modules\":3,\"file_refusals\":1,\"advised_files\":0,\"residual_rows\":0,\"cause_groups\":1,\
-        \"roots\":1,\"inferred\":2,\"infer_refused\":0}\n";
+        \"roots\":1,\"inferred\":2,\"infer_refused\":0,\"diff\":\"none\"}\n";
 
     #[test]
     fn a_scoped_terminal_decodes_its_subject_and_its_blocked_scope() {
@@ -5696,6 +5732,7 @@ mod tests {
             Some(0),
             "//v2/a:all",
             Path::new("r.json"),
+            false,
         )
         .expect("a complete scoped terminal of the bound subject decodes");
         assert_eq!(run.subject, "v2.a");
@@ -5712,6 +5749,7 @@ mod tests {
             Some(0),
             "//v2/b:all",
             Path::new("r.json"),
+            false,
         )
         .expect_err("a different bound subject refuses");
         assert!(cause.contains("SubjectDisagrees"), "got: {cause}");
@@ -5727,7 +5765,8 @@ mod tests {
             &infer,
             Some(0),
             "//v2/a:all",
-            Path::new("r.json")
+            Path::new("r.json"),
+            false
         )
         .is_err());
         let closed_with_blocks = SCOPED_TERMINAL.replace("\"blocked\"", "\"closed\"");
@@ -5736,9 +5775,60 @@ mod tests {
             Some(0),
             "//v2/a:all",
             Path::new("r.json"),
+            false,
         )
         .expect_err("closed with blocks refuses");
         assert!(cause.contains("ScopeWordUnknown"), "got: {cause}");
+    }
+
+    // DISCRIMINATING (review 79938): given a baseline, a run whose diff is not `compared` refuses, and a
+    // run given none must say `none`.
+    #[test]
+    fn a_run_given_a_baseline_refuses_without_a_comparison() {
+        let unavailable = SCOPED_TERMINAL.replace("\"diff\":\"none\"", "\"diff\":\"unavailable\"");
+        let cause = decode_native_census_scoped_output(
+            &unavailable,
+            Some(0),
+            "//v2/a:all",
+            Path::new("r.json"),
+            true,
+        )
+        .expect_err("an unavailable comparison refuses");
+        assert!(cause.contains("BaselineNotCompared"), "got: {cause}");
+        let compared = SCOPED_TERMINAL.replace("\"diff\":\"none\"", "\"diff\":\"compared\"");
+        let run = decode_native_census_scoped_output(
+            &compared,
+            Some(0),
+            "//v2/a:all",
+            Path::new("r.json"),
+            true,
+        )
+        .expect("a compared run decodes");
+        assert_eq!(run.diff, "compared");
+        assert!(decode_native_census_scoped_output(
+            &compared,
+            Some(0),
+            "//v2/a:all",
+            Path::new("r.json"),
+            false
+        )
+        .is_err());
+    }
+
+    // DISCRIMINATING (review 79938): a completed record with no census_run_record row is named and not
+    // chosen, so --against is never passed for a record the driver cannot compare.
+    #[test]
+    fn a_completed_record_without_a_record_row_is_not_a_baseline() {
+        let root = scratch_record_root("rowless");
+        let rowless =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("rowless");
+        rowless
+            .complete(serde_json::json!({}), SCOPED_TERMINAL)
+            .expect("rowless completes");
+        let choice = latest_complete_census_record(&root, "//v2/a:all").expect("root lists");
+        assert!(choice.chosen.is_none());
+        assert_eq!(choice.unreadable.len(), 1, "got: {:?}", choice.unreadable);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     fn scratch_record_root(tag: &str) -> PathBuf {
@@ -5834,13 +5924,19 @@ mod tests {
         let older =
             CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("older");
         older
-            .complete(serde_json::json!({}), SCOPED_TERMINAL)
+            .complete(
+                serde_json::json!({}),
+                &format!("{{\"census_run_record\":{{}}}}\n{SCOPED_TERMINAL}"),
+            )
             .expect("older completes");
         std::thread::sleep(std::time::Duration::from_millis(2));
         let newer =
             CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("newer");
         newer
-            .complete(serde_json::json!({}), SCOPED_TERMINAL)
+            .complete(
+                serde_json::json!({}),
+                &format!("{{\"census_run_record\":{{}}}}\n{SCOPED_TERMINAL}"),
+            )
             .expect("newer completes");
         std::thread::sleep(std::time::Duration::from_millis(2));
         let _interrupted = CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[])
@@ -5848,7 +5944,10 @@ mod tests {
         let other =
             CensusRunRecordFile::open(&root, "//v2/b:all", &[], None, None, &[]).expect("other");
         other
-            .complete(serde_json::json!({}), SCOPED_TERMINAL)
+            .complete(
+                serde_json::json!({}),
+                &format!("{{\"census_run_record\":{{}}}}\n{SCOPED_TERMINAL}"),
+            )
             .expect("other completes");
         let chosen = latest_complete_census_record(&root, "//v2/a:all").expect("root lists");
         assert_eq!(chosen.chosen, Some(newer.path.clone()));
@@ -5870,8 +5969,11 @@ mod tests {
         let root = scratch_record_root("corrupt");
         let done =
             CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("done");
-        done.complete(serde_json::json!({}), SCOPED_TERMINAL)
-            .expect("done completes");
+        done.complete(
+            serde_json::json!({}),
+            &format!("{{\"census_run_record\":{{}}}}\n{SCOPED_TERMINAL}"),
+        )
+        .expect("done completes");
         let corrupt = root.join(format!(
             "{}99999999999999999999-1.json",
             census_run_record_prefix("//v2/a:all")
