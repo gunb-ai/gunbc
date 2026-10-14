@@ -27,7 +27,13 @@ import std.materialization_provider {
   output_universe_test_identity_population, output_universe_module_import_closures,
   output_native_compiler_executable, output_native_compiler_build_diagnostics,
 }
-import std.materialization_store_grant { WitnessScratchRoot, DurableHostVolumeRoot }
+import std.materialization_store_grant {
+  WitnessScratchRoot, DurableHostVolumeRoot,
+  materialization_store_envelope, materialization_store_admissible, materialization_store_durability,
+  DurableAcrossRuns, EphemeralToFrame, is_durable_host_volume_path,
+}
+import std.access { Permit, Deny }
+import std.effect_grant { Read }
 import v2.compiler.self_host.generation { PreMaterializationIdentity }
 import std.materialization_object {
   ArtifactPayload, payload_part,
@@ -827,6 +833,35 @@ test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool {
         }
       }
   }
+}
+
+test fn a_durable_arm_at_a_scratch_or_workspace_path_has_no_grants() -> Bool {
+  let tmp_root = DurableHostVolumeRoot { root: "/tmp/x" }
+  let hermetic = DurableHostVolumeRoot {
+    root: "/home/runner/work/gunbc/.gunbc-compute-hermetic/run/materialization-store",
+  }
+  let live = DurableHostVolumeRoot { root: "/var/lib/gunbc/materialization-store" }
+  let tmp_denied = match materialization_store_admissible(root: tmp_root, verb: Read) {
+    Permit => false
+    Deny { refusal: _ } => true
+  }
+  let hermetic_denied = match materialization_store_admissible(root: hermetic, verb: Read) {
+    Permit => false
+    Deny { refusal: _ } => true
+  }
+  let live_permitted = match materialization_store_admissible(root: live, verb: Read) {
+    Permit => true
+    Deny { refusal: _ } => false
+  }
+  let durability_still_from_the_arm = match materialization_store_durability(root: tmp_root) {
+    DurableAcrossRuns => true
+    EphemeralToFrame => false
+  }
+  !is_durable_host_volume_path(path: "/tmp/x")
+    && is_durable_host_volume_path(path: "/var/lib/gunbc/materialization-store")
+    && length(xs: materialization_store_envelope(root: tmp_root).grants) == 0
+    && length(xs: materialization_store_envelope(root: hermetic).grants) == 0
+    && tmp_denied && hermetic_denied && live_permitted && durability_still_from_the_arm
 }
 
 test fn parse_content_hash_refuses_trailing_repeated_prefix() -> Bool {

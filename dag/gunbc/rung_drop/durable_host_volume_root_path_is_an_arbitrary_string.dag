@@ -1,0 +1,41 @@
+module gunbc.rung_drop.durable_host_volume_root_path_is_an_arbitrary_string
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyImpossible, MechanicallyPreventable }
+
+// ON origin/main DurableHostVolumeRoot HAD NO FIELDS: the durable path was one std constant, so a
+// consumer that asked for durability could not be handed /tmp (or a job workspace) under that name.
+// HostDashboardInstance.materialization_store_root is now the path authority, so the arm carries
+// root: String. DurableHostVolumeRoot { root: "/tmp/x" } constructs and
+// materialization_store_durability still answers DurableAcrossRuns. That is a rung drop
+// (DESIGN section 4b(3)), not a stall and not a comment.
+//
+// THE TEMPORARY RUNG IS THE ENVELOPE GUARD std.materialization_store_grant
+// is_durable_host_volume_path: scratch, /tmp, /var/tmp, and the hermetic compute workspace receive
+// an empty grant list, so admit_effect Denies. The RED is authorable
+// (test.claim.materialization_store_witness
+// a_durable_arm_at_a_scratch_or_workspace_path_has_no_grants). The constructor remains.
+data durable_host_volume_root_path_is_an_arbitrary_string: RungDrop = RungDrop {
+  identity: "durable_host_volume_root_path_is_an_arbitrary_string" as NonEmptyStr,
+
+  subject: "Whether DurableHostVolumeRoot can be constructed over an arbitrary host directory (including /tmp and a per-run workspace) and still be named DurableAcrossRuns",
+
+  declared: "2026-10-14",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyImpossible,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged {
+      replacement: "DurableHostVolumeRoot { root: String } so a dashboard instance can declare its live volume path without a srv1 constant in std; grant admission is std.materialization_store_grant is_durable_host_volume_path"
+    },
+    population: [
+      "every DurableHostVolumeRoot { root: String } construction: the arm is inhabitible at an arbitrary path, including /tmp/x and a job-workspace materialization-store",
+      "materialization_store_durability on that arm: still DurableAcrossRuns regardless of the path string",
+      "NOT in the population: EphemeralHostVolumeRoot and WitnessScratchRoot, whose durability is EphemeralToFrame by construction; WitnessScratchRoot already refused a non-scratch path at the envelope",
+    ],
+    restoration_trigger: "THE CAPABILITY: DurableHostVolumeRoot has no String field. Live volume paths are a closed set of declared durable-volume identities (one constructor per retained host volume) whose path is derived, so DurableHostVolumeRoot carrying an arbitrary directory has no constructor and a consumer that asks for durability cannot be handed /tmp under that name. SUFFICIENT FOR retiring this row: that constructor is unwritable on every in-scope path (source and each emission target) with a discriminating RED that the old String arm is refused. WHAT DOES NOT RETIRE IT: is_durable_host_volume_path (that is this row's temporary rung); a comment that wrapping a workspace as durable would be a fork; a witness that /tmp is inadmissible (coverage of the guard, not restoration of construction).",
+  },
+}
