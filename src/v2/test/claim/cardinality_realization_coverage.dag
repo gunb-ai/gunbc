@@ -397,7 +397,7 @@ fn instrument_plan() -> List<PlannedObservation> { instrument_plan_over(rows: re
 // or the native module only emitted (which is never execution).
 type ObservationKind
   = ObservedRealized { tag: String }
-  | ObservedRefused { cause: String }
+  | ObservedRefused { cause: Symbol }
   | ObservedRed { detail: String }
   | ObservedUnreached { detail: String }
   | ObservedEmitted
@@ -413,8 +413,8 @@ type RowJudgment
   | RowDisagrees { why: String }
   | RowUnobserved { why: String }
 
-fn causes_include(causes: List<Symbol>, cause: String) -> Bool {
-  fold_list(xs: causes, empty: false, cons: fn(acc, c) { acc || symbol_lexeme(sym: c) == cause })
+fn causes_include(causes: List<Symbol>, cause: Symbol) -> Bool {
+  fold_list(xs: causes, empty: false, cons: fn(acc, c) { acc || c == cause })
 }
 
 fn judge_outcome(row: RealizationSupportRow, o: ObservationRecord) -> RowJudgment {
@@ -433,10 +433,10 @@ fn judge_outcome(row: RealizationSupportRow, o: ObservationRecord) -> RowJudgmen
       }
     ObservedRefused { cause: c } =>
       match row.expectation {
-        Realizes => RowDisagrees { why: concat("refused (", concat(c, ") where Realizes is declared")) }
+        Realizes => RowDisagrees { why: concat("refused (", concat(symbol_lexeme(sym: c), ") where Realizes is declared")) }
         RefusesWith { causes: cs } =>
-          if causes_include(causes: cs, cause: c) { RowHeld } else { RowDisagrees { why: concat("refused for ", concat(c, ", a cause the row does not declare")) } }
-        ExpectedRed { defects: _, owner: _ } => RowDisagrees { why: concat("refused (", concat(c, ") where a red is declared")) }
+          if causes_include(causes: cs, cause: c) { RowHeld } else { RowDisagrees { why: concat("refused for ", concat(symbol_lexeme(sym: c), ", a cause the row does not declare")) } }
+        ExpectedRed { defects: _, owner: _ } => RowDisagrees { why: concat("refused (", concat(symbol_lexeme(sym: c), ") where a red is declared")) }
       }
     ObservedRed { detail: d } =>
       match row.expectation {
@@ -526,7 +526,7 @@ fn seed_observed(specimen: DeclarationRef, outcome: ObservationKind) -> Observat
 }
 
 fn native_refused(specimen: DeclarationRef) -> ObservationRecord {
-  observed(target: native_v2_target, specimen: specimen, outcome: ObservedRefused { cause: "infer_grounding_not_derived" })
+  observed(target: native_v2_target, specimen: specimen, outcome: ObservedRefused { cause: ^infer_grounding_not_derived })
 }
 
 // What the live instrument is expected to see today, written as observations and not derived from the
@@ -588,7 +588,7 @@ test fn agreeing_observations_hold() -> Bool {
 test fn a_realizes_row_flipped_goes_red() -> Bool {
   standing_code(obs: replaced_pair(obs: green_observations, record: seed_observed(specimen: specimen_2_present_absent, outcome: ObservedRealized { tag: "10" }), target: seed_rust_target, specimen: specimen_2_present_absent)) == 1
     && standing_code(obs: replaced_pair(obs: green_observations, record: seed_observed(specimen: specimen_1_absent, outcome: ObservedRed { detail: "x" }), target: seed_rust_target, specimen: specimen_1_absent)) == 1
-    && standing_code(obs: replaced_pair(obs: green_observations, record: seed_observed(specimen: specimen_1_absent, outcome: ObservedRefused { cause: "x" }), target: seed_rust_target, specimen: specimen_1_absent)) == 1
+    && standing_code(obs: replaced_pair(obs: green_observations, record: seed_observed(specimen: specimen_1_absent, outcome: ObservedRefused { cause: ^x }), target: seed_rust_target, specimen: specimen_1_absent)) == 1
 }
 
 // An ExpectedRed that passes is red, and so is a native refusal for a cause the row does not declare.
@@ -598,7 +598,7 @@ test fn an_expected_red_that_passes_goes_red() -> Bool {
 }
 
 test fn a_refusal_row_flipped_goes_red() -> Bool {
-  standing_code(obs: replaced_pair(obs: green_observations, record: observed(target: native_v2_target, specimen: specimen_1_absent, outcome: ObservedRefused { cause: "some_other_cause" }), target: native_v2_target, specimen: specimen_1_absent)) == 1
+  standing_code(obs: replaced_pair(obs: green_observations, record: observed(target: native_v2_target, specimen: specimen_1_absent, outcome: ObservedRefused { cause: ^some_other_cause }), target: native_v2_target, specimen: specimen_1_absent)) == 1
     && standing_code(obs: replaced_pair(obs: green_observations, record: observed(target: native_v2_target, specimen: specimen_1_absent, outcome: ObservedEmitted), target: native_v2_target, specimen: specimen_1_absent)) == 1
 }
 
@@ -607,4 +607,11 @@ test fn a_pair_with_no_observation_is_exit_two_and_a_disagreement_outranks_it() 
     && standing_code(obs: replaced_pair(obs: green_observations, record: seed_observed(specimen: specimen_3_present_present, outcome: ObservedUnreached { detail: "build infra" }), target: seed_rust_target, specimen: specimen_3_present_present)) == 2
     && standing_code(obs: green_observations + [seed_observed(specimen: specimen_3_present_present, outcome: ObservedRealized { tag: "37" })]) == 2
     && standing_code(obs: replaced_pair(obs: without_pair(obs: green_observations, target: seed_rust_target, specimen: specimen_3_present_present), record: seed_observed(specimen: specimen_1_absent, outcome: ObservedRed { detail: "x" }), target: seed_rust_target, specimen: specimen_1_absent)) == 1
+}
+
+// A CAUSE IS JOINED BY SYMBOL IDENTITY: the declared spelling holds, and the same cause respelled
+// by its producer goes red rather than reading as unobserved or as a match by prefix.
+test fn a_respelled_refusal_cause_goes_red() -> Bool {
+  standing_code(obs: green_observations) == 0
+    && standing_code(obs: replaced_pair(obs: green_observations, record: observed(target: native_v2_target, specimen: specimen_1_absent, outcome: ObservedRefused { cause: ^infer_grounding_not_derived_ }), target: native_v2_target, specimen: specimen_1_absent)) == 1
 }

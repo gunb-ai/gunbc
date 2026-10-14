@@ -112,8 +112,9 @@ pub use native_lane_runner::{
     run_v2_native_cli_emit, run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute,
     NativeCensusRun, NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt,
     NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns,
-    NativeRouteOutcome, NativeServeProgramRun, SelfHostHeld, TypeDeclarationUseRuns,
-    V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND, MEASURED_SPAWN_RECEIPT_ENV,
+    NativeRouteOutcome, NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,
+    TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
+    MEASURED_SPAWN_RECEIPT_ENV,
 };
 pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub use required_floor_runner::floor_seam;

@@ -2029,13 +2029,17 @@ fn run_cardinality_realization() -> InvocationOutcome {
                 "detail",
                 format!("{entry} exceeded its deadline"),
             ),
-            Err(cause) if cause.contains("cause=EmissionRefused") => {
-                ("ObservedRefused", "cause", cause)
-            }
-            Err(cause) if cause.contains("cause=EmittedCompilerBuildFailed") => {
-                ("ObservedRed", "detail", cause)
-            }
-            Err(cause) => ("ObservedUnreached", "detail", cause),
+            Err(refusal) => match refusal.cause {
+                cli_run::PreparationCause::EmissionRefused => {
+                    ("ObservedRefused", "cause", "EmissionRefused".to_string())
+                }
+                cli_run::PreparationCause::EmittedCompilerBuildFailed => {
+                    ("ObservedRed", "detail", refusal.message)
+                }
+                cli_run::PreparationCause::Other => {
+                    ("ObservedUnreached", "detail", refusal.message)
+                }
+            },
         };
         outcomes.push((i, outcome.0, outcome.1, outcome.2));
     }
@@ -2200,7 +2204,7 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::SubjectUnreached,
-                message: cause,
+                message: cause.message,
             }
         }
     };
