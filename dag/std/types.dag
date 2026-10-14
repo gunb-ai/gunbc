@@ -1,8 +1,7 @@
 module std.types
-import v2.std.collection { map_lookup }
 import std.optional { Absent, Present, optional_absent, optional_present }
 
-import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map, collection_concat_shape, collection_map_shape }
+import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names, carrier_container_algebra_rows, carrier_container_alias_rows, carrier_container_arity_rows, carrier_container_roster_map, collection_concat_shape, collection_map_shape, map_lookup }
 import std.unicode.types { unicode_scalar }
 
 data kernel_type_set: Map<String, Bool> = {
