@@ -60,51 +60,99 @@ fn fb_resolve(subject: String) -> Outcome<ResolvedTree> {
   }
 }
 
-test fn fb_d_accepted_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_d")) {
-    RcfInferAccepted { diagnostics: _ } => true
-    _ => false
+test fn fb_d_q0_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_d") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_unbound_symbol)
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
-test fn fb_d_resolve_refused_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_d")) {
-    RcfResolveRefused => true
-    _ => false
+test fn fb_d_q1_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_d") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_lexical_reference_unkeyed)
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
-test fn fb_e_accepted_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_e")) {
-    RcfInferAccepted { diagnostics: _ } => true
-    _ => false
+test fn fb_d_q2_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_d") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_parameter_path_not_indexed)
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
-test fn fb_e_resolve_refused_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_e")) {
-    RcfResolveRefused => true
-    _ => false
+test fn fb_d_q3_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_d") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_anonymous_parameter_referenced)
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
-test fn fb_g_accepted_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_g")) {
-    RcfInferAccepted { diagnostics: _ } => true
-    _ => false
+test fn fb_d_q4_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_d") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_binder_hides_visible_value)
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
-test fn fb_g_resolve_refused_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_g")) {
-    RcfResolveRefused => true
-    _ => false
+test fn fb_d_q5_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_d") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_type_parameter_in_value_position)
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
-test fn fb_h_accepted_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_h")) {
-    RcfInferAccepted { diagnostics: _ } => true
-    _ => false
+test fn fb_d_q6_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_d") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_ambiguous_symbol)
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
-test fn fb_h_resolve_refused_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_h")) {
-    RcfResolveRefused => true
-    _ => false
+test fn fb_d_q7_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_d") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_unbound)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+test fn fb_e_q0_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_e") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_unbound_symbol)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+test fn fb_e_q1_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_e") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_lexical_reference_unkeyed)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+test fn fb_e_q2_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_e") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_parameter_path_not_indexed)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+test fn fb_e_q3_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_e") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_anonymous_parameter_referenced)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+test fn fb_e_q4_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_e") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_binder_hides_visible_value)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+test fn fb_e_q5_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_e") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_type_parameter_in_value_position)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+test fn fb_e_q6_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_e") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_reason_ambiguous_symbol)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+test fn fb_e_q7_holds() -> Bool {
+  match fb_resolve(subject: "v2.test.fb_e") {
+    Rejected { diagnostics: ds } => diagnostics_has_reason(d: ds, reason: ^resolve_unbound)
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
