@@ -2339,7 +2339,7 @@ pub fn rekey_occurrence_binding_inputs(
                             state: remapped_scope.state.clone(),
                         })
                     }
-                    DeclarationExposure::ModuleExposure { module: module, .. } => {
+                    DeclarationExposure::ModuleExposure { module, .. } => {
                         Rc::new(OccurrenceExposureRekeyBuild {
                             rows_reversed: v1_rt::concat(
                                 Rc::new(vec![Rc::new(DeclarationExposureRow {

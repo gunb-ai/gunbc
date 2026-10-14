@@ -469,13 +469,13 @@ pub fn parser_result_state_progress(
     result_name: String,
 ) -> DescentEvidence {
     match (*source.clone()).clone() {
-        ParserResultSource::ParserResultAdvance { input: input, .. } => {
+        ParserResultSource::ParserResultAdvance { input, .. } => {
             strict_after_parser_witness(input.clone())
         }
-        ParserResultSource::ParserResultExpect { input: input, .. } => {
+        ParserResultSource::ParserResultExpect { input, .. } => {
             strict_after_parser_witness(input.clone())
         }
-        ParserResultSource::ParserResultEat { input: input, .. } => {
+        ParserResultSource::ParserResultEat { input, .. } => {
             if set_has(consumed_true_set.clone(), result_name.clone()) {
                 strict_after_parser_witness(input.clone())
             } else {
