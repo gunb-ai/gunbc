@@ -18,10 +18,11 @@ import extdeps.bmc.megarac_fan_policy {
 // Source of the path names: served UI bundle source.min.js (gzip sha256 prefix ee9b14cbf7141b78),
 // AMI copyright, kept off-tree. This module is an observing-layer receipt, not an upstream fact.
 //
-// manager_disabled 0 at this instant is AUTOMATIC Cooling Manager. A later operator hand-set
-// (disable manager, manual PWM) is out-of-band drift: the next live GET records it; this row is
-// not overwritten. Missing socket-1 fans (SDR FAN0-3 presence-absent, UI fans 1-4 pwm 0) is a
-// chassis fact joined through megarac_fan_slot_standing, not a controller fault invented here.
+// manager_disabled 0 at this instant is AUTOMATIC Cooling Manager. The operator later disabled
+// the manager by hand ~22:00Z; that is out-of-band drift. This 21:50Z row is not overwritten.
+// The post-hand-set GET was not executed (live route skipped), so the manual PWM value is
+// declared unobserved rather than invented. Missing socket-1 fans (SDR FAN0-3 presence-absent,
+// UI fans 1-4 pwm 0) is a chassis fact joined through megarac_fan_slot_standing.
 
 type MegaRacFanInfoRow {
   fan_number: Int
@@ -89,6 +90,15 @@ type MegaRacThermalSnapshot {
   outlet_max: Celsius
   system_inlet: Celsius
   system_inlet_suspect: Bool
+}
+
+type MegaRacOperatorHandSetStanding
+  = HandSetObserved { observation: MegaRacFanModeObservation }
+  | HandSetDeclaredUnobserved { declared_at: NonEmptyStr, read_obligation: NonEmptyStr }
+
+data mtcollins1_megarac_operator_hand_set_2026_10_14_2200: MegaRacOperatorHandSetStanding = HandSetDeclaredUnobserved {
+  declared_at: "2026-10-14T22:00:00Z" as NonEmptyStr,
+  read_obligation: "GET /api/fan_control/get_manager_status and get_fan_info after the operator disabled the Cooling Manager ~22:00Z. The 21:50Z row is the pre-hand-set automatic read; live follow-up was skipped.",
 }
 
 data mtcollins1_megarac_thermal_snapshot_2026_10_14: MegaRacThermalSnapshot = MegaRacThermalSnapshot {
