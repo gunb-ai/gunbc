@@ -14,7 +14,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // RED/control pair for the Never eliminator (DESIGN 4b: discriminating RED plus positive control).
 // absurd needs a Never argument; an Int at that position must refuse. Empty match is exhaustive
-// iff the resolved scrutinee declaration has no constructors.
+// iff the scrutinee is an uninhabited sum (Never, or a coproduct with zero arms), not an opaque.
 //
 // dissolve-on: none -- permanent regression control per DESIGN 4b(4).
 
@@ -33,6 +33,7 @@ fn never_eliminator_no_arms_blocking_count(source: String) -> Int {
     CensusObserved { rows: rows } =>
       census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "NonExhaustiveMatch")))
         + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+        + census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "InternalError")))
     CensusNotRunnable { cause: _ } => -1
   }
 }
@@ -67,10 +68,10 @@ test fn empty_match_on_never_is_admitted() -> Bool {
   never_eliminator_no_arms_blocking_count(source: empty_match_never_source) == 0
 }
 
-data empty_match_user_empty_coproduct_source: String = "module neverprobe.ue\n\ntype E\n\nfn f(e: E) -> Int {\n  match (e) {\n  }\n}\n"
+data empty_match_opaque_host_source: String = "module neverprobe.opaque\n\ntype Handle\n\nfn f(h: Handle) -> Int {\n  match (h) {\n  }\n}\n"
 
-test fn empty_match_on_user_empty_coproduct_is_admitted() -> Bool {
-  never_eliminator_no_arms_blocking_count(source: empty_match_user_empty_coproduct_source) == 0
+test fn empty_match_on_opaque_host_type_must_refuse() -> Bool {
+  never_eliminator_no_arms_blocking_count(source: empty_match_opaque_host_source) >= 1
 }
 
 data deleted_projections_unbound_source: String = "module neverprobe.unb\n\nimport std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float, pure_dag_seam_unreachable_string }\n\nfn f() -> Int {\n  pure_dag_seam_unreachable()\n}\n"

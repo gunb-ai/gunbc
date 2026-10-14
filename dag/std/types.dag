@@ -119,9 +119,9 @@ fn never() -> Never {
   never()
 }
 
-// THE ELIMINATOR. Zero arms are exhaustive iff the resolved scrutinee declaration has no
-// constructors (Never; also a user's empty coproduct). absurd inhabits every T; it cannot be
-// applied to an Int.
+// THE ELIMINATOR. Zero arms are exhaustive iff the scrutinee is an uninhabited sum (a coproduct
+// with zero arms, or Never). An opaque without dag constructors is not uninhabited. absurd
+// inhabits every T; it cannot be applied to an Int.
 fn absurd<T>(n: Never) -> T {
   match (n) {
   }

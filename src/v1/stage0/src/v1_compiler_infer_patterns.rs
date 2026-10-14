@@ -920,6 +920,22 @@ pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node>
     }
 }
 
+fn is_uninhabited_sum(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    if resolved.connective.clone() == Disj {
+        (resolved.children.clone().len() as i64) == 0
+    } else {
+        let name = crate::v1_std_core::authored_name_at(
+            env.source_indices.clone(),
+            resolved.clone(),
+        );
+        (name == "Never")
+            && (resolved.connective.clone() == NoConnective)
+            && ((resolved.children.clone().len() as i64) == 0)
+            && ((env.module_path.clone() == "std.types")
+                || v1_rt::map_get(&env.authored_import_names, "Never".to_string()).is_some())
+    }
+}
+
 pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<ConstructorRoster> {
     {
         let resolved = resolve_scrutinee_type(type_node.clone(), env.clone());
@@ -954,15 +970,7 @@ pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Const
                         }),
                     })
                 } else {
-                    if ((resolved.connective.clone() == NoConnective)
-                        && ((resolved.children.clone().len() as i64) == 0)
-                        && !crate::std_types::is_kernel_type(
-                            crate::v1_std_core::authored_name_at(
-                                env.source_indices.clone(),
-                                resolved.clone(),
-                            ),
-                        ))
-                    {
+                    if is_uninhabited_sum(resolved.clone(), env.clone()) {
                         Rc::new(ConstructorRoster::ConstructorsClosed {
                             names: Rc::new(vec![]),
                         })
