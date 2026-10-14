@@ -2715,6 +2715,7 @@ fn harness_rebind_fleet_for_revision(config: HarnessTurnConfig, prior: HarnessSe
           },
           session: none,
           admission: admission,
+          turn: none,
         )
         match rebound {
           HarnessSeatRefused { detail: d } => HandInSeatReleaseRefused { detail: d }
