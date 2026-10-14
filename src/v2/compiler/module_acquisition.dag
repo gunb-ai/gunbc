@@ -1,31 +1,10 @@
 module v2.compiler.module_acquisition
 
 import std.types { Bool, Int, List, Map }
-import std.algebra { Cons, Empty, list_snoc_item, HeadAbsent, HeadFound, fold_list, list_find_first, list_head, list_map, list_reverse, skip, empty_map, map_contains_key, map_insert, map_lookup }
+import std.algebra { Cons, Empty, list_snoc_item, fold_list, list_find_first, list_head, list_map, list_reverse, skip, empty_map, map_contains_key, map_insert, map_lookup }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import extdeps.filesystem.filesystem_io {
-  FilesystemExactPathAbsent,
-  FilesystemExactPathKindUnrecognized,
-  FilesystemExactPathRead,
-  FilesystemExactPathUnreadable,
-  FilesystemFailureKindAdmitted,
-  FilesystemFailureKindUnrecognized,
-  FilesystemNotFound,
-  admit_filesystem_failure_kind,
-  filesystem_failure_kind_name
-}
-import gunbc.source_root_read {
-  SourceRootDirectoryListed,
-  SourceRootDirectoryRefused,
-  SourceRootPathsRead,
-  SourceRootPathsRefused,
-  SourceRootWalkTask,
-  SourceRootWalkedPath,
-  source_root_child_path,
-  source_root_directory,
-  source_root_read_file,
-  source_root_walk
-}
+import extdeps.filesystem.filesystem_io { FilesystemExactPathAbsent, FilesystemExactPathKindUnrecognized, FilesystemExactPathRead, FilesystemExactPathUnreadable, FilesystemFailureKindAdmitted, FilesystemFailureKindUnrecognized, FilesystemNotFound, admit_filesystem_failure_kind, filesystem_failure_kind_name }
+import gunbc.source_root_read { SourceRootDirectoryListed, SourceRootDirectoryRefused, SourceRootPathsRead, SourceRootPathsRefused, SourceRootWalkTask, SourceRootWalkedPath, source_root_child_path, source_root_directory, source_root_read_file, source_root_walk }
 import v2.compiler.name_resolve { Import }
 import v2.compiler.normalize { normalize }
 import v2.compiler.grammar_reach { Reach }
@@ -33,54 +12,11 @@ import v2.compiler.module_header { ModuleHeaderReader, module_header_tail }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.test_marker_capture { test_marker_content }
-import v2.compiler.reference_site_collector {
-  HeadBindingUndecided,
-  HeadBoundAtRootValue,
-  HeadBoundInFrame,
-  HeadLexicallyUnbound,
-  ScopedReferenceSite,
-  ScopedReferenceSiteCollection,
-  SiteHeadBinding,
-  collect_scoped_module_reference_sites,
-  scoped_reference_site_collection_is_total
-}
-import v2.compiler.source_authority {
-  ModuleFileAbsent,
-  ModuleFileDerived,
-  ModuleFilePresent,
-  ModuleFileProbe,
-  ModuleFileRef,
-  ModuleFileRefused,
-  ModuleNameUnderivable,
-  DagSourceReadWitness,
-  ReferenceContinue,
-  ReferenceCrossTreeDenied,
-  ReferenceDecided,
-  ReferenceLookup,
-  ReferenceModuleHeaderRefused,
-  ReferenceModuleLineDisagrees,
-  ReferenceModuleLineMissing,
-  ReferenceNextReadDenied,
-  ReferenceNextReadFile,
-  ReferenceNextReadNone,
-  ReferenceRefused,
-  ReferenceResolved,
-  ReferenceUnknownModule,
-  SourceRootIngest,
-  SourceStorageLayout,
-  module_file,
-  module_file_key,
-  reference_after_probe,
-  reference_next_read,
-  reference_prefixes,
-  source_root_ref_label,
-  text_set_has,
-  text_set_of
-}
+import v2.compiler.reference_site_collector { HeadBindingUndecided, HeadBoundAtRootValue, HeadBoundInFrame, HeadLexicallyUnbound, ScopedReferenceSite, ScopedReferenceSiteCollection, SiteHeadBinding, collect_scoped_module_reference_sites, scoped_reference_site_collection_is_total }
+import v2.compiler.source_authority { ModuleFileAbsent, ModuleFileDerived, ModuleFilePresent, ModuleFileProbe, ModuleFileRef, ModuleFileRefused, ModuleNameUnderivable, DagSourceReadWitness, ReferenceContinue, ReferenceCrossTreeDenied, ReferenceDecided, ReferenceLookup, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, SourceRootIngest, SourceStorageLayout, module_file, module_file_key, reference_after_probe, reference_next_read, reference_prefixes, source_root_ref_label, text_set_has, text_set_of }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.lens.reference_deps { admission_from_module_root }
-
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.artifact { Artifact, SourceFile }
@@ -88,6 +24,7 @@ import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import extdeps.communication.medium { Lossless, Medium }
+
 
 // MODULES ARE ACQUIRED BY DEMAND, ONE EXACT READ PER REQUESTED MODULE (source layout authority R9).
 // The compiler starts from an entry module, parses it, takes every module its imports and qualified
@@ -727,8 +664,8 @@ fn acquisition_completed(state: AcquisitionState, entries: List<String>) -> Acqu
 
 fn acquisition_loop(env: AcquisitionEnv, state: AcquisitionState, entries: List<String>) -> Acquisition {
   match list_head(xs: state.pending) {
-    HeadAbsent => acquisition_completed(state: state, entries: entries)
-    HeadFound { value: request } =>
+    Absent => acquisition_completed(state: state, entries: entries)
+    Present { value: request } =>
       match acquisition_step(env: env, state: acquisition_popped(state: state), request: request) {
         AcquisitionStepRefused { refusal: refusal, state: stopped } =>
           AcquisitionRefused { refusal: refusal, reads: list_reverse(xs: stopped.reads) }
@@ -749,8 +686,8 @@ fn acquisition_entry_requests(
   acc: List<AcquisitionRequest>
 ) -> AcquisitionEntries {
   match list_head(xs: pending) {
-    HeadAbsent => AcquisitionEntriesDerived { requests: acc }
-    HeadFound { value: entry } =>
+    Absent => AcquisitionEntriesDerived { requests: acc }
+    Present { value: entry } =>
       match module_file(layout: layout, name: entry) {
         ModuleNameUnderivable { name: name, cause: cause } =>
           AcquisitionEntriesRefused { refusal: AcquisitionEntryUnderivable { entry: name, cause: cause } }
@@ -1048,8 +985,8 @@ fn census_acquisition_step(env: AcquisitionEnv, acc: CensusAcquisitionState, req
 
 fn census_acquisition_loop(env: AcquisitionEnv, acc: CensusAcquisitionState, entries: List<String>) -> CensusAcquisition {
   match list_head(xs: acc.state.pending) {
-    HeadAbsent => census_acquisition_finished(acc: acc, entries: entries)
-    HeadFound { value: request } =>
+    Absent => census_acquisition_finished(acc: acc, entries: entries)
+    Present { value: request } =>
       match census_acquisition_step(env: env, acc: census_with_state(acc: acc, state: acquisition_popped(state: acc.state)), request: request) {
         CensusStepEnded { refusal: refusal } => CensusAcquisitionRefused { refusal: refusal }
         CensusStepContinued { acc: next } => census_acquisition_loop(env: env, acc: next, entries: entries)
@@ -1108,8 +1045,8 @@ fn acquisition_read_witness(file: ModuleFileRef, host_directory: String, content
 // member.
 fn acquisition_ingest_go(pending: List<AcquiredModule>, acc: SourceRootIngest) -> SourceRootIngest {
   match list_head(xs: pending) {
-    HeadAbsent => acc
-    HeadFound { value: acquired } =>
+    Absent => acc
+    Present { value: acquired } =>
       acquisition_ingest_go(pending: skip(xs: pending, n: 1), acc: Cons { head: acquisition_witness(module: acquired), tail: acc })
   }
 }
@@ -1218,8 +1155,8 @@ fn acquisition_reach_requests(members: Map<String, AcquiredModule>, requests: Li
 
 fn acquisition_reach_go(members: Map<String, AcquiredModule>, reach: AcquisitionReach) -> Map<String, Bool> {
   match list_head(xs: reach.pending) {
-    HeadAbsent => reach.reached
-    HeadFound { value: name } => {
+    Absent => reach.reached
+    Present { value: name } => {
       let rest = AcquisitionReach { reached: reach.reached, pending: skip(xs: reach.pending, n: 1) }
       match map_lookup(m: members, key: name) {
         Absent => acquisition_reach_go(members: members, reach: rest)
@@ -1243,8 +1180,8 @@ fn acquisition_reached(entries: List<String>, modules: List<AcquiredModule>) -> 
 
 fn acquisition_first_duplicate(pending: List<String>, seen: Map<String, Bool>) -> Optional<String> {
   match list_head(xs: pending) {
-    HeadAbsent => optional_absent()
-    HeadFound { value: key } =>
+    Absent => optional_absent()
+    Present { value: key } =>
       if text_set_has(set: seen, name: key) {
         optional_present(value: key)
       } else {
@@ -1255,8 +1192,8 @@ fn acquisition_first_duplicate(pending: List<String>, seen: Map<String, Bool>) -
 
 fn acquisition_first_unmet_exact(pending: List<AcquiredModule>, names: Map<String, Bool>) -> Optional<AcquisitionRequest> {
   match list_head(xs: pending) {
-    HeadAbsent => optional_absent()
-    HeadFound { value: acquired } =>
+    Absent => optional_absent()
+    Present { value: acquired } =>
       match list_find_first(xs: acquired.requests, predicate: fn(request) {
         acquisition_request_exact(request: request) && !text_set_has(set: names, name: request.spelling)
       }) {
@@ -1502,8 +1439,8 @@ type BoundRootsListing
 
 fn bound_roots_listing(pending: List<SourceRootBinding>) -> BoundRootsListing {
   match list_head(xs: pending) {
-    HeadAbsent => BoundRootsListable {}
-    HeadFound { value: binding } =>
+    Absent => BoundRootsListable {}
+    Present { value: binding } =>
       match source_root_directory(path: binding.host_directory) {
         SourceRootDirectoryListed { path: _ } => bound_roots_listing(pending: skip(xs: pending, n: 1))
         SourceRootDirectoryRefused { path: path, kind: kind, cause: cause } =>
@@ -1518,15 +1455,15 @@ fn bound_modules_prepended(listed: List<String>, acc: List<String>) -> List<Stri
 
 fn namespace_top_level(namespace: String) -> String {
   match list_head(xs: split(s: namespace, delimiter: ".")) {
-    HeadAbsent => namespace
-    HeadFound { value: first } => first
+    Absent => namespace
+    Present { value: first } => first
   }
 }
 
 fn top_level_namespaces_go(pending: List<String>, seen: Map<String, Bool>, acc: List<String>) -> List<String> {
   match list_head(xs: pending) {
-    HeadAbsent => acc
-    HeadFound { value: namespace } => {
+    Absent => acc
+    Present { value: namespace } => {
       let top = namespace_top_level(namespace: namespace)
       if text_set_has(set: seen, name: top) {
         top_level_namespaces_go(pending: skip(xs: pending, n: 1), seen: seen, acc: acc)
@@ -1549,8 +1486,8 @@ fn enumerate_bound_modules_go(
   acc: List<String>
 ) -> BoundModules {
   match list_head(xs: pending) {
-    HeadAbsent => BoundModulesListed { modules: acc }
-    HeadFound { value: namespace } =>
+    Absent => BoundModulesListed { modules: acc }
+    Present { value: namespace } =>
       match module_file(layout: layout, name: concat(namespace, ".x")) {
         ModuleNameUnderivable { name: _, cause: cause } => BoundModulesRefused { subject: namespace, cause: cause }
         ModuleFileDerived { file: file } =>
@@ -1628,8 +1565,8 @@ fn read_population_go(
   acc: List<AcquiredModule>
 ) -> PopulationRead {
   match list_head(xs: pending) {
-    HeadAbsent => PopulationReadComplete { modules: list_reverse(xs: acc) }
-    HeadFound { value: name } =>
+    Absent => PopulationReadComplete { modules: list_reverse(xs: acc) }
+    Present { value: name } =>
       match population_member(layout: layout, bindings: bindings, name: name) {
         PopulationMemberRefused { cause: cause } => PopulationReadRefused { name: name, cause: cause }
         PopulationMemberRead { member: member } =>

@@ -1,24 +1,13 @@
 module v2.test.claim.cli.population_verbs
-
+import std.optional { Absent, Optional, Present }
 import std.types { Bool, List, Map }
 import gunbc.parse_population_refusals { RefusalClass }
-import v2.cli.population_verbs {
-  DeclaredRefusal,
-  DeclaredRoster,
-  PopulationBegun,
-  PopulationDeclarationDuplicated,
-  PopulationParse,
-  PopulationReport,
-  population_declaration_duplicated_report,
-  population_parse_accepted,
-  population_parse_begin,
-  population_parse_refused,
-  population_parse_report
-}
-import std.algebra { HeadAbsent, HeadFound, fold_list, length, list_head, empty_map }
-
+import v2.cli.population_verbs { DeclaredRefusal, DeclaredRoster, PopulationBegun, PopulationDeclarationDuplicated, PopulationParse, PopulationReport, population_declaration_duplicated_report, population_parse_accepted, population_parse_begin, population_parse_refused, population_parse_report }
+import std.algebra { fold_list, length, list_head, empty_map }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
+
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -98,8 +87,8 @@ data every_declared_met: List<Judgment> = [
 
 fn first_refusal(tally: PopulationParse) -> String {
   match list_head(xs: tally.refusals) {
-    HeadAbsent => ""
-    HeadFound { value: line } => line
+    Absent => ""
+    Present { value: line } => line
   }
 }
 

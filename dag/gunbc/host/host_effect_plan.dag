@@ -1,7 +1,6 @@
 module gunbc.host.host_effect_plan
-
 import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
-import std.algebra { FreeMonoid, freemonoid_empty, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { Cons, Empty, FreeMonoid }
 import gunbc.host.host_effect {
   HostEffect,
   HostEffectIntent,
@@ -79,15 +78,12 @@ fn host_effect_plan_apply_rest(
   if !reconciliation_converged(r: head_result) {
     head_result
   } else {
-    match list_head(xs: rest) {
-      HeadAbsent => head_result
-      HeadFound { value: next } =>
+    match rest {
+      Empty => head_result
+      Cons { head: next, tail: t } =>
         host_effect_plan_apply_rest(
           head_result: host_effect_plan_apply_step(step: next, ctx: ctx),
-          rest: match list_tail(xs: rest) {
-            TailFound { tail: t } => t
-            TailAbsent => freemonoid_empty()
-          },
+          rest: t,
           ctx: ctx,
         )
     }
@@ -98,19 +94,16 @@ fn host_effect_plan_apply(
   plan: HostEffectPlan,
   ctx: HostEffectPlanContext,
 ) -> Reconciliation<HostEffectIntent?, HostEffectEvidence> {
-  match list_head(xs: plan.steps) {
-    HeadAbsent =>
+  match plan.steps {
+    Empty =>
       NotConverged {
         reason: "host_effect_plan_apply: empty plan has no effect to apply",
         applied: Absent,
       }
-    HeadFound { value: first } =>
+    Cons { head: first, tail: rest } =>
       host_effect_plan_apply_rest(
         head_result: host_effect_plan_apply_step(step: first, ctx: ctx),
-        rest: match list_tail(xs: plan.steps) {
-          TailFound { tail: t } => t
-          TailAbsent => freemonoid_empty()
-        },
+        rest: rest,
         ctx: ctx,
       )
   }

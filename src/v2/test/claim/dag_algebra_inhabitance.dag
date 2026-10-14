@@ -29,7 +29,7 @@ fn dai_carries_field(decl: AlgebraInhabitanceDecl, field: Symbol) -> Bool {
 
 fn dai_is_declared(d: AlgebraFieldDeclaration) -> Bool {
   match d {
-    FieldDeclared => true
+    FieldDeclared { field_type: _ } => true
     FieldNotDeclared => false
     InhabitanceMalformed { cause: _ } => false
   }
@@ -37,7 +37,7 @@ fn dai_is_declared(d: AlgebraFieldDeclaration) -> Bool {
 
 fn dai_is_not_declared(d: AlgebraFieldDeclaration) -> Bool {
   match d {
-    FieldDeclared => false
+    FieldDeclared { field_type: _ } => false
     FieldNotDeclared => true
     InhabitanceMalformed { cause: _ } => false
   }
@@ -95,7 +95,7 @@ test fn dai_a_malformed_inhabitance_is_reported_as_malformed() -> Bool {
   }
   match algebra_inhabitance_field_declaration(inhabitance: missing_algebra, field: ^lattice_field_join) {
     InhabitanceMalformed { cause: c } => c == ^algebra_inhabitance_algebra_edge_missing
-    FieldDeclared => false
+    FieldDeclared { field_type: _ } => false
     FieldNotDeclared => false
   }
 }
@@ -142,7 +142,7 @@ test fn dai_a_composing_field_over_a_non_structure_is_malformed() -> Bool {
 
 fn dai_is_malformed(d: AlgebraFieldDeclaration) -> Bool {
   match d {
-    FieldDeclared => false
+    FieldDeclared { field_type: _ } => false
     FieldNotDeclared => false
     InhabitanceMalformed { cause: _ } => true
   }

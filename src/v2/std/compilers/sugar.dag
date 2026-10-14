@@ -296,9 +296,9 @@ fn sugar_arm_type_body_is_nameless(variant: Node) -> Bool {
 }
 
 // The where-rebuilt arm: the synthetic Conj body lowering hands the fold carries its head under
-// ^dag_surface_type_expr (body_lower_type_variant_children_with_where) and, when the arm also had
-// a field block, the lowered block under ^dag_surface_field_decl_block. True iff that carried head
-// is a nameless type body. The kind is the lowered image of the production identity the raw path
+// ^dag_surface_type_expr (body_lower_where_refined_type_edges). A where clause beside a payload
+// still refuses at body_lower_type_variant rather than carrying a field-decl-block edge. True iff
+// that carried head is a nameless type body. The kind is the lowered image of the production identity the raw path
 // reads, so the decision stays spelling-agnostic (a named constructor spelled like a lex token
 // still lowers to an Atom and reads as named). A dotted qualified-name spine lowers to a head/tail
 // Conj, which a record Conj would also be -- and a record whose FIELD NAMES happen to be spelled

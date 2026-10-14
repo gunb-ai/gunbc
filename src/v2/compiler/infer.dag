@@ -1,230 +1,46 @@
 module v2.compiler.infer
 
 import std.types { List, Map }
-
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
-import std.algebra { Cons, Empty, FreeMonoid, contains, TailAbsent, TailFound, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup }
-import v2.std.bounded_lattice_completeness {
-  infer_bounded_lattice_consumer_gate,
-  partial_bounded_lattice_instances_in_tree
-}
-import v2.std.compilers.target_model {
-  AlgebraPrimitive,
-  CanonicalOperation,
-  canonical_operation_from_wire_node,
-  canonical_operation_op_add,
-  canonical_operation_op_coerce,
-  canonical_operation_wire_matches_operation,
-  canonical_operation_op_sub,
-  target_model_canonical_operation_member_declared_type,
-}
+import std.algebra { Cons, Empty, FreeMonoid, contains, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup }
+import v2.std.bounded_lattice_completeness { infer_bounded_lattice_consumer_gate, partial_bounded_lattice_instances_in_tree }
+import v2.std.compilers.target_model { AlgebraPrimitive, CanonicalOperation, canonical_operation_from_wire_node, canonical_operation_op_add, canonical_operation_op_coerce, canonical_operation_wire_matches_operation, canonical_operation_op_sub, target_model_canonical_operation_member_declared_type }
+import v2.compiler.lexical_scope { bind_binder }
 import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
-import v2.compiler.body_lowering_fold {
-  TypeDeclModifier,
-  TypeDeclModifierModuleUncovered,
-  TypeDeclModifierRowAbsent,
-  TypeDeclModifierRowPresent,
-  type_decl_modifiers_include_sole_constructor,
-  type_declaration_modifier_row_at
-}
+import v2.compiler.body_lowering_fold { TypeDeclModifier, TypeDeclModifierModuleUncovered, TypeDeclModifierRowAbsent, TypeDeclModifierRowPresent, type_decl_modifiers_include_sole_constructor, type_declaration_modifier_row_at }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.compiler.inferred_tree {
-  DerivedGrounding,
-  GroundingNotDerived,
-  InferredFacts,
-  InferredFactsEntry,
-  InferredTree,
-  ObligatedInferredTree,
-  NodeGrounding
-}
-import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration }
+import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived, InferredFacts, InferredFactsEntry, InferredTree, ObligatedInferredTree, NodeGrounding }
+import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, GeneratorDeclared, GeneratorMalformed, GeneratorNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_field_operation_type, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_declaration }
 import v2.std.model_core { AlgebraInhabitanceDecl }
-import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
+import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, KernelStringLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
 import gunbc.structural_realization_bindings { kernel_grounding_rows, literal_homomorphism_rows }
 import std.decl_ref { DeclarationRef, decl_ref }
-import v2.std.grammar { node_atom_identity_optional }
-import v2.extdeps.languages.dag {
-  dag_algebra_inhabitance_decls,
-  dag_algebra_inhabitance_row_type_params,
-  DagCanonicalBoolLiteral,
-  DagCanonicalIntLiteral,
-  DagCanonicalSymbolLiteral,
-  DagCanonicalStringLiteral,
-  DagCanonicalLiteral,
-  dag_binding_denotation,
-  dag_kernel_type_declaration_binding_optional,
-  dag_canonical_literal_from_node,
-  dag_declared_inhabitants_root,
-  dag_declared_inhabitants_subject_field,
-  dag_grammar_production_member_declared_type,
-  parse_production_captured_child_optional,
-  qualified_name_from_module_node
-}
-import v2.extdeps.languages.python {
-  python_declared_inhabitants_root,
-  python_declared_inhabitants_subject_field
-}
-import v2.extdeps.languages.typescript {
-  ts_declared_inhabitants_root,
-  ts_declared_inhabitants_subject_field
-}
+import v2.extdeps.languages.dag { dag_algebra_inhabitance_decls, dag_algebra_inhabitance_row_type_params, DagCanonicalBoolLiteral, DagCanonicalIntLiteral, DagCanonicalSymbolLiteral, DagCanonicalStringLiteral, DagCanonicalLiteral, dag_binding_denotation, dag_kernel_type_declaration_binding_optional, dag_canonical_literal_from_node, dag_declared_inhabitants_root, dag_declared_inhabitants_subject_field, dag_grammar_production_member_declared_type, parse_production_captured_child_optional, qualified_name_from_module_node }
+import v2.extdeps.languages.python { python_declared_inhabitants_root, python_declared_inhabitants_subject_field }
+import v2.extdeps.languages.typescript { ts_declared_inhabitants_root, ts_declared_inhabitants_subject_field }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v2.std.optional_layers {
-  OccupancyWrapperMalformed,
-  TypeNodeOccupancy,
-  peel_optional_layer,
-  type_node_occupancy_read,
-  wrap_type_node_occupancy
-}
-import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node }
-
-import std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
+import v2.std.optional_layers { OccupancyWrapperMalformed, TypeNodeOccupancy, peel_optional_layer, type_node_occupancy_read, wrap_type_node_occupancy }
+import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node, integer_int_type_node }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment }
-import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
+import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain, FieldProjection, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, field_projection_optional, find_core_child, named_child_lookup, node_positional_child_targets, pattern_wildcard_name }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
-import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
-import v2.std.node { symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
+import v2.std.node { symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme, StructuralLabel, host_text_type_node, symbol_type_node, node_rebuild, node_with_occurrence_id, Arrow, Atom, Bind, Branch, Occupancy, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Authored, Node, NodeFold, Positional, Transform, TypeNode, is_empty_conj_root, Value, all_edges_positional, canonicalize_node_strip_provenance, fold_node, loop_edge_contributes_to_iteration_fold, well_formed }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
-import v2.std.arrow_signature {
-  ApplicationBindingRefused,
-  ApplicationBound,
-  ApplicationSlot,
-  ArrowParameterOrderAbsent,
-  ArrowParameterOrderDeclared,
-  ArrowParameterOrderMalformed,
-  application_actual_edges,
-  application_binding_plan,
-  anonymous_signature_arrow,
-  application_binding_plan_over,
-  arrow_declared_parameter_order
-}
+import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
-import v2.std.constraints {
-  CanonicalGrounding,
-  CanonicalGroundingWitness,
-  canonical_grounding_from_derived_type
-}
-import v2.std.inhabitance {
-  DeclaredType,
-  DeclaredTypeObligation,
-  PositionDirectCallArgument,
-  DeclaredTypePosition,
-  DeclaredTypeVariable,
-  TypeVariableInstance,
-  inhabitance_formal_declaration,
-  type_variable_instance_lookup,
-  InhabitanceFormal,
-  InhabitanceUndecidableReason,
-  InhabitanceVerdict,
-  application_argument_does_not_inhabit_diagnostic,
-  application_positional_arity_mismatch_diagnostic,
-  application_parameter_order_absent_reason,
-  application_parameter_order_diagnostic,
-  application_parameter_order_malformed_reason,
-  declared_type_inhabitance,
-  inhabitance_node_undecidable_reason,
-  inhabitance_node_mentions_type_variable,
-  inhabitance_undecidable_diagnostic,
-  position_binder_default,
-  position_declared_return,
-  position_record_field,
-  position_let_annotation,
-  position_direct_call_argument,
-  position_match_coverage,
-  undecidable_argument_type_not_derived,
-  undecidable_formal_unresolved,
-  undecidable_where_predicate_subject_unmodelled
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  Diagnostics,
-  ExternalContractUnknown,
-  Locus,
-  NonEmptyDiagnostics,
-  Suggested,
-  UserInputBoundary,
-  node_locus,
-  Outcome,
-  Suggested,
-  Unavailable,
-  Accepted,
-  None,
-  Rejected,
-  Some,
-  bind_outcome,
-  diagnostics_merge,
-  diagnostics_singleton,
-  outcome_rejected,
-  outcome_accepted,
-  rejected_with_pending
-}
-import v2.std.integer { integer_int_type_node }
+import v2.std.constraints { CanonicalGrounding, CanonicalGroundingWitness, canonical_grounding_from_derived_type }
+import v2.std.inhabitance { DeclaredType, DeclaredTypeObligation, PositionDirectCallArgument, DeclaredTypePosition, DeclaredTypeVariable, TypeVariableInstance, inhabitance_formal_declaration, type_variable_instance_lookup, InhabitanceFormal, InhabitanceUndecidableReason, InhabitanceVerdict, application_argument_does_not_inhabit_diagnostic, application_positional_arity_mismatch_diagnostic, application_parameter_order_absent_reason, application_parameter_order_diagnostic, application_parameter_order_malformed_reason, declared_type_inhabitance, inhabitance_node_undecidable_reason, inhabitance_node_mentions_type_variable, inhabitance_undecidable_diagnostic, position_binder_default, position_declared_return, position_record_field, position_let_annotation, position_direct_call_argument, position_match_coverage, undecidable_argument_type_not_derived, undecidable_formal_unresolved, undecidable_where_predicate_subject_unmodelled }
+import v2.std.diagnostic { Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, Suggested, UserInputBoundary, node_locus, Outcome, Unavailable, Accepted, None, Rejected, Some, bind_outcome, diagnostics_merge, diagnostics_singleton, outcome_rejected, outcome_accepted, rejected_with_pending }
 import v2.std.logic { Bool, bool_node }
-import v2.std.node {
-  StructuralLabel,
-  symbol_intern_lexeme,
-  host_text_type_node,
-  symbol_type_node,
-  node_rebuild,
-  node_with_occurrence_id,
-  Arrow,
-  Atom,
-  Bind,
-  Branch,
-  Occupancy,
-  ComputationNode,
-  Conj,
-  Disj,
-  Edge,
-  Instantiation,
-  Loop,
-  Match,
-  Authored,
-  Node,
-  NodeFold,
-  Positional,
-  Symbol,
-  Transform,
-  TypeNode,
-  is_empty_conj_root,
-  Value,
-  Ambiguous,
-  Found,
-  all_edges_positional,
-  arrow_body_target_lookup,
-  canonicalize_node_strip_provenance,
-  fold_node,
-  loop_edge_contributes_to_iteration_fold,
-  node_subtree_nodes,
-  well_formed,
-}
 import v2.std.type_binder { GenericTypeDecl, KindBound, OpaqueTypeDecl, PlainTypeDecl, StructureBound, TypeAlias, Unbound, cast_target_optional, declaration_binder_edge, edge_is_type_params, type_annotation_optional, type_decl_view, type_param_bound, type_param_names }
 import v2.std.coercion { coercion_cast_crossing }
-import v2.std.node_query {
-  FieldProjection,
-  NamedChildAmbiguous,
-  NamedChildFound,
-  NamedChildMissing,
-  construct_tag_path_optional,
-  declared_field_named,
-  field_projection_optional,
-  find_core_child,
-  find_named_child,
-  named_child_lookup,
-  node_positional_child_targets,
-  pattern_wildcard_name
-}
-import v2.std.grammar { node_atom_identity_optional }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
+
+
 
 type AlgebraRef {
   algebra: Node
@@ -1015,9 +831,10 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
 // A LEXICAL BINDER'S REFERENCE IS GROUNDED BY THE BINDING RESOLVE RECORDED FOR IT. v2.compiler.resolve
 // mints it from a Lexical frame and records which binder answered it in ResolvedTree.lexical_bindings,
 // keyed by the reference's occurrence, so infer reads that binding and never searches scope. A binder
-// that declares a type (a lambda parameter's domain edge) grounds to it; one that declares none (a
-// `let` or a pattern binder, which carry no type here) is underived, as before. A reference resolve
-// did not record is the tree disagreeing with the resolver that produced it: refused, located.
+// whose type a sibling fixes -- a `let` (infer_let_body_frame) or a match-arm payload binder -- is typed by
+// the frame's InferBinderType row at its site; a binder that declares a type (a lambda parameter's domain
+// edge) grounds to it; any other binder is underived. A reference resolve did not record is the tree
+// disagreeing with the resolver that produced it: refused, located.
 fn infer_lexical_reference_facts(n: Node, resolved: ResolvedTree, instances: List<TypeVariableInstance>, binder_types: List<InferBinderType>) -> Outcome<InferredFacts> {
   match infer_descent_witness_for_node(n: n) {
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -1905,12 +1722,16 @@ type RefinementDeclaration {
 }
 
 fn refinement_declaration(index: SymbolIndex, reference: Node) -> Optional<RefinementDeclaration> {
-  match declaration_reference_path_optional(node: reference) {
-    Absent => Absent
-    Present { value: path } =>
-      match symbol_index_lookup(index: index, qualified_path: path) {
+  match refinement_declaration_of_node(decl: reference) {
+    Present { value: inline } => Present { value: inline }
+    Absent =>
+      match declaration_reference_path_optional(node: reference) {
         Absent => Absent
-        Present { value: decl } => refinement_declaration_of_node(decl: decl)
+        Present { value: path } =>
+          match symbol_index_lookup(index: index, qualified_path: path) {
+            Absent => Absent
+            Present { value: decl } => refinement_declaration_of_node(decl: decl)
+          }
       }
   }
 }
@@ -2717,8 +2538,8 @@ fn infer_match(
 ) -> Outcome<InferredFacts> {
   let positional_targets = node_positional_child_targets(node: node)
   match list_tail(xs: positional_targets) {
-    TailAbsent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
-    TailFound { tail: arms } =>
+    Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
+    Present { value: arms } =>
       if arms |> any(fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
         infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
       } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
@@ -2765,10 +2586,7 @@ fn infer_type_head_and_args(t: Node) -> InferTypeHeadArgs {
       match list_at_optional(xs: targets, index: 0) {
         Absent => InferTypeHeadArgs { head: t, args: Empty }
         Present { value: head } =>
-          match list_tail(xs: targets) {
-            TailFound { tail: args } => InferTypeHeadArgs { head: head, args: args }
-            TailAbsent => InferTypeHeadArgs { head: head, args: Empty }
-          }
+          InferTypeHeadArgs { head: head, args: skip(xs: targets, n: 1) }
       }
     TypeNode { connective: _ } => InferTypeHeadArgs { head: t, args: Empty }
     ComputationNode { behavior: _ } => InferTypeHeadArgs { head: t, args: Empty }
@@ -2901,10 +2719,7 @@ fn infer_coproduct_arm_pattern_constructed(pat: Node) -> InferCoproductArmPatter
           match qualified_name_last_segment(qn: path) {
             Absent => ArmPatternUnread
             Present { value: tag } =>
-              match list_tail(xs: pat.children) {
-                TailFound { tail: fields } => ArmPatternVariant { tag: tag, fields: fields }
-                TailAbsent => ArmPatternVariant { tag: tag, fields: Empty }
-              }
+              ArmPatternVariant { tag: tag, fields: skip(xs: pat.children, n: 1) }
           }
       }
   }
@@ -3192,8 +3007,8 @@ fn infer_match_coproduct(
       Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
       Present { value: scrutinee_target } =>
         match list_tail(xs: positional_targets) {
-          TailAbsent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
-          TailFound { tail: arms } =>
+          Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+          Present { value: arms } =>
             match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
               Rejected { diagnostics: r } => Rejected { diagnostics: r }
               Accepted { value: _, diagnostics: cd } =>
@@ -3356,8 +3171,11 @@ fn infer_loop_iteration(
 // A BINARY ALGEBRA OPERATOR NAMES ONE FIELD OF A STRUCTURE, and the field is the whole of what it says: the
 // lowered operator is a canonical-operation wire (v2.std.compilers.target_model canonical_operation_from_wire_node)
 // whose AlgebraPrimitive carries the signature field -- ^ring_field_add for `+`, ^lattice_field_join for `||`,
-// ^lattice_field_meet for `&&`. The bare `+` token is the add field's surface spelling
-// (canonical_operation_op_add). Anything else is not an algebra primitive and stays out of this arm.
+// ^lattice_field_meet for `&&` -- and whose EqualityComparison carries ^equivalence_field_eq for `==` and `!=`
+// (the predicate only negates the answer; the field, and so the operand judgment and the result type, are one).
+// The bare `+` token is the add field's surface spelling (canonical_operation_op_add). Ordering comparisons and
+// inverse-compose operators (`-`) stay out of this arm until the structure reading names their fields
+// (gunbc.recurring_failure_mode comparison_operands_never_judged_in_v2_infer).
 fn infer_binary_algebra_field(op_node: Node) -> Optional<Symbol> {
   if infer_operator_is_plus_token(op_node: op_node) {
     infer_canonical_operation_field(operation: canonical_operation_op_add())
@@ -3385,7 +3203,7 @@ fn infer_canonical_operation_field(operation: CanonicalOperation) -> Optional<Sy
     AlgebraPrimitive { algebra_field: field } => optional_present(value: field)
     AlgebraInverseCompose { binary_field: _, inverse_field: _ } => optional_absent()
     OrderingComparison { compare_field: _, predicate: _ } => optional_absent()
-    EqualityComparison { eq_field: _, predicate: _ } => optional_absent()
+    EqualityComparison { eq_field: field, predicate: _ } => optional_present(value: field)
     CoercionCrossing { homomorphism_rule: _ } => optional_absent()
   }
 }
@@ -3396,10 +3214,9 @@ fn infer_canonical_operation_field(operation: CanonicalOperation) -> Optional<Sy
 // the sub-structures it composes -- never a name found inside an operation's signature). The row is SELECTED by
 // the carrier its own inhabitance node is over (the ^inhabitant_edge target, read in the same call), never by the
 // row's outer `inhabitant` field: that field is a second copy of the carrier, and selecting by it let a row whose
-// copy disagreed with its structure lend the structure's fields to a type the structure is not over. The result is the
-// operand type because every binary algebra primitive these structures carry is closed on the carrier: a
-// lattice join is algebra_binary_fn_node(domain: T, T, codomain: T), and ring add is the operation of the
-// abelian group the ring composes. This replaces the Int-only arm that hard-coded `+` over
+// copy disagreed with its structure lend the structure's fields to a type the structure is not over. The result is
+// the codomain the field DECLARES (infer_algebra_field_codomain_result): the operand type where the field is closed
+// on the carrier -- a lattice join is algebra_binary_fn_node(domain: T, codomain: T) -- and Bool for equivalence's eq. This replaces the Int-only arm that hard-coded `+` over
 // ^dag_binding_type_int: Int add derives through Int's ordered-ring row and Bool join through Bool's
 // boolean-algebra row, by one route; a type with no row declaring the field (Bool `+`, Int `||`) is refused as
 // an operand mismatch exactly as a non-Int `+` was.
@@ -3421,7 +3238,7 @@ fn infer_algebra_field_result_type(rows: List<AlgebraInhabitanceDecl>, operand_t
           InhabitanceFieldRead { carrier: carrier, declaration: declaration } =>
             if infer_branch_type_atoms_equal(a: carrier, b: operand_type) {
               match declaration {
-                FieldDeclared => AlgebraFieldResultType { result: operand_type }
+                FieldDeclared { field_type: t } => infer_algebra_field_codomain_result(field_type: t, carrier: carrier, operand_type: operand_type)
                 FieldNotDeclared => AlgebraFieldNotCarried
                 InhabitanceMalformed { cause: c } => AlgebraFieldRowMalformed { cause: c }
               }
@@ -3433,6 +3250,32 @@ fn infer_algebra_field_result_type(rows: List<AlgebraInhabitanceDecl>, operand_t
   })
 }
 
+// THE FIELD'S RESULT IS ITS OPERATION'S DECLARED CODOMAIN. The operation is the field's own Arrow, or, for a
+// field typed by a composed structure (ring add is an abelian group), that structure's binary operation
+// (v2.std.algebra_structure_signature algebra_field_operation_type). A codomain that is the row's carrier
+// answers the operand's own type node (the use's, which already matched the carrier), so a closed operation
+// types exactly as before; any other codomain -- eq's Bool -- is the result as the structure declares it. A
+// field whose operation is not an Arrow is a malformed row, refused with its cause, never a guessed result.
+fn infer_algebra_field_codomain_result(field_type: Node, carrier: Node, operand_type: Node) -> InferAlgebraFieldResult {
+  match algebra_field_operation_type(field_type: field_type) {
+    InhabitanceMalformed { cause: c } => AlgebraFieldRowMalformed { cause: c }
+    FieldNotDeclared => AlgebraFieldRowMalformed { cause: ^algebra_field_structure_declares_no_operation }
+    FieldDeclared { field_type: op } =>
+      match infer_operator_arrow(operator: op) {
+        Absent => AlgebraFieldRowMalformed { cause: ^algebra_field_type_not_an_arrow }
+        Present { value: arrow } =>
+          match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+            Absent => AlgebraFieldRowMalformed { cause: ^algebra_field_type_not_an_arrow }
+            Present { value: codomain } =>
+              if infer_branch_type_atoms_equal(a: codomain, b: carrier) {
+                AlgebraFieldResultType { result: operand_type }
+              } else {
+                AlgebraFieldResultType { result: codomain }
+              }
+          }
+      }
+  }
+}
 
 fn infer_transform_is_binary_infix_algebra_shape(node: Node) -> Bool {
   let positional_targets = node_positional_child_targets(node: node)
@@ -3450,6 +3293,17 @@ fn infer_transform_is_binary_infix_algebra_shape(node: Node) -> Bool {
   }
 }
 
+// THE OPERAND JUDGMENT, THREE-VALUED, because a comparison must not read "not judged" as "different". The
+// operands are one type; or their derived types disagree; or they are not judgeable -- an operand whose type
+// is not derived, or a literal that elaborates at the other operand's type (v2.compiler.infer
+// infer_literal_elaborates_at: `n == 0` over std.nat Nat), an elaboration the comparison does not carry to eval
+// yet. `==` keeps the third arm on the counted not-derived frontier; `+`, `||` and `&&` refuse it with its
+// diagnostic exactly as they refused it before the judgment had three arms.
+type InferOperandJudgment
+  = OperandsOneType { operand_type: Node }
+  | OperandsDisagree { diagnostic: Diagnostic }
+  | OperandsNotJudged { diagnostic: Diagnostic }
+
 fn infer_unify_transform_operand_types(
   left_node: Node,
   left_facts: InferredFacts,
@@ -3457,9 +3311,9 @@ fn infer_unify_transform_operand_types(
   right_facts: InferredFacts,
   entries: List<InferredFactsEntry>,
   resolved: ResolvedTree,
-) -> Outcome<Node> {
+) -> InferOperandJudgment {
   match infer_branch_operand_resolved_type_with_entries(node: left_node, facts: left_facts, entries: entries, instances: infer_no_type_variable_instances(), resolved: resolved) {
-    Violates { diagnostic: d } => outcome_rejected(d)
+    Violates { diagnostic: d } => OperandsNotJudged { diagnostic: d }
     Holds { value: left_type } =>
       match infer_branch_operand_resolved_type_with_entries(
         node: right_node,
@@ -3468,22 +3322,44 @@ fn infer_unify_transform_operand_types(
         instances: infer_no_type_variable_instances(),
         resolved: resolved
       ) {
-        Violates { diagnostic: d } => outcome_rejected(d)
+        Violates { diagnostic: d } => OperandsNotJudged { diagnostic: d }
         Holds { value: right_type } =>
-          if infer_branch_type_atoms_equal(a: left_type, b: right_type) {
-            Accepted { value: left_type, diagnostics: None }
+          // Two uses of one declared type are two nodes with different occurrences, so they are one type by
+          // structure with provenance ignored, as a kernel atom is one type by identity. Equality brings declared
+          // operands to this judgment (`p == q` over a record), where the bare node comparison refused them.
+          if infer_branch_type_atoms_equal(a: left_type, b: right_type) || infer_type_equal_ignoring_provenance(a: left_type, b: right_type) {
+            OperandsOneType { operand_type: left_type }
           } else {
-            outcome_rejected(infer_transform_operand_type_mismatch_diagnostic(node: left_node))
+            if infer_operand_literal_elaborates_at(literal_node: right_node, expected: left_type, resolved: resolved)
+              || infer_operand_literal_elaborates_at(literal_node: left_node, expected: right_type, resolved: resolved) {
+              OperandsNotJudged { diagnostic: infer_transform_operand_type_mismatch_diagnostic(node: left_node) }
+            } else {
+              OperandsDisagree { diagnostic: infer_transform_operand_type_mismatch_diagnostic(node: left_node) }
+            }
           }
       }
   }
 }
 
-fn infer_transform_argument_targets(node: Node) -> List<Node> {
-  match list_tail(xs: node_positional_child_targets(node: node)) {
-    TailAbsent => Empty
-    TailFound { tail: t } => t
+fn infer_operand_literal_elaborates_at(literal_node: Node, expected: Node, resolved: ResolvedTree) -> Bool {
+  match infer_literal_elaborates_at(literal_node: literal_node, expected: expected, declarations: resolved.resolved_declarations) {
+    InferLiteralElaboratesTo { destination_type: _ } => true
+    InferLiteralNotElaborated => false
+    InferLiteralElaborationRefused { cause: _ } => false
   }
+}
+
+// AN EQUALITY THAT IS NOT DERIVED stays on the counted frontier, as every comparison did before `==` was judged.
+fn infer_equality_not_derived(node: Node, od: Diagnostics) -> Outcome<InferredFacts> {
+  match infer_descent_witness_for_node(n: node) {
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Holds { value: descent_proof } =>
+      bind_outcome_accepted(od: od, inner: inferred_facts_not_derived(node: node, descent: Holds { value: descent_proof }))
+  }
+}
+
+fn infer_transform_argument_targets(node: Node) -> List<Node> {
+  skip(xs: node_positional_child_targets(node: node), n: 1)
 }
 
 fn infer_operator_arrow(operator: Node) -> Optional<Node> {
@@ -4093,8 +3969,11 @@ fn infer_declared_type_obligation(
 // Nat, and Nat carries no algebra row, so `n + 1` refuses at the operator either way, while `==`/`<` are not
 // judged at all (gunbc.recurring_failure_mode comparison_operands_never_judged_in_v2_infer).
 //
-// SCOPE, STATED: integer literals. A string literal at the free monoid over Char (the Unicode scalar row) is
-// not elaborated here; that crossing stays the text-boundary lane's (DESIGN section 4, Ruling 3).
+// SCOPE, STATED: integer and string literals. A string literal is host text; at a declared type whose alias-normalized
+// structure is one instantiated head over one element it crosses only through the homomorphism row keyed on exactly
+// that (head, element) -- the declared Unicode scalar unfold, std.algebra FreeMonoid over std.types Char (DESIGN
+// section 4, the text ruling) -- and any other structure has no row, so the ordinary relation judges host text
+// there and refuses it. Kernel grounding has no string arm: host text is not a grounded carrier's value.
 type InferLiteralElaboration
   = InferLiteralElaboratesTo { destination_type: Node }
   | InferLiteralNotElaborated
@@ -4174,7 +4053,35 @@ fn infer_literal_elaborates_at(literal_node: Node, expected: Node, declarations:
         DagCanonicalIntLiteral { magnitude: m } => infer_int_literal_value_at(value: m, expected: expected, declarations: declarations)
         DagCanonicalBoolLiteral { value: _ } => InferLiteralNotElaborated
         DagCanonicalSymbolLiteral { symbol: _ } => InferLiteralNotElaborated
-        DagCanonicalStringLiteral { value: _ } => InferLiteralNotElaborated
+        DagCanonicalStringLiteral { value: _ } => infer_string_literal_at(expected: expected, declarations: declarations)
+      }
+  }
+}
+
+// A string literal at an expected type: the homomorphism row keyed on the expected type's alias-normalized
+// (head, element), or nothing. The key is read the way the row states it -- the structure, not the spelling:
+// v2.std.text `type String = FreeMonoid<Char>` presents std.algebra FreeMonoid at std.types Char, and Char, a
+// refinement, is not unfolded (infer_alias_is_refined). A head with no single element, or a (head, element)
+// no row names -- FreeMonoid over Int, or over a Char declared elsewhere -- is not elaborated, and the
+// relation then refuses host text there.
+fn infer_string_literal_at(expected: Node, declarations: SymbolIndex) -> InferLiteralElaboration {
+  let wanted = infer_type_alias_normalized(t: expected, declarations: declarations)
+  match infer_type_declaration_ref(t: wanted) {
+    Absent => InferLiteralNotElaborated
+    Present { value: destination } =>
+      match infer_type_head_and_args(t: wanted).args {
+        Cons { head: element_type, tail: Empty } =>
+          match infer_type_declaration_ref(t: element_type) {
+            Absent => InferLiteralNotElaborated
+            Present { value: element } =>
+              match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelStringLiteral, destination: destination, element: optional_present(value: element), destination_realizes_natively: false) {
+                ViaHomomorphism { homomorphism: _ } => InferLiteralElaboratesTo { destination_type: wanted }
+                DirectLiteral => InferLiteralNotElaborated
+                LiteralElaborationRefused { cause: c } => InferLiteralElaborationRefused { cause: infer_literal_elaboration_refusal_reason(cause: c) }
+              }
+          }
+        Cons { head: _, tail: _ } => InferLiteralNotElaborated
+        Empty => InferLiteralNotElaborated
       }
   }
 }
@@ -4610,7 +4517,7 @@ fn infer_row_declares_fields(row: AlgebraInhabitanceDecl, fields: List<Symbol>) 
       StructureRowMalformed { cause: _ } => acc
       StructureInhabited { generator: _ } =>
         match algebra_inhabitance_field_declaration(inhabitance: row.algebra, field: field) {
-          FieldDeclared => acc
+          FieldDeclared { field_type: _ } => acc
           FieldNotDeclared => StructureNotInhabited
           InhabitanceMalformed { cause: c } => StructureRowMalformed { cause: c }
         }
@@ -4819,13 +4726,24 @@ fn infer_transform_binary_infix(
                                 entries: entries,
                                 resolved: resolved
                               ) {
-                                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                                Accepted { value: unified_type, diagnostics: ud } =>
+                                OperandsDisagree { diagnostic: d } => outcome_rejected(d)
+                                OperandsNotJudged { diagnostic: d } =>
+                                  if field == ^equivalence_field_eq { infer_equality_not_derived(node: node, od: cd) } else { outcome_rejected(d) }
+                                OperandsOneType { operand_type: unified_type } =>
                                   match infer_algebra_field_result_type(rows: dag_algebra_inhabitance_decls(), operand_type: unified_type, field: field) {
+                                    // NO ROW IS NOT "NOT COMPARABLE". The operands are already judged one type; a
+                                    // carrier with no Equivalence row has an equality the language model does not
+                                    // state yet (Bool, host text, a declared record), so the comparison stays on the
+                                    // counted not-derived frontier as it did before this arm judged it. An operation
+                                    // field with no row (`true + false`) is a refusal: the carrier has no such operation.
                                     AlgebraFieldNotCarried =>
-                                      outcome_rejected(
-                                        infer_transform_operand_type_mismatch_diagnostic(node: node)
-                                      )
+                                      if field == ^equivalence_field_eq {
+                                        infer_equality_not_derived(node: node, od: cd)
+                                      } else {
+                                        outcome_rejected(
+                                          infer_transform_operand_type_mismatch_diagnostic(node: node)
+                                        )
+                                      }
                                     AlgebraFieldRowMalformed { cause: cause } =>
                                       outcome_rejected(Diagnostic {
                                         reason: cause,
@@ -4846,7 +4764,7 @@ fn infer_transform_binary_infix(
                                           f: fn(facts) {
                                             Accepted {
                                               value: facts,
-                                              diagnostics: diagnostics_merge(outer: cd, inner: ud)
+                                              diagnostics: cd
                                             }
                                           }
                                         )
@@ -5441,16 +5359,7 @@ fn infer_gather_bind_annotation_row_on_entries(
         children_remaining: 0
       )
     Accepted { value: _, diagnostics: d } =>
-      infer_gather_transform_frontier_on_entries(
-        node: node,
-        entries: entries,
-        pending: diagnostics_merge(outer: pending, inner: d),
-        partials: partials,
-        kinds: kinds,
-        resolved: resolved,
-        instances: infer_no_type_variable_instances(),
-        binder_types: infer_no_binder_types()
-      )
+      infer_gather_let_result_row(node: node, entries: entries, pending: diagnostics_merge(outer: pending, inner: d), partials: partials, kinds: kinds, resolved: resolved)
   }
 }
 
@@ -5719,7 +5628,21 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
             await_transform_row: false,
             children_remaining: length(xs: n.children)
           )
-        Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
+        Absent =>
+          match bind_binder(n: n) {
+            Present { value: _ } =>
+              infer_gather_fold_acc_ok(
+                node: n,
+                entries: empty_inferred_facts_entry_list(),
+                pending: None,
+                await_branch_row: false,
+                await_match_row: false,
+                await_loop_row: false,
+                await_transform_row: false,
+                children_remaining: length(xs: n.children)
+              )
+            Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
+          }
       }
       }
     TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
@@ -6207,6 +6130,7 @@ fn infer_gather_fold_step(
     || arrow_named_edge_is_metadata(e: edge)
     || infer_declaration_binder_edge(parent: acc.node, edge: edge)
     || match_arm_pattern_edge(parent: acc.node, edge: edge)
+    || bind_key_edge(parent: acc.node, edge: edge)
     || (resolved_reference_body_kind(target: acc.node) != NotMarkedReference) {
     infer_gather_fold_step_merged(
       acc: acc,
@@ -6937,6 +6861,9 @@ fn infer_gather_settled_row(
         resolved: resolved
       )
     Absent =>
+      if infer_is_let_bind(bind: acc.node) {
+        infer_gather_let_result_row(node: acc.node, entries: merged_entries, pending: merged_pending, partials: partials, kinds: kinds, resolved: resolved)
+      } else {
       match infer_declared_position_check(node: acc.node, entries: merged_entries, declarations: resolved.resolved_declarations) {
         Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
@@ -6956,6 +6883,7 @@ fn infer_gather_settled_row(
             partials: partials,
             resolved: resolved
           )
+      }
       }
   }
   }
@@ -7345,6 +7273,8 @@ fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherF
         infer_fold_carrier_frame(bind: parent, frame: infer_frame_inherited(frame: frame), acc: acc, loop_node: edge.target, resolved: resolved)
       } else if infer_loop_takes_collection_member(loop_node: parent) {
         infer_fold_member_frame(loop_node: parent, frame: infer_frame_inherited(frame: frame), acc: acc, step: edge.target, resolved: resolved)
+      } else if infer_let_body_edge(parent: parent, edge: edge) {
+        infer_let_body_frame(bind: parent, frame: infer_frame_inherited(frame: frame), acc: acc)
       } else {
         match parent.kind {
           ComputationNode { behavior: Match } =>
@@ -7900,6 +7830,98 @@ fn infer_bind_encodes_collection_fold(bind: Node) -> Bool {
 
 fn infer_bind_value(bind: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: bind), index: 1)
+}
+
+// AN ORDINARY `let`: a Bind whose binder key v2.compiler.lexical_scope bind_binder reads -- the one reader
+// resolve sites the binder with, so the frame row below is keyed exactly where resolve recorded the
+// binding -- and that does not encode a collection fold (that Bind's binder is the fold carrier, typed by
+// infer_fold_carrier_frame). An annotated let is one too; its annotation is a named edge beside the three
+// positionals.
+fn infer_is_let_bind(bind: Node) -> Bool {
+  match bind_binder(n: bind) {
+    Present { value: _ } => !infer_bind_encodes_collection_fold(bind: bind)
+    Absent => false
+  }
+}
+
+fn infer_bind_body(bind: Node) -> Optional<Node> {
+  list_at_optional(xs: node_positional_child_targets(node: bind), index: 2)
+}
+
+fn infer_let_body_edge(parent: Node, edge: Edge) -> Bool {
+  if infer_is_let_bind(bind: parent) {
+    match infer_bind_body(bind: parent) {
+      Present { value: body } => edge.target == body
+      Absent => false
+    }
+  } else {
+    false
+  }
+}
+
+// THE LET BODY IS ENTERED AFTER THE VALUE HAS SETTLED, under a frame with one InferBinderType row at the
+// binder's site: the dependent-child frame match arms and the fold carrier already use
+// (gunbc.recurring_failure_mode bind_and_match_binders_not_typed_from_their_dependency_sibling). An
+// annotated binder is typed by its annotation -- the declared type; the value is evidence judged against it
+// at PositionLetAnnotation (infer_bind_annotation_check), never a second answer for the binder. An
+// unannotated binder is typed by the value's settled type; a value with no derived type adds no row, so its
+// references stay on the counted frontier rather than taking a guessed type. The value is read from the
+// settled entries, never from resolve's LexicalValued node, which is the value before its own subtree was
+// resolved and so is not an entry key.
+fn infer_let_body_frame(bind: Node, frame: InferFrame, acc: InferGatherFoldAcc) -> InferFrame {
+  match bind_binder(n: bind) {
+    Absent => frame
+    Present { value: b } =>
+      match type_annotation_optional(n: bind) {
+        Present { value: annotation } =>
+          infer_frame_with_binder_type(frame: frame, row: InferBinderType { site: b.atom.occurrence_id, derived: infer_frame_instantiated(declared: annotation, instances: frame.instances) })
+        Absent =>
+          match infer_bind_value(bind: bind) {
+            Absent => frame
+            Present { value: value } =>
+              match infer_settled_type_at(target: value, entries: acc.entries) {
+                Absent => frame
+                Present { value: t } => infer_frame_with_binder_type(frame: frame, row: InferBinderType { site: b.atom.occurrence_id, derived: t })
+              }
+          }
+      }
+  }
+}
+
+fn infer_frame_with_binder_type(frame: InferFrame, row: InferBinderType) -> InferFrame {
+  InferFrame { instances: frame.instances, binder_types: list_snoc_item(xs: frame.binder_types, item: row), entering: frame.entering }
+}
+
+// THE LET IS ITS BODY: once the body has settled the Bind derives at the body's type -- not the
+// annotation's, not the value's -- so the enclosing check (a declared return, an argument) judges what
+// the let actually produces. A body with no derived type leaves the Bind on the counted frontier.
+fn infer_gather_let_result_row(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  resolved: ResolvedTree,
+) -> InferGatherFoldAcc {
+  match infer_bind_body(bind: node) {
+    Absent => infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved, instances: infer_no_type_variable_instances(), binder_types: infer_no_binder_types())
+    Present { value: body } =>
+      match infer_settled_type_at(target: body, entries: entries) {
+        Absent => infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved, instances: infer_no_type_variable_instances(), binder_types: infer_no_binder_types())
+        Present { value: body_type } =>
+          match infer_descent_witness_for_node(n: node) {
+            Violates { diagnostic: d } =>
+              infer_gather_formed_facts_row(node: node, formed: Rejected { diagnostics: diagnostics_singleton(d: d) }, entries: entries, pending: pending)
+            Holds { value: descent_proof } =>
+              infer_gather_formed_facts_row(
+                node: node,
+                formed: inferred_facts_from_derived_type(node: node, derived_type: body_type, descent: Holds { value: descent_proof }),
+                entries: entries,
+                pending: pending
+              )
+          }
+      }
+  }
 }
 
 // THE CARRIER FORMAL IS INSTANTIATED FROM INIT, as the member formal is from the domain: the Bind's value

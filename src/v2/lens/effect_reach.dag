@@ -1,56 +1,19 @@
 module v2.lens.effect_reach
-
+import std.optional { Absent, Optional, Present }
 import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 import v2.lens.module_graph { path_matches_touched }
-import v2.lens.witness_cost_locality {
-  ModuleImportFact,
-  witness_import_closure
-}
-import std.algebra { list_snoc_item, contains, fold_list, length, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
-import std.optional { Absent, Present }
-import v2.std.data_index {
-  DataInitDecl,
-  data_init_decl_facts_live,
-  lexeme_matches_literal_fp
-}
-import v2.std.effect_reach {
-  HostEffectSinkKind,
-  EffectReachFlow,
-  EffectReachClassification,
-  LocalEffect,
-  HostEffectReach,
-  EffectReachRefused,
-  FilesystemReadSink,
-  WitnessBinRunSink,
-  ShellExecRunSink,
-  GunbcCompileEntrySink,
-  UnknownHostEffectSink,
-  effect_reach_host_sink_callee_symbols_v0
-}
-import v2.std.fn_index {
-  FnArrowDecl,
-  atom_identities_in_node,
-  call_reachable_decls,
-  param_names_of,
-  fn_arrow_decl_facts_live,
-  is_path_like_lexeme
-}
+import v2.lens.witness_cost_locality { ModuleImportFact, witness_import_closure }
+import std.algebra { list_snoc_item, contains, fold_list, length, list_head, skip, list_tail }
+import v2.std.data_index { DataInitDecl, data_init_decl_facts_live, lexeme_matches_literal_fp }
+import v2.std.effect_reach { HostEffectSinkKind, EffectReachFlow, EffectReachClassification, LocalEffect, HostEffectReach, EffectReachRefused, FilesystemReadSink, WitnessBinRunSink, ShellExecRunSink, GunbcCompileEntrySink, UnknownHostEffectSink, effect_reach_host_sink_callee_symbols_v0 }
+import v2.std.fn_index { FnArrowDecl, atom_identities_in_node, call_reachable_decls, param_names_of, fn_arrow_decl_facts_live, is_path_like_lexeme }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Node,
-  NodeFold,
-  Positional,
-  Symbol,
-  fold_node,
-  symbol_lexeme,
-  Authored, StructuralLabel,
-}
+import v2.std.node { Atom, Conj, Edge, Node, NodeFold, Positional, Symbol, fold_node, symbol_lexeme, Authored, StructuralLabel }
 import v2.std.text { String, string_eq }
+
+
 
 // This consumer's subject is DIRECTORY-GRAIN: it names roots and no single modules.
 data no_declared_pool_files: List<String> = []
@@ -186,10 +149,7 @@ fn arg_symbols_from_nodes(nodes: List<Node>) -> List<Symbol> {
 }
 
 fn tail_nodes(xs: List<Node>) -> List<Node> {
-  match list_tail(xs: xs) {
-    TailFound { tail: t } => t
-    TailAbsent => empty_node_list
-  }
+  skip(xs: xs, n: 1)
 }
 
 fn flows_from_sink_call(
@@ -215,7 +175,7 @@ fn flows_from_sink_call_known(
   data_inits: List<DataInitDecl>
 ) -> List<EffectReachFlow> {
   match list_head(xs: args) {
-    HeadFound { value: arg } =>
+    Present { value: arg } =>
       let text = symbol_lexeme(sym: arg)
       let path = path_literal_from_lexeme(
         text: text,
@@ -229,7 +189,7 @@ fn flows_from_sink_call_known(
           init_literal_fp: ""
         }
       ]
-    HeadAbsent =>
+    Absent =>
       [EffectReachFlow { sink: sink, path_literal: "", init_literal_fp: "" }]
   }
 }
@@ -241,7 +201,7 @@ fn flows_from_call_node(
 ) -> List<EffectReachFlow> {
   let targets = positional_child_targets(node: node)
   match list_head(xs: targets) {
-    HeadFound { value: callee_node } =>
+    Present { value: callee_node } =>
       match node_atom_identity_optional(node: callee_node) {
         Present { value: callee } =>
           let callee_text = symbol_lexeme(sym: callee)
@@ -257,7 +217,7 @@ fn flows_from_call_node(
           }
         Absent => empty_flow_list
       }
-    HeadAbsent => empty_flow_list
+    Absent => empty_flow_list
   }
 }
 

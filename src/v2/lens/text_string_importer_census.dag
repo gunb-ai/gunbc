@@ -1,63 +1,26 @@
 module v2.lens.text_string_importer_census
 
-import extdeps.filesystem.filesystem_io {
-  Filesystem,
-  filesystem_read_outcome,
-  FilesystemReadSucceeded,
-  FilesystemReadRefused,
-}
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import v2.compiler.parse { grammar_validate_for_parse, parse_production }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.common.source_analysis_standing {
-  LanguageGrammarRejected,
-  LanguageGrammarUnavailable,
-  SourceAnalysisNotEstablishedCause,
-  SourceNormalizationRejected,
-  SourceParseRejected,
-  SourceTokenizationRejected,
-  SourceUnreadable
-}
+import v2.lens.common.source_analysis_standing { LanguageGrammarRejected, LanguageGrammarUnavailable, SourceAnalysisNotEstablishedCause, SourceNormalizationRejected, SourceParseRejected, SourceTokenizationRejected, SourceUnreadable }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact, import_resolution_facts_live, reference_derived_import_resolution_facts_live, module_declaration_facts_live }
 import v2.std.node { Node, Atom, TypeNode, symbol_lexeme }
 import v2.std.provenance { SpanIndex, span_index_empty, node_occurrence_id_optional, span_index_textual_locus_optional }
-import std.optional { Optional }
+import std.optional { Optional, Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, Textual, ByteRange, WholeFile }
 import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
-
-import std.optional { Absent, Present }
-import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, length, list_reverse, empty_map, map_insert, map_lookup }
+import std.types { Map, List, NonEmptyStr }
+import std.algebra { empty_map, map_insert, map_lookup, Cons, Empty, FreeMonoid, contains, fold_list, length, list_reverse }
 import v2.std.source_position { source_newline_byte_offsets }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.types { List, NonEmptyStr, Map }
-import std.primitives {
-  primitive_contract_roster,
-  PrimitiveContract,
-  char_at_contract,
-  string_length_contract,
-  substring_contract,
-  string_contains_contract,
-  starts_with_contract,
-  ends_with_contract,
-  trim_contract,
-  split_contract,
-  repeat_contract,
-  chars_contract,
-  to_string_contract,
-  parse_int_contract,
-  str_eq_contract,
-  replace_section_contract,
-  code_point_contract,
-  scan_while_contract,
-  skip_horizontal_ws_contract,
-  scan_to_eol_contract,
-  scan_string_end_contract
-}
+import std.primitives { primitive_contract_roster, PrimitiveContract, char_at_contract, string_length_contract, substring_contract, string_contains_contract, starts_with_contract, ends_with_contract, trim_contract, split_contract, repeat_contract, chars_contract, to_string_contract, parse_int_contract, str_eq_contract, replace_section_contract, code_point_contract, scan_while_contract, skip_horizontal_ws_contract, scan_to_eol_contract, scan_string_end_contract }
 
 // THE CENSUS OF `import v2.std.text { String }` IMPORTERS, AT SITE GRAIN (gunbc#12760, decision A;
 // method ruled by neat-boar-16 2026-09-30). v1 binds a bare `String` in these modules to the KERNEL
@@ -159,9 +122,9 @@ data no_exclusions: List<String> = []
 
 // A structural function whose RESULT is a text carrier. Its arguments are always call-argument
 // crossings (host value into a code-point-sequence parameter: the lawful unfold of gunbc#12512);
-// its result is a crossing only when it is a text carrier. `ListTailResult` is `std.algebra`'s
-// cons view of a `FreeMonoid`, so its tail is the structural carrier.
-data text_carrier_heads: List<String> = ["String", "FreeMonoid", "FreeSemigroup", "ListTailResult"]
+// its result is a crossing only when it is a text carrier. A list tail is
+// Optional<FreeMonoid<T>> and is not a text carrier of its own.
+data text_carrier_heads: List<String> = ["String", "FreeMonoid", "FreeSemigroup"]
 
 type StructuralResultPosition
   = NoTextResult

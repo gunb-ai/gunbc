@@ -2,24 +2,13 @@ module v2.std.symbol_index
 
 
 import std.types { List, Map }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, HeadAbsent, HeadFound, contains, fold_list, is_empty, length, list_head, empty_map, map_insert, map_contains_key, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, contains, fold_list, is_empty, length, list_head, empty_map, map_insert, map_contains_key, map_lookup }
 import v2.std.witness { map_get_checked }
-import std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node, Symbol }
 import v2.std.type_binder { AliasRenaming, NotARenaming, PureRenamingOf, binder_conj_names, type_alias_renaming }
-import v2.std.qualified_name {
-  QualifiedName,
-  qualified_name_init,
-  qualified_name_last_segment,
-  qualified_name_snoc
-}
+import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_last_segment, qualified_name_snoc }
 
 // AN AMBIGUOUS LEAF CARRIES ITS CLAIMANTS' DECLARING PATHS. Ambiguity is a fact about a set of
 // declarations, and a reader that must decide something about them -- is any of them a declared
@@ -498,8 +487,8 @@ fn symbol_index_declaring_path_of(
   target: QualifiedName
 ) -> QualifiedName {
   match list_head(xs: symbol_index_claimants_at(index: index, binding_path: target)) {
-    HeadFound { value: declaring } => declaring
-    HeadAbsent => target
+    Present { value: declaring } => declaring
+    Absent => target
   }
 }
 
@@ -676,9 +665,9 @@ fn symbol_index_lexical_selection(
     0 => LexicalUnbound
     1 =>
       match list_head(xs: candidates) {
-        HeadFound { value: candidate } =>
+        Present { value: candidate } =>
           LexicalHit { node: candidate.node, path: candidate.path }
-        HeadAbsent => LexicalUnbound
+        Absent => LexicalUnbound
       }
     _ => LexicalAmbiguous { candidates: candidates }
   }
