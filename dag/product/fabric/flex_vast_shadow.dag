@@ -1,0 +1,440 @@
+module product.fabric.flex_vast_shadow
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.decl_ref { decl_ref }
+import std.integer { int_to_decimal_string }
+import std.measure {
+  MoneyPerHour, MoneyAmountMicro, MoneyPerSecond, MoneyRate, ByteSize,
+  money_amount_micro, second, mebibyte, mebibyte_to_byte_size, gibibyte, gibibyte_to_byte_size,
+  byte_size_count, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
+}
+import std.checked_arithmetic { checked_int_to_nat }
+import extdeps.currency.currency { Usd }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
+import product.fabric.flex_policy {
+  FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey,
+  FlexBidAttempt, FlexBidAdmission, FlexBidRefused, FlexScreenedCandidate,
+  FlexDecimalConversionRefused,
+  FlexActuationMode, FlexActuationDry, FlexActuationWet,
+  flex_floor_buffer, flex_bid_admission,
+  PhysicalMachineObservationIdentity, ProviderAccountObservationIdentity,
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import product.fabric.demand { debt_payoff_objective, DemandObjective }
+import product.fabric.budget { MoneyAccount }
+import extdeps.cloud.vast_ai {
+  VastAiOffer, VastAiInstance, vast_ai_search_type_bid, vast_ai_search_limit_default,
+  vast_ai_min_bid_money_per_hour, vast_ai_quote_currency,
+}
+import std.rational { NonzeroNatFraction }
+
+// Read-only Vast observation plus M0 admission recorded as a shadow receipt. No create or destroy
+// operation is imported. Writes are gated on Wet AND a readable instance list AND not over cap;
+// Wet still has no wired create.
+
+data flex_search_offers_inhabitance_frontier: DissolutionCondition = unbound_dissolution(description: "DECLARED FRONTIER (DESIGN §3 pairing): an inhabitance claim that live vast_ai.SearchOffers Search emits VastAiOffer (ExactDecimal money, gpu_ram in MB), using flex_vast_api_read_grant on the Vast API key SecretRef. TRIGGER: that grant is issued and a wet readonly Search executes. SUFFICIENT FOR deleting this row once that claim is enrolled. NOT satisfied by supplied-value fixtures.")
+
+data flex_m3_rent_cooldown_starts_at_ask: DissolutionCondition = unbound_dissolution(description: "M3: start the rent cooldown at ASK time, because a timed-out create may have rented. TRIGGER: the wet create loop records ask time as cooldown origin. SUFFICIENT FOR deleting this row.")
+
+data flex_m3_pass_stops_at_first_failure: DissolutionCondition = unbound_dissolution(description: "M3: stop the observation/plan pass at the first failure so the next pass plans from what really happened. TRIGGER: the wet loop refuses to continue after the first typed failure. SUFFICIENT FOR deleting this row.")
+
+data flex_qwen_probe_harness_placement_frontier: DissolutionCondition = unbound_dissolution(description: "M3: wire flex_rented_card_fungible into gunbc.harness.harness_requirement_placement. TRIGGER: placement refuses a rented card whose probe is not FlexQwenProbeConfirmed with qwen3 / qwen3_coder. SUFFICIENT FOR deleting this row. NOT satisfied by declaring the requirement here.")
+
+data flex_wet_create_release_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create/destroy loop consumes FlexCreateStanding, flex_reconcile_acquisition, FlexReleaseStanding, flex_release_readback, flex_trial_total (reservation ceiling), flex_objective, and flex_delay_unvalued. TRIGGER: that loop is the remaining executing route if test.claim.fabric.flex_vast_shadow_witness is deleted. SUFFICIENT FOR deleting this row.")
+
+type FlexWriteDecision
+  = FlexWriteHeldDry
+  | FlexWriteBlockedUnreadable
+  | FlexWriteBlockedOverCap
+  | FlexWriteWetUnwired
+
+type FlexInstanceListStanding
+  = FlexInstanceListRead { instances: List<VastAiInstance> }
+  | FlexInstanceListUnreadable
+
+fn flex_write_decision(
+  policy: FlexPolicy,
+  instances: FlexInstanceListStanding,
+  over_cap: Bool,
+) -> FlexWriteDecision {
+  match policy.actuation {
+    FlexActuationDry => FlexWriteHeldDry
+    FlexActuationWet =>
+      match instances {
+        FlexInstanceListUnreadable => FlexWriteBlockedUnreadable
+        FlexInstanceListRead { instances: _ } =>
+          if over_cap { FlexWriteBlockedOverCap } else { FlexWriteWetUnwired }
+      }
+  }
+}
+
+fn flex_vast_api_read_grant(target: SecretRef) -> SecretAccessGrant {
+  secret_accessor_grant(target: target)
+}
+
+data flex_trial_fleet_rate_cap: MoneyPerHour = MoneyPerHour {
+  amount: money_amount_micro(count: 1500000),
+  currency: Usd,
+}
+
+data flex_trial_total: MoneyAmountMicro = money_amount_micro(count: 50000000)
+
+data flex_trial_policy: FlexPolicy = FlexPolicy {
+  fleet_rate_cap: flex_trial_fleet_rate_cap,
+  floor_buffer: flex_floor_buffer,
+  on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
+  acquisition_horizon: second(count: 3600),
+  actuation: FlexActuationDry,
+}
+
+data flex_delay_unvalued: MoneyPerSecond = MoneyRate {
+  amount: money_amount_micro(count: 0),
+  currency: Usd,
+}
+
+data flex_objective: DemandObjective = debt_payoff_objective
+
+data flex_qwen_serving_image: NonEmptyStr = "vastai/vllm:v0.30.0-cuda-13.0"
+data flex_qwen_published_tcp_port: Int = 8000
+data flex_qwen_disk: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 32))
+data flex_qwen_model_id: NonEmptyStr = "qwen"
+data flex_qwen_reasoning_parser: NonEmptyStr = "qwen3"
+data flex_qwen_tool_call_parser: NonEmptyStr = "qwen3_coder"
+
+type FlexQwenProbeStanding
+  = FlexQwenProbeConfirmed { reasoning_parser: NonEmptyStr, tool_call_parser: NonEmptyStr }
+  | FlexQwenProbeUnconfirmed
+
+fn flex_rented_card_fungible(probe: FlexQwenProbeStanding) -> Bool {
+  match probe {
+    FlexQwenProbeUnconfirmed => false
+    FlexQwenProbeConfirmed { reasoning_parser: r, tool_call_parser: t } =>
+      r == flex_qwen_reasoning_parser && t == flex_qwen_tool_call_parser
+  }
+}
+
+type FlexServingTemplate {
+  image: NonEmptyStr
+  published_tcp_port: Int
+  disk: ByteSize
+  model_id: NonEmptyStr
+}
+
+data flex_qwen_serving_template: FlexServingTemplate = FlexServingTemplate {
+  image: flex_qwen_serving_image,
+  published_tcp_port: flex_qwen_published_tcp_port,
+  disk: flex_qwen_disk,
+  model_id: flex_qwen_model_id,
+}
+
+type FlexEngineRuntime
+  = FlexNinfer
+  | FlexVllm
+
+data flex_ninfer_min_driver: Int = 580
+data flex_vllm_min_driver: Int = 590
+
+fn flex_engine_min_driver(engine: FlexEngineRuntime) -> Int {
+  match engine {
+    FlexNinfer => flex_ninfer_min_driver
+    FlexVllm => flex_vllm_min_driver
+  }
+}
+
+data flex_host_driver_unread_frontier: DissolutionCondition = unbound_dissolution(description: "Vast search-offers as modeled carries no host driver version, so ninfer >= 580 and vLLM >= 590 cannot be decided from an offer. TRIGGER: the offer or instance wire carries a host driver version and flex_engine_min_driver screens it. SUFFICIENT FOR deleting this row.")
+
+type FlexGpuClass {
+  identity: NonEmptyStr
+  gpu_name_contains: String?
+  min_vram: ByteSize
+}
+
+data flex_gpu_class_rtx_5000_48gb: FlexGpuClass = FlexGpuClass {
+  identity: "rtx-5000-class-48gb",
+  gpu_name_contains: Present { value: "RTX 5000" },
+  min_vram: mebibyte_to_byte_size(m: mebibyte(count: 49152)),
+}
+
+data flex_gpu_class_72gb: FlexGpuClass = FlexGpuClass {
+  identity: "72gb-class",
+  gpu_name_contains: none,
+  min_vram: mebibyte_to_byte_size(m: mebibyte(count: 73728)),
+}
+
+data flex_gpu_class_rtx_pro_6000_96gb: FlexGpuClass = FlexGpuClass {
+  identity: "rtx-pro-6000-blackwell-96gb",
+  gpu_name_contains: Present { value: "RTX PRO 6000" },
+  min_vram: mebibyte_to_byte_size(m: mebibyte(count: 98304)),
+}
+
+fn vast_gpu_ram_bytes(gpu_ram_mb: Int) -> ByteSize? {
+  match checked_int_to_nat(n: gpu_ram_mb) {
+    Absent => none
+    Present { value: mb } => Present { value: mebibyte_to_byte_size(m: mebibyte(count: mb)) }
+  }
+}
+
+fn flex_supported_gpu_classes() -> List<FlexGpuClass> {
+  [flex_gpu_class_rtx_5000_48gb, flex_gpu_class_72gb, flex_gpu_class_rtx_pro_6000_96gb]
+}
+
+fn flex_gpu_name_matches(offer: VastAiOffer, needle: String?) -> Bool {
+  match needle {
+    Absent => true
+    Present { value: n } => string_contains(s: offer.gpu_name, pattern: n)
+  }
+}
+
+fn flex_gpu_class_matches(offer: VastAiOffer, class: FlexGpuClass) -> Bool {
+  match vast_gpu_ram_bytes(gpu_ram_mb: offer.gpu_ram) {
+    Absent => false
+    Present { value: vram } =>
+      flex_gpu_name_matches(offer: offer, needle: class.gpu_name_contains)
+        && byte_size_count(b: vram) >= byte_size_count(b: class.min_vram)
+  }
+}
+
+fn flex_offer_supported(offer: VastAiOffer) -> Bool {
+  fold(
+    flex_supported_gpu_classes(),
+    init: false,
+    f: (acc, class) => acc || flex_gpu_class_matches(offer: offer, class: class),
+  )
+}
+
+fn flex_interruptible_rentable(offer: VastAiOffer) -> Bool {
+  match offer.is_bid {
+    Absent => false
+    Present { value: bid } => bid && offer.rentable && !offer.rented
+  }
+}
+
+fn flex_offer_in_shadow_field(offer: VastAiOffer) -> Bool {
+  flex_interruptible_rentable(offer: offer) && flex_offer_supported(offer: offer)
+}
+
+data flex_search_type: String = vast_ai_search_type_bid
+data flex_search_limit: Int = vast_ai_search_limit_default
+
+fn flex_machine_key(
+  account: ProviderAccountObservationIdentity,
+  machine: PhysicalMachineObservationIdentity,
+) -> FlexMachineKey {
+  FlexMachineKey {
+    provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"),
+    account: account,
+    machine: machine,
+  }
+}
+
+fn flex_machine_key_for_offer(
+  account: ProviderAccountObservationIdentity,
+  offer: VastAiOffer,
+) -> FlexMachineKey {
+  flex_machine_key(
+    account: account,
+    machine: int_to_decimal_string(value: offer.machine_id) as PhysicalMachineObservationIdentity,
+  )
+}
+
+type FlexShadowBidReceipt {
+  offer_id: Int
+  machine: FlexMachineKey
+  admission: FlexBidAdmission
+  actuation: FlexActuationMode
+}
+
+fn flex_bind_attempt_to_offer(
+  offer: VastAiOffer,
+  attempt: FlexBidAttempt<NonEmptyStr>,
+) -> FlexBidAttempt<NonEmptyStr> {
+  let machine = flex_machine_key_for_offer(account: attempt.machine.account, offer: offer)
+  FlexBidAttempt {
+    machine: machine,
+    min_bid: offer.min_bid,
+    quote_currency: vast_ai_quote_currency,
+    candidates: fold(
+      attempt.candidates,
+      init: [],
+      f: (acc, row) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: row.candidate }]),
+    ),
+    subject: attempt.subject,
+    on_demand_reference: attempt.on_demand_reference,
+    requirements: attempt.requirements,
+    reservation: attempt.reservation,
+    generation: attempt.generation,
+    delay_valuation: attempt.delay_valuation,
+    tie: attempt.tie,
+    affinity: attempt.affinity,
+  }
+}
+
+fn flex_shadow_bid(
+  policy: FlexPolicy,
+  occupancy: FlexFleetOccupancy,
+  window: FlexAcquisitionWindow,
+  account: MoneyAccount,
+  offer: VastAiOffer,
+  attempt: FlexBidAttempt<NonEmptyStr>,
+) -> FlexShadowBidReceipt {
+  let bound = flex_bind_attempt_to_offer(offer: offer, attempt: attempt)
+  match vast_ai_min_bid_money_per_hour(offer: offer) {
+    DecimalMoneyPerHourRefused { conversion: c } =>
+      FlexShadowBidReceipt {
+        offer_id: offer.id,
+        machine: bound.machine,
+        admission: FlexBidRefused { cause: FlexDecimalConversionRefused { conversion: c } },
+        actuation: policy.actuation,
+      }
+    DecimalMoneyPerHourConverted { rate: _ } =>
+      FlexShadowBidReceipt {
+        offer_id: offer.id,
+        machine: bound.machine,
+        admission: flex_bid_admission(
+          policy: policy,
+          occupancy: occupancy,
+          window: window,
+          account: account,
+          attempt: bound,
+        ),
+        actuation: policy.actuation,
+      }
+  }
+}
+
+type FlexCreateStanding
+  = FlexCreateAnswered { instance_id: Int, machine_id: Int, ask_id: Int }
+  | FlexCreateLost { ask_id: Int, machine_id: Int }
+  | FlexCreateRefused { ask_id: Int, machine_id: Int }
+
+type FlexReconcileVerdict
+  = FlexAlreadyHeld { instance: VastAiInstance }
+  | FlexAcquisitionUnknown
+  | FlexMayAcquire
+
+type FlexInstanceLookup
+  = FlexLookupContractId { id: Int }
+  | FlexLookupMachineId { machine_id: Int }
+
+fn flex_find_instance(instances: List<VastAiInstance>, lookup: FlexInstanceLookup) -> VastAiInstance? {
+  fold(
+    instances,
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent =>
+          match lookup {
+            FlexLookupContractId { id: id } =>
+              if row.id == id { Present { value: row } } else { none }
+            FlexLookupMachineId { machine_id: mid } =>
+              if row.machine_id == mid { Present { value: row } } else { none }
+          }
+      },
+  )
+}
+
+fn flex_instance_on_machine(instances: List<VastAiInstance>, machine_id: Int) -> VastAiInstance? {
+  flex_find_instance(instances: instances, lookup: FlexLookupMachineId { machine_id: machine_id })
+}
+
+fn flex_reconcile_acquisition(
+  standing: FlexCreateStanding,
+  instances: List<VastAiInstance>,
+) -> FlexReconcileVerdict {
+  match standing {
+    FlexCreateAnswered { instance_id: id, machine_id: _, ask_id: _ } =>
+      match flex_find_instance(instances: instances, lookup: FlexLookupContractId { id: id }) {
+        Present { value: inst } => FlexAlreadyHeld { instance: inst }
+        Absent => FlexAcquisitionUnknown
+      }
+    FlexCreateLost { ask_id: _, machine_id: mid } =>
+      match flex_instance_on_machine(instances: instances, machine_id: mid) {
+        Present { value: inst } => FlexAlreadyHeld { instance: inst }
+        Absent => FlexAcquisitionUnknown
+      }
+    FlexCreateRefused { ask_id: _, machine_id: mid } =>
+      match flex_instance_on_machine(instances: instances, machine_id: mid) {
+        Present { value: inst } => FlexAlreadyHeld { instance: inst }
+        Absent => FlexMayAcquire
+      }
+  }
+}
+
+type FlexRentalReadback
+  = FlexRentalPending { ask_id: Int, machine_id: Int }
+  | FlexRentalHeld { instance: VastAiInstance }
+  | FlexRentalGone
+  | FlexRentalUnknown
+
+type FlexReleaseStanding
+  = FlexReleaseRequested { instance_id: Int }
+  | FlexReleaseLost { instance_id: Int }
+
+type FlexReleaseReadback
+  = FlexReleasePending { instance_id: Int }
+  | FlexReleaseConfirmedGone
+  | FlexReleaseUnknown
+
+fn flex_release_readback(
+  standing: FlexReleaseStanding,
+  instances: FlexInstanceListStanding,
+) -> FlexReleaseReadback {
+  match instances {
+    FlexInstanceListUnreadable => FlexReleaseUnknown
+    FlexInstanceListRead { instances: rows } => {
+      let id = match standing {
+        FlexReleaseRequested { instance_id: i } => i
+        FlexReleaseLost { instance_id: i } => i
+      }
+      match flex_find_instance(instances: rows, lookup: FlexLookupContractId { id: id }) {
+        Present { value: _ } => FlexReleasePending { instance_id: id }
+        Absent => FlexReleaseConfirmedGone
+      }
+    }
+  }
+}
+
+type FlexPassRecord {
+  instances: FlexInstanceListStanding
+  receipts: List<FlexShadowBidReceipt>
+  over_cap: Bool
+  write: FlexWriteDecision
+}
+
+fn flex_record_pass(
+  policy: FlexPolicy,
+  instances: FlexInstanceListStanding,
+  receipts: List<FlexShadowBidReceipt>,
+  over_cap: Bool,
+) -> FlexPassRecord {
+  FlexPassRecord {
+    instances: instances,
+    receipts: receipts,
+    over_cap: over_cap,
+    write: flex_write_decision(policy: policy, instances: instances, over_cap: over_cap),
+  }
+}
+
+fn flex_rental_readback(
+  standing: FlexCreateStanding,
+  instances: List<VastAiInstance>,
+  bound_expired: Bool,
+) -> FlexRentalReadback {
+  match flex_reconcile_acquisition(standing: standing, instances: instances) {
+    FlexAlreadyHeld { instance: inst } => FlexRentalHeld { instance: inst }
+    FlexMayAcquire => FlexRentalGone
+    FlexAcquisitionUnknown =>
+      if bound_expired {
+        FlexRentalUnknown
+      } else {
+        match standing {
+          FlexCreateLost { ask_id: a, machine_id: m } => FlexRentalPending { ask_id: a, machine_id: m }
+          FlexCreateAnswered { instance_id: _, machine_id: m, ask_id: a } =>
+            FlexRentalPending { ask_id: a, machine_id: m }
+          FlexCreateRefused { ask_id: _, machine_id: _ } => FlexRentalGone
+        }
+      }
+  }
+}

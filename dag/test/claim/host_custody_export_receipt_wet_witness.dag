@@ -1,10 +1,38 @@
 module test.claim.host_custody_export_receipt_wet_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
+import std.algebra { trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.file_access { FileTreeScope }
+import gunbc.dispatch_attempt { DispatchAttempt }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import test.claim.roadmap.roadmap_dispatch_actuator_witness { sized_derivable }
+import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
+import gunbc.fleet.host_credential_custody_converge {
+  HostCredentialCustodyRow,
+  CursorWorkerTurnApiKey,
+  host_credential_custody_row,
+  plan_host_custody_export,
+  CustodyExportPublication,
+  CustodyExportNotOwed,
+  CustodyExportWithheld,
+  CustodyExportUnplannable,
+  CustodyExportReceiptOwed,
+  CustodyOnlyOnHost,
+  CustodyAnyRunnerHost,
+}
+import gunbc.dispatch_credential_snapshot {
+  dispatch_credential_snapshot_take,
+  CursorFromSnapshot,
+  DispatchSnapshotTaken,
+  DispatchSnapshotRefused,
+  taken_credential_snapshot_generation,
+}
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWrite,
   TypedRemoteFileWriteAdmitted,
@@ -46,7 +74,8 @@ fn sealed_write(dest: String, root: String, body: String) -> TypedRemoteFileWrit
 }
 
 fn is_regular_file(path: String) -> Bool {
-  shell.Exec.RunArgv(program: "find", arguments: [path, "-maxdepth", "0", "-type", "f"]).exit_code == 0
+  let ran = shell.Exec.RunArgv(program: "find", arguments: [path, "-maxdepth", "0", "-type", "f"])
+  ran.exit_code == 0 && any(split(s: ran.stdout, delimiter: "\n"), l => trim(s: l) == path)
 }
 
 fn is_symlink(path: String) -> Bool {
@@ -134,4 +163,88 @@ test fn a_second_publication_over_an_existing_regular_receipt_stays_a_regular_fi
   let dest_bytes = Filesystem.Read(path: dest)
   let cleaned = shell.Remove.RecursiveForce(path: root)
   mk && prior.success && published && dest_regular && dest_bytes.success && dest_bytes.content == published_body && cleaned.success
+}
+
+// PAIRING: this claim runs the production export planner and the receipt-publication steps, then the
+// real take. It creates the fixture custody file directly and supplies placement_settled: true. It is
+// not a full remote-converge test. A fixture receipt assembled by the take's own sha256 would not
+// catch a writer/reader convention fork.
+
+fn fx_principal(flag: String) -> String {
+  trim(s: shell.Exec.RunArgv(program: "id", arguments: [flag]).stdout)
+}
+
+fn fx_pairing_row(path: NonEmptyStr, reader: NonEmptyStr, publisher: NonEmptyStr) -> HostCredentialCustodyRow {
+  let production = host_credential_custody_row(c: CursorWorkerTurnApiKey)
+  HostCredentialCustodyRow {
+    credential: production.credential,
+    secret: production.secret,
+    path: path,
+    host_scope: production.host_scope,
+    file_ownership: PosixOwnerNames { user: publisher, group: reader },
+    file_mode: production.file_mode,
+    dir_ownership: PosixOwnerNames { user: publisher, group: reader },
+    dir_mode: production.dir_mode,
+    export_receipt: CustodyExportReceiptOwed,
+  }
+}
+
+fn fx_pairing_attempt() -> DispatchAttempt {
+  DispatchAttempt {
+    instance: srv1_live_dashboard_instance(),
+    node: sized_derivable(id: "node-export-receipt-pairing", prs: [], title: "Export receipt pairing"),
+    attempt_key: "pairing000000000",
+  }
+}
+
+test fn the_real_take_accepts_the_production_export_publication() -> Bool {
+  let root = fx_root()
+  let path = concat(root, "/custody") as NonEmptyStr
+  let reader = fx_principal(flag: "-gn") as NonEmptyStr
+  let publisher = fx_principal(flag: "-un") as NonEmptyStr
+  let row = fx_pairing_row(path: path, reader: reader, publisher: publisher)
+  let host = match row.host_scope {
+    CustodyOnlyOnHost { host: h } => h
+    CustodyAnyRunnerHost => "srv2" as HostIdentity
+  }
+  let material = "paired-custody-material\n"
+  let version = "projects/gunbai-secrets/secrets/cursor-api-key-harness/versions/1" as SmResolvedVersionIdentity
+  let mk = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", root]).exit_code == 0
+  let placed = Filesystem.Write(path: path as String, content: material)
+  let planned = plan_host_custody_export(
+    placement_settled: true,
+    row: row,
+    host: host,
+    sm_version: version,
+    placed_material: material,
+  )
+  let published = match planned {
+    CustodyExportPublication { path: dest, body: body, ownership: _, receipt: rec, metadata_legs: _ } =>
+      match sealed_write(dest: dest as String, root: root, body: body) {
+        Absent => false
+        Present { value: w } =>
+          run_pre_compare(write: w) && match dispatch_credential_snapshot_take(
+            attempt: fx_pairing_attempt(),
+            executor: CursorFromSnapshot,
+            custody: SnapshotCustodyDeclaration {
+              path: path,
+              secret: row.secret,
+              host: rec.host,
+              reader: reader,
+              publisher: publisher,
+            },
+            snapshot: concat(root, "/snapshot") as NonEmptyStr,
+          ) {
+            DispatchSnapshotTaken { snapshot } =>
+              (taken_credential_snapshot_generation(snapshot: snapshot).sm_version as String) == (version as String)
+                && (taken_credential_snapshot_generation(snapshot: snapshot).content_sha256 as String) == (rec.content_sha256 as String)
+            DispatchSnapshotRefused { reason: _ } => false
+          }
+      }
+    CustodyExportNotOwed => false
+    CustodyExportWithheld { reason: _ } => false
+    CustodyExportUnplannable { reason: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: root)
+  mk && placed.success && published && cleaned.success
 }
