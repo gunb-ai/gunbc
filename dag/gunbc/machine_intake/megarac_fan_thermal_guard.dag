@@ -2,7 +2,7 @@ module gunbc.machine_intake.megarac_fan_thermal_guard
 
 import std.types { Bool, List, NonEmptyStr }
 import std.optional { Present, Absent }
-import std.measure { Celsius, celsius_count }
+import std.measure { Celsius, Percent, celsius_count }
 import extdeps.external_authority {
   CitedFigureStanding,
   CitedToAuthority,
@@ -12,6 +12,15 @@ import extdeps.external_authority {
 import extdeps.cpu.ampere {
   ampere_altra_max_m12830_thermal_limits,
   ampere_altra_max_rev_a1_datasheet_authority,
+}
+import extdeps.bmc.megarac_fan_policy {
+  CoolingManagerAutomatic,
+  CoolingManagerDisabledManual,
+  MegaRacFanPwmAllAdmitted,
+  MegaRacFanPwmAllRefused,
+  megarac_fan_pwm_all_body,
+  megarac_fan_pwm_all_of,
+  megarac_set_manager_status_body,
 }
 import gunbc.machine_intake.megarac_fan_mode_observation {
   FanPolicyPhase,
@@ -163,6 +172,32 @@ fn megarac_fan_run_exit_restore(phase: FanPolicyPhase) -> MegaRacFanPolicyRestor
       desire: megarac_fan_bringup_phase_desire,
     }
   }
+}
+
+type MegaRacFanPhaseWritePlan
+  = MegaRacFanPhaseWritesReady { manager_body: NonEmptyStr, pwm_body: NonEmptyStr? }
+  | MegaRacFanPhasePwmRefused { duty: Percent }
+
+fn megarac_fan_phase_write_plan(desire: MegaRacFanPhaseDesire) -> MegaRacFanPhaseWritePlan {
+  let manager_body = megarac_set_manager_status_body(standing: desire.manager)
+  match desire.manager {
+    CoolingManagerAutomatic =>
+      MegaRacFanPhaseWritesReady { manager_body: manager_body, pwm_body: Absent }
+    CoolingManagerDisabledManual => match megarac_fan_pwm_all_of(duty: desire.manual_pwm_min) {
+      MegaRacFanPwmAllRefused { duty: d } => MegaRacFanPhasePwmRefused { duty: d }
+      MegaRacFanPwmAllAdmitted { wire: w } => match megarac_fan_pwm_all_body(
+        pwm: MegaRacFanPwmAllAdmitted { wire: w },
+      ) {
+        Absent => MegaRacFanPhasePwmRefused { duty: desire.manual_pwm_min }
+        Present { value: b } =>
+          MegaRacFanPhaseWritesReady { manager_body: manager_body, pwm_body: Present { value: b } }
+      }
+    }
+  }
+}
+
+fn megarac_fan_boot_phase_write_plan() -> MegaRacFanPhaseWritePlan {
+  megarac_fan_phase_write_plan(desire: megarac_fan_boot_phase_desire)
 }
 
 fn megarac_uncited_component_ceilings_cannot_trip() -> Bool {
