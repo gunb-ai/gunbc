@@ -2,6 +2,8 @@ module gunbc.host.memory_envelope
 
 import std.types { Bool, Int, String }
 import std.optional { Present, Absent }
+import std.measure { ByteSize }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.host.memory_cgroup_binding {
   CgroupBindDecision,
   BindNotRequested,
@@ -124,6 +126,37 @@ type MemoryEnvelopeVerdict
   = EnvelopeHeld
   | EnvelopeViolated { oom_kills_delta: Int, swap_current: Int?, swap_peak_rose: Bool?, swap_max_zero: Bool }
 
+// WHAT THE REQUIRED JOB BINDS, and what the contract epoch hashes: the requirement the step env
+// carries and the slot sizes the cgroup is set to. refuse_oom / refuse_swap are inputs to
+// memory_envelope_verdict only. The required CI path still refuses through the host mirror
+// (gunbc.memory_envelope_receipt_seed_growth); hashing those Bools would move the epoch while the
+// shell stayed put. They enter the preimage when that trigger fires and the test verb evaluates
+// the verdict fold.
+type MemoryEnvelopeEnforcement {
+  refuse_oom: Bool
+  refuse_swap: Bool
+}
+
+data memory_envelope_enforcement: MemoryEnvelopeEnforcement = MemoryEnvelopeEnforcement {
+  refuse_oom: true,
+  refuse_swap: true,
+}
+
+type MemoryEnvelopeContract {
+  requirement: MemoryEnvelopeRequirement
+  memory_max: ByteSize
+  memory_swap_max: ByteSize
+}
+
+fn memory_envelope_required_ci_contract() -> MemoryEnvelopeContract {
+  let slot = gunbc_runner_slot_desired()
+  MemoryEnvelopeContract {
+    requirement: EnvelopeSlotRequired,
+    memory_max: slot.memory_max,
+    memory_swap_max: slot.memory_swap_max,
+  }
+}
+
 fn memory_envelope_verdict(oom_kills_delta: Int, swap_current: Int?, swap_peak_rose: Bool?, swap_max_zero: Bool) -> MemoryEnvelopeVerdict {
   let swap_resident = match swap_current {
     Absent => true
@@ -133,7 +166,9 @@ fn memory_envelope_verdict(oom_kills_delta: Int, swap_current: Int?, swap_peak_r
     Absent => swap_max_zero == false
     Present { value: rose } => rose
   }
-  if oom_kills_delta > 0 || swap_resident || swap_rose_or_unobservable {
+  let oom = memory_envelope_enforcement.refuse_oom && oom_kills_delta > 0
+  let swap = memory_envelope_enforcement.refuse_swap && (swap_resident || swap_rose_or_unobservable)
+  if oom || swap {
     EnvelopeViolated { oom_kills_delta: oom_kills_delta, swap_current: swap_current, swap_peak_rose: swap_peak_rose, swap_max_zero: swap_max_zero }
   } else {
     EnvelopeHeld
