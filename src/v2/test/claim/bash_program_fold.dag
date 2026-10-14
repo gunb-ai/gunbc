@@ -32,9 +32,10 @@ import v2.workflow.bash_emit {
   bash_emit_program_sequence
 }
 import std.algebra { list_append, list_map }
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Conj, Node, Symbol, TypeNode }
 import v2.test.claim.bash_program_fold_support {
   bash_program_fixture_assign_root_node,
   bash_program_fold_tag_assign,
@@ -285,6 +286,14 @@ test fn bash_program_exit_spelling_literal_holds() -> Bool {
   )
 }
 
+fn bash_program_empty_stmt_list() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 fn bash_program_or_else_true_exit() -> Node {
   bash_build_or_else(
     left: bash_build_command_from_lits(lits: ["true"]),
@@ -323,6 +332,47 @@ test fn bash_program_subshell_or_else_preserves_both_sides_holds() -> Bool {
     set_e: false,
     golden: bash_program_subshell_or_else_both_sides_golden
   )
+}
+
+test fn bash_program_subshell_empty_body_refuses_holds() -> Bool {
+  match bash_emit_program(
+    statements: [
+      bash_program_fold_tag_subshell(
+        node: bash_build_subshell(body: bash_program_empty_stmt_list())
+      )
+    ],
+    set_e: false
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match d.head.at {
+        NodeLocus { anchor: _ } =>
+          d.head.reason == ^bash_fold_serialize_stmt_list_shape_refused
+        _ => false
+      }
+  }
+}
+
+test fn bash_program_if_empty_body_refuses_holds() -> Bool {
+  match bash_emit_program(
+    statements: [
+      bash_program_fold_tag_if(
+        node: bash_build_if(
+          cond: bash_build_command_from_lits(lits: ["true"]),
+          body: bash_program_empty_stmt_list()
+        )
+      )
+    ],
+    set_e: false
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match d.head.at {
+        NodeLocus { anchor: _ } =>
+          d.head.reason == ^bash_fold_serialize_stmt_list_shape_refused
+        _ => false
+      }
+  }
 }
 
 test fn bash_program_if_malformed_or_else_body_refuses_holds() -> Bool {
