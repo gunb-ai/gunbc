@@ -1,7 +1,7 @@
 module test.claim.compute.attempt_discharge_wet_witness
 
 import extdeps.shell
-import std.types { Bool, Int, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim, string_contains }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import product.capacity.event_chain { PartitionId }
@@ -10,17 +10,21 @@ import gunbc.compute.host_capacity {
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
 }
 import gunbc.compute.attempt_lifecycle {
-  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered, AttemptOwner, DispatchOwned, DirectInvocation,
+  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered, AttemptOwner, DispatchOwned, DirectInvocation, OwnerUnrecorded,
   UnitLifecycle, UnitTerminatedSuccess, UnitStillRunning, UnitLifecycleUnknown,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
   AttemptTransition, AttemptAdvanced, attempt_open, attempt_begin_launch, attempt_terminate,
 }
 import gunbc.compute.work_provider_local {
-  UnitLifecycleSource, SuppliedUnitLifecycle, compute_reservation_reference,
+  UnitLifecycleSource, SuppliedUnitLifecycle, compute_reservation_reference, compute_seat_dir,
+}
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
+  attempt_exit_spool_stage_dir,
 }
 import gunbc.compute.compute_seat_ensure {
   SeatEnsureOutcome, SeatEnsureNoop, SeatEnsureReleased, SeatEnsureRefused, SeatEnsureRed,
-  compute_seat_ensure_in, seat_owned_by,
+  compute_seat_ensure_in,
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRan, SeatDischargeRefused, compute_seat_discharge_all,
 }
 
@@ -55,8 +59,35 @@ fn subject_at(root: String) -> ComputeCapacitySubject {
   }
 }
 
+// THE SEAT LOCATION FOLLOWS THE OWNER: the dispatch attempt's slot store is its own directory.
 fn attempts_at(root: String) -> NonEmptyStr {
-  trim(s: root) as NonEmptyStr
+  seat_dir_of(root: root, key: "key-a")
+}
+
+fn seat_dir_of(root: String, key: String) -> NonEmptyStr {
+  compute_seat_dir(attempts_dir: trim(s: root), owner: DispatchOwned { node_id: "node-a", attempt_key: key })
+}
+
+fn made(path: String) -> Bool {
+  shell.Mkdir.Parents(path: path).success
+}
+
+// A REAL EXIT-SPOOL ENTRY, written the way the spool writes it: the entry's directory NAME is the record
+// (roadmap_attempt_exit_spool's own seven-part codec), placed in a stage directory.
+fn exit_recorded(root: String, key: String) -> Bool {
+  made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitQueued))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRunning))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRefused))
+    && made(path: join([attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitDone), "/node-a+", key, "+worker+0123456789abcdef0123456789abcdef+success+exited+0"], ""))
+}
+
+fn spool_unrecorded(root: String) -> Bool {
+  made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitInbox))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitQueued))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRunning))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitDone))
+    && made(path: attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRefused))
 }
 
 fn record_of(reference: String, state: AttemptState, owner: AttemptOwner) -> AttemptRecord {
@@ -91,7 +122,7 @@ fn committed(subject: ComputeCapacitySubject) -> Int {
 }
 
 fn opened(root: String, reference: String, owner: AttemptOwner) -> Bool {
-  match attempt_open(root: attempts_at(root: root), record: record_of(reference: reference, state: AttemptReserved, owner: owner)) {
+  made(path: attempts_at(root: root) as String) && match attempt_open(root: attempts_at(root: root), record: record_of(reference: reference, state: AttemptReserved, owner: owner)) {
     AttemptAdvanced { state: _, generation: _ } => true
     _ => false
   }
@@ -255,34 +286,113 @@ test fn a_reference_no_record_names_is_refused_and_nothing_is_released() -> Bool
     && committed(subject: subject) == granted_kib
 }
 
-// THE DRIVER KEEPS THE CHARGE WHEN NO EXIT RECORD PROVES THE ATTEMPT ENDED: an owned seat with no exit
-// record in the instance is skipped, never released on the attempt's absence from the spool.
+fn driver_outcomes(root: String, source: UnitLifecycleSource) -> List<SeatEnsureOutcome> {
+  match compute_seat_discharge_all(instance_root: root, attempts_dir: trim(s: root), subject: subject_at(root: root), source: source) {
+    SeatDischargeRan { outcomes: os } => os
+    SeatDischargeSkipped { why: _ } => [] as List<SeatEnsureOutcome>
+    SeatDischargeRefused { reason: r } => [SeatEnsureRefused { reference: "", reason: r }]
+  }
+}
+
+// THE DRIVER KEEPS THE CHARGE WHEN NO EXIT RECORD PROVES THE ATTEMPT ENDED.
 test fn the_driver_does_not_discharge_a_seat_without_an_exit_record() -> Bool {
   let root = fresh_root()
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-drv", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-drv")
-    && (match compute_seat_discharge_all(instance_root: root, attempts_root: attempts_at(root: root), subject: subject, source: ended()) {
-      SeatDischargeRan { outcomes: os } => count(os) == 0 || !any(os, o => is_released(o: o))
-      SeatDischargeSkipped { why: _ } => true
-      SeatDischargeRefused { reason: _ } => true
-    })
+    && spool_unrecorded(root: root)
+    && !any(driver_outcomes(root: root, source: ended()), o => is_released(o: o))
     && committed(subject: subject) == granted_kib
 }
 
-// OWNERSHIP IS RECORDED, NOT INFERRED: only the recorded dispatch owner matches, and a direct
-// invocation matches no dispatch attempt. One attempt ending can never name another's seat.
-test fn a_seat_is_owned_only_by_its_recorded_dispatch_attempt() -> Bool {
+// THE DRIVER'S POSITIVE PATH, EXECUTED: a real exit-spool entry for the attempt, an ended unit, a held
+// seat under the attempt's own directory -> Apply -> Released with the independent readback at zero.
+test fn the_driver_releases_the_seat_of_an_attempt_whose_exit_record_exists_and_unit_ended() -> Bool {
   let root = fresh_root()
-  let ok = opened(root: root, reference: "r-own", owner: dispatch_owner())
-    && opened(root: root, reference: "r-dir", owner: DirectInvocation { why: "wet witness" })
-  let own = attempt_slot_read(root: attempts_at(root: root), reference: "r-own" as NonEmptyStr)
-  let dir = attempt_slot_read(root: attempts_at(root: root), reference: "r-dir" as NonEmptyStr)
-  ok
-    && seat_owned_by(reading: own, node_id: "node-a", attempt_key: "key-a")
-    && !seat_owned_by(reading: own, node_id: "node-a", attempt_key: "key-b")
-    && !seat_owned_by(reading: own, node_id: "node-b", attempt_key: "key-a")
-    && !seat_owned_by(reading: dir, node_id: "node-a", attempt_key: "key-a")
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-pos", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-pos")
+    && exit_recorded(root: root, key: "key-a")
+    && committed(subject: subject) == granted_kib
+    && count(driver_outcomes(root: root, source: ended())) == 1
+    && committed(subject: subject) == 0
+    && is_terminal(root: root, reference: "r-pos")
+}
+
+// AN EXIT RECORD IS THE REASON TO LOOK, NOT THE PROOF: the unit is running -> the charge stays.
+test fn an_exit_record_with_a_live_unit_keeps_the_charge() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-liv", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-liv")
+    && launching(root: root, reference: "r-liv")
+    && exit_recorded(root: root, key: "key-a")
+    && !any(driver_outcomes(root: root, source: running()), o => is_released(o: o))
+    && committed(subject: subject) == granted_kib
+}
+
+// THE TERMINATION PROOF IS THE OBSERVED LIFECYCLE, NOT THE TERMINAL RECORD: a settled attempt whose unit
+// lifecycle is unknown keeps its charge; the same attempt with the unit proven ended is released.
+test fn a_terminal_record_releases_only_when_the_unit_is_proven_ended() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  let ok = opened(root: root, reference: "r-tm", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-tm")
+    && launching(root: root, reference: "r-tm")
+  let settled = match attempt_slot_read(root: attempts_at(root: root), reference: "r-tm" as NonEmptyStr) {
+    AttemptSlotHeld { record: rec, generation: g } =>
+      match attempt_terminate(root: attempts_at(root: root), record: rec, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
+        AttemptAdvanced { state: _, generation: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+  ok && settled
+    && is_refused(o: ensure(root: root, reference: "r-tm", source: unknown()))
+    && committed(subject: subject) == granted_kib
+    && is_noop(o: ensure(root: root, reference: "r-tm", source: running()))
+    && committed(subject: subject) == granted_kib
+    && is_released(o: ensure(root: root, reference: "r-tm", source: ended()))
+    && committed(subject: subject) == 0
+}
+
+// A RECORD WITH NO RECORDED OWNER IS NOT A DIRECT INVOCATION: the ensure refuses and keeps the charge.
+test fn an_unrecorded_owner_refuses_and_keeps_the_charge() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-old", owner: OwnerUnrecorded { why: "legacy record" })
+    && reserved(subject: subject, reference: "r-old")
+    && launching(root: root, reference: "r-old")
+    && is_refused(o: ensure(root: root, reference: "r-old", source: ended()))
+    && committed(subject: subject) == granted_kib
+}
+
+// THE LOCATION FOLLOWS THE OWNER, AND NOTHING IS SCANNED: attempt A's exit record discharges only the
+// seat under A's directory; another attempt's seat, held under its own directory, is never visited.
+test fn a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  let other_dir = seat_dir_of(root: root, key: "key-b") as String
+  let other_open = made(path: other_dir)
+    && match attempt_open(root: seat_dir_of(root: root, key: "key-b"), record: record_of(reference: "r-b", state: AttemptReserved, owner: DispatchOwned { node_id: "node-a", attempt_key: "key-b" })) {
+      AttemptAdvanced { state: _, generation: _ } => true
+      _ => false
+    }
+  opened(root: root, reference: "r-a", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-a")
+    && other_open
+    && reserved(subject: subject, reference: "r-b")
+    && exit_recorded(root: root, key: "key-a")
+    && count(driver_outcomes(root: root, source: ended())) == 1
+    && committed(subject: subject) == granted_kib
+    && !is_terminal_in(dir: seat_dir_of(root: root, key: "key-b"), reference: "r-b")
+}
+
+fn is_terminal_in(dir: NonEmptyStr, reference: String) -> Bool {
+  match attempt_slot_read(root: dir, reference: reference as NonEmptyStr) {
+    AttemptSlotHeld { record: rec, generation: _ } => match rec.state { AttemptTerminal { verdict: _, detail: _ } => true  _ => false }
+    _ => false
+  }
 }
 
 // THE RESERVATION REFERENCE IS THE OWNER'S IDENTITY PLUS A RECORDED ORDINAL, NEVER A CLOCK: the same

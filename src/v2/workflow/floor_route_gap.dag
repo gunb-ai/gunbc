@@ -1579,7 +1579,15 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.the_driver_does_not_discharge_a_seat_without_an_exit_record", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_seat_is_owned_only_by_its_recorded_dispatch_attempt", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.the_driver_releases_the_seat_of_an_attempt_whose_exit_record_exists_and_unit_ended", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.an_exit_record_with_a_live_unit_keeps_the_charge", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_terminal_record_releases_only_when_the_unit_is_proven_ended", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.an_unrecorded_owner_refuses_and_keeps_the_charge", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.two_requests_summing_past_the_observed_headroom_cannot_both_admit", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
@@ -1606,6 +1614,10 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
   }
   }
 }
+  }
+  }
+  }
+  }
 
 // test.claim.compute.attempt_lifecycle_wet_witness: these six reach shell.Mktemp.DirWithTemplate,
 // which declares no mock_response, so the nominal floor refuses there and each identity is held.

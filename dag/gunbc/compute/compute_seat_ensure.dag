@@ -7,7 +7,7 @@ import std.measure { Kibibyte, kibibyte_count }
 import gunbc.durable_cas_file_store { cas_slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.compute.attempt_lifecycle {
-  AttemptRecord, DispatchOwned, DirectInvocation,
+  AttemptRecord, DispatchOwned, OwnerUnrecorded,
   UnitLifecycle, UnitLifecycleUnknown,
   RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryStateNotRecoverable,
   recovery_trigger,
@@ -17,11 +17,17 @@ import gunbc.compute.host_capacity {
   ComputeCapacitySubject, ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
 }
 import gunbc.compute.work_provider_local {
-  ComputeRecovery, RecoveryReleased, RecoverySettledButHeld, RecoveryDeclined, RecoveryRefused,
+  ComputeRecovery, RecoveryReleased, RecoveryNothingHeld, RecoverySettledButHeld, RecoveryDeclined, RecoveryRefused,
   UnitLifecycleSource, unit_lifecycle_from_source, compute_recover_attempt_in, compute_recovery_wire,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  AttemptUnitRole, AttemptWorkerRole, AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, attempt_exit_record_observe,
+  AttemptUnitRole, AttemptWorkerRole, attempt_unit_role_token,
+  AttemptExitStageListing, AttemptExitStageNames, AttemptExitStageUnreadable, attempt_exit_stage_listings,
+  AttemptExitEntryDecoded, AttemptExitEntryMalformed, attempt_exit_entry_decode,
+}
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_listing_observation, filesystem_listing_entry_names,
 }
 
 // A COMPUTE SEAT HELD BY AN ATTEMPT THAT ENDED IS ENSURED RETURNED, THROUGH THE ONE DISCHARGE DOOR
@@ -59,6 +65,15 @@ fn compute_seat_classify(reading: AttemptSlotReading, lifecycle: UnitLifecycle, 
     AttemptSlotUnreadable { detail: d } => seat_ensure_refuse(verdict: Inaccessible, reason: join(["the attempt slot could not be read (", d, "); the charge is kept"], ""))
     AttemptSlotAbsent => seat_ensure_refuse(verdict: UnknownRefused, reason: "no attempt slot names this reference; the charge is kept")
     AttemptSlotHeld { record: rec, generation: _ } =>
+      match rec.owner {
+        OwnerUnrecorded { why: w } => seat_ensure_refuse(verdict: UnknownRefused, reason: join(["the record names no owner (", w, "), so its end cannot be derived from an owner's end; the charge is kept"], ""))
+        _ => seat_classify_owned(rec: rec, lifecycle: lifecycle, now: now)
+      }
+  }
+}
+
+fn seat_classify_owned(rec: AttemptRecord, lifecycle: UnitLifecycle, now: EpochSecs?) -> UpsertClassification<String> {
+  {
       match now {
         Absent => seat_ensure_refuse(verdict: UnknownRefused, reason: "the clock could not be read; the charge is kept")
         Present { value: t } =>
@@ -98,14 +113,22 @@ fn seat_apply(attempts_root: NonEmptyStr, subject: ComputeCapacitySubject, refer
         RecoverySettledButHeld { reference: r, verdict: _, seat: s } => SeatEnsureRed { reference: r, reason: join(["settled but still charged: ", s], "") }
         RecoveryRefused { detail: d } => SeatEnsureRefused { reference: reference as String, reason: d }
         RecoveryDeclined { reference: r, why: w } => SeatEnsureNoop { reference: r, why: w }
+        RecoveryNothingHeld { reference: r, verdict: _, detail: d } =>
+          match seat_committed(subject: subject) {
+            Absent => SeatEnsureRed { reference: r, reason: "the door reported nothing held but the ledger could not be read back" }
+            Present { value: after } =>
+              if kibibyte_count(k: before) == kibibyte_count(k: after) {
+                SeatEnsureNoop { reference: r, why: join(["the ledger reported it held nothing for this reference, and the committed figure did not move: ", d], "") }
+              } else {
+                SeatEnsureRed { reference: r, reason: "the ledger reported it held nothing but the committed figure moved during the ensure" }
+              }
+          }
         RecoveryReleased { reference: r, verdict: _, seat: _ } =>
           match seat_committed(subject: subject) {
             Absent => SeatEnsureRed { reference: r, reason: "the door reported a release but the ledger could not be read back" }
             Present { value: after } =>
               if kibibyte_count(k: before) - kibibyte_count(k: after) == granted {
                 SeatEnsureReleased { reference: r, committed_before: before, committed_after: after }
-              } else if kibibyte_count(k: before) == kibibyte_count(k: after) {
-                SeatEnsureNoop { reference: r, why: "the ledger held nothing for this reference (the attempt ended before it reserved); the attempt is now closed" }
               } else {
                 SeatEnsureRed { reference: r, reason: "the door reported a release and the ledger's committed figure did not fall by the attempt's grant" }
               }
@@ -128,45 +151,25 @@ fn compute_seat_ensure_in(attempts_root: NonEmptyStr, subject: ComputeCapacitySu
   }
 }
 
-// THE DRIVER. Who calls the ensure: the dispatch attempt's exit record is the TRIGGER (an attempt whose
-// exit was recorded may have ended its units), and the dispatch attempt's own compute seats are found by
-// scanning the compute attempt slots for the owner DispatchOwned { node, attempt_key } recorded at open.
-// The exit record is not the proof -- the door re-proves termination from the unit itself, and a record
-// naming a different owner is never touched, so one attempt ending cannot discharge a seat another
-// opened. The belt executes this as an event-triggered obligation but is only the executor: the
-// ownership authority is the owner field of the compute attempt record.
+// THE DRIVER. Who calls the ensure: the dispatch attempt's exit record is the TRIGGER (a worker whose
+// exit was recorded may have ended its units). The attempt's own compute seats are DERIVED FROM ITS
+// RECORD DIRECTORY -- a seat's compute attempt slot lives under the dispatch attempt it belongs to
+// (work_provider_local compute_seat_dir), so the attempt reads its own directory and the cost is
+// proportional to the attempt, not to the host's slots. There is no corpus scan to discover seats.
+// The exit record is not the proof -- the door re-proves termination from the unit itself. The belt
+// executes this as an event-triggered obligation but is only the executor: the ownership authority is
+// the location the owner's seat was recorded at, written by the slot's exclusive create before the
+// reservation exists.
 type SeatDischargePass
   = SeatDischargeSkipped { why: String }
   | SeatDischargeRan { outcomes: List<SeatEnsureOutcome> }
   | SeatDischargeRefused { reason: String }
 
-fn seat_owned_by(reading: AttemptSlotReading, node_id: String, attempt_key: String) -> Bool {
-  match reading {
-    AttemptSlotHeld { record: rec, generation: _ } =>
-      match rec.owner {
-        DispatchOwned { node_id: n, attempt_key: k } => n == node_id && k == attempt_key
-        DirectInvocation { why: _ } => false
-      }
-    _ => false
-  }
-}
-
-fn compute_seat_discharge_for_attempt(instance_root: String, attempts_root: NonEmptyStr, subject: ComputeCapacitySubject, node_id: String, attempt_key: String, source: UnitLifecycleSource) -> SeatDischargePass {
-  match attempt_exit_record_observe(instance_root: instance_root, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
-    AttemptExitRecordNone => SeatDischargeSkipped { why: "no exit record: the attempt has not been observed to end" }
-    AttemptExitRecordUnreadable { reason: r } => SeatDischargeRefused { reason: join(["the exit record could not be read: ", r], "") }
-    AttemptExitRecordFound { record: _ } => compute_seat_discharge_owned(attempts_root: attempts_root, subject: subject, node_id: node_id, attempt_key: attempt_key, source: source)
-  }
-}
-
-fn compute_seat_discharge_owned(attempts_root: NonEmptyStr, subject: ComputeCapacitySubject, node_id: String, attempt_key: String, source: UnitLifecycleSource) -> SeatDischargePass {
-  match cas_slot_keys(root: attempts_root) {
-    CasSlotKeysListingRefused { root: _, detail: d } => SeatDischargeRefused { reason: join(["the compute attempt slots could not be listed: ", d], "") }
-    CasSlotKeysSubjectRefused { root: _, cause: c } => SeatDischargeRefused { reason: join(["the compute attempt slots could not be listed: ", c], "") }
-    CasSlotKeysListed { keys } => {
-      let mine = keys |> filter(k => seat_owned_by(reading: attempt_slot_read(root: attempts_root, reference: k), node_id: node_id, attempt_key: attempt_key))
-      SeatDischargeRan { outcomes: mine |> map(k => compute_seat_ensure_in(attempts_root: attempts_root, subject: subject, reference: k, source: source)) }
-    }
+fn seat_discharge_outcomes(p: SeatDischargePass) -> List<SeatEnsureOutcome> {
+  match p {
+    SeatDischargeRan { outcomes: os } => os
+    SeatDischargeSkipped { why: _ } => [] as List<SeatEnsureOutcome>
+    SeatDischargeRefused { reason: r } => [SeatEnsureRefused { reference: "", reason: r }]
   }
 }
 
@@ -184,45 +187,68 @@ fn seat_discharge_pass_has_red(p: SeatDischargePass) -> Bool {
   }
 }
 
-// EVERY DISPATCH-OWNED SEAT ON THE HOST, ONE ATTEMPT AT A TIME: the owners are read off the compute
-// attempt records (the ownership authority), and each distinct (node, attempt_key) is run through
-// compute_seat_discharge_for_attempt, so the exit record gates it and the door proves termination.
+// A DIRECTORY THAT DOES NOT EXIST IS "NO SEATS", A DIRECTORY THAT COULD NOT BE LISTED IS NOT. The
+// absence is established from the PARENT's listing (a name that is not there), never from the failure
+// text of the child's listing.
+fn seat_dir_provably_absent(attempts_dir: String, attempt_key: String) -> Bool {
+  let listed = Filesystem.List(path: attempts_dir)
+  match filesystem_listing_observation(directory: attempts_dir, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(admitted) => !any(filesystem_listing_entry_names(listing: admitted), n => n == join(["dispatch-", attempt_key], ""))
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => false
+    FilesystemDirectorySubjectRefused { directory: _, cause: _ } => false
+  }
+}
+
+fn compute_seat_discharge_owned(attempts_dir: String, subject: ComputeCapacitySubject, node_id: String, attempt_key: String, source: UnitLifecycleSource) -> SeatDischargePass {
+  let seats = compute_seat_dir(attempts_dir: attempts_dir, owner: DispatchOwned { node_id: node_id, attempt_key: attempt_key })
+  match cas_slot_keys(root: seats) {
+    CasSlotKeysListed { keys } =>
+      SeatDischargeRan { outcomes: keys |> map(k => compute_seat_ensure_in(attempts_root: seats, subject: subject, reference: k, source: source)) }
+    CasSlotKeysListingRefused { root: _, detail: d } =>
+      if seat_dir_provably_absent(attempts_dir: attempts_dir, attempt_key: attempt_key) {
+        SeatDischargeSkipped { why: "the attempt opened no seat directory" }
+      } else {
+        SeatDischargeRefused { reason: join(["the attempt's seat directory could not be listed: ", d], "") }
+      }
+    CasSlotKeysSubjectRefused { root: _, cause: c } => SeatDischargeRefused { reason: join(["the attempt's seat directory could not be listed: ", c], "") }
+  }
+}
+
 type SeatOwnerKey {
   node_id: String
   attempt_key: String
 }
 
-fn seat_owner_key(reading: AttemptSlotReading) -> SeatOwnerKey? {
-  match reading {
-    AttemptSlotHeld { record: rec, generation: _ } =>
-      match rec.owner {
-        DispatchOwned { node_id: n, attempt_key: k } => Present { value: SeatOwnerKey { node_id: n, attempt_key: k } }
-        DirectInvocation { why: _ } => none
+fn seat_worker_exit_owners(listings: List<AttemptExitStageListing>) -> List<SeatOwnerKey> {
+  distinct_by_key(
+    xs: listings |> flat_map(l => match l {
+      AttemptExitStageNames { names } => names
+      AttemptExitStageUnreadable { reason: _ } => [] as List<String>
+    }) |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
+      AttemptExitEntryDecoded { record } =>
+        if record.role == attempt_unit_role_token(role: AttemptWorkerRole) { [SeatOwnerKey { node_id: record.node_id, attempt_key: record.attempt_key }] } else { [] as List<SeatOwnerKey> }
+      AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<SeatOwnerKey>
+    }),
+    key: fn(o) { join([o.node_id, "\n", o.attempt_key], "") })
+}
+
+fn seat_exit_listings_unreadable(listings: List<AttemptExitStageListing>) -> List<String> {
+  listings |> flat_map(l => match l {
+    AttemptExitStageUnreadable { reason: r } => [r]
+    AttemptExitStageNames { names: _ } => [] as List<String>
+  })
+}
+
+// ONE PASS OVER THE ATTEMPTS WHOSE WORKER EXIT WAS RECORDED. A stage that cannot be read refuses the
+// whole pass: "I could not look" is never "there is no exit".
+fn compute_seat_discharge_all(instance_root: String, attempts_dir: String, subject: ComputeCapacitySubject, source: UnitLifecycleSource) -> SeatDischargePass {
+  let listings = attempt_exit_stage_listings(instance_root: instance_root)
+  match seat_exit_listings_unreadable(listings: listings).first() {
+    Present { value: why } => SeatDischargeRefused { reason: why }
+    Absent =>
+      SeatDischargeRan {
+        outcomes: seat_worker_exit_owners(listings: listings)
+          |> flat_map(o => seat_discharge_outcomes(p: compute_seat_discharge_owned(attempts_dir: attempts_dir, subject: subject, node_id: o.node_id, attempt_key: o.attempt_key, source: source))),
       }
-    _ => none
-  }
-}
-
-fn seat_discharge_outcomes(p: SeatDischargePass) -> List<SeatEnsureOutcome> {
-  match p {
-    SeatDischargeRan { outcomes: os } => os
-    SeatDischargeSkipped { why: _ } => [] as List<SeatEnsureOutcome>
-    SeatDischargeRefused { reason: _ } => [] as List<SeatEnsureOutcome>
-  }
-}
-
-fn compute_seat_discharge_all(instance_root: String, attempts_root: NonEmptyStr, subject: ComputeCapacitySubject, source: UnitLifecycleSource) -> SeatDischargePass {
-  match cas_slot_keys(root: attempts_root) {
-    CasSlotKeysListingRefused { root: _, detail: d } => SeatDischargeRefused { reason: join(["the compute attempt slots could not be listed: ", d], "") }
-    CasSlotKeysSubjectRefused { root: _, cause: c } => SeatDischargeRefused { reason: join(["the compute attempt slots could not be listed: ", c], "") }
-    CasSlotKeysListed { keys } => {
-      let owners = distinct_by_key(
-        xs: keys |> flat_map(k => match seat_owner_key(reading: attempt_slot_read(root: attempts_root, reference: k)) {
-          Absent => [] as List<SeatOwnerKey>
-          Present { value: o } => [o]
-        }),
-        key: fn(o) { join([o.node_id, "\n", o.attempt_key], "") })
-      SeatDischargeRan { outcomes: owners |> flat_map(o => seat_discharge_outcomes(p: compute_seat_discharge_for_attempt(instance_root: instance_root, attempts_root: attempts_root, subject: subject, node_id: o.node_id, attempt_key: o.attempt_key, source: source))) }
-    }
   }
 }

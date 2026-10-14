@@ -40,7 +40,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import gunbc.compute.attempt_lifecycle {
-  AttemptRecord, AttemptOwner, DispatchOwned, DirectInvocation, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptVerdict, AttemptWorkEnded, AttemptRecovered,
+  AttemptRecord, AttemptOwner, DispatchOwned, DirectInvocation, OwnerUnrecorded, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptVerdict, AttemptWorkEnded, AttemptRecovered,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
   UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
   RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryStateNotRecoverable,
@@ -1017,7 +1017,7 @@ fn compute_open_attempt(layout: ComputeLayout, identity: String, reference: NonE
     Absent => AttemptGateRefused { detail: "the host clock could not be read as epoch seconds, and an attempt's opened_at and launch deadline are both instants -- a fabricated one would make this attempt look expired to recovery the moment it is written" }
     Present { value: now } => {
       let record = compute_attempt_record(identity: identity, reference: reference, granted: granted, now: now, owner: owner)
-      compute_gate_from_transition(t: attempt_open(root: layout.attempts_dir as NonEmptyStr, record: record), record: record, what: "opening the attempt")
+      compute_gate_from_transition(t: attempt_open(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner), record: record), record: record, what: "opening the attempt")
     }
   }
 }
@@ -1239,7 +1239,7 @@ fn compute_begin_launch(layout: ComputeLayout, gate: AttemptGate) -> AttemptGate
   match gate {
     AttemptGateRefused { detail: d } => AttemptGateRefused { detail: d }
     AttemptGateReady { record: rec, generation: g } =>
-      compute_gate_from_transition(t: attempt_begin_launch(root: layout.attempts_dir as NonEmptyStr, record: rec, expected: g), record: rec, what: "the launch")
+      compute_gate_from_transition(t: attempt_begin_launch(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: rec.owner), record: rec, expected: g), record: rec, what: "the launch")
   }
 }
 
@@ -1272,7 +1272,7 @@ fn compute_settle_attempt(layout: ComputeLayout, gate: AttemptGate, verdict: Att
   match gate {
     AttemptGateRefused { detail: d } => AttemptUnsettleable { detail: d }
     AttemptGateReady { record: rec, generation: g } =>
-      match attempt_terminate(root: layout.attempts_dir as NonEmptyStr, record: rec, expected: g, verdict: verdict, detail: detail) {
+      match attempt_terminate(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: rec.owner), record: rec, expected: g, verdict: verdict, detail: detail) {
         AttemptAdvanced { state: _, generation: _ } => AttemptSettled
         AttemptLostRace { expected: e, observed: o } =>
           AttemptNotSettled { detail: join(["the attempt slot for ", rec.reference, " could not be closed: expected ", e, " and it holds ", o, "; the attempt stays open in the store and the seat's settlement is recorded only here"], "") }
@@ -2074,6 +2074,9 @@ fn compute_reserve_and_run(
   dependency: ComputeDependency,
 ) -> ProvideResult {
   let grant = work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
+  if !compute_ensure_dir(instance: instance, path: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner) as String) {
+    compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: StoreUnavailable { detail: "the seat directory for the owning attempt could not be created, so nothing was reserved" })
+  } else {
   match compute_open_attempt_minted(layout: layout, identity: identity, granted: work_class_grant_amount(g: grant), owner: owner, ordinal: 1) {
     AttemptGateRefused { detail: d } =>
       compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: StoreUnavailable { detail: join(["the attempt slot could not be opened, so nothing was reserved: ", d], "") })
@@ -2081,6 +2084,7 @@ fn compute_reserve_and_run(
       compute_reserve_opened(
         instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op,
         dependency: dependency, grant: grant, reference: rec.reference as NonEmptyStr, opened: AttemptGateReady { record: rec, generation: g })
+  }
   }
 }
 
@@ -2154,6 +2158,19 @@ fn compute_refused_after_open(
 // reference is already recorded under its attempt when it is reserved.
 data compute_reservation_ordinal_limit: Int = 4096
 
+// THE SEAT'S SLOT LIVES WHERE ITS OWNER CAN READ IT. A DispatchOwned seat's compute attempt slot is
+// under a directory named by the dispatch attempt's own key, so the dispatch attempt's terminal path
+// derives its seats by reading ITS directory -- cost proportional to the attempt, never a scan of the
+// host's compute slots. A DirectInvocation or unrecorded owner has no dispatch attempt and keeps the
+// compute root.
+fn compute_seat_dir(attempts_dir: String, owner: AttemptOwner) -> NonEmptyStr {
+  match owner {
+    DispatchOwned { node_id: _, attempt_key: k } => join([attempts_dir, "/dispatch-", k], "") as NonEmptyStr
+    DirectInvocation { why: _ } => attempts_dir as NonEmptyStr
+    OwnerUnrecorded { why: _ } => attempts_dir as NonEmptyStr
+  }
+}
+
 fn compute_reservation_reference(identity: String, ordinal: Int) -> NonEmptyStr {
   join([identity, "#", to_string(value: ordinal)], "") as NonEmptyStr
 }
@@ -2167,7 +2184,7 @@ fn compute_open_attempt_minted(layout: ComputeLayout, identity: String, granted:
       Absent => AttemptGateRefused { detail: "the host clock could not be read as epoch seconds, and an attempt's opened_at and launch deadline are both instants -- a fabricated one would make this attempt look expired to recovery the moment it is written" }
       Present { value: now } => {
         let record = compute_attempt_record(identity: identity, reference: reference, granted: granted, now: now, owner: owner)
-        match attempt_open(root: layout.attempts_dir as NonEmptyStr, record: record) {
+        match attempt_open(root: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner), record: record) {
           AttemptLostRace { expected: _, observed: _ } => compute_open_attempt_minted(layout: layout, identity: identity, granted: granted, owner: owner, ordinal: ordinal + 1)
           AttemptAdvanced { state: s, generation: g } => compute_gate_from_transition(t: AttemptAdvanced { state: s, generation: g }, record: record, what: "opening the attempt")
           AttemptTransitionRefused { detail: d } => compute_gate_from_transition(t: AttemptTransitionRefused { detail: d }, record: record, what: "opening the attempt")
@@ -2604,6 +2621,7 @@ fn compute_attempts_root(instance: HostDashboardInstance) -> NonEmptyStr {
 type ComputeRecovery
   = RecoveryReleased { reference: String, verdict: String, seat: String }
   | RecoverySettledButHeld { reference: String, verdict: String, seat: String }
+  | RecoveryNothingHeld { reference: String, verdict: String, detail: String }
   | RecoveryDeclined { reference: String, why: String }
   | RecoveryRefused { detail: String }
 
@@ -2612,6 +2630,7 @@ fn compute_recovery_wire(r: ComputeRecovery) -> String {
     RecoveryReleased { reference: ref_, verdict: v, seat: rel } => join(["recovered ", ref_, ": ", v, "; ", rel], "")
     RecoverySettledButHeld { reference: ref_, verdict: v, seat: rel } =>
       join(["SETTLED BUT STILL CHARGED ", ref_, ": the attempt is closed (", v, ") and the seat did NOT come back -- ", rel, "; this host under-admits by that grant until the ledger accepts a release for this reference"], "")
+    RecoveryNothingHeld { reference: ref_, verdict: v, detail: d } => join(["settled ", ref_, " (", v, "); the ledger held nothing for it: ", d], "")
     RecoveryDeclined { reference: ref_, why: w } => join(["declined ", ref_, ": ", w], "")
     RecoveryRefused { detail: d } => join(["recovery refused: ", d], "")
   }
@@ -2667,7 +2686,7 @@ fn compute_recover_attempt_in(attempts_root: NonEmptyStr, subject: ComputeCapaci
           match recovery_trigger(record: rec, lifecycle: lifecycle, now: now) {
             RecoveryTooEarly { deadline: d, now: n } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryTooEarly { deadline: d, now: n }) }
             RecoveryUnitNotEnded { lifecycle: u } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }) }
-            RecoveryStateNotRecoverable { state: st } => compute_recover_after_terminal(subject: subject, rec: rec, state: st)
+            RecoveryStateNotRecoverable { state: st } => compute_recover_after_terminal(subject: subject, rec: rec, state: st, lifecycle: lifecycle)
             RecoveryMayTerminate { reason: why } =>
               match attempt_terminate(root: attempts_root, record: rec, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
                 AttemptLostRace { expected: e, observed: o } =>
@@ -2687,20 +2706,38 @@ fn compute_recover_attempt_in(attempts_root: NonEmptyStr, subject: ComputeCapaci
 
 // A KILL BETWEEN THE TERMINAL GENERATION AND THE RELEASE LEAVES A SETTLED ATTEMPT THAT STILL HOLDS ITS
 // SEAT, and the trigger answers that state "nothing to recover". Declining there would make the
-// settle-then-kill window permanent, so the terminal state is itself the proof the attempt ended and
-// the door asks the ledger to release the reference. The ledger refuses a reference it is not holding
+// settle-then-kill window permanent. THE TERMINATION PROOF is the same one every other arm relies on:
+// the unit's observed lifecycle must be ENDED (unit_lifecycle_ended) at this moment; the terminal
+// record is the reason to look, never the proof. A still-running unit declines and an unknown
+// lifecycle refuses, both keeping the charge. Only then does the door ask the ledger to release. The ledger refuses a reference it is not holding
 // at the proposal, so a seat already returned is reported as declined, never released twice.
-fn compute_recover_after_terminal(subject: ComputeCapacitySubject, rec: AttemptRecord, state: AttemptState) -> ComputeRecovery {
+fn compute_recover_after_terminal(subject: ComputeCapacitySubject, rec: AttemptRecord, state: AttemptState, lifecycle: UnitLifecycle) -> ComputeRecovery {
   let why = recovery_trigger_wire(t: RecoveryStateNotRecoverable { state: state })
-  match compute_recover_release(subject: subject, reference: rec.reference as NonEmptyStr, reason: why) {
-    ComputeReleased { partition: _, reference: _, reason: r } => RecoveryReleased { reference: rec.reference, verdict: why, seat: join(["released (", r as String, ")"], "") }
-    ComputeNothingToRelease { detail: _ } => RecoveryDeclined { reference: rec.reference, why: why }
-    ComputeReleaseRefused { detail: d } => RecoverySettledButHeld { reference: rec.reference, verdict: why, seat: d }
+  if unit_lifecycle_ended(u: lifecycle) {
+    match compute_recover_release(subject: subject, reference: rec.reference as NonEmptyStr, reason: why) {
+      ComputeReleased { partition: _, reference: _, reason: r } => RecoveryReleased { reference: rec.reference, verdict: why, seat: join(["released (", r as String, ")"], "") }
+      ComputeNothingToRelease { detail: d } => RecoveryNothingHeld { reference: rec.reference, verdict: why, detail: d }
+      ComputeReleaseRefused { detail: d } => RecoverySettledButHeld { reference: rec.reference, verdict: why, seat: d }
+    }
+  } else {
+    match lifecycle {
+      UnitStillRunning { detail: _ } => RecoveryDeclined { reference: rec.reference, why: join([why, "; the unit is still running, so the seat is kept"], "") }
+      _ => RecoveryRefused { detail: join([why, "; the unit's lifecycle is not proven ended (", unit_lifecycle_wire(u: lifecycle), "), so the seat is kept: a terminal record alone does not prove the unit stopped using memory"], "") }
+    }
+  }
+}
+
+fn compute_release_nothing_held(r: ComputeRelease) -> Bool {
+  match r {
+    ComputeNothingToRelease { detail: _ } => true
+    _ => false
   }
 }
 
 fn compute_recovery_after_settlement(reference: String, verdict: String, returned: ComputeRelease) -> ComputeRecovery {
-  if compute_release_landed(r: returned) {
+  if compute_release_nothing_held(r: returned) {
+    RecoveryNothingHeld { reference: reference, verdict: verdict, detail: compute_release_wire(r: returned) }
+  } else if compute_release_landed(r: returned) {
     RecoveryReleased { reference: reference, verdict: verdict, seat: compute_release_wire(r: returned) }
   } else {
     RecoverySettledButHeld { reference: reference, verdict: verdict, seat: compute_release_wire(r: returned) }
@@ -2730,7 +2767,7 @@ fn compute_recover_cli(repo_root: String, reference: String, receipt_path: Strin
     DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: 2, reason: join(["compute-recover: no dashboard instance is rooted at ", r], "") }
     DashboardInstanceResolved { instance } =>
       if trim(s: reference) == "" {
-        ExitFailure { code: 2, reason: "compute-recover: a reservation reference is required (it is the attempt slot's key: <identity>@<instant>)" }
+        ExitFailure { code: 2, reason: "compute-recover: a reservation reference is required (it is the attempt slot's key: <identity>#<ordinal>)" }
       } else {
         compute_recover_exit(
           outcome: compute_recover_attempt(instance: instance, reference: trim(s: reference) as NonEmptyStr),
@@ -2751,6 +2788,7 @@ fn compute_recover_exit(outcome: ComputeRecovery, receipt_path: String) -> Proce
   } else {
     match outcome {
       RecoveryReleased { reference: _, verdict: _, seat: _ } => ExitSuccess
+      RecoveryNothingHeld { reference: _, verdict: _, detail: _ } => ExitSuccess
       RecoverySettledButHeld { reference: _, verdict: _, seat: _ } => ExitFailure { code: 2, reason: wire }
       RecoveryDeclined { reference: _, why: _ } => ExitFailure { code: 1, reason: wire }
       RecoveryRefused { detail: _ } => ExitFailure { code: 2, reason: wire }

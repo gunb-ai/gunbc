@@ -1552,7 +1552,7 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
 }
 
 // A COMPUTE SEAT OPENED FOR A DISPATCH ATTEMPT THAT HAS ENDED IS DISCHARGED, EVERY TICK. The belt is only the
-// executor: the ownership authority is the owner recorded in the compute attempt record, the trigger is the
+// executor: the ownership authority is the location the seat was recorded at (the dispatch attempt's own directory), the trigger is the
 // attempt's exit record, and the release is gunbc.compute.work_provider_local compute_recover_attempt_in,
 // which re-proves unit termination itself (gunbc.compute.compute_seat_ensure compute_seat_discharge_all).
 fn belt_compute_seat_discharge_pass(instance: HostDashboardInstance) -> SeatDischargePass {
@@ -1561,7 +1561,7 @@ fn belt_compute_seat_discharge_pass(instance: HostDashboardInstance) -> SeatDisc
     ComputeSubjectResolved { subject: subj } =>
       compute_seat_discharge_all(
         instance_root: instance.instance_root as String,
-        attempts_root: compute_attempts_root(instance: instance),
+        attempts_dir: compute_attempts_root(instance: instance) as String,
         subject: subj,
         source: ObserveUnitLifecycle)
   }

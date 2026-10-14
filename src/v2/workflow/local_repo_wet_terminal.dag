@@ -463,9 +463,33 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_seat_is_owned_only_by_its_recorded_dispatch_attempt" },
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "the_driver_releases_the_seat_of_an_attempt_whose_exit_record_exists_and_unit_ended" },
       entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
-      function: "a_seat_is_owned_only_by_its_recorded_dispatch_attempt",
+      function: "the_driver_releases_the_seat_of_an_attempt_whose_exit_record_exists_and_unit_ended",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "an_exit_record_with_a_live_unit_keeps_the_charge" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "an_exit_record_with_a_live_unit_keeps_the_charge",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_terminal_record_releases_only_when_the_unit_is_proven_ended" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "a_terminal_record_releases_only_when_the_unit_is_proven_ended",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "an_unrecorded_owner_refuses_and_keeps_the_charge" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "an_unrecorded_owner_refuses_and_keeps_the_charge",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

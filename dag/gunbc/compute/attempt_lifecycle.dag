@@ -165,16 +165,20 @@ fn attempt_state_wire(s: AttemptState) -> String {
 type AttemptOwner
   = DispatchOwned { node_id: String, attempt_key: String }
   | DirectInvocation { why: String }
+  | OwnerUnrecorded { why: String }
 
 fn attempt_owner_wire(o: AttemptOwner) -> String {
   match o {
     DispatchOwned { node_id: n, attempt_key: k } => join(["dispatch:", n, "#", k], "")
     DirectInvocation { why: w } => join(["direct:", w], "")
+    OwnerUnrecorded { why: w } => join(["unrecorded:", w], "")
   }
 }
 
 // A record written before the owner was a fact has no owner member. It decodes to the typed
-// DirectInvocation arm with this reason, never to a dispatch owner it cannot name.
+// OwnerUnrecorded arm with this reason: neither a dispatch owner it cannot name nor a DirectInvocation,
+// which would fabricate the fact that no dispatch attempt owns it. The seat ensure refuses it and keeps
+// the charge; the debris sweep (a later slice) is what settles such records.
 data attempt_owner_legacy_why: String = "record predates the recorded owner"
 
 type AttemptRecord {
@@ -197,9 +201,9 @@ fn attempt_record_json(r: AttemptRecord) -> JsonValue {
     json_kv(key: "opened_at", value: json_int(n: r.opened_at)),
     json_kv(key: "launch_deadline", value: json_int(n: r.launch_deadline)),
     json_kv(key: "state", value: json_string(s: attempt_state_wire(s: r.state))),
-    json_kv(key: "owner_kind", value: json_string(s: match r.owner { DispatchOwned { node_id: _, attempt_key: _ } => "dispatch"  DirectInvocation { why: _ } => "direct" })),
-    json_kv(key: "owner_node", value: json_string(s: match r.owner { DispatchOwned { node_id: n, attempt_key: _ } => n  DirectInvocation { why: _ } => "" })),
-    json_kv(key: "owner_key", value: json_string(s: match r.owner { DispatchOwned { node_id: _, attempt_key: k } => k  DirectInvocation { why: w } => w })),
+    json_kv(key: "owner_kind", value: json_string(s: match r.owner { DispatchOwned { node_id: _, attempt_key: _ } => "dispatch"  DirectInvocation { why: _ } => "direct"  OwnerUnrecorded { why: _ } => "unrecorded" })),
+    json_kv(key: "owner_node", value: json_string(s: match r.owner { DispatchOwned { node_id: n, attempt_key: _ } => n  DirectInvocation { why: _ } => ""  OwnerUnrecorded { why: _ } => "" })),
+    json_kv(key: "owner_key", value: json_string(s: match r.owner { DispatchOwned { node_id: _, attempt_key: k } => k  DirectInvocation { why: w } => w  OwnerUnrecorded { why: w } => w })),
     json_kv(key: "detail", value: json_string(s: match r.state { AttemptTerminal { verdict: _, detail: d } => d  AttemptReserved => ""  AttemptLaunching => "" })),
   ])
 }
@@ -308,7 +312,7 @@ fn attempt_record_decode(text: String) -> AttemptRecord? {
 
 fn attempt_owner_decode(doc: JsonValue) -> AttemptOwner? {
   match attempt_member(doc: doc, key: "owner_kind") {
-    Absent => Present { value: DirectInvocation { why: attempt_owner_legacy_why } }
+    Absent => Present { value: OwnerUnrecorded { why: attempt_owner_legacy_why } }
     Present { value: kind } =>
       match attempt_member(doc: doc, key: "owner_key") {
         Absent => none
@@ -320,6 +324,8 @@ fn attempt_owner_decode(doc: JsonValue) -> AttemptOwner? {
             }
           } else if kind == "direct" {
             Present { value: DirectInvocation { why: key } }
+          } else if kind == "unrecorded" {
+            Present { value: OwnerUnrecorded { why: key } }
           } else {
             none
           }
