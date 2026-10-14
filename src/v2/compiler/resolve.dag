@@ -1046,14 +1046,21 @@ fn resolve_ctx_type_role(ctx: ResolveContext, scope: Scope) -> ResolveContext {
 // type_decl_member_child_walk says so (v2.std.symbol_index, the same TypeDeclMemberShape
 // symbol_index_candidate_category projects lookup kind from). Applied only at the
 // declaration edge (DeclaringAt the module qn): type_decl_view's PlainTypeDecl arm is
-// every non-wrapper node, so using it on every Authored child would walk construct
-// field atoms (`Rec { value: U }`) as TypeOccurrence (DESIGN section 5). TypeBodyEdge /
-// TypeAliasEdge cover generic members and alias RHS. Nested walks inherit the category.
-fn resolve_type_decl_member_child_walk(ctx: ResolveContext, target: Node) -> TypeDeclChildWalk {
+// a type member, and NotATypeDecl (import/fn/data carriers) inherits, so using the view
+// on every Authored child would still walk construct field atoms as TypeOccurrence if
+// they were PlainTypeDecl (DESIGN section 5). TypeBodyEdge / TypeAliasEdge cover generic
+// members and alias RHS. Nested walks inherit the category.
+fn resolve_type_decl_member_child_walk(ctx: ResolveContext, e: Edge) -> TypeDeclChildWalk {
   match ctx.declaring {
     DeclaringAt { path: path } =>
       if path == ctx.namespace.module_qn {
-        type_decl_member_child_walk(shape: type_decl_member_shape(node: target))
+        type_decl_member_child_walk(
+          shape: type_decl_member_shape(
+            index: ctx.namespace.symbol_index,
+            path: qualified_name_snoc(qn: path, segment: label_sort_key(label: e.label)),
+            node: e.target
+          )
+        )
       } else {
         TypeDeclChildrenInherited
       }
@@ -4315,7 +4322,7 @@ fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
     } else {
       ctx
     }
-    let walk_ctx = match resolve_type_decl_member_child_walk(ctx: ctx, target: e.target) {
+    let walk_ctx = match resolve_type_decl_member_child_walk(ctx: ctx, e: e) {
       TypeDeclChildrenTypeOccurrence =>
         resolve_ctx_with_reference_category(ctx: child_ctx, category: TypeOccurrence)
       TypeDeclChildrenInherited => child_ctx

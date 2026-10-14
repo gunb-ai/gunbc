@@ -35,6 +35,7 @@ import v2.std.type_binder {
   AliasRenaming,
   GenericTypeDecl,
   NotARenaming,
+  NotATypeDecl,
   OpaqueTypeDecl,
   PlainTypeDecl,
   PureRenamingOf,
@@ -744,8 +745,9 @@ fn symbol_index_lexical_lookup(
 // ONE CLASSIFICATION OF A TYPE-DECL VIEW, TWO PROJECTIONS. Lookup kind and "are this node's
 // children type positions" were two arm tables over the same type_decl_view + member.kind
 // (review 79474). They disagreed on Atom: TypeOccurrence as a declaration (a module-level
-// `type T = Name`) vs not a type-child walk (the same Atom shape is a construct field). Those
-// are two projections of one shape, not two facts.
+// `type T = Name`) vs not a type-child walk (the same Atom shape is a construct field). A
+// PlainTypeDecl Conj is a record only when the declaring path is RecordTypePayload — an
+// import residual is also a Conj. Those are two projections of one shape, not two facts.
 type TypeDeclMemberShape
   = TypeDeclShapeRecordOrCoproduct
   | TypeDeclShapeAliasAtom
@@ -757,14 +759,20 @@ type TypeDeclChildWalk
   = TypeDeclChildrenTypeOccurrence
   | TypeDeclChildrenInherited
 
-fn type_decl_member_shape(node: Node) -> TypeDeclMemberShape {
+fn type_decl_member_shape(index: SymbolIndex, path: QualifiedName, node: Node) -> TypeDeclMemberShape {
   match type_decl_view(target: node) {
     GenericTypeDecl { binders: _, member: _ } => TypeDeclShapeBinderWrapper
     TypeAlias { binders: _, aliased: _ } => TypeDeclShapeBinderWrapper
     OpaqueTypeDecl { binders: _ } => TypeDeclShapeBinderWrapper
+    NotATypeDecl => TypeDeclShapeValue
     PlainTypeDecl { member: member } =>
       match member.kind {
-        TypeNode { connective: Conj } => TypeDeclShapeRecordOrCoproduct
+        TypeNode { connective: Conj } =>
+          match symbol_index_declared_payload_at(index: index, qualified_path: path) {
+            Present { value: RecordTypePayload } => TypeDeclShapeRecordOrCoproduct
+            Present { value: VariantArmPayload } => TypeDeclShapeValue
+            Absent => TypeDeclShapeValue
+          }
         TypeNode { connective: Disj } => TypeDeclShapeRecordOrCoproduct
         TypeNode { connective: Instantiation } => TypeDeclShapeRecordOrCoproduct
         TypeNode { connective: Occupancy } => TypeDeclShapeRecordOrCoproduct
@@ -809,7 +817,7 @@ fn symbol_index_candidate_category(index: SymbolIndex, candidate: LexicalBinding
       } else if symbol_index_declares_resource_at(index: index, qualified_path: candidate.path) {
         TypeOccurrence
       } else {
-        type_decl_member_occurrence_category(shape: type_decl_member_shape(node: candidate.node))
+        type_decl_member_occurrence_category(shape: type_decl_member_shape(index: index, path: candidate.path, node: candidate.node))
       }
   }
 }
