@@ -9,8 +9,6 @@ import gunbc.dispatch_credential_acquisition {
   CredentialReaderStanding,
   CredentialRootOk, CredentialRootFailed,
 }
-import gunbc.worker_lifecycle { WorkerProcessExited }
-import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_record_put_worker_exited }
 import gunbc.live_deploy.desired {
   desired_deployment_for_instance_id,
   desired_roster_refusal_detail,
@@ -523,24 +521,12 @@ fn belt_exit_drain_cli() -> ProcessExit {
 }
 
 fn belt_credential_reader_for(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> CredentialReaderStanding {
-  let process = attempt_process_for_node(
+  credential_reader_standing(process: attempt_process_for_node(
     instance: instance,
     panes: belt_attempt_panes_observe_for_instance(instance: instance),
     node_id: node_id,
     attempt_key: attempt_key,
-  )
-  match process {
-    WorkerProcessExited { exit_code, last_command: _ } => {
-      let _ = attempt_exit_record_put_worker_exited(
-        instance_root: instance.instance_root as String,
-        node_id: node_id,
-        attempt_key: attempt_key,
-        status: exit_code,
-      )
-      credential_reader_standing(process: process)
-    }
-    _ => credential_reader_standing(process: process)
-  }
+  ))
 }
 
 fn belt_credential_recovery_cli() -> ProcessExit {

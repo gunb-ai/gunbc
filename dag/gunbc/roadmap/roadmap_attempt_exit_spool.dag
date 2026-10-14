@@ -340,15 +340,20 @@ fn attempt_exit_spool_prepare(instance_root: String) -> Bool {
   )
 }
 
-// Vendor tmux panes have no ExecStopPost. When the remain-on-exit pane is observed dead, this
-// writes the same inbox mkdir-name record the unit hook would have written, so a later reap
-// (session gone) still has Ended evidence instead of an unreadable fallthrough.
-fn attempt_exit_record_put_worker_exited(instance_root: String, node_id: String, attempt_key: String, status: Int) -> Bool {
+type AttemptExitRecordPut
+  = AttemptExitRecordPutOk
+  | AttemptExitRecordPutFailed { reason: String }
+
+// Vendor tmux panes have no ExecStopPost. This writes the same inbox mkdir-name record the unit
+// hook would have written. Callers that will reap must CHECK the result and keep the dead pane
+// when the write fails. Create-only mkdir: the spool must already exist; a missing or read-only
+// inbox is a failed write, not a parent-creating success.
+fn attempt_exit_record_put_worker_exited(instance_root: String, node_id: String, attempt_key: String, status: Int) -> AttemptExitRecordPut {
   match attempt_exit_record_observe(instance_root: instance_root, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
-    AttemptExitRecordFound { record: _ } => true
-    AttemptExitRecordUnreadable { reason: _ } => false
-    AttemptExitRecordNone =>
-      shell.Mkdir.Parents(path: join([
+    AttemptExitRecordFound { record: _ } => AttemptExitRecordPutOk
+    AttemptExitRecordUnreadable { reason } => AttemptExitRecordPutFailed { reason: reason }
+    AttemptExitRecordNone => {
+      let path = join([
         attempt_exit_inbox_dir(instance_root: instance_root),
         "/",
         node_id,
@@ -364,6 +369,15 @@ fn attempt_exit_record_put_worker_exited(instance_root: String, node_id: String,
         "exited",
         attempt_exit_entry_separator,
         to_string(value: status),
-      ], "") as FilePath).success
+      ], "")
+      let ran = shell.Exec.RunArgv(program: "/usr/bin/mkdir", arguments: ["--", path])
+      if ran.exit_code == 0 {
+        AttemptExitRecordPutOk
+      } else {
+        AttemptExitRecordPutFailed {
+          reason: join(["mkdir -- ", path, " failed: ", ran.stderr], ""),
+        }
+      }
+    }
   }
 }

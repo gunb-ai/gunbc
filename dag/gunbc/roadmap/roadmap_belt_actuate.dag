@@ -600,6 +600,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole,
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
   AttemptWorkerRole, attempt_unit_role_token,
+  attempt_exit_record_put_worker_exited, AttemptExitRecordPutOk, AttemptExitRecordPutFailed,
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
   AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
   attempt_exit_spool_stage_dir, attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
@@ -1643,27 +1644,22 @@ fn belt_session_container_start_steps(container: DispatchSessionContainer) -> Li
   }
 }
 
+// Spawn-start cleanup: a start step failed after the idle session existed. remain-on-exit is
+// already on, but the failed step is almost always default-shell / remain-on-exit / event-pipe /
+// provider-start as a tmux command, so the pane is the live idle shell, not a remain-on-exit dead
+// attempt. The same write-before-reap rule still applies: if the pane IS dead with a status, record
+// then reap; a failed write keeps the pane.
 fn belt_created_session_cleanup_detail(
   instance: HostDashboardInstance,
   session_name: String,
 ) -> String {
-  match belt_exec(
-    cmd: tmux_kill_session_argv_for_instance(
-      instance: instance,
-      session_name: session_name,
-    ),
-    workdir: belt_observe_workdir as String,
+  match belt_actuate_teardown_for_instance(
+    instance: instance,
+    session_name: session_name,
   ) {
-    ExecOk { stdout: _ } => "created session reaped"
-    ExecFailed { program: _, exit_code, stderr } =>
-      join([
-        "created-session cleanup failed with exit ",
-        to_string(exit_code),
-        ": ",
-        stderr,
-      ], "")
-    ExecRefused { program: _, reason } =>
-      join(["created-session cleanup refused: ", reason], "")
+    ReapedSession { session_name: _ } => "created session reaped"
+    TeardownFailed { session_name: _, detail } =>
+      join(["created-session cleanup failed: ", detail], "")
   }
 }
 
@@ -3371,7 +3367,68 @@ type BeltTeardownOutcome
   = ReapedSession { session_name: String }
   | TeardownFailed { session_name: String, detail: String }
 
-fn belt_actuate_teardown_for_instance(
+type BeltCurrentAttemptKey
+  = BeltCurrentAttemptKeyRead { key: String }
+  | BeltCurrentAttemptKeyUnreadable { reason: String }
+
+fn belt_current_attempt_key_read(instance: HostDashboardInstance, node_id: String) -> BeltCurrentAttemptKey {
+  let read = Filesystem.Read(
+    path: dispatch_current_attempt_key_path_for_instance(
+      instance: instance,
+      node_id: node_id as RoadmapNodeId,
+    ),
+  )
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error } =>
+      BeltCurrentAttemptKeyUnreadable { reason: error }
+    FilesystemReadSucceeded { content } => {
+      let key = trim(s: content)
+      if key == "" {
+        BeltCurrentAttemptKeyUnreadable {
+          reason: "the node's current-attempt-key pointer is empty",
+        }
+      } else {
+        BeltCurrentAttemptKeyRead { key: key }
+      }
+    }
+  }
+}
+
+fn belt_dead_attempt_pane_standing(
+  panes: BeltAttemptPanes,
+  session_name: String,
+) -> BeltDeadAttemptPane {
+  match panes {
+    BeltAttemptPanesRefused { reason } =>
+      BeltDeadAttemptPaneUnobserved { reason: reason }
+    BeltAttemptPanesObserved { panes: observed } => {
+      let matched = observed |> filter(pane => pane.session_name == session_name)
+      match matched.first() {
+        Absent => BeltDeadAttemptPaneAbsent
+        Present { value: pane } =>
+          if !pane.dead {
+            BeltDeadAttemptPaneLive
+          } else {
+            match pane.exit_code {
+              Present { value: status } => BeltDeadAttemptPaneEnded { status: status }
+              Absent =>
+                BeltDeadAttemptPaneUnobserved {
+                  reason: "dead pane did not carry an exit status",
+                }
+            }
+          }
+      }
+    }
+  }
+}
+
+type BeltDeadAttemptPane
+  = BeltDeadAttemptPaneEnded { status: Int }
+  | BeltDeadAttemptPaneLive
+  | BeltDeadAttemptPaneAbsent
+  | BeltDeadAttemptPaneUnobserved { reason: String }
+
+fn belt_reap_session_for_instance(
   instance: HostDashboardInstance,
   session_name: String,
 ) -> BeltTeardownOutcome {
@@ -3387,6 +3444,64 @@ fn belt_actuate_teardown_for_instance(
       TeardownFailed { session_name: session_name, detail: e }
     ExecRefused { program: _, reason: r } =>
       TeardownFailed { session_name: session_name, detail: r }
+  }
+}
+
+fn belt_preserve_dead_pane_exit_then_reap(
+  instance: HostDashboardInstance,
+  session_name: String,
+  node_id: String,
+  status: Int,
+) -> BeltTeardownOutcome {
+  match belt_current_attempt_key_read(instance: instance, node_id: node_id) {
+    BeltCurrentAttemptKeyUnreadable { reason } =>
+      TeardownFailed {
+        session_name: session_name,
+        detail: join(["exit record write refused; dead pane kept: attempt key unreadable: ", reason], ""),
+      }
+    BeltCurrentAttemptKeyRead { key } =>
+      match attempt_exit_record_put_worker_exited(
+        instance_root: instance.instance_root as String,
+        node_id: node_id,
+        attempt_key: key,
+        status: status,
+      ) {
+        AttemptExitRecordPutFailed { reason } =>
+          TeardownFailed {
+            session_name: session_name,
+            detail: join(["exit record write failed; dead pane kept: ", reason], ""),
+          }
+        AttemptExitRecordPutOk =>
+          belt_reap_session_for_instance(instance: instance, session_name: session_name)
+      }
+  }
+}
+
+fn belt_actuate_teardown_for_instance(
+  instance: HostDashboardInstance,
+  session_name: String,
+) -> BeltTeardownOutcome {
+  let node_id = dispatch_node_id_from_session_name(session_name: session_name)
+  match belt_dead_attempt_pane_standing(
+    panes: belt_attempt_panes_observe_for_instance(instance: instance),
+    session_name: session_name,
+  ) {
+    BeltDeadAttemptPaneUnobserved { reason } =>
+      TeardownFailed {
+        session_name: session_name,
+        detail: join(["teardown refused; pane evidence unobserved: ", reason], ""),
+      }
+    BeltDeadAttemptPaneEnded { status } =>
+      belt_preserve_dead_pane_exit_then_reap(
+        instance: instance,
+        session_name: session_name,
+        node_id: node_id,
+        status: status,
+      )
+    BeltDeadAttemptPaneLive =>
+      belt_reap_session_for_instance(instance: instance, session_name: session_name)
+    BeltDeadAttemptPaneAbsent =>
+      belt_reap_session_for_instance(instance: instance, session_name: session_name)
   }
 }
 
@@ -3500,16 +3615,29 @@ fn belt_actuate_spawn_member(m: DispatchMember, workdir: String, launch: LaunchI
   }
 }
 
-fn belt_actuate_teardown_member(m: DispatchMember) -> BeltTeardownOutcome {
+fn belt_actuate_teardown_member_for_instance(
+  instance: HostDashboardInstance,
+  m: DispatchMember,
+) -> BeltTeardownOutcome {
   match m {
     ObservedMember { node_id: _, session: session } =>
-      belt_actuate_teardown(session_name: session.session_name)
+      belt_actuate_teardown_for_instance(
+        instance: instance,
+        session_name: session.session_name,
+      )
     DesiredMember { node_id: nid, node: _ } =>
       TeardownFailed {
         session_name: nid,
         detail: "belt teardown expected ObservedMember (carries live session); got DesiredMember — fail-closed, no teardown without an observed session",
       }
   }
+}
+
+fn belt_actuate_teardown_member(m: DispatchMember) -> BeltTeardownOutcome {
+  belt_actuate_teardown_member_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    m: m,
+  )
 }
 
 type BeltObserve
@@ -4443,7 +4571,7 @@ fn belt_tick_for_instance(
     decisions: pass.decisions,
     workdir: spawn_workdir,
   )
-  let teardown_outcomes = pass.teardowns |> map(m => belt_actuate_teardown_member(m: m))
+  let teardown_outcomes = pass.teardowns |> map(m => belt_actuate_teardown_member_for_instance(instance: instance, m: m))
   match belt_tick_wholesale_of(standing: standing) {
     TickPassesWithheld { refusal } =>
       BeltTickResult {
