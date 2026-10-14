@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.closure_dependent_module_emission
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data closure_dependent_module_emission: RecurringFailureMode = RecurringFailureMode {
+  identity: "closure_dependent_module_emission" as NonEmptyStr,
+
+  receipts: [
+    "**closure-dependent module emission** (one module emitted to different Rust bytes depending on which OTHER modules share its closure; DESIGN §3 meaning fork -- one module, two emissions -- and §2 duplicated work when two emitted-subject steps each emit and cargo-build the copy.)",
+
+    "INVALID STATE: module M emitted from the same seed and the same source differs between closure A and closure B for a reason that is a fact about the closure, not about M. The module's output then has no single owner; a shared workspace cannot hold one copy of it, and a downstream consumer sees whichever closure it happened to be built in.",
+
+    "DISCRIMINATOR, BOTH DIRECTIONS. RED: a per-module file under src/v1/stage0/src differs between two closures of the same seed. GREEN: a file that is a closure-level fact by definition -- the entry crate's main.rs, lib.rs, emitted_population.rs -- or a partition-boundary file whose membership list is the closure by construction.",
+
+    "SPECIMEN 1, annotation elision (14 files in the self-host vs v2-native-cli pair): the closure-wide shared-type set decides whether a closure parameter keeps its explicit type. In one closure the emitted text is `|acc: _, x: String| if acc.skipped.clone() {` and in the other `|acc: Rc<PairAcc>, x: String| if acc.skipped.clone() {`. Same module, same source; the type-annotation choice leaked from the closure.",
+
+    "SPECIMEN 2, derive set (std_content_hash): in one closure `#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]`, in the other `#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]`. Eq and Hash are added only when SOME module in the closure uses the type as a key, so a consumer outside the closure that keys it cannot compile against the other copy.",
+
+    "SIBLING CLASS, partition boundaries: the 7 policy-unit lib.rs files and the module-to-unit assignment shift with the closure (dag/gunbc/crate_partition.dag balances over the closure it is given), so unit crates that contain identical module files are not byte-identical crates. Legitimate per closure, but it forbids sharing the unit crates until the partition runs over the union.",
+
+    "RUNG: found BELOW the ladder -- nothing compares an emission across closures. CEILING 4, structurally impossible: emit each module once over the union closure so a module has exactly one emission; the closure-wide facts then become union-wide facts (union-wide key use enables Hash everywhere; the shared-type set is the union's) and the per-closure variation has no constructor. Union emission must not HIDE the class: a module output that depends on which other modules share the emission is still this defect, now invisible, so the fix is to key such facts by declaration identity, not by closure membership.",
+
+    "NEXT-RUNG TRIGGER: the gunbc:v2-native-cli and gunbc:self-host steps emit one union closure in one pass, after which a differential control (emit each closure alone, compare per-module bytes) is the discriminating RED for any reintroduced closure dependence.",
+
+    "REVIEW TELL: an emitter decision (annotation, derive, import, name) computed from a set built over all modules of the closure rather than from the module's own declarations and the declarations it references.",
+  ],
+
+  evidence: [],
+}
