@@ -23,6 +23,7 @@ import gunbc.roadmap.roadmap_serve {
   ApprovalBrokerCutoverHandler,
   roadmap_serve_selection_response,
   roadmap_serve_invoke,
+  roadmap_serve_invoke_for_instance,
   roadmap_serve_respond,
   roadmap_serve_respond_for_instance,
   roadmap_serve_respond_over,
@@ -213,6 +214,8 @@ fn fixture_live_session() -> AuthenticatedSession {
   }
 }
 
+// CSRF REFUSAL IS BEFORE THE CLOCK. csrf_write_decision does not read observed_at; a live
+// session with an empty body must 403 here without Clock.Now.
 test fn dispatch_without_csrf_refuses_as_cross_site() -> Bool {
   let r = roadmap_serve_invoke(
     handler: BeltDispatchHandler,
@@ -312,13 +315,35 @@ test fn witness_dispatch_status_total() -> Bool {
     && all(belt_dispatch_result_exemplars(), r => status_is_typed(s: belt_dispatch_status(r: r)))
 }
 
-test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
-  let r = roadmap_serve_respond_for_instance(
+fn fixture_preview_dispatch_params() -> List<PathParamBinding> {
+  [PathParamBinding { name: "node_id", value: "ts-dispatch-provider-events" }]
+}
+
+test fn unauthenticated_preview_dispatch_refuses_before_actuation() -> Bool {
+  let r = roadmap_serve_invoke_for_instance(
     instance: srv2_preview_dashboard_instance(),
-    method_label: "POST",
-    path: "/dispatch/ts-dispatch-provider-events",
-    body: "",
-    tailscale_identity: "",
+    handler: BeltDispatchHandler,
+    params: fixture_preview_dispatch_params(),
+    request: fixture_request(method: POST, path: "/dispatch/ts-dispatch-provider-events"),
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 403 && string_contains(s: r.body, pattern: "google-oidc-session")
+}
+
+test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
+  let r = roadmap_serve_invoke_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    handler: BeltDispatchHandler,
+    params: fixture_preview_dispatch_params(),
+    request: ServeHttpRequest {
+      method: POST,
+      path: "/dispatch/ts-dispatch-provider-events",
+      body: "csrf=csrf-1",
+      security: RequestSecurityContext {
+        access_path: AccessPathLocalDev,
+        authentication: GoogleOidcSession { session: fixture_live_session() },
+      },
+    },
     release_revision: deploy_witness_release_revision,
   )
   r.status == 403
