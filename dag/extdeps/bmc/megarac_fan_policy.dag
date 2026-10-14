@@ -1,9 +1,8 @@
 module extdeps.bmc.megarac_fan_policy
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.nat { Nat }
 import std.optional { Present, Absent }
-import std.measure { Percent, RevolutionsPerMinute, percent_count, rpm, rpm_count }
+import std.measure { Percent, RevolutionsPerMinute, percent_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
 import extdeps.external_authority {
@@ -82,7 +81,7 @@ type MegaRacFanModeSurface
 
 data megarac_fan_mode_surface: MegaRacFanModeSurface = MegaRacFanModeSurfaceBound {
   transport: MegaRacSpxRest,
-  contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). Executed read-only 2026-10-14 ~21:50Z: POST /api/session, GET these two, DELETE /api/session. READ: GET /api/fan_control/get_manager_status {manager_disabled:0|1} and GET /api/fan_control/get_fan_info [{id,fan_number,fan_speed,fan_pwm}] (UI labels speed as PWM percentage). WRITE manager: POST /api/fan_control/set_manager_status {manager_disabled:r}; UI confirms both directions. WRITE PWM: POST /api/fan_control/set_fan_speed JSON {fan_pwm_all: r} with r a STRING from select#fan_all_speed (20..100 step 5); no per-fan write; only while manager_disabled is 1. Duty readback on a unit whose tach fidelity is unestablished is that get_fan_info pwm echo plus a thermal-guard dwell (MegaRacDutyConvergedEchoTachUnfaithful); SDR FAN*_Speed is not duty readback until MegaRacTachFidelityEstablished. Instance values of that read live in gunbc.machine_intake.megarac_fan_mode_observation.",
+  contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). Executed read-only 2026-10-14 ~21:50Z: POST /api/session, GET these two, DELETE /api/session. READ: GET /api/fan_control/get_manager_status {manager_disabled:0|1} and GET /api/fan_control/get_fan_info [{id,fan_number,fan_speed,fan_pwm}] (UI labels speed as PWM percentage). WRITE manager: POST /api/fan_control/set_manager_status {manager_disabled:r}; UI confirms both directions. WRITE PWM: POST /api/fan_control/set_fan_speed JSON {fan_pwm_all: r} with r a STRING from select#fan_all_speed (20..100 step 5); no per-fan write; only while manager_disabled is 1. Instance values of executed reads live in gunbc.machine_intake.megarac_fan_mode_observation.",
 }
 
 // A REST FAN_INFO ROW IS NOT A ROTOR. get_fan_info still lists a slot at pwm 0 after the
@@ -138,8 +137,6 @@ fn megarac_fan_slot_standing(pwm: Percent, sdr: MegaRacSdrFanPresence) -> MegaRa
 
 data megarac_fan_pwm_all_admitted_wires: List<Int> = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]
 
-data megarac_fan_boot_pwm_wires: List<Int> = [20, 25, 30]
-
 fn megarac_int_in(xs: List<Int>, n: Int) -> Bool {
   match xs.first() {
     Absent => false
@@ -168,10 +165,6 @@ fn megarac_fan_pwm_all_body(pwm: MegaRacFanPwmAll) -> NonEmptyStr? {
   }
 }
 
-fn megarac_fan_boot_pwm_admitted(duty: Percent) -> Bool {
-  megarac_int_in(xs: megarac_fan_boot_pwm_wires, n: percent_count(p: duty) as Int)
-}
-
 fn megarac_fan_mode_surface_read_obligation(surface: MegaRacFanModeSurface) -> NonEmptyStr? {
   match surface {
     MegaRacFanModeSurfaceUnbound { read_obligation: o } => Present { value: o }
@@ -187,85 +180,5 @@ fn megarac_fan_bound_transport(surface: MegaRacFanModeSurface) -> MegaRacFanCont
   match surface {
     MegaRacFanModeSurfaceUnbound { read_obligation: _ } => Absent
     MegaRacFanModeSurfaceBound { transport: t, contract_note: _ } => Present { value: t }
-  }
-}
-
-// TACH FIDELITY IS PER UNIT AND CAN CLEAR. On mtcollins1, operator hearing at ~22:20Z tracked
-// PWM 20 (inaudible) vs 40 (audible) while SDR FAN*_Speed stayed near 5700 rpm across automatic
-// 21:50Z, manual 22:09Z and 22:23:52Z. That catalog acoustic fold
-// (gunbc.fleet.fleet_fan_acoustic_evidence / extdeps.fans.types FanAcousticEvidence) answers
-// published-level fittability of a fan SKU, not whether this BMC's tach tracks commanded duty.
-data megarac_duty_tach_move_floor: RevolutionsPerMinute = rpm(200)
-
-type MegaRacFanTachFidelity
-  = MegaRacTachFidelityEstablished
-  | MegaRacTachFidelityUnestablished { clears_when: NonEmptyStr }
-
-type MegaRacDutyConvergeVerdict
-  = MegaRacDutyConvergedTachMoved
-  | MegaRacDutyConvergedEchoTachUnfaithful { fidelity: MegaRacFanTachFidelity }
-  | MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: Bool }
-  | MegaRacDutyNotConvergedEchoMismatch
-  | MegaRacDutyNotConvergedGuardOpen
-
-fn megarac_rpm_abs_delta(a: RevolutionsPerMinute, b: RevolutionsPerMinute) -> Nat {
-  let ac = rpm_count(r: a)
-  let bc = rpm_count(r: b)
-  if ac >= bc {
-    ac - bc
-  } else {
-    bc - ac
-  }
-}
-
-fn megarac_tach_rpm_unmoved(before: List<RevolutionsPerMinute>, after: List<RevolutionsPerMinute>, floor: RevolutionsPerMinute) -> Bool {
-  if before.length() != after.length() {
-    false
-  } else {
-    match before.first() {
-      Absent => true
-      Present { value: b } => match after.first() {
-        Absent => false
-        Present { value: a } =>
-          if megarac_rpm_abs_delta(a: b, b: a) >= rpm_count(r: floor) {
-            false
-          } else {
-            megarac_tach_rpm_unmoved(
-              before: before.skip(n: 1),
-              after: after.skip(n: 1),
-              floor: floor,
-            )
-          }
-      }
-    }
-  }
-}
-
-fn megarac_duty_converge_verdict(
-  fidelity: MegaRacFanTachFidelity,
-  pwm_echo_matches_desired: Bool,
-  guard_holds_over_dwell: Bool,
-  tach_before_rpm: List<RevolutionsPerMinute>,
-  tach_after_rpm: List<RevolutionsPerMinute>,
-) -> MegaRacDutyConvergeVerdict {
-  match fidelity {
-    MegaRacTachFidelityUnestablished { clears_when: _ } =>
-      if !pwm_echo_matches_desired {
-        MegaRacDutyNotConvergedEchoMismatch
-      } else if !guard_holds_over_dwell {
-        MegaRacDutyNotConvergedGuardOpen
-      } else {
-        MegaRacDutyConvergedEchoTachUnfaithful { fidelity: fidelity }
-      }
-    MegaRacTachFidelityEstablished =>
-      if megarac_tach_rpm_unmoved(
-        before: tach_before_rpm,
-        after: tach_after_rpm,
-        floor: megarac_duty_tach_move_floor,
-      ) {
-        MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: pwm_echo_matches_desired }
-      } else {
-        MegaRacDutyConvergedTachMoved
-      }
   }
 }
