@@ -34,7 +34,7 @@ import v2.std.diagnostic {
   Suggested
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic }
+import v2.std.node { host_text_type_node, symbol_type_node, named_edges, positional_edges, Atom, Bind, ComputationNode, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, node_synthetic, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.type_binder { cast_target_edge, edge_is_type_annotation, type_annotation_edge, type_annotation_optional, type_binder_labels_conform }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
@@ -793,13 +793,15 @@ test fn bla_symbol_literal_ascribed_symbol_is_admitted_and_derived() -> Bool {
 // of the spelling is visible. A String declaration the author reached by import binds THAT
 // declaration: v2.std.text String and std.string_type String are the structural FreeMonoid<Char>
 // and are never refused and never kernel (neat-boar-16's ruling, decision A). A string literal is
-// typed as host text. Where FreeMonoid<Char> is declared, a host-text value refuses, literal or not.
-// The declared unfold for literals (gunbc.structural_realization_bindings literal_homomorphism_rows,
-// UnicodeScalarSequenceUnfold) is not reachable in v2 yet. The literal now carries its value (#12759),
-// but v2 infer does not peel an alias to its body, so it cannot recognize the destination as the
-// row's FreeMonoid over Char (gunbc.recurring_failure_mode
-// string_literal_lowers_to_one_class_stamped_atom). It refuses and is never admitted. RED BEFORE: the unimported String refused as unbound (the std.types
-// failure), and a string literal was underived, so `let y: Int = "abc"` was admitted unjudged.
+// typed as host text. Where FreeMonoid<Char> is declared, a host-text VALUE refuses; a host-text
+// LITERAL crosses only through the declared unfold (DESIGN section 4, the text ruling): the declared
+// type is alias-normalized and its (head, element) keyed against
+// gunbc.structural_realization_bindings literal_homomorphism_rows, whose one string row is
+// UnicodeScalarSequenceUnfold at std.algebra FreeMonoid over std.types Char (v2.compiler.infer
+// infer_string_literal_at). FreeMonoid over any other element, or over a Char declared elsewhere, has no
+// row and refuses. RED BEFORE: the unimported String refused as unbound (the std.types failure), and a
+// string literal was underived, so `let y: Int = "abc"` was admitted unjudged; then, until the unfold
+// was read, the literal at the structural String refused as the value does.
 data bla_s_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^body_let_annotation_s_artifact,
@@ -930,9 +932,75 @@ test fn bla_imported_structural_string_binds_its_declaration() -> Bool {
     && !bla_annotation_is(o: bla_structural_string_literal(), id: ^string_node_symbol)
 }
 
-test fn bla_host_text_literal_at_structural_string_refuses() -> Bool {
+// THE ORACLE: the same let with an Int literal at Int. The literal at the structural String must be judged
+// exactly as that one is -- the unfold makes it an admitted literal at its declared type, no more -- so the
+// two verdicts are compared, never spelled. Both carry the let's own counted frontier today; a refusal at the
+// annotation (the verdict before the unfold was read) differs from the control.
+fn bla_verdict_reason(acc: String, d: Diagnostic) -> String {
+  if d.reason == ^infer_grounding_not_derived { acc } else { join([acc, ",", symbol_lexeme(sym: d.reason)], "") }
+}
+
+fn bla_verdict(o: Outcome<Bool>) -> String {
+  match o {
+    Rejected { diagnostics: d } => fold(d.tail, init: bla_verdict_reason(acc: "rejected:", d: d.head), f: fn(acc, x) { bla_verdict_reason(acc: acc, d: x) })
+    Accepted { value: _, diagnostics: ds } =>
+      match ds {
+        None => "accepted:"
+        Some { diagnostics: d } => fold(d.tail, init: bla_verdict_reason(acc: "accepted:", d: d.head), f: fn(acc, x) { bla_verdict_reason(acc: acc, d: x) })
+      }
+  }
+}
+
+fn bla_int_literal_at_int_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { String }\n\nfn f(x: Int) -> Int {\n  let y: Int = 1\n  x\n}\n",
+    peers: bla_structural_string_peers()
+  ))
+}
+
+fn bla_is_accepted(o: Outcome<Bool>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bla_host_text_literal_at_structural_string_crosses_by_the_unfold() -> Bool {
   tpb_accepts(o: bla_structural_string_literal())
-    && bla_refuses_with_annotation_reason(o: bla_structural_string_literal_inferred())
+    && bla_is_accepted(o: bla_structural_string_literal_inferred())
+    && bla_verdict(o: bla_structural_string_literal_inferred()) == bla_verdict(o: bla_int_literal_at_int_inferred())
+}
+
+// THE ROW IS KEYED ON (HEAD, ELEMENT), SO THE ELEMENT DISCRIMINATES. q's String over Int presents
+// FreeMonoid at Int, which no literal row names: the literal is host text there and refuses.
+fn bla_structural_ints_literal_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { String }\n\nfn f(x: Int) -> Int {\n  let y: String = \"abc\"\n  x\n}\n",
+    peers: [
+      bla_source(src: "module q\n\nimport std.algebra { FreeMonoid }\n\ntype String = FreeMonoid<Int>\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
+      bla_source(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)
+    ]
+  ))
+}
+
+test fn bla_host_text_literal_at_a_free_monoid_over_int_refuses() -> Bool {
+  bla_refuses_with_annotation_reason(o: bla_structural_ints_literal_inferred())
+}
+
+// THE ELEMENT IS A DECLARATION, NOT A SPELLING. q declares its own Char beside its String, so the element
+// is q.Char, not std.types Char: the row does not name it and the literal refuses.
+fn bla_homonym_char_literal_inferred() -> Outcome<Bool> {
+  bla_infers(o: bla_assemble_with_peers(
+    p_src: "module p\n\nimport q { String }\n\nfn f(x: Int) -> Int {\n  let y: String = \"abc\"\n  x\n}\n",
+    peers: [
+      bla_source(src: "module q\n\nimport std.algebra { FreeMonoid }\n\ntype Char\n\ntype String = FreeMonoid<Char>\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
+      bla_source(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)
+    ]
+  ))
+}
+
+test fn bla_host_text_literal_at_a_free_monoid_over_a_homonym_char_refuses() -> Bool {
+  bla_refuses_with_annotation_reason(o: bla_homonym_char_literal_inferred())
 }
 
 // A NON-LITERAL host-text value at the structural String is never passed as matched. It cannot yet
