@@ -9,8 +9,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.ssh.openssh_client_commands { openssh_client_program }
-import extdeps.network.endpoint { SocketAddress, NetworkHost, HostByName, HostByAddress, render_network_host }
-import extdeps.network.address { IpV4, IpV6 }
+import extdeps.network.endpoint { SocketAddress, NetworkHost, render_network_host, render_uri_host }
 import extdeps.access.posix { PosixLoginName }
 
 data openssh_forwarding_client_authority: ExternalAuthority = ExternalAuthority {
@@ -153,23 +152,13 @@ fn forward_flag(direction: ForwardDirection) -> NonEmptyStr {
 // once, rather than at each call site, because a forward spelled by hand is a security tool's
 // argument list living beside the code that reads its output -- the objection the sibling module
 // already records against hand-spelled ssh flags.
-// ssh(1) -L / -W: "IPv6 addresses can be specified by enclosing the address in square brackets." The
-// host:port fields are colon-separated, so a bare v6 literal would read as more fields; bracketing is
-// ssh's own spelling, not an escape chosen here.
-fn ssh_forward_host_text(host: NetworkHost) -> String {
-  match host {
-    HostByName { name: _ } => render_network_host(host: host) as String
-    HostByAddress { address: a } => match a {
-      IpV4 { v4: _ } => render_network_host(host: host) as String
-      IpV6 { v6: _ } => join(["[", render_network_host(host: host) as String, "]"], "")
-    }
-  }
-}
-
+// ssh(1) -L / -W: "IPv6 addresses can be specified by enclosing the address in square brackets." That
+// is the same host:port authority form RFC 3986 writes, so the forward fields take
+// extdeps.network.endpoint render_uri_host rather than a second renderer.
 fn render_forward_argument(spec: PortForwardSpec) -> NonEmptyStr {
   join([
-    ssh_forward_host_text(host: spec.listener.host), ":", to_string(spec.listener.port), ":",
-    ssh_forward_host_text(host: spec.target.host), ":", to_string(spec.target.port),
+    render_uri_host(host: spec.listener.host) as String, ":", to_string(spec.listener.port), ":",
+    render_uri_host(host: spec.target.host) as String, ":", to_string(spec.target.port),
   ], "") as NonEmptyStr
 }
 
@@ -181,7 +170,7 @@ fn ssh_stdio_forward_command(subject: ForwardingAdmissionSubject, options: List<
     SshLoginPrincipal { login: observed_login } => if subject.direction != LocalForward { none } else {
       Present { value: argv_command(program: openssh_client_program(),
         arguments: concat(flat_map(options, option => serialize_ssh_config_file_flag(option: option)),
-          ["-W", join([ssh_forward_host_text(host: subject.target.host), ":", to_string(subject.target.port)], ""), "-l", observed_login as String, render_network_host(host: subject.relay) as String])) }
+          ["-W", join([render_uri_host(host: subject.target.host) as String, ":", to_string(subject.target.port)], ""), "-l", observed_login as String, render_network_host(host: subject.relay) as String])) }
     }
   }
 }
