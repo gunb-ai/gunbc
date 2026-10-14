@@ -20,7 +20,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var
 }
-import std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, list_head, list_tail }
+import std.algebra { list_head, list_tail }
 import v2.std.text { string_all_chars_in, string_any_char_in }
 import v2.std.collection { list_at_optional }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
@@ -257,8 +257,8 @@ fn effect_plan_bash_command_from_argv(
       bash_build_command_from_lits(lits: sudo_elevate_argv(command: argv))
     HostEnvVar { name: env_var } =>
       match list_head(xs: argv) {
-        HeadAbsent => bash_build_command_from_lits(lits: [])
-        HeadFound { value: _ } =>
+        Absent => bash_build_command_from_lits(lits: [])
+        Present { value: _ } =>
           bash_build_command(
             words: bash_build_command_words_from_lits_suffix(
               lits: argv,
@@ -558,8 +558,8 @@ fn effect_plan_bash_operands_checked(
   accepted: EffectPlanBashPredicateEncoding
 ) -> EffectPlanBashPredicateEncoding {
   match list_head(xs: operands) {
-    HeadAbsent => accepted
-    HeadFound { value: operand } =>
+    Absent => accepted
+    Present { value: operand } =>
       if effect_plan_bash_operand_carries_shell_spelling(operand: operand) {
         effect_plan_bash_predicate_refuse(
           step_index: step_index,
@@ -567,8 +567,8 @@ fn effect_plan_bash_operands_checked(
         )
       } else {
         match list_tail(xs: operands) {
-          TailAbsent => accepted
-          TailFound { tail: rest } =>
+          Absent => accepted
+          Present { value: rest } =>
             effect_plan_bash_operands_checked(
               operands: rest,
               step_index: step_index,
@@ -821,17 +821,17 @@ fn effect_plan_bash_encode_steps(
   step_index: Int
 ) -> EffectPlanBashEncodeResult {
   match list_head(xs: steps) {
-    HeadAbsent =>
+    Absent =>
       EffectPlanBashEncodingAccepted { encoding: EffectPlanBashEmpty }
-    HeadFound { value: step } =>
+    Present { value: step } =>
       match effect_plan_bash_encode_step(step: step, step_index: step_index) {
         EffectPlanBashEncodingRefused { refusal: refusal } =>
           EffectPlanBashEncodingRefused { refusal: refusal }
         EffectPlanBashEncodingAccepted { encoding: first } =>
           match list_tail(xs: steps) {
-            TailAbsent =>
+            Absent =>
               EffectPlanBashEncodingAccepted { encoding: first }
-            TailFound { tail: rest } =>
+            Present { value: rest } =>
               match effect_plan_bash_encode_steps(
                 steps: rest,
                 step_index: step_index + 1
