@@ -160,6 +160,8 @@ import gunbc.machine_intake.megarac_media_attach {
   ReadinessDuplicate,
   ReadinessWrongPresentation,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // THE DIAGNOSTIC BUNDLE OF ONE mtcollins1 BOOT ATTEMPT: what the BMC and the pre-OS console
 // said about the machine around the attempt, recorded on every terminal arm so that a remote
@@ -2565,3 +2567,7 @@ fn mtcollins1_boot_hpm_check(username: NonEmptyStr, password_file: NonEmptyStr, 
     PrePowerFirmwareUnread { reason: concat("hpm check was not read: ", bmc_read_cause_text(cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, exit_code: r.exit_code, stderr: r.transport_stderr))) as NonEmptyStr }
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "media_loss_of_look" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

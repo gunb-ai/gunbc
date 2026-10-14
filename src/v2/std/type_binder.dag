@@ -1,5 +1,6 @@
 module v2.std.type_binder
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
 import std.algebra { Cons, Empty, list_snoc_item, zip_map }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
@@ -59,6 +60,8 @@ import v2.std.node {
   edge_is_core,
   is_positional,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE EDGE THAT CARRIES A DECLARATION'S TYPE PARAMETERS. One label for one concept: `fn f<T>` carries
 // its binder Conj on its Arrow under this label, and `type Box<T>` / `type R<T> { .. }` carry theirs
@@ -806,3 +809,10 @@ fn type_binder_atom_identity_optional(n: Node) -> Optional<Symbol> {
     _ => optional_absent()
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "type_alias_renaming" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "type_alias_renaming_of" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "type_binder_atom_identity_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "type_binder_instantiation_scan" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

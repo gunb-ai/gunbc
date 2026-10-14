@@ -190,7 +190,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_dispatch_node, belt_dispatch_node_for_instance_over,
   belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
   WorkflowAttemptsObserved, WorkflowAttemptsRefused,
-  BeltStopResult, StopProcessStopped, StopRetainedSessionCleared, StopDisabled,
+  BeltStopResult, StopProcessStopped, StopRetainedSessionCleared, StopSignaledSessionCleared, StopDisabled,
   StopRefusedResult, StopObserveRefused, StopTeardownFailed,
   belt_stop_node, belt_stop_node_for_instance,
   belt_stop_result_json_value, belt_stop_http_status,
@@ -593,6 +593,8 @@ fn serve_stop_with_follow_ups(instance: HostDashboardInstance, r: BeltStopResult
     StopProcessStopped { node_id: _, session_name: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorStop, response: response)
     StopRetainedSessionCleared { node_id: _, session_name: _, exit_code: _ } =>
+      serve_with_operator_follow_ups(instance: instance, action: OperatorStop, response: response)
+    StopSignaledSessionCleared { node_id: _, session_name: _, signal: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorStop, response: response)
     StopTeardownFailed { node_id: _, session_name: _, detail: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorStop, response: response)
