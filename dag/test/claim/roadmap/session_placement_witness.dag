@@ -1,8 +1,9 @@
 module test.claim.roadmap.session_placement_witness
 
-import std.types { Bool, String, List, NonEmptyStr, EpochSecs }
+import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs }
 import std.measure { kibibyte, kibibyte_count }
-import std.durable_compare_and_set { CasGeneration, cas_generation_first, cas_generation_count }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first, cas_generation_count }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
@@ -36,6 +37,13 @@ import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
 import extdeps.languages.json.emit { serialize_json }
+
+fn witness_cas_generation(n: Int) -> CasGeneration {
+  match cas_generation(n: n) {
+    Present { value: g } => g
+    Absent => cas_generation_first()
+  }
+}
 
 // G5 WITNESSES (side-chat ruling on #13074 at b4d4a42). Three groups:
 //   - the reader's BINDING: a record or release that belongs to another attempt or fence is refused;
@@ -76,7 +84,7 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
     unit: session_unit(node_id: node_id, attempt_key: attempt_key),
     lease: LeaseGrant {
       reference: session_unit(node_id: node_id, attempt_key: attempt_key),
-      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: 7 as CasGeneration },
+      fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: witness_cas_generation(n: 7) },
       granted_at: 1000,
       maximum_duration_seconds: 14400,
       expires_at: 15400,

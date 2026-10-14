@@ -2,7 +2,7 @@ module test.claim.serving.serving_front_door_witness
 
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, String, Bool, List, EpochSecs, Secret }
+import std.types { NonEmptyStr, String, Bool, Int, List, EpochSecs, Secret }
 import std.nat { Nat }
 import extdeps.crypto.mac { MacKey, MacVerification, MacTagMismatch, HmacSha256, mac_verify }
 import gunbc.auth.request_authentication {
@@ -14,7 +14,7 @@ import gunbc.harness.harness_seat {
   HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_pool_identity_at,
   harness_seat_reference_record, harness_seat_reference_wire,
 }
-import std.durable_compare_and_set { CasGeneration, cas_generation_first }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first }
 import std.durable_exclusive_hold { HolderObservedDead, HolderLivenessUnobservable }
 import std.resource_release_law { QuiescenceRequired }
 import product.capacity.lease { LeaseGrant, GrantIdentity, LeasePolicy, lease_grant, lease_fence_of }
@@ -45,6 +45,13 @@ import gunbc.serving.serving_front_door {
   SeatGrantCurrency, FrontDoorTally,
   serving_seat_permit_claims, serving_seat_permit_signing_input, issue_serving_seat_permit, serving_seat_permit_key_id,
   seat_grant_currency_of, front_door_admit, front_door_tally, front_door_tally_empty, front_door_refused_count,
+}
+
+fn witness_cas_generation(n: Int) -> CasGeneration {
+  match cas_generation(n: n) {
+    Present { value: g } => g
+    Absent => cas_generation_first()
+  }
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -432,7 +439,7 @@ test fn a_reference_acquired_twice_is_refused_rather_than_resolved() -> Bool {
 }
 
 test fn a_permit_claiming_another_fence_generation_is_refused() -> Bool {
-  match door_verdict(evidence: service_caller, presented: forged_with(seat: witness_seat, partition: witness_partition, class: InteractiveQualitySensitive, generation: 2 as CasGeneration, expires_at: 1600), at: 1100, history: held_history) {
+  match door_verdict(evidence: service_caller, presented: forged_with(seat: witness_seat, partition: witness_partition, class: InteractiveQualitySensitive, generation: witness_cas_generation(n: 2), expires_at: 1600), at: 1100, history: held_history) {
     FrontDoorRefused { cause: DoorSeatFenceGenerationDisagrees { claimed: _, recorded: _ } } => true
     _ => false
   }
