@@ -329,24 +329,6 @@ fn attempt_exit_record_observe(instance_root: String, node_id: String, attempt_k
   attempt_exit_record_from_listings(node_id: node_id, attempt_key: attempt_key, role: role, listings: attempt_exit_stage_listings(instance_root: instance_root))
 }
 
-fn attempt_exit_spool_prepare(instance_root: String) -> Bool {
-  fold(
-    [
-      attempt_exit_inbox_dir(instance_root: instance_root),
-      attempt_exit_queued_dir(instance_root: instance_root),
-      attempt_exit_running_dir(instance_root: instance_root),
-      attempt_exit_done_dir(instance_root: instance_root),
-      attempt_exit_refused_dir(instance_root: instance_root),
-    ],
-    init: true,
-    f: (ok, dir) => ok && shell.Mkdir.Parents(path: dir as FilePath).success,
-  )
-}
-
-type AttemptExitRecordPut
-  = AttemptExitRecordPutOk
-  | AttemptExitRecordPutFailed { reason: String }
-
 // A vendor pane gives one number (`pane_dead_status`), not systemd's three stop variables. Zero is
 // the documented success exit; any other number is an exit-code. The record is still the seven-part
 // inbox name so the decoder can read `end`, but invocation `vendorpane` marks the belt as the
@@ -416,49 +398,4 @@ fn attempt_exit_vendor_pane_entry_name_of_death(node_id: String, attempt_key: St
           }
       }
   }
-}
-
-// Vendor tmux panes have no ExecStopPost. The belt writes an inbox mkdir-name when it first sees
-// the dead pane, before it may reap. Callers that will reap must CHECK the result and keep the
-// dead pane when the write fails. Create-only mkdir is `mkdir_create_only_command`: the spool must
-// already exist; a missing or read-only inbox is a failed write, not a parent-creating success.
-fn attempt_exit_record_put_mkdir_name(instance_root: String, entry_name: String) -> AttemptExitRecordPut {
-  let path = join([attempt_exit_inbox_dir(instance_root: instance_root), "/", entry_name], "")
-  let command = mkdir_create_only_command(path: path)
-  let ran = shell.Exec.RunArgv(
-    program: command.program.invocation as String,
-    arguments: command.arguments,
-  )
-  if ran.exit_code == 0 {
-    AttemptExitRecordPutOk
-  } else {
-    AttemptExitRecordPutFailed {
-      reason: join(["mkdir -- ", path, " failed: ", ran.stderr], ""),
-    }
-  }
-}
-
-fn attempt_exit_record_put_vendor_pane_death(instance_root: String, node_id: String, attempt_key: String, death: VendorPaneDeath) -> AttemptExitRecordPut {
-  match attempt_exit_record_observe(instance_root: instance_root, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
-    AttemptExitRecordFound { record: _ } => AttemptExitRecordPutOk
-    AttemptExitRecordUnreadable { reason } => AttemptExitRecordPutFailed { reason: reason }
-    AttemptExitRecordNone =>
-      match attempt_exit_vendor_pane_entry_name_of_death(node_id: node_id, attempt_key: attempt_key, death: death) {
-        Absent =>
-          AttemptExitRecordPutFailed {
-            reason: "vendor pane signal is not a standard Linux signal name",
-          }
-        Present { value: entry_name } =>
-          attempt_exit_record_put_mkdir_name(instance_root: instance_root, entry_name: entry_name)
-      }
-  }
-}
-
-fn attempt_exit_record_put_worker_exited(instance_root: String, node_id: String, attempt_key: String, status: Int) -> AttemptExitRecordPut {
-  attempt_exit_record_put_vendor_pane_death(
-    instance_root: instance_root,
-    node_id: node_id,
-    attempt_key: attempt_key,
-    death: VendorPaneExited { status: status },
-  )
 }
