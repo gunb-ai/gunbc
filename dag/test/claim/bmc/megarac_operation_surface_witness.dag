@@ -1,8 +1,8 @@
 module test.claim.bmc.megarac_operation_surface_witness
 
-import std.types { Bool }
+import std.types { Bool, Int, List }
 import std.optional { Present, Absent }
-import std.measure { percent, percent_count, rpm }
+import std.measure { celsius, percent, percent_count, rpm }
 import extdeps.bmc.megarac_fan_policy {
   CoolingManagerAutomatic,
   CoolingManagerDisabledManual,
@@ -29,6 +29,22 @@ import gunbc.machine_intake.megarac_fan_mode_observation {
   megarac_fan_bringup_phase_desire,
   mtcollins1_megarac_fan_mode_observation_2026_10_14,
   mtcollins1_megarac_thermal_snapshot_2026_10_14,
+}
+import gunbc.machine_intake.megarac_fan_thermal_guard {
+  MegaRacTempObserved,
+  MegaRacTempReading,
+  MegaRacTempUnreadable,
+  MegaRacThermalGuardHolds,
+  MegaRacThermalGuardTrip,
+  MegaRacThermalGuardUnread,
+  ReEnableCoolingManager,
+  RestoreDeclaredPhase,
+  TemperatureUnreadable,
+  ThermalGuardTripped,
+  megarac_fan_run_exit_restore,
+  megarac_fan_safety_restore,
+  megarac_thermal_guard_verdict,
+  megarac_uncited_component_ceilings_cannot_trip,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac }
@@ -136,6 +152,76 @@ test fn missing_socket1_fans_are_physically_absent_not_zero_duty() -> Bool {
       }
     MegaRacFanSlotDriven { pwm: _, min_rpm: _, max_rpm: _ } => false
     MegaRacFanSlotJoinUnexplained { pwm: _, sdr: _ } => false
+  }
+}
+
+fn megarac_guard_readable_fixture(soc: Int) -> List<MegaRacTempReading> {
+  [
+    MegaRacTempObserved { sensor: "CPU0_SOC_Temp", value: celsius(soc) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG0_Temp", value: celsius(34) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG1_Temp", value: celsius(32) },
+    MegaRacTempObserved { sensor: "CPU0_SOC_VRDTemp", value: celsius(36) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMVRDTemp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_1_Temp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_2_Temp", value: celsius(35) },
+  ]
+}
+
+test fn thermal_guard_trip_re_enables_the_cooling_manager() -> Bool {
+  match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 100)) {
+    MegaRacThermalGuardTrip { sensor: s, temperature: t } =>
+      (s as String) == "CPU0_SOC_Temp"
+        && match megarac_fan_safety_restore(
+          verdict: MegaRacThermalGuardTrip { sensor: s, temperature: t },
+        ) {
+          Present { value: ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } } =>
+            true
+          Present { value: RestoreDeclaredPhase { phase: _, desire: _ } } => false
+          Absent => false
+        }
+    MegaRacThermalGuardHolds => false
+    MegaRacThermalGuardUnread { sensor: _ } => false
+  }
+}
+
+test fn unreadable_temperature_re_enables_the_cooling_manager() -> Bool {
+  let readings = [
+    MegaRacTempUnreadable { sensor: "CPU0_SOC_Temp" },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG0_Temp", value: celsius(34) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMG1_Temp", value: celsius(32) },
+    MegaRacTempObserved { sensor: "CPU0_SOC_VRDTemp", value: celsius(36) },
+    MegaRacTempObserved { sensor: "CPU0_DIMMVRDTemp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_1_Temp", value: celsius(33) },
+    MegaRacTempObserved { sensor: "Outlet_2_Temp", value: celsius(35) },
+  ]
+  match megarac_thermal_guard_verdict(readings: readings) {
+    MegaRacThermalGuardUnread { sensor: s } =>
+      (s as String) == "CPU0_SOC_Temp"
+        && match megarac_fan_safety_restore(
+          verdict: MegaRacThermalGuardUnread { sensor: s },
+        ) {
+          Present { value: ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } } =>
+            true
+          Present { value: RestoreDeclaredPhase { phase: _, desire: _ } } => false
+          Absent => false
+        }
+    MegaRacThermalGuardHolds => false
+    MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
+  }
+}
+
+test fn mid_boot_exit_restores_the_boot_phase_policy() -> Bool {
+  match megarac_fan_run_exit_restore(phase: BootThroughTerminal) {
+    RestoreDeclaredPhase { phase: p, desire: d } =>
+      p == BootThroughTerminal
+        && d == megarac_fan_boot_phase_desire
+        && d.manager == CoolingManagerDisabledManual
+        && match megarac_thermal_guard_verdict(readings: megarac_guard_readable_fixture(soc: 36)) {
+          MegaRacThermalGuardHolds => megarac_uncited_component_ceilings_cannot_trip()
+          MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
+          MegaRacThermalGuardUnread { sensor: _ } => false
+        }
+    ReEnableCoolingManager { cause: _ } => false
   }
 }
 
