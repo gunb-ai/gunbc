@@ -484,14 +484,15 @@ fn rcf_construct_field_on(root: Node, field: Symbol) -> Optional<Node> {
   })
 }
 
-fn rcf_fs_type_is_fslist_instantiation(produced: Node) -> Bool {
+fn rcf_fs_type_is_fslist_int(produced: Node) -> Bool {
   match rcf_instantiation_head_dotted(produced: produced) {
     Absent => false
     Present { value: dotted } =>
       if dotted == "v2.test.rcf_fs.FsList" {
         match rcf_instantiation_first_arg(produced: produced) {
           Absent => false
-          Present { value: _ } => true
+          Present { value: arg } =>
+            exact_structural_equality_zip_fold(source_facts: arg, candidate: integer_int_type_node())
         }
       } else {
         false
@@ -499,7 +500,7 @@ fn rcf_fs_type_is_fslist_instantiation(produced: Node) -> Bool {
   }
 }
 
-fn rcf_fs_tail_facts_are_fslist_instantiation(resolved: Outcome<ResolvedTree>, member: Symbol) -> Bool {
+fn rcf_fs_tail_is_fslist_int(resolved: Outcome<ResolvedTree>, member: Symbol) -> Bool {
   match rcf_member_infer(resolved: resolved, member: member) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -512,7 +513,7 @@ fn rcf_fs_tail_facts_are_fslist_instantiation(resolved: Outcome<ResolvedTree>, m
               match inferred_facts_resolved_type(facts: tail_facts) {
                 Violates { diagnostic: _ } => false
                 Holds { value: tail_produced } =>
-                  rcf_fs_type_is_fslist_instantiation(produced: tail_produced)
+                  rcf_fs_type_is_fslist_int(produced: tail_produced)
               }
           }
       }
@@ -527,13 +528,10 @@ test fn rcf_generic_nullary_arm_field_is_accepted_and_decided_holds() -> Bool {
   rcf_member_accepted_and_decided(resolved: rcf_resolved_fs(), member: ^rcf_fs_cons)
 }
 
-// TAIL FACTS ARE THE APPLIED-OPEN COPRODUCT, not the bare head (#13933) and not a second reading
-// of the outer construct. Children are folded before the parent threads TypeVariableInstance
-// (infer_judge_formal_args); inferred_facts_map_enter keeps the FIRST entry, so the solved
-// FsList<Int> at the field is the inhabitance judgment (rcf_generic_nullary_arm_field_is_accepted_and_decided_holds),
-// not a rewritten fact. This claim goes red if tail is a bare FsList reference.
-test fn rcf_generic_nullary_arm_tail_facts_are_applied_open_holds() -> Bool {
-  rcf_fs_tail_facts_are_fslist_instantiation(resolved: rcf_resolved_fs(), member: ^rcf_fs_cons)
+// THE TAIL'S STORED FACTS ARE FsList<Int>. After the construct solves T, infer_entries_instantiate_actuals
+// replaces the child's first entry so later readers see the instantiated type, not an open T.
+test fn rcf_generic_nullary_arm_tail_is_fslist_int_holds() -> Bool {
+  rcf_fs_tail_is_fslist_int(resolved: rcf_resolved_fs(), member: ^rcf_fs_cons)
 }
 
 test fn rcf_nongeneric_nullary_arm_field_is_accepted_and_decided_holds() -> Bool {
