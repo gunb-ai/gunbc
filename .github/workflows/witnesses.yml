@@ -30,6 +30,31 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: WAVE-0 linger probe (throwaway; fail after print)
+        run: |
+          set +e
+          echo "=== WAVE-0 linger probe ==="
+          echo "hostname=$(hostname)"
+          echo "whoami=$(whoami 2>/dev/null || echo UNKNOWN)"
+          id
+          echo "UID=$(id -u 2>/dev/null || echo UNKNOWN)"
+          echo "DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-UNSET}"
+          echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-UNSET}"
+          echo "systemd-run=$(command -v systemd-run || echo MISSING)"
+          echo "systemctl=$(command -v systemctl || echo MISSING)"
+          echo "loginctl=$(command -v loginctl || echo MISSING)"
+          echo "=== loginctl show-user ==="
+          USERNAME="$(id -un 2>/dev/null || whoami)"
+          loginctl show-user "$USERNAME" -p Linger -p UID -p Name 2>&1
+          echo "loginctl_exit=$?"
+          echo "=== /run/user/$(id -u)/bus ==="
+          ls -l "/run/user/$(id -u)/bus" 2>&1
+          echo "=== /run/user/$(id -u) ==="
+          ls -la "/run/user/$(id -u)" 2>&1 | head
+          echo "=== self cgroup ==="
+          cat /proc/self/cgroup 2>&1 | head
+          echo "=== WAVE-0 linger probe end; failing to skip remainder ==="
+          exit 1
       - name: Checkout the commit this lane judges
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
