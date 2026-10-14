@@ -67,7 +67,7 @@ pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, TypeDeclIndex, TypeSurfaceOccurrence, TypeRepr, TypeDeclResolution};
 pub use crate::v1_compiler_infer_emit_info::{type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences};
 pub use crate::v1_compiler_infer_env::{TypeEnv, TypeBinding, GlobalBareLookupState, BareOccurrenceBinding, UnitVariantPhantomLookup};
-pub use crate::v1_compiler_infer_env::{lookup_unit_variant_phantom_type, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, binding_declares_span, type_reference_declaration_ref};
+pub use crate::v1_compiler_infer_env::{lookup_unit_variant_phantom_type, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup};
 pub use crate::v1_compiler_infer_items::{ItemLookup, ResolvedGraph, TypedModule, ItemInfo, ItemKind};
 pub use crate::v1_compiler_infer_items::{item_kind, item_is_effectful_callee};
 pub use crate::v1_compiler_infer_method::{infer_builtin_call_type};
@@ -35004,42 +35004,6 @@ pub fn emit_rust_demanded_host_bin_op(
     }
 }
 
-pub fn rust_operand_alias_or_refinement_continue(
-    rt: Rc<Node>,
-    scope: Rc<InferScope>,
-    fuel: i64,
-) -> Option<Rc<Node>> {
-    if (fuel.clone() <= 0) {
-        std::option::Option::None
-    } else if crate::v1_compiler_infer::is_where_refinement_type(rt.clone()) {
-        match rt.children.clone().first().cloned() {
-            Some(base) => Some(
-                match crate::v1_compiler_infer_env::lookup_type_for(
-                    scope.type_env.clone(),
-                    base.clone(),
-                ) {
-                    Some(r) => r.clone(),
-                    std::option::Option::None => base.clone(),
-                },
-            ),
-            std::option::Option::None => std::option::Option::None,
-        }
-    } else {
-        let decl = match rt.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
-            _ => rt.clone(),
-        };
-        if crate::v1_compiler_emit_core_support::is_type_alias_item(
-            decl.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        ) {
-            Some(crate::v1_compiler_infer_types::resolved_type(decl.clone()))
-        } else {
-            std::option::Option::None
-        }
-    }
-}
-
 pub fn rust_operand_realization(
     operand: Rc<Node>,
     scope: Rc<InferScope>,
@@ -35049,6 +35013,44 @@ pub fn rust_operand_realization(
         scope.clone(),
         8,
     )
+}
+
+pub fn rust_operand_alias_or_refinement_continue(
+    rt: Rc<Node>,
+    scope: Rc<InferScope>,
+    fuel: i64,
+) -> Option<Rc<Node>> {
+    if (fuel.clone() <= 0) {
+        std::option::Option::None
+    } else {
+        if crate::v1_compiler_infer::is_where_refinement_type(rt.clone()) {
+            match rt.children.clone().first().cloned() {
+                Some(base) => match crate::v1_compiler_infer_env::lookup_type_for(
+                    scope.type_env.clone(),
+                    base.clone(),
+                ) {
+                    Some(r) => Some(r.clone()),
+                    std::option::Option::None => Some(base.clone()),
+                },
+                std::option::Option::None => std::option::Option::None,
+            }
+        } else {
+            {
+                let decl = match rt.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
+                    _ => rt.clone(),
+                };
+                if crate::v1_compiler_emit_core_support::is_type_alias_item(
+                    decl.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    Some(crate::v1_compiler_infer_types::resolved_type(decl.clone()))
+                } else {
+                    std::option::Option::None
+                }
+            }
+        }
+    }
 }
 
 pub fn rust_operand_realization_of_type(
@@ -35118,21 +35120,20 @@ pub fn rust_operand_realization_of_type(
                             break Rc::new(OperandRealization::HostNumericOperand);
 } else {
                             match rust_operand_alias_or_refinement_continue(rt.clone(), scope.clone(), fuel.clone()) {
-    Some(next) => {
-                                    let __tco_0 = next.clone();
+    Some(next) => { {
+                                let __tco_0 = next.clone();
 let __tco_1 = scope;
 let __tco_2 = v1_rt::int_sub(fuel, 1);
 __tco_loop_rt = __tco_0;
 __tco_loop_scope = __tco_1;
 __tco_loop_fuel = __tco_2;
 continue;
-},
+} },
     std::option::Option::None => { break Rc::new(OperandRealization::StructuralOperand {
     declaration: d.clone(),
 }); },
 }
-}
-},
+} },
 }
                             }
                         }
