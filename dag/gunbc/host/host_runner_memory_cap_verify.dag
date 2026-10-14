@@ -181,10 +181,6 @@ fn runner_memory_cap_live_read_unit(unit: NonEmptyStr) -> RunnerUnitMemoryLiveRe
   }
 }
 
-fn runner_memory_cap_live_read(host: HostIdentity) -> RunnerUnitMemoryLiveRead? {
-  runner_memory_cap_live_read_unit(unit: runner_memory_cap_probe_unit(host: host))
-}
-
 fn runner_memory_cap_live_reads_accumulate(
   acc: List<RunnerUnitMemoryLiveRead>?,
   unit: NonEmptyStr,

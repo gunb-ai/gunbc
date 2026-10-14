@@ -38,7 +38,7 @@ test fn witness_envelope_from_complete_meminfo_observes() -> Bool {
 test fn witness_envelope_missing_memavailable_refuses_not_widens() -> Bool {
   match host_memory_envelope_from_meminfo_text(
     host: operator_host_srv1,
-    probed_at: gunbc_srv1_memory_envelope_sleek_owl_397_second_probed_at,
+    probed_at: gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at,
     meminfo_text: envelope_meminfo_without_available,
     active_runner_unit_count: 10,
     slice_readings: [],
@@ -86,9 +86,8 @@ test fn witness_envelope_projects_host_mem_available_observation() -> Bool {
   }
 }
 
-test fn witness_sleek_owl_397_receipt_instants_are_the_two_srv1_readings() -> Bool {
+test fn witness_sleek_owl_397_receipt_instant_is_the_srv1_reading() -> Bool {
   (gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at as String) == "2026-10-14T00:10:39Z"
-    && (gunbc_srv1_memory_envelope_sleek_owl_397_second_probed_at as String) == "2026-10-14T00:11:39Z"
 }
 
 fn standing_is_sleek_owl_first(s: CitedFigureStanding) -> Bool {
@@ -128,34 +127,3 @@ test fn witness_sleek_owl_397_first_receipt_carries_the_sanctioned_srv1_values()
     && standing_is_sleek_owl_first(s: obs.standing)
 }
 
-test fn witness_sleek_owl_397_second_receipt_carries_the_sanctioned_gunbc_slice_values() -> Bool {
-  let census = gunbc_srv1_memory_envelope_sleek_owl_397_second
-  host_identity_eq(a: census.host, b: operator_host_srv1)
-    && (census.probed_at as String) == "2026-10-14T00:11:39Z"
-    && length(census.slice_readings) == 13
-    && any(census.slice_readings, r =>
-      (r.slice_unit as String) == "gunbc-roadmap.slice"
-        && byte_size_count(b: r.memory_current) == 46256783360
-        && slice_limit_is_bytes(lim: r.memory_high, n: 52613349376)
-        && slice_limit_is_bytes(lim: r.memory_max, n: 56908316672)
-        && slice_limit_is_bytes(lim: r.memory_swap_max, n: 0))
-    && any(census.slice_readings, r =>
-      (r.slice_unit as String) == "gunbc.slice"
-        && byte_size_count(b: r.memory_current) == 87612194816
-        && slice_limit_is_unbounded(lim: r.memory_high)
-        && slice_limit_is_unbounded(lim: r.memory_max)
-        && slice_limit_is_unbounded(lim: r.memory_swap_max))
-    && any(census.slice_readings, r =>
-      (r.slice_unit as String) == "gunbc-approval-broker.slice"
-        && byte_size_count(b: r.memory_current) == 11381518336
-        && slice_limit_is_bytes(lim: r.memory_high, n: 19327352832)
-        && slice_limit_is_bytes(lim: r.memory_max, n: 21474836480)
-        && slice_limit_is_bytes(lim: r.memory_swap_max, n: 0))
-    && match census.standing {
-      TranscribedUncited { read_obligation: o } =>
-        string_contains(s: o as String, pattern: "sleek-owl-397")
-          && string_contains(s: o as String, pattern: "2026-10-14T00:11:39Z")
-      CitedToAuthority { authority: _ } => false
-      ObservedByReceipt { observed: _ } => false
-    }
-}

@@ -37,7 +37,8 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 
 // READ-ONLY HOST MEMORY ENVELOPE. Modeled on gunbc.host.host_memory_observation
 // HostMemAvailableObservation (host, totals, available) and extended with Swap, the active
-// actions-runner@* count, and every active *.slice MemoryCurrent/High/Max/SwapMax. No apply. DESIGN §3d: this is
+// actions-runner@* count, and MemoryCurrent/High/Max/SwapMax for each top-level slice plus
+// system-actions-runner.slice. No apply. DESIGN §3d: this is
 // independent readback, not a converge verdict.
 
 data host_memory_envelope_receipt_path: String = "target/host-memory-envelope-observe.txt"
@@ -48,13 +49,6 @@ type SliceMemoryReading {
   memory_high: SystemdCgroupMemoryLimit
   memory_max: SystemdCgroupMemoryLimit
   memory_swap_max: SystemdCgroupMemoryLimit
-}
-
-type HostSliceMemoryCensus {
-  host: HostIdentity
-  probed_at: NonEmptyStr
-  slice_readings: List<SliceMemoryReading>
-  standing: CitedFigureStanding
 }
 
 type HostMemoryEnvelopeObservation {
@@ -383,14 +377,9 @@ fn host_memory_envelope_observe_ci_wet() -> ProcessExit
 }
 
 data gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at: NonEmptyStr = "2026-10-14T00:10:39Z" as NonEmptyStr
-data gunbc_srv1_memory_envelope_sleek_owl_397_second_probed_at: NonEmptyStr = "2026-10-14T00:11:39Z" as NonEmptyStr
 
 data gunbc_srv1_sleek_owl_397_first_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "sleek-owl-397 sanctioned read-only /proc/meminfo and systemctl show MemoryCurrent/MemoryHigh/MemoryMax on srv1 at 2026-10-14T00:10:39Z" as NonEmptyStr
-}
-
-data gunbc_srv1_sleek_owl_397_second_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "sleek-owl-397 sanctioned read-only gunbc* slice MemoryCurrent/MemoryHigh/MemoryMax/MemorySwapMax on srv1 at 2026-10-14T00:11:39Z" as NonEmptyStr
 }
 
 data gunbc_srv1_memory_envelope_sleek_owl_397_first: HostMemoryEnvelopeObservation = HostMemoryEnvelopeObservation {
@@ -408,27 +397,6 @@ data gunbc_srv1_memory_envelope_sleek_owl_397_first: HostMemoryEnvelopeObservati
     slice_memory_reading(slice_unit: "system-actions-runner.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 129190301696), memory_high: MemoryLimitAbsent, memory_max: MemoryLimitAbsent, memory_swap_max: MemoryLimitAbsent),
   ],
   standing: gunbc_srv1_sleek_owl_397_first_standing,
-}
-
-data gunbc_srv1_memory_envelope_sleek_owl_397_second: HostSliceMemoryCensus = HostSliceMemoryCensus {
-  host: operator_host_srv1,
-  probed_at: gunbc_srv1_memory_envelope_sleek_owl_397_second_probed_at,
-  standing: gunbc_srv1_sleek_owl_397_second_standing,
-  slice_readings: [
-    slice_memory_reading(slice_unit: "gunbc-approval-broker.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 11381518336), memory_high: slice_limit_bytes(n: 19327352832), memory_max: slice_limit_bytes(n: 21474836480), memory_swap_max: slice_limit_bytes(n: 0)),
-    slice_memory_reading(slice_unit: "gunbc-approval.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 11381784576), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: MemoryLimitUnbounded),
-    slice_memory_reading(slice_unit: "gunbc-microvm-controller.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 12288), memory_high: slice_limit_bytes(n: 25769803776), memory_max: slice_limit_bytes(n: 25769803776), memory_swap_max: slice_limit_bytes(n: 0)),
-    slice_memory_reading(slice_unit: "gunbc-microvm.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 278528), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: MemoryLimitUnbounded),
-    slice_memory_reading(slice_unit: "gunbc-repository-convergence.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 23638016), memory_high: slice_limit_bytes(n: 21474836480), memory_max: slice_limit_bytes(n: 25769803776), memory_swap_max: slice_limit_bytes(n: 0)),
-    slice_memory_reading(slice_unit: "gunbc-repository.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 23904256), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: MemoryLimitUnbounded),
-    slice_memory_reading(slice_unit: "gunbc-roadmap.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 46256783360), memory_high: slice_limit_bytes(n: 52613349376), memory_max: slice_limit_bytes(n: 56908316672), memory_swap_max: slice_limit_bytes(n: 0)),
-    slice_memory_reading(slice_unit: "gunbc-srv1-lab-codex-feedback-v0.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 29943910400), memory_high: slice_limit_bytes(n: 52613349376), memory_max: slice_limit_bytes(n: 56908316672), memory_swap_max: slice_limit_bytes(n: 0)),
-    slice_memory_reading(slice_unit: "gunbc-srv1-lab-codex-feedback.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 29944963072), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: MemoryLimitUnbounded),
-    slice_memory_reading(slice_unit: "gunbc-srv1-lab-codex.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 29945491456), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: MemoryLimitUnbounded),
-    slice_memory_reading(slice_unit: "gunbc-srv1-lab.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 29946281984), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: MemoryLimitUnbounded),
-    slice_memory_reading(slice_unit: "gunbc-srv1.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 29948121088), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: MemoryLimitUnbounded),
-    slice_memory_reading(slice_unit: "gunbc.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 87612194816), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: MemoryLimitUnbounded),
-  ],
 }
 
 fn hermetic_envelope_standing() -> CitedFigureStanding {
