@@ -9829,6 +9829,84 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// Host reconcile after deleting `pool_qualified_fill`: a qualified call is typed from the
+    /// acquired closure, not from an ambient pool layer. The unrelated pool module must stay out.
+    #[test]
+    fn host_reconcile_types_a_qualified_reference_from_the_acquired_closure() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module dotted_entry\nfn main() -> Int { dotted.provider.one() }\n",
+            ),
+            (
+                "provider.dag",
+                "module dotted.provider\nfn one() -> Int { 1 }\n",
+            ),
+            (
+                "unrelated.dag",
+                "module unrelated\nfn unused() -> Int { 1 }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let (graph, _) =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy())
+                .expect("qualified provider is on the reference-closure fixpoint");
+        let blocking: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        assert!(
+            blocking.is_empty(),
+            "host reconcile must type the qualified call without pool fill: {blocking:?}"
+        );
+        let names: BTreeSet<_> = graph
+            .modules
+            .iter()
+            .map(|m| m.type_env.module_path.clone())
+            .collect();
+        assert!(
+            names.contains("dotted_entry") && names.contains("dotted.provider"),
+            "{names:?}"
+        );
+        assert!(
+            !names.contains("unrelated"),
+            "an unused pool module must not enter the typed graph: {names:?}"
+        );
+    }
+
+    /// A qualified name whose module is not in the pool must refuse. Restoring fill cannot
+    /// invent a missing provider.
+    #[test]
+    fn host_reconcile_refuses_a_qualified_name_with_no_provider() {
+        let fixture = Fixture::new(&[(
+            "entry.dag",
+            "module dotted_entry\nfn main() -> Int { ghost.provider.one() }\n",
+        )]);
+        let index = fixture.index();
+        let outcome =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy());
+        let err = match outcome {
+            Err(e) => e,
+            Ok((graph, _)) => graph
+                .diagnostics
+                .iter()
+                .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+                .map(|d| format!("{:?}", d.diagnostic))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        assert!(
+            err.contains("ghost")
+                || err.contains("not found")
+                || err.contains("unresolved")
+                || err.contains("undefined")
+                || err.contains("blocking"),
+            "missing qualified provider must refuse rather than resolve from fill: {err}"
+        );
+    }
+
     /// THE INDEX ROUTE READS THE INDEX'S PARSE. `load_sources_for_entry_with_index` (the discovery
     /// route's loader) follows a dotted reference through the one parse per file the index owns:
     /// after the first entry its closure files are in `parsed_references`, and a second entry
