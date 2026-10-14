@@ -64,7 +64,7 @@ import std.materialization_provider {
   provider_serve, provider_admit, artifact_completeness, admission_fold,
   compiler_identity_input, in_process_materialization,
   in_process_fnv_producer_observation_frontier,
-  output_parse_tree, output_typed_module_interface,
+  output_parse_tree, output_parse_verdict, output_parse_diagnostics, output_typed_module_interface,
   output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union,
   output_list_contains,
   lookup_is_hit, lookup_is_miss,
@@ -290,6 +290,15 @@ test fn a_parse_verdict_request_shares_the_parse_requests_subject_and_inputs() -
   (request_declared_inputs(req: witness_parse_tree_request()) == request_declared_inputs(req: witness_parse_verdict_request()))
     && (request_kind(req: witness_parse_verdict_request()) == parse_verdict_artifact_kind)
     && (request_kind(req: witness_parse_tree_request()) == parse_source_artifact_kind)
+    && (request_judgment_contract(req: witness_parse_tree_request()).demand_identity.subject == request_judgment_contract(req: witness_parse_verdict_request()).demand_identity.subject)
+}
+
+test fn a_parse_verdict_requires_the_verdict_and_diagnostics_and_no_tree() -> Bool {
+  let outs = request_required_outputs(req: witness_parse_verdict_request())
+  output_list_contains(xs: outs, wanted: output_parse_verdict)
+    && output_list_contains(xs: outs, wanted: output_parse_diagnostics)
+    && (output_list_contains(xs: outs, wanted: output_parse_tree) == false)
+    && output_list_contains(xs: request_required_outputs(req: witness_parse_tree_request()), wanted: output_parse_tree)
 }
 
 test fn a_parse_verdict_request_keys_apart_from_the_parse_request() -> Bool {
