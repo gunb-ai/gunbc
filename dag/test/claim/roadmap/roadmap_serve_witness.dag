@@ -15,6 +15,7 @@ import gunbc.roadmap.roadmap_serve {
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler, IssueCreateHandler, IssueCreatePageHandler,
   serve_issue_assignment_context_over, serve_issue_view_preferences_over,
   serve_issue_assign_response_over,
+  serve_dispatch_handler_response_over,
   IssueViewPreferencesReadHandler, IssueViewPreferencesSaveHandler,
   AuthSessionHandler, AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler,
   roadmap_serve_route_table_build,
@@ -78,6 +79,7 @@ import std.types {
 import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
 }
+import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap.roadmap_page { roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
@@ -252,7 +254,7 @@ test fn authenticated_dispatch_with_csrf_passes_the_write_law() -> Bool {
 test fn assign_without_csrf_refuses_without_the_clock() -> Bool {
   let r = serve_issue_assign_response_over(
     instance: srv2_preview_dashboard_instance(),
-    plan: caller_supplied_plan_fixture(),
+    plan: fn() { caller_supplied_plan_fixture() },
     request: ServeHttpRequest {
       method: POST,
       path: "/issue/demo-node/assign",
@@ -352,20 +354,22 @@ test fn unauthenticated_preview_dispatch_refuses_before_actuation() -> Bool {
 }
 
 test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
-  let r = roadmap_serve_invoke_for_instance(
-    instance: srv2_preview_dashboard_instance(),
-    handler: BeltDispatchHandler,
-    params: fixture_preview_dispatch_params(),
-    request: ServeHttpRequest {
-      method: POST,
-      path: "/dispatch/ts-dispatch-provider-events",
-      body: "csrf=csrf-1",
-      security: RequestSecurityContext {
-        access_path: AccessPathLocalDev,
-        authentication: GoogleOidcSession { session: fixture_live_session() },
-      },
+  let request = ServeHttpRequest {
+    method: POST,
+    path: "/dispatch/ts-dispatch-provider-events",
+    body: "csrf=csrf-1",
+    security: RequestSecurityContext {
+      access_path: AccessPathLocalDev,
+      authentication: GoogleOidcSession { session: fixture_live_session() },
     },
-    release_revision: deploy_witness_release_revision,
+  }
+  let r = serve_dispatch_handler_response_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: fn() { roadmap_plan_projection() },
+    params: fixture_preview_dispatch_params(),
+    executor_word: "",
+    request: request,
+    observed_at: fn() { "2026-09-27T01:00:00Z" },
   )
   r.status == 403
     && string_contains(s: r.body, pattern: "\"status\": \"disabled\"")
@@ -767,10 +771,9 @@ test fn witness_assign_form_field_reads_urlencoded_body() -> Bool {
     && issue_form_field(body: "assignee=a@b.c", name: "assignee") == "a@b.c"
 }
 
-// THE ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is 404,
-// and a request WITHOUT a Google session is 403 at the write law's authentication axis —
-// whether or not a tailnet header is present (the 2026-09-25 ruling's no-fallback law: tailnet
-// transport alone authorizes no write), and the 403 precedes even selector validation.
+// AUTH FIRST: an unauthenticated write is 403 at the authentication axis, including an unknown
+// issue — there is no existence oracle for callers without a session, and no host read to
+// decide 404. Tailnet transport alone is not a person. 404 is after Permit.
 test fn witness_assign_route_refuses_404_and_403_before_any_host_read() -> Bool {
   let unknown = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
@@ -804,7 +807,8 @@ test fn witness_assign_route_refuses_404_and_403_before_any_host_read() -> Bool 
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
-  unknown.status == 404
+  unknown.status == 403
+    && string_contains(s: unknown.body, pattern: "google-oidc-session")
     && no_session_no_header.status == 403
     && string_contains(s: no_session_no_header.body, pattern: "google-oidc-session")
     && tailnet_only.status == 403
@@ -910,9 +914,7 @@ test fn witness_comment_body_parse_cuts_at_the_first_field_and_keeps_markdown_ve
     && issue_comment_body_of(wire: "") == ""
 }
 
-// THE COMMENT ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is
-// 404, and a request WITHOUT a Google session is 403 at the write law's authentication axis —
-// tailnet header or not — with the 403 preceding even the empty-body validation.
+// AUTH FIRST on comment, same as assign: unknown issue without a session is 403, not 404.
 test fn witness_comment_route_refuses_404_and_403_before_any_host_read() -> Bool {
   let unknown = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
@@ -946,7 +948,8 @@ test fn witness_comment_route_refuses_404_and_403_before_any_host_read() -> Bool
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
-  unknown.status == 404
+  unknown.status == 403
+    && string_contains(s: unknown.body, pattern: "google-oidc-session")
     && no_session_no_header.status == 403
     && string_contains(s: no_session_no_header.body, pattern: "google-oidc-session")
     && tailnet_only.status == 403

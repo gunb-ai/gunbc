@@ -91,7 +91,7 @@ import gunbc.roadmap.roadmap_task_form { roadmap_task_draft_from_form, roadmap_t
 import gunbc.roadmap.roadmap_task_record { roadmap_task_encode }
 import gunbc.roadmap.roadmap_task_store { RuntimeTaskWrite, roadmap_task_create, RuntimeTaskCommitted, RuntimeTaskReplayed, RuntimeTaskConflict, RuntimeTaskStale, RuntimeTaskChainFull, RuntimeTaskRefused, roadmap_task_capacity, CapacityWithin, CapacityCompactionDue, CapacityFull }
 import std.algebra { trim }
-import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpStatus }
+import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpStatus, Timestamp }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -640,6 +640,7 @@ fn serve_after_human_write(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
   proceed: fn() -> ServeHttpResponse,
+  observed_at: fn() -> Timestamp,
 ) -> ServeHttpResponse {
   match human_write_admission(
     route_path: route_path,
@@ -648,7 +649,7 @@ fn serve_after_human_write(
     authorization_policy: tracker_write_authorization_policy,
     deployment_policy: roadmap_deployment_access_policy,
     csrf_presented: issue_form_field(body: request.body, name: "csrf"),
-    observed_at: fn() { human_write_observed_at(security: request.security) },
+    observed_at: observed_at,
   ) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
     Permit => proceed()
@@ -664,8 +665,9 @@ fn serve_dispatch_handler_response_over(
   params: List<PathParamBinding>,
   executor_word: String,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  observed_at: fn() -> Timestamp,
 ) -> ServeHttpResponse {
-  serve_after_human_write(request: request, route_path: "/dispatch" as NonEmptyStr, action: ServeActionDispatchNode, proceed: fn() {
+  serve_after_human_write(request: request, route_path: "/dispatch" as NonEmptyStr, action: ServeActionDispatchNode, observed_at: observed_at, proceed: fn() {
     let node_id = path_param_value(params: params, name: "node_id")
     if node_id == "" {
       serve_text_response(
@@ -702,6 +704,7 @@ fn serve_dispatch_handler_response_for_instance(
     params: params,
     executor_word: "",
     request: request,
+    observed_at: fn() { human_write_observed_at(security: request.security) },
   )
 }
 
@@ -721,7 +724,7 @@ fn serve_publish_handler_response_for_instance(
   params: List<PathParamBinding>,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
-  serve_after_human_write(request: request, route_path: "/publish" as NonEmptyStr, action: ServeActionPublishNode, proceed: fn() {
+  serve_after_human_write(request: request, route_path: "/publish" as NonEmptyStr, action: ServeActionPublishNode, observed_at: fn() { human_write_observed_at(security: request.security) }, proceed: fn() {
   let node_id = path_param_value(params: params, name: "node_id")
   if node_id == "" {
     serve_text_response(
@@ -1016,7 +1019,7 @@ fn human_write_observed_at(security: RequestSecurityContext<RequestAccessPath, R
 // application/x-www-form-urlencoded encoding, decoded once by the shared strict codec.
 fn serve_issue_assign_response_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
@@ -1026,9 +1029,11 @@ fn serve_issue_assign_response_over(
     deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
     observed_at: fn() { human_write_observed_at(security: request.security) }) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
-    Permit =>
-      if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
-      else { serve_issue_assign_permitted(instance: instance, plan: plan, request: request, node_id: node_id, observed_at: human_write_observed_at(security: request.security)) }
+    Permit => {
+      let proj = plan()
+      if !issue_detail_node_exists(proj: proj, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+      else { serve_issue_assign_permitted(instance: instance, plan: proj, request: request, node_id: node_id, observed_at: human_write_observed_at(security: request.security)) }
+    }
   }
 }
 
@@ -1507,11 +1512,11 @@ fn roadmap_serve_invoke_over(
         body: dashboard_provider_readiness_json(instance: instance),
       )
     BeltDispatchHandler =>
-      serve_dispatch_handler_response_over(instance: instance, plan: plan, params: params, executor_word: uri_query_param(path: request.path, key: "executor"), request: request)
+      serve_dispatch_handler_response_over(instance: instance, plan: plan, params: params, executor_word: uri_query_param(path: request.path, key: "executor"), request: request, observed_at: fn() { human_write_observed_at(security: request.security) })
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan(), params: params, request: request)
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
-    IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan(), request: request, params: params)
+    IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan, request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
     IssueCreateHandler => serve_issue_create_response_over(instance: instance, request: request)
     IssueCreatePageHandler => serve_page_response(page: issue_create_page(command_context: match request.security.authentication {
@@ -1573,7 +1578,7 @@ fn serve_stop_handler_response_for_instance(
   params: List<PathParamBinding>,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
-  serve_after_human_write(request: request, route_path: "/cleanup" as NonEmptyStr, action: ServeActionStopNode, proceed: fn() {
+  serve_after_human_write(request: request, route_path: "/cleanup" as NonEmptyStr, action: ServeActionStopNode, observed_at: fn() { human_write_observed_at(security: request.security) }, proceed: fn() {
     let node_id = path_param_value(params: params, name: "node_id")
     if node_id == "" {
       serve_text_response(
