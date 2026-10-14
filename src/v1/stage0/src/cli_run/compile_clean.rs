@@ -231,98 +231,6 @@ pub(crate) fn compile_clean_departed_paths_outside_docs(
     )
 }
 
-/// Module paths in the compile-clean closure (format-independent identity — see
-/// `gunbc compile` census_only_sources wiring in main.rs).
-pub(crate) fn compile_clean_closure_module_paths(
-    compiled: &[Rc<v1_compiler_compile::SourceFile>],
-) -> HashSet<String> {
-    compiled
-        .iter()
-        .filter_map(|s| extract_module_path(&s.content))
-        .collect()
-}
-
-/// Indexed pool modules outside the compile closure enter the name census only
-/// (fill = whole tree; policy gates lookup, never fill).
-pub(crate) fn compile_clean_census_only_sources_for_compiled(
-    index: &MultiEntryIndex,
-    compiled: &[Rc<v1_compiler_compile::SourceFile>],
-) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
-    let closure_modules = compile_clean_closure_module_paths(compiled);
-    let mut pool_rest: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = index
-        .source_files
-        .iter()
-        .filter(|(module_path, _)| !closure_modules.contains(*module_path))
-        .map(|(module_path, source)| (module_path.clone(), source.clone()))
-        .collect();
-    pool_rest.sort_by(|a, b| a.0.cmp(&b.0));
-    pool_rest.into_iter().map(|(_, source)| source).collect()
-}
-
-/// Parse-grade census fill (annotation binding + parse errors). Used for
-/// out-of-closure modules (#8204) and must run independently of semantic
-/// resolve — a resolve refusal must not hide the annotation population.
-pub(crate) fn compile_clean_census_fill_hard_diagnostics(
-    census_only: &[Rc<v1_compiler_compile::SourceFile>],
-) -> im::Vector<Rc<ErrorNode>> {
-    if census_only.is_empty() {
-        return im::Vector::new();
-    }
-    let fill = v1_compiler_compile::parse_census_fill_sources(Rc::new(census_only.to_vec().into()));
-    fill.diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .cloned()
-        .collect()
-}
-
-/// Whether a compile knows the corpus the test-reference ledger is written against. An index is
-/// not enough: the ordinary compile transaction indexes whatever `--source-root`s it was given, and
-/// a ledger row whose module lives under a root that was not indexed is absent from that compile,
-/// not orphaned (review 68527). So the claim is made only when the index spans every witness-layer
-/// root, which are the roots the ledger's rows are derived from; any narrower index is CorpusUnknown.
-fn compile_clean_corpus_scope(index: Option<&MultiEntryIndex>) -> v1_compiler_compile::CorpusScope {
-    let norm = |r: &str| r.trim_end_matches('/').trim_start_matches("./").to_string();
-    let spans = index.is_some_and(|idx| {
-        let indexed: std::collections::HashSet<String> =
-            idx.source_roots.iter().map(|r| norm(r)).collect();
-        witness_layer_roots()
-            .iter()
-            .all(|r| indexed.contains(&norm(r)))
-    });
-    if spans {
-        v1_compiler_compile::CorpusScope::CorpusKnown
-    } else {
-        v1_compiler_compile::CorpusScope::CorpusUnknown
-    }
-}
-
-pub(crate) fn compile_clean_pipeline_options_for_sources(
-    index: Option<&MultiEntryIndex>,
-    compiled: &[Rc<v1_compiler_compile::SourceFile>],
-) -> Rc<v1_compiler_compile::CompilePipelineOptions> {
-    let census_only = index
-        .map(|idx| compile_clean_census_only_sources_for_compiled(idx, compiled))
-        .unwrap_or_default();
-    let corpus = compile_clean_corpus_scope(index);
-    if census_only.is_empty() {
-        return Rc::new(v1_compiler_compile::CompilePipelineOptions {
-            analyze_complexity: false,
-            census_only_sources: Rc::new(im::Vector::new()),
-            corpus,
-        });
-    }
-    eprintln!(
-        "[census] {} indexed modules outside the compile-clean closure enter the name census only (not compiled)",
-        census_only.len()
-    );
-    Rc::new(v1_compiler_compile::CompilePipelineOptions {
-        analyze_complexity: false,
-        census_only_sources: Rc::new(census_only.into()),
-        corpus,
-    })
-}
-
 pub(crate) fn compile_clean_scope_plan_from_touched_paths(
     touched_paths: &[String],
     departed_paths: &HashSet<String>,
@@ -663,10 +571,11 @@ pub(crate) fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
 pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<ErrorNode>>, String> {
     // The index the closure was loaded from supplies the census and the corpus claim, so a ledger
     // row naming a deleted module refuses here (review 68429) without a second build (review 68591).
-    let (sources, index) = compile_clean_whole_tree_sources_and_index()?;
-    let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
-    let result =
-        v1_compiler_compile::compile_to_resolved_with_options(Rc::new(sources.into()), options);
+    let (sources, _index) = compile_clean_whole_tree_sources_and_index()?;
+    let result = v1_compiler_compile::compile_to_resolved_with_options(
+        Rc::new(sources.into()),
+        v1_compiler_compile::default_compile_pipeline_options(),
+    );
     Ok(result
         .diagnostics
         .iter()
@@ -679,11 +588,10 @@ pub(crate) fn compile_clean_whole_tree_resolved(
 ) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
     // The index the closure was loaded from supplies the census and the corpus claim, so a ledger
     // row naming a deleted module refuses here (review 68429) without a second build (review 68591).
-    let (sources, index) = compile_clean_whole_tree_sources_and_index()?;
-    let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
+    let (sources, _index) = compile_clean_whole_tree_sources_and_index()?;
     Ok(v1_compiler_compile::compile_to_resolved_with_options(
         Rc::new(sources.into()),
-        options,
+        v1_compiler_compile::default_compile_pipeline_options(),
     ))
 }
 
@@ -1060,9 +968,6 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         PresentArmScrutineeTypeUnresolved { pattern: s(), span: no_span() },
         FrontierOccurrenceBudgetExceeded { method: s(), receiver_type: s(), declared: 0, observed: 0, span: no_span() },
         TestCodeReferenced { referrer: s(), target: s(), span: no_span() },
-        TestCodeReferenceAdmitted { referrer: s(), target: s(), span: no_span() },
-        TestCodeReferenceBudgetMismatch { referrer: s(), declared: 0, observed: 0, span: no_span() },
-        TestCodeReferenceRowOrphaned { referrer: s(), span: no_span() },
         MissingField { field: s(), type_name: s(), span: no_span() },
         NonExhaustiveMatch { missing: istrings(), span: no_span() },
         CircularDependency { modules: istrings(), span: no_span() },
@@ -1553,11 +1458,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "FrontierOccurrenceBudgetExceeded"
         }
         CompilerDiagnostic::TestCodeReferenced { .. } => "TestCodeReferenced",
-        CompilerDiagnostic::TestCodeReferenceAdmitted { .. } => "TestCodeReferenceAdmitted",
-        CompilerDiagnostic::TestCodeReferenceBudgetMismatch { .. } => {
-            "TestCodeReferenceBudgetMismatch"
-        }
-        CompilerDiagnostic::TestCodeReferenceRowOrphaned { .. } => "TestCodeReferenceRowOrphaned",
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => {
             "MethodExistenceFrontierAdmitted"
         }
@@ -1664,9 +1564,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TextCrossingHasNoImplicitRoute { route, .. } => route.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method, .. } => method.clone(),
         CompilerDiagnostic::TestCodeReferenced { referrer, .. } => referrer.clone(),
-        CompilerDiagnostic::TestCodeReferenceAdmitted { referrer, .. } => referrer.clone(),
-        CompilerDiagnostic::TestCodeReferenceBudgetMismatch { referrer, .. } => referrer.clone(),
-        CompilerDiagnostic::TestCodeReferenceRowOrphaned { referrer, .. } => referrer.clone(),
         CompilerDiagnostic::MissingField { field, .. } => field.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
         CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),

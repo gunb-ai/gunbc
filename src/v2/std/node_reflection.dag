@@ -1,4 +1,6 @@
 module v2.std.node_reflection
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { List }
 import std.decl_ref { DeclarationRef }
@@ -177,14 +179,14 @@ fn accept_sole_declaration(
     )
   } else {
     match list_head(xs: type_rows) {
-      HeadAbsent =>
+      Absent =>
         outcome_rejected(
           d: scoped_type_reflection_diagnostic(
             type_name: type_name,
             invariant: ^type_declaration_absent
           )
         )
-      HeadFound { value: sole } =>
+      Present { value: sole } =>
         if node_is_coproduct(node: sole.node) {
           outcome_accepted(value: sole.node)
         } else {
@@ -223,14 +225,14 @@ fn resolve_type_node(pool_roots: List<String>, type_name: Symbol) -> Outcome<Nod
     )
   } else {
     match list_head(xs: candidates) {
-      HeadAbsent =>
+      Absent =>
         outcome_rejected(
           d: scoped_type_reflection_diagnostic(
             type_name: type_name,
             invariant: ^type_declaration_absent
           )
         )
-      HeadFound { value: sole_qualified_name } =>
+      Present { value: sole_qualified_name } =>
         accept_sole_declaration(
           pool_roots: pool_roots,
           type_name: type_name,

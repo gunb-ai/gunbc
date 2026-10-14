@@ -3,7 +3,7 @@ module v2.workflow.floor_cost_debt_edit
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.compilers.lexing { LexRules, Token, token_stream_all }
-import std.algebra { Cons, Empty, contains, ListHeadResult, HeadFound, HeadAbsent, list_head, ListTailResult, TailFound, TailAbsent, list_tail, list_reverse }
+import std.algebra { Cons, Empty, contains, list_head, list_reverse, skip }
 import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
@@ -310,14 +310,11 @@ fn removal_walk_aligned_step(w: RemovalWalk, b: Token) -> RemovalWalk {
   } else {
     let cleared = RemovalWalk { head: w.head, phase: WalkAligned {}, removed: w.removed, prev_kept: w.prev_kept, follower_pending: false, call_path: w.call_path, call_dotted: w.call_dotted, removed_calls: w.removed_calls }
     let head_matches = match list_head(xs: cleared.head) {
-      HeadAbsent => false
-      HeadFound { value: h } => removal_tokens_equal(a: h, b: b)
+      Absent => false
+      Present { value: h } => removal_tokens_equal(a: h, b: b)
     }
     if head_matches {
-      let rest = match list_tail(xs: cleared.head) {
-        TailAbsent => []
-        TailFound { tail: t } => t
-      }
+      let rest = skip(xs: cleared.head, n: 1)
       RemovalWalk { head: rest, phase: WalkAligned {}, removed: cleared.removed, prev_kept: optional_present(value: b.class), follower_pending: false, call_path: cleared.call_path, call_dotted: cleared.call_dotted, removed_calls: cleared.removed_calls }
     } else if b.class == ^dag_token_and_and {
       removal_walk_with_phase(w: cleared, phase: WalkAfterAndAnd {})
@@ -396,8 +393,8 @@ fn cost_debt_edit_from_decl_tokens(
     removal_walk_step(w: acc, b: b)
   })
   let head_exhausted = match list_head(xs: walk.head) {
-    HeadAbsent => true
-    HeadFound { value: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
   let aligned = match walk.phase {
     WalkAligned => true

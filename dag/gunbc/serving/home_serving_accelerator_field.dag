@@ -1,0 +1,31 @@
+module gunbc.serving.home_serving_accelerator_field
+
+import std.types { List, NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.gpu.nvidia {
+  nvidia_rtx_pro_5000_48gb_catalog,
+  nvidia_rtx_pro_5000_72gb_catalog,
+  nvidia_rtx_pro_6000_workstation_catalog,
+  nvidia_rtx_pro_6000_max_q_catalog,
+  nvidia_b200_sxm_catalog,
+  nvidia_b300_sxm_catalog,
+}
+
+// HOME-SERVING POLICY, not NVIDIA's catalog: which cited add-in cards are purchase candidates
+// and which SXM modules are references only.
+data home_serving_accelerator_field_p4_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c declared frontier: these lists are consumed by P4 home-serving selection, which imports home_serving_add_in_card_catalog_rows as the purchase-candidate field and home_serving_reference_sxm_catalog_rows as references only. Trigger: that fold exists and deleting either list makes it fail to resolve. A witness that only asserts the lists exist does not close this frontier." as NonEmptyStr
+)
+
+data home_serving_add_in_card_catalog_rows: List<GpuModelCatalogRow> = [
+  nvidia_rtx_pro_5000_48gb_catalog,
+  nvidia_rtx_pro_5000_72gb_catalog,
+  nvidia_rtx_pro_6000_workstation_catalog,
+  nvidia_rtx_pro_6000_max_q_catalog,
+]
+
+data home_serving_reference_sxm_catalog_rows: List<GpuModelCatalogRow> = [
+  nvidia_b200_sxm_catalog,
+  nvidia_b300_sxm_catalog,
+]

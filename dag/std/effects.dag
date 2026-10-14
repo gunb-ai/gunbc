@@ -2,13 +2,11 @@ module std.effects
 import std.optional { Absent, Present }
 
 import std.types { String, List }
-import std.realization_schedule { string_list_eq }
 import extdeps.uri_path {
   PathTemplate,
   has_path_params, last_path_param
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE }
-
 type EffectShape<K>
   = ReadEffect
   | UpsertEffect { key_source: K }
@@ -79,23 +77,6 @@ fn is_idempotent_effect(shape: EffectShape<KeySource>) -> Bool {
   }
 }
 
-fn key_source_eq(left: KeySource, right: KeySource) -> Bool {
-  match left {
-    PathParam { param: pa } => match right {
-      PathParam { param: pb } => pa == pb
-      _ => false
-    }
-    InputField { field: fa } => match right {
-      InputField { field: fb } => fa == fb
-      _ => false
-    }
-    CompositeKey { fields: fa } => match right {
-      CompositeKey { fields: fb } => string_list_eq(left: fa, right: fb)
-      _ => false
-    }
-  }
-}
-
 fn create_effect_is_dedupable(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     CreateEffect { cause: cause } =>
@@ -120,7 +101,7 @@ fn create_double_init_collapsible(a: EffectShape<KeySource>, b: EffectShape<KeyS
           match b {
             CreateEffect { cause: cause_b } =>
               match cause_b {
-                CreateIfAbsent { key_source: kb } => key_source_eq(left: ka, right: kb)
+                CreateIfAbsent { key_source: kb } => ka == kb
                 PostAlways => false
                 KeylessFallback { method: method } => false
               }

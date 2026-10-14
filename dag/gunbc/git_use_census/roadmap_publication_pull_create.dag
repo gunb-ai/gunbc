@@ -5,7 +5,7 @@ import std.decl_ref { decl_ref }
 import gunbc.git_use_authority { GitUseRow, ParsedDagGitDependency, ClassifiedGitUse, GitProposalReviewPublication, DeclaredLegacyGitUse }
 
 data roadmap_publication_pull_create: GitUseRow = GitUseRow {
-  consumer: decl_ref(module_path: "gunbc.roadmap.roadmap_publish_actuate", decl_name: "publish_attempt"),
+  consumer: decl_ref(module_path: "gunbc.roadmap.roadmap_publish_actuate", decl_name: "publish_staged_attempt"),
 
   surface: ParsedDagGitDependency { imported_module: "extdeps.github.pulls" as NonEmptyStr },
 

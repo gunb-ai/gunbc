@@ -116,7 +116,7 @@ data regen_generated_aggregate_product_owners: List<GeneratedAggregateProductOwn
     source_module: "v1.compiler.compiler_tests_rust",
     product: "compiler_tests.rs",
     generation_role: AggregateNonSeedGeneratedOutput,
-    reason: "the compiler test module is emitted from compiler_tests_source rather than from a same-named DAG module; the generated product therefore has no module-line mirror identity of its own"
+    reason: "the compiler test module is emitted from compiler_tests_source rather than from a same-named DAG module, and the host shell declares it `#[cfg(test)] mod compiler_tests` in lib.rs, so it is not compiled into the seed binary. The host mints OutsideSeed only for NonSeedGeneratedOutput; any other role that is not seed-embedded is UnresolvedSeedMembership. The model also has a GenerationSubject+OutsideSeed to non-seed-publish arm, but this host never supplies that pair -- GenerationSubject here would refuse at UnresolvedSeedMembership. This row is AggregateNonSeedGeneratedOutput so the host mints OutsideSeed and the join assigns non-seed-publish."
   },
   GeneratedAggregateProductOwner {
     source_module: "v1.compiler.emit_rust",

@@ -3,7 +3,8 @@ module extdeps.crypto.sha2
 import std.types { Int, List, String }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.integer { qualified_octets }
-import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_shr, word32_rotr, bitwise_pow2, Word64, word64_and, word64_xor, word64_not, word64_add, word64_shr, word64_rotr }
+import std.power_of_two { bitwise_pow2 }
+import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_shr, word32_rotr, Word64, word64_and, word64_xor, word64_not, word64_add, word64_shr, word64_rotr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.crypto.md_padding { md_append_octets, md_blocks_64, md_length_octets, md_zero_octets }

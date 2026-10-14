@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.registered_realization_missing_its_registry_row_panics_at_runtime
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data registered_realization_missing_its_registry_row_panics_at_runtime: RecurringFailureMode = RecurringFailureMode {
+  identity: "registered_realization_missing_its_registry_row_panics_at_runtime" as NonEmptyStr,
+
+  receipts: [
+    "**a primitive with a std.primitives contract and a v1_rt body but no extdeps.languages.rust.emit rt_function_registry row emits an unrealized_host_seam runtime panic** (INVALID STATE: a call to a primitive whose realization EXISTS in the seed runtime is emitted as `v1_rt::unrealized_host_seam::<T>(..)`, because emit_typed_call decides is_rt by registry-row membership alone, so the realization is present and the emitter does not know it.",
+
+    "HARM: section 5 silent wrongness on the source-to-target path, one phase late.",
+
+    "The emitter reports success and the emitted program panics, untyped, at the first call.",
+
+    "SPECIMEN, 2026-10-13 (seed-Rust specimen run at d4c8afd, localised by merry-moth-118): `json_unescape_checked` had a v1_rt body and a contract and no registry row, so `json_member_presence` and `json_field_string` panicked when run.",
+
+    "REPAIRED INSTANCE: the row was added (gunbc#13898); the class is not closed, because nothing joins the contract roster to the registry.",
+
+    "A census at that change found this the only call-arm instance among primitives with a contract and a v1_rt body: to_string has its own emit arm and the contiguous_loop_*_kernel names are loop-lowering helpers, so none of those three is a registry miss.",
+
+    "RUNG FOUND AT: 1, mitigation: the panic is located (the stub names the primitive) and typed as a refusal form, and it keeps the signature so unreachable seams do not fail the crate.",
+
+    "CEILING: an emit-time refusal derived from a REALIZABILITY ROSTER, decidable from the declarations, so a wall now once the roster exists.",
+
+    "NEXT-RUNG TRIGGER, phrased as the capability: a realizability roster that answers, per primitive, whether the target realizes it by bridge, by dedicated arm or by lowering, consumed by emit_typed_call so a call to an unrealized primitive refuses at emit.",
+
+    "WHY THE REGISTRY-MISS PREDICATE IS NOT THAT ROSTER TODAY, measured in the source: (i) UNREACHABLE BUT TYPECHECKED SEAMS -- compile_error! at the call or seam failed the whole crate and five seams nobody called took it down, so the form is a panic body that keeps the signature; (ii) REALIZED-WITHOUT-BRIDGE FOLDS -- rt_functions is not a realizability roster, because collection folds, pipelines and operators are realized with no bridge row, and a pre-emission collector keyed on registry membership refused bridged v1.compiler.tokenize source_code_point and panicked the rebuilt seed on its own first tokenize.",
+
+    "RECOGNITION RULE: a runtime panic naming `has no v1_rt realization and no declaration to emit` for a name that grep finds as a `pub fn` in v1_rt.rs is this class; check the registry row before the realization.",
+  ],
+
+  evidence: [],
+}

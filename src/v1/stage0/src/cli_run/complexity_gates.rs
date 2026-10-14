@@ -163,6 +163,7 @@ pub(crate) fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String
     keys
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// The same freeze rows, joined against the ENROLLED-ROSTER identity space instead of the
 /// admission-key space: `module.function` (as `floor_expected_red_roster` writes it) rather
 /// than `entry::function` (as `witness_admission_manifest_key` writes it). Two different keys

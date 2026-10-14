@@ -1715,6 +1715,39 @@ fn ct_unbound_reference_to_a_twice_declared_leaf_refuses_test() -> String {
   )
 }
 
+// A declared Optional whose payload node is absent refuses; it never renders `()`.
+fn ct_an_optional_over_a_collection_of_optional_refuses_test() -> String {
+  [
+    "    // AN OPTIONAL CARRIER WHOSE PAYLOAD TYPE NODE IS ABSENT REFUSES; IT NEVER RENDERS `()`. The fixture is a\n",
+    "    // hand-built childless carrier node reaching the Absent arm directly, so the red does not depend on\n",
+    "    // what infer stamps for `Optional<List<Optional<Int>>>` (measured erased by merry-moth-118, node\n",
+    "    // adhoc-c3c735c9-3af; the source specimen is the positive control of the producer-side stamping PR).\n",
+    "    // THE CONTROL is the same carrier with an `Int` payload child, which renders `Option<i64>`.\n",
+    "    #[test]\n",
+    "    fn an_optional_carrier_with_an_absent_payload_node_refuses() {\n",
+    "        let source_indices = std::rc::Rc::new(HashMap::new());\n",
+    "        let mut observed_env_value = (*crate::v1_compiler_infer_env::empty_type_env()).clone();\n",
+    "        observed_env_value.unit_variant_index_observed = true;\n",
+    "        let observed_env = std::rc::Rc::new(observed_env_value);\n",
+    "        let render = |carrier: std::rc::Rc<crate::v1_std_core::Node>| -> String {\n",
+    "            crate::v1_compiler_emit_rust::render_rust_optional_carrier_applied(\n",
+    "                carrier,\n",
+    "                std::rc::Rc::new(im::Vector::new()),\n",
+    "                std::rc::Rc::new(im::OrdSet::new()),\n",
+    "                source_indices.clone(),\n",
+    "                std::rc::Rc::new(HashMap::new()),\n",
+    "                observed_env.clone(),\n",
+    "            )\n",
+    "        };\n",
+    "        let red = render(shaped_type_node(\"Optional\", Vec::new()));\n",
+    "        assert!(red.contains(\"compile_error!\") && red.contains(\"optional carrier payload type node absent\") && !red.contains(\"()\"), \"an absent payload must refuse and never render ():\\n\{red}\");\n",
+    "        let control = render(shaped_type_node(\"Optional\", vec![named_type_node(\"Int\")]));\n",
+    "        assert_eq!(control, \"Option<i64>\", \"a present payload node renders its payload\");\n",
+    "    }\n",
+    "\n",
+  ] |> join(separator: "")
+}
+
 // A same-leaf declaration in one module does not change what another module emits.
 fn ct_a_coproduct_named_optional_emits_as_its_own_enum_test() -> String {
   [
@@ -1996,6 +2029,7 @@ fn ct_coercion_tests() -> String {
     ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test(),
     ct_unstamped_bare_optional_follows_the_lookup_binding_order_test(),
     ct_a_coproduct_named_optional_emits_as_its_own_enum_test(),
+    ct_an_optional_over_a_collection_of_optional_refuses_test(),
     ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test())
 }
@@ -2396,25 +2430,27 @@ fn ct_std_nat_realization_agreement_test() -> String {
 // THE EMITTED NAT OPERATORS REFUSE OVERFLOW, AS THE INTERPRETER DOES. std.nat Nat is declared
 // inductively and grounded to the kernel integer, so its type reference has no checkpoint of its
 // own; v1.compiler.emit_rust expr_realizes_as_refusing_int must still route its operators through
-// the refusing helpers. The subject is the seed's own emitted std.realization_schedule
-// runnable_batch_clamp_ms, whose `second_count(overhead) * 1000` is a Nat product of a call result --
-// the operand shape the de-fork first emitted as the wrapping infix token. The discriminator is the
-// refusal TEXT, not the panic: this crate builds with overflow-checks on, so a raw `*` also panics,
-// with rustc's text; the emitted crate's release profile wraps instead. Positive control: an
-// in-range clamp is the integer it denotes.
+// the refusing helpers. Two subjects stay enrolled: (1) std.nat::nat_mul (`a * b` in
+// dag/std/nat.dag, `v1_rt::int_mul(a.clone(), b.clone())` in std_nat.rs) -- parameter operands,
+// still in the emit set without a phantom std.effects import of realization_schedule; (2)
+// std.measure::micrometer_to_nanometer, whose emitted body is
+// `nanometer(v1_rt::int_mul(micrometer_count(m), 1000))`, a Nat product of a CALL RESULT times
+// a literal -- the same operand shape as the retired runnable_batch_clamp_ms
+// (`second_count(overhead) * 1000`). That second case is what covers the call-result operand.
+// The discriminator is the refusal TEXT, not the panic: this crate builds with overflow-checks
+// on, so a raw `*` also panics, with rustc's text; the emitted crate's release profile wraps
+// instead. Positive control: an in-range product is the integer it denotes.
 fn ct_std_nat_operators_refuse_overflow_test() -> String {
   concat(
     "    #[test]\n",
     "    fn std_nat_emitted_operators_refuse_overflow_through_the_runtime_helpers() \{\n",
-    "        let clamp = |overhead_s: i64| std::rc::Rc::new(crate::std_realization_schedule::RunnableBatchClamp \{\n",
-    "            overhead: crate::std_measure::second(overhead_s),\n",
-    "            per_unit: crate::std_measure::millisecond(5),\n",
-    "            authority: crate::std_decl_ref::decl_ref(\"ct\".to_string(), \"clamp\".to_string()),\n",
-    "        });\n",
-    "        assert_eq!(crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(2), 3), 2015, \"an in-range clamp is the integer it denotes\");\n",
-    "        let refusal = std::panic::catch_unwind(|| crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(i64::MAX / 10), 0)).expect_err(\"a Nat product past i64 must refuse\");\n",
+    "        assert_eq!(crate::std_nat::nat_mul(2, 3), 6, \"an in-range product is the integer it denotes\");\n",
+    "        let refusal = std::panic::catch_unwind(|| crate::std_nat::nat_mul(i64::MAX / 10, 1000)).expect_err(\"a Nat product past i64 must refuse\");\n",
     "        let text = refusal.downcast_ref::<String>().cloned().unwrap_or_default();\n",
     "        assert!(text.starts_with(\"integer overflow:\"), \"the Nat product must refuse through v1_rt, got \{text:?}\");\n",
+    "        let call_result_refusal = std::panic::catch_unwind(|| crate::std_measure::micrometer_to_nanometer(crate::std_measure::micrometer(i64::MAX / 10))).expect_err(\"a Nat product of a call result past i64 must refuse\");\n",
+    "        let call_result_text = call_result_refusal.downcast_ref::<String>().cloned().unwrap_or_default();\n",
+    "        assert!(call_result_text.starts_with(\"integer overflow:\"), \"the call-result Nat product must refuse through v1_rt, got \{call_result_text:?}\");\n",
     "    }\n\n")
 }
 
@@ -5401,55 +5437,6 @@ fn ct_test_marker_item_kind_test() -> String {
   )
 }
 
-// THE ONE WALL ROW THAT STAYS OFF THE FLOOR, AND WHY. Every other red and control of the wall runs on
-// the floor in test.claim.test_reference_wall_witness; their compiler_tests copies were deleted when
-// those were enrolled (review 67649). The identity-grain swap cannot move: it must compile a module
-// that carries a real ledger row, and on the floor such a module collides with the loaded corpus and
-// the census refuses rather than answers. It runs in no CI step. Next-rung trigger: a census probe
-// that can compile a fixture under a module name the corpus already holds, or inject its own ledger.
-fn ct_test_reference_wall_test() -> String {
-  concat(
-    "    // Diagnostics carry Rc and cannot cross the thread boundary, so the compile runs inside the thread\n",
-    "    // and hands back one plain tag per test-reference diagnostic.\n",
-    "    fn test_reference_tags(module: &str, body: &str) -> Vec<String> {\n",
-    "        let content = format!(\"module {}\\n\\n{}\", module, body);\n",
-    "        let (tx, rx) = std::sync::mpsc::channel();\n",
-    "        std::thread::Builder::new()\n",
-    "            .name(\"test-reference-wall\".to_string())\n",
-    "            .stack_size(64 * 1024 * 1024)\n",
-    "            .spawn(move || {\n",
-    "                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: \"test_reference_fixture.dag\".to_string(), content });\n",
-    "                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));\n",
-    "                let tags: Vec<String> = resolved.diagnostics.iter().filter_map(|e| {\n",
-    "                    let blocking = crate::v1_std_core::is_error_diagnostic(e.diagnostic.clone());\n",
-    "                    match e.diagnostic.as_ref() {\n",
-    "                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenced { .. } => Some(format!(\"referenced blocking={}\", blocking)),\n",
-    "                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceAdmitted { .. } => Some(format!(\"admitted blocking={}\", blocking)),\n",
-    "                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceBudgetMismatch { declared, observed, .. } => Some(format!(\"mismatch declared={} observed={} blocking={}\", declared, observed, blocking)),\n",
-    "                        _ => None,\n",
-    "                    }\n",
-    "                }).collect();\n",
-    "                let _ = tx.send(tags);\n",
-    "            })\n",
-    "            .expect(\"spawn test-reference-wall\");\n",
-    "        rx.recv_timeout(std::time::Duration::from_secs(120)).expect(\"compile hung\")\n",
-    "    }\n",
-    "\n",
-    "    // IDENTITY GRAIN: swapping a row's target for another test fn under the same referrer keeps the\n",
-    "    // count equal and must still refuse -- a new target has no row. Its own row is then paid down too.\n",
-    "    #[test]\n",
-    "    fn a_new_target_under_a_rostered_referrer_is_refused() {\n",
-    "        let debt = crate::v1_compiler_compile::test_reference_debt();\n",
-    "        let row = debt.iter().find(|r| r.referrer != \"<import>\" && r.occurrences == 1).cloned().expect(\"a single-call row\");\n",
-    "        let body = format!(\"test fn zz_swapped_in() -> Bool {{\\n  true\\n}}\\n\\nfn {}() -> Bool {{\\n  zz_swapped_in()\\n}}\\n\", row.referrer);\n",
-    "        let tags = test_reference_tags(&row.module_name, &body);\n",
-    "        assert!(tags.contains(&\"referenced blocking=true\".to_string()), \"{:?}\", tags);\n",
-    "        assert!(tags.contains(&format!(\"mismatch declared={} observed=0 blocking=true\", row.occurrences)), \"{:?}\", tags);\n",
-    "    }\n\n",
-    "\n"
-  )
-}
-
 // THE IMPORT-ALL ROUTE'S ONLY RED, AND WHY IT IS NOT ON THE FLOOR. The floor's census probe
 // (gunbc.compile_census_probe) compiles one fixture module against the corpus and loads the corpus
 // modules it imports for name lookup only, never typed, so no floor fixture can hold both a
@@ -5493,45 +5480,6 @@ fn ct_test_reference_import_all_test() -> String {
   )
 }
 
-// THE ORPHAN ARM'S RED, AND WHY IT IS NOT ON THE FLOOR. An orphaned corpus row would refuse every CI
-// compile, so it cannot be authored into the real ledger; the arm is therefore exercised at its own
-// interface, v1.compiler.compile test_reference_unevaluated_row_diag, on synthetic rows. Like every
-// compiler_tests row it runs in no CI step. The floor carries its positive control instead: a
-// census-backed fixture compile raises no orphan (test.claim.test_reference_wall_witness).
-// Next-rung trigger: a census probe that can compile against an injected ledger.
-fn ct_test_reference_orphan_row_test() -> String {
-  concat(
-    "    // THE ORPHAN ARM, at its own interface: a row whose module is not compiled is judged by census\n",
-    "    // knowledge and scope alone, so the pure function is called directly on synthetic rows.\n",
-    "    #[test]\n",
-    "    fn an_orphaned_ledger_row_is_refused_only_when_the_census_is_loaded() {\n",
-    "        use crate::v1_compiler_compile::\{CensusKnowledge, TestReferenceDebtRow, TestReferenceRowScope};\n",
-    "        let row = |scope: TestReferenceRowScope| std::rc::Rc::new(TestReferenceDebtRow {\n",
-    "            module_name: \"gone.module\".to_string(),\n",
-    "            referrer: \"caller\".to_string(),\n",
-    "            target: \"gone.module.leaf\".to_string(),\n",
-    "            occurrences: 1,\n",
-    "            scope: scope,\n",
-    "            dissolution: crate::v1_compiler_compile::test_reference_debt_dissolution(),\n",
-    "        });\n",
-    "        let loaded = |names: &[&str]| std::rc::Rc::new(CensusKnowledge::CensusLoaded {\n",
-    "            modules: std::rc::Rc::new(names.iter().map(|n| (n.to_string(), true)).collect()),\n",
-    "        });\n",
-    "        let orphaned = |d: &std::rc::Rc<im::Vector<std::rc::Rc<crate::v1_std_core::ErrorNode>>>| d.iter().filter(|e| matches!(e.diagnostic.as_ref(), crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceRowOrphaned { .. })).count();\n",
-    "        let diag = |r, c| crate::v1_compiler_compile::test_reference_unevaluated_row_diag(r, c);\n",
-    "        // RED: census loaded, module in neither the closure nor the census.\n",
-    "        assert_eq!(orphaned(&diag(row(TestReferenceRowScope::CorpusDebtRow), loaded(&[\"other.module\"]))), 1);\n",
-    "        // CONTROL: the module exists, only outside this closure.\n",
-    "        assert_eq!(orphaned(&diag(row(TestReferenceRowScope::CorpusDebtRow), loaded(&[\"gone.module\"]))), 0);\n",
-    "        // CONTROL: no census, so absence proves nothing.\n",
-    "        assert_eq!(orphaned(&diag(row(TestReferenceRowScope::CorpusDebtRow), std::rc::Rc::new(CensusKnowledge::CensusAbsent))), 0);\n",
-    "        // CONTROL: the fixture control row is exempt by its declared scope.\n",
-    "        assert_eq!(orphaned(&diag(row(TestReferenceRowScope::FixtureControlRow), loaded(&[\"other.module\"]))), 0);\n",
-    "    }\n",
-    "\n"
-  )
-}
-
 fn compiler_tests_source() -> String {
   concat(
     ct_module_header(),
@@ -5541,9 +5489,7 @@ fn compiler_tests_source() -> String {
     ct_tokenizer_tests(),
     ct_parse_tests(),
     ct_test_marker_item_kind_test(),
-    ct_test_reference_wall_test(),
     ct_test_reference_import_all_test(),
-    ct_test_reference_orphan_row_test(),
     ct_tco_tail_call_assigns_every_loop_slot_test(),
     ct_pipeline_test(),
     ct_entry_point_absent_refusal_test(),
