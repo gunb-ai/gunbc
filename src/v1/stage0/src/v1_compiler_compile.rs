@@ -391,7 +391,7 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
 }
@@ -963,10 +963,10 @@ pub fn test_reference_diagnostics(
     }
 }
 
-pub fn default_compile_pipeline_options() -> Rc<CompilePipelineOptions> {
-    Rc::new(CompilePipelineOptions {
+pub fn default_compile_pipeline_options() -> CompilePipelineOptions {
+    CompilePipelineOptions {
         analyze_complexity: false,
-    })
+    }
 }
 
 pub fn run_complexity_analysis(
@@ -3585,7 +3585,7 @@ pub fn compile_sources_selected(
 pub fn compile_sources_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
     target: RenderTarget,
-    options: Rc<CompilePipelineOptions>,
+    options: CompilePipelineOptions,
 ) -> Rc<PipelineResult> {
     emit_resolved_for_target(
         compile_to_resolved_with_options(sources.clone(), options.clone()),
@@ -3688,7 +3688,7 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
 
 pub fn compile_to_resolved_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
-    options: Rc<CompilePipelineOptions>,
+    options: CompilePipelineOptions,
 ) -> Rc<ResolvedPipelineResult> {
     {
         let _ = v1_rt::trace_mark("compile.frontend.begin".to_string());
