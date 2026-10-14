@@ -774,10 +774,12 @@ NamespaceOnlyY on both paths, with unique-on-chain-still-resolves and
 unbound-stays-`UnresolvedType` controls. No subtree is flipped; the flip (step 4) still
 gates on import→alias transmutation landing with-or-before it.
 
-**Builtins bind at root.** The root namespace is on **every** chain, so builtins bound at root are
-unique-on-chain everywhere — this **structurally dissolves** the prelude-shaped `neither_bound`
-class (#6936, 739) rather than special-casing it, pending still-hawk's confirmation of the (c)
-subclass.
+**No ambient prelude (operator, 2026-10-04 and 2026-10-13; kernel-op ruling B, 2026-10-14).** A
+module sees only its own declarations and its own imports. Kernel collection operations
+(`concat`, `count`, `first`, `map`, `filter`, `join`, `map_get`) are corpus declarations in
+`std.algebra` (`collection_*_shape` rows), imported explicitly; they are not bound at root and
+are not a second implicit spelling. The superseded “builtins bind at root” reading is retired
+here so it cannot license an ambient last-tier bind.
 
 **RULED — the (Y) expected-type filter (operator, 2026-07-22; recorded in §4).** The re-adjudication
 is done: the pool-filter reading of (Y) dies with the `global_bare` tier (there is never a pool

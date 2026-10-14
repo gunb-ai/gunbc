@@ -1,0 +1,102 @@
+module v2.test.claim.compiler.kernel_op_declaration_import
+
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_source }
+import std.types { Bool }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra {
+  collection_concat_shape,
+  collection_count_shape,
+  collection_filter_shape,
+  collection_first_shape,
+  collection_join_shape,
+  collection_map_get_shape,
+  collection_map_shape,
+  fold_list
+}
+import std.literal_elaboration {
+  KernelMintDeclarationAbsent,
+  KernelMintDeclarationAmbiguous,
+  KernelMintDeclarationFound,
+  kernel_mint_declaration_for
+}
+import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import std.optional { Absent, Present }
+import v2.std.node { node_subtree_nodes }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: ruling B (2026-10-14) — kernel collection ops are std.algebra declarations
+// (collection_*_shape), imported by name. The kernel spellings concat/first/join/map_get are not
+// free fns (dag_v2_defork_audit method table) and cannot yet occupy kernel_mint_declaration_rows
+// (v1.compiler.infer kernel_mint_shape_diagnostics admits only Optional). THIS MODULE'S RED/GREEN
+// is therefore the EXISTING declaration name collection_concat_shape: bare use refuses; an
+// explicit import resolves. Deleting the import greens the RED and reds the GREEN.
+
+data kodi_algebra_peer: String = "module std.algebra\n\nfn collection_concat_shape() -> Int { 0 }\n"
+
+data kodi_red_src: String = "module p\n\nfn f() -> Int {\n  collection_concat_shape()\n}\n"
+
+data kodi_green_src: String = "module p\n\nimport std.algebra { collection_concat_shape }\n\nfn f() -> Int {\n  collection_concat_shape()\n}\n"
+
+// REAL PATH: the named templates in std.algebra carry the kernel spellings.
+test fn collection_shape_rows_carry_the_kernel_spellings() -> Bool {
+  collection_concat_shape().name == "concat"
+    && collection_count_shape().name == "count"
+    && collection_map_shape().name == "map"
+    && collection_filter_shape().name == "filter"
+    && collection_first_shape().name == "first"
+    && collection_join_shape().name == "join"
+    && collection_map_get_shape().name == "map_get"
+}
+
+// THE INFER WALL: a concat mint row would be KernelMintShapeMismatch on std.algebra.
+test fn concat_has_no_kernel_mint_row() -> Bool {
+  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "concat") {
+    KernelMintDeclarationAbsent => true
+    KernelMintDeclarationFound { declaration: _ } => false
+    KernelMintDeclarationAmbiguous { row_count: _ } => false
+  }
+}
+
+test fn map_get_has_no_kernel_mint_row() -> Bool {
+  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "map_get") {
+    KernelMintDeclarationAbsent => true
+    KernelMintDeclarationFound { declaration: _ } => false
+    KernelMintDeclarationAmbiguous { row_count: _ } => false
+  }
+}
+
+test fn optional_mint_row_is_unchanged() -> Bool {
+  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "Optional") {
+    KernelMintDeclarationFound { declaration: d } =>
+      declaration_ref_eq(a: d, b: decl_ref(module_path: "std.optional", decl_name: "Optional"))
+    KernelMintDeclarationAbsent => false
+    KernelMintDeclarationAmbiguous { row_count: _ } => false
+  }
+}
+
+test fn bare_collection_concat_shape_is_unbound() -> Bool {
+  match bla_assemble_with_peers(p_src: kodi_red_src, peers: []) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+test fn imported_collection_concat_shape_resolves() -> Bool {
+  match bla_assemble_with_peers(
+    p_src: kodi_green_src,
+    peers: [bla_source(src: kodi_algebra_peer, artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu)]
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold_list(xs: node_subtree_nodes(root: tree.root), empty: false, cons: fn(acc, n) {
+        acc || (match declaration_reference_path_optional(node: n) {
+          Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_concat_shape"
+          Absent => false
+        })
+      })
+  }
+}
