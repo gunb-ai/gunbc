@@ -2,7 +2,12 @@ module test.claim.machine_intake.fan_observe_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_steps_around }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_fan_observe_ipmi_series_step_name,
+  fleet_converge_fan_policy_phase_step,
+  fleet_converge_mtcollins1_boot_steps_around,
+  fleet_converge_mtcollins1_fan_observe_step,
+}
 import gunbc.ci.ci_spec { gunbc_ci_mtcollins1_fan_observe_invoke }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -107,6 +112,21 @@ test fn a_host_that_is_not_managed_refuses() -> Bool {
   }
 }
 
+fn fan_policy_phase_step_name(s: Step) -> String {
+  match s {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n {
+        Present { value: v } => v
+        Absent => ""
+      }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n {
+        Present { value: v } => v
+        Absent => ""
+      }
+  }
+}
+
 fn fan_policy_phase_step_run_text(s: Step) -> String {
   match s {
     RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
@@ -120,6 +140,17 @@ fn fan_policy_phase_marker_step(marker: String) -> Step {
 
 data fan_policy_phase_supplied_fleet_key: String = "SUPPLIED-FLEET-KEY-STEP"
 data fan_policy_phase_supplied_boot: String = "SUPPLIED-BOOT-STEP"
+
+// THE PHASE NAME IS THE IPMI SERIES, BECAUSE THAT IS THE INVOKE. A Cooling Manager / PWM REST
+// label on this run would report a MegaRAC GET that never ran.
+test fn fan_policy_phase_names_the_ipmi_sdr_series_it_runs() -> Bool {
+  fan_policy_phase_step_name(s: fleet_converge_fan_policy_phase_step())
+    == fleet_converge_fan_observe_ipmi_series_step_name
+    && fan_policy_phase_step_name(s: fleet_converge_mtcollins1_fan_observe_step())
+      == fleet_converge_fan_observe_ipmi_series_step_name
+    && fan_policy_phase_step_run_text(s: fleet_converge_fan_policy_phase_step())
+      == gunbc_ci_mtcollins1_fan_observe_invoke()
+}
 
 // THE PHASE IS A PRIOR JOB STEP, NOT A CHILD OF THE BOOT INVOKE. GitHub Actions runs job steps
 // sequentially, so this gunbc run exits before the boot step starts its concurrent pair.

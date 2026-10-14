@@ -2334,9 +2334,11 @@ fn fleet_converge_app_key_version_verify_mint_step() -> Step {
 // than claimed as enforced.
 data fleet_converge_mtcollins1_fan_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1FanObserve)
 
+data fleet_converge_fan_observe_ipmi_series_step_name: String = "Mt. Collins fan observation: IPMI SDR fan + temperature time series with power state (reads only)"
+
 fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
   RunStep {
-    name: Present { value: "Mt. Collins fan observation: IPMI SDR fan + temperature time series with power state (reads only)" },
+    name: Present { value: fleet_converge_fan_observe_ipmi_series_step_name },
     id: Present { value: "mtcollins1_fan_observe" },
     run: gunbc_ci_mtcollins1_fan_observe_invoke(),
     shell: none,
@@ -4057,17 +4059,18 @@ fn fleet_converge_mtcollins1_boot_wif_auth_step() -> Step {
 }
 
 // FAN POLICY IS A PHASE OF THIS JOB, NOT A SECOND MODE. The operator addendum (2026-10-14) forbids
-// a machine sitting on a controller default unobserved after boot. The unit is a parameter of the
-// step, not a new step id (cut 7). This is a GitHub Actions job step of its own: steps in one job
+// a machine sitting on a controller default unobserved after boot. The step id is the phase
+// (cut 7); the unit is this job. The invoke is gunbc_ci_mtcollins1_fan_observe_invoke, which is
+// IPMI SDR via fan_observe / bmc_fan_observation, so the step name is that series' name — not
+// Cooling Manager / PWM REST. GET get_manager_status / get_fan_info plus PWM write / guard /
+// restore is a named follow-up. This is a GitHub Actions job step of its own: steps in one job
 // run strictly sequentially, so this interpreter exits before the boot step's concurrent pair
 // (gunbc_ci_mtcollins1_boot_watcher_background_line `gunbc run ... &` plus the boot `gunbc run`).
-// It is not a child of that pair. Runs 38639170770 and 38640990281 thrashed srv1 on that pair
-// (still-owl-732). This phase does not raise that pair's budget. PWM write / guard / restore is
-// a named follow-up (megarac_fan_boot_phase_write_plan, megarac_thermal_guard_verdict,
-// megarac_fan_run_exit_restore), not this PR.
-fn fleet_converge_fan_policy_phase_step(host: NonEmptyStr) -> Step {
+// Runs 38639170770 and 38640990281 thrashed srv1 on that pair (still-owl-732). This phase does
+// not raise that pair's budget.
+fn fleet_converge_fan_policy_phase_step() -> Step {
   RunStep {
-    name: Present { value: join(["Fan policy phase: observe Cooling Manager and PWM (reads only; first sample is drift; unit=", host as String, ")"], "") },
+    name: Present { value: fleet_converge_fan_observe_ipmi_series_step_name },
     id: Present { value: "fan_policy_phase" },
     run: gunbc_ci_mtcollins1_fan_observe_invoke(),
     shell: none,
@@ -4106,7 +4109,7 @@ fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: 
     fleet_converge_mtcollins1_boot_grant_await_step(),
     fleet_converge_mtcollins1_boot_wif_auth_step(),
     fleet_key_step,
-    fleet_converge_fan_policy_phase_step(host: operator_host_mtcollins1 as NonEmptyStr),
+    fleet_converge_fan_policy_phase_step(),
     boot_step,
     fleet_converge_fan_policy_phase_receipt_upload_step(),
     fleet_converge_mtcollins1_boot_receipt_upload_step(),
