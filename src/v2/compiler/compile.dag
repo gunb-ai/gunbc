@@ -225,6 +225,11 @@ import v2.compiler.dependency_demand_census {
   demand_census_report,
   demand_census_strip
 }
+import v2.compiler.import_target_attribution {
+  RefusedImportTarget,
+  declared_module_from_source,
+  import_target_refused
+}
 import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_import_bindings }
 import v2.compiler.parse { parse, parse_module_prepared_seeded, prepare_grammar, PreparedGrammar }
 import v2.compiler.resolve {
@@ -1472,10 +1477,7 @@ type NativeTestContextFoldState {
 // The module a refused file declares, as the typed name every other reader compares, parsed ONCE
 // here from the header line the lane's own scan reads.
 fn native_refused_file_module(content: String) -> Optional<QualifiedName> {
-  match native_lane_declared_module_name(content: content) {
-    Absent => optional_absent()
-    Present { value: dotted } => optional_present(value: qualified_name_from_dotted_string(dotted: dotted))
-  }
+  declared_module_from_source(content: content)
 }
 
 fn native_test_file_refusal(path: Symbol, module: Optional<QualifiedName>, d: NonEmptyDiagnostics, spans: SpanIndex, text: String) -> NativeTestFileRefusal {
@@ -2159,15 +2161,9 @@ fn native_lane_refused<T>(reason: Symbol, detail: String) -> Outcome<T> {
 // question at this same grain and is deleted with the interpreted derivation; this is that fact's
 // `.dag` home.
 fn native_lane_declared_module_name(content: String) -> Optional<String> {
-  match list_find_first(
-    xs: split(s: content, delimiter: "\n"),
-    predicate: fn(line) { starts_with(s: trim(line), prefix: "module ") }
-  ) {
+  match declared_module_from_source(content: content) {
     Absent => optional_absent()
-    Present { value: line } =>
-      optional_present(
-        value: trim(substring(s: trim(line), start: 7, end: string_length(s: trim(line))))
-      )
+    Present { value: qn } => optional_present(value: qualified_name_to_dotted_string(qn: qn))
   }
 }
 
@@ -3312,25 +3308,39 @@ fn native_import_target_attribution(context: NativeTestContext, module: Qualifie
       match map_lookup(m: shared.roots.by_name, key: module) {
         Absent => NativeImportTargetsUnreadable { reason: ^native_import_target_module_not_indexed }
         Present { value: tree } =>
-          fold_list(xs: context.file_refusals, empty: NativeImportTargetsAdmitted, cons: fn(found, refusal) {
-            match found {
-              NativeImportTargetRefused { target: _ } => found
-              NativeImportTargetsUnreadable { reason: _ } => found
-              NativeImportTargetNotAsked => found
-              NativeImportTargetsAdmitted =>
-                match refusal.module {
-                  Absent => found
-                  Present { value: refused_module } =>
-                    if any(xs: normalized_tree_import_bindings(tree: tree), predicate: fn(row) {
-                      qualified_name_init(qn: row.target) == refused_module
-                    }) {
-                      NativeImportTargetRefused { target: refusal }
+          match import_target_refused(
+            import_bindings: normalized_tree_import_bindings(tree: tree),
+            refusals: fold_list(xs: context.file_refusals, empty: Empty, cons: fn(acc, r) {
+              match r.module {
+                Absent => acc
+                Present { value: m } =>
+                  list_snoc_item(
+                    xs: acc,
+                    item: RefusedImportTarget {
+                      module: m,
+                      path: r.path,
+                      cause: native_test_file_refusal_fatal_reason(fr: r)
+                    }
+                  )
+              }
+            })
+          ) {
+            Absent => NativeImportTargetsAdmitted
+            Present { value: hit } =>
+              fold_list(xs: context.file_refusals, empty: NativeImportTargetsAdmitted, cons: fn(found, r) {
+                match found {
+                  NativeImportTargetRefused { target: _ } => found
+                  NativeImportTargetsUnreadable { reason: _ } => found
+                  NativeImportTargetNotAsked => found
+                  NativeImportTargetsAdmitted =>
+                    if r.path == hit.path {
+                      NativeImportTargetRefused { target: r }
                     } else {
                       found
                     }
                 }
-            }
-          })
+              })
+          }
       }
   }
 }

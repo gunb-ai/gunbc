@@ -2,7 +2,7 @@ module v2.compiler.self_host.closure_emission
 
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules }
-import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, list_map, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, list_append, list_map, list_reverse, list_snoc_item }
 import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
 import extdeps.languages.json.emit {
   JsonKeyValue,
@@ -34,6 +34,11 @@ import v2.compiler.source_authority {
   source_root_set_from_ingest,
   text_set_of
 }
+import v2.compiler.import_target_attribution {
+  RefusedImportTarget,
+  declared_module_from_source,
+  import_target_refused
+}
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
@@ -48,7 +53,9 @@ import v2.std.diagnostic {
   NonEmptyDiagnostics,
   Outcome,
   Rejected,
+  Textual,
   Unavailable,
+  WholeFile,
   bind_outcome,
   diagnostics_fatal_reason,
   diagnostics_singleton,
@@ -88,13 +95,14 @@ import v2.compiler.refinement_discharge { infer_and_discharge }
 // member's typed refusal, and never as a silent widening of the population.
 //
 // FOUR PHASES, EACH A SINGLE PASS. (1) Every ingest file is parsed with ONE occurrence allocator
-// threaded across the ingest (the seeded front end), so no two files share an authored id. (2) Every
-// parse is normalized from that allocator's FINAL mark, so no occurrence a member's lowering projects
-// can reuse an authored id of any file in the ingest (the ingest merges its span indexes, and a
-// reused id would resolve to another file's location); the module identity each file declares is
-// read here, and a second file declaring one identity is refused at both files. (3) One symbol index
-// is filled from every member's full projection. (4) Each member is resolved once, checked for
-// ownership of what it references (v2.compiler.reference_closure), inferred and emitted.
+// threaded across the ingest (the seeded front end), so no two files share an authored id. A file
+// that does not parse is recorded as a refused import target and the rest of the ingest continues
+// (the same absorb the census uses); it is not a member and its declarations never enter the index.
+// (2) Every parse is normalized from that allocator's FINAL mark; a normalize refusal is the same
+// refused-target record. A second file declaring one identity is refused at both files. (3) One
+// symbol index is filled from every member's full projection. (4) Each member is resolved once.
+// A consumer of a refused importee is attributed through import_target_refused (the same lookup
+// native_import_target_attribution uses) as importee_refused, naming the importee and its cause.
 //
 // A reference whose declaring module the closure does not hold is the located member refusal
 // `reference_closure_target_ownerless`: it means the acquirer's reading of the member's references and
@@ -110,13 +118,31 @@ import v2.compiler.refinement_discharge { infer_and_discharge }
 type ClosureParsedFile {
   parse_tree: ParseTree
   source_root: SourceRootRef
+  compilation_unit: Symbol
+  source: String
 }
 
-// `alloc` is the allocator mark after the last file parsed; `spans` is the merge of every file's span
-// index. A parse refusal carries the spans of the files that parsed before it.
-type ClosureParse
-  = ClosureParseRefused { diagnostics: NonEmptyDiagnostics, spans: SpanIndex }
-  | ClosureParsed { files: FreeMonoid<ClosureParsedFile>, alloc: OccurrenceIdAllocator, spans: SpanIndex }
+type ClosureFileRefusal {
+  path: Symbol
+  module: Optional<QualifiedName>
+  cause: Symbol
+  diagnostics: NonEmptyDiagnostics
+}
+
+// `alloc` is the allocator mark after the last successful parse; `spans` is the merge of every
+// accepted file's span index. Refused files do not contribute ids (v2.compiler.compile
+// native_test_context_absorb).
+type ClosureParse {
+  files: FreeMonoid<ClosureParsedFile>
+  refusals: FreeMonoid<ClosureFileRefusal>
+  alloc: OccurrenceIdAllocator
+  spans: SpanIndex
+}
+
+type ClosureNormalized {
+  members: FreeMonoid<ClosureMember>
+  refusals: FreeMonoid<ClosureFileRefusal>
+}
 
 // One member: the module identity its file declares, its full normalized projection and its tree.
 type ClosureMember {
@@ -150,19 +176,69 @@ fn closure_emission_diagnostic(reason: Symbol, at: Node) -> Diagnostic {
   }
 }
 
+fn closure_file_refusal_of(read: DagSourceReadWitness, d: NonEmptyDiagnostics) -> ClosureFileRefusal {
+  ClosureFileRefusal {
+    path: read.compilation_unit,
+    module: declared_module_from_source(content: read.source.carried),
+    cause: diagnostics_fatal_reason(d: d),
+    diagnostics: d
+  }
+}
+
+fn closure_importee_refused_diagnostics(
+  target: RefusedImportTarget,
+  resolver: NonEmptyDiagnostics,
+  at: Node
+) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: Diagnostic {
+      reason: ^importee_refused,
+      at: node_locus(node: at),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    },
+    tail: list_append(
+      left: [
+        Diagnostic {
+          reason: target.cause,
+          at: Textual { file: target.path, extent: WholeFile },
+          correction: Unavailable { reason: ExternalContractUnknown }
+        },
+        resolver.head
+      ],
+      right: resolver.tail
+    )
+  }
+}
+
+fn closure_refused_import_targets(refusals: FreeMonoid<ClosureFileRefusal>) -> FreeMonoid<RefusedImportTarget> {
+  fold_list(xs: refusals, empty: Empty, cons: fn(acc, r) {
+    match r.module {
+      Absent => acc
+      Present { value: m } =>
+        list_snoc_item(xs: acc, item: RefusedImportTarget { module: m, path: r.path, cause: r.cause })
+    }
+  })
+}
+
 // PHASE ONE: EVERY FILE PARSED, ONE OCCURRENCE ALLOCATOR THREADED ACROSS THE WHOLE INGEST. A file
-// that does not parse refuses the emission: a module whose text cannot be read cannot be a member.
-// The files accumulate reversed (a cons) and are put back in ingest order once, so the pass is linear.
+// that does not parse is a refused import target (closure_file_refusal_of) and the rest continue;
+// it cannot be a member. The files accumulate reversed (a cons) and are put back in ingest order once.
 fn closure_parse_loop(
   rest: SourceRootIngest,
   lex: PreparedLexRules,
   prepared: PreparedGrammar,
   files: FreeMonoid<ClosureParsedFile>,
+  refusals: FreeMonoid<ClosureFileRefusal>,
   alloc: OccurrenceIdAllocator,
   spans: SpanIndex
 ) -> ClosureParse {
   match rest {
-    Empty => ClosureParsed { files: list_reverse(xs: files), alloc: alloc, spans: spans }
+    Empty => ClosureParse {
+      files: list_reverse(xs: files),
+      refusals: refusals,
+      alloc: alloc,
+      spans: spans
+    }
     Cons { head: read, tail: remaining } =>
       match bind_outcome(
         o: program_assembly_phase_tokenize(read: read, lex: lex),
@@ -170,13 +246,31 @@ fn closure_parse_loop(
           parse_module_prepared_seeded(tokens: tokens, prepared: prepared, seed: alloc)
         }
       ) {
-        Rejected { diagnostics: d } => ClosureParseRefused { diagnostics: d, spans: spans }
+        Rejected { diagnostics: d } =>
+          closure_parse_loop(
+            rest: remaining,
+            lex: lex,
+            prepared: prepared,
+            files: files,
+            refusals: list_snoc_item(xs: refusals, item: closure_file_refusal_of(read: read, d: d)),
+            alloc: alloc,
+            spans: spans
+          )
         Accepted { value: artifact, diagnostics: _ } =>
           closure_parse_loop(
             rest: remaining,
             lex: lex,
             prepared: prepared,
-            files: Cons { head: ClosureParsedFile { parse_tree: artifact.tree, source_root: read.source_root }, tail: files },
+            files: Cons {
+              head: ClosureParsedFile {
+                parse_tree: artifact.tree,
+                source_root: read.source_root,
+                compilation_unit: read.compilation_unit,
+                source: read.source.carried
+              },
+              tail: files
+            },
+            refusals: refusals,
             alloc: artifact.alloc,
             spans: span_index_merge(base: spans, incoming: artifact.span_index)
           )
@@ -218,16 +312,47 @@ fn closure_normalize_loop(
   rest: FreeMonoid<ClosureParsedFile>,
   alloc: OccurrenceIdAllocator,
   members: FreeMonoid<ClosureMember>,
-  seen: Map<String, Node>
-) -> Outcome<FreeMonoid<ClosureMember>> {
+  seen: Map<String, Node>,
+  refusals: FreeMonoid<ClosureFileRefusal>
+) -> Outcome<ClosureNormalized> {
   match rest {
-    Empty => outcome_accepted(value: list_reverse(xs: members))
+    Empty => outcome_accepted(value: ClosureNormalized { members: list_reverse(xs: members), refusals: refusals })
     Cons { head: file, tail: remaining } =>
       match closure_member_normalized(file: file, alloc: alloc) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } =>
+          closure_normalize_loop(
+            rest: remaining,
+            alloc: alloc,
+            members: members,
+            seen: seen,
+            refusals: list_snoc_item(
+              xs: refusals,
+              item: ClosureFileRefusal {
+                path: file.compilation_unit,
+                module: declared_module_from_source(content: file.source),
+                cause: diagnostics_fatal_reason(d: d),
+                diagnostics: d
+              }
+            )
+          )
         Accepted { value: tree, diagnostics: _ } =>
           match qualified_name_from_module_node(root: tree.root) {
-            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Rejected { diagnostics: d } =>
+              closure_normalize_loop(
+                rest: remaining,
+                alloc: alloc,
+                members: members,
+                seen: seen,
+                refusals: list_snoc_item(
+                  xs: refusals,
+                  item: ClosureFileRefusal {
+                    path: file.compilation_unit,
+                    module: declared_module_from_source(content: file.source),
+                    cause: diagnostics_fatal_reason(d: d),
+                    diagnostics: d
+                  }
+                )
+              )
             Accepted { value: module_qn, diagnostics: _ } =>
               match map_lookup(m: seen, key: qualified_name_to_dotted_string(qn: module_qn)) {
                 Present { value: first } =>
@@ -237,7 +362,8 @@ fn closure_normalize_loop(
                     rest: remaining,
                     alloc: alloc,
                     members: Cons { head: ClosureMember { module: module_qn, tree: tree, source_root: file.source_root }, tail: members },
-                    seen: map_insert(m: seen, key: qualified_name_to_dotted_string(qn: module_qn), value: tree.root)
+                    seen: map_insert(m: seen, key: qualified_name_to_dotted_string(qn: module_qn), value: tree.root),
+                    refusals: refusals
                   )
               }
           }
@@ -294,18 +420,31 @@ fn closure_member_emission(
   index: SourceRootIndex,
   active_roots: FreeMonoid<SourceRootRef>,
   target: TargetModel,
-  type_declaration_modifiers: TypeDeclarationModifierChannel
+  type_declaration_modifiers: TypeDeclarationModifierChannel,
+  refused_targets: FreeMonoid<RefusedImportTarget>
 ) -> ClosureMemberEmission {
+  let resolved_o = closure_resolve_member(
+    lm: lm,
+    tree: member.tree,
+    member_module: member.module,
+    symbol_index: symbol_index,
+    index: index,
+    active_roots: active_roots,
+    type_declaration_modifiers: type_declaration_modifiers
+  )
+  let attributed = match resolved_o {
+    Accepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
+    Rejected { diagnostics: d } =>
+      match import_target_refused(import_bindings: member.tree.import_bindings, refusals: refused_targets) {
+        Absent => Rejected { diagnostics: d }
+        Present { value: t } =>
+          Rejected {
+            diagnostics: closure_importee_refused_diagnostics(target: t, resolver: d, at: member.tree.root)
+          }
+      }
+  }
   let emitted = bind_outcome(
-    o: closure_resolve_member(
-      lm: lm,
-      tree: member.tree,
-      member_module: member.module,
-      symbol_index: symbol_index,
-      index: index,
-      active_roots: active_roots,
-      type_declaration_modifiers: type_declaration_modifiers
-    ),
+    o: attributed,
     f: fn(resolved) {
       match reference_closure_ownership(
         resolved: resolved.root,
@@ -342,6 +481,7 @@ fn closure_member_emission(
 fn closure_emission_of_members(
   lm: LanguageModel,
   members: FreeMonoid<ClosureMember>,
+  refusals: FreeMonoid<ClosureFileRefusal>,
   entry: QualifiedName,
   entry_locus: Node,
   active_roots: FreeMonoid<SourceRootRef>,
@@ -358,6 +498,7 @@ fn closure_emission_of_members(
     })
     let owned = text_set_of(names: list_map(xs: roster, f: fn(m) { qualified_name_to_dotted_string(qn: m) }))
     let type_declaration_modifiers = type_declaration_modifier_channel_of_trees(trees: list_map(xs: members, f: fn(m) { m.tree }))
+    let refused_targets = closure_refused_import_targets(refusals: refusals)
     outcome_accepted(value: ClosureEmission {
       entry: entry,
       members: roster,
@@ -370,7 +511,8 @@ fn closure_emission_of_members(
           index: index,
           active_roots: active_roots,
           target: target,
-          type_declaration_modifiers: type_declaration_modifiers
+          type_declaration_modifiers: type_declaration_modifiers,
+          refused_targets: refused_targets
         )
       })
     })
@@ -387,33 +529,35 @@ fn closure_emission_from_parsed(
   active_roots: FreeMonoid<SourceRootRef>,
   target: TargetModel
 ) -> ClosureEmissionLocated {
-  match parsed {
-    ClosureParseRefused { diagnostics: d, spans: spans } =>
-      ClosureEmissionLocated { spans: spans, outcome: Rejected { diagnostics: d } }
-    ClosureParsed { files: files, alloc: alloc, spans: spans } =>
-      ClosureEmissionLocated {
-        spans: spans,
-        outcome: bind_outcome(
-          o: closure_normalize_loop(rest: files, alloc: alloc, members: Empty, seen: empty_map()),
-          f: fn(members) {
-            closure_emission_of_members(
-              lm: lm,
-              members: members,
-              entry: entry,
-              entry_locus: entry_locus,
-              active_roots: active_roots,
-              target: target
-            )
-          }
+  ClosureEmissionLocated {
+    spans: parsed.spans,
+    outcome: bind_outcome(
+      o: closure_normalize_loop(
+        rest: parsed.files,
+        alloc: parsed.alloc,
+        members: Empty,
+        seen: empty_map(),
+        refusals: parsed.refusals
+      ),
+      f: fn(normalized) {
+        closure_emission_of_members(
+          lm: lm,
+          members: normalized.members,
+          refusals: normalized.refusals,
+          entry: entry,
+          entry_locus: entry_locus,
+          active_roots: active_roots,
+          target: target
         )
       }
+    )
   }
 }
 
 // THE DOOR'S FOLD: parse the acquired closure, normalize it, emit every member. A parse or
-// normalization refusal refuses the whole emission; a member's own refusal is that member's arm. The
-// grammar failing to prepare is NOT a file's refusal -- no file was read -- so it refuses the
-// emission before any parse exists (review 71156).
+// normalize refusal of one file is a refused import target; a consumer of that file is that
+// consumer's typed arm (importee_refused). The grammar failing to prepare is NOT a file's refusal
+// -- no file was read -- so it refuses the emission before any parse exists (review 71156).
 fn emit_closure_from_ingest_located(
   ingest: SourceRootIngest,
   entry: QualifiedName,
@@ -431,6 +575,7 @@ fn emit_closure_from_ingest_located(
           lex: prepare_lex_rules(rules: lm.lex),
           prepared: prepared,
           files: Empty,
+          refusals: Empty,
           alloc: occurrence_id_allocator_initial(),
           spans: span_index_empty()
         ),

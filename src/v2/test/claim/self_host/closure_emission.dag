@@ -43,8 +43,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // qualified reference requested and nothing else. The acquirer's own claims discriminate what it
 // reads; these discriminate what the door does with what it was given, at that one interface:
 //   - an acquired closure is emitted as one typed arm per member, in acquisition order;
-//   - a file in the ingest that does not parse refuses the emission, because a module whose text
-//     cannot be read cannot be a member;
+//   - a file in the ingest that does not parse is not a member; a consumer of it refuses as
+//     importee_refused (the same import-target attribution the census uses);
 //   - one module identity declared by two files refuses the emission at both files;
 //   - an entry the ingest does not hold was not acquired for it and is refused, never replaced by
 //     some other module;
@@ -75,6 +75,10 @@ data ce_duplicate_a_source: String = "module v2.test.ce_duplicate\n\nimport std.
 data ce_duplicate_b_source: String = "module v2.test.ce_duplicate\n\nimport std.types { Bool }\n\nfn ce_duplicate_b(p: Bool) -> Bool { p }\n"
 
 data ce_unparseable_source: String = "module v2.test.ce_unparseable\nfn ce_broken( -> Int { x }\n"
+
+data ce_broken_importee_source: String = "module v2.test.ce_broken\nfn lost( -> Bool { x }\n"
+
+data ce_relies_source: String = "module v2.test.ce_relies\n\nimport v2.std.logic { Bool }\nimport v2.test.ce_broken { lost }\n\nfn reads_refused(p: Bool) -> Bool { lost(p: p) }\n"
 
 // A member whose body does not lower: the entry reaches it, so the refusal is a member's.
 data ce_refusing_entry_source: String = "module v2.test.ce_refusing_entry\n\nimport std.types { Bool }\n\nfn ce_refusing_entry_fn(p: Bool) -> Bool { v2.test.ce_refusing_member.ce_refusing_fn(p: p) }\n"
@@ -125,6 +129,17 @@ fn ce_emission_unparseable_file() -> ClosureEmissionLocated {
       ce_read(source: ce_unparseable_source, id: ^ce_unparseable_read, path: "src/v2/test/ce_unparseable.dag")
     ],
     entry: "v2.std.logic"
+  )
+}
+
+fn ce_emission_importee_file_refused() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_logic_read(),
+      ce_read(source: ce_broken_importee_source, id: ^ce_broken_read, path: "src/v2/test/ce_broken.dag"),
+      ce_read(source: ce_relies_source, id: ^ce_relies_read, path: "src/v2/test/ce_relies.dag")
+    ],
+    entry: "v2.test.ce_relies"
   )
 }
 
@@ -238,12 +253,25 @@ test fn an_acquired_closure_is_emitted_as_exactly_one_arm_per_member_holds() -> 
   }
 }
 
-// DIRECTION 2. A file in the ingest that does not parse refuses the emission: its declarations are
-// unreadable, so it cannot be a member and nothing it declares can be bound.
-test fn a_file_in_the_closure_that_does_not_parse_refuses_the_emission_holds() -> Bool {
+// DIRECTION 2. A file in the ingest that does not parse is not a member; the rest of the closure
+// still emits. The unreadable file's declarations never enter the index.
+test fn a_file_in_the_closure_that_does_not_parse_is_not_a_member_holds() -> Bool {
   match ce_emission_unparseable_file().outcome {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      ce_members_are(e: e, expected: ["v2.std.logic"])
+        && ce_arm_count(e: e, name: "v2.test.ce_unparseable") == 0
+  }
+}
+
+// A CONSUMER OF A FILE-REFUSED IMPORTEE IS TOLD THE IMPORTEE WAS REFUSED, matching the census
+// (UnobservedImporteeRefused / importee_refused): the unbound name is the symptom.
+test fn a_consumer_of_a_file_refused_importee_is_importee_refused_RED() -> Bool {
+  match ce_emission_importee_file_refused().outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      ce_arm_count(e: e, name: "v2.test.ce_broken") == 0
+        && ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_relies"), reason: ^importee_refused)
   }
 }
 
