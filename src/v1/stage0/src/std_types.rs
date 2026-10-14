@@ -174,6 +174,29 @@ pub type Unit = ();
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Never {}
 
+pub fn never_type_module_path() -> String {
+    "std.types".to_string()
+}
+
+pub fn never_type_name() -> String {
+    "Never".to_string()
+}
+
+pub fn never_type_qualified_path() -> String {
+    v1_rt::concat(
+        v1_rt::concat(never_type_module_path(), ".".to_string()),
+        never_type_name(),
+    )
+}
+
+pub fn never_producer_name() -> String {
+    "never".to_string()
+}
+
+pub fn never_eliminator_name() -> String {
+    "absurd".to_string()
+}
+
 #[allow(unreachable_code)]
 pub fn never() -> Never {
     v1_rt::never()

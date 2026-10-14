@@ -74,6 +74,12 @@ test fn empty_match_on_opaque_host_type_must_refuse() -> Bool {
   never_eliminator_no_arms_blocking_count(source: empty_match_opaque_host_source) >= 1
 }
 
+data empty_match_local_never_name_source: String = "module neverprobe.local_never\n\ntype Never\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
+
+test fn empty_match_on_local_never_name_must_refuse() -> Bool {
+  never_eliminator_no_arms_blocking_count(source: empty_match_local_never_name_source) >= 1
+}
+
 data deleted_projections_unbound_source: String = "module neverprobe.unb\n\nimport std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float, pure_dag_seam_unreachable_string }\n\nfn f() -> Int {\n  pure_dag_seam_unreachable()\n}\n"
 
 fn never_eliminator_any_blocking_count(source: String) -> Int {

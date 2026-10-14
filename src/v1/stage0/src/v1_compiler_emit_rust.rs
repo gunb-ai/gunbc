@@ -7838,7 +7838,7 @@ pub fn hand_maintained_map_key_required_type_names() -> Rc<Vec<String>> {
 pub fn generated_rust_lint_relaxations() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["unused_imports".to_string(), "unused_variables".to_string(), "unused_mut".to_string(), "unused_parens".to_string(), "dead_code".to_string(), "non_shorthand_field_patterns".to_string(), "suspicious_double_ref_op".to_string(), "unreachable_code".to_string(), "clippy::all".to_string()])
+            Rc::new(vec!["unused_imports".to_string(), "unused_variables".to_string(), "unused_mut".to_string(), "unused_parens".to_string(), "dead_code".to_string(), "non_shorthand_field_patterns".to_string(), "suspicious_double_ref_op".to_string(), "clippy::all".to_string()])
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
@@ -13633,7 +13633,19 @@ pub fn is_parametric_opaque_type_decl_item(
 }
 
 pub fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> bool {
-    (module_path == "std.types") && (name == "Never")
+    (module_path == crate::std_types::never_type_module_path())
+        && (name == crate::std_types::never_type_name())
+}
+
+pub fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
+    if (module_path == crate::std_types::never_type_module_path())
+        && ((name == crate::std_types::never_producer_name())
+            || (name == crate::std_types::never_eliminator_name()))
+    {
+        "#[allow(unreachable_code)]\n".to_string()
+    } else {
+        "".to_string()
+    }
 }
 
 pub fn emit_zero_param_phantom_opaque_struct(
@@ -20388,7 +20400,7 @@ pub fn emit_fn_def(
         if (realized_seam.clone() && ((value_params.clone().len() as i64) == 0)) {
             {
                 let kw = rust_items().func_keyword.clone();
-                return v1_rt::concat(
+                let fn_text = v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
@@ -20430,6 +20442,10 @@ pub fn emit_fn_def(
                         ),
                     ),
                     "()\n}".to_string(),
+                );
+                return v1_rt::concat(
+                    rust_uninhabited_elim_allow_attr(scope.module_name.clone(), name.clone()),
+                    fn_text,
                 );
             }
         }
@@ -20513,19 +20529,22 @@ pub fn emit_fn_def(
         } else {
             {
                 let return_is_unit = return_type_is_unit(inferred.clone(), si.clone());
-                emit_fn_def_non_tco(
-                    name.clone(),
-                    type_params_str.clone(),
-                    params_str.clone(),
-                    ret_str.clone(),
-                    body.clone(),
-                    registry.clone(),
-                    body_scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    body_emit_info.clone(),
-                    needs_stacker.clone(),
-                    return_is_unit.clone(),
+                v1_rt::concat(
+                    rust_uninhabited_elim_allow_attr(scope.module_name.clone(), name.clone()),
+                    emit_fn_def_non_tco(
+                        name.clone(),
+                        type_params_str.clone(),
+                        params_str.clone(),
+                        ret_str.clone(),
+                        body.clone(),
+                        registry.clone(),
+                        body_scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        body_emit_info.clone(),
+                        needs_stacker.clone(),
+                        return_is_unit.clone(),
+                    ),
                 )
             }
         }

@@ -183,7 +183,7 @@ import v1.compiler.trait_bound_witness {
   v1_equality_bound_param_name
 }
 
-import std.types { is_container_type, is_kernel_type, container_template_algebra }
+import std.types { is_container_type, is_kernel_type, container_template_algebra, never_type_module_path, never_type_name, never_producer_name, never_eliminator_name }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
@@ -4099,7 +4099,6 @@ data generated_rust_lint_relaxations: List<String> = [
   "dead_code",
   "non_shorthand_field_patterns",
   "suspicious_double_ref_op",
-  "unreachable_code",
   "clippy::all"
 ]
 
@@ -6733,9 +6732,15 @@ fn is_parametric_opaque_type_decl_item(item: Node, source_indices: Map<String, N
 }
 
 fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> Bool {
-  // Uninhabitedness is the declaration, not opaque+zero-param. Host handles and other
-  // host-realized opaques have values; an empty enum would make them unconstructible.
-  module_path == "std.types" && name == "Never"
+  module_path == never_type_module_path() && name == never_type_name()
+}
+
+fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
+  if module_path == never_type_module_path() && (name == never_producer_name() || name == never_eliminator_name()) {
+    "#[allow(unreachable_code)]\n"
+  } else {
+    ""
+  }
 }
 
 fn emit_zero_param_phantom_opaque_struct(item: Node, map_key_required: Bool, module_path: String, source_indices: Map<String, NewlineIndex>) -> String {
@@ -10014,7 +10019,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   }
   if realized_seam && (value_params |> count) == 0 {
     let kw = rust_items().func_keyword
-    return concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "()", ret_str, " {\n",
+    return concat(rust_uninhabited_elim_allow_attr(module_path: scope.module_name, name: name), rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "()", ret_str, " {\n",
       make_indent(level: 1), "v1_rt::", emit_ident(name: rust_runtime_bridge_name(function_name: rust_seam_primitive_name(module_path: scope.module_name, name: name)), target: Rust), "()\n}")
   }
   if use_tco {
@@ -10027,7 +10032,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
     let return_is_unit = return_type_is_unit(n: inferred, source_indices: si)
-    emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit)
+    concat(rust_uninhabited_elim_allow_attr(module_path: scope.module_name, name: name), emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit))
   }
 }
 

@@ -13,7 +13,6 @@
     dead_code,
     non_shorthand_field_patterns,
     suspicious_double_ref_op,
-    unreachable_code,
     clippy::all
 )]
 #![deny(unreachable_patterns)]

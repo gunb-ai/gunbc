@@ -112,6 +112,16 @@ type Unit
 // (v2.std.cross_tree.import_model: dag may not import v2).
 type Never
 
+// THE DECLARATION IDENTITY of the uninhabited atom. Emit, v1 exhaustiveness and v2 match
+// coproduct-read all consume these; they do not restate the module or name.
+fn never_type_module_path() -> String { "std.types" }
+fn never_type_name() -> String { "Never" }
+fn never_type_qualified_path() -> String {
+  concat(never_type_module_path(), ".", never_type_name())
+}
+fn never_producer_name() -> String { "never" }
+fn never_eliminator_name() -> String { "absurd" }
+
 // THE ONE HOST PRODUCER OF NEVER. Never has no constructor, and checker narrowing is a separate
 // capability, so a HostRealizedSeam is the only way to name a Never value. Body is a self-call;
 // the interpreter refuses by this name if the seam is evaluated; emission is unreachable! by this name.

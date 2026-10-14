@@ -1,7 +1,7 @@
 module v2.compiler.infer
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
-import std.types { List }
+import std.types { List, never_type_qualified_path }
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
@@ -2974,7 +2974,7 @@ fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -
                 }
               }
             TypeNode { connective: Atom { identity: _ } } =>
-              if qualified_name_to_dotted_string(qn: path) == "std.types.Never" {
+              if qualified_name_to_dotted_string(qn: path) == never_type_qualified_path() {
                 UninhabitedScrutinee
               } else {
                 CoproductNotDeclared
