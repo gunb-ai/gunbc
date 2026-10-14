@@ -34,6 +34,13 @@ import gunbc.compute.unit_bounds {
   user_work_scope_user_slice_cgroup_needle, user_work_scope_service_unit_suffix,
   user_work_scope_slice_unit_suffix,
   system_service_unit_from_cgroup, user_work_scope_standing_before_system_unit_exempt,
+  user_work_scope_standing_for_wrap, user_work_scope_standing_for_wrap_before_slice_gate,
+  user_work_wrap_envelope_properties, user_work_wrap_envelope_properties_before_tighten,
+  user_work_wrap_ready_properties,
+  MemoryCapped, MemoryUnbounded,
+  UserWorkSliceNotInstalled, UserWorkSliceUncappedInstall, UserWorkSliceInstalled,
+  CallerEnvelopeReadFailed, CallerEnvelopeObserved,
+  UserWorkSliceAbsent, UserWorkSliceUncapped, CallerEnvelopeUnreadable,
   CgroupText, CgroupReadFailed,
   SystemServiceNamed, NotSystemService,
   AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, ExemptSystemUnit, UncappedSystemSlice,
@@ -183,6 +190,10 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_prefix() -> Bool {
     && string_contains(s: seed, pattern: "CgroupUnreadable")
     && string_contains(s: seed, pattern: "UserManagerProbeFailed")
     && string_contains(s: seed, pattern: "std::process::exit(2)")
+    && string_contains(s: seed, pattern: "--property=MemoryMax=")
+    && string_contains(s: seed, pattern: "--property=MemoryHigh=")
+    && string_contains(s: seed, pattern: "UserWorkSliceAbsent")
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_for_wrap`")
 }
 
 test fn user_work_scope_standing_selects_from_supplied_observations() -> Bool {
@@ -276,6 +287,9 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "UncappedSystemSlice")
     && string_contains(s: seed, pattern: "UserWorkScopeStanding::UserSessionAbsent =>")
     && string_contains(s: seed, pattern: "std::process::exit(2)")
+    && string_contains(s: seed, pattern: "UserWorkSliceAbsent")
+    && string_contains(s: seed, pattern: "UserWorkSliceUncapped")
+    && string_contains(s: seed, pattern: "CallerEnvelopeUnreadable")
 }
 
 test fn a_system_slice_named_service_cgroup_refuses_uncapped() -> Bool {
@@ -452,5 +466,109 @@ test fn slice_control_refuses_when_session_reservation_is_unestablished() -> Boo
     SliceControlRefused { cause: _ } => true
     SliceControlNotOwed => false
     SliceControlDerived { caps: _ } => false
+  }
+}
+
+test fn wrap_keeps_the_tighter_of_caller_and_slice() -> Bool {
+  match user_work_pool_slots() {
+    UserWorkPoolSlotsDerived { slots } => {
+      let slice_max = user_work_slice_memory_max_of(slots: slots)
+      let caller_max = byte_size(8589934592)
+      let slice = UserWorkSliceInstalled { memory_max: slice_max, memory_high: MemoryUnbounded }
+      let caller = CallerEnvelopeObserved { memory_max: MemoryCapped { bytes: caller_max }, memory_high: MemoryUnbounded }
+      byte_size_count(b: slice_max) > byte_size_count(b: caller_max)
+        && !has_property(props: user_work_wrap_envelope_properties_before_tighten(), needle: "MemoryMax=")
+        && has_property(
+          props: user_work_wrap_ready_properties(slice: slice, caller: caller),
+          needle: join(["MemoryMax=", to_string(byte_size_count(b: caller_max))], ""),
+        )
+        && has_property(
+          props: user_work_wrap_envelope_properties(memory_max: caller_max, memory_high: MemoryUnbounded),
+          needle: join(["MemoryMax=", to_string(byte_size_count(b: caller_max))], ""),
+        )
+    }
+  }
+}
+
+test fn absent_slice_wraps_at_the_parent_gate() -> Bool {
+  let caller = CallerEnvelopeObserved { memory_max: MemoryUnbounded, memory_high: MemoryUnbounded }
+  match user_work_scope_standing_for_wrap_before_slice_gate(standing: UserManagerOwed, slice: UserWorkSliceNotInstalled, caller: caller) {
+    UserManagerOwed =>
+      match user_work_scope_standing_effect(s: UserManagerOwed) {
+        WrapIntoUserWorkSlice =>
+          match user_work_scope_standing_for_wrap(standing: UserManagerOwed, slice: UserWorkSliceNotInstalled, caller: caller) {
+            UserWorkSliceAbsent =>
+              match user_work_scope_standing_effect(s: UserWorkSliceAbsent) {
+                RefuseUserWorkScope { standing: UserWorkSliceAbsent } => true
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn uncapped_slice_wraps_at_the_parent_gate() -> Bool {
+  let caller = CallerEnvelopeObserved { memory_max: MemoryUnbounded, memory_high: MemoryUnbounded }
+  match user_work_scope_standing_for_wrap_before_slice_gate(standing: UserManagerOwed, slice: UserWorkSliceUncappedInstall, caller: caller) {
+    UserManagerOwed =>
+      match user_work_scope_standing_for_wrap(standing: UserManagerOwed, slice: UserWorkSliceUncappedInstall, caller: caller) {
+        UserWorkSliceUncapped =>
+          match user_work_scope_standing_effect(s: UserWorkSliceUncapped) {
+            RefuseUserWorkScope { standing: UserWorkSliceUncapped } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn installed_capped_slice_admits_wrap() -> Bool {
+  match user_work_pool_slots() {
+    UserWorkPoolSlotsDerived { slots } => {
+      let slice_max = user_work_slice_memory_max_of(slots: slots)
+      let slice = UserWorkSliceInstalled { memory_max: slice_max, memory_high: MemoryUnbounded }
+      let caller = CallerEnvelopeObserved { memory_max: MemoryUnbounded, memory_high: MemoryUnbounded }
+      match user_work_scope_standing_for_wrap(standing: UserManagerOwed, slice: slice, caller: caller) {
+        UserManagerOwed =>
+          has_property(
+            props: user_work_wrap_ready_properties(slice: slice, caller: caller),
+            needle: join(["MemoryMax=", to_string(byte_size_count(b: slice_max))], ""),
+          )
+        _ => false
+      }
+    }
+  }
+}
+
+test fn skip_standings_ignore_a_missing_user_work_slice() -> Bool {
+  let caller = CallerEnvelopeReadFailed
+  let slice = UserWorkSliceNotInstalled
+  match user_work_scope_standing_for_wrap(standing: AlreadyInSlice, slice: slice, caller: caller) {
+    AlreadyInSlice =>
+      match user_work_scope_standing_for_wrap(standing: RunnerSlotExempt, slice: slice, caller: caller) {
+        RunnerSlotExempt =>
+          match user_work_scope_standing_for_wrap(standing: CiExempt, slice: slice, caller: caller) {
+            CiExempt =>
+              match user_work_scope_standing_effect(s: AlreadyInSlice) {
+                SkipUserWorkScope { standing: AlreadyInSlice } =>
+                  match user_work_scope_standing_effect(s: RunnerSlotExempt) {
+                    SkipUserWorkScope { standing: RunnerSlotExempt } =>
+                      match user_work_scope_standing_effect(s: CiExempt) {
+                        SkipUserWorkScope { standing: CiExempt } => true
+                        _ => false
+                      }
+                    _ => false
+                  }
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
   }
 }

@@ -45,16 +45,31 @@ enum UserWorkScopeStanding {
     UserManagerOwed,
     CgroupUnreadable,
     UserManagerProbeFailed,
+    UserWorkSliceAbsent,
+    UserWorkSliceUncapped,
+    CallerEnvelopeUnreadable,
 }
 
 pub fn reexec_into_user_work_slice_if_owed() {
     let standing = user_work_scope_standing();
     match standing {
-        UserWorkScopeStanding::UserManagerOwed => wrap_now(),
+        UserWorkScopeStanding::UserManagerOwed => match standing_for_wrap() {
+            UserWorkScopeStanding::UserManagerOwed => wrap_now(),
+            gated => {
+                eprintln!(
+                    "error: cannot wrap into {USER_WORK_SLICE} ({})",
+                    standing_wire(&gated)
+                );
+                std::process::exit(2);
+            }
+        },
         UserWorkScopeStanding::CgroupUnreadable
         | UserWorkScopeStanding::UserManagerProbeFailed
         | UserWorkScopeStanding::UserSessionAbsent
-        | UserWorkScopeStanding::UncappedSystemSlice { .. } => {
+        | UserWorkScopeStanding::UncappedSystemSlice { .. }
+        | UserWorkScopeStanding::UserWorkSliceAbsent
+        | UserWorkScopeStanding::UserWorkSliceUncapped
+        | UserWorkScopeStanding::CallerEnvelopeUnreadable => {
             eprintln!(
                 "error: cannot wrap into {USER_WORK_SLICE} ({})",
                 standing_wire(&standing)
@@ -88,7 +103,146 @@ fn standing_wire(s: &UserWorkScopeStanding) -> String {
         UserWorkScopeStanding::UserManagerOwed => "UserManagerOwed".to_string(),
         UserWorkScopeStanding::CgroupUnreadable => "CgroupUnreadable".to_string(),
         UserWorkScopeStanding::UserManagerProbeFailed => "UserManagerProbeFailed".to_string(),
+        UserWorkScopeStanding::UserWorkSliceAbsent => "UserWorkSliceAbsent".to_string(),
+        UserWorkScopeStanding::UserWorkSliceUncapped => "UserWorkSliceUncapped".to_string(),
+        UserWorkScopeStanding::CallerEnvelopeUnreadable => "CallerEnvelopeUnreadable".to_string(),
     }
+}
+
+#[derive(Clone, Copy)]
+enum MemoryBound {
+    Capped(u64),
+    Unbounded,
+}
+
+struct SliceInstall {
+    memory_max: u64,
+    memory_high: MemoryBound,
+}
+
+enum SliceInstallRead {
+    NotInstalled,
+    Uncapped,
+    Installed(SliceInstall),
+}
+
+struct CallerEnvelope {
+    memory_max: MemoryBound,
+    memory_high: MemoryBound,
+}
+
+fn parse_memory_bound(raw: &str) -> Option<MemoryBound> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return Some(MemoryBound::Unbounded);
+    }
+    if t == "max" || t == "infinity" || t == "Infinity" || t == "-1" {
+        return Some(MemoryBound::Unbounded);
+    }
+    t.parse::<u64>().ok().map(MemoryBound::Capped)
+}
+
+fn tighter_bound(a: MemoryBound, b: MemoryBound) -> MemoryBound {
+    match (a, b) {
+        (MemoryBound::Unbounded, x) | (x, MemoryBound::Unbounded) => x,
+        (MemoryBound::Capped(aa), MemoryBound::Capped(bb)) => MemoryBound::Capped(aa.min(bb)),
+    }
+}
+
+fn systemctl_user_show(unit: &str, prop: &str) -> Option<String> {
+    let out = Command::new("systemctl")
+        .args(["--user", "show", "--value", "-p", prop, unit])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+fn read_slice_install() -> SliceInstallRead {
+    let load = match systemctl_user_show(USER_WORK_SLICE, "LoadState") {
+        Some(s) => s,
+        None => return SliceInstallRead::NotInstalled,
+    };
+    if load == "not-found" || load == "stub" {
+        return SliceInstallRead::NotInstalled;
+    }
+    match systemctl_user_show(USER_WORK_SLICE, "MemoryMax").and_then(|s| parse_memory_bound(&s)) {
+        Some(MemoryBound::Capped(max)) if max > 0 => {
+            let high = systemctl_user_show(USER_WORK_SLICE, "MemoryHigh")
+                .and_then(|s| parse_memory_bound(&s))
+                .unwrap_or(MemoryBound::Unbounded);
+            SliceInstallRead::Installed(SliceInstall {
+                memory_max: max,
+                memory_high: high,
+            })
+        }
+        Some(MemoryBound::Capped(_)) | Some(MemoryBound::Unbounded) => SliceInstallRead::Uncapped,
+        None => SliceInstallRead::NotInstalled,
+    }
+}
+
+fn cgroup_v2_rel_path(text: &str) -> Option<String> {
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("0::") {
+            return Some(rest.to_string());
+        }
+    }
+    None
+}
+
+fn read_cgroup_memory_file(rel: &str, name: &str) -> Option<MemoryBound> {
+    let path = format!("/sys/fs/cgroup{rel}/{name}");
+    let raw = std::fs::read_to_string(&path).ok()?;
+    parse_memory_bound(&raw)
+}
+
+fn read_caller_envelope() -> Option<CallerEnvelope> {
+    let cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+    let rel = cgroup_v2_rel_path(&cg)?;
+    let memory_max = read_cgroup_memory_file(&rel, "memory.max")?;
+    let memory_high =
+        read_cgroup_memory_file(&rel, "memory.high").unwrap_or(MemoryBound::Unbounded);
+    Some(CallerEnvelope {
+        memory_max,
+        memory_high,
+    })
+}
+
+// SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_for_wrap`
+fn standing_for_wrap() -> UserWorkScopeStanding {
+    match read_slice_install() {
+        SliceInstallRead::NotInstalled => UserWorkScopeStanding::UserWorkSliceAbsent,
+        SliceInstallRead::Uncapped => UserWorkScopeStanding::UserWorkSliceUncapped,
+        SliceInstallRead::Installed(install) => match read_caller_envelope() {
+            None => UserWorkScopeStanding::CallerEnvelopeUnreadable,
+            Some(_) => {
+                if install.memory_max == 0 {
+                    UserWorkScopeStanding::UserWorkSliceUncapped
+                } else {
+                    UserWorkScopeStanding::UserManagerOwed
+                }
+            }
+        },
+    }
+}
+
+fn wrap_envelope_args(
+    install: &SliceInstall,
+    caller: &CallerEnvelope,
+) -> Option<(u64, Option<u64>)> {
+    let max = match tighter_bound(caller.memory_max, MemoryBound::Capped(install.memory_max)) {
+        MemoryBound::Unbounded => return None,
+        MemoryBound::Capped(n) if n == 0 => return None,
+        MemoryBound::Capped(n) => n,
+    };
+    let high = match tighter_bound(caller.memory_high, install.memory_high) {
+        MemoryBound::Unbounded => None,
+        MemoryBound::Capped(h) => Some(h.min(max)),
+    };
+    Some((max, high))
 }
 
 fn wrap_now() {
@@ -99,14 +253,39 @@ fn wrap_now() {
             std::process::exit(2);
         }
     };
+    let (memory_max, memory_high) = match (read_slice_install(), read_caller_envelope()) {
+        (SliceInstallRead::Installed(install), Some(caller)) => {
+            match wrap_envelope_args(&install, &caller) {
+                Some(pair) => pair,
+                None => {
+                    eprintln!(
+                        "error: cannot wrap into {USER_WORK_SLICE} ({})",
+                        standing_wire(&UserWorkScopeStanding::UserWorkSliceUncapped)
+                    );
+                    std::process::exit(2);
+                }
+            }
+        }
+        _ => {
+            eprintln!(
+                "error: cannot wrap into {USER_WORK_SLICE} ({})",
+                standing_wire(&UserWorkScopeStanding::CallerEnvelopeUnreadable)
+            );
+            std::process::exit(2);
+        }
+    };
     let mut cmd = Command::new("systemd-run");
     cmd.args([
         "--user",
         "--scope",
         &format!("--property=Slice={USER_WORK_SLICE}"),
         &format!("--property=MemorySwapMax={USER_WORK_SLICE_MEMORY_SWAP_MAX_BYTES}"),
-        "--",
+        &format!("--property=MemoryMax={memory_max}"),
     ]);
+    if let Some(high) = memory_high {
+        cmd.arg(format!("--property=MemoryHigh={high}"));
+    }
+    cmd.args(["--"]);
     cmd.arg(&exe);
     cmd.args(std::env::args().skip(1));
     let err = cmd.exec();

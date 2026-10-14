@@ -3,9 +3,9 @@ module gunbc.compute.unit_bounds
 import std.types { String, List, NonEmptyStr, Bool }
 import std.algebra { trim, string_contains }
 import std.optional { Present, Absent }
-import std.nat { Nat }
-import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count }
-import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
+import std.nat { Nat, nat_min }
+import std.measure { ByteSize, Kibibyte, kibibyte_to_byte_size, byte_size, byte_size_count, Millicore, millicore_count }
+import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemoryHigh, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
@@ -153,6 +153,9 @@ type UserWorkScopeStanding
   | UserManagerOwed
   | CgroupUnreadable
   | UserManagerProbeFailed
+  | UserWorkSliceAbsent
+  | UserWorkSliceUncapped
+  | CallerEnvelopeUnreadable
 
 type UserWorkScopeStandingEffect
   = WrapIntoUserWorkSlice
@@ -290,6 +293,9 @@ fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
     UserManagerOwed => "UserManagerOwed"
     CgroupUnreadable => "CgroupUnreadable"
     UserManagerProbeFailed => "UserManagerProbeFailed"
+    UserWorkSliceAbsent => "UserWorkSliceAbsent"
+    UserWorkSliceUncapped => "UserWorkSliceUncapped"
+    CallerEnvelopeUnreadable => "CallerEnvelopeUnreadable"
   }
 }
 
@@ -307,6 +313,136 @@ fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeSta
     CgroupUnreadable => RefuseUserWorkScope { standing: CgroupUnreadable }
     UserManagerProbeFailed => RefuseUserWorkScope { standing: UserManagerProbeFailed }
     UserSessionAbsent => RefuseUserWorkScope { standing: UserSessionAbsent }
+    UserWorkSliceAbsent => RefuseUserWorkScope { standing: UserWorkSliceAbsent }
+    UserWorkSliceUncapped => RefuseUserWorkScope { standing: UserWorkSliceUncapped }
+    CallerEnvelopeUnreadable => RefuseUserWorkScope { standing: CallerEnvelopeUnreadable }
+  }
+}
+
+// CGROUP / SYSTEMD MEMORY.MAX READBACK. "max" / "infinity" is unbounded, not a missing
+// observation. Tighter of two bounds never raises a finite cap (wrapping must not widen).
+type MemoryBound
+  = MemoryCapped { bytes: ByteSize }
+  | MemoryUnbounded
+
+type UserWorkSliceInstall
+  = UserWorkSliceNotInstalled
+  | UserWorkSliceUncappedInstall
+  | UserWorkSliceInstalled { memory_max: ByteSize, memory_high: MemoryBound }
+
+type CallerMemoryEnvelope
+  = CallerEnvelopeReadFailed
+  | CallerEnvelopeObserved { memory_max: MemoryBound, memory_high: MemoryBound }
+
+fn tighter_memory_bound(a: MemoryBound, b: MemoryBound) -> MemoryBound {
+  match a {
+    MemoryUnbounded => b
+    MemoryCapped { bytes: aa } => match b {
+      MemoryUnbounded => MemoryCapped { bytes: aa }
+      MemoryCapped { bytes: bb } =>
+        MemoryCapped {
+          bytes: byte_size(nat_min(a: byte_size_count(b: aa), b: byte_size_count(b: bb))),
+        }
+    }
+  }
+}
+
+fn user_work_wrap_high_property(memory_max: ByteSize, memory_high: MemoryBound) -> List<SystemdRunProperty> {
+  match memory_high {
+    MemoryUnbounded => []
+    MemoryCapped { bytes: h } =>
+      [
+        SystemdRunProperty {
+          property: MemoryHigh,
+          value: to_string(value: nat_min(a: byte_size_count(b: h), b: byte_size_count(b: memory_max))) as NonEmptyStr,
+        },
+      ]
+  }
+}
+
+fn user_work_wrap_envelope_properties(memory_max: ByteSize, memory_high: MemoryBound) -> List<SystemdRunProperty> {
+  concat(
+    user_work_slice_binding_properties(),
+    concat(
+      [
+        SystemdRunProperty {
+          property: MemoryMax,
+          value: to_string(value: byte_size_count(b: memory_max)) as NonEmptyStr,
+        },
+      ],
+      user_work_wrap_high_property(memory_max: memory_max, memory_high: memory_high),
+    ),
+  )
+}
+
+// PARENT (#13966 wrap): Slice= and MemorySwapMax=0 only. systemd creates a missing
+// slice UNCAPPED; a bounded caller whose cap is tighter than the slice is widened.
+fn user_work_wrap_envelope_properties_before_tighten() -> List<SystemdRunProperty> {
+  user_work_slice_binding_properties()
+}
+
+fn user_work_scope_standing_for_wrap(
+  standing: UserWorkScopeStanding,
+  slice: UserWorkSliceInstall,
+  caller: CallerMemoryEnvelope,
+) -> UserWorkScopeStanding {
+  match standing {
+    UserManagerOwed => match slice {
+      UserWorkSliceNotInstalled => UserWorkSliceAbsent
+      UserWorkSliceUncappedInstall => UserWorkSliceUncapped
+      UserWorkSliceInstalled { memory_max, memory_high: _ } =>
+        if byte_size_count(b: memory_max) == 0 {
+          UserWorkSliceUncapped
+        } else {
+          match caller {
+            CallerEnvelopeReadFailed => CallerEnvelopeUnreadable
+            CallerEnvelopeObserved { memory_max: _, memory_high: _ } => UserManagerOwed
+          }
+        }
+    }
+    other => other
+  }
+}
+
+// PARENT: wrap was owed whenever the user manager answered, even if the target slice
+// was missing or MemoryMax=infinity. Discriminating RED for UserWorkSliceAbsent /
+// UserWorkSliceUncapped.
+fn user_work_scope_standing_for_wrap_before_slice_gate(
+  standing: UserWorkScopeStanding,
+  slice: UserWorkSliceInstall,
+  caller: CallerMemoryEnvelope,
+) -> UserWorkScopeStanding {
+  match slice {
+    UserWorkSliceNotInstalled => standing
+    UserWorkSliceUncappedInstall => standing
+    UserWorkSliceInstalled { memory_max: _, memory_high: _ } => match caller {
+      CallerEnvelopeReadFailed => standing
+      CallerEnvelopeObserved { memory_max: _, memory_high: _ } => standing
+    }
+  }
+}
+
+fn user_work_wrap_ready_properties(slice: UserWorkSliceInstall, caller: CallerMemoryEnvelope) -> List<SystemdRunProperty> {
+  match slice {
+    UserWorkSliceNotInstalled => []
+    UserWorkSliceUncappedInstall => []
+    UserWorkSliceInstalled { memory_max, memory_high } =>
+      match caller {
+        CallerEnvelopeReadFailed => []
+        CallerEnvelopeObserved { memory_max: cmax, memory_high: chigh } =>
+          match tighter_memory_bound(a: cmax, b: MemoryCapped { bytes: memory_max }) {
+            MemoryUnbounded => []
+            MemoryCapped { bytes: tmax } =>
+              if byte_size_count(b: tmax) == 0 {
+                []
+              } else {
+                user_work_wrap_envelope_properties(
+                  memory_max: tmax,
+                  memory_high: tighter_memory_bound(a: chigh, b: memory_high),
+                )
+              }
+          }
+      }
   }
 }
 
