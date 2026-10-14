@@ -8915,6 +8915,26 @@ fn rust_map_key_bound_traits() -> List<String> {
   ["std::cmp::Eq", "std::hash::Hash"]
 }
 
+// The signature's whole map-key requirement, ONE derivation for the seed table and the emit site:
+// the generics in a key position of a keyed map written in the signature, plus the generics at an
+// argument position a NAMED declared type bounds in its own header (`type_bounds`, the declaration's
+// bound -- never re-derived per call site).
+fn v1_fn_signature_map_key_bound_names(
+  value_params: List<Node>,
+  ret: Node,
+  generic_param_names: List<String>,
+  type_decl_items: TypeDeclIndex,
+  type_bounds: Map<String, Set<String>>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  let direct = v1_fn_signature_map_key_param_names(value_params: value_params, ret: ret, generic_param_names: generic_param_names, source_indices: source_indices)
+  let sig_type_exprs = list_push(value_params |> map(p => param_node_type_expr(n: p)), ret)
+  let via_type = generic_param_names |> filter(g => sig_type_exprs |> any(te =>
+    v1_type_expr_wf_needs_clone_param(param_name: g, type_expr: te, bounds: type_bounds, type_decl_items: type_decl_items, source_indices: source_indices)
+  ))
+  v1_union_bound_param_names(base: direct, extra: via_type)
+}
+
 fn v1_fn_signature_map_key_param_names(value_params: List<Node>, ret: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
   let from_params = value_params |> flat_map(p => v1_map_key_nested_names_in_type_expr(type_expr: param_node_type_expr(n: p), source_indices: source_indices))
   let from_ret = v1_map_key_nested_names_in_type_expr(type_expr: ret, source_indices: source_indices)
@@ -9670,20 +9690,14 @@ fn v1_fn_map_key_bound_table(fn_decl_items: Map<String, Node>, type_decl_items: 
     match map_get(fn_decl_items, n) {
       Present { value: item } =>
         let generics = function_type_params(params: item.params) |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
-        let direct = v1_fn_signature_map_key_param_names(
+        let bound = v1_fn_signature_map_key_bound_names(
           value_params: function_value_params(params: item.params),
           ret: resolved_type(n: item),
           generic_param_names: generics,
+          type_decl_items: type_decl_items,
+          type_bounds: type_bounds,
           source_indices: source_indices
         )
-        // A signature NAMING a declared type whose header owes the key bounds owes them at the
-        // same argument position (the declaration's own bound, read from the table -- never
-        // re-derived per call site).
-        let sig_type_exprs = concat(function_value_params(params: item.params) |> map(p => param_node_type_expr(n: p)), [resolved_type(n: item)])
-        let via_type = generics |> filter(g => sig_type_exprs |> any(te =>
-          v1_type_expr_wf_needs_clone_param(param_name: g, type_expr: te, bounds: type_bounds, type_decl_items: type_decl_items, source_indices: source_indices)
-        ))
-        let bound = v1_union_bound_param_names(base: direct, extra: via_type)
         if (bound |> count) > 0 { map_insert(acc, n, bound) } else { acc }
       Absent => acc
     }
@@ -9917,10 +9931,12 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     extra: call_forwarding_eq_param_names
   )
   let map_key_param_names = v1_union_bound_param_names(
-    base: v1_fn_signature_map_key_param_names(
+    base: v1_fn_signature_map_key_bound_names(
       value_params: value_params,
       ret: inferred,
       generic_param_names: generic_param_names,
+      type_decl_items: emit_info.type_decl_items,
+      type_bounds: emit_info.map_key_bounded_type_params,
       source_indices: si
     ),
     extra: v1_call_forwarding_bound_param_names(
