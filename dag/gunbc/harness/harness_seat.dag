@@ -4,8 +4,8 @@ import product.host_identity { HostIdentity }
 import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
 import gunbc.serving.session_store { ServingSessionEntry, serving_session_record_for_request }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
-import std.durable_compare_and_set { CasGeneration, cas_generation_count }
-import std.nat { Nat, nat_range_inclusive, nat_min }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_count }
+import std.nat { Nat, Zero, Succ, nat_range_inclusive, nat_min }
 import std.measure { Measure, Count, One, money_amount_micro, second, measure_count, TokenCount, Second, second_count, MoneyPerSecond, MoneyAmountMicro }
 import extdeps.accounting.encumbrance { Held, Expended, Released }
 import extdeps.api_rate_limit { upstream_rate_limit_key }
@@ -24,14 +24,14 @@ import gunbc.fabric.fabric_event_log_host {
 }
 import product.capacity.pool { Pool, NoReplenishment, pool_of, pool_release, pool_refusal_wire, PoolAdvanced, PoolRefused }
 import product.capacity.event_chain {
-  PartitionId, EventId, HeadAbsent, HeadAt, ChainEvent, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
+  PartitionId, EventId, HeadAbsent, HeadAt, ChainEvent, ChainEnvelope, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
 }
 import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved, SeatRequest, PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
 }
 import std.retry_law { RetryLaw }
 import std.resource_release_law { QuiescenceRequired }
-import product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity }
+import product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity, LeaseFence, lease_grant, lease_fence_of }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log {
   HeadExpectation, event_log_refusal_wire, SeatStoreRefused, SeatStandingStoreRefused, HeadObserved, HeadObservationRefused, event_log_observe_head, EventAppended,
@@ -73,6 +73,26 @@ import product.fabric.demand {
 import extdeps.currency.currency { CurrencyCode }
 import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding }
 import std.algebra { trim }
+import std.checked_arithmetic { checked_int_to_nat }
+import product.fabric.execution { ReservationRef }
+import gunbc.serving.caller_backlog {
+  DispatchTurnKey, DurableAttemptStanding, LogicalWorkId, WorkIdDerivation, WorkIdDerived, WorkIdKeyNotOctets, logical_work_id_of,
+  CallerWorkPhase, WorkWaiting, WorkCompleted, WorkCancelled, WorkRecoveryBoundExceeded, recovery_deficit_text,
+  CallerWorkRecord, CallerBacklogSnapshot, empty_caller_backlog, SeatRef,
+  RecoveryEvent, RecoveryProbe, RecoveryRequest,
+  DurableResumedWaiting, DurableResumedTerminal, DurableResumeUnknownWork, DurableResumeStoreUnreadable,
+  DurableResumePayloadUndecodable, DurableResumeWorkMismatch, resume_waiting_durable,
+  DurableWaitingPersisted, DurablePhasePersisted, DurablePersistIdempotent, DurablePersistRefusedTerminal,
+  DurablePersistStoreRefused, DurablePersistKeyNotSlotAddressable, DurablePersistPayloadUnencodable,
+  DurablePersistUnknownWork, DurablePersistDuplicate, persist_waiting_durable, note_recovery_durable,
+  DurableReservationRebound, DurableRebindRefusedTerminal, DurableRebindUnknownWork, DurableRebindStoreRefused,
+  DurableRebindKeyNotSlotAddressable, DurableRebindPredecessorMismatch, rebind_reservation_durable,
+  KeepWaitingAcrossZeroSupply, apply_ready_supply_law, resume_from_snapshot,
+  ResumedWaiting, ResumedTerminal, ResumeUnknownWork, ResumeDuplicateWork,
+  RetryComeBack, RetryTerminal, caller_retry_disposition,
+  AttemptFence, SeatLeaseFence, DurableAttemptCommitted, DurableAttemptFenceRefused, DurableAttemptNotWaiting,
+  DurableAttemptUnknownWork, DurableAttemptStoreRefused, DurableAttemptKeyNotSlotAddressable, commit_attempt_durable,
+}
 import gunbc.serving.turn_admission {
   serving_co_tenancy, serving_capacity_pressure,
   ServingSeatStanding, SeatStandingRead, SeatStandingUnread,
@@ -1088,11 +1108,24 @@ fn harness_acquire_on(candidate: HarnessCandidate, class: ServingCoTenancyClass,
 // -- asking the roster for a serving address again, say -- would be a placement decision taken after
 // the placement decision, and the two are free to disagree exactly when a group has just restarted.
 
+// ready IS THE SUPPLY THE LAST ROUND SAW (the candidates that survived the screen) and recovery IS WHAT
+// THE ROUND DID, as typed events: the two facts gunbc.serving.caller_backlog apply_ready_supply_law and
+// note_recovery_durable consume. They are surfaced here, once, rather than re-derived by the settle step.
 type PlacementRound {
   done: HarnessSeatBinding?
   excluded: List<String>
   notes: List<String>
   retryable: Bool
+  ready: Nat
+  recovery: List<RecoveryEvent>
+}
+
+fn harness_probe_event(ready: Nat) -> RecoveryEvent {
+  RecoveryEvent { kind: RecoveryProbe, succeeded: !(ready == 0) }
+}
+
+fn harness_request_event(succeeded: Bool) -> RecoveryEvent {
+  RecoveryEvent { kind: RecoveryRequest, succeeded: succeeded }
 }
 
 fn harness_nothing_placed(notes: List<String>, retryable: Bool) -> HarnessSeatBinding {
@@ -1120,6 +1153,8 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
       let collected = harness_collect_candidates(session: session, routes: routes, class: class, requirement: requirement, subject: subject, store: store, now: now, excluded: acc.excluded)
       let notes = concat(acc.notes, collected.notes)
       let retryable = acc.retryable || collected.retryable
+      let ready = fold(collected.candidates, init: Zero, f: (n, _) => Succ { prev: n })
+      let probed = concat(acc.recovery, [harness_probe_event(ready: ready)])
       match harness_select_supply(
         admission: subject.admission,
         requirements: subject.work.requirements,
@@ -1134,6 +1169,8 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
             excluded: acc.excluded,
             notes: notes,
             retryable: retryable,
+            ready: ready,
+            recovery: probed,
           }
         EqualCostTieUnresolved { digest: d, cause: c, considered: _ } =>
           PlacementRound {
@@ -1141,6 +1178,8 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
             excluded: acc.excluded,
             notes: notes,
             retryable: retryable,
+            ready: ready,
+            recovery: probed,
           }
         OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
           match harness_candidate_for_key(candidates: collected.candidates, key: sel.candidate.offer.id.key) {
@@ -1150,15 +1189,17 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
                 excluded: acc.excluded,
                 notes: notes,
                 retryable: retryable,
+                ready: ready,
+                recovery: probed,
               }
             Present { value: c } =>
               match harness_acquire_on(candidate: c, class: class, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round) {
                 AcquisitionGranted { binding: b } =>
-                  PlacementRound { done: Present { value: b }, excluded: acc.excluded, notes: notes, retryable: retryable }
+                  PlacementRound { done: Present { value: b }, excluded: acc.excluded, notes: notes, retryable: retryable, ready: ready, recovery: concat(probed, [harness_request_event(succeeded: true)]) }
                 AcquisitionRefused { detail: d } =>
-                  PlacementRound { done: Present { value: HarnessSeatRefused { detail: d } }, excluded: acc.excluded, notes: notes, retryable: retryable }
+                  PlacementRound { done: Present { value: HarnessSeatRefused { detail: d } }, excluded: acc.excluded, notes: notes, retryable: retryable, ready: ready, recovery: concat(probed, [harness_request_event(succeeded: false)]) }
                 AcquisitionLost { key: k, detail: d } =>
-                  PlacementRound { done: none, excluded: concat(acc.excluded, [k as String]), notes: concat(notes, [d]), retryable: true }
+                  PlacementRound { done: none, excluded: concat(acc.excluded, [k as String]), notes: concat(notes, [d]), retryable: true, ready: ready, recovery: probed }
               }
           }
       }
@@ -1174,6 +1215,376 @@ data harness_seat_retry_law: RetryLaw = RetryLaw {
 
 data harness_placement_rounds: Nat = harness_seat_retry_law.real_work_failure_bound
 
+// ── THE HARNESS CONSUMES THE CALLER'S DURABLE BACKLOG (gunbc.serving.caller_backlog) ──────────────────
+//
+// THE WORK KEY IS THE BELT DISPATCH'S, NEVER harness_turn_subject'S. A turn is named by the dispatch node
+// that owns it and its ordinal within that dispatch (DispatchTurnKey); the belt passes both, and the
+// instance's host_layout root as the state root, because this module has no executor root of its own
+// (event_log_store_for_host answers for the fabric DB, not for caller state). harness_turn_subject mints a
+// per-process attempt, so a restarted process would be a new turn; the key below is what survives it.
+type HarnessCallerTurn {
+  dispatch_node: NonEmptyStr
+  ordinal: Nat
+  state_root: NonEmptyStr
+}
+
+// The belt passes strings and an Int; the crossing to the typed key is here once. An empty node or root,
+// or a negative ordinal, is absent: the caller refuses it rather than inventing a key.
+fn harness_caller_turn(dispatch_node: String, turn_ordinal: Int, state_root: String) -> HarnessCallerTurn? {
+  if trim(dispatch_node) == "" || trim(state_root) == "" {
+    none
+  } else {
+    match checked_int_to_nat(n: turn_ordinal) {
+      Absent => none
+      Present { value: o } => Present { value: HarnessCallerTurn { dispatch_node: dispatch_node as NonEmptyStr, ordinal: o, state_root: state_root as NonEmptyStr } }
+    }
+  }
+}
+
+// A HOLD IS THE DURABLE RECORD A PLACEMENT IS RUNNING UNDER: the work and the root its slot lives in.
+type HarnessCallerHold {
+  work: LogicalWorkId
+  root: NonEmptyStr
+}
+
+type HarnessCallerAdmission
+  = HarnessCallerHeld { hold: HarnessCallerHold }
+  | HarnessCallerRefused { detail: String }
+
+fn harness_caller_terminal_wire(phase: CallerWorkPhase) -> String {
+  match phase {
+    WorkWaiting => "the logical work is waiting"
+    WorkCompleted => "logical work already completed"
+    WorkCancelled => "cancellation is terminal"
+    WorkRecoveryBoundExceeded { deficit: d } => recovery_deficit_text(deficit: d) as String
+  }
+}
+
+// A reservation is per attempt and the work is not (caller_backlog rebind_reservation). Before any seat
+// is granted the record holds NO seat (its `seat` is absent), so a commit against an unplaced record
+// refuses at the fence and no placeholder string stands where a reservation belongs.
+fn harness_seat_ref_wire(seat: SeatRef?) -> String {
+  match seat {
+    Absent => "no seat"
+    Present { value: held } => join(["reservation ", held.reservation as String, " in partition ", held.partition as String], "")
+  }
+}
+
+// PERSIST BEFORE OFFER, RESUME BEFORE PERSIST. A waiting record is reloaded, never re-persisted (the
+// retry of the same turn is the same work); an unknown one is persisted before any offer is made; a
+// terminal one refuses with the typed cause and the turn never reaches placement.
+fn harness_caller_admit(turn: HarnessCallerTurn) -> HarnessCallerAdmission {
+  match logical_work_id_of(key: DispatchTurnKey { dispatch_node: turn.dispatch_node, ordinal: turn.ordinal }) {
+    WorkIdKeyNotOctets { observed: o } => HarnessCallerRefused { detail: join(["the dispatch turn key is not octets (observed ", to_string(o), ")"], "") }
+    WorkIdDerived { work: w } => {
+      let hold = HarnessCallerHold { work: w, root: turn.state_root }
+      match resume_waiting_durable(root: turn.state_root, work: w) {
+        DurableResumedWaiting { record: _ } => HarnessCallerHeld { hold: hold }
+        DurableResumedTerminal { phase: p } => HarnessCallerRefused { detail: harness_caller_terminal_wire(phase: p) }
+        DurableResumeStoreUnreadable { detail: d } => HarnessCallerRefused { detail: join(["the caller backlog slot is unreadable: ", d as String], "") }
+        DurableResumePayloadUndecodable => HarnessCallerRefused { detail: "the caller backlog slot does not decode" }
+        DurableResumeWorkMismatch => HarnessCallerRefused { detail: "the caller backlog slot names different work" }
+        DurableResumeUnknownWork =>
+          match persist_waiting_durable(root: turn.state_root, snapshot: empty_caller_backlog, work: w, seat: none, generation: 0) {
+            DurableWaitingPersisted { record: _ } => HarnessCallerHeld { hold: hold }
+            DurablePersistIdempotent { record: _ } => HarnessCallerHeld { hold: hold }
+            DurablePhasePersisted { record: _ } => HarnessCallerRefused { detail: "persisting a waiting record answered a phase transition" }
+            DurablePersistRefusedTerminal { phase: p } => HarnessCallerRefused { detail: harness_caller_terminal_wire(phase: p) }
+            DurablePersistStoreRefused { detail: d } => HarnessCallerRefused { detail: join(["the caller backlog could not be written: ", d as String], "") }
+            DurablePersistKeyNotSlotAddressable { work: _ } => HarnessCallerRefused { detail: "the work id is not a slot-addressable key" }
+            DurablePersistPayloadUnencodable { reason: r } => HarnessCallerRefused { detail: r as String }
+            DurablePersistUnknownWork => HarnessCallerRefused { detail: "the work vanished while it was persisted" }
+            DurablePersistDuplicate => HarnessCallerRefused { detail: "the caller backlog holds duplicate records for this work" }
+          }
+      }
+    }
+  }
+}
+
+// The bound on failed requests over the work's whole history (caller_backlog note_recovery): a long wait
+// emits probes and contention, neither of which is a failed request, so waiting never trips it.
+data harness_recovery_bound: Nat = 8
+
+fn harness_note_round_recovery(hold: HarnessCallerHold, events: List<RecoveryEvent>) -> String? {
+  fold(events, init: none, f: (acc, e) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match note_recovery_durable(root: hold.root, snapshot: empty_caller_backlog, work: hold.work, event: e, bound: harness_recovery_bound) {
+          DurableWaitingPersisted { record: _ } => none
+          DurablePhasePersisted { record: _ } => none
+          DurablePersistIdempotent { record: _ } => none
+          DurablePersistRefusedTerminal { phase: p } => Present { value: harness_caller_terminal_wire(phase: p) }
+          DurablePersistStoreRefused { detail: d } => Present { value: d as String }
+          DurablePersistKeyNotSlotAddressable { work: _ } => Present { value: "the work id is not a slot-addressable key" }
+          DurablePersistPayloadUnencodable { reason: r } => Present { value: r as String }
+          DurablePersistUnknownWork => Present { value: "the work vanished while recovery was noted" }
+          DurablePersistDuplicate => Present { value: "the caller backlog holds duplicate records for this work" }
+        }
+    })
+}
+
+// A SEAT THE DURABLE RECORD REFUSES IS GIVEN BACK, not kept: the placement acquired it before the record
+// could be rebound, and leaving it held would be the leak the ceiling of one exists to prevent.
+fn harness_refuse_after_release(outcome: HarnessSeatBinding, detail: String) -> HarnessSeatBinding {
+  match outcome {
+    HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => {
+      let released = harness_release_seat(binding: outcome, reason: "the caller's durable record refused this placement" as NonEmptyStr)
+      HarnessSeatRefused { detail: join([detail, " (seat ", harness_seat_release_wire(r: released), ")"], "") }
+    }
+    HarnessSeatRefused { detail: _ } => HarnessSeatRefused { detail: detail }
+    HarnessSeatPending { detail: _ } => HarnessSeatRefused { detail: detail }
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => HarnessSeatRefused { detail: detail }
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => HarnessSeatRefused { detail: detail }
+  }
+}
+
+// NO EXPIRY ON A LONG WAIT. A pending placement leaves the record waiting: the keep-waiting law is applied
+// to the supply this round saw (zero included) and the record is read back through the retry disposition,
+// so a record that is no longer waiting turns the pending answer into the terminal one it earned.
+fn harness_pending_keeps_waiting(hold: HarnessCallerHold, ready: Nat, detail: String) -> HarnessSeatBinding {
+  match resume_waiting_durable(root: hold.root, work: hold.work) {
+    DurableResumedWaiting { record: r } =>
+      match resume_from_snapshot(snapshot: apply_ready_supply_law(law: KeepWaitingAcrossZeroSupply, snapshot: CallerBacklogSnapshot { records: [r] }, work: hold.work, ready: ready), work: hold.work) {
+        ResumedWaiting { record: kept } =>
+          match caller_retry_disposition(record: kept) {
+            RetryComeBack { work: _ } => HarnessSeatPending { detail: detail }
+            RetryTerminal { work: _, cause: c } => HarnessSeatRefused { detail: c as String }
+          }
+        ResumedTerminal { phase: p } => HarnessSeatRefused { detail: harness_caller_terminal_wire(phase: p) }
+        ResumeUnknownWork => HarnessSeatRefused { detail: "the waiting record was dropped" }
+        ResumeDuplicateWork => HarnessSeatRefused { detail: "the caller backlog holds duplicate records for this work" }
+      }
+    DurableResumedTerminal { phase: p } => HarnessSeatRefused { detail: harness_caller_terminal_wire(phase: p) }
+    DurableResumeUnknownWork => HarnessSeatRefused { detail: "the waiting record is absent" }
+    DurableResumeStoreUnreadable { detail: d } => HarnessSeatRefused { detail: d as String }
+    DurableResumePayloadUndecodable => HarnessSeatRefused { detail: "the caller backlog slot does not decode" }
+    DurableResumeWorkMismatch => HarnessSeatRefused { detail: "the caller backlog slot names different work" }
+  }
+}
+
+// ONE WORK, ONE LIVE GRANT. The rebind names the reservation it replaces (caller_backlog
+// rebind_reservation), and the record admits it once per predecessor. A record still on its placeholder is
+// claimable. A record already rebound to a seat is claimable only when the seat authority shows that
+// seat's acquisition was later retired (released, settled or lapsed); a grant the partition still holds as
+// current, or one it does not show at all, is a turn that may be running, and a second retry refuses
+// rather than executing it again.
+type HarnessPredecessor
+  = HarnessPredecessorClaimable { expected: SeatRef? }
+  | HarnessPredecessorLive { detail: String }
+
+fn harness_grant_retired_in(oldest_first: List<ChainEnvelope<PoolEvent>>, reference: NonEmptyStr) -> Bool {
+  any(oldest_first, env => match env.event.payload {
+    PoolAcquired { reference: r, amount: _, term_seconds: _ } => (r as String) == (reference as String)
+    PoolSettled { reference: _, actual: _ } => false
+    PoolReleased { reference: _, reason: _ } => false
+    PoolLapsed => false
+    PoolUpstreamObserved { remaining: _, term_seconds: _ } => false
+    PoolResetObserved { reset_at: _ } => false
+  }) && match harness_current_grant_in(oldest_first: oldest_first, reference: reference) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn harness_predecessor_of(hold: HarnessCallerHold, store: FabricStorageBinding) -> HarnessPredecessor {
+  match resume_waiting_durable(root: hold.root, work: hold.work) {
+    DurableResumedWaiting { record: r } =>
+      match r.seat {
+        Absent => HarnessPredecessorClaimable { expected: none }
+        Present { value: held } =>
+          match event_log_read_partition(store: store, partition: held.partition, budget: 4096) {
+            PartitionReadRefused { cause: c } => HarnessPredecessorLive { detail: join(["the prior seat could not be read, so it is not retired: ", event_log_refusal_wire(cause: c)], "") }
+            PartitionReadOk { head: _, walk: walk } =>
+              match walk {
+                ChainIncomplete { missing: m, newest_first_so_far: _ } => HarnessPredecessorLive { detail: join(["the partition chain is missing event ", m as String], "") }
+                ChainBudgetExhausted { at: a } => HarnessPredecessorLive { detail: join(["the partition chain exceeded the read budget at ", a as String], "") }
+                ChainWalked { oldest_first: xs } =>
+                  if harness_grant_retired_in(oldest_first: xs, reference: held.reservation as NonEmptyStr) {
+                    HarnessPredecessorClaimable { expected: Present { value: held } }
+                  } else {
+                    HarnessPredecessorLive { detail: join(["the work is already running under seat ", held.reservation as String, ", which partition ", held.partition as String, " of the seat authority has not retired"], "") }
+                  }
+              }
+          }
+      }
+    DurableResumedTerminal { phase: p } => HarnessPredecessorLive { detail: harness_caller_terminal_wire(phase: p) }
+    DurableResumeUnknownWork => HarnessPredecessorLive { detail: "the waiting record is absent" }
+    DurableResumeStoreUnreadable { detail: d } => HarnessPredecessorLive { detail: d as String }
+    DurableResumePayloadUndecodable => HarnessPredecessorLive { detail: "the caller backlog slot does not decode" }
+    DurableResumeWorkMismatch => HarnessPredecessorLive { detail: "the caller backlog slot names different work" }
+  }
+}
+
+// A SEAT IS CLAIMED OR GIVEN BACK, and only a claimed seat reaches the execution side of HarnessSeatBound.
+// The claim names the predecessor the record is replacing (harness_predecessor_of) and takes it through the
+// store-owned rebind, so a second retry of the same work finds the first one's reservation and refuses.
+type HarnessSeatClaim
+  = HarnessSeatClaimed
+  | HarnessSeatClaimRefused { detail: String }
+
+fn harness_claim_seat(hold: HarnessCallerHold, grant: LeaseGrant, store: FabricStorageBinding, partition: PartitionId) -> HarnessSeatClaim {
+  match harness_predecessor_of(hold: hold, store: store) {
+    HarnessPredecessorLive { detail: d } => HarnessSeatClaimRefused { detail: d }
+    HarnessPredecessorClaimable { expected: e } =>
+      match rebind_reservation_durable(root: hold.root, work: hold.work, expected: e, next: SeatRef { partition: partition, reservation: grant.reference as ReservationRef }) {
+        DurableReservationRebound { record: _ } => HarnessSeatClaimed
+        DurableRebindPredecessorMismatch { held: h } => HarnessSeatClaimRefused { detail: join(["another attempt already claimed this work: the record holds ", harness_seat_ref_wire(seat: h)], "") }
+        DurableRebindRefusedTerminal { phase: p } => HarnessSeatClaimRefused { detail: harness_caller_terminal_wire(phase: p) }
+        DurableRebindUnknownWork => HarnessSeatClaimRefused { detail: "the waiting record is absent" }
+        DurableRebindStoreRefused { detail: d } => HarnessSeatClaimRefused { detail: d as String }
+        DurableRebindKeyNotSlotAddressable { work: _ } => HarnessSeatClaimRefused { detail: "the work id is not a slot-addressable key" }
+      }
+  }
+}
+
+// THE ROUND'S EVENTS ARE NOTED, THEN THE OUTCOME IS SETTLED AGAINST THE RECORD. A granted seat rebinds the
+// record's reservation to the grant's reference (the work-to-grant relation lives in the record once, never
+// in the reference string); a refused rebind (cancelled or terminal work) releases the seat. A pending
+// outcome keeps the work waiting. Every other outcome is the placement's own.
+fn harness_settle_caller_turn(hold: HarnessCallerHold, placed: PlacementRound, outcome: HarnessSeatBinding) -> HarnessSeatBinding {
+  match harness_note_round_recovery(hold: hold, events: placed.recovery) {
+    Present { value: why } => harness_refuse_after_release(outcome: outcome, detail: why)
+    Absent =>
+      match outcome {
+        HarnessSeatBound { url: _, grant: g, partition: p, ceiling: _, replica_wire: _, launch: _, store: st, model: _, unit: _, class: _, seat: _ } =>
+          match harness_claim_seat(hold: hold, grant: g, store: st, partition: p) {
+            HarnessSeatClaimed => outcome
+            HarnessSeatClaimRefused { detail: d } => harness_refuse_after_release(outcome: outcome, detail: d)
+          }
+        HarnessSeatPending { detail: d } => harness_pending_keeps_waiting(hold: hold, ready: placed.ready, detail: d)
+        HarnessSeatRefused { detail: _ } => outcome
+        HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => outcome
+        HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => outcome
+      }
+  }
+}
+
+// ── COMPLETION IS FENCED AGAINST THE AUTHORITY'S CURRENT GRANT, READ AT COMPLETION ─────────────────────
+//
+// THE GRANT THE FENCE COMPARES AGAINST IS READ FROM THE SEAT AUTHORITY, never from the binding that is
+// presenting itself: the partition chain is walked for the acquisition of the record's CURRENT
+// reservation (the reference the last rebind installed), and the grant is rebuilt from that event --
+// admitting event id, position in the chain as the generation, recorded_at as granted_at, the event's own
+// term as the duration. A later settle or release of that reference, or a lapse, retires the grant, so
+// a seat the authority has already taken back is unread, never current. The binding supplies only the HOLDER fence it presents. An old holder therefore
+// meets a newer grant and is refused: its fence names an earlier admission.
+fn harness_current_grant_in(oldest_first: List<ChainEnvelope<PoolEvent>>, reference: NonEmptyStr) -> LeaseGrant? {
+  fold(oldest_first, init: HarnessGrantScan { seen: Zero, found: none }, f: (acc, env) => {
+    let position = Succ { prev: acc.seen }
+    HarnessGrantScan {
+      seen: position,
+      found: match env.event.payload {
+        PoolAcquired { reference: r, amount: _, term_seconds: term } =>
+          if (r as String) == (reference as String) {
+            match cas_generation(n: position as Int) {
+              Absent => none
+              Present { value: cg } => Present { value: lease_grant(reference: r, fence: lease_fence_of(admitting_event: env.id, generation: cg), granted_at: env.event.recorded_at, policy: LeasePolicy { maximum_duration_seconds: term, release_law: QuiescenceRequired }) }
+            }
+          } else {
+            acc.found
+          }
+        PoolSettled { reference: r, actual: _ } => if (r as String) == (reference as String) { none } else { acc.found }
+        PoolReleased { reference: r, reason: _ } => if (r as String) == (reference as String) { none } else { acc.found }
+        PoolLapsed => none
+        PoolUpstreamObserved { remaining: _, term_seconds: _ } => acc.found
+        PoolResetObserved { reset_at: _ } => acc.found
+      },
+    }
+  }).found
+}
+
+type HarnessGrantScan {
+  seen: Nat
+  found: LeaseGrant?
+}
+
+type HarnessCommitFence
+  = HarnessCommitFenceReady { fence: AttemptFence }
+  | HarnessCommitGrantUnread
+  | HarnessCommitClockUnread
+
+// AN UNREAD GRANT OR AN UNREAD CLOCK CANNOT AUTHORIZE COMPLETION: no fence is built, so there is nothing
+// for commit_attempt_durable to admit. The time in the fence is the one observed at completion, passed in
+// by the caller that just read it; nothing here copies granted_at forward as "now".
+fn harness_commit_fence(current: LeaseGrant?, presented: LeaseFence, at: EpochSecs?) -> HarnessCommitFence {
+  match current {
+    Absent => HarnessCommitGrantUnread
+    Present { value: g } =>
+      match at {
+        Absent => HarnessCommitClockUnread
+        Present { value: t } => HarnessCommitFenceReady { fence: SeatLeaseFence { grant: g, holder: presented, at: t } }
+      }
+  }
+}
+
+type HarnessCallerCompletion
+  = HarnessCallerTurnCompleted { record: CallerWorkRecord }
+  | HarnessCallerCompletionRefused { detail: String }
+
+fn harness_commit_standing_wire(standing: DurableAttemptStanding) -> HarnessCallerCompletion {
+  match standing {
+    DurableAttemptCommitted { record: r } => HarnessCallerTurnCompleted { record: r }
+    DurableAttemptFenceRefused => HarnessCallerCompletionRefused { detail: "the presented seat grant is not the authority's current grant for this work, or it expired" }
+    DurableAttemptNotWaiting { phase: p } => HarnessCallerCompletionRefused { detail: harness_caller_terminal_wire(phase: p) }
+    DurableAttemptUnknownWork => HarnessCallerCompletionRefused { detail: "the waiting record is absent" }
+    DurableAttemptStoreRefused { detail: d } => HarnessCallerCompletionRefused { detail: d as String }
+    DurableAttemptKeyNotSlotAddressable { work: _ } => HarnessCallerCompletionRefused { detail: "the work id is not a slot-addressable key" }
+  }
+}
+
+fn harness_commit_on_walk(hold: HarnessCallerHold, record: CallerWorkRecord, held: SeatRef, presented: LeaseGrant, walk: ChainWalk<PoolEvent>) -> HarnessCallerCompletion {
+  match walk {
+    ChainIncomplete { missing: m, newest_first_so_far: _ } => HarnessCallerCompletionRefused { detail: join(["the partition chain is missing event ", m as String], "") }
+    ChainBudgetExhausted { at: a } => HarnessCallerCompletionRefused { detail: join(["the partition chain exceeded the read budget at ", a as String], "") }
+    ChainWalked { oldest_first: xs } =>
+      match harness_commit_fence(current: harness_current_grant_in(oldest_first: xs, reference: held.reservation as NonEmptyStr), presented: presented.fence, at: now_epoch_seconds()) {
+        HarnessCommitGrantUnread => HarnessCallerCompletionRefused { detail: join(["no acquisition of the record's reservation ", held.reservation as String, " appears in the seat partition"], "") }
+        HarnessCommitClockUnread => HarnessCallerCompletionRefused { detail: "the clock could not be read as epoch seconds, so completion is not authorized" }
+        HarnessCommitFenceReady { fence: f } =>
+          harness_commit_standing_wire(standing: commit_attempt_durable(root: hold.root, snapshot: CallerBacklogSnapshot { records: [record] }, fence: f, work: hold.work))
+      }
+  }
+}
+
+// THE COMPLETION THE WORKER RUNS AFTER ITS TURN: the work is the belt's, the grant to compare is read from
+// the seat partition now, the clock is read now.
+fn harness_complete_caller_turn(turn: HarnessCallerTurn, binding: HarnessSeatBinding) -> HarnessCallerCompletion {
+  match binding {
+    HarnessSeatBound { url: _, grant: presented, partition: _, ceiling: _, replica_wire: _, launch: _, store: store, model: _, unit: _, class: _, seat: _ } =>
+      harness_complete_with_grant(turn: turn, presented: presented, store: store)
+    HarnessSeatRefused { detail: _ } => HarnessCallerCompletionRefused { detail: "the binding holds no fleet seat" }
+    HarnessSeatPending { detail: _ } => HarnessCallerCompletionRefused { detail: "the binding holds no fleet seat" }
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => HarnessCallerCompletionRefused { detail: "the binding holds no fleet seat" }
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => HarnessCallerCompletionRefused { detail: "the binding holds no fleet seat" }
+  }
+}
+
+// THE GRANT-TAKING BODY OF THE COMPLETION, so an executing consumer can cross the production route (partition
+// read, current grant, observed clock) without constructing a whole HarnessSeatBound.
+fn harness_complete_with_grant(turn: HarnessCallerTurn, presented: LeaseGrant, store: FabricStorageBinding) -> HarnessCallerCompletion {
+  match logical_work_id_of(key: DispatchTurnKey { dispatch_node: turn.dispatch_node, ordinal: turn.ordinal }) {
+    WorkIdKeyNotOctets { observed: o } => HarnessCallerCompletionRefused { detail: join(["the dispatch turn key is not octets (observed ", to_string(o), ")"], "") }
+    WorkIdDerived { work: w } =>
+      match resume_waiting_durable(root: turn.state_root, work: w) {
+        DurableResumedWaiting { record: r } =>
+          match r.seat {
+            Absent => HarnessCallerCompletionRefused { detail: "the record holds no seat, so there is no grant a completion could be fenced against" }
+            Present { value: held } =>
+              match event_log_read_partition(store: store, partition: held.partition, budget: 4096) {
+                PartitionReadRefused { cause: c } => HarnessCallerCompletionRefused { detail: event_log_refusal_wire(cause: c) }
+                PartitionReadOk { head: _, walk: walk } => harness_commit_on_walk(hold: HarnessCallerHold { work: w, root: turn.state_root }, record: r, held: held, presented: presented, walk: walk)
+              }
+          }
+        DurableResumedTerminal { phase: ph } => HarnessCallerCompletionRefused { detail: harness_caller_terminal_wire(phase: ph) }
+        DurableResumeUnknownWork => HarnessCallerCompletionRefused { detail: "the waiting record is absent" }
+        DurableResumeStoreUnreadable { detail: d } => HarnessCallerCompletionRefused { detail: d as String }
+        DurableResumePayloadUndecodable => HarnessCallerCompletionRefused { detail: "the caller backlog slot does not decode" }
+        DurableResumeWorkMismatch => HarnessCallerCompletionRefused { detail: "the caller backlog slot names different work" }
+      }
+  }
+}
+
 // NO ADMISSIBLE OFFER IS A REFUSAL OR A PENDING, NEVER A DEGRADED PATH. The arm this replaces walked
 // the roster and took whatever granted a seat, which is the same shape as the router's "the request
 // has to go somewhere".
@@ -1181,11 +1592,15 @@ data harness_placement_rounds: Nat = harness_seat_retry_law.real_work_failure_bo
 // the Work carries and the one the candidate screen applies are one value with one source. A caller
 // that constructed the request itself could hand in a request naming one requirement beside a
 // screen argument naming another.
-fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms) -> HarnessSeatBinding {
+fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms, turn: HarnessCallerTurn?) -> HarnessSeatBinding {
   match harness_requirement_placement(requirement: requirement, class: class) {
     LeasedFromHostedQuota => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }
-    PlacedOnFleetSeat => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session, admission: admission)
-    RunOnOperatorEndpoint => harness_bind_operator(class: class, shape: shape)
+    PlacedOnFleetSeat => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session, admission: admission, turn: turn)
+    RunOnOperatorEndpoint =>
+      match turn {
+        Present { value: _ } => HarnessSeatRefused { detail: "the turn is durable but its placement is the operator endpoint, which takes no seat, so there is no grant a completion could be fenced against; no work was offered" }
+        none => harness_bind_operator(class: class, shape: shape)
+      }
   }
 }
 
@@ -1248,7 +1663,18 @@ fn harness_bind_hosted(short_hostname: String, unit: HarnessServingUnit, actor: 
   }
 }
 
-fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms) -> HarnessSeatBinding {
+fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms, turn: HarnessCallerTurn?) -> HarnessSeatBinding {
+  match turn {
+    Absent => harness_place_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session, admission: admission, hold: none)
+    Present { value: t } =>
+      match harness_caller_admit(turn: t) {
+        HarnessCallerRefused { detail: d } => HarnessSeatRefused { detail: d }
+        HarnessCallerHeld { hold: h } => harness_place_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session, admission: admission, hold: Present { value: h })
+      }
+  }
+}
+
+fn harness_place_fleet_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms, hold: HarnessCallerHold?) -> HarnessSeatBinding {
   let subject = harness_turn_subject(request: harness_turn_request(shape: shape, requirement: requirement, inputs: inputs), attempt: attempt, admission: admission)
   match event_log_store_for_host(short_hostname: short_hostname) {
     HostStoreRefused { detail: d } => HarnessSeatRefused { detail: d }
@@ -1257,12 +1683,16 @@ fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass,
         Absent => HarnessSeatRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } => {
           let routes = rented_enrolled_routes(index: rented_cohort_index)
-          let placed = fold(nat_range_inclusive(lo: 1, hi: harness_placement_rounds), init: PlacementRound { done: none, excluded: [], notes: [], retryable: false }, f: (acc, round) =>
+          let placed = fold(nat_range_inclusive(lo: 1, hi: harness_placement_rounds), init: PlacementRound { done: none, excluded: [], notes: [], retryable: false, ready: Zero, recovery: [] }, f: (acc, round) =>
             harness_placement_round(acc: acc, session: serving_session_record_for_request(entry: session, next_inputs: inputs), class: class, requirement: requirement, subject: subject, store: store, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, routes: routes))
-          match placed.done {
+          let outcome = match placed.done {
             Present { value: b } => b
             Absent =>
               HarnessSeatPending { detail: join(["every selected seat was taken by another request within ", to_string(harness_placement_rounds), " rounds: ", join(placed.notes, "; ")], "") }
+          }
+          match hold {
+            Absent => outcome
+            Present { value: h } => harness_settle_caller_turn(hold: h, placed: placed, outcome: outcome)
           }
         }
       }

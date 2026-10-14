@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_workflow_progress
 
 import std.types { String, Int, Bool, List, NonEmptyStr }
+import extdeps.posix.signal { linux_standard_signal_render }
 import extdeps.filesystem.filesystem_io {
   FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
 }
@@ -141,6 +142,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessAbsent,
   WorkerProcessRunning,
   WorkerProcessExited,
+  WorkerProcessSignaled,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCaptureObservation,
@@ -354,6 +356,17 @@ fn provider_execution_process_forced_outcome(process: WorkerProcessEvidence) -> 
           detail: reason as String,
         },
       }
+    WorkerProcessSignaled { signal, last_command: _ } =>
+      Present {
+        value: ProviderFailed {
+          activity: "provider process signaled",
+          detail: join([
+            "provider process was killed by ",
+            linux_standard_signal_render(n: signal),
+            " before a terminal provider event",
+          ], ""),
+        },
+      }
   }
 }
 
@@ -396,6 +409,15 @@ fn provider_execution_reconcile_process(
               "Codex emitted turn.completed but process evidence is unobserved (",
               reason,
               "); the compatible exit the Agent obligation requires cannot be established",
+            ], ""),
+          }
+        WorkerProcessSignaled { signal, last_command: _ } =>
+          ProviderEventsRefused {
+            activity: activity,
+            detail: join([
+              "Codex emitted turn.completed but the retained pane was killed by ",
+              linux_standard_signal_render(n: signal),
+              "; terminal evidence conflicts",
             ], ""),
           }
       }
