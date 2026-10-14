@@ -214,13 +214,6 @@ fn keyed_roster_duplicated<K, V>(index: KeyedRosterIndex<K, V>) -> List<SubjectK
   index.duplicated
 }
 
-fn keyed_roster_index_count<K, V>(index: KeyedRosterIndex<K, V>, key: SubjectKey<K>) -> Int {
-  match map_get(index.slots, key) {
-    Present { value: slot } => slot.count
-    Absent => 0
-  }
-}
-
 // Every row carrying the key, in authored order (one linear reverse of that key's own occurrences).
 fn keyed_roster_index_occurrences<K, V>(
   index: KeyedRosterIndex<K, V>,
