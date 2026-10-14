@@ -1280,7 +1280,7 @@ pub fn type_reference_realization_in_env(
 pub fn rust_render_checkpoint_scalar_bare(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    _shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> Option<String> {
     if ((n.children.clone().len() as i64) == 0) {
@@ -1306,18 +1306,7 @@ pub fn rust_render_checkpoint_scalar_bare(
                         Some(numeric) => Some(numeric.clone()),
                         std::option::Option::None => {
                             match rust_scalar_checkpoint_reference_base(decision.clone()) {
-                                Some(scalar) => {
-                                    if (v1_rt::set_contains(&shared_types, leaf.clone())
-                                        && !rust_type_is_rc_wrapped(scalar.clone()))
-                                    {
-                                        Some(crate::v1_compiler_languages::wrap_shared_type(
-                                            RenderTarget::Rust,
-                                            scalar.clone(),
-                                        ))
-                                    } else {
-                                        Some(scalar.clone())
-                                    }
-                                }
+                                Some(scalar) => Some(scalar.clone()),
                                 std::option::Option::None => std::option::Option::None,
                             }
                         }

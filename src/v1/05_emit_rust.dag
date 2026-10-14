@@ -990,12 +990,7 @@ fn rust_render_checkpoint_scalar_bare(n: Node, source_indices: Map<String, Newli
       Present { value: numeric } => Present { value: numeric }
       Absent =>
         match rust_scalar_checkpoint_reference_base(decision: decision) {
-          Present { value: scalar } =>
-            if is_container_type(name: leaf) && set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: scalar) {
-              Present { value: wrap_shared_type(target: Rust, inner: scalar) }
-            } else {
-              Present { value: scalar }
-            }
+          Present { value: scalar } => Present { value: scalar }
           Absent => none
         }
     }
