@@ -30281,6 +30281,24 @@ mod nfr_tests {
     }
 
     #[test]
+    fn nfr_frontier_reader_refuses_empty_list() {
+        let synthetic = "module a\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = []\n";
+        let message = super::non_fold_residue_units_from_module_source_with(
+            "a.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        )
+        .expect_err("an empty frontier list must refuse, not panic or contribute zero rows");
+        assert_eq!(
+            message,
+            "nfr frontier reader: `data non_fold_residue_frontier` in a.dag is empty; delete the decl \
+             (a module with no decl already contributes zero rows)",
+            "the refusal must name the file and say to delete the decl"
+        );
+    }
+
+    #[test]
     fn nfr_frontier_reader_follows_synthetic_authority() {
         let synthetic = "module a\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
@@ -30299,7 +30317,8 @@ mod nfr_tests {
             "a.dag",
             synthetic,
             super::NfrHomeCheck::Require,
-        );
+        )
+        .expect("synthetic authority must parse");
         assert_eq!(
             triples.iter().map(|t| t.path.as_str()).collect::<Vec<_>>(),
             vec!["a.dag::f", "a.dag::g"],
@@ -30325,17 +30344,14 @@ mod nfr_tests {
                FrontierRow { subject: PathSubject { path: \"f\" }, reason: r, dissolution: d },\n\
                FrontierRow { subject: PathSubject { path: \"f\" }, reason: r2, dissolution: d2 }\n\
              ]\n";
-        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source_with(
-                "a.dag",
-                synthetic,
-                super::NfrHomeCheck::Require,
-            )
-        }))
-        .is_err();
+        let refused = super::non_fold_residue_units_from_module_source_with(
+            "a.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        );
         assert!(
-            refused,
-            "a duplicate path key must refuse loudly (fail-closed)"
+            refused.is_err(),
+            "a duplicate path key must refuse loudly (fail-closed); got {refused:?}"
         );
     }
 
@@ -30345,17 +30361,14 @@ mod nfr_tests {
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow { reason: r, dissolution: d }\n\
              ]\n";
-        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source_with(
-                "a.dag",
-                synthetic,
-                super::NfrHomeCheck::Require,
-            )
-        }))
-        .is_err();
+        let refused = super::non_fold_residue_units_from_module_source_with(
+            "a.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        );
         assert!(
-            refused,
-            "a row without a `subject` field must refuse loudly (fail-closed)"
+            refused.is_err(),
+            "a row without a `subject` field must refuse loudly (fail-closed); got {refused:?}"
         );
     }
 
@@ -30365,19 +30378,12 @@ mod nfr_tests {
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow { subject: PathSubject { }, reason: r, dissolution: d }\n\
              ]\n";
-        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source_with(
-                "a.dag",
-                synthetic,
-                super::NfrHomeCheck::Require,
-            )
-        }))
+        let message = super::non_fold_residue_units_from_module_source_with(
+            "a.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        )
         .expect_err("a PathSubject carrying no `path` field must refuse loudly (fail-closed)");
-        let message = refusal
-            .downcast_ref::<String>()
-            .cloned()
-            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
-            .unwrap_or_default();
         assert!(
             message.contains("`PathSubject` but carries no `path` field"),
             "the refusal must LOCATE the missing `path` inside the present PathSubject, not \
@@ -30391,19 +30397,12 @@ mod nfr_tests {
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow { subject: PathSubject { path: \"b.dag::f\" }, reason: r, dissolution: d }\n\
              ]\n";
-        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source_with(
-                "a.dag",
-                synthetic,
-                super::NfrHomeCheck::Require,
-            )
-        }))
+        let message = super::non_fold_residue_units_from_module_source_with(
+            "a.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        )
         .expect_err("a row whose subject file is not the hosting module must refuse");
-        let message = refusal
-            .downcast_ref::<String>()
-            .cloned()
-            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
-            .unwrap_or_default();
         assert!(
             message.contains("not at home")
                 && message.contains("a.dag")
@@ -30422,7 +30421,8 @@ mod nfr_tests {
             "a.dag",
             synthetic,
             super::NfrHomeCheck::Require,
-        );
+        )
+        .expect("at-home row must parse");
         assert_eq!(
             triples
                 .iter()
@@ -30439,19 +30439,12 @@ mod nfr_tests {
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow { subject: PathSubject { path: \"f\" }, reason: r, dissolution: d }\n\
              ]\n";
-        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source_with(
-                "dag/extdeps/git.dag",
-                synthetic,
-                super::NfrHomeCheck::Require,
-            )
-        }))
+        let message = super::non_fold_residue_units_from_module_source_with(
+            "dag/extdeps/git.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        )
         .expect_err("an upstream module must not host repository coverage rows");
-        let message = refusal
-            .downcast_ref::<String>()
-            .cloned()
-            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
-            .unwrap_or_default();
         assert!(
             message.contains("coverage state in an upstream module")
                 && message.contains("dag/extdeps/git.dag"),
@@ -30469,7 +30462,8 @@ mod nfr_tests {
             "dag/gunbc/non_fold_residue.dag",
             synthetic,
             super::NfrHomeCheck::Require,
-        );
+        )
+        .expect("observing-host extdeps row must parse");
         assert_eq!(
             triples
                 .iter()
@@ -30490,7 +30484,8 @@ mod nfr_tests {
             "dag/gunbc/non_fold_residue.dag",
             synthetic,
             super::NfrHomeCheck::Require,
-        );
+        )
+        .expect("seed-mirror exception host must parse");
         assert_eq!(
             triples
                 .iter()
@@ -30504,30 +30499,24 @@ mod nfr_tests {
     #[test]
     fn nfr_frontier_reader_skips_comment_or_string_mention_without_a_decl() {
         let comment = "module m\n// data non_fold_residue_frontier: List<FrontierRow> = []\n";
-        assert!(
+        assert_eq!(
             super::non_fold_residue_units_from_module_source_with(
                 "m.dag",
                 comment,
                 super::NfrHomeCheck::Require,
             )
-            .is_empty(),
+            .expect("comment mention is not a decl"),
+            Vec::<String>::new(),
             "a comment mention must be skipped, not refused"
         );
         let similarly_named = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier_discovery_note: String = \"data non_fold_residue_frontier\"\n";
-        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source_with(
-                "dag/gunbc/non_fold_residue.dag",
-                similarly_named,
-                super::NfrHomeCheck::Require,
-            )
-        }))
+        let message = super::non_fold_residue_units_from_module_source_with(
+            "dag/gunbc/non_fold_residue.dag",
+            similarly_named,
+            super::NfrHomeCheck::Require,
+        )
         .expect_err("a similarly-named data decl must refuse, not skip");
-        let message = refusal
-            .downcast_ref::<String>()
-            .cloned()
-            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
-            .unwrap_or_default();
         assert!(
             message.contains("near-miss data decl")
                 && message.contains("non_fold_residue_frontier_discovery_note"),
@@ -30543,7 +30532,8 @@ mod nfr_tests {
                 "m.dag",
                 comment_then_decl,
                 super::NfrHomeCheck::Require,
-            ),
+            )
+            .expect("comment then decl must parse"),
             vec!["m.dag::f".to_string()],
             "a comment mention must not hide a later real decl"
         );

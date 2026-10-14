@@ -117,10 +117,13 @@ fn nfr_observing_layer_home_exception(host: &str) -> bool {
 fn nfr_parse_module_from_source(
     module_rel_path: &str,
     content: &str,
-) -> (
-    std::rc::Rc<crate::v1_compiler_parse::ParseResult>,
-    std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
-) {
+) -> Result<
+    (
+        std::rc::Rc<crate::v1_compiler_parse::ParseResult>,
+        std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
+    ),
+    String,
+> {
     let filename = module_rel_path.to_string();
     let tokens = crate::v1_compiler_tokenize::tokenize(
         content.to_string(),
@@ -134,12 +137,12 @@ fn nfr_parse_module_from_source(
     let source_indices = std::rc::Rc::new(source_indices);
     let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
     if let Some(err) = result.error.as_ref() {
-        panic!(
+        return Err(format!(
             "nfr frontier reader: parse error in {module_rel_path}: {}",
             crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
-        );
+        ));
     }
-    (result, source_indices)
+    Ok((result, source_indices))
 }
 
 fn nfr_join_site_key(module_rel_path: &str, authored_path: &str) -> String {
@@ -155,23 +158,23 @@ fn nfr_expr_ident(
     source_indices: std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
     field: &str,
     module_rel_path: &str,
-) -> String {
+) -> Result<String, String> {
     use crate::v1_std_core::{ExprData, LiteralValue};
     match value.expr_data.as_ref() {
         ExprData::ExprVar { .. } | ExprData::ExprCall { .. } => {
-            crate::v1_std_core::authored_name_at(source_indices, value)
+            Ok(crate::v1_std_core::authored_name_at(source_indices, value))
         }
         ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
-            LiteralValue::LitStr { value: s } => s.clone(),
-            _ => panic!(
+            LiteralValue::LitStr { value: s } => Ok(s.clone()),
+            _ => Err(format!(
                 "nfr frontier reader: `{field}` in a `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` row of \
                  {module_rel_path} is not an ident"
-            ),
+            )),
         },
-        _ => panic!(
+        _ => Err(format!(
             "nfr frontier reader: `{field}` in a `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` row of \
              {module_rel_path} is not an ident"
-        ),
+        )),
     }
 }
 
@@ -181,9 +184,11 @@ pub(crate) fn nfr_content_declares_frontier(content: &str) -> bool {
 
 /// Project the path site keys out of a `non_fold_residue_frontier` list of DIRECT record
 /// literals via the real front-end. Per-row reasons and dissolution triggers are `.dag`-side
-/// facts the host does not consume for the walk. Fail-closed: a parse error, a missing data
-/// def, a non-record element, a missing/non-literal `subject.path` field, a duplicate path,
-/// an empty list, or (when Required) a row whose path prefix is not this file is a loud panic.
+/// facts the host does not consume for the walk. Fail-closed: a parse error, a missing value
+/// body, a non-record element, a missing/non-literal `subject.path` field, a duplicate path,
+/// an empty list, or (when Required) a row whose path prefix is not this file is a typed
+/// `Err` naming the file. A module with no decl is zero rows (`Ok([])`). An empty list decl
+/// is dead data (DESIGN §4c): refuse it and say to delete the decl.
 // 🟡 dissolve-on: hand-Rust reader over the `.dag` authority — dissolves with
 // `witness_exclusion_rows_from_module_source` when the host consumes an emitted manifest of
 // the rows (module-binding supply-carrier pattern), and with the scan below into a pure
@@ -193,9 +198,9 @@ pub(crate) fn non_fold_residue_triples_from_module_source_with(
     module_rel_path: &str,
     content: &str,
     home: NfrHomeCheck,
-) -> Vec<NfrFrontierTriple> {
+) -> Result<Vec<NfrFrontierTriple>, String> {
     if !nfr_content_declares_frontier(content) {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     non_fold_residue_units_from_parse_source(module_rel_path, content, home)
 }
@@ -204,25 +209,27 @@ pub(crate) fn non_fold_residue_units_from_module_source_with(
     module_rel_path: &str,
     content: &str,
     home: NfrHomeCheck,
-) -> Vec<String> {
-    non_fold_residue_triples_from_module_source_with(module_rel_path, content, home)
-        .into_iter()
-        .map(|t| t.path)
-        .collect()
+) -> Result<Vec<String>, String> {
+    Ok(
+        non_fold_residue_triples_from_module_source_with(module_rel_path, content, home)?
+            .into_iter()
+            .map(|t| t.path)
+            .collect(),
+    )
 }
 
 fn non_fold_residue_units_from_parse_source(
     module_rel_path: &str,
     content: &str,
     home: NfrHomeCheck,
-) -> Vec<NfrFrontierTriple> {
+) -> Result<Vec<NfrFrontierTriple>, String> {
     use crate::v1_std_core::{ExprData, LiteralValue};
 
-    let (result, source_indices) = nfr_parse_module_from_source(module_rel_path, content);
+    let (result, source_indices) = nfr_parse_module_from_source(module_rel_path, content)?;
     let module = result
         .module
         .as_ref()
-        .unwrap_or_else(|| panic!("nfr frontier reader: {module_rel_path} parsed to no module"));
+        .ok_or_else(|| format!("nfr frontier reader: {module_rel_path} parsed to no module"))?;
     let data_name = NON_FOLD_RESIDUE_FRONTIER_DATA_NAME;
     let mut found = None;
     for item in module.children.iter() {
@@ -230,37 +237,37 @@ fn non_fold_residue_units_from_parse_source(
             continue;
         }
         if item.name.contains(data_name) && item.name != data_name {
-            panic!(
+            return Err(format!(
                 "nfr frontier reader: near-miss data decl `{}` in {module_rel_path} \
                  (only `{data_name}` hosts rows; a similarly spelled data name is refused, \
                  not skipped)",
                 item.name
-            );
+            ));
         }
         if item.name == data_name {
             found = Some(item);
         }
     }
     let Some(item) = found else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
-    let body = item.body.as_ref().unwrap_or_else(|| {
-        panic!("nfr frontier reader: `data {data_name}` in {module_rel_path} has no value body")
-    });
+    let body = item.body.as_ref().ok_or_else(|| {
+        format!("nfr frontier reader: `data {data_name}` in {module_rel_path} has no value body")
+    })?;
     if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
-        panic!(
+        return Err(format!(
             "nfr frontier reader: `data {data_name}` in {module_rel_path} is not a list \
                  literal"
-        );
+        ));
     }
     let mut units = Vec::new();
     let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for el in body.children.iter() {
         if !matches!(el.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
-            panic!(
+            return Err(format!(
                 "nfr frontier reader: an element of `{data_name}` in {module_rel_path} is \
                      not a record literal (refusing — rows must stay directly host-readable)"
-            );
+            ));
         }
         let mut path: Option<String> = None;
         let mut reason: Option<String> = None;
@@ -275,7 +282,7 @@ fn non_fold_residue_units_from_parse_source(
                     source_indices.clone(),
                     "reason",
                     module_rel_path,
-                ));
+                )?);
                 continue;
             }
             if fname == "dissolution" {
@@ -284,7 +291,7 @@ fn non_fold_residue_units_from_parse_source(
                     source_indices.clone(),
                     "dissolution",
                     module_rel_path,
-                ));
+                )?);
                 continue;
             }
             if fname != "subject" {
@@ -295,10 +302,10 @@ fn non_fold_residue_units_from_parse_source(
                     let variant_name =
                         crate::v1_std_core::authored_name_at(source_indices.clone(), value.clone());
                     if variant_name != "PathSubject" {
-                        panic!(
+                        return Err(format!(
                             "nfr frontier reader: `subject` in a `{data_name}` row of \
                                  {module_rel_path} is not PathSubject {{ ... }}"
-                        );
+                        ));
                     }
                     let mut row_path: Option<String> = None;
                     for subfield in value.children.iter() {
@@ -314,73 +321,79 @@ fn non_fold_residue_units_from_parse_source(
                         match path_value.expr_data.as_ref() {
                             ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
                                 LiteralValue::LitStr { value: s } => row_path = Some(s.clone()),
-                                _ => panic!(
-                                    "nfr frontier reader: `path` in a `{data_name}` row \
+                                _ => {
+                                    return Err(format!(
+                                        "nfr frontier reader: `path` in a `{data_name}` row \
                                          of {module_rel_path} is not a string literal"
-                                ),
+                                    ))
+                                }
                             },
-                            _ => panic!(
-                                "nfr frontier reader: `path` in a `{data_name}` row of \
+                            _ => {
+                                return Err(format!(
+                                    "nfr frontier reader: `path` in a `{data_name}` row of \
                                      {module_rel_path} is not a literal"
-                            ),
+                                ))
+                            }
                         }
                     }
-                    path = Some(row_path.unwrap_or_else(|| {
-                        panic!(
+                    path = Some(row_path.ok_or_else(|| {
+                        format!(
                             "nfr frontier reader: `subject` in a `{data_name}` row of \
                                  {module_rel_path} is `PathSubject` but carries no `path` field"
                         )
-                    }));
+                    })?);
                 }
-                _ => panic!(
-                    "nfr frontier reader: `subject` in a `{data_name}` row of \
+                _ => {
+                    return Err(format!(
+                        "nfr frontier reader: `subject` in a `{data_name}` row of \
                          {module_rel_path} is not a record literal"
-                ),
+                    ))
+                }
             }
         }
-        let authored_path = path.unwrap_or_else(|| {
-            panic!(
+        let authored_path = path.ok_or_else(|| {
+            format!(
                 "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
                      `subject` field"
             )
-        });
+        })?;
         if home == NfrHomeCheck::Require && nfr_host_is_forbidden_upstream(module_rel_path) {
-            panic!(
+            return Err(format!(
                 "nfr frontier reader: `{data_name}` in {module_rel_path} stores repository \
                  coverage state in an upstream module; the observing layer is \
                  {NFR_OBSERVING_LAYER_HOST}"
-            );
+            ));
         }
         if home == NfrHomeCheck::Require && authored_path.contains("::") {
             let prefix = authored_path.split("::").next().unwrap_or("");
             if prefix != module_rel_path && !nfr_observing_layer_home_exception(module_rel_path) {
-                panic!(
+                return Err(format!(
                         "nfr frontier reader: row path {authored_path:?} in {module_rel_path} is not at \
                          home (subject file prefix {prefix:?} must equal the hosting module \
                          path {module_rel_path:?})"
-                    );
+                    ));
             }
         }
         let path = nfr_join_site_key(module_rel_path, &authored_path);
         if !seen.insert(path.clone()) {
-            panic!(
+            return Err(format!(
                 "nfr frontier reader: duplicate path {path:?} in `{data_name}` of \
                      {module_rel_path} (the const this replaced tolerated duplicates; the \
                      typed roster refuses them)"
-            );
+            ));
         }
-        let reason = reason.unwrap_or_else(|| {
-            panic!(
+        let reason = reason.ok_or_else(|| {
+            format!(
                 "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
                      `reason` ident"
             )
-        });
-        let dissolution = dissolution.unwrap_or_else(|| {
-            panic!(
+        })?;
+        let dissolution = dissolution.ok_or_else(|| {
+            format!(
                 "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
                      `dissolution` ident"
             )
-        });
+        })?;
         units.push(NfrFrontierTriple {
             path,
             reason,
@@ -388,9 +401,12 @@ fn non_fold_residue_units_from_parse_source(
         });
     }
     if units.is_empty() {
-        panic!("nfr frontier reader: `{data_name}` in {module_rel_path} is empty (fail-closed)");
+        return Err(format!(
+            "nfr frontier reader: `data {data_name}` in {module_rel_path} is empty; delete the decl \
+             (a module with no decl already contributes zero rows)"
+        ));
     }
-    return units;
+    Ok(units)
 }
 
 fn nfr_workspace_carrier_files(root: &Path) -> Vec<(String, String)> {
@@ -422,28 +438,31 @@ fn nfr_workspace_carrier_files(root: &Path) -> Vec<(String, String)> {
     files
 }
 
-fn nfr_collect_units_from_files(files: &[(String, String)], home: NfrHomeCheck) -> Vec<String> {
+fn nfr_collect_units_from_files(
+    files: &[(String, String)],
+    home: NfrHomeCheck,
+) -> Result<Vec<String>, String> {
     let mut all = Vec::new();
     let mut seen: BTreeSet<String> = BTreeSet::new();
     for (rel, content) in files {
         if !nfr_content_declares_frontier(content) {
             continue;
         }
-        let triples = non_fold_residue_triples_from_module_source_with(rel, content, home);
+        let triples = non_fold_residue_triples_from_module_source_with(rel, content, home)?;
         for triple in triples {
             if !seen.insert(triple.path.clone()) {
-                panic!(
+                return Err(format!(
                     "nfr frontier reader: duplicate path {:?} across co-located \
                      `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` lists (first collision involving \
                      {rel}; {})",
                     triple.path,
                     nfr_identity_join_line(&triple)
-                );
+                ));
             }
             all.push(triple.path);
         }
     }
-    all
+    Ok(all)
 }
 
 pub(crate) fn non_fold_residue_identity_join_triples() -> &'static [NfrFrontierTriple] {
@@ -461,7 +480,9 @@ pub(crate) fn non_fold_residue_identity_join_triples() -> &'static [NfrFrontierT
                 rel,
                 content,
                 NfrHomeCheck::Require,
-            ) {
+            )
+            .unwrap_or_else(|cause| panic!("{cause}"))
+            {
                 if !seen.insert(triple.path.clone()) {
                     panic!(
                         "nfr frontier reader: duplicate path {:?} across co-located \
@@ -790,12 +811,12 @@ fn nfr_units_from_optional_source(
     rel: &str,
     content: Option<&str>,
     home: NfrHomeCheck,
-) -> Vec<String> {
+) -> Result<Vec<String>, String> {
     match content {
         Some(c) if nfr_content_declares_frontier(c) => {
             non_fold_residue_units_from_module_source_with(rel, c, home)
         }
-        _ => Vec::new(),
+        _ => Ok(Vec::new()),
     }
 }
 
@@ -845,13 +866,13 @@ pub(crate) fn non_fold_residue_changed_row_subjects(
         } else {
             NfrHomeCheck::Skip
         };
-        for unit in nfr_units_from_optional_source(rel, Some(content), home) {
+        for unit in nfr_units_from_optional_source(rel, Some(content), home)? {
             if seen_base.insert(unit.clone()) {
                 base_rows.push(unit);
             }
         }
     }
-    let head_rows = nfr_collect_units_from_files(&head_files, head_home);
+    let head_rows = nfr_collect_units_from_files(&head_files, head_home)?;
 
     Ok(non_fold_residue_changed_row_paths(&base_rows, &head_rows)
         .into_iter()

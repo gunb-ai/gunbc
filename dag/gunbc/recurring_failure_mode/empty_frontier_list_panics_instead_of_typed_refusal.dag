@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.empty_frontier_list_panics_instead_of_typed_refusal
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data empty_frontier_list_panics_instead_of_typed_refusal: RecurringFailureMode = RecurringFailureMode {
+  identity: "empty_frontier_list_panics_instead_of_typed_refusal" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: the v1 seed's `non_fold_residue_frontier` reader panics when a module declares `data non_fold_residue_frontier: List<FrontierRow> = []`. DESIGN section 5: a panic is process death, not a typed located result. DESIGN section 4c: a decl whose only content is no rows is dead data; the union already treats a module with no decl as zero rows, so the empty list is not a legitimate encoding of absence.",
+
+    "HARM: a legal-looking authored empty list crashes the host instead of naming the file and telling the author to delete the decl. The crash looks like a compiler bug. A recovery that treats the empty list as zero rows would also hide the dead data.",
+
+    "SPECIMEN, 2026-10-14, HEAD 578442c0c9f: `cli_run::nfr_tests::nfr_frontier_reader_refuses_empty_list` with `data non_fold_residue_frontier: List<FrontierRow> = []` in `a.dag` panics at `non_fold_residue_units_from_parse_source`: `nfr frontier reader: `non_fold_residue_frontier` in a.dag is empty (fail-closed)`.",
+
+    "RUNG FOUND AT: below the ladder -- process death, no typed cause. CEILING: mechanically preventable at the seed reader (a Result from the parse), structurally guaranteed once an empty list of this data name has no constructor or is refused at ingest. NEXT-RUNG TRIGGER: the frontier parse returns Err naming the file and saying to delete the decl, and a RED fixture of an empty list stays enrolled.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. Enrolled control: v1-compiler `cli_run::nfr_tests::nfr_frontier_reader_refuses_empty_list`.",
+  ],
+
+  evidence: [],
+}
