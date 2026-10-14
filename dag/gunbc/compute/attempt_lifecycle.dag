@@ -16,6 +16,7 @@ import gunbc.durable_cas_file_store {
   CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly,
   observe_cas_slot_state,
 }
+import std.decl_ref { decl_ref }
 import gunbc.compute.work_request { WorkEnding, work_ending_wire, work_ending_decode }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.languages.json.parse {
@@ -93,9 +94,17 @@ fn unit_lifecycle_wire(u: UnitLifecycle) -> String {
   }
 }
 
-// THE LIFECYCLE STATE THE SLOT CARRIES. Reserved is the only state a launch may proceed from and
-// the only state recovery may terminate from without observing the unit -- because in Reserved no
-// unit exists yet, which is the whole reason the two transitions must exclude each other.
+// THE LIFECYCLE STATE THE SLOT CARRIES. Reserved and Launching are the exclusive-admission gate,
+// not "has a unit" and not "the first read happened":
+//
+//   Reserved  -- launch/child-reader entitlement is not admitted. Producer-owned take or probe
+//                activity may still be live.
+//   Launching -- the durable launch-reader entitlement won.
+//   Terminal  -- no new launch reader can be admitted; physical cleanup may still be owed.
+//
+// Reserved is the only state a launch may proceed from and the only state recovery may terminate
+// from without observing the launched reader -- because in Reserved that reader was never admitted,
+// which is the whole reason the two transitions must exclude each other.
 //
 // THAT ENTAILMENT IS ENFORCED BY THE ROUTE AND NOT BY AGREEMENT, which is what makes the temporal
 // trigger safe to act on. gunbc.compute.work_provider_local reaches compute_spawn_and_collect from
@@ -376,7 +385,12 @@ type AttemptTransition
   | AttemptLostRace { expected: String, observed: String }
   | AttemptTransitionRefused { detail: String }
 
-fn attempt_commit(root: NonEmptyStr, record: AttemptRecord, expected: CasExpectation) -> AttemptTransition {
+fn attempt_commit_bytes(root: NonEmptyStr, record: AttemptRecord, expected: CasExpectation) -> AttemptTransition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open"),
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_advance"),
+  ]
+{
   let payload = attempt_record_wire(r: record) as NonEmptyStr
   match admit_cas_attempt(attempt: cas_attempt(
     key: record.reference as NonEmptyStr,
@@ -431,9 +445,45 @@ fn attempt_commit(root: NonEmptyStr, record: AttemptRecord, expected: CasExpecta
 // mysterious reclaim.
 data compute_pre_launch_ceiling_seconds: Seconds = 300
 
+fn attempt_advance(
+  root: NonEmptyStr,
+  reference: NonEmptyStr,
+  expected: CasGeneration,
+  next_state: AttemptState,
+) -> AttemptTransition {
+  match observe_cas_slot_state(root: root, key: reference) {
+    CasObservedUnreadable { cause: c } =>
+      AttemptTransitionRefused { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
+    CasObservedReadable { readable: r } =>
+      match r {
+        CasReadableAbsent =>
+          AttemptLostRace { expected: join(["generation ", to_string(value: cas_generation_count(g: expected))], ""), observed: "an absent slot" }
+        CasReadablePresent { version: v } =>
+          match attempt_record_decode(text: v.value as String) {
+            Absent =>
+              AttemptTransitionRefused {
+                detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], ""),
+              }
+            Present { value: rec } =>
+              if rec.reference != (reference as String) {
+                AttemptTransitionRefused {
+                  detail: join(["the attempt slot keyed ", reference as String, " names reference ", rec.reference], ""),
+                }
+              } else {
+                attempt_commit_bytes(
+                  root: root,
+                  record: attempt_record_with_state(r: rec, state: next_state),
+                  expected: ExpectSlotGeneration { generation: expected })
+              }
+          }
+      }
+  }
+}
+
 // OPENING: the attempt declares itself Reserved, and it must be the FIRST writer of this reference.
 // ExpectSlotAbsent is what makes a duplicated reference a refusal rather than a silent overwrite of
-// somebody else's attempt.
+// somebody else's attempt. Unit and grant are established here and never resupplied on later
+// transitions.
 fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
   let declared = record.launch_deadline - record.opened_at
   if declared > compute_pre_launch_ceiling_seconds {
@@ -453,22 +503,29 @@ fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
       ], ""),
     }
   } else {
-    attempt_commit(root: root, record: attempt_record_with_state(r: record, state: AttemptReserved), expected: ExpectSlotAbsent)
+    attempt_commit_bytes(
+      root: root,
+      record: attempt_record_with_state(r: record, state: AttemptReserved),
+      expected: ExpectSlotAbsent)
   }
 }
 
-// THE LAUNCH GATE. Called BEFORE the unit is spawned, never after.
-fn attempt_begin_launch(root: NonEmptyStr, record: AttemptRecord, expected: CasGeneration) -> AttemptTransition {
-  attempt_commit(root: root, record: attempt_record_with_state(r: record, state: AttemptLaunching), expected: ExpectSlotGeneration { generation: expected })
+// THE LAUNCH GATE. Called BEFORE the reader is admitted, never after. It reads the current slot,
+// changes only state, and re-encodes the unit and grant the open wrote. A caller cannot hand
+// another unit or grant into this generation.
+fn attempt_begin_launch(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration) -> AttemptTransition {
+  attempt_advance(root: root, reference: reference, expected: expected, next_state: AttemptLaunching)
 }
 
 // THE TERMINAL TRANSITION. Carries the verdict AND why, so the generation that records the end also
-// records the reason -- history the next reader can act on rather than a bare flag.
-fn attempt_terminate(root: NonEmptyStr, record: AttemptRecord, expected: CasGeneration, verdict: AttemptVerdict, detail: String) -> AttemptTransition {
-  attempt_commit(
+// records the reason -- history the next reader can act on rather than a bare flag. Same read and
+// state-only rewrite as begin_launch: unit and grant are not parameters.
+fn attempt_terminate(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration, verdict: AttemptVerdict, detail: String) -> AttemptTransition {
+  attempt_advance(
     root: root,
-    record: attempt_record_with_state(r: record, state: AttemptTerminal { verdict: verdict, detail: detail }),
-    expected: ExpectSlotGeneration { generation: expected })
+    reference: reference,
+    expected: expected,
+    next_state: AttemptTerminal { verdict: verdict, detail: detail })
 }
 
 fn attempt_transition_wire(t: AttemptTransition) -> String {

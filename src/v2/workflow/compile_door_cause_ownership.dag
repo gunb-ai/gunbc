@@ -141,16 +141,6 @@ data known_frontier_causes: List<CauseOwnership> = [
   },
 
   CauseOwnership {
-    cause: ^body_lowering_reason_parameter_refinement_unmodeled,
-    lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a fn parameter whose type is refined by a where clause parses and refuses at the clause on both lowering arms (v2.compiler.body_lowering_fold body_lower_param_refinement_refusal_optional), because the only where-clause reader serves a type variant and a parameter's type reader would drop the refinement. Flips when a parameter's lowered type carries its refinement -- the parameter type read through the one where-clause reader that type variants use -- so the reason has no producer (gunbc.recurring_failure_mode refinement_has_no_carrier)"
-  },
-  CauseOwnership {
-    cause: ^body_lowering_reason_field_refinement_unmodeled,
-    lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a record or io field whose type is refined by a where clause parses and refuses at the clause on every arm that reads a field item (v2.compiler.body_lowering_fold body_lower_first_field_refinement_optional, body_lower_io_item_step), because the field's lowered type is the base type and would drop the refinement. Flips when a field's lowered type carries its refinement -- read through the one where-clause reader type variants use -- so the reason has no producer (gunbc.recurring_failure_mode refinement_has_no_carrier)"
-  },
-  CauseOwnership {
     cause: ^body_lowering_reason_index_suffix_arity,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "an index suffix `[..]` after an operand parses with the list literal's bracket shape and lowers only with EXACTLY ONE index expression (v2.compiler.body_lowering_fold PostfixIndex, lowered to v2.std.collection list_at_optional); `xs[]`, `xs[a, b]` and `xs[a,]` (a trailing comma) refuse located at the suffix. The wider body is deliberate: a single-expression production left those brackets to parse as `xs` followed by a list literal, a silent misread. This is a fidelity wall, not a frontier: v1 refuses the same forms at parse (02_parse parse_index_or_slice), so it retires only if the grammar can express exactly-one-expression without reopening that misread"

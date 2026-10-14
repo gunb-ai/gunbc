@@ -1,8 +1,10 @@
 module gunbc.fleet.fleet_known_hosts_anchor
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe, brand }
 import std.measure { Second, second }
-import std.algebra { trim, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { trim, list_head, skip }
 import std.content_hash {
   ContentHash,
   content_hash_of_value,
@@ -645,12 +647,9 @@ fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
   })
   match admitted {
     Absent => none
-    Present { value: ws } => match list_head(ws) {
-      HeadAbsent => none
-      HeadFound { value: h } => match list_tail(ws) {
-        TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
-        TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
-      }
+    Present { value: ws } => match list_head(xs: ws) {
+      Absent => none
+      Present { value: h } => Present { value: PortableRemoteWords { first: h, more: skip(xs: ws, n: 1) } }
     }
   }
 }

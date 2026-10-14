@@ -249,8 +249,14 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum V2NativeCensusReading {
     RefusalCensus,
+    /// `subject` is the bound PACKAGE's segments; rendered as a package pattern only at argv.
+    ScopedRefusalCensus {
+        subject: &'static [&'static str],
+    },
     TypeDeclarationUse,
-    NativeProcessMemory { workload: NativeMeasuredWorkload },
+    NativeProcessMemory {
+        workload: NativeMeasuredWorkload,
+    },
 }
 
 /// `gunbc.instruments.native_process_memory_reading` `NativeCensusVerb`.
@@ -393,6 +399,20 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("v2-native-census"),
             TargetProducer::V2NativeCensus {
                 reading: V2NativeCensusReading::RefusalCensus,
+            },
+        ),
+        (
+            instrument_label("v2-native-census-scoped"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::ScopedRefusalCensus {
+                    subject: &[
+                        "v2",
+                        "test",
+                        "claim",
+                        "parse",
+                        "expression_bodied_fn_decl_parse",
+                    ],
+                },
             },
         ),
         (
@@ -910,6 +930,14 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             reading: V2NativeCensusReading::RefusalCensus,
         } => run_v2_native_census(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::ScopedRefusalCensus { subject },
+        } => run_v2_native_census_scoped(
+            &render_target_pattern(&TargetPattern::PackageTargets(
+                subject.iter().map(|s| s.to_string()).collect(),
+            )),
+            &self_host_source_roots(),
+        ),
+        TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_type_declaration_use_census(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
@@ -1307,6 +1335,42 @@ fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
                 run.cause_groups,
                 run.roots,
                 run.type_census.word()
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// THE SCOPED V2-NATIVE CENSUS PRODUCER (`gunbc.instrument_targets` `v2_native_census_scoped_label`). A
+/// report on the same terms as `run_v2_native_census`: a completed run is held whether its closure is
+/// closed or blocked -- the scope is the finding, stated in the message -- and a run that did not
+/// complete, or completed for another subject, is the subject unreached.
+fn run_v2_native_census_scoped(subject: &str, source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_native_census_scoped(subject, source_roots) {
+        Ok(run) => InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message: format!(
+                "v2-native-census-scoped: subject={} scope={} modules={} file_refusals={} \
+                 advised_files={} residual_rows={} inferred={} infer_refused={} cause_groups={} \
+                 roots={}; the population is the subject's acquired closure (census_scope line \
+                 above), its rows grouped by fatal reason in the cause_group lines",
+                run.subject,
+                match run.scope {
+                    cli_run::NativeCensusScopeWord::Closed => "closed".to_string(),
+                    cli_run::NativeCensusScopeWord::Blocked { blocks } =>
+                        format!("blocked({blocks})"),
+                },
+                run.modules,
+                run.file_refusals,
+                run.advised_files,
+                run.residual_rows,
+                run.inferred,
+                run.infer_refused,
+                run.cause_groups,
+                run.roots
             ),
         },
         Err(cause) => InvocationOutcome {

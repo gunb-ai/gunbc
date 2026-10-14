@@ -137,7 +137,7 @@ fn launching(root: String, reference: String) -> Bool {
 fn launching_in(dir: NonEmptyStr, reference: String) -> Bool {
   match attempt_slot_read(root: dir, reference: reference as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: g } =>
-      match attempt_begin_launch(root: dir, record: rec, expected: g) {
+      match attempt_begin_launch(root: dir, reference: rec.reference as NonEmptyStr, expected: g) {
         AttemptAdvanced { state: _, generation: _ } => true
         _ => false
       }
@@ -289,7 +289,7 @@ test fn a_kill_after_settle_before_release_is_discharged_from_the_terminal_recor
     && launching(root: root, reference: "r-set")
   let settled = match attempt_slot_read(root: attempts_at(root: root), reference: "r-set" as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: g } =>
-      match attempt_terminate(root: attempts_at(root: root), record: rec, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
+      match attempt_terminate(root: attempts_at(root: root), reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
         AttemptAdvanced { state: _, generation: _ } => true
         _ => false
       }
@@ -377,7 +377,7 @@ test fn a_terminal_record_releases_only_when_the_unit_is_proven_ended() -> Bool 
     && launching(root: root, reference: "r-tm")
   let settled = match attempt_slot_read(root: attempts_at(root: root), reference: "r-tm" as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: g } =>
-      match attempt_terminate(root: attempts_at(root: root), record: rec, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
+      match attempt_terminate(root: attempts_at(root: root), reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
         AttemptAdvanced { state: _, generation: _ } => true
         _ => false
       }

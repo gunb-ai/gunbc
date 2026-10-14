@@ -78,8 +78,9 @@ type TypedRemoteFileWriteOutcome
 //   4. rename   -- `mv -fT` within one directory. `-T` treats the destination as a file, so a
 //                  planted directory at the dest name refuses at rename rather than receiving the
 //                  staged file. POSIX rename is still atomic for two names in one directory.
-//                  Every caller of this fold goes through FleetSsh plus sudo to GNU/systemd fleet
-//                  hosts, never into a guest, so GNU `mv -T` is available at every site.
+//                  GNU coreutils is available at every site, so GNU `mv -T` holds. Elevation is
+//                  selected per call (`RemoteFileViaNonInteractiveSudo` or
+//                  `RemoteFileAsSessionPrincipal`); not every caller uses sudo.
 //                  partially written or wrong-moded file at the destination
 //   5. read back-- `cmp -s -` the DESTINATION against the declared content on stdin, FAR-SIDE
 //
