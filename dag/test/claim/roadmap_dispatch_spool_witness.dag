@@ -6,6 +6,7 @@ import gunbc.roadmap.roadmap_dispatch_spool {
   dispatch_spool_key,
   dispatch_spool_entry_name,
   dispatch_request_path_for,
+  dispatch_request_staging_path_for,
   dispatch_request_enqueue,
   DispatchRequestEnqueued,
   DispatchRequestNotEnqueued,
@@ -22,7 +23,7 @@ import gunbc.roadmap.roadmap_dispatch_spool {
   OutcomeRecorded,
   OutcomeStopsTheLine,
 }
-import gunbc.host.host_layout { dispatch_request_dir }
+import gunbc.host.host_layout { dispatch_request_dir, dispatch_request_staging_dir }
 import gunbc.live_deploy.emit {
   publication_spool_request_mode,
   live_deploy_belt_dispatch_spool_path_unit_file,
@@ -46,12 +47,28 @@ fn well_formed_entry() -> String {
 }
 
 test fn dispatch_request_directory_mode_refuses_other_writers() -> Bool {
+  let steps = pipeline_steps_text(steps: apply_dispatch_spool_steps(spec: live_spec()))
   !publication_spool_request_mode.other.write
     && publication_spool_request_mode.group.write
-    && string_contains(
-      s: pipeline_steps_text(steps: apply_dispatch_spool_steps(spec: live_spec())),
-      pattern: dispatch_request_dir(instance_root: live_spec().service.instance_root as String),
-    )
+    && string_contains(s: steps, pattern: dispatch_request_dir(instance_root: live_spec().service.instance_root as String))
+    && string_contains(s: steps, pattern: dispatch_request_staging_dir(instance_root: live_spec().service.instance_root as String))
+}
+
+test fn enqueue_staging_is_outside_the_drained_directory_and_is_not_json() -> Bool {
+  let key = dispatch_spool_key(node_id: "n1", executor_word: "")
+  let staging = dispatch_request_staging_path_for(instance_root: "/opt/gunbc", key: key)
+  let requests = dispatch_request_dir(instance_root: "/opt/gunbc")
+  !ends_with(s: staging, suffix: ".json")
+    && starts_with(s: staging, prefix: dispatch_request_staging_dir(instance_root: "/opt/gunbc"))
+    && !starts_with(s: staging, prefix: requests)
+    && dispatch_request_staging_dir(instance_root: "/opt/gunbc") != requests
+}
+
+test fn the_path_unit_watches_requests_and_not_staging() -> Bool {
+  let spec = live_spec()
+  let lines = systemd_unit_file_lines(file: live_deploy_belt_dispatch_spool_path_unit_file(spec: spec))
+  any(lines, l => l == join(["DirectoryNotEmpty=", dispatch_request_dir(instance_root: spec.service.instance_root as String)], ""))
+    && !any(lines, l => string_contains(s: l, pattern: dispatch_request_staging_dir(instance_root: spec.service.instance_root as String)))
 }
 
 test fn the_enqueue_address_is_the_name_admission_requires() -> Bool {

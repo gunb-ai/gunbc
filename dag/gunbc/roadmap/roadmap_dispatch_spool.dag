@@ -31,6 +31,7 @@ import extdeps.languages.json.parse {
 }
 import gunbc.host.host_layout {
   dispatch_request_dir,
+  dispatch_request_staging_dir,
   dispatch_answer_dir,
   dispatch_refused_dir,
 }
@@ -94,9 +95,19 @@ fn dispatch_request_path_for(instance_root: String, key: String) -> String {
   ], "")
 }
 
+fn dispatch_request_staging_path_for(instance_root: String, key: String) -> String {
+  join([dispatch_request_staging_dir(instance_root: instance_root), "/", key, ".staging"], "")
+}
+
 type DispatchRequestEnqueue
   = DispatchRequestEnqueued { path: String, entry: String }
   | DispatchRequestNotEnqueued { detail: String }
+
+// WRITE TO A NAME THE PATH UNIT DOES NOT DRAIN, THEN RENAME. In-place Write at the final
+// `requests/<key>.json` is crash-unsafe (fleet_converge_receipt_atomic_publish_note): DirectoryNotEmpty
+// can start the drain on a truncated document, admission refuses it as undecodable, that outcome is
+// Recorded, and the CLI exits 0 with the dispatch gone. Staging lives in requests-staging/ under a
+// `.staging` suffix the drain never lists; rename into requests/ is the appearance the path unit sees.
 
 fn dispatch_request_enqueue(
   instance_root: String,
@@ -109,18 +120,29 @@ fn dispatch_request_enqueue(
     let key = dispatch_spool_key(node_id: node_id, executor_word: executor_word)
     let entry = dispatch_spool_entry_name(key: key)
     let path = dispatch_request_path_for(instance_root: instance_root, key: key)
+    let staging = dispatch_request_staging_path_for(instance_root: instance_root, key: key)
     let write = Filesystem.Write(
-      path: path,
+      path: staging,
       content: dispatch_request_json(node_id: node_id, executor_word: executor_word),
     )
-    if write.success {
-      DispatchRequestEnqueued { path: path, entry: entry }
-    } else {
+    if !write.success {
       DispatchRequestNotEnqueued {
         detail: join([
-          "the dispatch request could not be written, so nothing was asked of the belt: ",
-          path, " (", write.error, ")",
+          "the dispatch request could not be staged, so nothing was asked of the belt: ",
+          staging, " (", write.error, ")",
         ], ""),
+      }
+    } else {
+      let moved = shell.Move.File(source: staging as FilePath, destination: path as FilePath)
+      if moved.success {
+        DispatchRequestEnqueued { path: path, entry: entry }
+      } else {
+        DispatchRequestNotEnqueued {
+          detail: join([
+            "the dispatch request was staged and could not be renamed into the pending set: ",
+            staging, " -> ", path, " (", moved.error, ")",
+          ], ""),
+        }
       }
     }
   }

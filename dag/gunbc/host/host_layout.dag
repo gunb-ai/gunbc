@@ -431,6 +431,10 @@ fn dispatch_request_dir(instance_root: String) -> String {
   join([dispatch_spool_root(instance_root: instance_root), "/requests"], "")
 }
 
+fn dispatch_request_staging_dir(instance_root: String) -> String {
+  join([dispatch_spool_root(instance_root: instance_root), "/requests-staging"], "")
+}
+
 fn dispatch_answer_dir(instance_root: String) -> String {
   join([dispatch_spool_root(instance_root: instance_root), "/answers"], "")
 }

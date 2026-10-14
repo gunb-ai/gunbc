@@ -216,6 +216,7 @@ import gunbc.host.host_layout {
   publication_refused_dir,
   dispatch_spool_root,
   dispatch_request_dir,
+  dispatch_request_staging_dir,
   dispatch_answer_dir,
   dispatch_refused_dir,
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
@@ -1065,6 +1066,12 @@ fn apply_dispatch_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
       owner: spec.service.service_user,
       group: spec.service.service_user,
       path: dispatch_request_dir(instance_root: spec.service.instance_root as String),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: publication_spool_request_mode,
+      owner: spec.service.service_user,
+      group: spec.service.service_user,
+      path: dispatch_request_staging_dir(instance_root: spec.service.instance_root as String),
     )),
     deploy_raw(command: install_directory_owned_command(
       mode: publication_spool_answer_mode,
