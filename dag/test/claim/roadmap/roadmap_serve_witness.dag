@@ -180,6 +180,8 @@ fn fixture_dispatch_params() -> List<PathParamBinding> {
   [PathParamBinding { name: "node_id", value: "some-node" }]
 }
 
+// INHABITANCE: invoke the real handler with AuthAbsent and no fabric/plan mock. A Get before
+// admission is HostEffectRefused, not 403. Cleanup has no plan argument; dispatch must not force one.
 test fn unauthenticated_dispatch_refuses_before_actuation() -> Bool {
   let r = roadmap_serve_invoke(
     handler: BeltDispatchHandler,

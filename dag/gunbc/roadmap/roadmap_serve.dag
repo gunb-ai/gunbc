@@ -656,9 +656,12 @@ fn serve_after_human_write(
   }
 }
 
+// THE PLAN IS A THUNK, NOT A VALUE. roadmap_plan_projection reads fabric storage. Passing plan()
+// as an argument forced that Get before human_write_admission, so an AuthAbsent POST was
+// HostEffectRefused (NoMockResponse) instead of 403 — the unauthenticated RED unobserved.
 fn serve_dispatch_handler_response_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   params: List<PathParamBinding>,
   executor_word: String,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
@@ -682,7 +685,7 @@ fn serve_dispatch_handler_response_over(
         DispatchExecutorRequestDecoded { request: executor } =>
           serve_dispatch_with_follow_ups(
             instance: instance,
-            r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
+            r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan(), node_id: node_id, request: LaunchAutonomous, executor: executor),
           )
       }
     }
@@ -696,7 +699,7 @@ fn serve_dispatch_handler_response_for_instance(
 ) -> ServeHttpResponse {
   serve_dispatch_handler_response_over(
     instance: instance,
-    plan: roadmap_plan_projection(),
+    plan: fn() { roadmap_plan_projection() },
     params: params,
     executor_word: "",
     request: request,
@@ -1506,7 +1509,7 @@ fn roadmap_serve_invoke_over(
         body: dashboard_provider_readiness_json(instance: instance),
       )
     BeltDispatchHandler =>
-      serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params, executor_word: uri_query_param(path: request.path, key: "executor"), request: request)
+      serve_dispatch_handler_response_over(instance: instance, plan: plan, params: params, executor_word: uri_query_param(path: request.path, key: "executor"), request: request)
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan(), params: params, request: request)
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
