@@ -13,7 +13,9 @@ import gunbc.runner.microvm_guest_artifacts {
   GuestBaseArtifact, ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable,
   runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact,
 }
-import gunbc.runner.runner_guest_image { runner_guest_job_path, runner_guest_job_home }
+import gunbc.runner.runner_guest_image {
+  runner_guest_job_path_name, runner_guest_job_path_value, runner_guest_job_home_name, runner_guest_job_home_value,
+}
 import gunbc.fabric.fabric_witness_run {
   FabricCiSource, FabricCiExecutionSpec, FabricCiEnvironmentEntry, ClaimSetRun,
   FabricCiWorkBinding, FabricCiWorkRefused, FabricCiCoordinateMissing,
@@ -98,8 +100,8 @@ fn claim_set_run_work_with_guest(
         toolchain_provenance: toolchain,
         executable_provenance: [repo_self_build_all_bins_command() as NonEmptyStr, release_bin_rel_path(bin_name: gunbc_bin_name) as NonEmptyStr],
         environment: [
-          FabricCiEnvironmentEntry { name: "guest-job-env", value: runner_guest_job_path },
-          FabricCiEnvironmentEntry { name: "guest-job-env", value: runner_guest_job_home },
+          FabricCiEnvironmentEntry { name: runner_guest_job_path_name, value: runner_guest_job_path_value },
+          FabricCiEnvironmentEntry { name: runner_guest_job_home_name, value: runner_guest_job_home_value },
         ],
         cache_policy: claim_set_cache_policy,
         permitted_credential_refs: claim_set_permitted_credential_refs,
