@@ -49,6 +49,8 @@ import gunbc.machine_intake.megarac_media_attach {
   presented_media,
   megarac_convergence_step,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // A MANAGED HOST'S BOOT MEDIUM, PRESENTED BY ITS MEGARAC CONTROLLER (docs/plans/managed-host-untangle.md,
 // cut 3). This is the policy layer above the operation (gunbc.machine_intake.megarac_media_attach
@@ -448,3 +450,7 @@ fn megarac_observe_boot_presentation(
       }
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "megarac_stale_power_off_need" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

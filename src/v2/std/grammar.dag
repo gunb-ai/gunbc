@@ -1,5 +1,6 @@
 module v2.std.grammar
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
 import v2.std.parse_refusal_reason { ParseRefusalReason, parse_refusal_reason_symbol }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -65,6 +66,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.text { String }
 import std.integer { int_to_decimal_string }
+import std.roster_frontier { FrontierRow, PathSubject }
 
 type FormalTerminal {
   identity: Symbol
@@ -571,7 +573,6 @@ fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
 fn grammar_empty_sync_tokens() -> List<Symbol> {
   []
 }
-
 
 fn grammar_empty_node() -> Node {
   stamp_node_shape_synthetic(shape: type_shape(connective: Conj, children: []))
@@ -3829,3 +3830,8 @@ fn parse_production_emitted_identity_optional(node: Node) -> std.optional.Option
     NamedChildAmbiguous => Absent
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "grammar_emit_is_empty_conj" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "grammar_emit_sequence" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]
