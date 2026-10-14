@@ -38,13 +38,13 @@ pub type ModuleId = String;
 
 pub type CompilationUnitId = String;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleDagEdge {
     pub from: ModuleId,
     pub to: ModuleId,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PartitionProvenance {
     HandExplicit,
@@ -69,7 +69,7 @@ pub fn partition_provenance_policy_derived(policy: Rc<DeclarationRef>) -> Rc<Par
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PartitionFoldRefusalCause {
     InterfaceClosureUnreachedFixpoint { unit_id: CompilationUnitId },
@@ -78,7 +78,7 @@ pub enum PartitionFoldRefusalCause {
     ModuleAssignmentLookupRejected { module: ModuleId },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PartitionR4ValidityCause {
     SccSplit {
@@ -98,7 +98,7 @@ pub enum PartitionR4ValidityCause {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PartitionR4ValidityVerdict {
     PartitionR4Valid,
@@ -140,9 +140,7 @@ pub fn list_unique_sorted_ids(items: Rc<Vec<NonEmptyStr>>) -> Rc<Vec<NonEmptyStr
     )
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PartitionPolicy {
     pub target_crate_count: i64,
 }
@@ -151,19 +149,19 @@ pub fn crate_partition_declared_core_target() -> i64 {
     7
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExplicitPartition {
     pub assignment: Rc<HashMap<ModuleId, CompilationUnitId>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PartitionParameter {
     ExplicitPartitionParam { partition: Rc<ExplicitPartition> },
     PolicyPartitionParam { policy: PartitionPolicy },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EmittedEdgeRefusal {
     EmitterReverseEdge {
@@ -177,7 +175,7 @@ pub enum EmittedEdgeRefusal {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ResolvePartitionRefusalCause {
     PolicyTargetCountNotPositive { policy: PartitionPolicy },
@@ -187,7 +185,7 @@ pub enum ResolvePartitionRefusalCause {
     PartitionEmittedEdgeRefused { cause: Rc<EmittedEdgeRefusal> },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ResolvePartitionOutcome {
     ResolvePartitionOk {
@@ -200,16 +198,7 @@ pub enum ResolvePartitionOutcome {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum Stage0PartitionCrateKind {
@@ -218,7 +207,7 @@ pub enum Stage0PartitionCrateKind {
     Stage0EmitCoreCrate,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Stage0PartitionCrateRow {
     pub unit_id: CompilationUnitId,
     pub package_name: String,
@@ -233,14 +222,14 @@ pub fn stage0_module_id(basename: String) -> NonEmptyStr {
     basename.clone()
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EmittedEdgesMerge {
     EmittedEdgesMerged { edges: Rc<Vec<Rc<ModuleDagEdge>>> },
     EmittedEdgesRefused { cause: Rc<EmittedEdgeRefusal> },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmittedEdgeMergeFold {
     pub edges: Rc<Vec<Rc<ModuleDagEdge>>>,
     pub present: Rc<HashMap<String, bool>>,
@@ -530,7 +519,7 @@ pub fn partition_components_dependencies_first(
     ))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PolicyPartitionFill {
     pub assignment: Rc<HashMap<ModuleId, CompilationUnitId>>,
     pub unit_index: i64,
@@ -813,7 +802,7 @@ pub fn validate_partition_r4_over(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UnitDepEdge {
     pub from: CompilationUnitId,
     pub to: CompilationUnitId,
@@ -974,7 +963,7 @@ pub fn unit_package_name(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DerivedDepPackages {
     DerivedDepPackagesOk { packages: Rc<Vec<String>> },

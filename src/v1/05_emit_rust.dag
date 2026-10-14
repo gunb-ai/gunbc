@@ -2295,10 +2295,6 @@ fn type_node_spelled_atoms_unbound(n: Node, generic_param_names: List<String>, e
   }
 }
 
-fn type_node_arm_payloads_unbound(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
-  n.children |> any(arm => arm.children |> any(payload => type_node_has_closure_unbound_generic_atom(n: child_type_node(ch: payload), generic_param_names: generic_param_names, env: env, source_indices: source_indices)))
-}
-
 fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let leaf_name = authored_name_at(source_indices: source_indices, node: n)
   if n.children |> count == 0 && leaf_name != "" {
@@ -2318,9 +2314,7 @@ fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List
     }
   }
   if type_node_is_nominal(n: n) {
-    // A variant arm renders with its payload (`Present<_>` inside `Option<..>`) when that payload names an atom the
-    // closure cannot spell; an arm without payload (the kernel Bool's `True`) spells nothing.
-    return type_node_spelled_atoms_unbound(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices) || (!type_node_has_applied_binding(n: n, source_indices: source_indices) && type_node_arm_payloads_unbound(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
+    return type_node_spelled_atoms_unbound(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices)
   }
   if n.children |> any(c => type_node_has_closure_unbound_generic_atom(n: child_type_node(ch: c), generic_param_names: generic_param_names, env: env, source_indices: source_indices)) {
     true

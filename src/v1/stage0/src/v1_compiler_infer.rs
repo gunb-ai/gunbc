@@ -4301,6 +4301,60 @@ pub fn match_arm_body_is_present_payload_binding(
     }
 }
 
+pub fn type_is_kernel_optional_declaration(t: Rc<Node>, owner: Option<Rc<Node>>) -> bool {
+    match owner.clone() {
+        Some(o) => ((t.connective.clone() == Connective::Disj) && (t.clone() == o.clone())),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn arm_is_bare_declaration_of_sibling(
+    t: Rc<Node>,
+    siblings: Rc<Vec<Rc<Node>>>,
+    optional_owner: Option<Rc<Node>>,
+) -> bool {
+    ((t.connective.clone() == Connective::Disj) && {
+        let mut __found = false;
+        for s in siblings.iter().cloned() {
+            if ((((s.clone() != t.clone())
+                && (t.declaration.clone() != std::option::Option::None))
+                && (s.declaration.clone() == t.declaration.clone()))
+                || ((s.return_cardinality.clone() == Cardinality::CardOptional)
+                    && type_is_kernel_optional_declaration(t.clone(), optional_owner.clone())))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
+pub fn inhabited_join_types(types: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> Rc<Vec<Rc<Node>>> {
+    {
+        let optional_owner =
+            kernel_optional_owner_declaring(scope.type_env.clone(), "Absent".to_string());
+        let kept = Rc::new({
+            let mut __result = Vec::new();
+            for t in types.clone().iter().cloned() {
+                if !arm_is_bare_declaration_of_sibling(
+                    t.clone(),
+                    types.clone(),
+                    optional_owner.clone(),
+                ) {
+                    __result.push(t);
+                }
+            }
+            __result
+        });
+        if ((kept.clone().len() as i64) == 0) {
+            types.clone()
+        } else {
+            kept.clone()
+        }
+    }
+}
+
 pub fn match_arm_join_diagnostics(
     unified_arm_type: Rc<Node>,
     arm: Rc<ArmInferResult>,
@@ -13288,9 +13342,28 @@ Rc::new(InferResult {
                             expected.clone(),
                         );
                         let call_fold_acc_type = match call_fold_info.clone() {
-                            Some(fi) => crate::v1_compiler_infer_types::resolved_type(
-                                crate::v1_std_core::arg_value(fi.typed_arg.clone()),
-                            ),
+                            Some(fi) => {
+                                let call_init_type = crate::v1_compiler_infer_types::resolved_type(
+                                    crate::v1_std_core::arg_value(fi.typed_arg.clone()),
+                                );
+                                match expected.clone() {
+                                    Some(exp) => {
+                                        if arm_is_bare_declaration_of_sibling(
+                                            call_init_type.clone(),
+                                            Rc::new(vec![exp.clone()]),
+                                            kernel_optional_owner_declaring(
+                                                scope.type_env.clone(),
+                                                "Absent".to_string(),
+                                            ),
+                                        ) {
+                                            exp.clone()
+                                        } else {
+                                            call_init_type.clone()
+                                        }
+                                    }
+                                    std::option::Option::None => call_init_type.clone(),
+                                }
+                            }
                             std::option::Option::None => error_type(),
                         };
                         let declared_formal_authority_failed = match (*call_target.clone()).clone()
@@ -14239,9 +14312,28 @@ Rc::new(InferResult {
                         expected.clone(),
                     );
                     let fold_acc_type = match fold_info.clone() {
-                        Some(fi) => crate::v1_compiler_infer_types::resolved_type(
-                            crate::v1_std_core::arg_value(fi.typed_arg.clone()),
-                        ),
+                        Some(fi) => {
+                            let init_type = crate::v1_compiler_infer_types::resolved_type(
+                                crate::v1_std_core::arg_value(fi.typed_arg.clone()),
+                            );
+                            match expected.clone() {
+                                Some(exp) => {
+                                    if arm_is_bare_declaration_of_sibling(
+                                        init_type.clone(),
+                                        Rc::new(vec![exp.clone()]),
+                                        kernel_optional_owner_declaring(
+                                            scope.type_env.clone(),
+                                            "Absent".to_string(),
+                                        ),
+                                    ) {
+                                        exp.clone()
+                                    } else {
+                                        init_type.clone()
+                                    }
+                                }
+                                std::option::Option::None => init_type.clone(),
+                            }
+                        }
                         std::option::Option::None => error_type(),
                     };
                     let mc_elem_provenance = derive_element_provenance(
@@ -14573,11 +14665,12 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     }
                 },
             };
-            let unified_arm_type = match arm_body_types.clone().first().cloned() {
-                Some(first_type) => Rc::new(v1_rt::list_skip(&arm_body_types.clone(), 1))
+            let joined_arm_types = inhabited_join_types(arm_body_types.clone(), scope.clone());
+            let unified_arm_type = match joined_arm_types.clone().first().cloned() {
+                Some(first_type) => Rc::new(v1_rt::list_skip(&joined_arm_types.clone(), 1))
                     .iter()
                     .cloned()
-                    .fold(first_type.clone(), |acc: _, t: Rc<Node>| {
+                    .fold(first_type.clone(), |acc: Rc<Node>, t: Rc<Node>| {
                         crate::v1_compiler_infer_types::prefer_specific_type(
                             acc,
                             t.clone(),
@@ -14890,19 +14983,41 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     let else_diags = else_result.diagnostics.clone();
                     let then_rt = crate::v1_compiler_infer_types::resolved_type(then_typed.clone());
                     let else_rt = crate::v1_compiler_infer_types::resolved_type(else_typed.clone());
-                    let unified = crate::v1_compiler_infer_types::prefer_specific_type(
-                        then_rt.clone(),
-                        else_rt.clone(),
-                        scope.type_env.clone().source_indices.clone(),
+                    let inhabited_branch_types = inhabited_join_types(
+                        Rc::new(vec![then_rt.clone(), else_rt.clone()]),
+                        scope.clone(),
                     );
-                    let branch_diags = if crate::v1_compiler_infer_types::node_type_compatible(
-                        then_rt.clone(),
-                        else_rt.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                        Rc::new(TextJudgment::TextJudgedIn {
-                            env: scope.type_env.clone(),
-                        }),
-                    ) {
+                    let branch_declaration_yields =
+                        ((inhabited_branch_types.clone().len() as i64) == 1);
+                    let unified = match inhabited_branch_types.clone().first().cloned() {
+                        Some(only) => {
+                            if branch_declaration_yields.clone() {
+                                only.clone()
+                            } else {
+                                crate::v1_compiler_infer_types::prefer_specific_type(
+                                    then_rt.clone(),
+                                    else_rt.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                )
+                            }
+                        }
+                        std::option::Option::None => {
+                            crate::v1_compiler_infer_types::prefer_specific_type(
+                                then_rt.clone(),
+                                else_rt.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            )
+                        }
+                    };
+                    let branch_diags = if (branch_declaration_yields.clone()
+                        || crate::v1_compiler_infer_types::node_type_compatible(
+                            then_rt.clone(),
+                            else_rt.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                            Rc::new(TextJudgment::TextJudgedIn {
+                                env: scope.type_env.clone(),
+                            }),
+                        )) {
                         Rc::new(vec![])
                     } else {
                         Rc::new(vec![inference_error(
@@ -16274,7 +16389,7 @@ pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
 pub fn call_locals_shadow_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Body-scope binders shadow the fn-sig lookup in the ExprCall arm (nearest-first precedence: body locals > module fns > census global_bare). Without this gate a corpus-unique census homonym out-precedes a `let` callee: refinement.dag's `let classify = by.classify; match classify(base)` typed the scrutinee as a v2 lens test module's `fn classify -> Optional<Finding>`, refusing the match arms against the wrong enum (variant not found in Optional + non-exhaustive missing Absent/Present). The gate reads body_locals — the strict body-grain subset (let / match pattern / fn+lambda params) of scope.locals — because the module context pre-seeds locals with variant and service census bindings that must NOT eclipse fn sigs (an imported 0-arg fn would lose its sig to its own census row: html_fragment.dag's html_markup_medium() typed as an unresolved primitive). Absent sends the call down the local-callable path exactly as the pre-census seed did. Companion precedence law lives in func_sig_from_global_bare (infer_lookup): the census fallback never serves an algebra method-template name (filter/any/contains/…) — a whole-pool census entry for the UNLOADED std.algebra must not preempt the known-method bridge (main-parity: on main such free calls type through the bridge; a census-served sig typed filter(xs, f) as a plain call to a never-loaded module and the runtime died NoSuchFunction).".to_string()
+            "Body-scope binders shadow the fn-sig lookup in the ExprCall arm (nearest-first precedence: body locals > module fns > census global_bare). Without this gate a corpus-unique census homonym out-precedes a `let` callee: refinement.dag's `let classify = by.classify; match classify(base)` typed the scrutinee as a v2 lens test module's `fn classify -> Optional<Finding>`, refusing the match arms against the wrong enum (variant not found in Optional + non-exhaustive missing Absent/Present). The gate reads body_locals — the strict body-grain subset (let / match pattern / fn+lambda params) of scope.locals — because the module context pre-seeds locals with variant and service census bindings that must NOT eclipse fn sigs (an imported 0-arg fn would lose its sig to its own census row: html_fragment.dag's html_markup_medium() typed as an unresolved primitive). Absent sends the call down the local-callable path exactly as the pre-census seed did. Companion precedence law lives in func_sig_from_global_bare (infer_lookup): the census fallback never serves an algebra method-template name (filter/any/contains/…) — a whole-pool census entry for the UNLOADED v2.std.algebra must not preempt the known-method bridge (main-parity: on main such free calls type through the bridge; a census-served sig typed filter(xs, f) as a plain call to a never-loaded module and the runtime died NoSuchFunction).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -26778,7 +26893,7 @@ pub fn symbol_index_with_qualified_fill(
 pub fn direct_import_export_precedence_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. KERNEL INSTALLATION IS INDEPENDENT OF IMPORT CARDINALITY (build_ancestry_precedence, 2026-08-31): the kernel overlay applies unconditionally over the import union and both type-env builders consume the one producer - the former shape skipped the overlay when a module had exactly one import, so kernel identity won or lost by ancestry occupancy (a leak-dependent regime: identical imports, different realizations). Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded).".to_string()
+            "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. KERNEL INSTALLATION IS INDEPENDENT OF IMPORT CARDINALITY (build_ancestry_precedence, 2026-08-31): the kernel overlay applies unconditionally over the import union and both type-env builders consume the one producer - the former shape skipped the overlay when a module had exactly one import, so kernel identity won or lost by ancestry occupancy (a leak-dependent regime: identical imports, different realizations). Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -31893,7 +32008,6 @@ pub fn build_emit_graph_info(
             data_variant_wire_spellings: v1_rt::rc_empty_map::<String, Rc<DataVariantWireSpelling>>(
             ),
             fn_decl_items: built.fn_decl_items.clone(),
-            fn_map_key_bounds: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: variant_shapes.fielded.clone(),
             positional_payload_variants: variant_shapes.positional_payload.clone(),
@@ -31911,8 +32025,6 @@ pub fn build_emit_graph_info(
             fn_type_env: crate::v1_compiler_infer_env::empty_type_env(),
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
-            tco_cursor_param: "".to_string(),
-            tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
         })
     }
 }
@@ -31961,6 +32073,47 @@ pub fn typecheck(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<TypedGraph> {
+    typecheck_with_census_extra(
+        graph.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        Rc::new(vec![]),
+        source_indices.clone(),
+    )
+}
+
+pub fn effect_incompleteness_diagnostics(
+    causes: Rc<Vec<Rc<EffectIncompleteness>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for reason in causes.iter().cloned() {
+            __result.push(match (*reason.clone()).clone() {
+    EffectIncompleteness::UnresolvedCalleeEdge { item_identity, spelling, call_site, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: call to '".to_string(), spelling.clone()), "' in ".to_string()), crate::v1_std_core::callable_identity(item_identity.clone())), " has no established callee identity, so its effects cannot be joined".to_string()), call_site.clone(), item_identity.owner_module_path.clone()),
+    EffectIncompleteness::ExpansionBudgetExhausted { remaining_delta: _, .. } => inference_error("effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point".to_string(), crate::v1_std_core::no_span(), "".to_string()),
+    EffectIncompleteness::ResolvedCalleeRegistryRowAbsent { caller, callee, call_site, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), crate::v1_std_core::callable_identity(caller.clone())), " calls ".to_string()), crate::v1_std_core::callable_identity(callee.clone())), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does".to_string()), call_site.clone(), caller.owner_module_path.clone()),
+    EffectIncompleteness::FunctionValueEffectsUnresolved { caller, call_site, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue {
+    caller: crate::v1_std_core::callable_identity(caller.clone()),
+    span: call_site.clone(),
+}), caller.owner_module_path.clone()),
+    EffectIncompleteness::LocalBindingEffectsUnresolved { caller, name, call_site, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding {
+    caller: crate::v1_std_core::callable_identity(caller.clone()),
+    name: name.clone(),
+    span: call_site.clone(),
+}), caller.owner_module_path.clone()),
+});
+        }
+        __result
+    })
+}
+
+pub fn typecheck_with_census_extra(
+    graph: Rc<ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    census_fill_modules: Rc<Vec<Rc<Node>>>,
+    census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypedGraph> {
     {
         let intern_table = seed_kernel_intern_table(intern_table.clone());
         let resolved_by_name = graph.modules.clone().iter().cloned().fold(
@@ -31973,7 +32126,10 @@ pub fn typecheck(
                 )
             },
         );
-        let symbol_index = build_symbol_index_census(graph.modules.clone(), source_indices.clone());
+        let symbol_index = symbol_index_with_qualified_fill(
+            build_symbol_index_census(graph.modules.clone(), census_si.clone()),
+            build_symbol_index_qualified_fill(census_fill_modules.clone(), census_si.clone()),
+        );
         let global_variant_base = build_global_bare_variant_locals(
             symbol_index.global_bare.clone(),
             source_indices.clone(),
@@ -32066,31 +32222,6 @@ pub fn typecheck(
             ),
         })
     }
-}
-
-pub fn effect_incompleteness_diagnostics(
-    causes: Rc<Vec<Rc<EffectIncompleteness>>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for reason in causes.iter().cloned() {
-            __result.push(match (*reason.clone()).clone() {
-    EffectIncompleteness::UnresolvedCalleeEdge { item_identity, spelling, call_site, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: call to '".to_string(), spelling.clone()), "' in ".to_string()), crate::v1_std_core::callable_identity(item_identity.clone())), " has no established callee identity, so its effects cannot be joined".to_string()), call_site.clone(), item_identity.owner_module_path.clone()),
-    EffectIncompleteness::ExpansionBudgetExhausted { remaining_delta: _, .. } => inference_error("effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point".to_string(), crate::v1_std_core::no_span(), "".to_string()),
-    EffectIncompleteness::ResolvedCalleeRegistryRowAbsent { caller, callee, call_site, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), crate::v1_std_core::callable_identity(caller.clone())), " calls ".to_string()), crate::v1_std_core::callable_identity(callee.clone())), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does".to_string()), call_site.clone(), caller.owner_module_path.clone()),
-    EffectIncompleteness::FunctionValueEffectsUnresolved { caller, call_site, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue {
-    caller: crate::v1_std_core::callable_identity(caller.clone()),
-    span: call_site.clone(),
-}), caller.owner_module_path.clone()),
-    EffectIncompleteness::LocalBindingEffectsUnresolved { caller, name, call_site, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding {
-    caller: crate::v1_std_core::callable_identity(caller.clone()),
-    name: name.clone(),
-    span: call_site.clone(),
-}), caller.owner_module_path.clone()),
-});
-        }
-        __result
-    })
 }
 
 pub fn realize_module(
@@ -32545,8 +32676,30 @@ pub fn reconcile(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
+    reconcile_with_census_extra(
+        graph.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        Rc::new(vec![]),
+        source_indices.clone(),
+    )
+}
+
+pub fn reconcile_with_census_extra(
+    graph: Rc<ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    census_fill_modules: Rc<Vec<Rc<Node>>>,
+    census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ResolvedGraph> {
     {
-        let typed = typecheck(graph.clone(), source_indices.clone(), intern_table.clone());
+        let typed = typecheck_with_census_extra(
+            graph.clone(),
+            source_indices.clone(),
+            intern_table.clone(),
+            census_fill_modules.clone(),
+            census_si.clone(),
+        );
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
         Rc::new(ResolvedGraph {
