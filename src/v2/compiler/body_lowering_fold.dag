@@ -1,5 +1,6 @@
 module v2.compiler.body_lowering_fold
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_landed_after_typed_census }
 import v2.compiler.service_realization { realization_refusal_diagnostic, service_realization_refusal }
 import v2.std.service_realization_labels {
   realization_arm_doc_label,
@@ -258,6 +259,7 @@ import v2.std.node_query {
   repeated_name_edges,
   variant_declaration_node
 }
+import std.roster_frontier { FrontierRow, PathSubject }
 
 data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into v2.compiler.body_producer_forward GrammarRelationRow forward fold (general-body-producer-design §3) once Slice 4 deletes this module; match/if/body_try hand-walker scaffolds dissolved into body_producer_forward + body_lower_fold. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → the fold encoding via fold_call_lowering and fold_recurrence_encoding); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_lowering — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained as the typed BodyWrapperRetained variant (general-body-producer-design Stage A frontier: lowered | wrapper-retained, refused at the retained shell by the normalized-tree door — never silent shell accept)."
 
@@ -661,7 +663,6 @@ fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<BodyLowering> {
     diagnostics: None
   }
 }
-
 
 fn body_lower_has_grammar_projection_edge(node: Node) -> Bool {
   fold(node.children, init: false, f: fn(acc, e) {
@@ -1798,7 +1799,6 @@ fn body_lower_operand_from_shell_read(shell: Node) -> OperandRefRead {
   }
 }
 
-
 // A SEQUENCE WITH A NON-EMPTY RIGHT IS NEVER NARROWED TO ITS LEFT ELEMENT. When pair.right is the
 // empty conj the sequence is one element and its left IS the operand; otherwise the sequence is an
 // operator expression, read whole by body_lower_read_operator_expression, or it is not an operand
@@ -1844,8 +1844,6 @@ fn body_lower_operand_read_outcome(read: OperandRefRead, diagnostics: Diagnostic
     OperandRefRefused { diagnostics: r } => Rejected { diagnostics: rejected_with_pending(pending: diagnostics, rejected: r) }
   }
 }
-
-
 
 // An int literal is an atom with a magnitude child, and it is not a binding: the operand reader
 // reads it whole before the branded-atom arm rebuilds an atom with no children -- which is what
@@ -2772,8 +2770,6 @@ fn body_lower_unwrap_optional_element(node: Node) -> Node {
     Rejected { diagnostics: _ } => node
   }
 }
-
-
 
 // THE WHOLE TYPE EXPRESSION, NOT ITS HEAD ATOM. dag_grammar_qualified_type_expr is
 // seq(seq(qualified_name, optional(`<` type_list `>`)), optional(`?`)). The head lowers as
@@ -7810,8 +7806,6 @@ fn body_lower_is_match_arm_navigate_emitted(emitted: Symbol) -> Bool {
     || body_lower_is_pass_through_emitted(emitted: emitted)
 }
 
-
-
 fn body_lower_wire_match_arm_capture(arm_capture: Node) -> Outcome<Node> {
   let stripped = body_lower_deep_unwrap_optional(node: arm_capture)
   match parse_production_emitted_identity_optional(node: stripped) {
@@ -7834,9 +7828,6 @@ fn body_lower_wire_match_arm_capture(arm_capture: Node) -> Outcome<Node> {
     Absent => body_lower_match_arm_wire_from_sequence(stripped: stripped)
   }
 }
-
-
-
 
 // A branch target the fold already lowered: a literal reifies to its canonical atom, an operand to
 // its whole reading, and a target neither reader reads is kept AS LOWERED (identity, never a part).
@@ -8026,7 +8017,6 @@ fn body_lower_arm_operand_resolved_uncast_read(arm: Node) -> OperandRefRead {
       }
   }
 }
-
 
 fn body_lower_if_expr_capture_optional(spine: Node) -> Optional<Node> {
   match body_lower_find_captured(root: spine, emitted: ^dag_surface_expr) {
@@ -8359,7 +8349,6 @@ fn body_lower_let_sugar_after_name(name: Node, rest: Node, colon_admitted: Bool)
   }
 }
 
-
 // The let's key binding. The name is the projection of the binder atom below, which is lowered from
 // the token it was read from so it keeps its minted occurrence (v2.compiler.occurrence_role reads it).
 fn body_lower_let_in_key_binding_optional(captured: Node) -> Optional<Symbol> {
@@ -8681,7 +8670,6 @@ fn body_lower_let_keyword_statement_value_optional(captured: Node) -> Optional<N
       }
   }
 }
-
 
 // AN ADMITTED GUARD LOWERS TO A BRANCH WHOSE ELSE IS THE REST OF THE SPINE: `if c { ..; return e }`
 // followed by statements is Branch(c, <arm>, <rest>). Admission has two halves, owned in two places.
@@ -9880,7 +9868,6 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
   }
   }
 }
-
 
 // A RECORD LITERAL LOWERS TO THE CONSTRUCT. primary_expr's captured for `R { f: e, .. }` is
 // seq(name, seq(`{`, seq(field_init,*, `}`))); each field_init shell, preserved by the child fold
@@ -11132,7 +11119,6 @@ fn body_lower_io_field_tail_present(tail: Node) -> Bool {
       (is_empty_conj_root(n: pair.left) == false) || (is_empty_conj_root(n: pair.right) == false)
   }
 }
-
 
 type BodyLowerIoBlock {
   payload: Node,
@@ -12846,4 +12832,8 @@ fn body_lower_finish_for_normalize(
   )
 }
 
-
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "body_lower_where_argument" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "body_lower_where_leaf_atom_optional" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "body_lower_where_predicate" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+]
