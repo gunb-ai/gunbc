@@ -70,6 +70,8 @@ import std.dissolution { UnboundDissolution, BoundDissolution }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiInstance, VastAiInstances, VastAiCharges,
   vast_ai_search_type_bid, vast_ai_quote_currency, vast_ai_keyset_page_limit,
+  vast_ai_driver_version_read, vast_ai_driver_version_from_search_offers_text,
+  VastAiDriverVersionStanding, VastAiDriverVersionUnread, VastAiDriverVersionRead, VastAiDriverVersionMalformed,
 }
 import std.decision { CostPerAcceptedUnit, NetValue }
 import test.claim.fabric.provider_use_fixture {
@@ -228,7 +230,7 @@ fn wire_offer(name: String, ram: Int, bid: Bool, rentable: Bool) -> VastAiOffer 
     inet_up_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     gpu_ram: ram,
-    driver_version: Present { value: "580.65.06" },
+    driver_version: vast_ai_driver_version_read(major: 580),
   }
 }
 
@@ -420,7 +422,7 @@ test fn supported_gpu_classes_screen_offers() -> Bool {
     && host_driver_screens_the_serving_unit()
 }
 
-fn wire_offer_driver(name: String, ram: Int, driver: String?) -> VastAiOffer {
+fn wire_offer_driver(name: String, ram: Int, driver: VastAiDriverVersionStanding) -> VastAiOffer {
   VastAiOffer {
     id: 7,
     machine_id: 42,
@@ -444,13 +446,15 @@ fn wire_offer_driver(name: String, ram: Int, driver: String?) -> VastAiOffer {
 }
 
 fn host_driver_screens_the_serving_unit() -> Bool {
-  let ok = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "580.65.06" })
-  let unread = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: none)
-  let low_ninfer = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "570.86.15" })
-  let vllm_ok = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "590.44.01" })
-  let vllm_low = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "580.65.06" })
+  let ok = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: vast_ai_driver_version_read(major: 580))
+  let unread = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: VastAiDriverVersionUnread)
+  let malformed = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: VastAiDriverVersionMalformed { raw: "x" })
+  let low_ninfer = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: vast_ai_driver_version_read(major: 570))
+  let vllm_ok = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: vast_ai_driver_version_read(major: 590))
+  let vllm_low = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: vast_ai_driver_version_read(major: 580))
   flex_offer_meets_unit_driver(offer: ok, unit: Qwen3_8_27bOnNinfer)
     && !flex_offer_meets_unit_driver(offer: unread, unit: Qwen3_8_27bOnNinfer)
+    && !flex_offer_meets_unit_driver(offer: malformed, unit: Qwen3_8_27bOnNinfer)
     && !flex_offer_meets_unit_driver(offer: low_ninfer, unit: Qwen3_8_27bOnNinfer)
     && flex_serving_unit_accepts_offer(unit: Qwen3_8_27bOnNinfer, offer: ok)
     && !flex_serving_unit_accepts_offer(unit: Qwen3_8_27bOnNinfer, offer: unread)
@@ -458,6 +462,22 @@ fn host_driver_screens_the_serving_unit() -> Bool {
     && !flex_offer_meets_unit_driver(offer: vllm_low, unit: DeepseekV4FlashOnVllm)
     && flex_offer_in_shadow_field(offer: ok)
     && !flex_offer_in_shadow_field(offer: unread)
+    && driver_wire_standing_discriminates()
+}
+
+fn driver_wire_standing_discriminates() -> Bool {
+  match vast_ai_driver_version_from_search_offers_text(raw: none) {
+    VastAiDriverVersionUnread => true
+    _ => false
+  }
+    && match vast_ai_driver_version_from_search_offers_text(raw: Present { value: "x" }) {
+      VastAiDriverVersionMalformed { raw: r } => r == "x"
+      _ => false
+    }
+    && match vast_ai_driver_version_from_search_offers_text(raw: Present { value: "580.65.06" }) {
+      VastAiDriverVersionRead { version: v } => v.major == 580
+      _ => false
+    }
 }
 
 test fn lost_create_plus_observed_instance_does_not_acquire_again() -> Bool {

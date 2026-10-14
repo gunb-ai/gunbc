@@ -2,6 +2,7 @@ module extdeps.cloud.vast_ai
 
 import std.resources { Network }
 import std.types { Int, Bool, NonEmptyStr, String, Secret, List }
+import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.decimal { ExactDecimal }
 import std.measure {
@@ -36,7 +37,8 @@ import extdeps.uri { Uri, Https }
 // std.measure exact_decimal_to_money_per_hour_ceil (round up). storage_cost ($/GB-month) and
 // inet_up_cost / inet_down_cost ($/GB) stay ExactDecimal: a MoneyAmountMicro wrapper would drop
 // the quantity axis. gpu_ram is an Int of megabytes on the REST wire (docs.vast.ai: CLI GB,
-// REST MB). driver_version is the host driver string on search-offers. num_gpus is an Int and
+// REST MB). search-offers driver_version is a host NVIDIA driver string (e.g. "580.65.06");
+// ingest is vast_ai_driver_version_from_search_offers_text. num_gpus is an Int and
 // IS a request axis: an offer is a machine with that many GPUs, rented whole.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/search/search-offers" }
@@ -110,8 +112,46 @@ type VastAiOffer {
   inet_up_cost: ExactDecimal
   inet_down_cost: ExactDecimal
   gpu_ram: Int
-  // Host NVIDIA driver as search-offers publishes it (e.g. "580.65.06"). Absent is unread.
-  driver_version: String?
+  driver_version: VastAiDriverVersionStanding
+}
+
+// search-offers JSON driver_version is a string or null. Unread is JSON null/omitted.
+// Malformed is a present string that is not dotted decimal with a non-negative major.
+type VastAiDriverVersion {
+  major: Nat
+}
+
+type VastAiDriverVersionStanding
+  = VastAiDriverVersionRead { version: VastAiDriverVersion }
+  | VastAiDriverVersionUnread
+  | VastAiDriverVersionMalformed { raw: String }
+
+fn vast_ai_driver_version_read(major: Nat) -> VastAiDriverVersionStanding {
+  VastAiDriverVersionRead { version: VastAiDriverVersion { major: major } }
+}
+
+fn vast_ai_driver_version_from_search_offers_text(raw: String?) -> VastAiDriverVersionStanding {
+  match raw {
+    Absent => VastAiDriverVersionUnread
+    Present { value: text } =>
+      if trim(s: text) == "" {
+        VastAiDriverVersionMalformed { raw: text }
+      } else {
+        match split(s: trim(s: text), delimiter: ".").first() {
+          Absent => VastAiDriverVersionMalformed { raw: text }
+          Present { value: head } =>
+            match parse_int(s: head) {
+              Absent => VastAiDriverVersionMalformed { raw: text }
+              Present { value: major } =>
+                if (major < 0) {
+                  VastAiDriverVersionMalformed { raw: text }
+                } else {
+                  vast_ai_driver_version_read(major: major)
+                }
+            }
+        }
+      }
+  }
 }
 
 data vast_ai_quote_currency: CurrencyCode = Usd

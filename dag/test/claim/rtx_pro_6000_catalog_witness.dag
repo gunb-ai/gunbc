@@ -40,7 +40,7 @@ import product.supplier.packet_ai {
   packet_ai_vram_unstated_obligation, packet_ai_pool_region, packet_ai_unexpressed,
 }
 import extdeps.cloud.packet_ai { PacketAiAllocation, Dedicated, Dynamic, PacketAiProduct, PacketAiRegion, PacketAiPool, PacketAiStorefrontProduct }
-import extdeps.cloud.vast_ai { VastAiOffer }
+import extdeps.cloud.vast_ai { VastAiOffer, vast_ai_driver_version_read }
 import std.types { Unit }
 import std.content_hash { Fnv1a64Structural }
 import std.materialization_ladder { Frame, SharedStateFrame }
@@ -99,7 +99,7 @@ fn vast_offer_arch(gpus: Int, arch: String?) -> VastAiOffer {
     inet_up_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     gpu_ram: 98304,
-    driver_version: Present { value: "580.65.06" },
+    driver_version: vast_ai_driver_version_read(major: 580),
   }
 }
 
@@ -118,7 +118,7 @@ fn vast_offer_bid(bid: Bool?) -> VastAiOffer {
     inet_up_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     gpu_ram: 98304,
-    driver_version: Present { value: "580.65.06" },
+    driver_version: vast_ai_driver_version_read(major: 580),
   }
 }
 
