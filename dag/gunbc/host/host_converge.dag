@@ -1,6 +1,7 @@
 module gunbc.host.host_converge
 
 import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count, Second, second, second_count }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -820,43 +821,64 @@ fn user_manager_instance_unit() -> String {
 fn user_manager_backstop_knobs() -> List<ConvergeKnob> {
   match user_work_pool_slots() {
     BeltMaxConcurrentNotNatural { authored: _ } => []
-    UserWorkPoolSlotsDerived { slots } => {
-      let work_max = user_work_slice_memory_max_of(slots: slots)
-      let backstop = user_slice_backstop_memory_max_of(work_slice_max: work_max)
-      [
-        slice_numeric_knob(
-          slice: GunbcSlice,
-          name: "user_manager_memory_max_bytes",
-          unit: user_manager_instance_unit(),
-          property: systemd_memory_max_property,
-          value: byte_size_count(b: backstop)
-        ),
-        slice_numeric_knob(
-          slice: GunbcSlice,
-          name: "user_manager_memory_swap_max_bytes",
-          unit: user_manager_instance_unit(),
-          property: systemd_memory_swap_max_property,
-          value: byte_size_count(b: user_slice_backstop_memory_swap_max())
-        ),
-      ]
-    }
+    UserWorkPoolSlotsDerived { slots } => user_manager_backstop_knobs_from_slots(slots: slots)
   }
 }
+
+fn user_manager_backstop_knobs_from_slots(slots: Nat) -> List<ConvergeKnob> {
+  let work_max = user_work_slice_memory_max_of(slots: slots)
+  let backstop = user_slice_backstop_memory_max_of(work_slice_max: work_max)
+  [
+    slice_numeric_knob(
+      slice: GunbcSlice,
+      name: "user_manager_memory_max_bytes",
+      unit: user_manager_instance_unit(),
+      property: systemd_memory_max_property,
+      value: byte_size_count(b: backstop)
+    ),
+    slice_numeric_knob(
+      slice: GunbcSlice,
+      name: "user_manager_memory_swap_max_bytes",
+      unit: user_manager_instance_unit(),
+      property: systemd_memory_swap_max_property,
+      value: byte_size_count(b: user_slice_backstop_memory_swap_max())
+    ),
+  ]
+}
+
+type UserManagerBackstop
+  = UserManagerBackstopNotOwed
+  | UserManagerBackstopDerived { knobs: List<ConvergeKnob> }
+  | UserManagerBackstopRefused { cause: String }
 
 // THE BACKSTOP IS OWED WHERE THE --user WORK IS PLACED, not on every runner host.
-// user@UID.service is the live-deploy principal (gunbc_service_uid); belt/compute transients
-// start under that user manager. host_served_deployment_claim is the same placement predicate
-// as the slice charge. A fleet-wide concat would write MemoryMax on srv3/srv4's user@1000
-// while the slice file and the charge stay on the prod-role holder.
-fn user_manager_backstop_knobs_for(host: HostIdentity) -> List<ConvergeKnob> {
+// NotPlaced is not owed. Unmeasured and a non-natural belt concurrent are refusals: the
+// fleet converge policy goes unsound rather than writing no knobs (review 79929).
+fn user_manager_backstop_for(host: HostIdentity) -> UserManagerBackstop {
   match host_served_deployment_claim(host: host) {
-    ServedDeploymentClaimResolved { memory: _ } => user_manager_backstop_knobs()
-    ServedDeploymentNotPlaced => []
-    ServedDeploymentClaimUnmeasured { cause: _ } => []
+    ServedDeploymentNotPlaced => UserManagerBackstopNotOwed
+    ServedDeploymentClaimUnmeasured { cause } => UserManagerBackstopRefused { cause: cause }
+    ServedDeploymentClaimResolved { memory: _ } =>
+      match user_work_pool_slots() {
+        BeltMaxConcurrentNotNatural { authored: n } =>
+          UserManagerBackstopRefused {
+            cause: join(["belt max_concurrent ", to_string(n), " is not a natural number, so the user@ backstop cannot be derived"], ""),
+          }
+        UserWorkPoolSlotsDerived { slots } =>
+          UserManagerBackstopDerived { knobs: user_manager_backstop_knobs_from_slots(slots: slots) }
+      }
   }
 }
 
-fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) -> HostConverge {
+fn user_manager_backstop_knobs_for(host: HostIdentity) -> List<ConvergeKnob> {
+  match user_manager_backstop_for(host: host) {
+    UserManagerBackstopNotOwed => []
+    UserManagerBackstopDerived { knobs } => knobs
+    UserManagerBackstopRefused { cause: _ } => []
+  }
+}
+
+fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, backstop_knobs: List<ConvergeKnob>) -> HostConverge {
   HostConverge {
     identity: h.identity,
     knobs: concat(
@@ -865,7 +887,7 @@ fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) 
           concat(gunbc_pinned_tree_knobs(host: h.identity), runner_host_knobs(h: h)),
           session_knobs,
         ),
-        user_manager_backstop_knobs_for(host: h.identity),
+        backstop_knobs,
       ),
       codex_runtime_bundle_knobs(host: h.identity),
     ),
@@ -881,13 +903,32 @@ fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) 
 // A refused host contributes NO converge target: it is not converged, and not silently converged
 // with a guessed size either. The refused roster stays readable through
 // fleet_deployment_completion for a consumer that needs to know the fleet is incomplete.
+type FleetConvergeAcc
+  = FleetConvergeHosts { hosts: List<HostConverge> }
+  | FleetConvergeUnsound { reason: String }
+
 fn fleet_converge_policy_from(plan: RunnerDeploymentPlan) -> ConvergePolicy {
-  ConvergePolicyDerived {
-    hosts: fold(plan.hosts, init: [], f: (acc, st) => match st {
-      HostRunnerDeploymentDerived { deployment: h } =>
-        concat(acc, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity))])
-      HostRunnerDeploymentRefused { refusal: _ } => acc
-    }),
+  match fold(plan.hosts, init: FleetConvergeHosts { hosts: [] }, f: (acc, st) => match acc {
+    FleetConvergeUnsound { reason } => FleetConvergeUnsound { reason: reason }
+    FleetConvergeHosts { hosts } =>
+      match st {
+        HostRunnerDeploymentRefused { refusal: _ } => FleetConvergeHosts { hosts: hosts }
+        HostRunnerDeploymentDerived { deployment: h } =>
+          match user_manager_backstop_for(host: h.identity) {
+            UserManagerBackstopRefused { cause } => FleetConvergeUnsound { reason: cause }
+            UserManagerBackstopNotOwed =>
+              FleetConvergeHosts {
+                hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: [])]),
+              }
+            UserManagerBackstopDerived { knobs } =>
+              FleetConvergeHosts {
+                hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: knobs)]),
+              }
+          }
+      }
+  }) {
+    FleetConvergeUnsound { reason } => ConvergePolicyUnsound { reason: reason }
+    FleetConvergeHosts { hosts } => ConvergePolicyDerived { hosts: hosts }
   }
 }
 

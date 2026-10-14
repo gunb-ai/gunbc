@@ -276,7 +276,7 @@ import gunbc.live_deploy.operations {
 import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
   Pipeline, PipelineStep,
-  Do, If, Run, Comment, Let, ExprCmdSubst,
+  Do, If, Run, Comment, Let, Exit, ExprCmdSubst,
   FailFast, ExitZero, Not, DiscardAll
 }
 import v2.std.collection { Absent, Present }
@@ -1572,12 +1572,15 @@ fn emit_user_work_slice_unit_doc() -> Doc? {
 }
 
 fn apply_user_work_slice_install_steps() -> List<PipelineStep> {
-  match emit_user_work_slice_unit_doc() {
-    Absent => []
-    Present { value: doc } => [
+  match user_work_slice_unit_file() {
+    UserWorkSliceUnitFileRefused { cause } => [
+      Comment { text: cause },
+      Exit { status: "1" },
+    ]
+    UserWorkSliceUnitFileReady { file } => [
       deploy_raw(command: deploy_stage_write_command(
         stage_name: user_work_slice_unit_name as String,
-        content: render(doc: doc, proto: live_deploy_protocol),
+        content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
       )),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: user_work_slice_unit_name as String,
