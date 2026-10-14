@@ -2,7 +2,7 @@ module v2.std.symbol_index
 
 
 import std.types { List }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, HeadAbsent, HeadFound, contains, fold_list, is_empty, length, list_head }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, contains, fold_list, is_empty, length, list_head }
 import v2.std.collection {
   Map,
   empty_map,
@@ -505,8 +505,8 @@ fn symbol_index_declaring_path_of(
   target: QualifiedName
 ) -> QualifiedName {
   match list_head(xs: symbol_index_claimants_at(index: index, binding_path: target)) {
-    HeadFound { value: declaring } => declaring
-    HeadAbsent => target
+    Present { value: declaring } => declaring
+    Absent => target
   }
 }
 
@@ -683,9 +683,9 @@ fn symbol_index_lexical_selection(
     0 => LexicalUnbound
     1 =>
       match list_head(xs: candidates) {
-        HeadFound { value: candidate } =>
+        Present { value: candidate } =>
           LexicalHit { node: candidate.node, path: candidate.path }
-        HeadAbsent => LexicalUnbound
+        Absent => LexicalUnbound
       }
     _ => LexicalAmbiguous { candidates: candidates }
   }
