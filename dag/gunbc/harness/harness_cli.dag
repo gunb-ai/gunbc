@@ -86,7 +86,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // was written about.
 
 // THE MACBOOK'S TOOL ENVIRONMENT. The timeout program is the GNU build, for the reason
-// harness_timeout_kill_exit_code records: the 124 exit is what makes "the harness killed this"
+// harness_gnu_timeout_killed_exit records: the 124 exit is what makes "the harness killed this"
 // decidable, and BSD has no timeout at all.
 data harness_macbook_timeout_program: FilePath = "/opt/homebrew/bin/gtimeout" as FilePath
 

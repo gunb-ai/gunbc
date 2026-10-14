@@ -49,7 +49,14 @@ type HarnessShellJob {
 
 // GNU timeout exits 124 when it kills the child. A command may also exit 124 itself, so 124 is
 // DurationExceeded only when elapsed time from started_at has reached this job's backstop.
+// Elapsed unknown is not "not the backstop": it is a third standing, because guessing either
+// DurationExceeded or ToolCompleted would fabricate the missing clock read.
 data harness_gnu_timeout_killed_exit: Int = 124
+
+type HarnessJobBackstopStanding
+  = JobBackstopHit
+  | JobOwnExit
+  | JobBackstopUndecided
 
 fn harness_exit_is_harness_backstop(code: Int, elapsed: Second, backstop: Second) -> Bool {
   code == harness_gnu_timeout_killed_exit && measure_le(a: backstop, b: elapsed)
@@ -74,12 +81,29 @@ fn harness_job_elapsed_seconds(job: HarnessShellJob) -> Second? {
   }
 }
 
-fn harness_job_exit_is_harness_backstop(job: HarnessShellJob, code: Int) -> Bool {
-  match harness_job_elapsed_seconds(job: job) {
-    Absent => false
-    Present { value: elapsed } =>
-      harness_exit_is_harness_backstop(code: code, elapsed: elapsed, backstop: job.backstop)
+fn harness_backstop_standing(code: Int, elapsed: Second?, backstop: Second) -> HarnessJobBackstopStanding {
+  match elapsed {
+    Absent =>
+      if code == harness_gnu_timeout_killed_exit {
+        JobBackstopUndecided
+      } else {
+        JobOwnExit
+      }
+    Present { value: observed } =>
+      if harness_exit_is_harness_backstop(code: code, elapsed: observed, backstop: backstop) {
+        JobBackstopHit
+      } else {
+        JobOwnExit
+      }
   }
+}
+
+fn harness_job_backstop_standing(job: HarnessShellJob, code: Int) -> HarnessJobBackstopStanding {
+  harness_backstop_standing(
+    code: code,
+    elapsed: harness_job_elapsed_seconds(job: job),
+    backstop: job.backstop,
+  )
 }
 
 type HarnessShellJobObservation
@@ -151,11 +175,21 @@ fn harness_observe_job(job: HarnessShellJob) -> HarnessShellJobObservation {
   harness_observe_standing(job: harness_refresh_job(job: job))
 }
 
-fn harness_command_table_exit_label(job: HarnessShellJob, code: Int, backstop_hit: Bool) -> String {
-  if backstop_hit {
-    join(["  ", job.id, "  duration exceeded  $ ", job.command], "")
-  } else {
-    join(["  ", job.id, "  exit ", to_string(value: code), "  $ ", job.command], "")
+fn harness_command_table_exit_label(
+  job: HarnessShellJob,
+  code: Int,
+  standing: HarnessJobBackstopStanding,
+) -> String {
+  match standing {
+    JobBackstopHit =>
+      join(["  ", job.id, "  duration exceeded  $ ", job.command], "")
+    JobOwnExit =>
+      join(["  ", job.id, "  exit ", to_string(value: code), "  $ ", job.command], "")
+    JobBackstopUndecided =>
+      join([
+        "  ", job.id, "  exit ", to_string(value: code),
+        ", backstop undecided  $ ", job.command,
+      ], "")
   }
 }
 
@@ -167,7 +201,7 @@ fn harness_command_table_line(obs: HarnessShellJobObservation) -> String {
       harness_command_table_exit_label(
         job: job,
         code: code,
-        backstop_hit: harness_job_exit_is_harness_backstop(job: job, code: code),
+        standing: harness_job_backstop_standing(job: job, code: code),
       )
     JobSignaled { job, signal } =>
       join(["  ", job.id, "  signaled ", to_string(value: signal), "  $ ", job.command], "")

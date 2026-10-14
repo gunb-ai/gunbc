@@ -1,7 +1,7 @@
 module test.claim.harness_shell_job
 
 import std.types { Bool, String, List, FilePath, NonEmptyStr, Int, Timestamp }
-import std.measure { second, minute, minute_count }
+import std.measure { Second, second, minute, minute_count }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int }
 import gunbc.harness.harness_wire { WireToolUseBlock }
@@ -10,6 +10,7 @@ import gunbc.harness.harness_shell_job {
   harness_hand_in_blocked_by_running_jobs, harness_kept_stdio_path, harness_stdio_move_note,
   HarnessTerminateProcessGroup, harness_kill_signal_note,
   harness_exit_is_harness_backstop, harness_command_table_exit_label,
+  harness_backstop_standing, JobBackstopHit, JobOwnExit, JobBackstopUndecided,
 }
 import gunbc.harness.harness_shell_job_policy {
   WaitRequestedMinutes, WaitMalformedMinutes, WaitNonPositiveMinutes, WaitUseDefault, WaitPaceReset,
@@ -17,10 +18,15 @@ import gunbc.harness.harness_shell_job_policy {
 import gunbc.harness.harness_tool {
   harness_wait_request_from_block, harness_kill_job, harness_tool_environment,
   harness_env_with_jobs, harness_outcome_text, harness_job_output_for_state,
-  harness_text_with_table, ToolRefused, ToolCompleted, ToolReport, ToolJob,
+  harness_text_with_table, harness_job_backstop_exit_outcome,
+  ToolRefused, ToolCompleted, ToolReport, ToolJob, OutputComplete,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn unknown_elapsed() -> Second? {
+  none
+}
 
 fn fixture_job(state: HarnessShellJobState) -> HarnessShellJob {
   HarnessShellJob {
@@ -164,9 +170,52 @@ test fn a_124_at_the_backstop_is_duration_exceeded_and_a_124_inside_it_is_not() 
   harness_exit_is_harness_backstop(code: 124, elapsed: second(count: 20), backstop: second(count: 20))
     && !harness_exit_is_harness_backstop(code: 124, elapsed: second(count: 1), backstop: second(count: 20))
     && !harness_exit_is_harness_backstop(code: 0, elapsed: second(count: 20), backstop: second(count: 20))
-    && harness_command_table_exit_label(job: job, code: 124, backstop_hit: true).contains("duration exceeded")
-    && !harness_command_table_exit_label(job: job, code: 124, backstop_hit: true).contains("exit 124")
-    && harness_command_table_exit_label(job: job, code: 124, backstop_hit: false).contains("exit 124")
+    && harness_command_table_exit_label(job: job, code: 124, standing: JobBackstopHit).contains("duration exceeded")
+    && !harness_command_table_exit_label(job: job, code: 124, standing: JobBackstopHit).contains("exit 124")
+    && harness_command_table_exit_label(job: job, code: 124, standing: JobOwnExit).contains("exit 124")
+}
+
+test fn a_124_whose_elapsed_time_is_unknown_refuses_rather_than_guessing() -> Bool {
+  let standing = harness_backstop_standing(
+    code: 124,
+    elapsed: unknown_elapsed(),
+    backstop: second(count: 20),
+  )
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 } })
+  let outcome = harness_job_backstop_exit_outcome(
+    job: job,
+    code: 124,
+    standing: standing,
+    completed: ToolCompleted { text: "from-job", exit_code: 124, standing: OutputComplete },
+  )
+  let text = harness_outcome_text(outcome: outcome)
+  match standing {
+    JobBackstopUndecided => true
+    JobBackstopHit => false
+    JobOwnExit => false
+  }
+    && match outcome {
+      ToolRefused { disposition: _ } =>
+        text.contains("could not be read") && text.contains("backstop cannot be decided")
+          && !text.contains("[exit 124]") && !text.contains("exceeded the shell-job backstop")
+      ToolCompleted { text: _, exit_code: _, standing: _ } => false
+      ToolReport { text: _, standing: _ } => false
+      ToolJob { id: _, text: _ } => false
+    }
+    && harness_command_table_exit_label(
+      job: job,
+      code: 124,
+      standing: JobBackstopUndecided,
+    ).contains("backstop undecided")
+    && match harness_backstop_standing(
+      code: 0,
+      elapsed: unknown_elapsed(),
+      backstop: second(count: 20),
+    ) {
+      JobOwnExit => true
+      JobBackstopHit => false
+      JobBackstopUndecided => false
+    }
 }
 
 test fn a_failed_stdio_rename_keeps_the_mktemp_path_and_says_so() -> Bool {

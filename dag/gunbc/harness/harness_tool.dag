@@ -36,7 +36,8 @@ import gunbc.harness.harness_shell_job {
   WaitLoopFinished, WaitLoopExpired, WaitLoopNoRunningJob, harness_kill_running_job,
   JobKillConfirmed, JobKillUnconfirmed,
   harness_refresh_job, harness_job_is_running, harness_hand_in_blocked_by_running_jobs,
-  harness_job_exit_is_harness_backstop, harness_gnu_timeout_killed_exit,
+  harness_job_backstop_standing, HarnessJobBackstopStanding,
+  JobBackstopHit, JobOwnExit, JobBackstopUndecided,
 }
 
 // THE HARNESS TOOL SURFACE, and the rule every disposition below is one instance of:
@@ -190,11 +191,6 @@ fn harness_tool_environment(
   }
 }
 
-// GNU timeout exits 124 when it kills its child, which is what makes "the harness stopped this" a
-// DECIDABLE fact rather than a guess from a nonzero exit. Cited to coreutils' documented behaviour
-// and executed against /opt/homebrew/bin/gtimeout 9.11 on 2026-09-02, which returned exactly 124.
-data harness_timeout_kill_exit_code: Int = harness_gnu_timeout_killed_exit
-
 // THE TOOL RESULT CARRIES A DECLARED CAP, AND STDOUT IS THE CHANNEL THAT NEEDED ONE. extdeps.gunbc
 // WitnessBin.Run declares stderr_capture: BoundedTail{16384} and reports stderr_truncated with its
 // byte counts -- and declares NOTHING for stdout, which is the channel that actually returns bulk
@@ -275,6 +271,30 @@ fn harness_wait_note(seconds: Second, clamped: Bool, raised_to_minimum: Bool, ca
   join([clamped_note, raised_note, backstop_note], "")
 }
 
+fn harness_job_backstop_exit_outcome(
+  job: HarnessShellJob,
+  code: Int,
+  standing: HarnessJobBackstopStanding,
+  completed: HarnessToolOutcome,
+) -> HarnessToolOutcome {
+  match standing {
+    JobBackstopHit =>
+      ToolRefused {
+        disposition: DurationExceeded { limit_seconds: schedule_seconds(s: job.backstop) },
+      }
+    JobOwnExit => completed
+    JobBackstopUndecided =>
+      ToolRefused {
+        disposition: ToolEffectRefused {
+          detail: join([
+            "job ", job.id, " exited ", to_string(value: code),
+            " but elapsed time from started_at could not be read, so the harness backstop cannot be decided",
+          ], ""),
+        },
+      }
+  }
+}
+
 fn harness_job_output_for_state(
   job: HarnessShellJob,
   jobs: List<HarnessShellJob>,
@@ -294,17 +314,16 @@ fn harness_job_output_for_state(
     JobFinished { outcome } =>
       match outcome {
         JobExitedOutcome { code } =>
-          if harness_job_exit_is_harness_backstop(job: job, code: code) {
-            ToolRefused {
-              disposition: DurationExceeded { limit_seconds: schedule_seconds(s: job.backstop) },
-            }
-          } else {
-            ToolCompleted {
+          harness_job_backstop_exit_outcome(
+            job: job,
+            code: code,
+            standing: harness_job_backstop_standing(job: job, code: code),
+            completed: ToolCompleted {
               text: bounded.text,
               exit_code: code,
               standing: bounded.standing,
-            }
-          }
+            },
+          )
         JobSignaledOutcome { signal } =>
           ToolRefused {
             disposition: ToolEffectRefused {
