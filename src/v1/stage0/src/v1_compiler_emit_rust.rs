@@ -18990,6 +18990,62 @@ pub fn rust_map_key_bound_traits() -> Rc<Vec<String>> {
     ])
 }
 
+pub fn v1_fn_signature_map_key_bound_names(
+    value_params: Rc<Vec<Rc<Node>>>,
+    ret: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    type_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let direct = v1_fn_signature_map_key_param_names(
+            value_params.clone(),
+            ret.clone(),
+            generic_param_names.clone(),
+            source_indices.clone(),
+        );
+        let sig_type_exprs = v1_rt::rc_list_push(
+            Rc::new({
+                let mut __result = Vec::new();
+                for p in value_params.iter().cloned() {
+                    __result.push(crate::v1_std_core::param_node_type_expr(p.clone()));
+                }
+                __result
+            }),
+            ret.clone(),
+        );
+        let via_type = Rc::new({
+            let mut __result = Vec::new();
+            for g in generic_param_names.iter().cloned() {
+                if {
+                    let mut __found = false;
+                    for te in sig_type_exprs.iter().cloned() {
+                        if crate::v1_compiler_trait_derive_emit::v1_type_expr_wf_needs_clone_param(
+                            g.clone(),
+                            te.clone(),
+                            type_bounds.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    __result.push(g);
+                }
+            }
+            __result
+        });
+        crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+            direct.clone(),
+            via_type.clone(),
+        )
+    }
+}
+
 pub fn v1_fn_signature_map_key_param_names(
     value_params: Rc<Vec<Rc<Node>>>,
     ret: Rc<Node>,
@@ -19819,21 +19875,40 @@ pub fn v1_fn_map_key_bound_table(
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
         let names = Rc::new(v1_rt::sorted_map_keys(&fn_decl_items));
-        let seed = names.iter().cloned().fold(v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&fn_decl_items, n.clone()) {
-    Some(item) => {
-            let generics = Rc::new({ let mut __result = Vec::new(); for p in function_type_params(item.params.clone()).iter().cloned() { __result.push(crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone())); } __result });
-let direct = v1_fn_signature_map_key_param_names(function_value_params(item.params.clone()), crate::v1_compiler_infer_types::resolved_type(item.clone()), generics.clone(), source_indices.clone());
-let sig_type_exprs = v1_rt::concat(Rc::new({ let mut __result = Vec::new(); for p in function_value_params(item.params.clone()).iter().cloned() { __result.push(crate::v1_std_core::param_node_type_expr(p.clone())); } __result }), Rc::new(vec![crate::v1_compiler_infer_types::resolved_type(item.clone())]));
-let via_type = Rc::new({ let mut __result = Vec::new(); for g in generics.iter().cloned() { if { let mut __found = false; for te in sig_type_exprs.iter().cloned() { if crate::v1_compiler_trait_derive_emit::v1_type_expr_wf_needs_clone_param(g.clone(), te.clone(), type_bounds.clone(), type_decl_items.clone(), source_indices.clone()) { __found = true; break; } } __found } { __result.push(g); } } __result });
-let bound = crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(direct.clone(), via_type.clone());
-if ((bound.clone().len() as i64) > 0) {
-                v1_rt::rc_map_insert(acc.clone(), n.clone(), bound.clone())
-            } else {
-                acc.clone()
-            }
-},
-    std::option::Option::None => acc.clone(),
-});
+        let seed = names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(
+                &fn_decl_items,
+                n.clone(),
+            ) {
+                Some(item) => {
+                    let generics = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in function_type_params(item.params.clone()).iter().cloned() {
+                            __result.push(crate::v1_std_core::generic_param_name_at(
+                                p.clone(),
+                                source_indices.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    let bound = v1_fn_signature_map_key_bound_names(
+                        function_value_params(item.params.clone()),
+                        crate::v1_compiler_infer_types::resolved_type(item.clone()),
+                        generics.clone(),
+                        type_decl_items.clone(),
+                        type_bounds.clone(),
+                        source_indices.clone(),
+                    );
+                    if ((bound.clone().len() as i64) > 0) {
+                        v1_rt::rc_map_insert(acc.clone(), n.clone(), bound.clone())
+                    } else {
+                        acc.clone()
+                    }
+                }
+                std::option::Option::None => acc.clone(),
+            },
+        );
         v1_fn_map_key_bound_fixpoint(
             names.clone(),
             fn_decl_items.clone(),
@@ -20152,10 +20227,12 @@ pub fn emit_fn_def(
         );
         let map_key_param_names =
             crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-                v1_fn_signature_map_key_param_names(
+                v1_fn_signature_map_key_bound_names(
                     value_params.clone(),
                     inferred.clone(),
                     generic_param_names.clone(),
+                    emit_info.type_decl_items.clone(),
+                    emit_info.map_key_bounded_type_params.clone(),
                     si.clone(),
                 ),
                 v1_call_forwarding_bound_param_names(
