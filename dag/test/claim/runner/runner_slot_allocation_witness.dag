@@ -112,12 +112,12 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // admits more of them -- srv1 11 -> 12, srv3 and srv4 17 -> 21. The numbers below are the
 // derivation's answers under that row (re-derived by the authority's own folds, read once through a
 // probe and then pinned here as the alarm this claim is), not figures chosen for the hosts.
-// MOVED AGAIN when served_deployment_slice_allowance began charging the user-work slice
-// (compute_pool_slots + belt max_concurrent) × slot MemoryMax: five slot-equivalents leave the
-// envelope, so srv1's pin is 12 -> 7. Operator conservation (sessions 52 vs live 128, runner count)
-// is still an escalated ruling; this pin is the fold's answer under the new charge.
+// USER-WORK APPROPRIATION IS NOT IN THIS PIN. Charging user_work_slice_budget_appropriation into
+// served_deployment_slice_allowance would drop srv1 12 -> 7 and runner_host_deploy_of would set
+// runner_count from that width on the next apply. user_work_charged_in_served_allowance stays 0
+// until the operator conservation ruling; this pin remains the pre-charge derivation.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 7
+  host_memory_admitted_width(host: operator_host_srv1) == 12
     && host_memory_admitted_width(host: operator_host_srv3) == 21
     && host_memory_admitted_width(host: operator_host_srv4) == 21
     && match host_memory_denominator(host: operator_host_srv2) {

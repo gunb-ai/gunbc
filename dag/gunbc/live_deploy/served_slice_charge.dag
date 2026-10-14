@@ -127,12 +127,26 @@ fn served_deployment_placement() -> ServedDeploymentPlacement {
 // touches gunbc.fleet.fleet_host_budget, gunbc.ci.ci_runner_placement and their witnesses for no arithmetic, so
 // it is left to the change that next edits that verdict chain, and stated here so the sum is not read
 // as served processes alone.
+// THE USER-WORK APPROPRIATION IS DERIVED, NOT A GIB LITERAL: pool slots times the runner
+// slot MemoryMax. It is the slice unit's MemoryMax. Charging it into served_deployment_slice_allowance
+// subtracts it from the runner memory envelope (gunbc.runner.runner_slot_allocation
+// envelope_after_control_plane), and gunbc.runner.runner_host_deploy runner_host_deploy_of writes
+// gunbc_runner_committed_width as RunnerHostDeploy.runner_count -- the next converge would install
+// that many units. Under current pool sizes that derivation is srv1 width 12 -> 7. Until the
+// operator conservation ruling, the envelope charge stays the declared parameter below (zero), so
+// merge does not shrink runners. The appropriation remains the slice bound and the backstop input.
+fn user_work_slice_budget_appropriation() -> ByteSize {
+  user_work_slice_memory_max_of(slots: user_work_pool_slots())
+}
+
+data user_work_charged_in_served_allowance: ByteSize = byte_size(0)
+
 fn served_deployment_slice_allowance() -> ByteSize {
   byte_size(
     byte_size_count(b: live_deploy_slice_memory_max)
       + byte_size_count(b: approval_broker_slice_memory_max)
       + byte_size_count(b: repository_convergence_slice_memory_max)
-      + byte_size_count(b: user_work_slice_memory_max_of(slots: user_work_pool_slots()))
+      + byte_size_count(b: user_work_charged_in_served_allowance)
   )
 }
 

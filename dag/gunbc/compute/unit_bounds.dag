@@ -6,7 +6,9 @@ import std.nat { Nat }
 import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count }
 import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReading, systemd_run_user_scope_command,
+  SystemdRunProperty, SystemdRunCommandReading, SystemdSummaryPrintingWaitReading,
+  SystemdSetenvBinding, systemd_run_user_scope_command, systemd_run_user_transient_command,
+  systemd_run_user_wait_command,
 }
 import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
 import gunbc.live_deploy.slice_bounds {
@@ -89,6 +91,14 @@ fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, p
 // the declared slice and swap 0; a scope without them is not this function.
 fn gunbc_user_work_scope_command(properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_user_scope_command(properties: user_work_run_properties(rest: properties), command_argv: command_argv)
+}
+
+fn gunbc_user_work_transient_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_user_transient_command(unit: unit, properties: user_work_run_properties(rest: properties), setenv_bindings: setenv_bindings, command_argv: command_argv)
+}
+
+fn gunbc_user_work_wait_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdSummaryPrintingWaitReading {
+  systemd_run_user_wait_command(unit: unit, properties: user_work_run_properties(rest: properties), setenv_bindings: setenv_bindings, command_argv: command_argv)
 }
 
 // THE kill mode the release decision relies on is the closed systemd fact KillModeControlGroup;
