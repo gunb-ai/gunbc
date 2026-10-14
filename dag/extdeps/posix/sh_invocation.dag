@@ -14,7 +14,8 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_command_with_words,
   bash_build_assign, bash_build_exit, bash_build_or_else, bash_build_command_from_lits,
-  bash_build_and_then, bash_build_with_redir_from_file,
+  bash_build_and_then, bash_build_with_redir_from_file, bash_build_with_redir_to_file,
+  bash_build_word_concat_from_nodes,
 }
 import extdeps.tools.stat { stat_program }
 
@@ -137,9 +138,56 @@ data posix_sh_export_from_file_unreadable_exit: Int = 78
 // launch ran again with the same value. So the removal carries its own failure arm and a snapshot
 // that cannot be consumed refuses the launch with exit 79 -- distinct from 78 (unreadable).
 data posix_sh_export_from_file_unremovable_exit: Int = 79
+
 type PosixShFileDisposition
   = PosixShKeepFile
   | PosixShRemoveFileAfterRead
+  | PosixShReplaceFileAfterRead { body: String }
+
+fn posix_sh_export_replace_statements(body: String) -> List<Node> {
+  [
+    bash_build_or_else(
+      left: bash_build_assign(
+        name: "t",
+        value: bash_build_word_cmdsubst(
+          body: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "mktemp"),
+            bash_build_word_lit(text: "--"),
+            bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "0"), bash_build_word_lit(text: ".XXXXXX")]),
+          ]),
+        ),
+      ),
+      right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unremovable_exit)),
+    ),
+    bash_build_or_else(
+      left: bash_build_with_redir_to_file(
+        inner: bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "printf"),
+          bash_build_word_lit(text: "%s"),
+          bash_build_word_lit(text: body),
+        ]),
+        path: bash_build_word_var(name: "t"),
+      ),
+      right: bash_build_and_then(
+        left: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "t")]),
+        right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unremovable_exit)),
+      ),
+    ),
+    bash_build_or_else(
+      left: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "mv"),
+        bash_build_word_lit(text: "-f"),
+        bash_build_word_lit(text: "--"),
+        bash_build_word_var(name: "t"),
+        bash_build_word_var(name: "0"),
+      ]),
+      right: bash_build_and_then(
+        left: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "t")]),
+        right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unremovable_exit)),
+      ),
+    ),
+  ]
+}
 
 fn posix_sh_export_remove_statements(disposition: PosixShFileDisposition) -> List<Node> {
   match disposition {
@@ -151,6 +199,7 @@ fn posix_sh_export_remove_statements(disposition: PosixShFileDisposition) -> Lis
           right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unremovable_exit)),
         ),
       ]
+    PosixShReplaceFileAfterRead { body } => posix_sh_export_replace_statements(body: body)
   }
 }
 

@@ -21,7 +21,17 @@ import v2.std.diagnostic {
   node_locus,
   Unavailable
 }
-import std.nat { Nat, Succ, Zero }
+import std.nat { Nat, Succ, Zero, nat_add, nat_max, nat_min }
+import std.interval {
+  IntervalConstruction,
+  IntervalReady,
+  IntervalRefused,
+  OrderedClosedInterval,
+  closed_interval,
+  degenerate_interval,
+  interval_high,
+  interval_low
+}
 import v2.std.node {
   Arrow,
   Atom,
@@ -502,5 +512,204 @@ fn loop_bound_witness_for_node(n: Node) -> Witness<LoopBound> {
         }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+// THE NATURAL-COUNT CONSTRAINT DOMAIN (notes/cardinality-absence-analysis.md section 1). A finite count range
+// IS std.interval OrderedClosedInterval<Nat>: its sole mint already refuses reversed endpoints, so no second
+// pair carrier exists here. The two things that carrier cannot say are the empty set (Impossible: no count
+// satisfies the constraint, the bottom of the join) and an unbounded upper end (AtLeast). AtLeast is NOT an
+// interval with a sentinel upper endpoint: a sentinel Nat would be a fabricated count (DESIGN section 5)
+// that width arithmetic would treat as real.
+type CardinalityConstraint
+  = CardinalityImpossible
+  | CardinalityBounded { interval: OrderedClosedInterval<Nat> }
+  | CardinalityAtLeast { lower: Nat }
+
+fn nat_le(a: Nat, b: Nat) -> Bool {
+  !(a > b)
+}
+
+fn cardinality_exact(count: Nat) -> CardinalityConstraint {
+  CardinalityBounded { interval: degenerate_interval(point: count) }
+}
+
+// A reversed pair denotes no count at all, which is Impossible and not a swapped range.
+fn cardinality_between(low: Nat, high: Nat) -> CardinalityConstraint {
+  match closed_interval(low: low, high: high, le: nat_le) {
+    IntervalReady { interval: i } => CardinalityBounded { interval: i }
+    IntervalRefused { reason: _ } => CardinalityImpossible
+  }
+}
+
+fn cardinality_lower(c: CardinalityConstraint) -> Optional<Nat> {
+  match c {
+    CardinalityImpossible => Absent
+    CardinalityBounded { interval: i } => Present { value: interval_low(interval: i) }
+    CardinalityAtLeast { lower: l } => Present { value: l }
+  }
+}
+
+// map preserves the count.
+fn cardinality_map(c: CardinalityConstraint) -> CardinalityConstraint {
+  c
+}
+
+// filter keeps a subset: the lower bound floors to zero, the upper bound cannot increase.
+fn cardinality_filter(c: CardinalityConstraint) -> CardinalityConstraint {
+  match c {
+    CardinalityImpossible => CardinalityImpossible
+    CardinalityBounded { interval: i } => cardinality_between(low: Zero, high: interval_high(interval: i))
+    CardinalityAtLeast { lower: _ } => CardinalityAtLeast { lower: Zero }
+  }
+}
+
+// concat adds corresponding bounds; an unbounded side keeps only the summed lower bound.
+fn cardinality_concat(a: CardinalityConstraint, b: CardinalityConstraint) -> CardinalityConstraint {
+  match a {
+    CardinalityImpossible => CardinalityImpossible
+    CardinalityBounded { interval: ai } =>
+      match b {
+        CardinalityImpossible => CardinalityImpossible
+        CardinalityBounded { interval: bi } =>
+          cardinality_between(
+            low: nat_add(a: interval_low(interval: ai), b: interval_low(interval: bi)),
+            high: nat_add(a: interval_high(interval: ai), b: interval_high(interval: bi))
+          )
+        CardinalityAtLeast { lower: bl } =>
+          CardinalityAtLeast { lower: nat_add(a: interval_low(interval: ai), b: bl) }
+      }
+    CardinalityAtLeast { lower: al } =>
+      match b {
+        CardinalityImpossible => CardinalityImpossible
+        CardinalityBounded { interval: bi } =>
+          CardinalityAtLeast { lower: nat_add(a: al, b: interval_low(interval: bi)) }
+        CardinalityAtLeast { lower: bl } => CardinalityAtLeast { lower: nat_add(a: al, b: bl) }
+      }
+  }
+}
+
+// Branch join: the least upper bound; Impossible is the bottom.
+fn cardinality_join(a: CardinalityConstraint, b: CardinalityConstraint) -> CardinalityConstraint {
+  match a {
+    CardinalityImpossible => b
+    CardinalityBounded { interval: ai } =>
+      match b {
+        CardinalityImpossible => a
+        CardinalityBounded { interval: bi } =>
+          cardinality_between(
+            low: nat_min(a: interval_low(interval: ai), b: interval_low(interval: bi)),
+            high: nat_max(a: interval_high(interval: ai), b: interval_high(interval: bi))
+          )
+        CardinalityAtLeast { lower: bl } =>
+          CardinalityAtLeast { lower: nat_min(a: interval_low(interval: ai), b: bl) }
+      }
+    CardinalityAtLeast { lower: al } =>
+      match b {
+        CardinalityImpossible => a
+        CardinalityBounded { interval: bi } =>
+          CardinalityAtLeast { lower: nat_min(a: al, b: interval_low(interval: bi)) }
+        CardinalityAtLeast { lower: bl } => CardinalityAtLeast { lower: nat_min(a: al, b: bl) }
+      }
+  }
+}
+
+// The seam question for a FreeSemigroup consumer (1..inf): does EVERY admitted count satisfy lower >= 1?
+// Impossible is vacuously nonempty (no value reaches the consumer).
+fn cardinality_proves_nonempty(c: CardinalityConstraint) -> Bool {
+  match cardinality_lower(c: c) {
+    Absent => true
+    Present { value: l } => Zero < l
+  }
+}
+
+// PER-OPERATION COUNT LAWS, keyed by the std.algebra declaration's name (notes/cardinality-absence-analysis.md
+// section 6: propagation follows declared operations). Every key names a declaration in std.algebra:
+// the list functions by their own name, and filter/concat (builtin collection operations) by their
+// AlgebraFieldTemplate declarations collection_filter_shape / collection_concat_shape. The key is a leaf
+// symbol, so a consumer must match it against the RESOLVED std.algebra declaration, never a user function
+// of the same leaf name. The rows live here
+// because this module imports std.algebra (the carrier cannot sit below its own operands), so the dependency
+// runs one way. An operation with no row has NO law: the answer is Absent (typed undecidable), never a guessed
+// bound.
+type CardinalityCountLaw
+  = CountLiteralEmpty
+  | CountPreserved
+  | CountFloored
+  | CountSummed
+  | CountPlusOne
+  | CountAtLeastZero
+
+type CardinalityLawRow {
+  operation: Symbol
+  law: CardinalityCountLaw
+}
+
+data cardinality_operation_laws: List<CardinalityLawRow> = [
+  CardinalityLawRow { operation: ^freemonoid_empty, law: CountLiteralEmpty },
+  CardinalityLawRow { operation: ^list_append, law: CountSummed },
+  CardinalityLawRow { operation: ^list_snoc_item, law: CountPlusOne },
+  CardinalityLawRow { operation: ^list_map, law: CountPreserved },
+  CardinalityLawRow { operation: ^list_reverse, law: CountPreserved },
+  CardinalityLawRow { operation: ^collection_filter_shape, law: CountFloored },
+  CardinalityLawRow { operation: ^collection_concat_shape, law: CountSummed },
+  CardinalityLawRow { operation: ^list_flat_map, law: CountAtLeastZero }
+]
+
+fn cardinality_law_some(law: CardinalityCountLaw) -> Optional<CardinalityCountLaw> {
+  Present { value: law }
+}
+
+fn cardinality_law_for(operation: Symbol) -> Optional<CardinalityCountLaw> {
+  fold(cardinality_operation_laws, init: Absent, f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if row.operation == operation {
+          cardinality_law_some(law: row.law)
+        } else {
+          Absent
+        }
+    }
+  })
+}
+
+// Applies a law to the operand constraints (receiver first). A wrong operand arity is Absent, not a guess.
+fn cardinality_apply_law(law: CardinalityCountLaw, operands: List<CardinalityConstraint>) -> Optional<CardinalityConstraint> {
+  match law {
+    CountLiteralEmpty =>
+      match operands {
+        Empty => Present { value: cardinality_exact(count: Zero) }
+        Cons { head: _, tail: _ } => Absent
+      }
+    CountPreserved =>
+      match operands {
+        Cons { head: a, tail: Empty } => Present { value: cardinality_map(c: a) }
+        _ => Absent
+      }
+    CountFloored =>
+      match operands {
+        Cons { head: a, tail: Empty } => Present { value: cardinality_filter(c: a) }
+        _ => Absent
+      }
+    CountSummed =>
+      match operands {
+        Cons { head: a, tail: Cons { head: b, tail: Empty } } => Present { value: cardinality_concat(a: a, b: b) }
+        _ => Absent
+      }
+    CountPlusOne =>
+      match operands {
+        Cons { head: a, tail: Empty } => Present { value: cardinality_concat(a: a, b: cardinality_exact(count: Succ { prev: Zero })) }
+        _ => Absent
+      }
+    CountAtLeastZero =>
+      match operands {
+        Cons { head: a, tail: Empty } =>
+          match a {
+            CardinalityImpossible => Present { value: CardinalityImpossible }
+            _ => Present { value: CardinalityAtLeast { lower: Zero } }
+          }
+        _ => Absent
+      }
   }
 }

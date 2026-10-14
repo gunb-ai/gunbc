@@ -1,11 +1,22 @@
 module gunbc.compute.unit_bounds
 
-import std.types { String, List, NonEmptyStr }
+import std.types { String, List, NonEmptyStr, Bool }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count }
-import extdeps.systemd { SystemdUnitProperty, MemoryMax, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
-import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdSummaryPrintingWaitReading,
+  SystemdSetenvBinding, systemd_run_user_scope_command, systemd_run_user_transient_command,
+  systemd_run_user_wait_command,
+}
 import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
+import gunbc.live_deploy.slice_bounds {
+  user_work_slice_unit_name, user_work_slice_memory_swap_max,
+}
+import gunbc.runner.runner_unit { runner_unit_prefix }
 
 // THE ONE FOLD FROM A CAPACITY GRANT TO THE PROPERTIES OF THE UNIT THAT HOLDS IT. It used to live in
 // gunbc.compute.work_provider_local as compute_unit_properties, and it moved here rather than being
@@ -45,6 +56,21 @@ fn unit_cpu_quota_percent(m: Millicore) -> Nat {
   millicore_count(m: m) / 10
 }
 
+// THE USER-WORK SLICE BINDING, ONE LIST, AT THE --user LAUNCH. Slice= and MemorySwapMax=0 are not
+// per-grant facts; they are how a unit joins the declared parent. The three gunbc_user_work_*
+// builders prepend this list once. Grant/review/obligation property folds do not: composing both
+// projected duplicate -p Slice= / MemorySwapMax= (review 79894).
+fn user_work_slice_binding_properties() -> List<SystemdRunProperty> {
+  [
+    SystemdRunProperty { property: SliceProperty, value: user_work_slice_unit_name },
+    SystemdRunProperty { property: MemorySwapMax, value: to_string(value: byte_size_count(b: user_work_slice_memory_swap_max)) as NonEmptyStr },
+  ]
+}
+
+fn user_work_run_properties(rest: List<SystemdRunProperty>) -> List<SystemdRunProperty> {
+  concat(user_work_slice_binding_properties(), rest)
+}
+
 fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, process_bounds: UnitProcessBounds?) -> List<SystemdRunProperty> {
   concat(
     [
@@ -60,6 +86,120 @@ fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, p
       ]
     },
   )
+}
+
+// THE AD-HOC gunbc test/run WRAP. The historical floor-demand recipe was
+// `systemd-run --user --scope -p MemoryMax=64G` with no Slice=. This builder always injects
+// the declared slice and swap 0; a scope without them is not this function.
+// Consumers: gunbc.gunbc_cli_command gunbc_test_user_work_scope_command /
+// gunbc_run_user_work_scope_command; seed Test/Run (cli_run::user_work_scope).
+fn gunbc_user_work_scope_command(properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_user_scope_command(properties: user_work_run_properties(rest: properties), command_argv: command_argv)
+}
+
+// THE WRAP PREFIX THE SEED TRAMPOLINE MUST PROJECT. Seed cannot eval this fold at wrap time
+// (bootstrap: wrap runs before the corpus is resolved). The executing join is
+// test.claim.live_deploy.user_work_slice_witness the_seed_trampoline_mirrors_the_declared_wrap_prefix:
+// it derives the prefix from this function and requires those words in the retained
+// cli_run/user_work_scope.rs source. Editing slice name or swap here without the seed is RED.
+fn user_work_scope_wrap_prefix_argv() -> List<String> {
+  match gunbc_user_work_scope_command(properties: [], command_argv: ["__placeholder__"]) {
+    SystemdRunCommandRefused { cause: _ } => []
+    SystemdRunCommandReady { command } =>
+      filter(argv_words(command: command), w => w != "__placeholder__")
+  }
+}
+
+// WHEN THE SEED TRAMPOLINE WRAPS. Observations are supplied (cgroup text, env presence, probe);
+// this fold is the only policy. Seed cannot eval it at wrap time; it mirrors the arms and the
+// cited env/cgroup needles. Join: the_seed_trampoline_mirrors_the_declared_wrap_standing.
+// UserSessionAbsent refuses: a host that owes the bound and has no user manager must not run
+// unbounded (review 80042). CiExempt / RunnerSlotExempt skip because those processes already sit
+// in a declared slot cgroup, not because the user manager is missing.
+data user_work_scope_ci_env_name: String = "GITHUB_ACTIONS"
+data user_work_scope_xdg_runtime_dir_env_name: String = "XDG_RUNTIME_DIR"
+
+type UserWorkScopeCgroupRead
+  = CgroupText { text: String }
+  | CgroupReadFailed
+
+type UserWorkScopeStanding
+  = AlreadyInSlice
+  | RunnerSlotExempt
+  | CiExempt
+  | UnitTestExempt
+  | UserSessionAbsent
+  | UserManagerOwed
+  | CgroupUnreadable
+  | UserManagerProbeFailed
+
+type UserWorkScopeStandingEffect
+  = WrapIntoUserWorkSlice
+  | SkipUserWorkScope { standing: UserWorkScopeStanding }
+  | RefuseUserWorkScope { standing: UserWorkScopeStanding }
+
+fn user_work_scope_standing(
+  unit_test: Bool,
+  github_actions: Bool,
+  cgroup: UserWorkScopeCgroupRead,
+  user_manager_reachable: Bool,
+  xdg_runtime_dir: Bool,
+) -> UserWorkScopeStanding {
+  if unit_test {
+    UnitTestExempt
+  } else if github_actions {
+    CiExempt
+  } else {
+    match cgroup {
+      CgroupReadFailed => CgroupUnreadable
+      CgroupText { text } =>
+        if string_contains(s: text, pattern: user_work_slice_unit_name as String) {
+          AlreadyInSlice
+        } else if string_contains(s: text, pattern: runner_unit_prefix) {
+          RunnerSlotExempt
+        } else if user_manager_reachable {
+          UserManagerOwed
+        } else if xdg_runtime_dir {
+          UserManagerProbeFailed
+        } else {
+          UserSessionAbsent
+        }
+    }
+  }
+}
+
+fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
+  match s {
+    AlreadyInSlice => "AlreadyInSlice"
+    RunnerSlotExempt => "RunnerSlotExempt"
+    CiExempt => "CiExempt"
+    UnitTestExempt => "UnitTestExempt"
+    UserSessionAbsent => "UserSessionAbsent"
+    UserManagerOwed => "UserManagerOwed"
+    CgroupUnreadable => "CgroupUnreadable"
+    UserManagerProbeFailed => "UserManagerProbeFailed"
+  }
+}
+
+fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeStandingEffect {
+  match s {
+    UserManagerOwed => WrapIntoUserWorkSlice
+    AlreadyInSlice => SkipUserWorkScope { standing: AlreadyInSlice }
+    UnitTestExempt => SkipUserWorkScope { standing: UnitTestExempt }
+    RunnerSlotExempt => SkipUserWorkScope { standing: RunnerSlotExempt }
+    CiExempt => SkipUserWorkScope { standing: CiExempt }
+    CgroupUnreadable => RefuseUserWorkScope { standing: CgroupUnreadable }
+    UserManagerProbeFailed => RefuseUserWorkScope { standing: UserManagerProbeFailed }
+    UserSessionAbsent => RefuseUserWorkScope { standing: UserSessionAbsent }
+  }
+}
+
+fn gunbc_user_work_transient_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_user_transient_command(unit: unit, properties: user_work_run_properties(rest: properties), setenv_bindings: setenv_bindings, command_argv: command_argv)
+}
+
+fn gunbc_user_work_wait_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdSummaryPrintingWaitReading {
+  systemd_run_user_wait_command(unit: unit, properties: user_work_run_properties(rest: properties), setenv_bindings: setenv_bindings, command_argv: command_argv)
 }
 
 // THE kill mode the release decision relies on is the closed systemd fact KillModeControlGroup;

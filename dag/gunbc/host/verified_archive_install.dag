@@ -18,6 +18,8 @@ import gunbc.package_delivery {
   PackageArchiveDigestMatched, PackageArchiveDigestMismatch, PackageArchiveDigestObservationFailed,
 }
 import gunbc.command_runner { run_shell_commands, run_shell_command_capture, process_outcome_admitted, LocalExec }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // FETCH, VERIFY, THEN INSTALL -- ONE FOLD FOR EVERY CONVERGE THAT PLACES A DOWNLOADED ARCHIVE ON A
 // HOST. gunbc.runner.runner_microvm_host_ready wrote this sequence inline for the Firecracker release; the
@@ -232,3 +234,8 @@ fn archives_all_staged(ps: List<ArchivePlacement>, archives: List<StagedArchive>
 fn publish_staged_tree_wet(staging: String, root: String) -> Bool {
   process_outcome_admitted(outcome: run_shell_command_capture(command: mv_exact_destination_command(source: staging, destination: root), transport: LocalExec))
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "stage_archive_wet" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "verify_archive_digest" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]
