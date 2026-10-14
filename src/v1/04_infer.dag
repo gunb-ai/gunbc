@@ -9084,7 +9084,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   diagnostics: arg_diags
                 }
               } else {
-                let empty_map_diags = concat(arg_diags, [inference_error(message: "empty_map(): expected type is not a keyed collection", span: span, module_name: scope.module_name)])
+                let empty_map_diags = arg_diags
                 match bare_m {
                   Present { value: map_t } =>
                     InferResult {
@@ -9152,7 +9152,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   diagnostics: arg_diags
                 }
               } else {
-                let empty_set_diags = concat(arg_diags, [inference_error(message: "empty_set(): expected type is not Set<...>", span: span, module_name: scope.module_name)])
+                let empty_set_diags = arg_diags
                 match bare_s {
                   Present { value: set_t } =>
                     InferResult {

@@ -13885,7 +13885,7 @@ match expected.clone() {
 })
                                 } else {
                                     {
-                                        let empty_map_diags = v1_rt::concat(arg_diags.clone(), Rc::new(vec![inference_error("empty_map(): expected type is not a keyed collection".to_string(), span.clone(), scope.module_name.clone())]));
+                                        let empty_map_diags = arg_diags.clone();
 match bare_m.clone() {
     Some(map_t) => Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -13971,7 +13971,7 @@ match expected.clone() {
 })
                                     } else {
                                         {
-                                            let empty_set_diags = v1_rt::concat(arg_diags.clone(), Rc::new(vec![inference_error("empty_set(): expected type is not Set<...>".to_string(), span.clone(), scope.module_name.clone())]));
+                                            let empty_set_diags = arg_diags.clone();
 match bare_s.clone() {
     Some(set_t) => Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
