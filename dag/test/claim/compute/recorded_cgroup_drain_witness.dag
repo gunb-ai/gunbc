@@ -4,6 +4,8 @@ import std.types { Bool, String }
 import gunbc.compute.recorded_cgroup_drain {
   RecordedInvocationStillCurrent,
   RecordedInvocationEnded,
+  RecordedCgroupPathStanding,
+  RecordedCgroupDrain,
   RecordedPathAbsent,
   RecordedPathPopulated,
   RecordedPathEmpty,
