@@ -2,7 +2,14 @@ module test.claim.bmc.megarac_operation_surface_witness
 
 import std.types { Bool }
 import std.optional { Present, Absent }
-import std.measure { percent_count }
+import std.measure { percent, percent_count }
+import extdeps.bmc.megarac_fan_policy {
+  MegaRacFanPwmAllAdmitted,
+  MegaRacFanPwmAllRefused,
+  megarac_fan_boot_pwm_admitted,
+  megarac_fan_pwm_all_body,
+  megarac_fan_pwm_all_of,
+}
 import gunbc.machine_intake.megarac_fan_mode_observation {
   BootThroughTerminal,
   CoolingManagerAutomatic,
@@ -94,6 +101,25 @@ test fn fan_control_paths_are_the_served_ui_routes() -> Bool {
     && (megarac_op_fan_set_fan_speed.path as String) == "/api/fan_control/set_fan_speed"
     && (megarac_op_fan_get_manager_status.http_method as String) == "GET"
     && (megarac_op_fan_set_fan_speed.http_method as String) == "POST"
+}
+
+test fn set_fan_speed_body_is_fan_pwm_all_as_a_string() -> Bool {
+  match megarac_fan_pwm_all_of(duty: percent(25)) {
+    MegaRacFanPwmAllAdmitted { wire: w } =>
+      (w as String) == "25"
+        && match megarac_fan_pwm_all_body(pwm: MegaRacFanPwmAllAdmitted { wire: w }) {
+          Present { value: body } => (body as String) == "{\"fan_pwm_all\":\"25\"}"
+          Absent => false
+        }
+        && megarac_fan_boot_pwm_admitted(duty: percent(20))
+        && megarac_fan_boot_pwm_admitted(duty: percent(30))
+        && !megarac_fan_boot_pwm_admitted(duty: percent(35))
+        && match megarac_fan_pwm_all_of(duty: percent(22)) {
+          MegaRacFanPwmAllRefused { duty: _ } => true
+          MegaRacFanPwmAllAdmitted { wire: _ } => false
+        }
+    MegaRacFanPwmAllRefused { duty: _ } => false
+  }
 }
 
 test fn redirection_status_at_0_32_recovers_the_served_ui_enum() -> Bool {
