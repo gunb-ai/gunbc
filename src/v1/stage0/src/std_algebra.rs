@@ -2394,6 +2394,35 @@ pub fn fold_non_empty<T: Clone>(
     fold_list(tail.clone(), head.clone(), cons.clone())
 }
 
+pub fn join_separated<T: Clone>(
+    fields: Rc<FreeMonoid<T>>,
+    separator: T,
+    combine: impl Fn(T, T) -> T + Clone,
+    empty: T,
+) -> T {
+    {
+        let __fm = fields.clone();
+        if __fm.is_empty() {
+            empty
+        } else {
+            let first = (*__fm)[0].clone();
+            let rest: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+            fold_list(rest.clone(), first.clone(), |acc, field| {
+                combine(combine(acc.clone(), separator.clone()), field.clone())
+            })
+        }
+    }
+}
+
+pub fn string_concat_join(fields: Rc<Vec<String>>, separator: String) -> String {
+    join_separated(
+        fields.clone(),
+        separator.clone(),
+        |acc, field| v1_rt::concat(acc.clone(), field.clone()),
+        "".to_string(),
+    )
+}
+
 pub fn fold_list_right<T: Clone, A: Clone>(
     xs: Rc<FreeMonoid<T>>,
     empty: A,
