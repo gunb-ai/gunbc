@@ -17428,7 +17428,11 @@ pub fn render_rust_field_type_with_applied_binding(
                             authored_type.clone(),
                             shared_types.clone(),
                             source_indices.clone(),
-                            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                            crate::v1_compiler_infer_emit_info::emit_info_with_fn_type_context(
+                                crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                                generic_param_names.clone(),
+                                env.clone(),
+                            ),
                         )
                     } else {
                         render_rust_type_with_applied_binding(
@@ -25455,6 +25459,17 @@ pub fn type_node_carries_erased_type_argument(n: Rc<Node>) -> bool {
     })
 }
 
+pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
+    {
+        let ch = crate::v1_compiler_infer_types::child_type_node(c.clone());
+        if (ch.inferred.clone() != std::option::Option::None) {
+            is_type_variable(ch.inferred.clone().clone().unwrap())
+        } else {
+            false
+        }
+    }
+}
+
 pub fn rust_empty_map_init_expr(
     map_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
@@ -25498,17 +25513,6 @@ pub fn rust_empty_map_init_expr(
                     ">()".to_string(),
                 )
             }
-        }
-    }
-}
-
-pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
-    {
-        let ch = crate::v1_compiler_infer_types::child_type_node(c.clone());
-        if (ch.inferred.clone() != std::option::Option::None) {
-            is_type_variable(ch.inferred.clone().clone().unwrap())
-        } else {
-            false
         }
     }
 }
