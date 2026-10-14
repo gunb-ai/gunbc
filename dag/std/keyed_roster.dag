@@ -85,7 +85,7 @@ type KeyedRosterIndexBuild<K, V> {
   distinct_reversed: List<SubjectKey<K>>
   duplicated_reversed: List<SubjectKey<K>>
   earliest_duplicate: KeyedRosterDuplicateEvidence<K, V>?
-  earliest_first_position: Int
+  earliest_first_position: Int?
   first_conflict: KeyedRosterDuplicateEvidence<K, V>?
   position: Int
   map_lookups: Int
@@ -129,7 +129,10 @@ fn keyed_roster_index_step<K, V>(
         first: slot.first,
         duplicate: row,
       }
-      let earlier = repeats && (build.earliest_first_position < 0 || slot.first_position < build.earliest_first_position)
+      let earlier = repeats && match build.earliest_first_position {
+        Present { value: best } => slot.first_position < best
+        Absent => true
+      }
       KeyedRosterIndexBuild {
         slots: map_insert(
           build.slots,
@@ -149,7 +152,7 @@ fn keyed_roster_index_step<K, V>(
           build.duplicated_reversed
         },
         earliest_duplicate: if earlier { Present { value: evidence } } else { build.earliest_duplicate },
-        earliest_first_position: if earlier { slot.first_position } else { build.earliest_first_position },
+        earliest_first_position: if earlier { Present { value: slot.first_position } } else { build.earliest_first_position },
         first_conflict: match build.first_conflict {
           Present { value: _ } => build.first_conflict
           Absent => Present { value: evidence }
@@ -171,7 +174,7 @@ fn keyed_roster_index<K, V>(rows: List<KeyedRow<SubjectKey<K>, V>>) -> KeyedRost
       distinct_reversed: [],
       duplicated_reversed: [],
       earliest_duplicate: none,
-      earliest_first_position: -1,
+      earliest_first_position: none,
       first_conflict: none,
       position: 0,
       map_lookups: 0,
