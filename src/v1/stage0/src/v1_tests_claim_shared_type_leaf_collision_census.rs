@@ -126,6 +126,8 @@ pub fn declaration_would_share(
             summary.clone(),
             recursive_type_set.clone(),
             needs_sharing.clone(),
+            crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
+            v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>(),
         ),
         summary.key.clone(),
     )

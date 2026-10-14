@@ -2514,7 +2514,9 @@ pub fn render_rust_shared_type_if_needed(
     rendered: String,
     shared_types: Rc<BTreeSet<String>>,
 ) -> String {
-    if (v1_rt::set_contains(&shared_types, type_name.clone())
+    let may_wrap_leaf = (crate::std_types::is_container_type(type_name.clone())
+        || v1_rt::string_contains(&type_name, ".".to_string()));
+    if ((may_wrap_leaf && v1_rt::set_contains(&shared_types, type_name.clone()))
         && !rust_type_is_rc_wrapped(rendered.clone()))
     {
         crate::v1_compiler_languages::wrap_shared_type(RenderTarget::Rust, rendered.clone())
@@ -6310,7 +6312,7 @@ pub fn is_type_constant(
     recursive_type_set: Rc<BTreeSet<String>>,
 ) -> bool {
     {
-        let is_recursive = v1_rt::set_contains(&recursive_type_set, summary.name.clone());
+        let is_recursive = v1_rt::set_contains(&recursive_type_set, summary.key.clone());
         let has_generics = ((summary.generic_param_names.clone().len() as i64) > 0);
         match (*summary.repr.clone()).clone() {
             TypeRepr::EnumRepr {
@@ -6363,6 +6365,8 @@ pub fn maybe_mark_shared_type(
     summary: Rc<TypeSummary>,
     recursive_type_set: Rc<BTreeSet<String>>,
     target_needs_sharing: bool,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
     {
         let needs_sharing = (target_needs_sharing.clone()
@@ -6373,7 +6377,24 @@ pub fn maybe_mark_shared_type(
                     ..
                 } => (unit_only.clone() == false),
             });
-        if summary_declares_grounded_coproduct_native_alias(summary.clone()) {
+        let alias_holds_container_wrap =
+            match type_decl_items.by_identity.get(&summary.key).cloned() {
+                Some(item) => {
+                    let rhs_leaf = rust_fn_sig_leaf_name(
+                        source_indices.clone(),
+                        crate::v1_compiler_infer_types::resolved_type(item.clone()),
+                    );
+                    crate::v1_compiler_emit_core_support::is_type_alias_item(
+                        item.clone(),
+                        source_indices.clone(),
+                    ) || (crate::std_types::is_container_type(rhs_leaf.clone())
+                        && rhs_leaf != summary.name)
+                }
+                None => false,
+            };
+        if summary_declares_grounded_coproduct_native_alias(summary.clone())
+            || alias_holds_container_wrap
+        {
             acc.clone()
         } else {
             if (needs_sharing.clone()
@@ -6391,6 +6412,8 @@ pub fn build_shared_types(
     type_summaries: Rc<TypeSummaryIndex>,
     recursive_type_set: Rc<BTreeSet<String>>,
     target: RenderTarget,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
     {
         let sharing = crate::v1_compiler_languages::sharing_for_target(target.clone());
@@ -6406,6 +6429,8 @@ pub fn build_shared_types(
                             summary.clone(),
                             recursive_type_set.clone(),
                             sharing.needs_sharing.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
                         )
                     },
                 );
@@ -6454,6 +6479,210 @@ pub fn build_shared_types(
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum SharedLayerAnswer {
+    SharedLayerAtShared,
+    SharedLayerAtValue,
+    SharedLayerRefuse { leaf: String, cause: String },
+}
+
+pub fn shared_layer_refuse_expr(leaf: String, cause: String) -> String {
+    emit_rust_compile_error_expr(v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat("shared layer refused for '".to_string(), leaf),
+                "': ".to_string(),
+            ),
+            cause,
+        ),
+        " — wrap/deref/Copy of a user type requires one declaration identity".to_string(),
+    ))
+}
+
+pub fn shared_layer_of_resolution(
+    shared_types: Rc<BTreeSet<String>>,
+    leaf: String,
+    resolution: TypeDeclResolution,
+) -> SharedLayerAnswer {
+    if crate::std_types::is_container_type(leaf.clone()) {
+        if v1_rt::set_contains(&shared_types, leaf.clone()) {
+            SharedLayerAnswer::SharedLayerAtShared
+        } else {
+            SharedLayerAnswer::SharedLayerAtValue
+        }
+    } else {
+        match resolution {
+            TypeDeclResolution::TypeDeclResolved { identity, .. } => {
+                if shared_types_contains_identity(shared_types.clone(), identity) {
+                    SharedLayerAnswer::SharedLayerAtShared
+                } else {
+                    SharedLayerAnswer::SharedLayerAtValue
+                }
+            }
+            TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: amb } => {
+                SharedLayerAnswer::SharedLayerRefuse {
+                    leaf: amb,
+                    cause: "TypeDeclLeafAmbiguous".to_string(),
+                }
+            }
+            TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _ } => {
+                SharedLayerAnswer::SharedLayerAtValue
+            }
+            TypeDeclResolution::TypeDeclNotDeclared => {
+                if leaf.clone() == "".to_string()
+                    || leaf.clone() == "fn".to_string()
+                    || crate::std_types::is_kernel_type(leaf.clone())
+                {
+                    SharedLayerAnswer::SharedLayerAtValue
+                } else {
+                    SharedLayerAnswer::SharedLayerRefuse {
+                        leaf: leaf.clone(),
+                        cause: "TypeDeclNotDeclared".to_string(),
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn emit_alias_hop_scope(
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<InferScope> {
+    let base = crate::v1_compiler_emit::empty_emit_scope();
+    let type_env = Rc::new(TypeEnv {
+        module_path: base.type_env.module_path.clone(),
+        bindings: base.type_env.bindings.clone(),
+        str_bindings: base.type_env.str_bindings.clone(),
+        ancestry_str_bindings: base.type_env.ancestry_str_bindings.clone(),
+        parents: base.type_env.parents.clone(),
+        recursive_types: base.type_env.recursive_types.clone(),
+        recursive_type_set: base.type_env.recursive_type_set.clone(),
+        inductive_fields: base.type_env.inductive_fields.clone(),
+        source_indices,
+        intern_table: base.type_env.intern_table.clone(),
+        source_visible_names: base.type_env.source_visible_names.clone(),
+        authored_import_names: base.type_env.authored_import_names.clone(),
+        symbol_index: base.type_env.symbol_index.clone(),
+        unit_variant_index: base.type_env.unit_variant_index.clone(),
+        unit_variant_index_observed: base.type_env.unit_variant_index_observed,
+    });
+    Rc::new(InferScope {
+        type_env,
+        func_env: base.func_env.clone(),
+        locals: base.locals.clone(),
+        body_locals: base.body_locals.clone(),
+        match_bound_names: base.match_bound_names.clone(),
+        module_name: base.module_name.clone(),
+        service_registry: base.service_registry.clone(),
+        item_registry: base.item_registry.clone(),
+        lambda_param_provenance: base.lambda_param_provenance.clone(),
+        caller_decl_name: base.caller_decl_name.clone(),
+        in_flight_lambda_param_names: base.in_flight_lambda_param_names.clone(),
+        enclosing_declared_type_param_names: base.enclosing_declared_type_param_names.clone(),
+    })
+}
+
+pub fn identity_keyed_recursive_type_set(
+    leaf_set: Rc<BTreeSet<String>>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    type_summaries: Rc<TypeSummaryIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<BTreeSet<String>> {
+    let from_decls = Rc::new(v1_rt::map_keys(&type_decl_items.by_identity))
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_set::<String>(),
+            |acc: Rc<BTreeSet<String>>, identity: String| match type_decl_items
+                .by_identity
+                .get(&identity)
+                .cloned()
+            {
+                Some(item) => {
+                    let leaf = crate::v1_std_core::qualified_last_segment(identity.clone());
+                    let rhs_leaf = rust_fn_sig_leaf_name(
+                        source_indices.clone(),
+                        crate::v1_compiler_infer_types::resolved_type(item.clone()),
+                    );
+                    let summary_is_fielded =
+                        match crate::v1_compiler_infer_emit_info::type_summary_decided(
+                            type_summaries.clone(),
+                            identity.clone(),
+                        ) {
+                            Some(summary) => match (*summary.repr.clone()).clone() {
+                                TypeRepr::StructRepr => {
+                                    (Rc::new(v1_rt::sorted_map_keys(&summary.field_summaries)).len()
+                                        as i64)
+                                        > 0
+                                }
+                                TypeRepr::EnumRepr { unit_only, .. } => unit_only == false,
+                            },
+                            None => false,
+                        };
+                    if v1_rt::set_contains(&leaf_set, leaf.clone())
+                        && summary_is_fielded
+                        && !crate::v1_compiler_emit_core_support::is_type_alias_item(
+                            item.clone(),
+                            source_indices.clone(),
+                        )
+                        && !(crate::std_types::is_container_type(rhs_leaf.clone())
+                            && rhs_leaf != leaf)
+                    {
+                        v1_rt::rc_set_insert(acc, identity)
+                    } else {
+                        acc
+                    }
+                }
+                None => acc,
+            },
+        );
+    Rc::new(v1_rt::sorted_map_keys(&rust_container_templates()))
+        .iter()
+        .cloned()
+        .fold(from_decls, |acc: Rc<BTreeSet<String>>, key: String| {
+            let pascal = crate::v1_compiler_emit_core_support::to_pascal(key);
+            if v1_rt::set_contains(&leaf_set, pascal.clone()) {
+                v1_rt::rc_set_insert(acc, pascal)
+            } else {
+                acc
+            }
+        })
+}
+
+pub fn shared_layer_of_type_expr(
+    shared_types: Rc<BTreeSet<String>>,
+    type_expr: Rc<Node>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> SharedLayerAnswer {
+    let leaf = rust_fn_sig_leaf_name(source_indices.clone(), type_expr.clone());
+    shared_layer_of_resolution(
+        shared_types,
+        leaf,
+        (*crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
+            type_decl_items,
+            type_expr,
+            source_indices,
+        )
+        .resolution
+        .clone())
+        .clone(),
+    )
+}
+
+pub fn shared_layer_of_leaf(
+    shared_types: Rc<BTreeSet<String>>,
+    leaf: String,
+    type_decl_items: Rc<TypeDeclIndex>,
+) -> SharedLayerAnswer {
+    shared_layer_of_resolution(
+        shared_types,
+        leaf.clone(),
+        (*crate::v1_compiler_infer_emit_info::resolve_type_decl_leaf(type_decl_items, leaf))
+            .clone(),
+    )
+}
+
 pub fn shared_type_identity_of_reference(
     type_expr: Rc<Node>,
     type_decl_items: Rc<TypeDeclIndex>,
@@ -6488,21 +6717,10 @@ pub fn shared_types_contains_type_expr(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    {
-        let leaf = rust_fn_sig_leaf_name(source_indices.clone(), type_expr.clone());
-        if crate::std_types::is_container_type(leaf.clone()) {
-            v1_rt::set_contains(&shared_types, leaf.clone())
-        } else {
-            shared_types_contains_identity(
-                shared_types.clone(),
-                shared_type_identity_of_reference(
-                    type_expr.clone(),
-                    type_decl_items.clone(),
-                    source_indices.clone(),
-                ),
-            )
-        }
-    }
+    matches!(
+        shared_layer_of_type_expr(shared_types, type_expr, type_decl_items, source_indices),
+        SharedLayerAnswer::SharedLayerAtShared
+    )
 }
 
 pub fn shared_types_contains_leaf(
@@ -6510,23 +6728,10 @@ pub fn shared_types_contains_leaf(
     leaf: String,
     type_decl_items: Rc<TypeDeclIndex>,
 ) -> bool {
-    if crate::std_types::is_container_type(leaf.clone()) {
-        v1_rt::set_contains(&shared_types, leaf.clone())
-    } else {
-        match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_leaf(
-            type_decl_items.clone(),
-            leaf.clone(),
-        ))
-        .clone()
-        {
-            TypeDeclResolution::TypeDeclResolved { identity, .. } => {
-                shared_types_contains_identity(shared_types.clone(), identity)
-            }
-            TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _ } => false,
-            TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _ } => false,
-            TypeDeclResolution::TypeDeclNotDeclared => false,
-        }
-    }
+    matches!(
+        shared_layer_of_leaf(shared_types, leaf, type_decl_items),
+        SharedLayerAnswer::SharedLayerAtShared
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -6802,12 +7007,20 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             typed.item_registry.clone(),
         );
         let ownership = build_ownership_results(typed.modules.clone());
+        let closure_source_indices = merged_module_source_indices(typed.modules.clone());
+        let recursive_type_set = identity_keyed_recursive_type_set(
+            base_info.recursive_type_set.clone(),
+            base_info.type_decl_items.clone(),
+            base_info.type_summaries.clone(),
+            closure_source_indices.clone(),
+        );
         let shared = build_shared_types(
             base_info.type_summaries.clone(),
-            base_info.recursive_type_set.clone(),
+            recursive_type_set.clone(),
             RenderTarget::Rust,
+            base_info.type_decl_items.clone(),
+            closure_source_indices.clone(),
         );
-        let closure_source_indices = merged_module_source_indices(typed.modules.clone());
         let clone_bounded = crate::v1_compiler_trait_derive_emit::v1_clone_bounded_type_params(
             base_info.type_decl_items.clone(),
             closure_source_indices.clone(),
@@ -6842,7 +7055,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
                 module_index.clone(),
             ),
             fn_decl_items: base_info.fn_decl_items.clone(),
-            recursive_type_set: base_info.recursive_type_set.clone(),
+            recursive_type_set: recursive_type_set.clone(),
             fielded_variants: base_info.fielded_variants.clone(),
             positional_payload_variants: base_info.positional_payload_variants.clone(),
             shared_types: shared.clone(),
@@ -8086,29 +8299,39 @@ pub fn emit_module(
             Rc::new(vec![typed_module.clone()]),
             registry.clone(),
         );
+        let module_source_indices =
+            merged_module_source_indices(Rc::new(vec![typed_module.clone()]));
+        let recursive_type_set = identity_keyed_recursive_type_set(
+            base_info.recursive_type_set.clone(),
+            base_info.type_decl_items.clone(),
+            base_info.type_summaries.clone(),
+            module_source_indices.clone(),
+        );
         let shared = build_shared_types(
             base_info.type_summaries.clone(),
-            base_info.recursive_type_set.clone(),
+            recursive_type_set.clone(),
             RenderTarget::Rust,
+            base_info.type_decl_items.clone(),
+            module_source_indices.clone(),
         );
         let clone_bounded = crate::v1_compiler_trait_derive_emit::v1_clone_bounded_type_params(
             base_info.type_decl_items.clone(),
-            merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
+            module_source_indices.clone(),
         );
         let map_key_required = crate::v1_compiler_trait_derive_emit::v1_map_key_required_type_names(
             v1_map_key_seed_type_exprs(
                 Rc::new(vec![typed_module.clone()]),
                 base_info.type_decl_items.clone(),
-                merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
+                module_source_indices.clone(),
             ),
             hand_maintained_map_key_required_type_names(),
             base_info.type_decl_items.clone(),
-            merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
+            module_source_indices.clone(),
         );
         let clone_impl_required =
             crate::v1_compiler_trait_derive_emit::v1_clone_impl_required_type_params(
                 base_info.type_decl_items.clone(),
-                merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
+                module_source_indices.clone(),
             );
         let data_items = build_data_item_index(Rc::new(vec![typed_module.clone()]));
         let module_index = build_module_index(
@@ -8125,7 +8348,7 @@ pub fn emit_module(
                 module_index.clone(),
             ),
             fn_decl_items: base_info.fn_decl_items.clone(),
-            recursive_type_set: base_info.recursive_type_set.clone(),
+            recursive_type_set: recursive_type_set.clone(),
             fielded_variants: base_info.fielded_variants.clone(),
             positional_payload_variants: base_info.positional_payload_variants.clone(),
             shared_types: shared.clone(),
@@ -16318,65 +16541,43 @@ pub fn emit_rust_item_refusal(item_text: String, reason: String) -> String {
 }
 
 pub fn needs_box_wrapping(
-    mut __tco_loop_n: Rc<Node>,
-    mut __tco_loop_recursive_types: Rc<BTreeSet<String>>,
-    mut __tco_loop_shared_types: Rc<BTreeSet<String>>,
-    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Rc<Node>,
+    recursive_types: Rc<BTreeSet<String>>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     type_decl_items: Rc<TypeDeclIndex>,
 ) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut recursive_types = __tco_loop_recursive_types;
-        #[allow(unused_mut)]
-        let mut shared_types = __tco_loop_shared_types;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-        let name = crate::v1_std_core::qualified_last_segment(authored.clone());
-        if shared_types_contains_type_expr(
+    let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+    let name = crate::v1_std_core::qualified_last_segment(authored);
+    if crate::std_types::is_container_type(name.clone()) {
+        if shared_types_contains_type_expr(shared_types, n, type_decl_items, source_indices) {
+            false
+        } else {
+            v1_rt::set_contains(&recursive_types, name)
+        }
+    } else {
+        match shared_layer_of_type_expr(
             shared_types.clone(),
             n.clone(),
             type_decl_items.clone(),
             source_indices.clone(),
         ) {
-            break false;
-        } else {
-            if v1_rt::set_contains(&recursive_types, name.clone()) {
-                break true;
-            } else {
-                if ((n.children.clone().len() as i64) == 0) {
-                    if (crate::v1_compiler_coercion::coerce_primitive_type(
-                        crate::v1_compiler_coercion::type_reference_realization(
-                            n.clone(),
-                            name.clone(),
-                            RenderTarget::Rust,
-                        ),
-                        name.clone(),
-                    ) != name.clone())
-                    {
-                        break false;
-                    } else {
-                        break v1_rt::set_contains(&recursive_types, name.clone());
+            SharedLayerAnswer::SharedLayerAtShared => false,
+            SharedLayerAnswer::SharedLayerRefuse { .. } => false,
+            SharedLayerAnswer::SharedLayerAtValue => {
+                match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
+                    type_decl_items,
+                    n,
+                    source_indices,
+                )
+                .resolution
+                .clone())
+                .clone()
+                {
+                    TypeDeclResolution::TypeDeclResolved { identity, .. } => {
+                        v1_rt::set_contains(&recursive_types, identity)
                     }
-                } else {
-                    let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-                    if is_optional.clone() {
-                        {
-                            let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
-                            let __tco_1 = recursive_types;
-                            let __tco_2 = shared_types;
-                            let __tco_3 = source_indices;
-                            __tco_loop_n = __tco_0;
-                            __tco_loop_recursive_types = __tco_1;
-                            __tco_loop_shared_types = __tco_2;
-                            __tco_loop_source_indices = __tco_3;
-                            continue;
-                        }
-                    } else {
-                        break false;
-                    }
+                    _ => false,
                 }
             }
         }
@@ -17491,6 +17692,17 @@ pub fn rust_field_carrier_final_type(
     type_decl_items: Rc<TypeDeclIndex>,
 ) -> String {
     {
+        match shared_layer_of_type_expr(
+            shared_types.clone(),
+            rt_field.clone(),
+            type_decl_items.clone(),
+            source_indices.clone(),
+        ) {
+            SharedLayerAnswer::SharedLayerRefuse { leaf, cause } => {
+                return shared_layer_refuse_expr(leaf, cause);
+            }
+            _ => {}
+        }
         let native_scalar = crate::v1_compiler_coercion::realization_host_numeric_spelling(
             type_reference_realization_in_env(
                 rt_field.clone(),
@@ -22666,15 +22878,21 @@ pub fn analyze_rc_pattern(
                             emit_info.type_summaries.clone(),
                         );
                         let matches_rc_variant = match resolved_parent.clone() {
-                            Some(enum_name) => {
-                                v1_rt::set_contains(&shared_types, enum_name.clone())
-                            }
+                            Some(enum_name) => shared_types_contains_leaf(
+                                shared_types.clone(),
+                                enum_name.clone(),
+                                emit_info.type_decl_items.clone(),
+                            ),
                             std::option::Option::None => {
                                 match crate::v1_compiler_infer_emit_info::type_summary_decided(
                                     emit_info.type_summaries.clone(),
                                     bare_n.clone(),
                                 ) {
-                                    Some(_) => v1_rt::set_contains(&shared_types, bare_n.clone()),
+                                    Some(_) => shared_types_contains_leaf(
+                                        shared_types.clone(),
+                                        bare_n.clone(),
+                                        emit_info.type_decl_items.clone(),
+                                    ),
                                     std::option::Option::None => false,
                                 }
                             }
@@ -24215,9 +24433,10 @@ pub fn variant_ref_self_wraps(
     name: String,
     enum_name: String,
     shared_types: Rc<BTreeSet<String>>,
+    type_decl_items: Rc<TypeDeclIndex>,
 ) -> bool {
     (freemonoid_empty_from_variant_parent(name.clone(), enum_name.clone())
-        || v1_rt::set_contains(&shared_types, enum_name.clone()))
+        || shared_types_contains_leaf(shared_types, enum_name, type_decl_items))
 }
 
 pub fn emit_value_ref_ident(
@@ -24357,6 +24576,7 @@ pub fn emit_var_ref(
                                     leaf_name.clone(),
                                     enum_name.clone(),
                                     shared_types.clone(),
+                                    emit_info.type_decl_items.clone(),
                                 ) {
                                     rust_shared_wrap_ctor(body.clone())
                                 } else {
@@ -24509,8 +24729,11 @@ pub fn emit_typed_expr_base(
                                                         leaf_name.clone(),
                                                     )
                                                 };
-                                            if v1_rt::set_contains(&shared_types, enum_name.clone())
-                                            {
+                                            if shared_types_contains_leaf(
+                                                shared_types.clone(),
+                                                enum_name.clone(),
+                                                emit_info.type_decl_items.clone(),
+                                            ) {
                                                 rust_shared_wrap_ctor(qualified.clone())
                                             } else {
                                                 qualified.clone()
@@ -25894,7 +26117,12 @@ pub fn emit_rust_expr_record_lit(
                         if ((((expanded_rt.ident_span.clone() != std::option::Option::None)
                             && (expanded_name.clone() != "".to_string()))
                             && (expanded_name.clone() != variant_name.clone()))
-                            && v1_rt::set_contains(&shared_types, expanded_name.clone()))
+                            && shared_types_contains_type_expr(
+                                shared_types.clone(),
+                                expanded_rt.clone(),
+                                emit_info.type_decl_items.clone(),
+                                si.clone(),
+                            ))
                         {
                             expanded_name.clone()
                         } else {
@@ -25904,7 +26132,11 @@ pub fn emit_rust_expr_record_lit(
                 },
             };
             if (((rc_name.clone() != "".to_string())
-                && v1_rt::set_contains(&shared_types, rc_name.clone()))
+                && shared_types_contains_leaf(
+                    shared_types.clone(),
+                    rc_name.clone(),
+                    emit_info.type_decl_items.clone(),
+                ))
                 && !rust_expr_is_grounded_shared_value(raw.clone()))
             {
                 rust_shared_wrap_ctor(raw.clone())
@@ -25921,7 +26153,7 @@ pub fn emit_rust_expr_record_lit(
 
 pub fn rust_expr_is_grounded_shared_value(expr: String) -> bool {
     ((expr.clone() == emit_freemonoid_empty_rc_value())
-        || v1_rt::starts_with(&expr, rust_shared_wrap_ctor_prefix()))
+        || v1_rt::starts_with(expr, rust_shared_wrap_ctor_prefix()))
 }
 
 pub fn emit_rust_expr_string_interp(
@@ -26800,7 +27032,11 @@ pub fn emit_discriminant_call_scrutinee_lowering(
                             }
                             __result
                         });
-                        let scrut_ref = if v1_rt::set_contains(&shared_types, ty_name.clone()) {
+                        let scrut_ref = if shared_types_contains_leaf(
+                            shared_types.clone(),
+                            ty_name.clone(),
+                            emit_info.type_decl_items.clone(),
+                        ) {
                             v1_rt::concat(
                                 v1_rt::concat("&*(".to_string(), scrutinee.clone()),
                                 ")".to_string(),
@@ -27363,7 +27599,20 @@ pub fn emit_typed_call(
                     )]),
                 };
                 let fields_str = field_strs.clone().join(&", ".to_string());
-                let needs_rc = v1_rt::set_contains(&shared_types, type_name.clone());
+                let needs_rc = if (base_arg.inferred.clone() != std::option::Option::None) {
+                    shared_types_contains_type_expr(
+                        shared_types.clone(),
+                        crate::v1_compiler_infer_types::resolved_type(base_arg.clone()),
+                        emit_info.type_decl_items.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    )
+                } else {
+                    shared_types_contains_leaf(
+                        shared_types.clone(),
+                        type_name.clone(),
+                        emit_info.type_decl_items.clone(),
+                    )
+                };
                 let sharing =
                     crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
                         .sharing
@@ -28890,7 +29139,12 @@ pub fn emit_rust_fold_method_call(
         let structural_move =
             (fold_proof.eligible.clone() && fold_proof.whole_acc_single_use.clone());
         let acc_unwrap = (structural_unwrap.clone()
-            && v1_rt::set_contains(&shared_types, acc_type_name.clone()));
+            && shared_types_contains_type_expr(
+                shared_types.clone(),
+                acc_type_node.clone(),
+                emit_info.type_decl_items.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ));
         let fold_emit_info = if acc_unwrap.clone() {
             match (*fold_lambda_node.expr_data.clone()).clone() {
                 ExprData::ExprLambda => {
@@ -30024,7 +30278,19 @@ pub fn emit_rust_with_method_call(
             )]),
         };
         let fields_str = field_strs.clone().join(&", ".to_string());
-        let needs_rc = v1_rt::set_contains(&shared_types, type_name.clone());
+        let needs_rc = match receiver.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => shared_types_contains_type_expr(
+                shared_types.clone(),
+                rt.clone(),
+                emit_info.type_decl_items.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ),
+            _ => shared_types_contains_leaf(
+                shared_types.clone(),
+                type_name.clone(),
+                emit_info.type_decl_items.clone(),
+            ),
+        };
         let sharing = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
             .sharing
             .clone();
@@ -33255,13 +33521,20 @@ pub fn rust_record_field_needs_box(
         struct_name.clone(),
         field_name.clone(),
     ) {
-        Some(field_type) => needs_box_wrapping(
-            field_type.clone(),
-            emit_info.recursive_type_set.clone(),
-            shared_types.clone(),
-            scope.type_env.clone().source_indices.clone(),
-            emit_info.type_decl_items.clone(),
-        ),
+        Some(field_type) => {
+            let leaf = rust_fn_sig_leaf_name(
+                scope.type_env.clone().source_indices.clone(),
+                field_type.clone(),
+            );
+            crate::std_types::is_container_type(leaf)
+                && needs_box_wrapping(
+                    field_type.clone(),
+                    emit_info.recursive_type_set.clone(),
+                    shared_types.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                    emit_info.type_decl_items.clone(),
+                )
+        }
         std::option::Option::None => false,
     }
 }
@@ -33606,9 +33879,10 @@ pub fn emit_field_value_with_context(
                         std::option::Option::None => variant_name.clone(),
                     };
                     if (((rc_name.clone() != "".to_string())
-                        && v1_rt::set_contains(
-                            &shared_types,
+                        && shared_types_contains_leaf(
+                            shared_types.clone(),
                             crate::v1_std_core::qualified_last_segment(rc_name.clone()),
+                            emit_info.type_decl_items.clone(),
                         ))
                         && !rust_expr_is_grounded_shared_value(raw.clone()))
                     {
@@ -34203,8 +34477,11 @@ pub fn emit_typed_record_lit(
                                                     ),
                                                     ",\n}".to_string(),
                                                 );
-                                                if v1_rt::set_contains(&shared_types, r_sn.clone())
-                                                {
+                                                if shared_types_contains_leaf(
+                                                    shared_types.clone(),
+                                                    r_sn.clone(),
+                                                    emit_info.type_decl_items.clone(),
+                                                ) {
                                                     rust_shared_wrap_ctor(struct_lit.clone())
                                                 } else {
                                                     struct_lit.clone()
@@ -34326,7 +34603,11 @@ pub fn emit_typed_record_lit(
                                         ),
                                         "\n}".to_string(),
                                     );
-                                    if v1_rt::set_contains(&shared_types, resolved_sn.clone()) {
+                                    if shared_types_contains_leaf(
+                                        shared_types.clone(),
+                                        resolved_sn.clone(),
+                                        emit_info.type_decl_items.clone(),
+                                    ) {
                                         rust_shared_wrap_ctor(struct_lit.clone())
                                     } else {
                                         struct_lit.clone()
@@ -34914,7 +35195,12 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
                                         "\n}".to_string(),
                                     );
                                     if (ctor_alias_resolved.clone()
-                                        && v1_rt::set_contains(&shared_types, ctor_name.clone()))
+                                        && shared_types_contains_type_expr(
+                                            shared_types.clone(),
+                                            resolved_type.clone(),
+                                            emit_info.type_decl_items.clone(),
+                                            si.clone(),
+                                        ))
                                     {
                                         rust_shared_wrap_ctor(raw.clone())
                                     } else {
@@ -35136,6 +35422,42 @@ pub fn emit_rust_demanded_host_bin_op(
     }
 }
 
+pub fn rust_operand_alias_or_refinement_continue(
+    rt: Rc<Node>,
+    scope: Rc<InferScope>,
+    fuel: i64,
+) -> Option<Rc<Node>> {
+    if (fuel.clone() <= 0) {
+        std::option::Option::None
+    } else if crate::v1_compiler_infer::is_where_refinement_type(rt.clone()) {
+        match rt.children.clone().first().cloned() {
+            Some(base) => Some(
+                match crate::v1_compiler_infer_env::lookup_type_for(
+                    scope.type_env.clone(),
+                    base.clone(),
+                ) {
+                    Some(r) => r.clone(),
+                    std::option::Option::None => base.clone(),
+                },
+            ),
+            std::option::Option::None => std::option::Option::None,
+        }
+    } else {
+        let decl = match rt.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
+            _ => rt.clone(),
+        };
+        if crate::v1_compiler_emit_core_support::is_type_alias_item(
+            decl.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        ) {
+            Some(crate::v1_compiler_infer_types::resolved_type(decl.clone()))
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
 pub fn rust_operand_realization(
     operand: Rc<Node>,
     scope: Rc<InferScope>,
@@ -35260,7 +35582,7 @@ __tco_loop_rt = __tco_0;
 __tco_loop_scope = __tco_1;
 __tco_loop_fuel = __tco_2;
 continue;
-} },
+},
     std::option::Option::None => { break Rc::new(OperandRealization::StructuralOperand {
     declaration: d.clone(),
 }); },
@@ -41970,6 +42292,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            __m.insert(
                                                 vname.clone(),
                                                 enum_name.clone(),
                                                 shared_types.clone(),
+                                                emit_info.type_decl_items.clone(),
                                             ),
                                             std::option::Option::None => {
                                                 value_inferred_type_is_rc_wrapped(
