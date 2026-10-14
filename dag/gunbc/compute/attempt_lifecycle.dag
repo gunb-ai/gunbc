@@ -450,6 +450,11 @@ fn attempt_advance_payload<P>(
                 AttemptTransitionRefused {
                   detail: join(["the attempt slot keyed ", reference as String, " names reference ", codec.reference_of(rec)], ""),
                 }
+              } else if cas_generation_count(g: v.generation) != cas_generation_count(g: expected) {
+                AttemptLostRace {
+                  expected: join(["generation ", to_string(value: cas_generation_count(g: expected))], ""),
+                  observed: join(["generation ", to_string(value: cas_generation_count(g: v.generation))], ""),
+                }
               } else {
                 match next_state {
                   AttemptLaunching =>
