@@ -238,7 +238,7 @@ test fn frontier_rows_keyed_build_requires_well_formed_and_unique() -> Bool {
 test fn merge_row_lists_silently_skips_duplicate_contrast_control() -> Bool {
   let left = fixture_rows_unique()
   let right = [fixture_row(path: "dag/gunbc/a.dag", audience: "other")]
-  let merged = keyed_merge_row_lists(left: left, right: right)
+  let merged = keyed_merge_row_lists(left: left, right: right, key_eq: fixture_key_eq)
   length(xs: merged) == 2
     && match keyed_roster_build(incomings: concat(left, right)) {
       KeyedRosterBuilt { rows: _ } => false
@@ -349,12 +349,18 @@ test fn total_index_three_way_repeat_reports_three_occurrences() -> Bool {
 
 test fn total_index_occurrences_keep_authored_order() -> Bool {
   let index = keyed_roster_index(rows: [kr(k: "a", tag: "0"), kr(k: "a", tag: "1"), kr(k: "a", tag: "2")])
-  map(keyed_roster_index_occurrences(index: index, key: SubjectKey { subject: "a" }), r => r.value.audience) == ["0", "1", "2"]
+  let occ = keyed_roster_index_occurrences(index: index, key: SubjectKey { subject: "a" })
+  count(occ) == 3
+    && match occ |> first { Present { value: r } => r.value.audience == "0"  Absent => false }
+    && match occ |> reverse |> first { Present { value: r } => r.value.audience == "2"  Absent => false }
 }
 
 test fn total_index_duplicated_lists_each_repeating_key_once_in_repeat_order() -> Bool {
   let index = keyed_roster_index(rows: [kr(k: "a", tag: "0"), kr(k: "b", tag: "1"), kr(k: "b", tag: "2"), kr(k: "a", tag: "3"), kr(k: "b", tag: "4")])
-  map(keyed_roster_duplicated(index: index), k => k.subject) == ["b", "a"]
+  let dups = keyed_roster_duplicated(index: index)
+  count(dups) == 2
+    && match dups |> first { Present { value: k } => k.subject == "b"  Absent => false }
+    && match dups |> reverse |> first { Present { value: k } => k.subject == "a"  Absent => false }
 }
 
 test fn total_index_operations_are_linear_in_rows() -> Bool {
