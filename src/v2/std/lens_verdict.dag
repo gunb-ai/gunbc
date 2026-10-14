@@ -139,22 +139,42 @@ fn lens_verdict_node_occurrence_text(node: Node) -> String {
 // the index does not hold (assembly is fail-closed, so a file it never reached has no entries), and
 // a derivation chain that bottoms out in no textual origin all render exactly as they did before.
 // Nothing here can invent a file; it can only find one that was recorded.
+fn lens_verdict_textual_locus_text_optional(index: SpanIndex, id: OccurrenceId) -> Optional<String> {
+  match span_index_textual_locus_optional(index: index, id: id) {
+    Absent => Absent
+    Present { value: locus } =>
+      match locus {
+        Textual { file: f, extent: e } =>
+          Present { value: concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e)) }
+        NodeLocus { anchor: _ } => Absent
+        SourcePortLocus { anchor: _, file: _, extent: _ } => Absent
+        InvariantPortLocus { anchor: _, invariant: _ } => Absent
+        DeclarationLocus { declaration: _ } => Absent
+      }
+  }
+}
+
 fn lens_verdict_node_occurrence_text_in_spans(node: Node, index: SpanIndex) -> String {
   match node_occurrence_id_optional(node: node) {
-    Absent => lens_verdict_node_occurrence_text(node: node)
     Present { value: id } =>
-      match span_index_textual_locus_optional(index: index, id: id) {
-        Absent => lens_verdict_node_occurrence_text(node: node)
-        Present { value: locus } =>
-          match locus {
-            Textual { file: f, extent: e } =>
-              concat(concat(symbol_lexeme(sym: f), " "), lens_verdict_extent_text(e: e))
-            NodeLocus { anchor: _ } => lens_verdict_node_occurrence_text(node: node)
-            SourcePortLocus { anchor: _, file: _, extent: _ } => lens_verdict_node_occurrence_text(node: node)
-            InvariantPortLocus { anchor: _, invariant: _ } => lens_verdict_node_occurrence_text(node: node)
-            DeclarationLocus { declaration: _ } => lens_verdict_node_occurrence_text(node: node)
-          }
+      match lens_verdict_textual_locus_text_optional(index: index, id: id) {
+        Present { value: text } => text
+        Absent => lens_verdict_projected_cause_text_in_spans(node: node, index: index)
       }
+    Absent => lens_verdict_projected_cause_text_in_spans(node: node, index: index)
+  }
+}
+
+fn lens_verdict_projected_cause_text_in_spans(node: Node, index: SpanIndex) -> String {
+  match node.occurrence_id {
+    OccurrenceProjected { id: _, caused_by: cause } =>
+      match lens_verdict_textual_locus_text_optional(index: index, id: cause.occurrence) {
+        Present { value: text } => text
+        Absent => lens_verdict_node_occurrence_text(node: node)
+      }
+    OccurrenceMinted { id: _ } => lens_verdict_node_occurrence_text(node: node)
+    OccurrenceSynthetic => lens_verdict_node_occurrence_text(node: node)
+    OccurrencePending { caused_by: _ } => lens_verdict_node_occurrence_text(node: node)
   }
 }
 

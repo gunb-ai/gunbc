@@ -2,6 +2,7 @@ module std.decimal
 
 import std.types { String, Int, Bool, range }
 import std.render_repeat_string_bootstrap { repeat_string }
+import std.algebra { string_concat_join }
 import std.error_primitives { pure_dag_seam_unreachable }
 import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_multiply, checked_int_subtract }
 
@@ -24,7 +25,7 @@ fn zero_pad_left(digits: String, width: Int) -> String {
   if have >= width {
     digits
   } else {
-    concat(repeat_string(s: "0", n: width - have), digits)
+    string_concat_join(fields: [repeat_string(s: "0", n: width - have), digits], separator: "")
   }
 }
 
@@ -35,7 +36,7 @@ fn fixed_point_wire(value: Int, decimals: Int) -> String {
   if frac == 0 {
     to_string(whole)
   } else {
-    concat(to_string(whole), concat(".", zero_pad_left(digits: to_string(frac), width: decimals)))
+    string_concat_join(fields: [to_string(whole), ".", zero_pad_left(digits: to_string(frac), width: decimals)], separator: "")
   }
 }
 
@@ -190,7 +191,7 @@ fn exact_decimal_sub_admitted(a: ExactDecimal, b: ExactDecimal) -> ExactDecimalD
 fn exact_decimal_wire(d: ExactDecimal) -> String {
   let c = canonical_exact_decimal(d: d)
   if c.units < 0 {
-    concat("-", fixed_point_wire(value: 0 - c.units, decimals: c.fraction_digits))
+    string_concat_join(fields: ["-", fixed_point_wire(value: 0 - c.units, decimals: c.fraction_digits)], separator: "")
   } else {
     fixed_point_wire(value: c.units, decimals: c.fraction_digits)
   }
