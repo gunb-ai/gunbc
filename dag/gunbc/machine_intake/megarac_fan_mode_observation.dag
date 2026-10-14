@@ -1,18 +1,21 @@
 module gunbc.machine_intake.megarac_fan_mode_observation
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.measure { Celsius, Percent, RevolutionsPerMinute, celsius, percent, rpm }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure { Celsius, Percent, RevolutionsPerMinute, celsius, percent, percent_count, rpm, rpm_count }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import extdeps.bmc.megarac_fan_policy {
   CoolingManagerAutomatic,
   CoolingManagerDisabledManual,
   MegaRacFanManagerStanding,
-  MegaRacFanTachFidelity,
+  MegaRacFanPwmAllAdmitted,
+  MegaRacFanPwmAllRefused,
   MegaRacSdrFanPresence,
   MegaRacSdrFanPresenceAbsent,
   MegaRacSdrFanRotatingInBand,
-  MegaRacTachFidelityUnestablished,
+  megarac_fan_pwm_all_of,
 }
 
 // GROUNDED READ OF THE MEGARAC FAN-MODE SURFACE (Foxconn Mt. Collins, 2026-10-14 ~21:50Z).
@@ -200,6 +203,94 @@ data mtcollins1_operator_duty_audibility_2026_10_14_2220: List<MegaRacOperatorDu
   MegaRacDutyInaudible { pwm: percent(20) },
   MegaRacDutyAudible { pwm: percent(40) },
 ]
+
+// TACH FIDELITY AND BOOT DUTY ARE THIS REPOSITORY'S OBSERVING-LAYER POLICY, NOT AMI INTERFACE
+// FACTS. The catalog acoustic fold (gunbc.fleet.fleet_fan_acoustic_evidence) is SKU published-
+// level fittability, not whether this BMC's tach tracks commanded duty. The 20..100 step-5 set
+// stays in extdeps as the cited UI shape; [20,25,30] is the boot-phase subset this repo chose.
+data megarac_duty_tach_move_floor: RevolutionsPerMinute = rpm(200)
+
+type MegaRacFanTachFidelity
+  = MegaRacTachFidelityEstablished
+  | MegaRacTachFidelityUnestablished { clears_when: NonEmptyStr }
+
+type MegaRacDutyConvergeVerdict
+  = MegaRacDutyConvergedTachMoved
+  | MegaRacDutyConvergedEchoTachUnfaithful { fidelity: MegaRacFanTachFidelity }
+  | MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: Bool }
+  | MegaRacDutyNotConvergedEchoMismatch
+  | MegaRacDutyNotConvergedGuardOpen
+
+fn megarac_rpm_abs_delta(a: RevolutionsPerMinute, b: RevolutionsPerMinute) -> Nat {
+  let ac = rpm_count(r: a)
+  let bc = rpm_count(r: b)
+  if ac >= bc {
+    ac - bc
+  } else {
+    bc - ac
+  }
+}
+
+fn megarac_tach_rpm_unmoved(before: List<RevolutionsPerMinute>, after: List<RevolutionsPerMinute>, floor: RevolutionsPerMinute) -> Bool {
+  if before.length() != after.length() {
+    false
+  } else {
+    match before.first() {
+      Absent => true
+      Present { value: b } => match after.first() {
+        Absent => false
+        Present { value: a } =>
+          if megarac_rpm_abs_delta(a: b, b: a) >= rpm_count(r: floor) {
+            false
+          } else {
+            megarac_tach_rpm_unmoved(
+              before: before.skip(n: 1),
+              after: after.skip(n: 1),
+              floor: floor,
+            )
+          }
+      }
+    }
+  }
+}
+
+fn megarac_duty_converge_verdict(
+  fidelity: MegaRacFanTachFidelity,
+  pwm_echo_matches_desired: Bool,
+  guard_holds_over_dwell: Bool,
+  tach_before_rpm: List<RevolutionsPerMinute>,
+  tach_after_rpm: List<RevolutionsPerMinute>,
+) -> MegaRacDutyConvergeVerdict {
+  match fidelity {
+    MegaRacTachFidelityUnestablished { clears_when: _ } =>
+      if !pwm_echo_matches_desired {
+        MegaRacDutyNotConvergedEchoMismatch
+      } else if !guard_holds_over_dwell {
+        MegaRacDutyNotConvergedGuardOpen
+      } else {
+        MegaRacDutyConvergedEchoTachUnfaithful { fidelity: fidelity }
+      }
+    MegaRacTachFidelityEstablished =>
+      if megarac_tach_rpm_unmoved(
+        before: tach_before_rpm,
+        after: tach_after_rpm,
+        floor: megarac_duty_tach_move_floor,
+      ) {
+        MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: pwm_echo_matches_desired }
+      } else {
+        MegaRacDutyConvergedTachMoved
+      }
+  }
+}
+
+fn megarac_fan_boot_pwm_admitted(duty: Percent) -> Bool {
+  let n = percent_count(p: duty) as Int
+  (n == 20 || n == 25 || n == 30)
+    && match megarac_fan_pwm_all_of(duty: duty) {
+      MegaRacFanPwmAllAdmitted { wire: _ } => true
+      MegaRacFanPwmAllRefused { duty: _ } => false
+    }
+}
 
 data mtcollins1_megarac_tach_fidelity: MegaRacFanTachFidelity = MegaRacTachFidelityUnestablished {
   clears_when: "SDR FAN*_Speed tracks commanded duty across two PWM points whose operator-audible difference is already established (20 inaudible vs 40 audible, 2026-10-14 ~22:20Z)",
