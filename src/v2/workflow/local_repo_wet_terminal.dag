@@ -553,6 +553,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_ceiling_retry_inherits_the_recorded_owner_and_is_refused_without_one" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "a_ceiling_retry_inherits_the_recorded_owner_and_is_refused_without_one",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_refused_pass_is_its_own_standing_not_a_seat_refusal" },
       entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
       function: "a_refused_pass_is_its_own_standing_not_a_seat_refusal",
