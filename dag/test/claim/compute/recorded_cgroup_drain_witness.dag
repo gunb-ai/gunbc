@@ -2,8 +2,6 @@ module test.claim.compute.recorded_cgroup_drain_witness
 
 import std.types { Bool, String }
 import gunbc.compute.recorded_cgroup_drain {
-  RecordedInvocationStillCurrent,
-  RecordedInvocationEnded,
   RecordedCgroupPathStanding,
   RecordedCgroupDrain,
   RecordedPathAbsent,
@@ -12,37 +10,34 @@ import gunbc.compute.recorded_cgroup_drain {
   RecordedPathUnreadable,
   RecordedCgroupPreserve,
   RecordedCgroupMaySeal,
-  recorded_invocation_standing,
   recorded_cgroup_drain,
   recorded_cgroup_may_seal,
   recorded_path_standing_from_events_error,
   recorded_path_standing_from_events_body,
 }
 
-fn drain(invocation_ended: Bool, path: RecordedCgroupPathStanding) -> RecordedCgroupDrain {
-  recorded_cgroup_drain(
-    invocation: if invocation_ended { RecordedInvocationEnded } else { RecordedInvocationStillCurrent },
-    path: path)
+fn drain(path: RecordedCgroupPathStanding) -> RecordedCgroupDrain {
+  recorded_cgroup_drain(path: path)
 }
 
 test fn p_populated_while_a_probe_remains_preserves() -> Bool {
-  match drain(invocation_ended: true, path: RecordedPathPopulated) {
+  match drain(path: RecordedPathPopulated) {
     RecordedCgroupPreserve { detail: d } => string_contains(s: d, pattern: "populated 1")
     RecordedCgroupMaySeal { detail: _ } => false
   }
 }
 
 test fn p_prime_drained_path_seals() -> Bool {
-  recorded_cgroup_may_seal(d: drain(invocation_ended: true, path: RecordedPathEmpty))
-    && recorded_cgroup_may_seal(d: drain(invocation_ended: true, path: RecordedPathAbsent))
+  recorded_cgroup_may_seal(d: drain(path: RecordedPathEmpty))
+    && recorded_cgroup_may_seal(d: drain(path: RecordedPathAbsent))
 }
 
 test fn p_double_prime_and_triple_prime_and_pf_are_populated() -> Bool {
-  !recorded_cgroup_may_seal(d: drain(invocation_ended: true, path: RecordedPathPopulated))
+  !recorded_cgroup_may_seal(d: drain(path: RecordedPathPopulated))
 }
 
 test fn e_unreadable_events_preserve() -> Bool {
-  match drain(invocation_ended: true, path: RecordedPathUnreadable { detail: "cgroup.events: EIO" }) {
+  match drain(path: RecordedPathUnreadable { detail: "cgroup.events: EIO" }) {
     RecordedCgroupPreserve { detail: d } => string_contains(s: d, pattern: "EIO")
     RecordedCgroupMaySeal { detail: _ } => false
   }
@@ -63,13 +58,11 @@ test fn enoent_error_text_is_absent_and_other_errors_are_not() -> Bool {
     }
 }
 
-test fn same_invocation_still_current_never_seals() -> Bool {
-  match recorded_invocation_standing(recorded_id: "aaa", current_id: "aaa", unit_inactive: false) {
-    RecordedInvocationStillCurrent => true
-    RecordedInvocationEnded => false
-  }
-    && !recorded_cgroup_may_seal(d: drain(invocation_ended: false, path: RecordedPathEmpty))
-    && !recorded_cgroup_may_seal(d: drain(invocation_ended: false, path: RecordedPathAbsent))
+test fn drain_is_the_recorded_path_standing() -> Bool {
+  recorded_cgroup_may_seal(d: drain(path: RecordedPathEmpty))
+    && recorded_cgroup_may_seal(d: drain(path: RecordedPathAbsent))
+    && !recorded_cgroup_may_seal(d: drain(path: RecordedPathPopulated))
+    && !recorded_cgroup_may_seal(d: drain(path: RecordedPathUnreadable { detail: "EIO" }))
 }
 
 test fn events_body_populated_zero_is_empty() -> Bool {
@@ -81,13 +74,9 @@ test fn events_body_populated_zero_is_empty() -> Bool {
   }
 }
 
-test fn later_invocation_or_inactive_ends_the_recorded_one() -> Bool {
-  match recorded_invocation_standing(recorded_id: "aaa", current_id: "bbb", unit_inactive: false) {
-    RecordedInvocationEnded => true
-    RecordedInvocationStillCurrent => false
+test fn later_occupancy_is_populated_not_an_invocation_compare() -> Bool {
+  match drain(path: RecordedPathPopulated) {
+    RecordedCgroupPreserve { detail: d } => string_contains(s: d, pattern: "populated 1")
+    RecordedCgroupMaySeal { detail: _ } => false
   }
-    && match recorded_invocation_standing(recorded_id: "aaa", current_id: "aaa", unit_inactive: true) {
-      RecordedInvocationEnded => true
-      RecordedInvocationStillCurrent => false
-    }
 }
