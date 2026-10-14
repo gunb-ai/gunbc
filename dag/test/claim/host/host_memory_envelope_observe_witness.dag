@@ -8,8 +8,8 @@ data envelope_meminfo_without_available: String = "MemTotal:       16777216 kB\n
 
 fn hermetic_slice_pair() -> List<SliceMemoryReading> {
   [
-    slice_memory_reading(slice_unit: "system.slice" as NonEmptyStr, memory_current_raw: "1", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: "0"),
-    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current_raw: "2", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: "0"),
+    slice_memory_reading(slice_unit: "system.slice" as NonEmptyStr, memory_current: slice_limit_bytes(n: 1), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0)),
+    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current: slice_limit_bytes(n: 2), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0)),
   ]
 }
 
@@ -51,13 +51,13 @@ test fn witness_envelope_missing_memavailable_refuses_not_widens() -> Bool {
   }
 }
 
-test fn witness_top_level_slice_filter_excludes_nested() -> Bool {
-  is_top_level_slice_unit(unit: "system.slice" as NonEmptyStr)
-    && is_top_level_slice_unit(unit: "user.slice" as NonEmptyStr)
-    && is_top_level_slice_unit(unit: "sessions.slice" as NonEmptyStr)
-    && !is_top_level_slice_unit(unit: "system-actions-runner.slice" as NonEmptyStr)
-    && !is_top_level_slice_unit(unit: "-.slice" as NonEmptyStr)
-    && !is_top_level_slice_unit(unit: "actions-runner@srv1-01.service" as NonEmptyStr)
+test fn witness_observed_slice_filter_keeps_hyphenated_runner_parent() -> Bool {
+  is_observed_slice_unit(unit: "system.slice" as NonEmptyStr)
+    && is_observed_slice_unit(unit: "sessions.slice" as NonEmptyStr)
+    && is_observed_slice_unit(unit: "system-actions-runner.slice" as NonEmptyStr)
+    && is_observed_slice_unit(unit: "gunbc-roadmap.slice" as NonEmptyStr)
+    && !is_observed_slice_unit(unit: "-.slice" as NonEmptyStr)
+    && !is_observed_slice_unit(unit: "actions-runner@srv1-01.service" as NonEmptyStr)
 }
 
 test fn witness_envelope_projects_host_mem_available_observation() -> Bool {
@@ -103,20 +103,20 @@ test fn witness_sleek_owl_397_first_receipt_carries_the_sanctioned_srv1_values()
     && byte_size_count(b: obs.swap_free) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 248930848)))
     && obs.active_runner_unit_count == 11
     && length(obs.slice_readings) == 4
-    && any(obs.slice_readings, r => (r.slice_unit as String) == "gunbc.slice" && r.memory_current_raw == "87153995776")
+    && any(obs.slice_readings, r => (r.slice_unit as String) == "gunbc.slice" && slice_limit_is_bytes(lim: r.memory_current, n: 87153995776))
     && any(obs.slice_readings, r =>
       (r.slice_unit as String) == "sessions.slice"
-        && r.memory_current_raw == "29314482176"
-        && r.memory_high_raw == "120259084288"
-        && r.memory_max_raw == "137438953472")
+        && slice_limit_is_bytes(lim: r.memory_current, n: 29314482176)
+        && slice_limit_is_bytes(lim: r.memory_high, n: 120259084288)
+        && slice_limit_is_bytes(lim: r.memory_max, n: 137438953472))
     && any(obs.slice_readings, r =>
       (r.slice_unit as String) == "user.slice"
-        && r.memory_current_raw == "175093350400"
-        && r.memory_high_raw == "infinity"
-        && r.memory_max_raw == "infinity")
+        && slice_limit_is_bytes(lim: r.memory_current, n: 175093350400)
+        && slice_limit_is_unbounded(lim: r.memory_high)
+        && slice_limit_is_unbounded(lim: r.memory_max))
     && any(obs.slice_readings, r =>
       (r.slice_unit as String) == "system-actions-runner.slice"
-        && r.memory_current_raw == "129190301696")
+        && slice_limit_is_bytes(lim: r.memory_current, n: 129190301696))
     && standing_is_sleek_owl_first(s: obs.standing)
 }
 
@@ -127,22 +127,22 @@ test fn witness_sleek_owl_397_second_receipt_carries_the_sanctioned_gunbc_slice_
     && length(census.slice_readings) == 13
     && any(census.slice_readings, r =>
       (r.slice_unit as String) == "gunbc-roadmap.slice"
-        && r.memory_current_raw == "46256783360"
-        && r.memory_high_raw == "52613349376"
-        && r.memory_max_raw == "56908316672"
-        && r.memory_swap_max_raw == "0")
+        && slice_limit_is_bytes(lim: r.memory_current, n: 46256783360)
+        && slice_limit_is_bytes(lim: r.memory_high, n: 52613349376)
+        && slice_limit_is_bytes(lim: r.memory_max, n: 56908316672)
+        && slice_limit_is_bytes(lim: r.memory_swap_max, n: 0))
     && any(census.slice_readings, r =>
       (r.slice_unit as String) == "gunbc.slice"
-        && r.memory_current_raw == "87612194816"
-        && r.memory_high_raw == "infinity"
-        && r.memory_max_raw == "infinity"
-        && r.memory_swap_max_raw == "infinity")
+        && slice_limit_is_bytes(lim: r.memory_current, n: 87612194816)
+        && slice_limit_is_unbounded(lim: r.memory_high)
+        && slice_limit_is_unbounded(lim: r.memory_max)
+        && slice_limit_is_unbounded(lim: r.memory_swap_max))
     && any(census.slice_readings, r =>
       (r.slice_unit as String) == "gunbc-approval-broker.slice"
-        && r.memory_current_raw == "11381518336"
-        && r.memory_high_raw == "19327352832"
-        && r.memory_max_raw == "21474836480"
-        && r.memory_swap_max_raw == "0")
+        && slice_limit_is_bytes(lim: r.memory_current, n: 11381518336)
+        && slice_limit_is_bytes(lim: r.memory_high, n: 19327352832)
+        && slice_limit_is_bytes(lim: r.memory_max, n: 21474836480)
+        && slice_limit_is_bytes(lim: r.memory_swap_max, n: 0))
     && match census.standing {
       TranscribedUncited { read_obligation: o } =>
         string_contains(s: o as String, pattern: "sleek-owl-397")

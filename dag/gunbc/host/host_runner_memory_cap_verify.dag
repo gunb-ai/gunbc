@@ -1,6 +1,7 @@
 module gunbc.host.host_runner_memory_cap_verify
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.algebra { list_reverse }
 import gunbc.host.host_effect { LocalShell }
 import std.disposition { Disposition, Terminal }
 import gunbc.clock_read { clock_now_probed_at }
@@ -195,7 +196,7 @@ fn runner_memory_cap_live_reads_accumulate(
     Present { value: reads } =>
       match runner_memory_cap_live_read_unit(unit: unit) {
         Absent => none
-        Present { value: read } => Present { value: concat(reads, [read]) }
+        Present { value: read } => Present { value: concat([read], reads) }
       }
   }
 }
@@ -208,15 +209,14 @@ fn runner_memory_cap_live_reads(host: HostIdentity) -> List<RunnerUnitMemoryLive
         none
       } else {
         let empty: List<RunnerUnitMemoryLiveRead> = []
-        fold(units, init: Present { value: empty }, f: fn(acc, unit) {
+        match fold(units, init: Present { value: empty }, f: fn(acc, unit) {
           runner_memory_cap_live_reads_accumulate(acc: acc, unit: unit)
-        })
+        }) {
+          Absent => none
+          Present { value: reversed } => Present { value: list_reverse(xs: reversed) }
+        }
       }
   }
-}
-
-fn runner_memory_cap_unit_reads_absent() -> List<RunnerUnitMemoryLiveRead>? {
-  none
 }
 
 fn runner_memory_cap_verify_tally_add(
@@ -298,14 +298,7 @@ fn runner_memory_cap_verify_result_from_live_read(
             reason: "host_runner_memory_cap_verify: live typed read absent (Clock.Now or systemd.Systemctl.ShowProperty); fail-closed (verify-only, no apply)",
           }
       }
-    Absent =>
-      RunnerMemoryCapVerifyRefused {
-        host: host,
-        reason: concat(
-          "host_runner_memory_cap_verify: memory-cap converge knobs absent from fleet_converge_policy for ",
-          host as String
-        ),
-      }
+    Absent => runner_memory_cap_verify_knobs_absent(host: host)
   }
 }
 
@@ -331,14 +324,17 @@ fn runner_memory_cap_verify_result_from_unit_reads(
             reason: "host_runner_memory_cap_verify: live unit enumeration or a per-unit typed read absent (list-units, Clock.Now, or systemd.Systemctl.ShowProperty); fail-closed (verify-only, no apply)",
           }
       }
-    Absent =>
-      RunnerMemoryCapVerifyRefused {
-        host: host,
-        reason: concat(
-          "host_runner_memory_cap_verify: memory-cap converge knobs absent from fleet_converge_policy for ",
-          host as String
-        ),
-      }
+    Absent => runner_memory_cap_verify_knobs_absent(host: host)
+  }
+}
+
+fn runner_memory_cap_verify_knobs_absent(host: HostIdentity) -> RunnerMemoryCapVerifyRunResult {
+  RunnerMemoryCapVerifyRefused {
+    host: host,
+    reason: concat(
+      "host_runner_memory_cap_verify: memory-cap converge knobs absent from fleet_converge_policy for ",
+      host as String
+    ),
   }
 }
 
@@ -349,7 +345,7 @@ fn runner_memory_cap_verify_run(host: HostIdentity) -> RunnerMemoryCapVerifyRunR
         host: host,
         reads: runner_memory_cap_live_reads(host: host),
       )
-    Absent => runner_memory_cap_verify_result_from_unit_reads(host: host, reads: runner_memory_cap_unit_reads_absent())
+    Absent => runner_memory_cap_verify_knobs_absent(host: host)
   }
 }
 

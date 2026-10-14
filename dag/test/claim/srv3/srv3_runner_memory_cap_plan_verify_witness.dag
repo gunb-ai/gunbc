@@ -213,7 +213,7 @@ test fn witness_verify_every_enumerated_slot_converged_is_host_converged() -> Bo
 }
 
 test fn witness_verify_absent_unit_enumeration_refuses_not_widens() -> Bool {
-  match runner_memory_cap_verify_result_from_unit_reads(host: operator_host_srv3, reads: runner_memory_cap_unit_reads_absent()) {
+  match runner_memory_cap_verify_result_from_unit_reads(host: operator_host_srv3, reads: Absent) {
     RunnerMemoryCapVerifyObserved { receipt: _ } => false
     RunnerMemoryCapVerifyRefused { host: h, reason: why } =>
       h == operator_host_srv3
