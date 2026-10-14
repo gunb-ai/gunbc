@@ -2194,15 +2194,26 @@ fn compute_seat_dir(attempts_dir: String, owner: AttemptOwner) -> NonEmptyStr {
   }
 }
 
-fn compute_reservation_reference(identity: String, ordinal: Int) -> NonEmptyStr {
-  join([identity, "#", to_string(value: ordinal)], "") as NonEmptyStr
+// THE REFERENCE IS UNIQUE OVER THE LEDGER'S RETAINED HISTORY, NOT ONLY IN ONE SEAT DIRECTORY. The
+// encumbrance ledger refuses any reference it has ever held, Released included, and a dispatch
+// attempt's seat directory is its own, so two dispatch attempts of one work identity would both win
+// ordinal 1 in their own directories. A dispatch-owned reference therefore names the dispatch attempt
+// (itself minted by an exclusive create, hence unique) between the identity and the ordinal. The
+// flat attempts root of a DirectInvocation or unrecorded owner is ONE directory whose slots are
+// never removed, so its ordinal is already unique there.
+fn compute_reservation_reference(identity: String, owner: AttemptOwner, ordinal: Int) -> NonEmptyStr {
+  match owner {
+    DispatchOwned { node_id: _, attempt_key: k } => join([identity, "#dispatch-", k, "#", to_string(value: ordinal)], "") as NonEmptyStr
+    DirectInvocation { why: _ } => join([identity, "#", to_string(value: ordinal)], "") as NonEmptyStr
+    OwnerUnrecorded { why: _ } => join([identity, "#", to_string(value: ordinal)], "") as NonEmptyStr
+  }
 }
 
 fn compute_open_attempt_minted(layout: ComputeLayout, identity: String, granted: Kibibyte, owner: AttemptOwner, ordinal: Int) -> AttemptGate {
   if ordinal > compute_reservation_ordinal_limit {
     AttemptGateRefused { detail: join(["every reservation ordinal up to ", to_string(value: compute_reservation_ordinal_limit), " is already claimed for identity ", identity], "") }
   } else {
-    let reference = compute_reservation_reference(identity: identity, ordinal: ordinal)
+    let reference = compute_reservation_reference(identity: identity, owner: owner, ordinal: ordinal)
     match now_epoch_seconds() {
       Absent => AttemptGateRefused { detail: "the host clock could not be read as epoch seconds, and an attempt's opened_at and launch deadline are both instants -- a fabricated one would make this attempt look expired to recovery the moment it is written" }
       Present { value: now } => {

@@ -9,6 +9,7 @@ import std.durable_compare_and_set { cas_generation_first }
 import product.capacity.event_chain { PartitionId }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, compute_reserve_against, ComputeReservation, ComputeReserved,
+  ComputeRelease, ComputeReleased, compute_release,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
 }
 import gunbc.compute.attempt_lifecycle {
@@ -19,7 +20,7 @@ import gunbc.compute.attempt_lifecycle {
 }
 import gunbc.compute.work_provider_local {
   UnitLifecycleSource, SuppliedUnitLifecycle, SuppliedStoppableUnit, compute_lease_holder_line, compute_reservation_reference, compute_seat_dir,
-  ComputeLayout, AttemptGate, AttemptGateReady, AttemptGateRefused, compute_open_retry_attempt,
+  compute_open_attempt_minted, ComputeLayout, AttemptGate, AttemptGateReady, AttemptGateRefused, compute_open_retry_attempt,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
@@ -530,12 +531,16 @@ fn is_terminal_in(dir: NonEmptyStr, reference: String) -> Bool {
 // identity at ordinal n and n+1 differ, the same pair is the same reference on every call, and no
 // `@` clock suffix survives.
 test fn the_reservation_reference_is_the_identity_and_its_ordinal() -> Bool {
-  let a = compute_reservation_reference(identity: "feedfacefeedface", ordinal: 0) as String
-  let b = compute_reservation_reference(identity: "feedfacefeedface", ordinal: 1) as String
+  let owner_a = DispatchOwned { node_id: "node-a", attempt_key: "key-a" }
+  let owner_b = DispatchOwned { node_id: "node-a", attempt_key: "key-b" }
+  let a = compute_reservation_reference(identity: "feedfacefeedface", owner: owner_a, ordinal: 0) as String
+  let b = compute_reservation_reference(identity: "feedfacefeedface", owner: owner_a, ordinal: 1) as String
+  let other_attempt = compute_reservation_reference(identity: "feedfacefeedface", owner: owner_b, ordinal: 0) as String
   a != b
-    && a == (compute_reservation_reference(identity: "feedfacefeedface", ordinal: 0) as String)
+    && a == (compute_reservation_reference(identity: "feedfacefeedface", owner: owner_a, ordinal: 0) as String)
     && !string_contains(s: a, pattern: "@")
     && string_contains(s: a, pattern: "feedfacefeedface")
+    && a != other_attempt
 }
 
 // DEAD OWNER, LIVE COMPUTE UNIT (Apply): the owner is proven ended and the unit its own slot names is still
@@ -770,4 +775,40 @@ fn a_ceiling_retry_inherits_the_recorded_owner_and_is_refused_without_one_cell(r
     AttemptGateReady { record: _, generation: _ } => false
   }
   inherited && refused
+}
+
+fn minted_reference(root: String, key: String) -> String {
+  match compute_open_attempt_minted(layout: layout_at(root: root), identity: "feedfacefeedface", granted: kibibyte(count: granted_kib), owner: DispatchOwned { node_id: "node-a", attempt_key: key }, ordinal: 1) {
+    AttemptGateReady { record: r, generation: _ } => r.reference as String
+    AttemptGateRefused { detail: _ } => ""
+  }
+}
+
+fn reserved_and_released(subject: ComputeCapacitySubject, reference: String) -> Bool {
+  let r = compute_reserve_against(subject: subject, reference: reference as NonEmptyStr, term_seconds: 60, total: supplied_host, available: supplied_host)
+  match r {
+    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => match compute_release(reservation: r, reason: "control release" as NonEmptyStr) {
+      ComputeReleased { partition: _, reference: _, reason: _ } => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// A REFERENCE IS UNIQUE IN THE LEDGER'S NAMESPACE, NOT ONLY IN ONE SEAT DIRECTORY: the ledger keeps a
+// released reference forever, so a second dispatch attempt of the SAME work identity -- its own seat
+// directory, its own ordinal 1 -- must still be admitted after the first reserved and released.
+test fn a_second_dispatch_attempt_of_one_work_identity_is_admitted_after_the_first_released() -> Bool {
+  let root = fresh_root()
+  let ok = a_second_dispatch_attempt_of_one_work_identity_is_admitted_after_the_first_released_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_second_dispatch_attempt_of_one_work_identity_is_admitted_after_the_first_released_cell(root: String) -> Bool {
+  let subject = subject_at(root: root)
+  let ref_a = made(path: seat_dir_of(root: root, key: "key-a") as String) && made(path: seat_dir_of(root: root, key: "key-b") as String)
+  let a = minted_reference(root: root, key: "key-a")
+  let b = minted_reference(root: root, key: "key-b")
+  ref_a && a != "" && b != "" && reserved_and_released(subject: subject, reference: a) && reserved_and_released(subject: subject, reference: b) && a != b
 }
