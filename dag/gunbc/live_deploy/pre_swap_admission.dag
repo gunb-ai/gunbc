@@ -34,7 +34,7 @@ import extdeps.shell
 // (2) TARGET-BOUND BRANCH. Operator 2026-10-09 let an empty --candidate-branch admit any nonempty
 // checkout (fleet_converge_deploy_branch_admits). Operator 2026-10-13 (gunbc.design_ruling
 // production_is_main_only_lab_admits_integration) narrows that: each DesiredDeployment row
-// carries the branch it admits. An empty admitted_branch refuses; there is no class default.
+// carries the one NonEmptyStr branch it admits. There is no class default.
 // The CLI flag check remains a second, optional equality; it does not widen the row.
 
 type TargetBranchAdmission
@@ -50,14 +50,10 @@ type PreSwapAdmission
   = PreSwapAdmitted
   | PreSwapRefused { reason: String }
 
-fn target_branch_admission(admitted: String, observed: String) -> TargetBranchAdmission {
-  let required = trim(s: admitted)
+fn target_branch_admission(admitted: NonEmptyStr, observed: String) -> TargetBranchAdmission {
+  let required = trim(s: admitted as String)
   let seen = trim(s: observed)
-  if required == "" {
-    TargetBranchRefused {
-      reason: "live_deploy: DeployTargetBranchUndeclared — the desired row carries no admitted branch; refuse rather than invent a class",
-    }
-  } else if seen != "" && seen == required {
+  if seen != "" && seen == required {
     TargetBranchAdmitted
   } else {
     TargetBranchRefused {
@@ -122,7 +118,7 @@ fn observe_checkout_branch() -> String {
 }
 
 fn live_deploy_pre_swap_admission(
-  admitted: String,
+  admitted: NonEmptyStr,
   observed_branch: String,
   compile: ServeEntryCompileVerdict,
 ) -> PreSwapAdmission {

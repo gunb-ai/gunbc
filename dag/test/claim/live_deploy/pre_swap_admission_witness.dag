@@ -98,14 +98,6 @@ test fn srv2_deploy_declares_main() -> Bool {
     }
 }
 
-// RED: an empty admitted_branch refuses instead of defaulting to production.
-test fn an_undeclared_admitted_branch_refuses() -> Bool {
-  match target_branch_admission(admitted: "", observed: "main") {
-    TargetBranchAdmitted => false
-    TargetBranchRefused { reason } => string_contains(s: reason, pattern: "DeployTargetBranchUndeclared")
-  }
-}
-
 test fn an_empty_observed_branch_never_admits() -> Bool {
   match target_branch_admission(admitted: production_admitted_branch, observed: "") {
     TargetBranchAdmitted => false
