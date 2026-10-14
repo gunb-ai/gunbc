@@ -70,6 +70,12 @@ import v2.std.diagnostic {
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.node {
+  Disj,
+  Arrow,
+  Occupancy,
+  Instantiation,
+  ComputationNode,
+  Atom,
   Conj,
   Edge,
   Node,
