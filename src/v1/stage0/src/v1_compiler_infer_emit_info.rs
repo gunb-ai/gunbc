@@ -994,7 +994,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         fn_return_type: std::option::Option::None,
         expected_type: std::option::Option::None,
         tco_cursor_param: "".to_string(),
-        tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
+        tco_cursor_tails: v1_rt::rc_empty_map::<_, _>(),
     })
 }
 

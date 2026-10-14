@@ -6812,7 +6812,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
             tco_cursor_param: "".to_string(),
-            tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
+            tco_cursor_tails: v1_rt::rc_empty_map::<_, _>(),
         });
         let registry = typed.item_registry.clone();
         let anonymous_record_diags = Rc::new({
@@ -8096,7 +8096,7 @@ pub fn emit_module(
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
             tco_cursor_param: "".to_string(),
-            tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
+            tco_cursor_tails: v1_rt::rc_empty_map::<_, _>(),
         });
         let shared_types = emit_info.shared_types.clone();
         let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
@@ -19849,38 +19849,39 @@ pub fn v1_fn_map_key_bound_table(
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
         let names = Rc::new(v1_rt::sorted_map_keys(&fn_decl_items));
-        let seed = names.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(
-                &fn_decl_items,
-                n.clone(),
-            ) {
-                Some(item) => {
-                    let generics = Rc::new({
-                        let mut __result = Vec::new();
-                        for p in function_type_params(item.params.clone()).iter().cloned() {
-                            __result.push(crate::v1_std_core::generic_param_name_at(
-                                p.clone(),
+        let seed =
+            names
+                .iter()
+                .cloned()
+                .fold(
+                    v1_rt::rc_empty_map::<_, _>(),
+                    |acc: _, n: String| match v1_rt::map_get(&fn_decl_items, n.clone()) {
+                        Some(item) => {
+                            let generics = Rc::new({
+                                let mut __result = Vec::new();
+                                for p in function_type_params(item.params.clone()).iter().cloned() {
+                                    __result.push(crate::v1_std_core::generic_param_name_at(
+                                        p.clone(),
+                                        source_indices.clone(),
+                                    ));
+                                }
+                                __result
+                            });
+                            let bound = v1_fn_signature_map_key_param_names(
+                                function_value_params(item.params.clone()),
+                                crate::v1_compiler_infer_types::resolved_type(item.clone()),
+                                generics.clone(),
                                 source_indices.clone(),
-                            ));
+                            );
+                            if ((bound.clone().len() as i64) > 0) {
+                                v1_rt::rc_map_insert(acc.clone(), n.clone(), bound.clone())
+                            } else {
+                                acc.clone()
+                            }
                         }
-                        __result
-                    });
-                    let bound = v1_fn_signature_map_key_param_names(
-                        function_value_params(item.params.clone()),
-                        crate::v1_compiler_infer_types::resolved_type(item.clone()),
-                        generics.clone(),
-                        source_indices.clone(),
-                    );
-                    if ((bound.clone().len() as i64) > 0) {
-                        v1_rt::rc_map_insert(acc.clone(), n.clone(), bound.clone())
-                    } else {
-                        acc.clone()
-                    }
-                }
-                std::option::Option::None => acc.clone(),
-            },
-        );
+                        std::option::Option::None => acc.clone(),
+                    },
+                );
         v1_fn_map_key_bound_fixpoint(
             names.clone(),
             fn_decl_items.clone(),
@@ -36621,7 +36622,7 @@ pub fn tco_cursor_name() -> String {
 pub fn no_tco_cursor_plan() -> Rc<TcoCursorPlan> {
     Rc::new(TcoCursorPlan {
         param: "".to_string(),
-        tails: v1_rt::rc_empty_map::<String, i64>(),
+        tails: v1_rt::rc_empty_map::<_, _>(),
     })
 }
 
@@ -37153,12 +37154,12 @@ pub fn cursor_tails_consistent(tails: Rc<Vec<Rc<CursorTail>>>) -> bool {
 }
 
 pub fn cursor_tails_map(tails: Rc<Vec<Rc<CursorTail>>>) -> Rc<HashMap<String, i64>> {
-    tails.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |m: Rc<HashMap<String, i64>>, t: Rc<CursorTail>| {
+    tails
+        .iter()
+        .cloned()
+        .fold(v1_rt::rc_empty_map::<_, _>(), |m: _, t: Rc<CursorTail>| {
             v1_rt::rc_map_insert(m, t.name.clone(), t.depth.clone())
-        },
-    )
+        })
 }
 
 pub fn tco_cursor_plan(
