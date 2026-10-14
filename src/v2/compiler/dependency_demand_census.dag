@@ -607,7 +607,7 @@ fn demand_census_authored_reading(ctx: ResolveContext, shell: Optional<Node>) ->
 // duplicate or unreadable.
 type DemandCensusUnboundLocus
   = UnboundNamed { name: Symbol }
-  | UnboundShaped { kind: NodeKind, reference: QualifiedName }
+  | UnboundShaped { kind: NodeKind, reference: Optional<QualifiedName> }
 
 // THE CANONICAL SHAPED REFERENCE OF A COMPOSITE MENTION, derived once: a marked declaration
 // reference path, else a list-introduction head path, else the first positional child's path.
@@ -645,10 +645,7 @@ fn demand_census_unbound_locus_from_diagnostics(d: NonEmptyDiagnostics) -> Optio
           Absent =>
             optional_present(value: UnboundShaped {
               kind: a.at.kind,
-              reference: match demand_census_shaped_reference_optional(node: a.at) {
-                Present { value: p } => p
-                Absent => Empty
-              }
+              reference: demand_census_shaped_reference_optional(node: a.at)
             })
         }
       Textual { file: _, extent: _ } => optional_absent()
@@ -1144,10 +1141,9 @@ fn demand_census_unbound_site_word(loc: DemandCensusUnboundLocus) -> String {
   match loc {
     UnboundNamed { name: n } => symbol_lexeme(sym: n)
     UnboundShaped { kind: k, reference: p } =>
-      if is_empty(xs: p) {
-        demand_census_node_kind_word(k: k)
-      } else {
-        qualified_name_to_dotted_string(qn: p)
+      match p {
+        Absent => demand_census_node_kind_word(k: k)
+        Present { value: qn } => qualified_name_to_dotted_string(qn: qn)
       }
   }
 }
@@ -1159,10 +1155,9 @@ fn demand_census_unbound_site_text(u: Optional<DemandCensusUnboundLocus>) -> Str
       match loc {
         UnboundNamed { name: n } => demand_census_text(parts: ["unbound_name=", symbol_lexeme(sym: n)])
         UnboundShaped { kind: k, reference: p } =>
-          if is_empty(xs: p) {
-            demand_census_text(parts: ["unbound_kind=", demand_census_node_kind_word(k: k)])
-          } else {
-            demand_census_text(parts: ["unbound_ref=", qualified_name_to_dotted_string(qn: p)])
+          match p {
+            Absent => demand_census_text(parts: ["unbound_kind=", demand_census_node_kind_word(k: k)])
+            Present { value: qn } => demand_census_text(parts: ["unbound_ref=", qualified_name_to_dotted_string(qn: qn)])
           }
       }
   }
@@ -1184,7 +1179,16 @@ fn demand_census_unbound_locus_eq(a: DemandCensusUnboundLocus, b: DemandCensusUn
     UnboundShaped { kind: ka, reference: pa } =>
       match b {
         UnboundNamed { name: _ } => false
-        UnboundShaped { kind: kb, reference: pb } => ka == kb && pa == pb
+        UnboundShaped { kind: kb, reference: pb } =>
+          (ka == kb)
+            && match pa {
+              Absent => match pb { Absent => true Present { value: _ } => false }
+              Present { value: a } =>
+                match pb {
+                  Absent => false
+                  Present { value: b } => a == b
+                }
+            }
       }
   }
 }

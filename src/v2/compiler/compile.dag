@@ -210,11 +210,9 @@ import v2.compiler.dependency_demand_census {
   DemandCensusAuthoredReading,
   DemandCensusModuleStanding,
   DemandCensusReport,
-  DemandCensusUnboundLocus,
   DemandCensusUnreadable,
   DemandCensusUnreadableStage,
-  UnboundNamed,
-  UnboundShaped,
+  demand_census_unbound_locus_from_diagnostics,
   DemandModuleImporteeRefused,
   DemandModuleResolveRefused,
   DemandModuleResolved,
@@ -246,7 +244,7 @@ import v2.compiler.resolve {
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize }
 import v2.std.staging { then_outcome }
 import v2.std.compilers.lexing { TokenStream }
-import v2.std.grammar { ParseTree, node_atom_identity_optional }
+import v2.std.grammar { ParseTree }
 import v2.std.language_model { LanguageModel }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel }
@@ -3658,25 +3656,6 @@ fn native_demand_census_unreadable(
   }
 }
 
-fn native_demand_census_unbound_locus(d: NonEmptyDiagnostics) -> Optional<DemandCensusUnboundLocus> {
-  let fatal = diagnostics_fatal(d: d)
-  if fatal.reason == ^resolve_reason_unbound_symbol {
-    match fatal.at {
-      NodeLocus { anchor: a } =>
-        match node_atom_identity_optional(node: a.at) {
-          Present { value: n } => optional_present(value: UnboundNamed { name: n })
-          Absent => optional_present(value: UnboundShaped { kind: a.at.kind })
-        }
-      Textual { file: _, extent: _ } => optional_absent()
-      SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
-      InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
-      DeclarationLocus { declaration: _ } => optional_absent()
-    }
-  } else {
-    optional_absent()
-  }
-}
-
 fn native_demand_census_read(
   state: NativeDemandCensusFoldState,
   read: DagSourceReadWitness,
@@ -3771,7 +3750,7 @@ fn native_demand_census_resolve_refused(context: NativeTestContext, module_qn: Q
 }
 
 fn native_demand_census_unbound_standing(authored: List<AuthoredUsesFunction>, d: NonEmptyDiagnostics) -> DemandCensusModuleStanding {
-  DemandModuleResolveRefused { authored: authored, first_reason: diagnostics_fatal_reason(d: d), first_unbound: native_demand_census_unbound_locus(d: d) }
+  DemandModuleResolveRefused { authored: authored, first_reason: diagnostics_fatal_reason(d: d), first_unbound: demand_census_unbound_locus_from_diagnostics(d: d) }
 }
 
 fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, authored: List<AuthoredUsesFunction>) -> NativeDemandCensusWalk {
