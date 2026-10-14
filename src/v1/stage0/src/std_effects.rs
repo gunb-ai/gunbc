@@ -16,13 +16,8 @@ use crate::extdeps_ietf_http_semantics::HttpMethod::{
 };
 pub use crate::extdeps_uri_path::PathTemplate;
 pub use crate::extdeps_uri_path::{has_path_params, last_path_param};
-pub use crate::std_dissolution::unbound_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
-use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_optional::Optional;
 pub use crate::std_realization_schedule::string_list_eq;
-use crate::std_roster_frontier::FrontierSubject::PathSubject;
-pub use crate::std_roster_frontier::{FrontierRow, FrontierSubject};
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -550,39 +545,6 @@ pub struct WorkflowEffectConcern {
     pub workflow_name: String,
     pub create_op: String,
     pub reason: String,
-}
-
-pub fn nfr_dissolve_derived_equality() -> Rc<DissolutionCondition> {
-    thread_local! {
-        static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row".to_string())
-        };
-    }
-    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
-}
-
-pub fn nfr_reason_structural_eq_mint() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "structural equality fold (param scrutinee, off-variant wildcard arm returning false) — the eq-row class the dated roster blocks cite as their sibling anchor".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn non_fold_residue_frontier() -> Rc<Vec<Rc<FrontierRow>>> {
-    thread_local! {
-            static CACHED: Rc<Vec<Rc<FrontierRow>>> = {
-                Rc::new(vec![Rc::new(FrontierRow {
-        subject: Rc::new(FrontierSubject::PathSubject {
-        path: "dag/std/effects.dag::key_source_eq".to_string(),
-    }),
-        reason: nfr_reason_structural_eq_mint(),
-        dissolution: nfr_dissolve_derived_equality(),
-    })])
-            };
-        }
-    CACHED.with(|c: &Rc<Vec<Rc<FrontierRow>>>| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

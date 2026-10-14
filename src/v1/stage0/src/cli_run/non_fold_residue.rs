@@ -117,6 +117,8 @@ const NFR_STD_EXTDEPS_EXCEPTION_PREFIXES: &[&str] = &[
     "dag/std/effect_grant.dag",
     "dag/std/effects.dag",
     "dag/std/occurrence_binding_candidates.dag",
+    "dag/std/occurrence_binding_resolve.dag",
+    "dag/gunbc/namespace_cut/namespace_reference_derived_closure_admission.dag",
 ];
 
 fn nfr_std_extdeps_home_exception(host: &str, path_prefix: &str) -> bool {
