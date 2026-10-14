@@ -73,6 +73,15 @@ fn span_index_with_scope(scope: Fnv1a64Structural) -> SpanIndex {
   SpanIndex { entries: empty_map(), extents: empty_map(), scope: optional_present(value: scope) }
 }
 
+// THE INGEST'S ALLOCATOR DOMAIN ON AN INDEX THAT PARSE ALREADY FILLED. Parse records FromSource
+// entries against a running mark; normalize states every projected cause in the ingest's source-ref
+// digest (v2.compiler.program_assembly program_assembly_ingest_scope). Binding that digest here is
+// the production consumer of span_index_with_scope: without it the index's scope stays Absent and
+// node_authored_projected_cause_in_index can never recover a same-graph cause (DESIGN §3c).
+fn span_index_in_scope(index: SpanIndex, scope: Fnv1a64Structural) -> SpanIndex {
+  span_index_merge(base: span_index_with_scope(scope: scope), incoming: index)
+}
+
 fn span_index_record_extent(index: SpanIndex, id: OccurrenceId, extent: Locus) -> SpanIndex {
   SpanIndex {
     entries: index.entries,
@@ -245,15 +254,6 @@ fn node_occurrence_id_optional(node: Node) -> Optional<OccurrenceId> {
 // .scope fabricates a local span when another domain minted the same ordinal. When the index has
 // no scope, or the cause's scope is not that graph, the answer is Absent — never a neighbouring
 // span. Cross-graph callers use the existing transport/join.
-fn node_authored_occurrence_id_optional(node: Node) -> Optional<OccurrenceId> {
-  match node.occurrence_id {
-    OccurrenceMinted { id: id } => Present { value: id }
-    OccurrenceProjected { id: _, caused_by: cause } => Present { value: cause.occurrence }
-    OccurrenceSynthetic => Absent
-    OccurrencePending { caused_by: _ } => Absent
-  }
-}
-
 fn node_authored_projected_cause_in_index(cause: ScopedOccurrenceRef, index: SpanIndex) -> Optional<OccurrenceId> {
   match index.scope {
     Absent => optional_absent()

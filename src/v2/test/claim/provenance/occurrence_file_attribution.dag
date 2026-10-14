@@ -1,7 +1,14 @@
 module v2.test.claim.provenance.occurrence_file_attribution
 
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.compile { native_test_context_from_ingest }
+import v2.compiler.compile {
+  NativeCensusPositionTable,
+  native_census_locate,
+  native_census_position_table_empty,
+  native_census_positions_absorb_accepted,
+  native_test_context_from_ingest
+}
+import v2.compiler.native_test_vocabulary { FileRefusalAtLine, FileRefusalAtUnresolvedNode }
 import v2.compiler.program_assembly {
   IngestAssembly,
   LocatedIngestRoots,
@@ -26,7 +33,7 @@ import v2.cli.compile_cli {
 }
 import v2.std.text { char_eq }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Diagnostics, ExternalContractUnknown, NonEmptyDiagnostics, None, Rejected, Some, Textual, Unavailable, WholeFile, diagnostics_has_reason, invariant_port_locus }
+import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Diagnostics, ExternalContractUnknown, NonEmptyDiagnostics, None, Rejected, Some, Textual, Unavailable, WholeFile, diagnostics_has_reason, invariant_port_locus, node_locus }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_with_occurrence_id, symbol_intern_lexeme, symbol_lexeme }
 import v2.compiler.normalized_tree { NormalizedTree }
@@ -550,5 +557,38 @@ test fn a_same_graph_projected_cause_recovers_its_bytes_holds() -> Bool {
   match attribution_span_bytes(node: attribution_projected(scope: attribution_scope_a()), index: attribution_index_in_scope_a()) {
     Absent => false
     Present { value: start } => start == 10
+  }
+}
+
+fn attribution_census_positions() -> NativeCensusPositionTable {
+  native_census_positions_absorb_accepted(
+    table: native_census_position_table_empty(),
+    path: ^attribution_file_a,
+    spans: attribution_index_in_scope_a(),
+    text: attribution_source_a
+  )
+}
+
+// THE CENSUS LOCATOR USES THE SAME SCOPED DOOR. A foreign projected cause must not become a line
+// via the owner map's ordinal (review 80089).
+test fn a_foreign_projected_cause_is_unresolved_on_the_census_locator_RED() -> Bool {
+  match native_census_locate(
+    at: node_locus(node: attribution_projected(scope: attribution_scope_b())),
+    path: ^attribution_file_a,
+    positions: attribution_census_positions()
+  ) {
+    FileRefusalAtUnresolvedNode => true
+    _ => false
+  }
+}
+
+test fn a_same_graph_projected_cause_is_a_line_on_the_census_locator_holds() -> Bool {
+  match native_census_locate(
+    at: node_locus(node: attribution_projected(scope: attribution_scope_a())),
+    path: ^attribution_file_a,
+    positions: attribution_census_positions()
+  ) {
+    FileRefusalAtLine { line: _, byte_column: _ } => true
+    _ => false
   }
 }
