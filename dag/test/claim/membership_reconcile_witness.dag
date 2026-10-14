@@ -7,7 +7,6 @@ import std.key_relation {
   KeyedResourceRelation,
   StateRelation,
   key_relation_scoped_key,
-  key_relation_scoped_key_eq,
 }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
@@ -279,16 +278,8 @@ fn scoped_witness_scope_of(m: ScopedWitnessMember) -> ScopedWitnessScope {
   ScopedWitnessScope { node: m.node }
 }
 
-fn scoped_witness_scope_eq(a: ScopedWitnessScope, b: ScopedWitnessScope) -> Bool {
-  a.node == b.node
-}
-
 fn scoped_witness_key_of(m: ScopedWitnessMember) -> String {
   m.mid
-}
-
-fn scoped_witness_key_eq(a: String, b: String) -> Bool {
-  a == b
 }
 
 fn scoped_witness_val_eq(a: ScopedWitnessMember, b: ScopedWitnessMember) -> Bool {
@@ -302,8 +293,6 @@ fn scoped_witness_own(_: ScopedWitnessMember) -> Ownership? {
 data scoped_witness_key_relation: KeyRelation<ScopedWitnessKeyRelation, ScopedWitnessMember, ScopedWitnessScope, String> = KeyRelation {
   scope_of: scoped_witness_scope_of,
   key_of: scoped_witness_key_of,
-  scope_eq: scoped_witness_scope_eq,
-  key_eq: scoped_witness_key_eq,
 }
 
 fn scoped_witness_state_of(m: ScopedWitnessMember) -> String { m.ver }
@@ -335,11 +324,8 @@ test fn w_same_key_different_scope_stays_distinct() -> Bool {
   membership_write_count(plan: plan) == 0
     && membership_removal_count(plan: plan) == 0
     && membership_refusal_count(plan: plan) == 0
-    && !key_relation_scoped_key_eq(
-      relation: scoped_witness_key_relation,
-      a: key_relation_scoped_key(relation: scoped_witness_key_relation, subject: a),
-      b: key_relation_scoped_key(relation: scoped_witness_key_relation, subject: b),
-    )
+    && key_relation_scoped_key(relation: scoped_witness_key_relation, subject: a)
+      != key_relation_scoped_key(relation: scoped_witness_key_relation, subject: b)
 }
 
 test fn w_duplicate_plain_key_refuses_with_roster_cause() -> Bool {

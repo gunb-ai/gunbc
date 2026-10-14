@@ -9,14 +9,13 @@ import std.key_relation {
   KeyedResourceRelation,
   StateRelation,
   key_relation_scoped_key,
-  key_relation_scoped_key_eq,
+  SubjectKey,
 }
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint,
   ServeRootMount,
   ServeSetPath,
   tailscale_serve_route_key,
-  tailscale_serve_route_key_eq,
   tailscale_serve_route_key_label,
   TailscaleServeRouteKey,
   tailscale_serve_endpoint_flags,
@@ -26,6 +25,7 @@ import extdeps.tailscale.serve {
 import gunbc.tailscale_serve_scope {
   TailscaleServeRouteSubject,
   TailscaleServeScope,
+  TailscaleServeScopeIdentity,
   tailscale_serve_route_key_relation,
   tailscale_serve_resource_relation,
   tailscale_serve_route_subject,
@@ -45,6 +45,7 @@ import gunbc.membership_reconcile {
   membership_added_count,
   membership_removal_count,
 }
+import product.network_topology { NetworkEndpoint }
 import gunbc.ownership { Ownership, Owned }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -52,7 +53,7 @@ type RetiredFlattenedServeFlagsKeyRelation
 type TailscaleEnableArgvIdentityKeyRelation
 type GlobalCollapseDemonstrationRelation
 
-type TailscaleServeRouteMemberAt = ScopedKey<TailscaleServeRouteKeyRelation, TailscaleServeScope, TailscaleServeRouteKey>
+type TailscaleServeRouteMemberAt = ScopedKey<TailscaleServeRouteKeyRelation, TailscaleServeScopeIdentity, TailscaleServeRouteKey>
 
 type TailscaleEnableArgvMemberAt = ScopedKey<TailscaleEnableArgvIdentityKeyRelation, GlobalKeyScope, NonEmptyStr>
 
@@ -90,7 +91,6 @@ fn retired_flattened_serve_flags_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool 
 
 data retired_flattened_serve_flags_key_relation: KeyRelation<RetiredFlattenedServeFlagsKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, NonEmptyStr> = key_relation_global(
   key_of: retired_flattened_serve_flags_key,
-  key_eq: retired_flattened_serve_flags_key_eq,
 )
 
 fn tailscale_enable_argv_identity_key(subject: TailscaleServeRouteSubject) -> NonEmptyStr {
@@ -103,7 +103,6 @@ fn tailscale_enable_argv_identity_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool
 
 data tailscale_enable_argv_identity_key_relation: KeyRelation<TailscaleEnableArgvIdentityKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, NonEmptyStr> = key_relation_global(
   key_of: tailscale_enable_argv_identity_key,
-  key_eq: tailscale_enable_argv_identity_key_eq,
 )
 
 fn plan_has_change_between_backends(
@@ -211,10 +210,7 @@ test fn w_retired_flags_key_is_route_stable_across_backend_repoint() -> Bool {
 test fn backend_change_preserves_route_key() -> Bool {
   let root = root_endpoint(backend: "8080")
   let repointed = root_endpoint(backend: "18081")
-  tailscale_serve_route_key_eq(
-    a: tailscale_serve_route_key(endpoint: root),
-    b: tailscale_serve_route_key(endpoint: repointed),
-  )
+  tailscale_serve_route_key(endpoint: root) == tailscale_serve_route_key(endpoint: repointed)
 }
 
 test fn distinct_mounts_have_distinct_keys() -> Bool {
@@ -224,7 +220,7 @@ test fn distinct_mounts_have_distinct_keys() -> Bool {
     mount: ServeSetPath { path: "/srv1-lab" as NonEmptyStr },
     backend: "18081" as NonEmptyStr,
   })
-  !tailscale_serve_route_key_eq(a: root, b: lab)
+  root != lab
 }
 
 test fn membership_label_is_not_rendered_argv() -> Bool {
@@ -260,7 +256,7 @@ fn srv2_root_route_subject() -> TailscaleServeRouteSubject {
 test fn w_per_device_scope_preserves_distinct_nodes_same_route() -> Bool {
   let key_a = key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: srv1_root_route_subject())
   let key_b = key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: srv2_root_route_subject())
-  !key_relation_scoped_key_eq(relation: tailscale_serve_route_key_relation, a: key_a, b: key_b)
+  key_a != key_b
 }
 
 fn global_collapse_route_key_of(subject: TailscaleServeRouteSubject) -> TailscaleServeRouteKey {
@@ -269,11 +265,36 @@ fn global_collapse_route_key_of(subject: TailscaleServeRouteSubject) -> Tailscal
 
 data global_collapse_demonstration_relation: KeyRelation<GlobalCollapseDemonstrationRelation, TailscaleServeRouteSubject, GlobalKeyScope, TailscaleServeRouteKey> = key_relation_global(
   key_of: global_collapse_route_key_of,
-  key_eq: tailscale_serve_route_key_eq,
 )
 
 test fn w_global_scope_collapses_distinct_nodes_same_route() -> Bool {
   let key_a = key_relation_scoped_key(relation: global_collapse_demonstration_relation, subject: srv1_root_route_subject())
   let key_b = key_relation_scoped_key(relation: global_collapse_demonstration_relation, subject: srv2_root_route_subject())
-  key_relation_scoped_key_eq(relation: global_collapse_demonstration_relation, a: key_a, b: key_b)
+  key_a == key_b
+}
+
+// CONDITION 1 RED: the scope compares node label plus service only, so two endpoints at the same
+// label that differ ONLY in an uncompared field (address) must still collide as one scoped key.
+test fn w_scope_differing_only_in_uncompared_endpoint_field_still_collides() -> Bool {
+  let moved = NetworkEndpoint {
+    label: srv1_tailscale_endpoint.label,
+    subject: srv1_tailscale_endpoint.subject,
+    address: srv2_tailscale_endpoint.address,
+    role: srv1_tailscale_endpoint.role,
+    locality: srv1_tailscale_endpoint.locality,
+  }
+  let a = tailscale_route_subject(endpoint: root_endpoint(backend: "8080"))
+  let b = tailscale_serve_route_subject(
+    scope: tailscale_serve_scope(node: moved),
+    endpoint: root_endpoint(backend: "8080"),
+  )
+  key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: a)
+    == key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: b)
+}
+
+// Same wall for the keyed index itself: SubjectKey over the scoped key collides identically.
+test fn w_subject_key_over_scoped_key_collides_on_uncompared_field() -> Bool {
+  let a = SubjectKey { subject: key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: srv1_root_route_subject()) }
+  let b = SubjectKey { subject: key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: srv1_root_route_subject()) }
+  a == b
 }
