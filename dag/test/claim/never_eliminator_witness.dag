@@ -57,3 +57,22 @@ data empty_match_never_source: String = "module neverprobe.nv\n\nimport std.type
 test fn empty_match_on_never_is_admitted() -> Bool {
   never_eliminator_no_arms_blocking_count(source: empty_match_never_source) == 0
 }
+
+data empty_match_user_empty_coproduct_source: String = "module neverprobe.ue\n\ntype E\n\nfn f(e: E) -> Int {\n  match (e) {\n  }\n}\n"
+
+test fn empty_match_on_user_empty_coproduct_is_admitted() -> Bool {
+  never_eliminator_no_arms_blocking_count(source: empty_match_user_empty_coproduct_source) == 0
+}
+
+data deleted_projections_unbound_source: String = "module neverprobe.unb\n\nimport std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float, pure_dag_seam_unreachable_string }\n\nfn f() -> Int {\n  pure_dag_seam_unreachable()\n}\n"
+
+fn never_eliminator_any_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn deleted_error_primitives_projections_are_unbound() -> Bool {
+  never_eliminator_any_blocking_count(source: deleted_projections_unbound_source) >= 1
+}
