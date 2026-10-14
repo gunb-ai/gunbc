@@ -14,7 +14,22 @@ import v2.std.node { Instantiation, Node, Positional, Edge, Symbol, TypeNode, no
 import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.inhabitance { DeclaredTypeObligation, InhabitanceRefused, declared_type_inhabitance, inhabitance_declaration_heads_differ, position_declared_return }
-import std.optional { Absent }
+import std.optional { Absent, Present }
+import std.nat { Nat, Zero, Succ }
+import v2.std.cardinality {
+  CardinalityAtLeast,
+  CardinalityConstraint,
+  CardinalityBounded,
+  CardinalityImpossible,
+  cardinality_between,
+  cardinality_concat,
+  cardinality_exact,
+  cardinality_filter,
+  cardinality_join,
+  cardinality_lower,
+  cardinality_map,
+  cardinality_proves_nonempty
+}
 import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid }
 import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
@@ -44,7 +59,13 @@ data fse_alias_ok_source: String = "module v2.test.fse_alias_ok\n\ntype FsIntLis
 
 data fse_generic_ok_source: String = "module v2.test.fse_generic_ok\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_ok() -> FsNonEmpty<Int> { FsNonEmpty { head: 1, tail: FsEmpty } }\n"
 
+data fse_let_empty_source: String = "module v2.test.fse_let_empty\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fse_via_let() -> Int {\n  let e = FsEmpty\n  fse_take(xs: e)\n}\n"
+
+data fse_call_empty_source: String = "module v2.test.fse_call_empty\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fse_make() -> FsList<Int> { FsEmpty }\n\nfn fse_via_call() -> Int { fse_take(xs: fse_make()) }\n"
+
 data fse_ingest: SourceRootIngest = [
+  rcf_read(source: fse_let_empty_source, id: ^fse_let_empty_read, unit: ^fse_let_empty_cu, path: "src/v2/test/fixture/free_semigroup_empty/let_empty.dag"),
+  rcf_read(source: fse_call_empty_source, id: ^fse_call_empty_read, unit: ^fse_call_empty_cu, path: "src/v2/test/fixture/free_semigroup_empty/call_empty.dag"),
   rcf_read(source: fse_return_empty_source, id: ^fse_return_empty_read, unit: ^fse_return_empty_cu, path: "src/v2/test/fixture/free_semigroup_empty/return_empty.dag"),
   rcf_read(source: fse_alias_ok_source, id: ^fse_alias_ok_read, unit: ^fse_alias_ok_cu, path: "src/v2/test/fixture/free_semigroup_empty/alias_ok.dag"),
   rcf_read(source: fse_generic_ok_source, id: ^fse_generic_ok_read, unit: ^fse_generic_ok_cu, path: "src/v2/test/fixture/free_semigroup_empty/generic_ok.dag"),
@@ -142,4 +163,67 @@ test fn fse_a_transparent_alias_and_its_declaration_inhabit_each_other_holds() -
 // POSITIVE CONTROL, generic: a constructed value of the generic nonempty product, its tail the generic empty variant.
 test fn fse_a_constructed_generic_nonempty_value_is_accepted_holds() -> Bool {
   fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_generic_ok"))
+}
+
+// BINDING AND OPERATION SEAMS, executed on the real route: the empty producer reaches the nonempty consumer
+// through a let binding and through a call result, not only at the literal site.
+test fn fse_empty_through_a_let_binding_at_a_nonempty_formal_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_let_empty"), reason: ^application_argument_does_not_inhabit)
+}
+
+test fn fse_possibly_empty_call_result_at_a_nonempty_formal_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_call_empty"), reason: ^application_argument_does_not_inhabit)
+}
+
+// THE NATURAL-COUNT DOMAIN (v2.std.cardinality CardinalityConstraint): transfer functions per declared operation.
+fn fse_one() -> Nat { Succ { prev: Zero } }
+fn fse_two() -> Nat { Succ { prev: fse_one() } }
+
+fn fse_lower_is(c: CardinalityConstraint, want: Nat) -> Bool {
+  match cardinality_lower(c: c) {
+    Absent => false
+    Present { value: l } => l == want
+  }
+}
+
+test fn fse_an_exact_nonempty_literal_proves_nonempty_holds() -> Bool {
+  cardinality_proves_nonempty(c: cardinality_exact(count: fse_two()))
+}
+
+test fn fse_the_empty_literal_does_not_prove_nonempty_holds() -> Bool {
+  !cardinality_proves_nonempty(c: cardinality_exact(count: Zero))
+}
+
+test fn fse_map_preserves_the_lower_bound_holds() -> Bool {
+  cardinality_proves_nonempty(c: cardinality_map(c: cardinality_exact(count: fse_one())))
+}
+
+// RED: filter floors the lower bound, so filter-then-require-nonempty is not proved.
+test fn fse_filter_floors_a_nonempty_lower_bound_to_zero_holds() -> Bool {
+  !cardinality_proves_nonempty(c: cardinality_filter(c: cardinality_exact(count: fse_two())))
+}
+
+test fn fse_concat_adds_bounds_so_nonempty_with_anything_is_nonempty_holds() -> Bool {
+  cardinality_proves_nonempty(c: cardinality_concat(a: cardinality_exact(count: fse_one()), b: CardinalityAtLeast { lower: Zero }))
+}
+
+test fn fse_concat_of_two_possibly_empty_is_not_proved_holds() -> Bool {
+  !cardinality_proves_nonempty(c: cardinality_concat(a: CardinalityAtLeast { lower: Zero }, b: cardinality_between(low: Zero, high: fse_one())))
+}
+
+// Branch join is the hull: one empty arm makes the join possibly empty; Impossible is the bottom.
+test fn fse_join_with_an_empty_arm_is_possibly_empty_holds() -> Bool {
+  !cardinality_proves_nonempty(c: cardinality_join(a: cardinality_exact(count: fse_two()), b: cardinality_exact(count: Zero)))
+}
+
+test fn fse_join_with_impossible_is_the_other_side_holds() -> Bool {
+  fse_lower_is(c: cardinality_join(a: CardinalityImpossible, b: cardinality_exact(count: fse_two())), want: fse_two())
+}
+
+// A reversed range is no count at all, never a swapped range.
+test fn fse_a_reversed_range_is_impossible_holds() -> Bool {
+  match cardinality_between(low: fse_two(), high: fse_one()) {
+    CardinalityImpossible => true
+    _ => false
+  }
 }
