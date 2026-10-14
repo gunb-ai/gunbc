@@ -120,14 +120,7 @@ data all_targets: List<DeclarationRef> = [evaluator_target, seed_rust_target, na
 // owners. A red row cannot be written without one (the field is required, with no absent arm).
 data list_erasure_owner: DeclarationRef = decl_ref(module_path: "gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target", decl_name: "accepted_source_emits_uncompilable_target")
 
-data json_registry_owner: DeclarationRef = decl_ref(module_path: "gunbc.recurring_failure_mode.emit_bridge_without_runtime_body", decl_name: "emit_bridge_without_runtime_body")
-
 data seed_rust_list_defects: List<Symbol> = [^render_rust_optional_carrier_inner]
-
-// SPECIMENS 8 AND 9 on seed Rust: json_unescape_checked has no rt_function_registry row, so
-// json_member_presence and json_field_string reach a primitive with no Rust realization and the
-// emitted program PANICS at run time instead of refusing at emit time. Owner: json_registry_owner.
-data seed_rust_json_defects: List<Symbol> = [^json_unescape_checked]
 
 // NATIVE v2 CLI, every specimen: the source roots do not yield an exact closure. The entry's
 // closure does not front-end (std.decimal, via the JSON decoder import); a module importing only
@@ -171,8 +164,8 @@ data realization_support_rows: List<RealizationSupportRow> = [
   supported(target: seed_rust_target, specimen: specimen_6_present_absent_entries),
   expected_red(target: seed_rust_target, specimen: specimen_6_list_present_absent_list_entries, defects: seed_rust_list_defects, owner: list_erasure_owner),
   supported(target: seed_rust_target, specimen: specimen_7_foreign_missing),
-  expected_red(target: seed_rust_target, specimen: specimen_8_foreign_null, defects: seed_rust_json_defects, owner: json_registry_owner),
-  expected_red(target: seed_rust_target, specimen: specimen_9_foreign_invalid, defects: seed_rust_json_defects, owner: json_registry_owner),
+  supported(target: seed_rust_target, specimen: specimen_8_foreign_null),
+  supported(target: seed_rust_target, specimen: specimen_9_foreign_invalid),
   refuses(target: native_v2_target, specimen: specimen_1_absent, causes: native_closure_causes),
   refuses(target: native_v2_target, specimen: specimen_2_present_absent, causes: native_closure_causes),
   refuses(target: native_v2_target, specimen: specimen_3_present_present, causes: native_closure_causes),
