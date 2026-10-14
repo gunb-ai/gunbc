@@ -13,7 +13,8 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Instantiation, Node, Positional, Edge, Symbol, TypeNode, node_synthetic }
 import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.inhabitance { inhabitance_declaration_heads_differ }
+import v2.std.inhabitance { inhabitance_declaration_heads_differ, inhabitance_pair_undecidable_reason }
+import std.optional { Present }
 import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid }
 import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
@@ -35,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // structural relation (v2.std.inhabitance declared_type_inhabitance) must refuse it.
 data fse_return_empty_source: String = "module v2.test.fse_return_empty\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_probe() -> FsNonEmpty<Int> { FsEmpty }\n"
 
-data fse_built_ok_source: String = "module v2.test.fse_built_ok\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_ok() -> FsNonEmpty<Int> { FsNonEmpty { head: 1, tail: FsEmpty } }\n"
+data fse_built_ok_source: String = "module v2.test.fse_built_ok\n\ntype FsIntList = FsIntEmpty | FsIntCons { head: Int, tail: FsIntList }\n\ntype FsIntNonEmpty {\n  head: Int\n  tail: FsIntList\n}\n\nfn fse_ok() -> FsIntNonEmpty { FsIntNonEmpty { head: 1, tail: FsIntEmpty } }\n"
 
 data fse_formal_variant_source: String = "module v2.test.fse_formal_variant\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fse_call() -> Int { fse_take(xs: FsEmpty) }\n"
 
@@ -109,4 +110,12 @@ test fn fse_one_declaration_bare_and_applied_has_one_head_holds() -> Bool {
 // The same last segment under two declarations is two heads.
 test fn fse_one_spelling_over_two_declarations_differs_holds() -> Bool {
   inhabitance_declaration_heads_differ(declared: fse_ref(dotted: "p.Box"), produced: fse_applied(dotted: "q.Box"))
+}
+
+// A bare generic declaration at its own applied form is counted undecided, not refused.
+test fn fse_bare_generic_at_its_applied_self_is_undecided_holds() -> Bool {
+  match inhabitance_pair_undecidable_reason(declared: fse_applied(dotted: "p.Box"), produced: fse_ref(dotted: "p.Box"), type_variables: []) {
+    Present { value: _ } => true
+    _ => false
+  }
 }

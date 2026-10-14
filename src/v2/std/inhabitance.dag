@@ -35,7 +35,7 @@ import v2.std.node {
   node_subtree_nodes,
   node_synthetic
 }
-import std.algebra { Empty, list_append, list_snoc_item }
+import std.algebra { length, Empty, list_append, list_snoc_item }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 import std.nat { Succ, Zero }
@@ -301,6 +301,31 @@ fn inhabitance_declaration_heads_differ(declared: Node, produced: Node) -> Bool 
   }
 }
 
+// A PRODUCED GENERIC DECLARATION WITH NO ARGUMENTS IS NOT A MISMATCH AT ITS APPLIED SELF. A nullary variant
+// of a generic coproduct is typed as the bare declaration reference (infer_variant_arm_reference_value);
+// its arguments are open, so against `FsList<Int>` the comparison is undecided, never refused, and stays
+// the counted UndecidableGenericFormal.
+fn inhabitance_unapplied_produced_at_applied_declared(declared: Node, produced: Node) -> Bool {
+  match produced.kind {
+    TypeNode { connective: Instantiation } => false
+    TypeNode { connective: _ } =>
+      (match declared.kind {
+          TypeNode { connective: Instantiation } => true
+          TypeNode { connective: _ } => false
+          ComputationNode { behavior: _ } => false
+        })
+        && (match inhabitance_declaration_head(t: declared) {
+          Absent => false
+          Present { value: d } =>
+            match declaration_reference_path_optional(node: produced) {
+              Absent => false
+              Present { value: p } => d == p
+            }
+        })
+    ComputationNode { behavior: _ } => false
+  }
+}
+
 fn inhabitance_pair_undecidable_reason(
   declared: Node,
   produced: Node,
@@ -308,6 +333,8 @@ fn inhabitance_pair_undecidable_reason(
 ) -> Optional<InhabitanceUndecidableReason> {
   if inhabitance_declaration_heads_differ(declared: declared, produced: produced) {
     Absent
+  } else if inhabitance_unapplied_produced_at_applied_declared(declared: declared, produced: produced) {
+    optional_present(value: UndecidableGenericFormal)
   } else if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
     || inhabitance_node_mentions_type_variable(n: produced, type_variables: type_variables) {
     inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
