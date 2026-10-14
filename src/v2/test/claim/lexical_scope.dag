@@ -319,6 +319,26 @@ test fn a_string_literal_spelling_a_declared_name_is_not_a_site() -> Bool {
   ) == "no-site"
 }
 
+// A REAL REFERENCE INSIDE A CONSTRUCT PAYLOAD IS STILL A SITE. Skipping string/int/float literal
+// payload EDGES must not skip a record field or a variant payload whose value names a declaration
+// (DESIGN section 5: silent narrowing of the reference-derived graph). The skip is the three
+// token-class payload labels, not every Authored child.
+fn record_literal_payload_subject() -> String {
+  "module v2.test.subject\n\ntype Rec { f: Bool }\n\nfn subject() -> Rec {\n  Rec { f: v2.std.logic.and(a: true, b: true) }\n}\n"
+}
+
+fn variant_payload_subject() -> String {
+  "module v2.test.subject\n\ntype Slot = Held { inner: Bool } | Empty\n\nfn subject() -> Slot {\n  Held { inner: v2.std.logic.and(a: true, b: true) }\n}\n"
+}
+
+test fn a_qualified_reference_in_a_record_literal_field_is_a_site() -> Bool {
+  head_of_site(content: record_literal_payload_subject(), spelling: "v2.std.logic.and") == "unbound"
+}
+
+test fn a_qualified_reference_in_a_variant_payload_is_a_site() -> Bool {
+  head_of_site(content: variant_payload_subject(), spelling: "v2.std.logic.and") == "unbound"
+}
+
 test fn the_plain_collection_is_the_scoped_collection_with_the_head_dropped() -> Bool {
   match prepare_grammar(grammar: dag_language_model().grammar) {
     Rejected { diagnostics: _ } => false
