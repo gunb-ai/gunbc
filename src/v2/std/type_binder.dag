@@ -269,7 +269,7 @@ fn type_decl_view(target: Node) -> TypeDeclView {
     match type_decl_identity_atom_optional(n: target) {
       Present { value: id } =>
         match dag_surface_item_standing(id: id) {
-          Present { value: DagSurfaceNonTypeDeclaration } => NotATypeDecl
+          Present { value: DagSurfaceNonTypeDeclaration { index_members: _ } } => NotATypeDecl
           Present { value: DagSurfaceTypeDeclaration } => type_decl_view_by_wrapper(target: target)
           Absent => NotATypeDecl
         }
