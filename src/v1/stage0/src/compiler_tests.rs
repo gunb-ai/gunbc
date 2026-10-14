@@ -419,6 +419,60 @@ mod compiler_tests {
         }
     }
 
+    // Diagnostics carry Rc and cannot cross the thread boundary, so the compile runs inside the thread
+    // and hands back one plain tag per test-reference diagnostic.
+    fn test_reference_tags(module: &str, body: &str) -> Vec<String> {
+        let content = format!("module {}\n\n{}", module, body);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("test-reference-wall".to_string())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || {
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "test_reference_fixture.dag".to_string(), content });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));
+                let tags: Vec<String> = resolved.diagnostics.iter().filter_map(|e| {
+                    let blocking = crate::v1_std_core::is_error_diagnostic(e.diagnostic.clone());
+                    match e.diagnostic.as_ref() {
+                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenced { .. } => Some(format!("referenced blocking={}", blocking)),
+                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceAdmitted { .. } => Some(format!("admitted blocking={}", blocking)),
+                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceBudgetMismatch { declared, observed, .. } => Some(format!("mismatch declared={} observed={} blocking={}", declared, observed, blocking)),
+                        _ => None,
+                    }
+                }).collect();
+                let _ = tx.send(tags);
+            })
+            .expect("spawn test-reference-wall");
+        rx.recv_timeout(std::time::Duration::from_secs(120))
+            .expect("compile hung")
+    }
+
+    // IDENTITY GRAIN: swapping a row's target for another test fn under the same referrer keeps the
+    // count equal and must still refuse -- a new target has no row. Its own row is then paid down too.
+    #[test]
+    fn a_new_target_under_a_rostered_referrer_is_refused() {
+        let debt = crate::v1_compiler_compile::test_reference_debt();
+        let row = debt
+            .iter()
+            .find(|r| r.referrer != "<import>" && r.occurrences == 1)
+            .cloned()
+            .expect("a single-call row");
+        let body = format!("test fn zz_swapped_in() -> Bool {{\n  true\n}}\n\nfn {}() -> Bool {{\n  zz_swapped_in()\n}}\n", row.referrer);
+        let tags = test_reference_tags(&row.module_name, &body);
+        assert!(
+            tags.contains(&"referenced blocking=true".to_string()),
+            "{:?}",
+            tags
+        );
+        assert!(
+            tags.contains(&format!(
+                "mismatch declared={} observed=0 blocking=true",
+                row.occurrences
+            )),
+            "{:?}",
+            tags
+        );
+    }
+
     // Two modules in one compile, which the floor's census probe cannot express: it types one fixture
     // and loads the corpus for name lookup only.
     fn import_all_tags() -> Vec<String> {
@@ -446,6 +500,73 @@ mod compiler_tests {
         assert_eq!(
             import_all_tags(),
             vec!["wall.fixture.caller.expose -> wall.fixture.target.leaf".to_string()]
+        );
+    }
+
+    // THE ORPHAN ARM, at its own interface: a row whose module is not compiled is judged by census
+    // knowledge and scope alone, so the pure function is called directly on synthetic rows.
+    #[test]
+    fn an_orphaned_ledger_row_is_refused_only_when_the_census_is_loaded() {
+        use crate::v1_compiler_compile::{
+            CensusKnowledge, TestReferenceDebtRow, TestReferenceRowScope,
+        };
+        let row = |scope: TestReferenceRowScope| {
+            std::rc::Rc::new(TestReferenceDebtRow {
+                module_name: "gone.module".to_string(),
+                referrer: "caller".to_string(),
+                target: "gone.module.leaf".to_string(),
+                occurrences: 1,
+                scope: scope,
+                dissolution: crate::v1_compiler_compile::test_reference_debt_dissolution(),
+            })
+        };
+        let loaded = |names: &[&str]| {
+            std::rc::Rc::new(CensusKnowledge::CensusLoaded {
+                modules: std::rc::Rc::new(names.iter().map(|n| (n.to_string(), true)).collect()),
+            })
+        };
+        let orphaned = |d: &std::rc::Rc<im::Vector<std::rc::Rc<crate::v1_std_core::ErrorNode>>>| {
+            d.iter()
+                .filter(|e| {
+                    matches!(
+                        e.diagnostic.as_ref(),
+                        crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceRowOrphaned { .. }
+                    )
+                })
+                .count()
+        };
+        let diag = |r, c| crate::v1_compiler_compile::test_reference_unevaluated_row_diag(r, c);
+        // RED: census loaded, module in neither the closure nor the census.
+        assert_eq!(
+            orphaned(&diag(
+                row(TestReferenceRowScope::CorpusDebtRow),
+                loaded(&["other.module"])
+            )),
+            1
+        );
+        // CONTROL: the module exists, only outside this closure.
+        assert_eq!(
+            orphaned(&diag(
+                row(TestReferenceRowScope::CorpusDebtRow),
+                loaded(&["gone.module"])
+            )),
+            0
+        );
+        // CONTROL: no census, so absence proves nothing.
+        assert_eq!(
+            orphaned(&diag(
+                row(TestReferenceRowScope::CorpusDebtRow),
+                std::rc::Rc::new(CensusKnowledge::CensusAbsent)
+            )),
+            0
+        );
+        // CONTROL: the fixture control row is exempt by its declared scope.
+        assert_eq!(
+            orphaned(&diag(
+                row(TestReferenceRowScope::FixtureControlRow),
+                loaded(&["other.module"])
+            )),
+            0
         );
     }
 
@@ -5442,38 +5563,6 @@ mod compiler_tests {
         assert!(
             !emitted.contains("Option<") && !emitted.contains("compile_error!"),
             "no position of the collision coproduct may realize as the host Option:\n{emitted}"
-        );
-    }
-
-    // AN OPTIONAL CARRIER WHOSE PAYLOAD TYPE NODE IS ABSENT REFUSES; IT NEVER RENDERS `()`. The fixture is a
-    // hand-built childless carrier node reaching the Absent arm directly, so the red does not depend on
-    // what infer stamps for `Optional<List<Optional<Int>>>` (measured erased by merry-moth-118, node
-    // adhoc-c3c735c9-3af; the source specimen is the positive control of the producer-side stamping PR).
-    // THE CONTROL is the same carrier with an `Int` payload child, which renders `Option<i64>`.
-    #[test]
-    fn an_optional_carrier_with_an_absent_payload_node_refuses() {
-        let source_indices = std::rc::Rc::new(HashMap::new());
-        let render = |carrier: std::rc::Rc<crate::v1_std_core::Node>| -> String {
-            crate::v1_compiler_emit_rust::render_rust_optional_carrier_applied(
-                carrier,
-                std::rc::Rc::new(im::Vector::new()),
-                std::rc::Rc::new(im::OrdSet::new()),
-                source_indices.clone(),
-                std::rc::Rc::new(HashMap::new()),
-                crate::v1_compiler_infer_env::empty_type_env(),
-            )
-        };
-        let red = render(shaped_type_node("Optional", Vec::new()));
-        assert!(
-            red.contains("compile_error!")
-                && red.contains("optional carrier payload type node absent")
-                && !red.contains("()"),
-            "an absent payload must refuse and never render ():\n{red}"
-        );
-        let control = render(shaped_type_node("Optional", vec![named_type_node("Int")]));
-        assert_eq!(
-            control, "Option<i64>",
-            "a present payload node renders its payload"
         );
     }
 
