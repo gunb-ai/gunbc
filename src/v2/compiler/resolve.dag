@@ -585,7 +585,7 @@ type Scope
 type FrameKind
   = ParameterFrame { arrow_path: QualifiedName }
   | LexicalFrame { binders: Map<Symbol, LexicalBinding> }
-  | TypeParameterFrame { binders: Map<Symbol, LexicalBinding> }
+  | TypeParameterFrame { binders: Map<Symbol, QualifiedName> }
 
 // A LEXICAL BINDER, AS THE FRAME THAT INTRODUCES IT RECORDED IT. A `let`, a match-arm pattern binder
 // and a lambda's parameter are not declarations: nothing indexes them at a path, so the frame keys
@@ -2383,7 +2383,25 @@ fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbo
           ))
         ScopeUnbound =>
           match resolve_type_parameter_value_reading(ctx: ctx, identity: identity) {
-            Present { value: binding } => resolve_lexical_reference(n: n, canonical: identity, binding: optional_present(value: binding), pending: pending)
+            Present { value: path } =>
+              match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+                Present { value: _ } =>
+                  Accepted {
+                    value: ResolvedAtom { node: parameter_reference_node(qn: path, occurrence_id: n.occurrence_id), lexical: [] },
+                    diagnostics: pending
+                  }
+                Absent =>
+                  Rejected {
+                    diagnostics: rejected_with_pending(
+                      pending: pending,
+                      rejected: diagnostics_singleton(d: Diagnostic {
+                        reason: ^resolve_reason_parameter_path_not_indexed,
+                        at: node_locus(node: n),
+                        correction: Unavailable { reason: UserInputBoundary }
+                      })
+                    )
+                  }
+              }
             Absent => resolved_atom_plain(o: resolve_atom_unscoped(ctx: ctx, n: n, identity: identity, pending: pending))
           }
       }
@@ -4469,7 +4487,7 @@ fn resolve_children_homogeneous_scope(
   n: Node
 ) -> ResolveNodeWalk {
   let at_module_root = ctx.under_module_root || dag_node_is_module_root_conj(n: n)
-  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
+  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope, declaring: ctx.declaring)
   let scope_here = match arrow_domain_has_named_bindings(n: n) {
     true => lexical_frame(fb: arrow_domain_frame_binders(n: n), outer: scope_type)
     false => scope_type
@@ -4524,7 +4542,7 @@ fn resolve_children_homogeneous_scope(
 // It is not a style rule: v2.compiler.infer recognizes a type variable by the callee Arrow's own
 // type-parameter edge (v2.std.type_binder type_param_names), and that reading is sound only because
 // no `T` inside the Arrow can mean anything but its binder.
-fn resolve_type_param_frame(n: Node, outer: Scope) -> Scope {
+fn resolve_type_param_frame(n: Node, outer: Scope, declaring: DeclaringPosition) -> Scope {
   match type_param_names(n: n) {
     Empty => outer
     Cons { head: _, tail: _ } =>
@@ -4533,40 +4551,46 @@ fn resolve_type_param_frame(n: Node, outer: Scope) -> Scope {
           map_insert(acc, name, name)
         }),
         outer: outer,
-        kind: TypeParameterFrame { binders: type_param_value_binders(n: n) }
+        kind: TypeParameterFrame { binders: type_param_value_binders(n: n, declaring: declaring) }
       }
   }
 }
 
-// A KINDED BINDER IS ALSO READABLE AS A VALUE: ONE DECLARATION, TWO READINGS (A0-1). The binder stays the
-// single entry of this frame; a kinded one additionally records the LexicalBinding a value read of it
-// is minted under (resolve_type_parameter_value_reading), keyed by the binder's own occurrence with
-// its declared kind as the standing. "Kinded" is the existing language-level literal rule, not a
-// per-kind roster (std.machine_constraints machine_width_literal_roster_frontier): an unkinded
-// binder records nothing, so its value read keeps refusing
-// resolve_reason_type_parameter_in_value_position.
-fn type_param_value_binders(n: Node) -> Map<Symbol, LexicalBinding> {
-  fold(n.children, init: empty_map(), f: fn(acc, e) {
-    if edge_is_type_params(e: e) {
-      fold(e.target.children, init: acc, f: fn(inner, b) {
-        match node_atom_identity_optional(node: b.target) {
-          Present { value: name } =>
-            match type_param_kind_optional(binder: b.target) {
-              Present { value: kind } =>
-                map_insert(inner, name, LexicalBinding { binder_site: b.target.occurrence_id, standing: LexicalDeclared { node: kind } })
+// A KINDED BINDER IS ALSO READABLE AS A VALUE: ONE DECLARATION, TWO READINGS (A0-1). The binder stays
+// the single entry of this frame; a kinded one additionally records the path its value reading is
+// keyed by, <declaring path>.<name> -- the same key a value parameter of this fn has
+// (resolve_frame_bound_reference ParameterFrame), so binder identity is the declaring path plus the
+// name and a body `let` or value parameter of the same spelling lives in another key space and
+// cannot capture it. "Kinded" is the existing language-level literal rule, not a per-kind roster
+// (std.machine_constraints machine_width_literal_roster_frontier). An unkinded binder, or a binder
+// with no declaring path (a lambda, an anonymous arrow), records nothing, so its value read keeps
+// refusing resolve_reason_type_parameter_in_value_position.
+fn type_param_value_binders(n: Node, declaring: DeclaringPosition) -> Map<Symbol, QualifiedName> {
+  match declaring {
+    DeclaringAt { path: path } =>
+      fold(n.children, init: empty_map(), f: fn(acc, e) {
+        if edge_is_type_params(e: e) {
+          fold(e.target.children, init: acc, f: fn(inner, b) {
+            match node_atom_identity_optional(node: b.target) {
+              Present { value: name } =>
+                match type_param_kind_optional(binder: b.target) {
+                  Present { value: _ } => map_insert(inner, name, qualified_name_snoc(qn: path, segment: name))
+                  Absent => inner
+                }
               Absent => inner
             }
-          Absent => inner
+          })
+        } else {
+          acc
         }
       })
-    } else {
-      acc
-    }
-  })
+    DeclaringInSpine { path: _, body: _ } => empty_map()
+    NotDeclaring => empty_map()
+  }
 }
 
-// THE VALUE READING OF A TYPE PARAMETER, when its binder is kinded: the binding its frame recorded.
-fn resolve_type_parameter_value_reading(ctx: ResolveContext, identity: Symbol) -> Optional<LexicalBinding> {
+// THE VALUE READING OF A TYPE PARAMETER, when its binder is kinded: the path its frame recorded.
+fn resolve_type_parameter_value_reading(ctx: ResolveContext, identity: Symbol) -> Optional<QualifiedName> {
   match lookup_chain(s: ctx.type_scope, name: identity) {
     Accepted { value: BoundInFrame { canonical: canonical, kind: TypeParameterFrame { binders: binders } }, diagnostics: _ } =>
       map_lookup(m: binders, key: canonical)
@@ -4648,7 +4672,7 @@ fn resolve_type_params_conj(ctx: ResolveContext, conj: Node) -> ResolveNodeWalk 
 fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   resolve_arrow_node_in(
     outer_ctx: ctx,
-    ctx: resolve_ctx_with_type_scope(ctx: ctx, type_scope: resolve_type_param_frame(n: n, outer: ctx.type_scope)),
+    ctx: resolve_ctx_with_type_scope(ctx: ctx, type_scope: resolve_type_param_frame(n: n, outer: ctx.type_scope, declaring: ctx.declaring)),
     n: n
   )
 }
@@ -4735,7 +4759,7 @@ fn resolve_arrow_slot_scope(
 }
 
 fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
-  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
+  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope, declaring: ctx.declaring)
   let value_params = arrow_domain_frame_binders(n: n)
   let frame_kind = match ctx.declaring {
     DeclaringAt { path: path } => ParameterFrame { arrow_path: path }
