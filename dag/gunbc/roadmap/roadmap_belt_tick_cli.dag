@@ -1,6 +1,19 @@
 module gunbc.roadmap.roadmap_belt_tick_cli
 
-import std.types { String }
+import std.types { String, NonEmptyStr }
+import gunbc.dispatch.credential_acquisition {
+  credential_acquisition_slots_root,
+  credential_recover_listed,
+}
+import gunbc.live_deploy.desired {
+  desired_deployment_for_instance_id,
+  desired_roster_refusal_detail,
+  DesiredDeploymentFound,
+  DesiredDeploymentUnknownInstanceId,
+  DesiredDeploymentRosterRefused,
+}
+import gunbc.live_deploy.spec { deployment_belt_service_unit_name }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.languages.json.emit { serialize_json, JsonValue, json_object, json_kv, json_string }
@@ -500,6 +513,40 @@ fn belt_exit_drain_cli() -> ProcessExit {
     let failures = belt_exit_drain_failures(d: drained)
     if count(failures) == 0 { ExitSuccess } else { exit_failure(reason: join([serialize_json(v: belt_exit_drain_json(d: drained)), "\n", join(failures, "\n")], "")) }
   })
+}
+
+fn belt_credential_recovery_cli() -> ProcessExit {
+  belt_instance_from_env(entry: "belt_credential_recovery_cli", continuation: instance =>
+    match desired_deployment_for_instance_id(instance_id: instance.instance_id as String) {
+      DesiredDeploymentRosterRefused { refusal: r } =>
+        exit_failure(reason: join(["belt_credential_recovery_cli: desired roster refused: ", desired_roster_refusal_detail(refusal: r)], ""))
+      DesiredDeploymentUnknownInstanceId { instance_id: id } =>
+        exit_failure(reason: join(["belt_credential_recovery_cli: no desired deployment for instance ", id], ""))
+      DesiredDeploymentFound { row: row } =>
+        match now_epoch_seconds() {
+          Absent => exit_failure(reason: "belt_credential_recovery_cli: host clock unreadable")
+          Present { value: now } => {
+            let unit = deployment_belt_service_unit_name(names: row.names)
+            let root = credential_acquisition_slots_root(instance_root: instance.instance_root as String)
+            let listing = Filesystem.List(path: root as String)
+            let recovered = if listing.success {
+              credential_recover_listed(root: root, listing: listing.entries, now: now)
+            } else {
+              join(["no credential slots yet: ", listing.error], "")
+            }
+            let receipt = serialize_json(v: json_object(members: [
+              json_kv(key: "unit", value: json_string(s: unit as String)),
+              json_kv(key: "slots_root", value: json_string(s: root as String)),
+              json_kv(key: "recovered", value: json_string(s: recovered)),
+            ]))
+            if string_length(s: receipt) == 0 {
+              exit_failure(reason: "belt_credential_recovery_cli: receipt was empty")
+            } else {
+              ExitSuccess
+            }
+          }
+        }
+    })
 }
 
 fn belt_discover_once_cli() -> ProcessExit {

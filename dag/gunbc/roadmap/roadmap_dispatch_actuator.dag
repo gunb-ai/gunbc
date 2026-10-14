@@ -256,6 +256,7 @@ import gunbc.dispatch_credential_snapshot {
   CredentialSnapshotRemoved,
   CredentialSnapshotRemovalFailed,
 }
+import gunbc.dispatch.credential_acquisition { credential_register_then_take }
 import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
 import gunbc.worker_turn_snapshot_custody {
   claude_worker_turn_snapshot_custody,
@@ -759,11 +760,14 @@ fn dispatch_actuator_claude_selection_observed(
   match claude_credential_custody_source() {
     ClaudeCustodyUnbound { reason } => DispatchAttemptSelectionRefused { reason: reason }
     ClaudeCustodyBound { custody } =>
-      match dispatch_credential_snapshot_take(
+      match credential_register_then_take(
         attempt: attempt,
         executor: ClaudeFromSnapshot,
         custody: custody,
         snapshot: dispatch_credential_snapshot_path_for_attempt(attempt: attempt, executor: ClaudeFromSnapshot),
+        belt_unit: "",
+        invocation_id: "",
+        control_group: "",
       ) {
         DispatchSnapshotRefused { reason } => DispatchAttemptSelectionRefused { reason: dispatch_snapshot_refusal_text(reason: reason) }
         DispatchSnapshotTaken { snapshot } => {
@@ -862,11 +866,14 @@ fn cursor_selection_observed(attempt: DispatchAttempt, sizing_expectation: Sizin
       reason: provider_off_custody_host_reason(provider_label: "cursor", custody_host: snapshot_custody_declaration(executor: CursorFromSnapshot).host, instance_host: attempt.instance.host_identity),
     }
   } else {
-    match dispatch_credential_snapshot_take(
+    match credential_register_then_take(
       attempt: attempt,
       executor: CursorFromSnapshot,
       custody: snapshot_custody_declaration(executor: CursorFromSnapshot),
       snapshot: dispatch_credential_snapshot_path_for_attempt(attempt: attempt, executor: CursorFromSnapshot),
+      belt_unit: "",
+      invocation_id: "",
+      control_group: "",
     ) {
       DispatchSnapshotRefused { reason } => DispatchAttemptSelectionRefused { reason: dispatch_snapshot_refusal_text(reason: reason) }
       DispatchSnapshotTaken { snapshot } => {
