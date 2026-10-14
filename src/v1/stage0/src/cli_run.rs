@@ -83,7 +83,6 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-mod active_workset;
 mod census_heads;
 mod checker_dependency;
 pub use checker_dependency::write_checker_inputs_record;
@@ -98,7 +97,6 @@ pub mod reach_base_standings;
 pub mod required_ci_measurement;
 pub use claim_execution::*;
 mod required_floor_runner;
-mod required_lane_roster;
 pub mod rostered_row_join;
 pub mod scope_rank_view;
 mod serve_budget_refusal;
@@ -119,11 +117,9 @@ pub use native_lane_runner::{
 pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub use required_floor_runner::floor_seam;
 pub(crate) use required_floor_runner::*;
-pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
 pub mod pre_entry_phase;
 mod required_lane_resolution_census;
-pub(crate) use active_workset::*;
 pub use entry_resolve::resolve_virtual_entry_compile_closure;
 pub(crate) use entry_resolve::*;
 pub use required_lane_resolution_census::{
@@ -236,7 +232,6 @@ pub(crate) mod claim_call_site_demand;
 #[path = "evaluation_budget_consequence_falsifier_host.rs"]
 mod evaluation_budget_consequence_falsifier_host;
 pub(crate) mod shared_fill;
-pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
@@ -6001,8 +5996,7 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
     *guard = Some(receipt);
 }
 
-// DELETE WHEN dissolved: `compile_clean_whole_tree_hard_diagnostics`,
-// `compile_clean_diagnostic_histogram_key`, `truncate_histogram_label`,
+// DELETE WHEN dissolved: `compile_clean_diagnostic_histogram_key`, `truncate_histogram_label`,
 // `compile_clean_internal_error_histogram_name`, and the `compile_clean_diagnostic_histogram` bin
 // (~200 LOC).
 // Receipt: `rg cli_run_compile_clean_diagnostic_histogram src/v1/stage0` == 1 until deletion;
@@ -13980,92 +13974,6 @@ pub fn render_typecheck_concluded_line_mirror(
     )
 }
 
-/// One in-flight witness attempt the floor has admitted but not yet finished.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ActiveWorksetEntry {
-    pub attempt_id: String,
-    pub entry: String,
-    pub function: String,
-}
-
-struct ActiveWorksetState {
-    entries: Vec<ActiveWorksetEntry>,
-}
-
-static ACTIVE_WORKSET: Mutex<ActiveWorksetState> = Mutex::new(ActiveWorksetState {
-    entries: Vec::new(),
-});
-
-const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
-
-// TEMPORARY PROJECTION (operator ruling 2026-08-13, #8239 → #8163): active-workset
-// admit/completed rows in GUNBC_FLOOR_PHASE_JOURNAL carry in-flight witness identity until
-// subject + measurement events land on the #8163 RecordedObservation per-producer ledger
-// (target/floor-attempts/<attempt>/events/<producer>.jsonl). Dissolve-on: #8163 on main +
-// floor walk emits through that ledger with a dedicated producer identity; delete this append
-// path once FLOOR2 consumes the ledger green by execution. This clause used to say the rows were
-// NOT serialized into the floor component receipt, citing floor_component_resource_checkpoint_note.
-// That note was a real declaration in gunbc.floor_component_receipt until the 2026-08-30 prose
-// bankruptcy sweep (#9752) turned module-scope commentary rows into 4c annotations, which are
-// uncitable by construction; the receipt pair itself was then deleted on 2026-09-01 as unreachable
-// residue of the 2026-08-15 CI cut. So the journal is now the only carrier of this identity,
-// without qualification.
-fn append_active_workset_phase_journal(state: &str, detail: &str) {
-    let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
-        return;
-    };
-    let path = PathBuf::from(path);
-    if let Some(parent) = path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            eprintln!(
-                "cli_run: create floor phase journal directory {}: {e}",
-                parent.display()
-            );
-            return;
-        }
-    }
-    let mut file = match std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
-        Ok(file) => file,
-        Err(e) => {
-            eprintln!("cli_run: open floor phase journal {}: {e}", path.display());
-            return;
-        }
-    };
-    let unix_millis = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let clean_detail = detail.replace(['\t', '\r', '\n'], " ");
-    let row = format!(
-        "{unix_millis}\t{}\tactive-workset\t{state}\t{clean_detail}\n",
-        std::process::id()
-    );
-    use std::io::Write as _;
-    if let Err(e) = file
-        .write_all(row.as_bytes())
-        .and_then(|()| file.flush())
-        .and_then(|()| file.sync_data())
-    {
-        eprintln!(
-            "cli_run: persist floor phase journal {}: {e}",
-            path.display()
-        );
-    }
-}
-
-pub fn witness_attempt_id(entry: &str, function: &str) -> String {
-    format!(
-        "{}|{}|{}",
-        floor_walk_attempt_id_from_env(),
-        entry,
-        function
-    )
-}
-
 /// Drive one entry-completion: decrement the entry's closure refcounts, drop the
 /// per-module state that reached zero from every per-module cache (typed, parse,
 /// normalize-diag, ownership-diag, source-hash), AND drop the entry's assembled
@@ -14180,104 +14088,6 @@ fn index_schedule_entry_completed(
         index.resolved_graph_memo.borrow().len(),
     );
     Ok(())
-}
-
-#[cfg(test)]
-mod active_workset_kill_path_controls {
-    use super::{
-        active_workset_admit, active_workset_complete, active_workset_reset_for_test,
-        active_workset_snapshot, witness_attempt_id,
-    };
-
-    static ACTIVE_WORKSET_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn with_active_workset_test_lock<F: FnOnce()>(f: F) {
-        let _guard = ACTIVE_WORKSET_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        active_workset_reset_for_test();
-        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-        active_workset_reset_for_test();
-        match run {
-            Ok(()) => {}
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-
-    /// SIGKILL / step-cap / panic paths never run `active_workset_complete`. Durable
-    /// in-flight identity for that class is the GUNBC_FLOOR_PHASE_JOURNAL active-workset
-    /// rows (admitted without a matching completed). This used to add "not the floor component
-    /// receipt", citing two notes that were real declarations until #9752 converted them to
-    /// uncitable 4c annotations on 2026-08-30; the receipt pair was then deleted on 2026-09-01
-    /// as unreachable residue of the 2026-08-15 CI cut.
-    #[test]
-    fn admitted_entry_survives_without_completion() {
-        with_active_workset_test_lock(|| {
-            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "kill-control-admit-only");
-            // Opaque labels: this test exercises the in-memory registry, not any real
-            // witness, so the strings must not name a corpus entry that could be deleted
-            // out from under them (the pair named here previously did exactly that).
-            let entry = "<in-memory registry test entry>";
-            let function = "<in-memory registry test function>";
-            active_workset_admit(entry, function);
-            let snap = active_workset_snapshot();
-            assert_eq!(
-                snap.len(),
-                1,
-                "kill path must leave admitted entry in registry without completion"
-            );
-            assert_eq!(snap[0].entry, entry);
-            assert_eq!(snap[0].function, function);
-            assert_eq!(snap[0].attempt_id, witness_attempt_id(entry, function));
-        });
-    }
-
-    #[test]
-    fn phase_journal_records_admit_without_completed_on_kill_path() {
-        with_active_workset_test_lock(|| {
-            let dir =
-                std::env::temp_dir().join(format!("active-workset-journal-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(&dir).expect("journal dir");
-            let journal = dir.join("phase.tsv");
-            std::env::set_var("GUNBC_FLOOR_PHASE_JOURNAL", &journal);
-            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "kill-control-journal");
-            let entry = "dag/test/claim/kill_path_fixture_test.dag";
-            let function = "kill_path_fixture_holds";
-            active_workset_admit(entry, function);
-            let text = std::fs::read_to_string(&journal).expect("journal written on admit");
-            assert!(
-                text.contains("active-workset") && text.contains("admitted"),
-                "admit must land in phase journal before any completion handler runs: {text}"
-            );
-            assert!(
-                text.contains("attempt_id="),
-                "journal row must carry attempt identity: {text}"
-            );
-            assert!(
-                !text.contains("completed"),
-                "kill path must not fabricate a completion journal row: {text}"
-            );
-            std::env::remove_var("GUNBC_FLOOR_PHASE_JOURNAL");
-            let _ = std::fs::remove_dir_all(&dir);
-        });
-    }
-
-    #[test]
-    fn completion_removes_entry_after_graceful_exit() {
-        with_active_workset_test_lock(|| {
-            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "graceful-complete-control");
-            let entry = "dag/test/claim/graceful_fixture_test.dag";
-            let function = "graceful_fixture_holds";
-            active_workset_admit(entry, function);
-            assert_eq!(active_workset_snapshot().len(), 1);
-            active_workset_complete(entry, function);
-            assert!(
-                active_workset_snapshot().is_empty(),
-                "graceful completion must drop the entry"
-            );
-        });
-    }
 }
 
 #[cfg(test)]
@@ -19480,22 +19290,6 @@ pub fn claim_disposition_wire(disposition: ClaimDisposition) -> &'static str {
         ClaimDisposition::ObservationUnreadableBeforeVerdict => {
             "observation-unreadable-before-verdict"
         }
-    }
-}
-
-pub fn seed_ledger_row(
-    row: &ClaimTerminalRow,
-) -> crate::cli_run::terminal_ledger_publish::SeedLedgerRow {
-    crate::cli_run::terminal_ledger_publish::SeedLedgerRow {
-        qualified: row.qualified.clone(),
-        expectation_wire: if row.expected_red {
-            "expect-red"
-        } else {
-            "expect-hold"
-        },
-        terminal_tag: claim_terminal_tag(&row.outcome),
-        terminal_detail: claim_terminal_detail(&row.outcome),
-        seed_disposition_wire: claim_disposition_wire(claim_disposition(row)),
     }
 }
 
@@ -27449,59 +27243,6 @@ mod node_frontier_plumbing_controls {
             ],
             "the `type` declaration is not a row, and both row shapes parse"
         );
-    }
-
-    // The contradictory-intersection wall's file-reading half: an entry path resolves through
-    // its own `module ...` line, not through the path string.
-    #[test]
-    fn frozen_path_deferral_qualified_identities_reads_the_entrys_own_module_line() {
-        let dir = std::env::temp_dir().join(format!(
-            "gunbc_freeze_qualified_{}_{}",
-            std::process::id(),
-            line!()
-        ));
-        std::fs::create_dir_all(dir.join("test/claim")).expect("mkdir fixture root");
-        std::fs::write(
-            dir.join("test/claim/one_test.dag"),
-            "module test.claim.one\n\nfn x_holds() -> Bool { true }\n",
-        )
-        .expect("write fixture entry");
-        let source = concat!(
-            "data frozen_path_deferrals: List<FrozenPathDeferral> = [\n",
-            "  FrozenPathDeferral { entry: \"test/claim/one_test.dag\", functions: [\"x_holds\"] },\n",
-            "]\n"
-        );
-        let qualified = super::frozen_path_deferral_qualified_identities_from_source(source, &dir);
-        assert_eq!(
-            qualified,
-            vec![(
-                "test/claim/one_test.dag".to_string(),
-                "test.claim.one.x_holds".to_string()
-            )],
-            "the module line — not the path — names the qualified identity"
-        );
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    // A frozen row naming a file the tree does not carry is STALE, and `run_required_floor`
-    // refuses it before this scan runs. Reaching the scan with one is an ordering bug, so the scan
-    // fails loudly rather than skipping the row (the skip it replaces relied on a refusal no
-    // required run executed).
-    #[test]
-    #[should_panic(expected = "the stale-row refusal must run before the intersection scan")]
-    fn frozen_path_deferral_scan_refuses_a_missing_entry_rather_than_skipping_it() {
-        let dir = std::env::temp_dir().join(format!(
-            "gunbc_freeze_missing_{}_{}",
-            std::process::id(),
-            line!()
-        ));
-        std::fs::create_dir_all(&dir).expect("mkdir fixture root");
-        let source = concat!(
-            "data frozen_path_deferrals: List<FrozenPathDeferral> = [\n",
-            "  FrozenPathDeferral { entry: \"test/claim/missing_test.dag\", functions: [\"y_holds\"] },\n",
-            "]\n"
-        );
-        super::frozen_path_deferral_qualified_identities_from_source(source, &dir);
     }
 
     // DISCRIMINATING RED: a frozen row whose qualified identity is also enrolled in
@@ -36289,9 +36030,6 @@ mod exclusive_cost_partition_law {
         assert!(json.contains("\"observations\":{\"elapsed_wall_nanos\":5000}"));
     }
 }
-
-#[path = "census_exclude_derive.rs"]
-pub mod census_exclude_derive;
 
 #[cfg(test)]
 mod annotation_erased_scan_projection {

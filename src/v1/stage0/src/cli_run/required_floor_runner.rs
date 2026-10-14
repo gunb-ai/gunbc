@@ -204,12 +204,6 @@ pub fn floor_compile_clean_receipt_installed() -> bool {
         .unwrap_or(false)
 }
 
-pub fn floor_walk_attempt_id_from_env() -> String {
-    std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID")
-        .or_else(|_| std::env::var("GUNBC_WALK_ATTEMPT_ID"))
-        .unwrap_or_else(|_| "local".to_string())
-}
-
 /// Why the discovery authority's per-file fold produced no roster. Three causes, three repairs: a
 /// source's test-marked declarations could not be READ (it does not parse, so which of its
 /// declarations are tests is undeterminable), the authority could not be EVALUATED (a frame or

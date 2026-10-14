@@ -175,12 +175,6 @@ pub fn whole_tree_resolve_exclusion_substrings() -> Vec<String> {
     excludes
 }
 
-/// Whole-tree strict-walk probe exclusion authority — pattern rows ∪ derived module-path
-/// closure (`census_exclude_derive`). Replaces hand-pinned `--exclude-subpath` lists.
-pub fn whole_tree_probe_exclusion_substrings() -> Vec<String> {
-    census_exclude_derive::whole_tree_probe_exclusion_substrings()
-}
-
 pub fn build_module_path_index_from_witness_roots() -> HashMap<String, String> {
     build_module_path_index(&default_source_roots())
 }
