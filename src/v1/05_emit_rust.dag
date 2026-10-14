@@ -6063,7 +6063,8 @@ fn has_physical_type_def_in_module_filename(rhs_name: String, mod_filename: Stri
         authored_name_at(source_indices: source_indices, node: item) == rhs_name
         && (is_type_def_item(item: item)
           || is_type_alias_item(item: item, source_indices: source_indices)
-          || is_type_decl_item(item: item, source_indices: source_indices))
+          || is_type_decl_item(item: item, source_indices: source_indices
+          || item.module_item_kind == ModuleItemResource)
       )
     )
     Absent => false
@@ -6094,7 +6095,8 @@ fn type_name_is_export_source_in_module(name: String, module_name: String, typed
         authored_name_at(source_indices: source_indices, node: item) == name
         && (is_type_def_item(item: item)
           || is_type_alias_item(item: item, source_indices: source_indices)
-          || is_type_decl_item(item: item, source_indices: source_indices))
+          || is_type_decl_item(item: item, source_indices: source_indices)
+          || item.module_item_kind == ModuleItemResource)
       )
   }
 }
@@ -6108,7 +6110,8 @@ fn type_name_is_rust_importable_in_module(name: String, module_name: String, typ
           authored_name_at(source_indices: source_indices, node: item) == name
           && (is_type_def_item(item: item)
             || is_type_alias_item(item: item, source_indices: source_indices)
-            || is_type_decl_item(item: item, source_indices: source_indices))
+            || is_type_decl_item(item: item, source_indices: source_indices)
+            || item.module_item_kind == ModuleItemResource)
         )
         |> first {
         Absent => false
@@ -6546,7 +6549,7 @@ fn type_item_by_name_in_module_filename(rhs_name: String, mod_filename: String, 
 }
 
 fn type_item_has_rust_nominal_shell_authority(item: Node, item_text: String, module_name: String, imports: List<Node>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
-  if is_type_def_item(item: item) {
+  if is_type_def_item(item: item) || item.module_item_kind == ModuleItemResource {
     true
   } else if is_type_alias_item(item: item, source_indices: source_indices) {
     true
