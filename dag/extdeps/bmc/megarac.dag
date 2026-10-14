@@ -120,6 +120,30 @@ data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
   contract_note: "one row per media instance: media_type, image_name, session_index, redirection_status",
 }
 
+data megarac_op_fan_get_manager_status: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/fan_control/get_manager_status",
+  contract_note: "Foxconn Mt. Collins MegaRAC 0.32 served UI source.min.js (gzip sha256 prefix ee9b14cbf7141b78, AMI copyright, off-tree); JSON {manager_disabled: 0|1}; 1 is manual PWM, 0 is Cooling Manager automatic; executed read-only 2026-10-14 ~21:50Z after POST /api/session",
+}
+
+data megarac_op_fan_get_fan_info: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/fan_control/get_fan_info",
+  contract_note: "same UI bundle; JSON list of {id, fan_number, fan_speed, fan_pwm}; UI labels speed as PWM percentage; executed read-only 2026-10-14 ~21:50Z",
+}
+
+data megarac_op_fan_set_manager_status: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/fan_control/set_manager_status",
+  contract_note: "same UI bundle; JSON {manager_disabled: r} with r in {0,1}; UI confirms before both directions; cited as the write that enables or disables the Cooling Manager, not yet executed by this repository",
+}
+
+data megarac_op_fan_set_fan_speed: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/fan_control/set_fan_speed",
+  contract_note: "same UI bundle path; per-fan PWM JSON member names are in the fan_control view and are unread here — do not author a body from inference",
+}
+
 // THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the
 // ISO directory over NFS to the BMC address; PUT media config; wait for the daemon's own retry
 // interval while the images listing goes from refusing to listing the image; POST start-media WITH
@@ -141,6 +165,10 @@ data megarac_api_operations: List<MegaRacApiOperation> = [
   megarac_op_media_start,
   megarac_op_media_stop,
   megarac_op_media_status,
+  megarac_op_fan_get_manager_status,
+  megarac_op_fan_get_fan_info,
+  megarac_op_fan_set_manager_status,
+  megarac_op_fan_set_fan_speed,
 ]
 
 // THE PARAMETER THE START-MEDIA CONTRACT CALLS REQUIRED, AS A TYPE. megarac_op_media_start
@@ -399,6 +427,50 @@ service megarac.Media {
     exit {
       0 => Unit
       nonzero => String "megarac session DELETE failed"
+    }
+  }
+}
+
+service megarac.FanControl {
+
+  operation GetManagerStatus {
+    requires Network
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "--max-time", "{max_time}", "https://{bmc_host}/api/fan_control/get_manager_status"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac fan get_manager_status GET failed"
+    }
+  }
+
+  operation GetFanInfo {
+    requires Network
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "--max-time", "{max_time}", "https://{bmc_host}/api/fan_control/get_fan_info"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac fan get_fan_info GET failed"
+    }
+  }
+
+  operation SetManagerStatus {
+    requires Network
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
+    output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-H", "Content-Type: application/json", "-X", "POST", "-d", "{json_body}", "https://{bmc_host}/api/fan_control/set_manager_status"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac fan set_manager_status POST failed"
     }
   }
 }

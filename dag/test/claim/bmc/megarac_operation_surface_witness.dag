@@ -1,10 +1,26 @@
 module test.claim.bmc.megarac_operation_surface_witness
 
 import std.types { Bool }
+import std.optional { Present, Absent }
+import std.measure { percent_count }
+import gunbc.machine_intake.megarac_fan_mode_observation {
+  BootThroughTerminal,
+  CoolingManagerAutomatic,
+  CoolingManagerDisabledManual,
+  HostBringupAndAfter,
+  megarac_fan_boot_phase_desire,
+  megarac_fan_bringup_phase_desire,
+  megarac_manager_standing_of_wire,
+  mtcollins1_megarac_fan_mode_observation_2026_10_14,
+}
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.megarac {
+  megarac_op_fan_get_fan_info,
+  megarac_op_fan_get_manager_status,
+  megarac_op_fan_set_fan_speed,
+  megarac_op_fan_set_manager_status,
   MegaRacIpmiSelPayloadPreserved,
   MegaRacWebEventLogOemEmptySelData,
   RedirectionConnecting,
@@ -51,6 +67,34 @@ import gunbc.machine_intake.megarac_pre_os_channel {
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn mtcollins1_grounded_read_is_automatic_with_two_live_pairs() -> Bool {
+  match mtcollins1_megarac_fan_mode_observation_2026_10_14.manager {
+    CoolingManagerAutomatic =>
+      mtcollins1_megarac_fan_mode_observation_2026_10_14.fans.length() == 6
+        && match mtcollins1_megarac_fan_mode_observation_2026_10_14.fans.skip(n: 4).first() {
+          Present { value: row } => percent_count(p: row.fan_pwm) == 20
+          Absent => false
+        }
+        && match megarac_manager_standing_of_wire(manager_disabled: 1) {
+          CoolingManagerDisabledManual =>
+            megarac_fan_boot_phase_desire.phase == BootThroughTerminal
+              && megarac_fan_bringup_phase_desire.phase == HostBringupAndAfter
+              && megarac_fan_bringup_phase_desire.manager == CoolingManagerAutomatic
+          CoolingManagerAutomatic => false
+        }
+    CoolingManagerDisabledManual => false
+  }
+}
+
+test fn fan_control_paths_are_the_served_ui_routes() -> Bool {
+  (megarac_op_fan_get_manager_status.path as String) == "/api/fan_control/get_manager_status"
+    && (megarac_op_fan_get_fan_info.path as String) == "/api/fan_control/get_fan_info"
+    && (megarac_op_fan_set_manager_status.path as String) == "/api/fan_control/set_manager_status"
+    && (megarac_op_fan_set_fan_speed.path as String) == "/api/fan_control/set_fan_speed"
+    && (megarac_op_fan_get_manager_status.http_method as String) == "GET"
+    && (megarac_op_fan_set_fan_speed.http_method as String) == "POST"
+}
 
 test fn redirection_status_at_0_32_recovers_the_served_ui_enum() -> Bool {
   match megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 1) {

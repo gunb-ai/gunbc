@@ -47,7 +47,7 @@ data megarac_fan_converge_route: FanDutyConvergeRoute = ConvergeRouteUnbound {
   authority: FanPolicyAuthority {
     declaration: decl_ref("extdeps.bmc.megarac_fan_policy", "megarac_fan_mode_surface"),
   },
-  read_obligation: "bind extdeps.bmc.megarac_fan_policy megarac_fan_mode_surface to the build's documented fan-mode operation before any ceiling can be converged on this family",
+  read_obligation: "read side of megarac_fan_mode_surface is bound (get_manager_status, get_fan_info); converge write of PWM remains unbound until extdeps.bmc.megarac megarac_op_fan_set_fan_speed JSON members are read from the fan_control view — do not author them from inference",
 }
 
 fn fan_converge_route_for_family(family: BmcFirmwareFamily) -> FanDutyConvergeRoute {
