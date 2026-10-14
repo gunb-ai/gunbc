@@ -25178,7 +25178,16 @@ pub fn rust_empty_map_init_expr(
                 ),
                 emit_info.fn_generic_param_names.clone(),
             ) || type_node_carries_erased_type_argument(map_type.clone())
-                || v1_rt::contains(kv_type_str.clone(), "_".to_string()))
+                || {
+                    let mut __uninstantiated_formal = false;
+                    for c in map_type.children.clone().iter().cloned() {
+                        if type_node_child_is_type_variable(c.clone()) {
+                            __uninstantiated_formal = true;
+                            break;
+                        }
+                    }
+                    __uninstantiated_formal
+                })
             {
                 "v1_rt::rc_empty_map::<_, _>()".to_string()
             } else {

@@ -10194,6 +10194,87 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// Generic fn&lt;V&gt; returning Map&lt;K2, Entry&lt;V&gt;&gt; via empty_map: emit the
+    /// instantiated argument types, or defer `::<_, _>()` because a Map child is still a
+    /// TypeVariable. Never `::<_, V>()` — that is Map's formal V captured as the fn parameter
+    /// by spelling (quiet-hawk msg_d56a8c65). rustc must accept the analog of the emitted arm.
+    #[test]
+    fn host_emit_generic_empty_map_map_k2_entry_v_turbofish_rustc() {
+        let fixture = Fixture::new(&[(
+            "entry.dag",
+            "module fx.entry\ntype K2 = String\ntype Entry<T> { x: T }\nfn make<V>() -> Map<K2, Entry<V>> { empty_map() }\n",
+        )]);
+        let index = fixture.index();
+        let sources = load_sources_for_entry_with_pool(
+            &index,
+            &fixture.0.join("entry.dag").to_string_lossy(),
+        )
+        .expect("generic empty_map Map<K2, Entry<V>> must load");
+        let compiled = v1_compiler_compile::compile_sources(
+            Rc::new(sources.iter().cloned().collect()),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let blocking: Vec<String> = compiled
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        assert!(
+            blocking.is_empty(),
+            "generic empty_map Map<K2, Entry<V>> must compile: {blocking:?}"
+        );
+        let rust: String = compiled
+            .files
+            .iter()
+            .map(|f| f.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            rust.contains("rc_empty_map::"),
+            "empty_map must take the rust_empty_map_init_expr route: {rust}"
+        );
+        assert!(
+            !rust.contains("rc_empty_map::<_, V>()"),
+            "Map's formal V must not capture the enclosing fn parameter by name: {rust}"
+        );
+        let turbofish = rust
+            .split("rc_empty_map::")
+            .nth(1)
+            .and_then(|rest| rest.split("()").next())
+            .map(|rest| {
+                if rest.starts_with('<') {
+                    format!("::{rest}")
+                } else {
+                    rest.to_string()
+                }
+            })
+            .expect("rc_empty_map turbofish");
+        assert!(
+            turbofish == "::<_, _>" || (!turbofish.contains("_,") && turbofish.contains("Entry")),
+            "emit instantiated args or typed defer, not a half-instantiated mix: {turbofish}"
+        );
+        let analog = format!(
+            "#![allow(dead_code)]\nuse std::collections::HashMap;\nuse std::rc::Rc;\nstruct Entry<T> {{ x: T }}\nfn make<V>() -> Rc<HashMap<String, Entry<V>>> {{\n    Rc::new(HashMap{turbofish}::new())\n}}\nfn main() {{}}\n"
+        );
+        let dir = std::env::temp_dir().join(format!("gunbc_empty_map_tf_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let src_path = dir.join("analog.rs");
+        std::fs::write(&src_path, analog).expect("analog write");
+        let rustc = std::process::Command::new("rustc")
+            .args(["--edition", "2021", "--crate-type", "bin", "-o"])
+            .arg(dir.join("analog"))
+            .arg(&src_path)
+            .output()
+            .expect("rustc analog");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            rustc.status.success(),
+            "analog of emitted empty_map turbofish must rustc: {}",
+            String::from_utf8_lossy(&rustc.stderr)
+        );
+    }
+
     /// THE INDEX ROUTE READS THE INDEX'S PARSE. `load_sources_for_entry_with_index` (the discovery
     /// route's loader) follows a dotted reference through the one parse per file the index owns:
     /// after the first entry its closure files are in `parsed_references`, and a second entry
