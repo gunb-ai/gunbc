@@ -1109,6 +1109,20 @@ fn shape_git_commit_message_args(message: String) -> List<String> {
   ["commit", "-q", "-m", message]
 }
 
+// COMMAND-LINE `-c` WINS OVER REPOSITORY AND WORKTREE CONFIG for these keys (git-config(1)).
+// A worker that can write objects/refs must not be able to make the controller's later git
+// invoke hooks, fsmonitor, sshCommand, or diff.external. This is not a complete filter
+// table; pairing it with not carving out .git/config and .git/hooks is what closes planting.
+fn git_command_config_inert_args() -> List<String> {
+  [
+    "-c", "core.hooksPath=/dev/null",
+    "-c", "core.fsmonitor=false",
+    "-c", "core.useBuiltinFSMonitor=false",
+    "-c", "core.sshCommand=/bin/true",
+    "-c", "diff.external=/bin/true",
+  ]
+}
+
 fn git_observe_meta_shell_fragment() -> String {
   concat(
     "git branch=$(", concat(git_shell_join_argv(argv: shape_git_branch_show_current_argv()), " 2>/dev/null || echo unknown)"),
