@@ -180,7 +180,7 @@ fn w_struct_generic_reaching_a_key_through_a_field_earns_eq_and_hash() -> Bool {
   compile_dag_rust_emit_check(
     "module map_key_witness.struct_header\nimport v2.std.collection { Map }\ntype Wrapper<K> {\n  subject: K\n}\ntype Index<K, V> {\n  slots: Map<Wrapper<K>, V>\n}\n",
     "src/map_key_witness_struct_header.rs",
-    ["pub struct Index<K: std::cmp::Eq + std::hash::Hash, V"],
+    ["pub struct Index<K: Clone + std::cmp::Eq + std::hash::Hash, V"],
     ["pub struct Index<K, V", "pub struct Index<K: Clone, V"]
   )
 }
@@ -189,7 +189,7 @@ fn w_struct_naming_a_key_bounded_carrier_and_its_fn_signature_propagate_the_boun
   compile_dag_rust_emit_check(
     "module map_key_witness.struct_propagates\nimport v2.std.collection { Map }\ntype Wrapper<K> {\n  subject: K\n}\ntype Index<K, V> {\n  slots: Map<Wrapper<K>, V>\n}\ntype Holder<A, B> {\n  inner: Index<A, B>\n}\nfn size_of<P, Q>(h: Holder<P, Q>) -> Int {\n  0\n}\n",
     "src/map_key_witness_struct_propagates.rs",
-    ["pub struct Holder<A: std::cmp::Eq + std::hash::Hash, B", "pub fn size_of<P: std::cmp::Eq + std::hash::Hash, Q"],
+    ["pub struct Holder<A: Clone + std::cmp::Eq + std::hash::Hash, B", "pub fn size_of<P: Clone + std::cmp::Eq + std::hash::Hash, Q"],
     ["pub struct Holder<A, B", "pub fn size_of<P, Q"]
   )
 }

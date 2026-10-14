@@ -295,7 +295,7 @@ pub struct PartialFunction<K, V> {
 }
 
 #[derive(Clone)]
-pub struct FinitelySupportedFunction<K, V> {
+pub struct FinitelySupportedFunction<K: std::cmp::Eq + std::hash::Hash, V> {
     pub lookup: Rc<dyn Fn(K) -> Option<V>>,
     pub empty: Rc<FinitelySupportedFunction<K, V>>,
     pub get: Rc<dyn Fn(K) -> Option<V>>,
