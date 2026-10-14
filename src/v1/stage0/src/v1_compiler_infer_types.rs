@@ -154,12 +154,12 @@ pub fn node_is_keyed_collection(
 
 pub fn collection_carrier_node(n: Rc<Node>) -> Rc<Node> {
     if ((n.children.clone().len() as i64) == 0) {
-        match n.inferred.clone().as_deref() {
-            Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => rt.clone(),
-            _ => n.clone(),
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+            _ => n,
         }
     } else {
-        n.clone()
+        n
     }
 }
 
@@ -167,9 +167,11 @@ pub fn node_is_element_collection(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    let c = collection_carrier_node(n.clone());
-    (((c.children.clone().len() as i64) == 1)
-        && node_is_collection(c.clone(), source_indices.clone()))
+    {
+        let c = collection_carrier_node(n.clone());
+        (((c.children.clone().len() as i64) == 1)
+            && node_is_collection(c.clone(), source_indices.clone()))
+    }
 }
 
 pub fn node_is_set_collection(
@@ -3242,24 +3244,6 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
             {
                 match n.children.clone().first().cloned() {
                     Some(inner) => inner.clone(),
-                    std::option::Option::None => n.clone(),
-                }
-            } else if ((n.name.clone() == "Optional".to_string())
-                && (n.connective.clone() == Connective::Disj))
-            {
-                let present_arm = n.children.iter().cloned().find(|c| c.name == "Present");
-                match present_arm {
-                    Some(present_arm) => {
-                        let vf = present_arm
-                            .children
-                            .iter()
-                            .cloned()
-                            .find(|f| f.name == "value");
-                        match vf {
-                            Some(vf) => child_type_node(vf.clone()),
-                            std::option::Option::None => n.clone(),
-                        }
-                    }
                     std::option::Option::None => n.clone(),
                 }
             } else {

@@ -9,8 +9,8 @@ import std.content_hash {
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import std.target_representation { VariantParentIdentity, VariantParentIdentified, VariantParentUnrecovered, VariantParentDeclaration, VariantParentKernelType }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
+import std.target_representation { VariantParentIdentity, VariantParentIdentified, VariantParentBeforeInference, VariantParentUnrecovered, VariantParentDeclaration, VariantParentKernelType }
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
@@ -10848,8 +10848,26 @@ fn declaration_is_std_optional(d: DeclarationRef) -> Bool {
   (d.module_path as String) == "std.optional" && (d.decl_name as String) == "Optional"
 }
 
+// THE CARRIED IDENTITY FIRST: a reference the resolver stamped (Node.declaration) names its
+// declaration; a binder carries a TypeParameter/NamedField field and is not a whole declaration.
 fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarationReading {
   let spelling = qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: n))
+  let carried = match n.declaration {
+    Present { value: d } =>
+      match d.field {
+        WholeDeclaration => Present { value: d }
+        NamedField { field_name: _ } => none
+        TypeParameter { name: _ } => none
+      }
+    Absent => none
+  }
+  match carried {
+    Present { value: d } => if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
+    Absent => optional_reading_by_census(n: n, scope: scope, spelling: spelling)
+  }
+}
+
+fn optional_reading_by_census(n: Node, scope: InferScope, spelling: String) -> OptionalDeclarationReading {
   match type_reference_declaration_reading(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env) {
     TypeReferenceNamesDeclaration { declaration: d } =>
       if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
@@ -10859,6 +10877,8 @@ fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarati
           if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
         VariantParentIdentified { key: _ } => IsOtherType
         VariantParentUnrecovered { cause: _ } =>
+          if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
+        VariantParentBeforeInference =>
           if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
       }
     TypeReferenceIsTypeVariable { id: _ } => IsOtherType
