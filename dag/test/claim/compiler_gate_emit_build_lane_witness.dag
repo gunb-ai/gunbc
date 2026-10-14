@@ -33,8 +33,11 @@ import gunbc.parse_verdict_schema {
 }
 import gunbc.parse_verdict_restore {
   materialization_restore_if,
+  parse_verdict_identity_restore_step,
   parse_verdict_restore_step,
   parse_verdict_restore_consume_step,
+  parse_verdict_restore_consume_command,
+  parse_verdict_restore_exact_key,
 }
 import gunbc.required_ci_contract_epoch {
   required_ci_context_name,
@@ -62,7 +65,7 @@ import gunbc.runner.runner_slot_desired {
 }
 import extdeps.exec.command { shell_command_render }
 import std.algebra { length, list_head, skip }
-import gunbc.action_use_admission { cache_save_action }
+import gunbc.action_use_admission { cache_save_action, cache_restore_action }
 import extdeps.github.action_release { action_release_uses_text }
 import extdeps.filesystem.filesystem_io
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
@@ -598,13 +601,41 @@ test fn the_seed_keep_uses_the_publisher_basename() -> Bool {
   string_contains(s: runner, pattern: parse_verdict_generation_one_basename)
 }
 
+fn restore_is_exact_key_only(step: Step) -> Bool {
+  match step {
+    UsesStep { name: _, id: _, uses: u, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      (action_release_uses_text(action_release: u) == action_release_uses_text(action_release: cache_restore_action))
+        && match w {
+          Present { value: kvs } =>
+            any(kvs, kv => kv.key == "key")
+              && any(kvs, kv => kv.key == "path")
+              && (any(kvs, kv => kv.key == "restore-keys") == false)
+          Absent => false
+        }
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
 test fn a_pr_head_restores_and_never_saves() -> Bool {
   let restore_if = materialization_restore_if()
-  (step_if_condition(step: parse_verdict_restore_step()) == restore_if)
+  (step_if_condition(step: parse_verdict_identity_restore_step()) == restore_if)
+    && (step_if_condition(step: parse_verdict_restore_step()) == restore_if)
     && (step_if_condition(step: parse_verdict_restore_consume_step()) == restore_if)
     && string_contains(s: restore_if, pattern: "pull_request")
     && (string_contains(s: restore_if, pattern: "push") == false)
-    && any(step_with_keys(step: parse_verdict_restore_step()), k => k == "restore-keys")
+    && restore_is_exact_key_only(step: parse_verdict_identity_restore_step())
+    && restore_is_exact_key_only(step: parse_verdict_restore_step())
+    && string_contains(s: parse_verdict_restore_exact_key(), pattern: "github.event.pull_request.base.sha")
+    && (string_contains(s: parse_verdict_restore_exact_key(), pattern: "restore-keys") == false)
+    && string_contains(s: parse_verdict_restore_consume_command(), pattern: "BaseIdentityUnobserved")
+    && string_contains(s: parse_verdict_restore_consume_command(), pattern: "FreshIdentityWalked")
+    && string_contains(s: parse_verdict_restore_consume_command(), pattern: "reuse=Reused")
+    && string_contains(s: parse_verdict_restore_consume_command(), pattern: "EvictedRefused")
+}
+
+test fn the_identity_restore_key_is_sha_only() -> Bool {
+  string_contains(s: parse_compiler_sha_identity_cache_prefix, pattern: "gunbc-parse-identity-")
+    && (step_if_condition(step: parse_verdict_identity_blob_save_step()) == materialization_publish_if())
 }
 
 test fn the_gha_object_key_carries_compiler_identity_and_sha() -> Bool {

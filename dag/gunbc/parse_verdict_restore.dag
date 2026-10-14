@@ -10,6 +10,9 @@ import gunbc.ci.ci_failure_class { wrap_command_is_renderable }
 import v2.cli.population_verb_names { cli_verb_parse_population }
 import gunbc.parse_verdict_schema {
   parse_verdict_request_family,
+  parse_compiler_sha_identity_blob_dir,
+  parse_compiler_sha_identity_blob_path,
+  parse_compiler_sha_identity_cache_key,
 }
 import gunbc.parse_verdict_publish {
   materialization_gha_cache_key_prefix,
@@ -28,12 +31,14 @@ fn materialization_restore_if() -> String {
   join(["github.event_name == '", github_event_name_pull_request, "'"], "")
 }
 
+data parse_verdict_identity_restore_step_id: String = "restore_parse_compiler_sha_identity"
+data parse_verdict_identity_restore_step_name: String = "Restore parse-compiler identity for base.sha"
 data parse_verdict_restore_step_id: String = "restore_parse_verdicts"
-data parse_verdict_restore_step_name: String = "Restore parse-verdict receipts from Actions cache"
+data parse_verdict_restore_step_name: String = "Restore parse-verdict receipts for base.sha"
 data parse_verdict_restore_consume_step_name: String = "Reuse or walk parse-verdict receipts"
 data parse_verdict_cache_hit_output: String = "cache-hit"
 
-fn parse_verdict_restore_prefix() -> String {
+fn parse_verdict_restore_exact_key() -> String {
   join(
     [
       materialization_gha_cache_key_prefix(family: parse_verdict_request_family),
@@ -41,16 +46,28 @@ fn parse_verdict_restore_prefix() -> String {
       parse_verdict_publish_step_id,
       ".outputs.",
       parse_verdict_compiler_output,
-      " }}-"
+      " }}-${{ github.event.pull_request.base.sha }}"
     ],
     ""
   )
 }
 
-// Exact key is the merge-base sha under this compiler. restore-keys is the compiler prefix
-// so a later main save still hits when base.sha itself was LRU-evicted.
-fn parse_verdict_restore_exact_key() -> String {
-  join([parse_verdict_restore_prefix(), "${{ github.event.pull_request.base.sha }}"], "")
+fn parse_verdict_identity_restore_step() -> Step {
+  UsesStep {
+    name: Present { value: parse_verdict_identity_restore_step_name },
+    id: Present { value: parse_verdict_identity_restore_step_id },
+    uses: cache_restore_action,
+    with: Present {
+      value: [
+        kv(key: "path", value: yaml_string(s: parse_compiler_sha_identity_blob_dir)),
+        kv(key: "key", value: yaml_string(s: parse_compiler_sha_identity_cache_key(sha: "${{ github.event.pull_request.base.sha }}")))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: materialization_restore_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
 }
 
 fn parse_verdict_restore_step() -> Step {
@@ -61,8 +78,7 @@ fn parse_verdict_restore_step() -> Step {
     with: Present {
       value: [
         kv(key: "path", value: yaml_string(s: parse_verdict_receipt_dir)),
-        kv(key: "key", value: yaml_string(s: parse_verdict_restore_exact_key())),
-        kv(key: "restore-keys", value: yaml_string(s: parse_verdict_restore_prefix()))
+        kv(key: "key", value: yaml_string(s: parse_verdict_restore_exact_key()))
       ]
     },
     env: none,
@@ -72,29 +88,32 @@ fn parse_verdict_restore_step() -> Step {
   }
 }
 
-data parse_verdict_restore_shell_emit_dissolution_text: NonEmptyStr = "dissolve-on: parse_verdict_restore_consume_step -- hand-shell standing + walk-on-miss. DISSOLVES WHEN v2.workflow.ci_workflow_run_emit renders this from modeled bash_build statements."
+data parse_verdict_restore_shell_emit_dissolution_text: NonEmptyStr = "dissolve-on: parse_verdict_restore_consume_step -- hand-shell of parse_verdict_reuse_from. DISSOLVES WHEN v2.workflow.ci_workflow_run_emit renders this from modeled bash_build statements."
 data parse_verdict_restore_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: parse_verdict_restore_shell_emit_dissolution_text)
 
-// A prefix hit means this I_head has a blob (Reused). A miss cannot tell FreshIdentityWalked
-// (new compiler, never published) from EvictedRefused (same compiler, LRU) without an independent
-// I_base; the executing arm WALKS on miss rather than refusing a parser-change PR.
 fn parse_verdict_restore_consume_command() -> String {
   join(
     [
       "set -o pipefail",
+      "base_sha=\"${{ github.event.pull_request.base.sha }}\"",
+      join(["idhit=\"${{ steps.", parse_verdict_identity_restore_step_id, ".outputs.", parse_verdict_cache_hit_output, " }}\""], ""),
       join(["hit=\"${{ steps.", parse_verdict_restore_step_id, ".outputs.", parse_verdict_cache_hit_output, " }}\""], ""),
       join(["bin=\"${{ steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_parser_bin_output, " }}\""], ""),
       join(["compiler=\"${{ steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_compiler_output, " }}\""], ""),
       "if [ -z \"$bin\" ] || [ ! -x \"$bin\" ] || [ -z \"$compiler\" ]; then echo \"::error::IdentityUnknown: parser identity or generation-one executable missing after the identity step\"; exit 1; fi",
-      join(["mkdir -p \"", parse_verdict_receipt_dir, "\""], ""),
+      join(["idfile=\"", parse_compiler_sha_identity_blob_path(), "\""], ""),
       join(["receipts=\"", parse_verdict_receipt_dir, "/receipts.tsv\""], ""),
+      "if [ \"$idhit\" != \"true\" ] || [ ! -s \"$idfile\" ]; then echo \"::error::BaseIdentityUnobserved: no parse-compiler identity for base.sha=$base_sha\"; exit 1; fi",
+      "i_base=$(cat \"$idfile\")",
       join(
         [
-          "if [ \"$hit\" = \"true\" ]; then if [ ! -s \"$receipts\" ]; then echo \"::error::EvictedRefused: cache-hit but receipts.tsv missing or empty\"; exit 1; fi; echo \"parse-verdict reuse=Reused compiler=$compiler\"; else \"$bin\" ",
+          "if [ \"$compiler\" != \"$i_base\" ]; then mkdir -p \"",
+          parse_verdict_receipt_dir,
+          "\"; \"$bin\" ",
           cli_verb_parse_population,
           " --compiler \"$compiler\"",
           source_root_argv(),
-          " > \"$receipts\"; echo \"parse-verdict reuse=FreshIdentityWalked compiler=$compiler\"; fi"
+          " > \"$receipts\"; echo \"parse-verdict reuse=FreshIdentityWalked compiler=$compiler\"; elif [ \"$hit\" = \"true\" ] && [ -s \"$receipts\" ]; then echo \"parse-verdict reuse=Reused compiler=$compiler\"; else echo \"::error::EvictedRefused: I_head equals I_base but receipts for base.sha=$base_sha are missing or empty\"; exit 1; fi"
         ],
         ""
       )

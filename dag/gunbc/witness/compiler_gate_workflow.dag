@@ -146,6 +146,8 @@ import gunbc.parse_verdict_publish {
   parse_verdict_save_step_name,
 }
 import gunbc.parse_verdict_restore {
+  parse_verdict_identity_restore_step,
+  parse_verdict_identity_restore_step_name,
   parse_verdict_restore_step,
   parse_verdict_restore_consume_step,
   parse_verdict_restore_step_name,
@@ -469,6 +471,11 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
         step: parse_verdict_identity_blob_save_step(),
         role: capability_neutral,
         step_name: parse_verdict_identity_blob_save_step_name(),
+      },
+      CompilerGateBoundStep {
+        step: parse_verdict_identity_restore_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_identity_restore_step_name,
       },
       CompilerGateBoundStep {
         step: parse_verdict_restore_step(),
