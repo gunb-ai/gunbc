@@ -65,7 +65,7 @@ jobs:
         shell: bash
         env:
           INSTRUMENT_LABEL: ${{ inputs.label }}
-          REQUIRED_MEMORY_BYTES: "17179869184"
+          REQUIRED_MEMORY_BYTES: "18253611008"
         if: inputs.label == '//gunbc/instruments:compute-run-unit-cold'
       - name: Require the declared memory for //gunbc/instruments:dependency-demand-census
         run: |

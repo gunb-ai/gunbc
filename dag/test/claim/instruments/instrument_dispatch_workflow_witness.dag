@@ -14,6 +14,9 @@ import gunbc.instruments.instrument_dispatch_workflow {
   instrument_dispatch_compute_run_unit_cold_memory_demand,
 }
 import gunbc.instrument_targets { dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label }
+import gunbc.instruments.compute_run_unit_cold {
+  compute_run_unit_cold_unit_grant_bytes, compute_run_unit_cold_job_memory_demand,
+}
 import extdeps.bazel.label { render_label }
 import std.measure { byte_size, byte_size_count }
 
@@ -160,4 +163,8 @@ test fn the_compute_run_unit_cold_dispatch_carries_its_own_memory_demand_holds()
     && any(instrument_dispatch_memory_demands(), d =>
       (render_label(l: d.label) == render_label(l: compute_run_unit_cold_label()))
         && (d.demand == instrument_dispatch_compute_run_unit_cold_memory_demand))
+    && (instrument_dispatch_compute_run_unit_cold_memory_demand == compute_run_unit_cold_job_memory_demand())
+    && (byte_size_count(b: instrument_dispatch_compute_run_unit_cold_memory_demand)
+      > byte_size_count(b: compute_run_unit_cold_unit_grant_bytes))
+    && contains(generated_text(), to_string(byte_size_count(b: instrument_dispatch_compute_run_unit_cold_memory_demand)))
 }
