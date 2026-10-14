@@ -121,11 +121,20 @@ data kernel_grounding_rows: List<KernelGrounding> = [
 
 // WHICH KERNEL MINTS STAND FOR A CORPUS DECLARATION (std.literal_elaboration
 // KernelMintDeclaration). The seed's kernel Optional -- what `T?` resolves to -- is
-// v2.std.optional Optional, the corpus's one declaration of that coproduct. Bound here so a
-// Present or Absent arm carries that declaration's identity whether it was reached through the
-// sugar or through an import.
+// std.optional Optional. Collection callee spellings (concat, count, map, filter, first, join,
+// map_get, map_insert) bind to their std.algebra collection_*_shape identities (ruling B,
+// 2026-10-14): one home each, not a parallel builtins module and not a free fn of the surface
+// spelling. empty_map remains the v2.std.collection fn (dag sources cannot import v2).
 data kernel_optional_mint_name: String = "Optional"
 
 data kernel_mint_declaration_rows: List<KernelMintDeclaration> = [
-  KernelMintDeclaration { minted_name: kernel_optional_mint_name as NonEmptyStr, declaration: decl_ref(module_path: "std.optional", decl_name: "Optional") }
+  KernelMintDeclaration { minted_name: kernel_optional_mint_name as NonEmptyStr, declaration: decl_ref(module_path: "std.optional", decl_name: "Optional") },
+  KernelMintDeclaration { minted_name: "concat" as NonEmptyStr, declaration: decl_ref(module_path: "std.algebra", decl_name: "collection_concat_shape") },
+  KernelMintDeclaration { minted_name: "count" as NonEmptyStr, declaration: decl_ref(module_path: "std.algebra", decl_name: "collection_count_shape") },
+  KernelMintDeclaration { minted_name: "map" as NonEmptyStr, declaration: decl_ref(module_path: "std.algebra", decl_name: "collection_map_shape") },
+  KernelMintDeclaration { minted_name: "filter" as NonEmptyStr, declaration: decl_ref(module_path: "std.algebra", decl_name: "collection_filter_shape") },
+  KernelMintDeclaration { minted_name: "first" as NonEmptyStr, declaration: decl_ref(module_path: "std.algebra", decl_name: "collection_first_shape") },
+  KernelMintDeclaration { minted_name: "join" as NonEmptyStr, declaration: decl_ref(module_path: "std.algebra", decl_name: "collection_join_shape") },
+  KernelMintDeclaration { minted_name: "map_get" as NonEmptyStr, declaration: decl_ref(module_path: "std.algebra", decl_name: "collection_map_get_shape") },
+  KernelMintDeclaration { minted_name: "map_insert" as NonEmptyStr, declaration: decl_ref(module_path: "std.algebra", decl_name: "collection_map_insert_shape") }
 ]

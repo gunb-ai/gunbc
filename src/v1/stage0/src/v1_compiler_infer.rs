@@ -30761,6 +30761,17 @@ pub fn kernel_optional_shape_refusal(decl: Rc<Node>, env: Rc<TypeEnv>) -> Option
     }
 }
 
+pub fn kernel_operation_mint_admitted(minted_name: String, decl_name: String) -> bool {
+    (minted_name == "concat" && decl_name == "collection_concat_shape")
+        || (minted_name == "count" && decl_name == "collection_count_shape")
+        || (minted_name == "map" && decl_name == "collection_map_shape")
+        || (minted_name == "filter" && decl_name == "collection_filter_shape")
+        || (minted_name == "first" && decl_name == "collection_first_shape")
+        || (minted_name == "join" && decl_name == "collection_join_shape")
+        || (minted_name == "map_get" && decl_name == "collection_map_get_shape")
+        || (minted_name == "map_insert" && decl_name == "collection_map_insert_shape")
+}
+
 pub fn kernel_mint_shape_diagnostics(
     env: Rc<TypeEnv>,
     module_name: String,
@@ -30773,22 +30784,7 @@ pub fn kernel_mint_shape_diagnostics(
                 (*if (row.declaration.clone().module_path.clone() != module_name.clone()) {
                     Rc::new(vec![])
                 } else {
-                    if (row.minted_name.clone() != kernel_optional_mint_name()) {
-                        Rc::new(vec![crate::v1_std_core::make_error_node(
-                            Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
-                                declaration_name: row.declaration.clone().decl_name.clone(),
-                                cause: v1_rt::concat(
-                                    v1_rt::concat(
-                                        "the seed mints no kernel type named '".to_string(),
-                                        row.minted_name.clone(),
-                                    ),
-                                    "'".to_string(),
-                                ),
-                                span: module_span.clone(),
-                            }),
-                            module_name.clone(),
-                        )])
-                    } else {
+                    if (row.minted_name.clone() == kernel_optional_mint_name()) {
                         match crate::v1_compiler_infer_env::declaration_node_of_ref(
                             row.declaration.clone(),
                             env.clone(),
@@ -30823,6 +30819,41 @@ pub fn kernel_mint_shape_diagnostics(
                                 }
                             }
                         }
+                    } else if kernel_operation_mint_admitted(
+                        row.minted_name.clone(),
+                        row.declaration.clone().decl_name.clone(),
+                    ) {
+                        match crate::v1_compiler_infer_env::declaration_node_of_ref(
+                            row.declaration.clone(),
+                            env.clone(),
+                        ) {
+                            std::option::Option::None => {
+                                Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+                                        declaration_name: row.declaration.clone().decl_name.clone(),
+                                        cause: "this module does not declare it".to_string(),
+                                        span: module_span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )])
+                            }
+                            Some(_) => Rc::new(vec![]),
+                        }
+                    } else {
+                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+                                declaration_name: row.declaration.clone().decl_name.clone(),
+                                cause: v1_rt::concat(
+                                    v1_rt::concat(
+                                        "the seed mints no kernel type named '".to_string(),
+                                        row.minted_name.clone(),
+                                    ),
+                                    "'".to_string(),
+                                ),
+                                span: module_span.clone(),
+                            }),
+                            module_name.clone(),
+                        )])
                     }
                 })
                 .iter()

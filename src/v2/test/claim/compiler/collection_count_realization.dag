@@ -27,7 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ROUTE REDS THE REAL-PATH CLAIM: remove the count row from collection_roster_rows and `count(` is refused
 // resolve_reason_unbound_symbol (mutation run cited in the PR).
 
-data ccc_route_source: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  count(xs) == 0\n}\n\nfn g(xs: List<Pair>) -> Int {\n  count(xs)\n}\n"
+data ccc_route_source: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { collection_count_shape }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  count(xs) == 0\n}\n\nfn g(xs: List<Pair>) -> Int {\n  count(xs)\n}\n"
 
 type CccRouteReading {
   row_references: Int

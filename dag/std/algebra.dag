@@ -457,6 +457,10 @@ fn collection_map_get_shape() -> AlgebraFieldTemplate {
   { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none }
 }
 
+fn collection_map_insert_shape() -> AlgebraFieldTemplate {
+  { name: "map_insert", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
+}
+
 fn collection_sort_by_shape() -> AlgebraFieldTemplate {
   { name: "sort_by", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "SortKey" } }], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeSortBody }, callback_element_position: Present { value: 0 } }
 }
@@ -1124,7 +1128,7 @@ fn finitely_supported_function_templates() -> List<AlgebraFieldTemplate> {
     { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     collection_map_get_shape(),
     { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "map_insert", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    collection_map_insert_shape(),
     { name: "map_merge", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_contains_key", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },

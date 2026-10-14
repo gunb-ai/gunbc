@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn fmi_list_peers() -> List<DagSourceReadWitness> {
   [
     bla_source(src: "module v2.std.collection\n\nimport std.algebra { FreeMonoid }\n\ntype List<T> = std.algebra.FreeMonoid<T>\n", artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu),
-    bla_source(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)
+    bla_source(src: "module std.algebra\n\ntype FreeMonoid<T> = | Empty | Cons { head: T, tail: FreeMonoid<T> }\n\nfn collection_concat_shape() -> Int { 0 }\n\nfn collection_count_shape() -> Int { 0 }\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)
   ]
 }
 

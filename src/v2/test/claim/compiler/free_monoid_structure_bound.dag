@@ -34,7 +34,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // per DESIGN section 3's witness rule; so does the resolve-kind control (a supplied binder set, the shape the roster
 // synthesizes and resolve never sees).
 
-data fmb_kernel: String = "module p\n\nfn f(a: String, b: String) -> String {\n  concat(a, b)\n}\n"
+data fmb_kernel: String = "module p\n\nimport std.algebra { collection_concat_shape }\n\nfn f(a: String, b: String) -> String {\n  concat(a, b)\n}\n"
 
 fn fmb_binds_row(tree: ResolvedTree) -> Bool {
   fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {

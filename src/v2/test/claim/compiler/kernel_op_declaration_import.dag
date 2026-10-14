@@ -1,6 +1,7 @@
 module v2.test.claim.compiler.kernel_op_declaration_import
 
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_source }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
 import std.types { Bool }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -11,6 +12,7 @@ import std.algebra {
   collection_first_shape,
   collection_join_shape,
   collection_map_get_shape,
+  collection_map_insert_shape,
   collection_map_shape,
   fold_list
 }
@@ -28,12 +30,10 @@ import v2.std.node { node_subtree_nodes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUBJECT: ruling B (2026-10-14) — kernel collection ops are std.algebra declarations
-// (collection_*_shape), imported by name. The kernel spellings concat/first/join/map_get are not
-// free fns (dag_v2_defork_audit method table) and cannot yet occupy kernel_mint_declaration_rows
-// (v1.compiler.infer kernel_mint_shape_diagnostics admits only Optional). THIS MODULE'S RED/GREEN
-// is therefore the EXISTING declaration name collection_concat_shape: bare use refuses; an
-// explicit import resolves. Deleting the import greens the RED and reds the GREEN.
+// SUBJECT: ruling B (2026-10-14) — kernel collection ops are std.algebra collection_*_shape
+// identities, bound on kernel_mint_declaration_rows, imported explicitly. No free fn concat
+// (method table). Native concat() binds the template only when collection_concat_shape is imported.
+// Deleting that import reds concat() and greens the bare-concat claim.
 
 data kodi_algebra_peer: String = "module std.algebra\n\nfn collection_concat_shape() -> Int { 0 }\n"
 
@@ -50,21 +50,23 @@ test fn collection_shape_rows_carry_the_kernel_spellings() -> Bool {
     && collection_first_shape().name == "first"
     && collection_join_shape().name == "join"
     && collection_map_get_shape().name == "map_get"
+    && collection_map_insert_shape().name == "map_insert"
 }
 
-// THE INFER WALL: a concat mint row would be KernelMintShapeMismatch on std.algebra.
-test fn concat_has_no_kernel_mint_row() -> Bool {
+test fn concat_mint_binds_collection_concat_shape() -> Bool {
   match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "concat") {
-    KernelMintDeclarationAbsent => true
-    KernelMintDeclarationFound { declaration: _ } => false
+    KernelMintDeclarationFound { declaration: d } =>
+      declaration_ref_eq(a: d, b: decl_ref(module_path: "std.algebra", decl_name: "collection_concat_shape"))
+    KernelMintDeclarationAbsent => false
     KernelMintDeclarationAmbiguous { row_count: _ } => false
   }
 }
 
-test fn map_get_has_no_kernel_mint_row() -> Bool {
+test fn map_get_mint_binds_collection_map_get_shape() -> Bool {
   match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "map_get") {
-    KernelMintDeclarationAbsent => true
-    KernelMintDeclarationFound { declaration: _ } => false
+    KernelMintDeclarationFound { declaration: d } =>
+      declaration_ref_eq(a: d, b: decl_ref(module_path: "std.algebra", decl_name: "collection_map_get_shape"))
+    KernelMintDeclarationAbsent => false
     KernelMintDeclarationAmbiguous { row_count: _ } => false
   }
 }
@@ -90,6 +92,30 @@ test fn imported_collection_concat_shape_resolves() -> Bool {
     p_src: kodi_green_src,
     peers: [bla_source(src: kodi_algebra_peer, artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu)]
   ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold_list(xs: node_subtree_nodes(root: tree.root), empty: false, cons: fn(acc, n) {
+        acc || (match declaration_reference_path_optional(node: n) {
+          Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_concat_shape"
+          Absent => false
+        })
+      })
+  }
+}
+
+data kodi_concat_red: String = "module p\n\nimport v2.std.collection { List }\n\nfn f(a: List<Int>, b: List<Int>) -> List<Int> {\n  concat(a, b)\n}\n"
+
+data kodi_concat_green: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { collection_concat_shape }\n\nfn f(a: List<Int>, b: List<Int>) -> List<Int> {\n  concat(a, b)\n}\n"
+
+test fn bare_concat_without_import_is_unbound() -> Bool {
+  match fmi_assemble(src: kodi_concat_red) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+test fn concat_with_identity_import_binds_the_template() -> Bool {
+  match fmi_assemble(src: kodi_concat_green) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       fold_list(xs: node_subtree_nodes(root: tree.root), empty: false, cons: fn(acc, n) {
