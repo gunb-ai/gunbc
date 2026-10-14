@@ -198,11 +198,21 @@ fn keyed_roster_index_operations<K, V>(index: KeyedRosterIndex<K, V>) -> Int {
   index.map_lookups + index.map_inserts + index.key_prepends + index.order_reversals
 }
 
-fn keyed_roster_index_contains<K, V>(index: KeyedRosterIndex<K, V>, key: SubjectKey<K>) -> Bool {
+fn keyed_roster_contains<K, V>(index: KeyedRosterIndex<K, V>, key: SubjectKey<K>) -> Bool {
   match map_get(index.slots, key) {
     Present { value: _ } => true
     Absent => false
   }
+}
+
+// K5/K6 read surface: every distinct key in first-occurrence order (full set even with duplicates).
+fn keyed_roster_distinct<K, V>(index: KeyedRosterIndex<K, V>) -> List<SubjectKey<K>> {
+  index.distinct
+}
+
+// First occurrence of each repeating key, once, in the order each key was first found to repeat.
+fn keyed_roster_duplicated<K, V>(index: KeyedRosterIndex<K, V>) -> List<SubjectKey<K>> {
+  index.duplicated
 }
 
 fn keyed_roster_index_count<K, V>(index: KeyedRosterIndex<K, V>, key: SubjectKey<K>) -> Int {

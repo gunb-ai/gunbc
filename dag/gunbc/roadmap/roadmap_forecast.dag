@@ -39,6 +39,7 @@ import gunbc.roadmap.roadmap_model {
   node_accepted,
 }
 import std.keyed_row { KeyedRow, keyed_row_find }
+import std.key_relation { SubjectKey }
 import std.keyed_roster {
   keyed_roster_build, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey,
 }
@@ -562,14 +563,14 @@ fn no_calibration_gap_count(result: ScheduleForecastResult) -> Int {
 // of the refusal payloads, and of every population this module reports, because those are the
 // graph's and the wire's vocabulary and this change does not migrate them. What it must not be is
 // the key of THIS join. So a fold filters by identity and reports by slug.
-type NodeSizingAssignment = KeyedRow<SizingSubjectId, NodeSizing>
+type NodeSizingAssignment = KeyedRow<SubjectKey<SizingSubjectId>, NodeSizing>
 
-fn sizing_subject_eq(a: SizingSubjectId, b: SizingSubjectId) -> Bool {
+fn sizing_subject_eq(a: SubjectKey<SizingSubjectId>, b: SubjectKey<SizingSubjectId>) -> Bool {
   a == b
 }
 
 fn assigned_sizing(sizings: List<NodeSizingAssignment>, subject: SizingSubjectId) -> NodeSizing? {
-  match keyed_row_find(rows: sizings, wanted_key: subject, key_eq: sizing_subject_eq) {
+  match keyed_row_find(rows: sizings, wanted_key: SubjectKey { subject: subject }, key_eq: sizing_subject_eq) {
     Absent => none
     Present { value: row } => Present { value: row.value }
   }
@@ -622,7 +623,7 @@ fn node_sizing_adaptation(rn: RoadmapNode, d: NodeSizingDerivation) -> NodeSizin
     SizingDerived { subject, sizing } =>
       if subject == asked {
         NodeSizingAdaptation {
-          assignments: [KeyedRow { row_key: subject, value: sizing }],
+          assignments: [KeyedRow { row_key: SubjectKey { subject: subject }, value: sizing }],
           refusals: [],
         }
       } else {
@@ -662,10 +663,10 @@ fn derived_node_sizings(nodes: List<RoadmapNode>) -> NodeSizingAdaptation {
 // repeated subject surfaces that carrier's own KeyedRosterBuildDuplicateKey verdict instead of a
 // locally invented duplicate check.
 fn duplicate_sizing_subjects(sizings: List<NodeSizingAssignment>) -> List<SizingAssignmentRefusal> {
-  match keyed_roster_build(incomings: sizings, key_eq: sizing_subject_eq) {
+  match keyed_roster_build(incomings: sizings) {
     KeyedRosterBuilt { rows: _ } => []
     KeyedRosterBuildDuplicateKey { key, first, duplicate } =>
-      [SizingAssignedTwice { subject: key, first: first, duplicate: duplicate }]
+      [SizingAssignedTwice { subject: key.subject, first: first, duplicate: duplicate }]
   }
 }
 

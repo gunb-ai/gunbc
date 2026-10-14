@@ -5,6 +5,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_path }
 import std.keyed_row { KeyedRow, keyed_row_find }
+import std.key_relation { SubjectKey }
 import std.keyed_roster {
   keyed_roster_build,
   KeyedRosterBuilt,
@@ -294,7 +295,7 @@ type DesiredRosterRefusal
   | DesiredRosterDuplicateInstanceId { instance_id: String }
 
 type DesiredRosterStanding
-  = DesiredRosterAdmitted { keyed: List<KeyedRow<String, DesiredDeployment>> }
+  = DesiredRosterAdmitted { keyed: List<KeyedRow<SubjectKey<String>, DesiredDeployment>> }
   | DesiredRosterRefused { refusal: DesiredRosterRefusal }
 
 type DesiredDeploymentLookup
@@ -302,17 +303,17 @@ type DesiredDeploymentLookup
   | DesiredDeploymentUnknownInstanceId { instance_id: String }
   | DesiredDeploymentRosterRefused { refusal: DesiredRosterRefusal }
 
-fn string_key_eq(a: String, b: String) -> Bool {
+fn string_key_eq(a: SubjectKey<String>, b: SubjectKey<String>) -> Bool {
   a == b
 }
 
-fn desired_row_keyed(row: DesiredDeployment) -> KeyedRow<String, DesiredDeployment> {
-  KeyedRow { row_key: instance_id_text(id: row.instance.instance_id), value: row }
+fn desired_row_keyed(row: DesiredDeployment) -> KeyedRow<SubjectKey<String>, DesiredDeployment> {
+  KeyedRow { row_key: SubjectKey { subject: instance_id_text(id: row.instance.instance_id) }, value: row }
 }
 
 fn desired_roster_surface_standing(
   rows: List<DesiredDeployment>,
-  keyed: List<KeyedRow<String, DesiredDeployment>>,
+  keyed: List<KeyedRow<SubjectKey<String>, DesiredDeployment>>,
 ) -> DesiredRosterStanding {
   let surfaces = map(rows, r => desired_deployment_surface(row: r))
   let admitted = DesiredRosterAdmitted { keyed: keyed }
@@ -355,10 +356,10 @@ fn desired_roster_surface_standing(
 }
 
 fn desired_roster_standing(rows: List<DesiredDeployment>) -> DesiredRosterStanding {
-  match keyed_roster_build(incomings: map(rows, r => desired_row_keyed(row: r)), key_eq: string_key_eq) {
+  match keyed_roster_build(incomings: map(rows, r => desired_row_keyed(row: r))) {
     KeyedRosterBuildDuplicateKey { key, first: _, duplicate: _ } =>
       DesiredRosterRefused {
-        refusal: DesiredRosterDuplicateInstanceId { instance_id: key },
+        refusal: DesiredRosterDuplicateInstanceId { instance_id: key.subject },
       }
     KeyedRosterBuilt { rows: keyed } => desired_roster_surface_standing(rows: rows, keyed: keyed)
   }
@@ -374,7 +375,7 @@ fn desired_deployment_for_instance_id_over(rows: List<DesiredDeployment>, instan
     DesiredRosterAdmitted { keyed } =>
       match keyed_row_find(
         rows: keyed,
-        wanted_key: instance_id,
+        wanted_key: SubjectKey { subject: instance_id },
         key_eq: string_key_eq,
       ) {
         Present { value: found } => DesiredDeploymentFound { row: found.value }

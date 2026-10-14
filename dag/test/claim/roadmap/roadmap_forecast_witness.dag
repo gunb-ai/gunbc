@@ -6,6 +6,7 @@ import std.measure {
   positive_measure_count,
 }
 import std.types { Map }
+import std.key_relation { SubjectKey }
 import v2.std.collection { empty_map, map_insert, map_lookup, Present, Absent }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
@@ -126,7 +127,7 @@ fn fixture_node(id: String) -> RoadmapNode {
 }
 
 fn sized_at(n: RoadmapNode, cell: NodeSizing) -> NodeSizingAssignment {
-  KeyedRow { row_key: node_sizing_subject_id(rn: n), value: cell }
+  KeyedRow { row_key: SubjectKey { subject: node_sizing_subject_id(rn: n) }, value: cell }
 }
 
 fn fixture_sizings(ns: List<RoadmapNode>) -> List<NodeSizingAssignment> {
@@ -678,7 +679,7 @@ test fn witness_a_cell_answered_for_its_own_subject_is_admitted() -> Bool {
   count(adapted.refusals) == 0
     && count(adapted.assignments) == 1
     && all(adapted.assignments, assignment =>
-      assignment.row_key == node_sizing_subject_id(rn: a)
+      assignment.row_key.subject == node_sizing_subject_id(rn: a)
         && assignment.value.volume == VolumeSmall)
 }
 
