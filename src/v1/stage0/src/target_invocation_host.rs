@@ -1349,8 +1349,8 @@ fn run_v2_native_census_scoped(subject: &str, source_roots: &[String]) -> Invoca
             message: format!(
                 "v2-native-census-scoped: subject={} scope={} modules={} file_refusals={} \
                  advised_files={} residual_rows={} inferred={} infer_refused={} cause_groups={} \
-                 roots={}; the population is the subject's acquired closure (census_scope line \
-                 above), its rows grouped by fatal reason in the cause_group lines",
+                 roots={} diff={}; the population is the subject's acquired closure (census_scope line \
+                 above), its rows grouped by fatal reason in the cause_group lines; run record {}",
                 run.subject,
                 match run.scope {
                     cli_run::NativeCensusScopeWord::Closed => "closed".to_string(),
@@ -1364,7 +1364,9 @@ fn run_v2_native_census_scoped(subject: &str, source_roots: &[String]) -> Invoca
                 run.inferred,
                 run.infer_refused,
                 run.cause_groups,
-                run.roots
+                run.roots,
+                run.diff,
+                run.record.display()
             ),
         },
         Err(cause) => InvocationOutcome {
@@ -2939,6 +2941,7 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
             }
         }
     }
+    cli_run::user_work_scope::reexec_into_user_work_slice_if_owed();
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --
     // the same bind claim_executor and claim_batch take) at gunbc.emitted_subject_build_gate

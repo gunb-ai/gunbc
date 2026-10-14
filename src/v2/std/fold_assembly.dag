@@ -1,5 +1,11 @@
 module v2.std.fold_assembly
 import v2.std.node {
+  Disj,
+  Arrow,
+  Occupancy,
+  Instantiation,
+  ComputationNode,
+  Atom,
   Node,
   Edge,
   EdgeLabel,
@@ -14,7 +20,7 @@ import v2.std.node {
   NamedEdgeTargetLookup,
   Found,
   Ambiguous,
-  Absent,
+  NotFound,
   named_edge_target_lookup,
   fold_list_node
 }
@@ -124,16 +130,16 @@ fn decode_node_list(node: Node) -> Outcome<FreeMonoid<Node>> {
 
 fn decode_node_list_conj(node: Node, head: NamedEdgeTargetLookup, tail: NamedEdgeTargetLookup) -> Outcome<FreeMonoid<Node>> {
   match head {
-    Absent =>
+    NotFound =>
       match tail {
-        Absent => outcome_accepted(value: freemonoid_empty())
+        NotFound => outcome_accepted(value: freemonoid_empty())
         Found { target: _ } => fold_decode_reject(node: node, reason: ^fold_form_list_tail_without_head)
         Ambiguous => fold_decode_reject(node: node, reason: ^fold_form_list_edge_ambiguous)
       }
     Found { target: head_node } =>
       match tail {
         Found { target: tail_node } => decode_node_list_cons(head_node: head_node, tail_node: tail_node)
-        Absent => fold_decode_reject(node: node, reason: ^fold_form_list_head_without_tail)
+        NotFound => fold_decode_reject(node: node, reason: ^fold_form_list_head_without_tail)
         Ambiguous => fold_decode_reject(node: node, reason: ^fold_form_list_edge_ambiguous)
       }
     Ambiguous => fold_decode_reject(node: node, reason: ^fold_form_list_edge_ambiguous)
@@ -222,7 +228,7 @@ fn assemble_fold(g: ChainGeneralization) -> Node {
 fn fold_template_of(fold_form: Node) -> Outcome<Node> {
   match named_edge_target_lookup(children: fold_form.children, name: fold_template_edge) {
     Found { target: t } => outcome_accepted(value: t)
-    Absent => outcome_rejected(d: Diagnostic {
+    NotFound => outcome_rejected(d: Diagnostic {
       reason: ^fold_form_template_edge_absent,
       at: node_locus(node: fold_form),
       correction: Unavailable { reason: ExternalContractUnknown }
@@ -238,7 +244,7 @@ fn fold_template_of(fold_form: Node) -> Outcome<Node> {
 fn fold_per_element_of(fold_form: Node) -> Outcome<FreeMonoid<FreeMonoid<Node>>> {
   match named_edge_target_lookup(children: fold_form.children, name: fold_elements_edge) {
     Found { target: e } => decode_per_element(node: e)
-    Absent => fold_decode_reject(node: fold_form, reason: ^fold_form_elements_edge_absent)
+    NotFound => fold_decode_reject(node: fold_form, reason: ^fold_form_elements_edge_absent)
     Ambiguous => fold_decode_reject(node: fold_form, reason: ^fold_form_elements_edge_ambiguous)
   }
 }

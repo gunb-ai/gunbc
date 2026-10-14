@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_workflow_progress
 
 import std.types { String, Int, Bool, List, NonEmptyStr }
+import extdeps.posix.signal { linux_standard_signal_render }
 import extdeps.filesystem.filesystem_io {
   FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
 }
@@ -142,6 +143,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessAbsent,
   WorkerProcessRunning,
   WorkerProcessExited,
+  WorkerProcessSignaled,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCaptureObservation,
@@ -190,6 +192,8 @@ import gunbc.roadmap.roadmap_workflow_command {
   legacy_attempt_supersedable_detail,
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE ATTEMPT'S WORKTREE, OBSERVED RATHER THAN INFERRED. The Workspace segment read complete from the
 // modeled state pointer alone, so an attempt whose worktree was gone still showed its workspace done
@@ -355,6 +359,17 @@ fn provider_execution_process_forced_outcome(process: WorkerProcessEvidence) -> 
           detail: reason as String,
         },
       }
+    WorkerProcessSignaled { signal, last_command: _ } =>
+      Present {
+        value: ProviderFailed {
+          activity: "provider process signaled",
+          detail: join([
+            "provider process was killed by ",
+            linux_standard_signal_render(n: signal),
+            " before a terminal provider event",
+          ], ""),
+        },
+      }
   }
 }
 
@@ -397,6 +412,15 @@ fn provider_execution_reconcile_process(
               "Codex emitted turn.completed but process evidence is unobserved (",
               reason,
               "); the compatible exit the Agent obligation requires cannot be established",
+            ], ""),
+          }
+        WorkerProcessSignaled { signal, last_command: _ } =>
+          ProviderEventsRefused {
+            activity: activity,
+            detail: join([
+              "Codex emitted turn.completed but the retained pane was killed by ",
+              linux_standard_signal_render(n: signal),
+              "; terminal evidence conflicts",
             ], ""),
           }
       }
@@ -1563,3 +1587,15 @@ fn workflow_attempt_progress_json_value(
     progress: progress,
   ))
 }
+
+data nfr_reason_verification_producer_absent: String = "NOT terminal-state absorption, which is why this row carries its own reason rather than the shared provider one it first landed under: verification_segment has no terminal arm to absorb into, because Verify has no authoritative receipt producer yet. Every arm — including ProviderCompleted — answers WorkflowSegmentPending, so the match selects only the operator-facing detail string and decides no behaviour. Enumerating the remaining provider variants would clone a Pending arm per variant. The Pending-on-agent-success arm is the deliberate DESIGN §5 refusal to fabricate a verification fact from provider evidence, and it is load-bearing until the producer exists."
+
+data nfr_dissolve_verification_producer_absent: DissolutionCondition = unbound_dissolution(description: "the Verify receipt producer lands: the WorkItemExecutionContract's ModeledValidationCommand runs in the attempt worktree against one immutable candidate revision and persists a receipt, at which point this function folds over that receipt instead of over provider state, its arms carry distinct WorkflowSegmentStates, and the row deletes. It does NOT dissolve on the derived-terminality projection that clears its four siblings — a terminality partition over ProviderExecutionState leaves every arm answering Pending.")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "verification_segment" },
+      reason: nfr_reason_verification_producer_absent,
+      dissolution: nfr_dissolve_verification_producer_absent,
+    },
+]

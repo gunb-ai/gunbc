@@ -1,0 +1,317 @@
+module test.claim.live_deploy.user_work_slice_witness
+
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.measure { byte_size_count, kibibyte, byte_size }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io
+import extdeps.exec.command { argv_words }
+import extdeps.systemd { systemd_unit_property_wire }
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_user_scope_command,
+  SystemdSummaryPrintingWaitReady, SystemdSummaryPrintingWaitRefused, systemd_summary_printing_wait_argv,
+}
+import gunbc.live_deploy.slice_bounds {
+  user_work_slice_unit_name, user_work_slice_memory_swap_max,
+  user_work_slice_memory_max_of, user_work_slice_memory_high_of,
+  user_slice_backstop_memory_max_of, user_manager_remainder,
+  UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
+  approval_broker_slice_memory_max, approval_broker_slice_memory_high,
+}
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, user_work_charged_slots }
+import gunbc.live_deploy.served_slice_charge {
+  user_work_charged_in_served_allowance,
+}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.compute.unit_bounds {
+  compute_grant_unit_properties, gunbc_user_work_scope_command,
+  gunbc_user_work_wait_command, gunbc_user_work_transient_command,
+  user_work_scope_wrap_prefix_argv,
+  user_work_scope_standing, user_work_scope_standing_effect, user_work_scope_standing_wire,
+  user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
+  CgroupText, CgroupReadFailed,
+  AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, UserSessionAbsent,
+  UserManagerOwed, CgroupUnreadable, UserManagerProbeFailed,
+  WrapIntoUserWorkSlice, SkipUserWorkScope, RefuseUserWorkScope,
+}
+import gunbc.runner.runner_unit { runner_unit_prefix }
+import gunbc.gunbc_cli_command { gunbc_test_user_work_scope_command }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_properties }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
+import gunbc.host.host_converge {
+  user_manager_backstop_for, UserManagerBackstopNotOwed, UserManagerBackstopDerived,
+  UserManagerBackstopRefused, user_manager_instance_unit,
+  approval_broker_runtime_caps_for, ApprovalBrokerRuntimeCapsNotOwed,
+  ApprovalBrokerRuntimeCapsDerived, ApprovalBrokerRuntimeCapsRefused,
+  slice_control_caps_for,
+  SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data seed_user_work_scope_path: String = "src/v1/stage0/src/cli_run/user_work_scope.rs"
+
+fn property_words(props: List<SystemdRunProperty>) -> List<String> {
+  props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
+}
+
+fn has_property(props: List<SystemdRunProperty>, needle: String) -> Bool {
+  any(property_words(props: props), p => string_contains(s: p, pattern: needle))
+}
+
+fn slice_needle() -> String {
+  join(["Slice=", user_work_slice_unit_name as String], "")
+}
+
+fn slice_hits(words: List<String>) -> Int {
+  filter(words, w => string_contains(s: w, pattern: slice_needle())).length()
+}
+
+test fn user_work_slice_max_is_pool_slots_times_the_runner_ceiling() -> Bool {
+  match user_work_pool_slots() {
+    UserWorkPoolSlotsDerived { slots } =>
+      slots == user_work_charged_slots
+        && byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
+          == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * 2
+        && byte_size_count(b: user_work_charged_in_served_allowance())
+          == byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
+  }
+}
+
+test fn user_work_slice_high_is_one_gib_under_max() -> Bool {
+  match user_work_pool_slots() {
+    UserWorkPoolSlotsDerived { slots } => {
+      let max = user_work_slice_memory_max_of(slots: slots)
+      match user_work_slice_memory_high_of(memory_max: max) {
+        UserWorkSliceHighGapExceedsMax => false
+        UserWorkSliceHighDerived { bytes: high } =>
+          byte_size_count(b: high) + 1073741824 == byte_size_count(b: max)
+      }
+    }
+  }
+}
+
+test fn a_max_below_the_high_gap_refuses_rather_than_writing_zero() -> Bool {
+  match user_work_slice_memory_high_of(memory_max: byte_size(0)) {
+    UserWorkSliceHighGapExceedsMax => true
+    UserWorkSliceHighDerived { bytes: _ } => false
+  }
+}
+
+test fn user_manager_backstop_is_work_slice_plus_remainder() -> Bool {
+  match user_work_pool_slots() {
+    UserWorkPoolSlotsDerived { slots } => {
+      let work = user_work_slice_memory_max_of(slots: slots)
+      byte_size_count(b: user_slice_backstop_memory_max_of(work_slice_max: work))
+        == byte_size_count(b: work) + byte_size_count(b: user_manager_remainder)
+    }
+  }
+}
+
+test fn the_grant_launch_binds_the_declared_slice_once() -> Bool {
+  let props = compute_grant_unit_properties(granted: kibibyte(count: 1024), working_directory: "/wt", process_bounds: none)
+  !has_property(props: props, needle: slice_needle())
+    && has_property(props: props, needle: "MemoryMax=1048576")
+    && match gunbc_user_work_wait_command(unit: "gunbc-compute-t" as NonEmptyStr, properties: props, setenv_bindings: [], command_argv: ["true"]) {
+      SystemdSummaryPrintingWaitRefused { cause: _ } => false
+      SystemdSummaryPrintingWaitReady { wait } =>
+        slice_hits(words: systemd_summary_printing_wait_argv(w: wait)) == 1
+          && filter(systemd_summary_printing_wait_argv(w: wait), w => string_contains(s: w, pattern: "MemorySwapMax=0")).length() == 1
+    }
+}
+
+test fn the_reviewer_launch_binds_the_declared_slice_once() -> Bool {
+  let inst = srv2_deploy_dashboard_instance()
+  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: none)
+  !has_property(props: props, needle: slice_needle())
+    && match gunbc_user_work_transient_command(unit: "gunbc-review-t.service" as NonEmptyStr, properties: props, setenv_bindings: [], command_argv: ["true"]) {
+      SystemdRunCommandRefused { cause: _ } => false
+      SystemdRunCommandReady { command } =>
+        slice_hits(words: argv_words(command: command)) == 1
+          && filter(argv_words(command: command), w => string_contains(s: w, pattern: "MemorySwapMax=0")).length() == 1
+    }
+}
+
+test fn the_ad_hoc_scope_wrap_injects_the_slice_the_raw_builder_omits() -> Bool {
+  let raw_ok = match systemd_run_user_scope_command(properties: [], command_argv: ["true"]) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command } =>
+      !any(argv_words(command: command), w => string_contains(s: w, pattern: "Slice="))
+  }
+  match gunbc_user_work_scope_command(properties: [], command_argv: ["gunbc", "test", "//x"]) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command } =>
+      raw_ok
+        && slice_hits(words: argv_words(command: command)) == 1
+        && filter(argv_words(command: command), w => string_contains(s: w, pattern: "MemorySwapMax=0")).length() == 1
+        && any(argv_words(command: command), w => w == "--user")
+        && any(argv_words(command: command), w => w == "--scope")
+  }
+}
+
+test fn the_seed_trampoline_mirrors_the_declared_wrap_prefix() -> Bool {
+  let seed = filesystem_read(path: seed_user_work_scope_path).content
+  let prefix = user_work_scope_wrap_prefix_argv()
+  let swap_word = join(["--property=MemorySwapMax=", to_string(byte_size_count(b: user_work_slice_memory_swap_max))], "")
+  let slice_word = join(["--property=Slice=", user_work_slice_unit_name as String], "")
+  prefix.length() > 0
+    && any(prefix, w => w == "systemd-run")
+    && any(prefix, w => w == "--user")
+    && any(prefix, w => w == "--scope")
+    && any(prefix, w => w == slice_word)
+    && any(prefix, w => w == swap_word)
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.live_deploy.slice_bounds user_work_slice_unit_name`")
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.live_deploy.slice_bounds user_work_slice_memory_swap_max`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_slice_unit_name as String, "\"")))
+    && string_contains(
+      s: seed,
+      pattern: concat(
+        "const USER_WORK_SLICE_MEMORY_SWAP_MAX_BYTES: u64 = ",
+        concat(to_string(byte_size_count(b: user_work_slice_memory_swap_max)), ";"),
+      ),
+    )
+    && string_contains(s: seed, pattern: "CgroupUnreadable")
+    && string_contains(s: seed, pattern: "UserManagerProbeFailed")
+    && string_contains(s: seed, pattern: "std::process::exit(2)")
+}
+
+test fn user_work_scope_standing_selects_from_supplied_observations() -> Bool {
+  match user_work_scope_standing(unit_test: true, github_actions: true, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+    UnitTestExempt =>
+      match user_work_scope_standing(unit_test: false, github_actions: true, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+        CiExempt =>
+          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+            CgroupUnreadable =>
+              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: user_work_slice_unit_name as String }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                AlreadyInSlice =>
+                  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: runner_unit_prefix }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                    RunnerSlotExempt =>
+                      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: true, xdg_runtime_dir: false) {
+                        UserManagerOwed =>
+                          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: true) {
+                            UserManagerProbeFailed =>
+                              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                                UserSessionAbsent => true
+                                _ => false
+                              }
+                            _ => false
+                          }
+                        _ => false
+                      }
+                    _ => false
+                  }
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn user_session_absent_refuses_rather_than_skipping() -> Bool {
+  match user_work_scope_standing_effect(s: UserSessionAbsent) {
+    RefuseUserWorkScope { standing: UserSessionAbsent } =>
+      match user_work_scope_standing_effect(s: CiExempt) {
+        SkipUserWorkScope { standing: CiExempt } =>
+          match user_work_scope_standing_effect(s: UserManagerOwed) {
+            WrapIntoUserWorkSlice => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
+  let seed = filesystem_read(path: seed_user_work_scope_path).content
+  string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_ci_env_name`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_ci_env_name, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.runner.runner_unit runner_unit_prefix`")
+    && string_contains(s: seed, pattern: concat("\"", concat(runner_unit_prefix, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_xdg_runtime_dir_env_name`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_xdg_runtime_dir_env_name, "\"")))
+    && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: UserSessionAbsent))
+    && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: RunnerSlotExempt))
+    && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: CiExempt))
+    && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: UserManagerOwed))
+    && string_contains(s: seed, pattern: "UserWorkScopeStanding::UserSessionAbsent =>")
+    && string_contains(s: seed, pattern: "std::process::exit(2)")
+}
+
+test fn the_gunbc_test_user_work_scope_is_the_declared_wrap() -> Bool {
+  match gunbc_test_user_work_scope_command(label: "//gunbc/instruments:self-host") {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command } =>
+      slice_hits(words: argv_words(command: command)) == 1
+        && any(argv_words(command: command), w => w == "--user")
+        && any(argv_words(command: command), w => w == "--scope")
+        && any(argv_words(command: command), w => w == "test")
+  }
+}
+
+test fn host_converge_backstop_knobs_name_user_at_service_uid() -> Bool {
+  match user_manager_backstop_for(host: operator_host_srv1) {
+    UserManagerBackstopNotOwed => false
+    UserManagerBackstopRefused { cause: _ } => false
+    UserManagerBackstopDerived { knobs } =>
+      knobs.length() == 2
+        && string_contains(s: user_manager_instance_unit(), pattern: "user@1000.service")
+        && any(knobs, k => k.name == "user_manager_memory_max_bytes")
+        && any(knobs, k => k.name == "user_manager_memory_swap_max_bytes")
+  }
+}
+
+test fn user_manager_backstop_is_owed_only_on_the_placed_host() -> Bool {
+  match user_manager_backstop_for(host: operator_host_srv1) {
+    UserManagerBackstopDerived { knobs } =>
+      knobs.length() == 2
+        && match user_manager_backstop_for(host: operator_host_srv3) {
+          UserManagerBackstopNotOwed => true
+          UserManagerBackstopDerived { knobs: _ } => false
+          UserManagerBackstopRefused { cause: _ } => false
+        }
+    UserManagerBackstopNotOwed => false
+    UserManagerBackstopRefused { cause: _ } => false
+  }
+}
+
+test fn approval_broker_runtime_caps_are_the_model_14_16_on_the_placed_host() -> Bool {
+  match approval_broker_runtime_caps_for(host: operator_host_srv1) {
+    ApprovalBrokerRuntimeCapsNotOwed => false
+    ApprovalBrokerRuntimeCapsRefused { cause: _ } => false
+    ApprovalBrokerRuntimeCapsDerived { knobs } =>
+      any(knobs, k => k.name == "approval_broker_memory_max_bytes" && k.desired == to_string(byte_size_count(b: approval_broker_slice_memory_max)))
+        && any(knobs, k => k.name == "approval_broker_memory_high_bytes" && k.desired == to_string(byte_size_count(b: approval_broker_slice_memory_high)))
+        && match approval_broker_runtime_caps_for(host: operator_host_srv3) {
+          ApprovalBrokerRuntimeCapsNotOwed => true
+          ApprovalBrokerRuntimeCapsDerived { knobs: _ } => false
+          ApprovalBrokerRuntimeCapsRefused { cause: _ } => false
+        }
+  }
+}
+
+test fn slice_control_caps_include_sessions_and_broker_on_srv1_only() -> Bool {
+  match slice_control_caps_for(host: operator_host_srv1) {
+    SliceControlNotOwed => false
+    SliceControlRefused { cause: _ } => false
+    SliceControlDerived { caps } =>
+      caps.length() == 2
+        && any(caps, c => c.unit as String == "sessions.slice" && byte_size_count(b: c.memory_max) == 137438953472)
+        && any(caps, c => c.unit as String == "gunbc-approval-broker.slice" && byte_size_count(b: c.memory_max) == 17179869184 && byte_size_count(b: c.memory_high) == 15032385536)
+        && match slice_control_caps_for(host: operator_host_srv3) {
+          SliceControlNotOwed => true
+          SliceControlDerived { caps: _ } => false
+          SliceControlRefused { cause: _ } => false
+        }
+  }
+}
+
+test fn slice_control_refuses_when_session_reservation_is_unestablished() -> Bool {
+  match slice_control_caps_for(host: operator_host_srv2) {
+    SliceControlRefused { cause: _ } => true
+    SliceControlNotOwed => false
+    SliceControlDerived { caps: _ } => false
+  }
+}

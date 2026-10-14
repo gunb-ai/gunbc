@@ -25,6 +25,8 @@ import extdeps.github.action.github_script { github_script_manifest_readings, gi
 import extdeps.github.action.google_auth { google_auth_manifest_readings, google_auth_v3_0_0 }
 import extdeps.github.action.setup_rust_toolchain { setup_rust_toolchain_manifest_readings, setup_rust_toolchain_v1_16_0 }
 import extdeps.github.action.rust_cache { rust_cache_manifest_readings }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // NO PROVIDER-SUBSTITUTED ACTION RUNTIMES.
 //
@@ -683,3 +685,10 @@ fn admit_realized_action_use(u: RealizedActionUse) -> ActionUseAdmission {
       }
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "checkout_context_names_a_commit" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "checkout_ref_value_refusals" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "checkout_with_ref_refusals" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "step_checkout_ref_refusals" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

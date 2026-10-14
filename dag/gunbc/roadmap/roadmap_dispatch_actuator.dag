@@ -60,13 +60,13 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
   AttemptProcessExitedWith, AttemptProcessSignaled, attempt_exit_record_observe,
 }
-import extdeps.posix.signal { linux_standard_signal_number }
+import extdeps.posix.signal { linux_standard_signal_number, linux_standard_signal_render }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
-  systemd_run_user_transient_command, systemd_run_command_argument_words,
+  systemd_run_command_argument_words,
 }
-import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
+import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties, gunbc_user_work_transient_command }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -84,6 +84,9 @@ import extdeps.tmux {
   TmuxPipeCommand,
   TmuxLsEntry,
   TmuxAttemptPaneEntry,
+  TmuxAttemptPaneAlive,
+  TmuxAttemptPaneExited,
+  TmuxAttemptPaneSignaled,
   AttemptPanesParsed,
   AttemptPanesParseRefused,
   parse_tmux_attempt_panes_output,
@@ -131,7 +134,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.filesystem { path_parent_directory }
 import extdeps.shell
 import gunbc.command_runner { run_shell_command_observe }
-import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit, PosixShKeepFile, PosixShRemoveFileAfterRead }
+import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit, PosixShKeepFile }
 import gunbc.dispatch_selection {
   ClaudeCredentialRef, ClaudeOAuthTokenSecretRef, ClaudeApiKeySecretRef, ClaudeStateRootRef,
   claude_dispatch_credential, inventory_with_observed_standing, claude_offer_for_instance,
@@ -173,6 +176,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessAbsent,
   WorkerProcessRunning,
   WorkerProcessExited,
+  WorkerProcessSignaled,
   worker_process_observed_command,
   AttemptEvidence,
   WorktreeUnobserved,
@@ -250,9 +254,12 @@ import gunbc.dispatch_credential_snapshot {
   dispatch_snapshot_refusal_text,
   dispatch_credential_snapshot_take,
   dispatch_credential_snapshot_discard,
-  CredentialSnapshotRemoved,
-  CredentialSnapshotRemovalFailed,
+  CredentialSnapshotTombstoned,
+  CredentialSnapshotTombstoneFailed,
+  credential_snapshot_tombstone_body,
+  credential_snapshot_after_read_disposition,
 }
+import gunbc.dispatch_credential_acquisition { credential_register_then_take }
 import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
 import gunbc.worker_turn_snapshot_custody {
   claude_worker_turn_snapshot_custody,
@@ -267,7 +274,6 @@ import gunbc.roadmap.roadmap_dispatch_destination {
   destination_is_this_spawn_tree,
   destination_not_this_spawn_tree_reason,
 }
-
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
   reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as NonEmptyStr
 }
@@ -644,11 +650,11 @@ fn dispatch_credential_snapshot_path_for_attempt(attempt: DispatchAttempt, execu
 }
 
 // A selection that refuses after its take discards the snapshot it took; a discard that does not
-// remove it is appended to the refusal, never dropped.
+// occupy it with a tombstone is appended to the refusal, never dropped.
 fn selection_refused_discarding(reason: NonEmptyStr, snapshot: TakenCredentialSnapshot) -> DispatchAttemptSelection {
   match dispatch_credential_snapshot_discard(snapshot: snapshot) {
-    CredentialSnapshotRemoved => DispatchAttemptSelectionRefused { reason: reason }
-    CredentialSnapshotRemovalFailed { reason: failed } =>
+    CredentialSnapshotTombstoned => DispatchAttemptSelectionRefused { reason: reason }
+    CredentialSnapshotTombstoneFailed { reason: failed } =>
       DispatchAttemptSelectionRefused { reason: join([reason as String, "; and ", failed as String], "") as NonEmptyStr }
   }
 }
@@ -756,7 +762,7 @@ fn dispatch_actuator_claude_selection_observed(
   match claude_credential_custody_source() {
     ClaudeCustodyUnbound { reason } => DispatchAttemptSelectionRefused { reason: reason }
     ClaudeCustodyBound { custody } =>
-      match dispatch_credential_snapshot_take(
+      match credential_register_then_take(
         attempt: attempt,
         executor: ClaudeFromSnapshot,
         custody: custody,
@@ -859,7 +865,7 @@ fn cursor_selection_observed(attempt: DispatchAttempt, sizing_expectation: Sizin
       reason: provider_off_custody_host_reason(provider_label: "cursor", custody_host: snapshot_custody_declaration(executor: CursorFromSnapshot).host, instance_host: attempt.instance.host_identity),
     }
   } else {
-    match dispatch_credential_snapshot_take(
+    match credential_register_then_take(
       attempt: attempt,
       executor: CursorFromSnapshot,
       custody: snapshot_custody_declaration(executor: CursorFromSnapshot),
@@ -1837,7 +1843,7 @@ fn dispatch_review_unit_command(
   criterion_key: String,
   exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
-  systemd_run_user_transient_command(
+  gunbc_user_work_transient_command(
     unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
     properties: dispatch_review_unit_properties(
       instance: instance,
@@ -1898,7 +1904,7 @@ fn dispatch_audit_unit_command(
   exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
   let dir = dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  systemd_run_user_transient_command(
+  gunbc_user_work_transient_command(
     unit: dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key),
     properties: dispatch_review_unit_properties(
       instance: instance,
@@ -2503,7 +2509,7 @@ fn claude_inner_argv_for_credential(
     ClaudeOAuthTokenSecretRef { secret_ref } =>
       match claude_code_custody_path(secret_ref: secret_ref) {
         Present { value: _ } =>
-          match claude_code_oauth_env_wrapped_command(token_path: taken_credential_snapshot_path(snapshot: snapshot), argv: argv, disposition: PosixShRemoveFileAfterRead) {
+          match claude_code_oauth_env_wrapped_command(token_path: taken_credential_snapshot_path(snapshot: snapshot), argv: argv, disposition: credential_snapshot_after_read_disposition()) {
             ClaudeCodeEnvWrapped { command } => DispatchProviderInnerArgvReady { argv: argv_words(command: command) }
             ClaudeCodeEnvWrapRefused { reason } => ClaudeProviderCredentialUnbound { reason: reason }
           }
@@ -2956,7 +2962,7 @@ fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, pla
 }
 
 fn dispatch_worker_unit_command(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> SystemdRunCommandReading {
-  systemd_run_user_transient_command(
+  gunbc_user_work_transient_command(
     unit: plan.unit,
     properties: dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: granted, process_bounds: process_bounds),
     setenv_bindings: [],
@@ -3803,6 +3809,17 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
               },
             ),
           }
+        WorkerProcessSignaled { signal: _, last_command } =>
+          Present {
+            value: dispatch_tmux_session_scope_for_process_fingerprint(
+              node_id: node_id,
+              process_fingerprint: if last_command == "" {
+                "retained-signal" as NonEmptyStr
+              } else {
+                last_command as NonEmptyStr
+              },
+            ),
+          }
         WorkerProcessUnobserved { reason: _ } => none
         WorkerProcessAbsent => none
       }
@@ -4040,6 +4057,10 @@ type DispatchSessionCleanup
       session_name: String,
       exit_code: Int,
     }
+  | DispatchClearSignaledSession {
+      session_name: String,
+      signal: Int,
+    }
   | DispatchCleanupRefused { reason: String }
 
 fn dispatch_session_cleanup_action(
@@ -4048,6 +4069,7 @@ fn dispatch_session_cleanup_action(
   match cleanup {
     DispatchStopRunningProcess { session_name: _ } => "stop"
     DispatchClearRetainedSession { session_name: _, exit_code: _ } => "clear"
+    DispatchClearSignaledSession { session_name: _, signal: _ } => "clear"
     DispatchCleanupRefused { reason: _ } => "unavailable"
   }
 }
@@ -4058,6 +4080,7 @@ fn dispatch_session_cleanup_allowed(
   match cleanup {
     DispatchStopRunningProcess { session_name: _ } => true
     DispatchClearRetainedSession { session_name: _, exit_code: _ } => true
+    DispatchClearSignaledSession { session_name: _, signal: _ } => true
     DispatchCleanupRefused { reason: _ } => false
   }
 }
@@ -4072,6 +4095,12 @@ fn dispatch_session_cleanup_detail(
       join([
         "provider process already exited ",
         to_string(exit_code),
+        "; only retained tmux session metadata will be removed",
+      ], "")
+    DispatchClearSignaledSession { session_name: _, signal } =>
+      join([
+        "provider process already killed by ",
+        linux_standard_signal_render(n: signal),
         "; only retained tmux session metadata will be removed",
       ], "")
     DispatchCleanupRefused { reason } => reason
@@ -4244,24 +4273,25 @@ fn worker_process_from_attempt_unit(
 fn worker_process_from_attempt_pane(
   pane: TmuxAttemptPaneEntry,
 ) -> WorkerProcessEvidence {
-  if pane.dead {
-    match pane.exit_code {
-      Present { value: code } =>
-        WorkerProcessExited {
-          exit_code: code,
-          last_command: pane.command,
-        }
-      Absent =>
+  match pane.standing {
+    TmuxAttemptPaneExited { status } =>
+      WorkerProcessExited {
+        exit_code: status,
+        last_command: pane.command,
+      }
+    TmuxAttemptPaneSignaled { signal } =>
+      WorkerProcessSignaled {
+        signal: signal,
+        last_command: pane.command,
+      }
+    TmuxAttemptPaneAlive =>
+      if pane.command == "" {
         WorkerProcessUnobserved {
-          reason: "dead pane did not carry an exit status" as NonEmptyStr,
+          reason: "running pane did not expose pane_current_command" as NonEmptyStr,
         }
-    }
-  } else if pane.command == "" {
-    WorkerProcessUnobserved {
-      reason: "running pane did not expose pane_current_command" as NonEmptyStr,
-    }
-  } else {
-    WorkerProcessRunning { command: pane.command as NonEmptyStr }
+      } else {
+        WorkerProcessRunning { command: pane.command as NonEmptyStr }
+      }
   }
 }
 
@@ -4418,6 +4448,11 @@ fn dispatch_session_cleanup(
         DispatchClearRetainedSession {
           session_name: session.session_name,
           exit_code: exit_code,
+        }
+      WorkerProcessSignaled { signal, last_command: _ } =>
+        DispatchClearSignaledSession {
+          session_name: session.session_name,
+          signal: signal,
         }
       WorkerProcessAbsent =>
         DispatchCleanupRefused {

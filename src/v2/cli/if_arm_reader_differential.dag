@@ -32,7 +32,7 @@ import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_id
 import std.integer { int_to_decimal_string }
 import v2.std.node { Node, Symbol, is_empty_conj_root, symbol_lexeme }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }
+import v2.std.provenance { SpanIndex, node_authored_span_optional, node_occurrence_id_optional }
 import v2.std.text { String }
 
 // THE NESTED-IF ARM-READER DIFFERENTIAL: an OFFLINE ORACLE, NEVER A PRODUCTION ROUTE.
@@ -327,24 +327,20 @@ fn iard_sites(tree: Node) -> FreeMonoid<IardSite> {
 // review of gunbc#13051). Until that authority lands, the byte range is the answer. A line, if it
 // returns, comes from that authority and from no second reader.
 fn iard_location(node: Node, spans: SpanIndex) -> String {
-  match node_occurrence_id_optional(node: node) {
-    Absent => "<no occurrence>"
-    Present { value: id } =>
-      match span_index_textual_locus_optional(index: spans, id: id) {
-        Absent => "<no source locus>"
-        Present { value: locus } =>
-          match locus {
-            Textual { file: _, extent: e } =>
-              match e {
-                ByteRange { start: s, end: en } =>
-                  concat("bytes=", concat(int_to_decimal_string(value: s), concat("..", int_to_decimal_string(value: en))))
-                WholeFile => "<whole file>"
-              }
-            NodeLocus { anchor: _ } => "<non-textual locus>"
-            SourcePortLocus { anchor: _, file: _, extent: _ } => "<non-textual locus>"
-            InvariantPortLocus { anchor: _, invariant: _ } => "<non-textual locus>"
-            DeclarationLocus { declaration: _ } => "<non-textual locus>"
+  match node_authored_span_optional(node: node, index: spans) {
+    Absent => "<no source locus>"
+    Present { value: locus } =>
+      match locus {
+        Textual { file: _, extent: e } =>
+          match e {
+            ByteRange { start: s, end: en } =>
+              concat("bytes=", concat(int_to_decimal_string(value: s), concat("..", int_to_decimal_string(value: en))))
+            WholeFile => "<whole file>"
           }
+        NodeLocus { anchor: _ } => "<non-textual locus>"
+        SourcePortLocus { anchor: _, file: _, extent: _ } => "<non-textual locus>"
+        InvariantPortLocus { anchor: _, invariant: _ } => "<non-textual locus>"
+        DeclarationLocus { declaration: _ } => "<non-textual locus>"
       }
   }
 }

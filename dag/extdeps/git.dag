@@ -1,5 +1,4 @@
 module extdeps.git
-
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import extdeps.external_authority { ExternalAuthority }

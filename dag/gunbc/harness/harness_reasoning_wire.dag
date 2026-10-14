@@ -61,6 +61,64 @@ type HarnessServingUnit
   | NemotronUltraFreeOnOpenRouter
   | Qwen3_8_27bOnNinfer
 
+// Compatibility is a catalog fact beside the unit, not model-id equality.
+// A pair is fungible only when it is the same unit or an explicit row that
+// names the same model AND the same request wire/parser. Qwen3_8_27bOnNinfer
+// has no vLLM sibling: ninfer kwargs, parser none, operator placement. A
+// vLLM Qwen unit would be a different wire, so no pair is admitted.
+type HarnessServingUnitFungibilityPair {
+  left: HarnessServingUnit
+  right: HarnessServingUnit
+}
+
+data harness_serving_unit_fungible_pairs: List<HarnessServingUnitFungibilityPair> = []
+
+type HarnessServingUnitCompatibility
+  = HarnessUnitsIdentical
+  | HarnessUnitsCatalogFungible
+  | HarnessUnitsIncompatible { required: HarnessServingUnit, observed: HarnessServingUnit }
+
+fn harness_serving_unit_eq(left: HarnessServingUnit, right: HarnessServingUnit) -> Bool {
+  match left {
+    DeepseekV4FlashOnVllm =>
+      match right { DeepseekV4FlashOnVllm => true  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false }
+    Glm53FlashOnVllm =>
+      match right { Glm53FlashOnVllm => true  DeepseekV4FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false }
+    NemotronUltraFreeOnOpenRouter =>
+      match right { NemotronUltraFreeOnOpenRouter => true  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  Qwen3_8_27bOnNinfer => false }
+    Qwen3_8_27bOnNinfer =>
+      match right { Qwen3_8_27bOnNinfer => true  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false }
+  }
+}
+
+fn harness_serving_unit_pair_matches(
+  pair: HarnessServingUnitFungibilityPair,
+  required: HarnessServingUnit,
+  observed: HarnessServingUnit,
+) -> Bool {
+  (harness_serving_unit_eq(left: pair.left, right: required)
+    && harness_serving_unit_eq(left: pair.right, right: observed))
+    || (harness_serving_unit_eq(left: pair.left, right: observed)
+      && harness_serving_unit_eq(left: pair.right, right: required))
+}
+
+fn harness_serving_unit_compatibility(
+  required: HarnessServingUnit,
+  observed: HarnessServingUnit,
+) -> HarnessServingUnitCompatibility {
+  if harness_serving_unit_eq(left: required, right: observed) {
+    HarnessUnitsIdentical
+  } else {
+    if any(harness_serving_unit_fungible_pairs, p =>
+      harness_serving_unit_pair_matches(pair: p, required: required, observed: observed)
+    ) {
+      HarnessUnitsCatalogFungible
+    } else {
+      HarnessUnitsIncompatible { required: required, observed: observed }
+    }
+  }
+}
+
 fn harness_serving_unit_wire(unit: HarnessServingUnit) -> NonEmptyStr {
   match unit {
     DeepseekV4FlashOnVllm => "deepseek-v4-flash on vllm" as NonEmptyStr

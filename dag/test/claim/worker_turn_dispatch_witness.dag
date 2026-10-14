@@ -154,3 +154,28 @@ test fn a_harness_worker_on_srv1_carries_its_supervision() -> Bool {
       }
   }
 }
+
+// THE BELT ENTRY IS UNACTIVATED (operator ruling, flex 7): the production spawn fold passes no durable turn, so a
+// belt worker keeps the operator-route behaviour and claims no durability. Activation is a fleet-seat placement
+// for BatchQualityTolerant belt work (gunbc.serving.caller_retry_contract serving_route_caller_retry_rows). Passing
+// a dispatch node, turn ordinal or state root from the belt before then reads RED here.
+test fn the_emitted_worker_argv_passes_no_durable_turn() -> Bool {
+  let attempt = worker_turn_attempt(instance: srv2_lab_dashboard_instance())
+  match fx_prepared_launch(
+    requested: attempt,
+    launch: SnapshotFreeLaunch { attempt: attempt, executor: HarnessWithoutSnapshot },
+    effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
+  ) {
+    none => false
+    Present { value: prepared } =>
+      match ready_argv(inner: inner_for_launch(prepared: prepared)) {
+        Absent => false
+        Present { value: argv } =>
+          string_contains(s: join(argv, separator: "\0"), pattern: "alignment_chain_fingerprint=")
+            && !string_contains(s: join(argv, separator: "\0"), pattern: "dispatch_node=")
+            && !string_contains(s: join(argv, separator: "\0"), pattern: "turn_ordinal=")
+            && !string_contains(s: join(argv, separator: "\0"), pattern: "state_root=")
+      }
+  }
+}

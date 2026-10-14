@@ -124,14 +124,13 @@ pub(crate) fn floor_inventory_content_digest(inventory: &[PreparedSourceView]) -
 /// (`compile_clean_via_index_verdict_equivalence` tests).
 pub(crate) fn floor_compile_clean_emit_ok(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    index: Option<&MultiEntryIndex>,
+    _index: Option<&MultiEntryIndex>,
 ) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
-    let options = compile_clean_pipeline_options_for_sources(index, &sources);
     let result = v1_compiler_compile::compile_sources_with_options(
         Rc::new(sources.into()),
         RenderTarget::Dag,
-        options,
+        v1_compiler_compile::default_compile_pipeline_options(),
     );
     let has_hard_errors = compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref());
     if has_hard_errors {
@@ -156,10 +155,6 @@ pub(crate) fn floor_compile_clean_emit_ok_via_index(
     use crate::v1_compiler_artifact::RenderTarget;
     use crate::v1_compiler_complexity::empty_complexity_report;
     let index = process_shared_index(index_roots);
-    let census_only = compile_clean_census_only_sources_for_compiled(&index, &sources);
-    // #8204 out-of-closure fill runs independently of resolve: an earlier
-    // resolution refusal must not mask a parse refusal in the rest of the indexed pool.
-    let census_fill_diags = compile_clean_census_fill_hard_diagnostics(&census_only);
     let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
@@ -170,31 +165,15 @@ pub(crate) fn floor_compile_clean_emit_ok_via_index(
     ) {
         Ok(resolved) => resolved,
         Err(msg) => {
-            if !census_fill_diags.is_empty() {
-                eprint_compile_clean_hard_diagnostics(&census_fill_diags);
-                let census_msg = format_first_compile_clean_hard_diagnostic(&census_fill_diags);
-                eprintln!("compile-clean: hard diagnostics:\n{msg}");
-                return (false, format!("{census_msg}\ncompile-clean: {msg}"));
-            }
             eprintln!("compile-clean: hard diagnostics:\n{msg}");
             return (false, format!("compile-clean: {msg}"));
         }
     };
-    let all_compile_clean_diags = if census_fill_diags.is_empty() {
-        compile_clean_diags.clone()
-    } else {
-        let mut merged = compile_clean_diags
-            .iter()
-            .cloned()
-            .collect::<im::Vector<_>>();
-        merged.extend(census_fill_diags.iter().cloned());
-        Rc::new(merged)
-    };
-    if compile_clean_pipeline_has_hard_errors(all_compile_clean_diags.as_ref()) {
-        eprint_compile_clean_hard_diagnostics(all_compile_clean_diags.as_ref());
+    if compile_clean_pipeline_has_hard_errors(compile_clean_diags.as_ref()) {
+        eprint_compile_clean_hard_diagnostics(compile_clean_diags.as_ref());
         return (
             false,
-            format_first_compile_clean_hard_diagnostic(all_compile_clean_diags.as_ref()),
+            format_first_compile_clean_hard_diagnostic(compile_clean_diags.as_ref()),
         );
     }
     let newline_indices: Rc<im::Vector<Rc<NewlineIndex>>> =

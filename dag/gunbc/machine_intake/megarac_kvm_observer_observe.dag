@@ -23,6 +23,8 @@ import gunbc.machine_intake.megarac_kvm_still {
   megarac_kvm_observer_start, megarac_kvm_observer_finish, megarac_kvm_still_allowance,
   kvm_observer_record_text,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // THE REAL KVM OBSERVER AGAINST AN ADMITTED MEGARAC CONTROLLER, WITH NO BOOT (operator-approved brief,
 // 2026-09-30; re-rooted onto the admitted carrier by managed-host cut 5). The observer
@@ -269,3 +271,10 @@ fn megarac_kvm_observer_release(host: HostIdentity, run_id: NonEmptyStr, paths: 
   let line = join(["megarac kvm observer release: process ", owned_release_text(r: process), "; unit hold ", probe_hold_release_outcome_text(o: hold)], "")
   probe_hold_release_step_exit(o: hold, context_line: line)
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "kvm_probe_hashed_stills" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "kvm_probe_still_answered" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "kvm_probe_teardown_gap" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "megarac_kvm_observer_release" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_launch_admission
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
+import extdeps.posix.signal { linux_standard_signal_render }
 import std.content_hash { Fnv1a64Structural, Sha1Digest, Sha1DigestHex, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge }
 import gunbc.roadmap.roadmap_document { RoadmapDocument }
@@ -25,7 +26,7 @@ import gunbc.fleet.origin_main_revision_observe {
 }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_wire_hex, git_object_id_from_untagged_hex }
 import gunbc.worker_lifecycle {
-  WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved,
+  WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessSignaled, WorkerProcessAbsent, WorkerProcessUnobserved,
 }
 import gunbc.roadmap.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, spawn_mode_label, spawn_mode_of_label, BeltCapacity, belt_free_slots_int }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonKeyValue, json_string, json_object, json_kv }
@@ -829,6 +830,11 @@ fn launch_session_liveness(session_name: String, process: WorkerProcessEvidence)
         session_name: session_name,
         detail: join(["retained pane: process exited with status ", to_string(exit_code), "; last command ", last_command], ""),
       } }
+    WorkerProcessSignaled { signal, last_command } =>
+      GateRefused { refusal: LaunchStaleSession {
+        session_name: session_name,
+        detail: join(["retained pane: process killed by ", linux_standard_signal_render(n: signal), "; last command ", last_command], ""),
+      } }
     WorkerProcessAbsent =>
       GateRefused { refusal: LaunchStaleSession {
         session_name: session_name,
@@ -877,6 +883,7 @@ fn launch_occupying_count(live: List<LaunchCensusRow>) -> Int {
     WorkerProcessRunning { command: _ } => true
     WorkerProcessUnobserved { reason: _ } => true
     WorkerProcessExited { exit_code: _, last_command: _ } => false
+    WorkerProcessSignaled { signal: _, last_command: _ } => false
     WorkerProcessAbsent => false
   }))
 }
