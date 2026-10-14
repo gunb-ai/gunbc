@@ -549,3 +549,51 @@ test fn inhabitance_identical_nested_arrows_inhabit_holds() -> Bool {
     _ => false
   }
 }
+
+// LIST-TYPED-VALUE ELEMENT MISMATCH, THE v2 RELATION. The seed refuses List<RunProp> at
+// List<String> through PositionGenericTypeArgument (gunbc.recurring_failure_mode
+// list_typed_value_element_mismatch_admitted). v2's declared_type_inhabitance compares Instantiation
+// nodes by exact structural equality, so List<Int> versus List<product> is the same pair without
+// re-deriving the seed's generic-argument walk. This is the judgement v2 owns; the authored-source
+// census lives on the seed compile route.
+fn aai_list_of(elem: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge {
+        label: Positional,
+        target: dag_type_atom_node(identity: ^inhabitance_type_list)
+      },
+      Edge { label: Positional, target: elem }
+    ]
+  )
+}
+
+fn aai_list_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position_direct_call_argument(),
+    parameter_identity: ^inhabitance_param_x,
+    declared: declared,
+    produced: produced,
+    produced_declared_carrier: Absent,
+    application: produced,
+    type_variables: []
+  }
+}
+
+test fn inhabitance_list_of_product_at_list_of_int_refuses_holds() -> Bool {
+  aai_refused(o: aai_list_obligation(
+    declared: aai_list_of(elem: dag_type_atom_node(identity: ^dag_binding_type_int)),
+    produced: aai_list_of(elem: inhabitance_nominal_product_type_node())
+  ))
+}
+
+test fn inhabitance_matching_list_of_int_inhabits_holds() -> Bool {
+  match declared_type_inhabitance(obligation: aai_list_obligation(
+    declared: aai_list_of(elem: dag_type_atom_node(identity: ^dag_binding_type_int)),
+    produced: aai_list_of(elem: dag_type_atom_node(identity: ^dag_binding_type_int))
+  )) {
+    Inhabits { homomorphism: _ } => true
+    _ => false
+  }
+}

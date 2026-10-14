@@ -1100,7 +1100,7 @@ fn find_arrow_body_child(root: Node) -> Outcome<Node> {
             at: node_locus(node: root),
             correction: Unavailable { reason: ExternalContractUnknown }
           })
-        Absent =>
+        NotFound =>
           outcome_rejected(d: Diagnostic {
             reason: ^arrow_body_child_missing,
             at: node_locus(node: root),

@@ -243,8 +243,10 @@ test fn w_generic_formal_admission_is_visible_in_the_diagnostic_census() -> Bool
 // List<ContentHash> parameter. That is list-typed-value compatibility, and the relation answers
 // Undecidable for a generic carrier BY DESIGN. This probe instead passes a list LITERAL with a
 // wrong element, which is a different judgment and one the relation makes. I inferred the second
-// from the silence on the first. THE LIST-TYPED-VALUE CASE REMAINS UNMEASURED and no arm here
-// claims anything about it.
+// from the silence on the first. THE LIST-TYPED-VALUE CASE IS MEASURED ELSEWHERE:
+// test.claim.declared_type_inhabitance_list_typed_value_witness, class
+// gunbc.recurring_failure_mode list_typed_value_element_mismatch_admitted. No arm here
+// claims that pair.
 //
 // THE PRODUCED VALUE IS A KERNEL STRING BECAUSE THE FIRST VERSION OF THIS PAIR USED A RECORD
 // LITERAL AND ITS CONTROL WENT RED, which is the only reason the mis-design was caught rather

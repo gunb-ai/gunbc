@@ -8,6 +8,7 @@ import extdeps.github.app {
   GitHubAppPermission,
   GitHubPermissionAxis,
   ContentsAxis,
+  PullRequestsAxis,
   WorkflowsAxis,
   ActionsAxis,
   MetadataAxis,
@@ -120,6 +121,11 @@ fn workflow_projection_paths(paths: List<RepositoryPath>) -> List<RepositoryPath
 
 data contents_write: GitHubAppPermission = GitHubAppPermission {
   name: ContentsAxis,
+  access: AppAccessWrite
+}
+
+data pull_requests_write: GitHubAppPermission = GitHubAppPermission {
+  name: PullRequestsAxis,
   access: AppAccessWrite
 }
 

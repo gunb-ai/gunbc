@@ -55,7 +55,7 @@ import gunbc.managed_directory {
   ManagedDirectory,
   managed_directory_admit,
   ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
-  managed_directory_permissions, declared_directory_mode, DirectoryOwnerAllEveryoneTraverse,
+  managed_directory_permissions, declared_directory_mode, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly,
   EntriesUnmanaged, EntriesReadableByDependents,
   managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused, entry_mode_add_read_symbolic,
 }
@@ -110,7 +110,7 @@ import extdeps.systemd.unit_file {
   SystemdInstallSection, NotInstallable, Installable,
   SystemdUnitDirective, Description, After, Wants, StartLimitIntervalSec, StartLimitBurst,
   SystemdServiceDirective, ServiceType, OneshotMode, SimpleMode, ExecStart, Restart,
-  Environment, EnvironmentFile, EnvironmentFileIfPresent, WorkingDirectory, ServiceUser, ServiceGroup,
+  Environment, WorkingDirectory, ServiceUser, ServiceGroup,
   TimeoutStartSec,
   SystemdTimerDirective, TimerUnit, OnCalendar, OnBootSec, OnUnitInactiveSec,
   AccuracySec, RandomizedDelaySec, Persistent,
@@ -191,7 +191,6 @@ import gunbc.live_deploy.spec {
   deployment_publication_path_unit_path,
   deployment_publication_timer_unit_path,
   deployment_retired_belt_timer_unit_path,
-  deployment_credential_env_path,
   deployment_fleet_converge_service_unit_name,
   deployment_fleet_converge_timer_unit_name,
   deployment_fleet_converge_service_unit_path,
@@ -219,6 +218,7 @@ import gunbc.host.host_layout {
   publication_request_dir,
   publication_answer_dir,
   publication_refused_dir,
+  publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
 }
 import product.host_identity { HostIdentity }
@@ -926,17 +926,10 @@ fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_belt_service_unit_file(spec: spec)))
 }
 
-// THE PUBLICATION HELPER: THE ONLY UNIT IN THIS DEPLOYMENT THAT BINDS A CREDENTIAL, AND THE ONLY
-// ONE WHOSE User= IS NOT THE SERVICE PRINCIPAL. gunbc.live_deploy.spec deployment_credential_env_path
-// carries the full argument for why that pairing is the boundary rather than the file being one;
-// what this emission adds is the enforcement, and it is worth stating what each line is doing:
-//
-// User=/Group= name the publication principal, so the credential file this unit reads is owned by
-// an account the service user is not. EnvironmentFileIfPresent is the `-` prefixed form, so an
-// absent file leaves the unit startable and the helper answers with a recorded refusal naming the
-// variable -- the located refusal is a FEATURE, and the required form would replace it with a unit
-// that will not start. Type=oneshot with no Restart, because a run either answers its spool or
-// reports why it could not, and the path unit is what asks again.
+// THE PUBLICATION HELPER: THE ONLY UNIT WHOSE User= IS NOT THE SERVICE PRINCIPAL. It mints a
+// gunbai-bot installation token from the host-custodied App key (group-readable by this principal)
+// and binds no environment file. Type=oneshot with no Restart, because a run either answers its
+// spool or reports why it could not, and the path unit is what asks again.
 //
 // THERE IS NO Environment= LINE AND NO SPAWN ROOT. The belt unit carries GUNBC_BELT_SPAWN_WORKDIR
 // because a tick creates worktrees and launches provider sessions; this unit reads documents and
@@ -956,7 +949,6 @@ fn live_deploy_publication_service_unit_file(spec: DeploymentSpec) -> SystemdUni
       ServiceGroup { name: spec.names.publication_principal },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
-      EnvironmentFileIfPresent { path: deployment_credential_env_path(names: spec.names) },
       ExecStart { command: join([
         svc.serve_binary as String,
         " run --source-root dag --source-root src/v2",
@@ -1105,6 +1097,12 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
       owner: spec.names.publication_principal,
       group: spec.names.publication_principal,
       path: publication_refused_dir(instance_root: spec.service.instance_root as String),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: declared_directory_mode(m: DirectoryOwnerOnly),
+      owner: spec.names.publication_principal,
+      group: spec.names.publication_principal,
+      path: publication_bare_mirror_path(instance_root: spec.service.instance_root as String) as String,
     )),
   ]
 }

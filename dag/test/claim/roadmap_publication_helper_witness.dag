@@ -1,6 +1,6 @@
 module test.claim.roadmap_publication_helper_witness
 
-import std.types { Bool, String, NonEmptyStr, CommitSha }
+import std.types { Bool, String, NonEmptyStr, CommitSha, FilePath }
 import extdeps.filesystem.filesystem_io {
   FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemOtherFailure,
 }
@@ -28,13 +28,11 @@ import gunbc.roadmap.roadmap_publication_helper {
   publication_helper_outcome_key,
   PublicationHelperRunStanding, HelperRunCompleted, HelperRunStopped,
   publication_helper_run_standing,
-  publication_helper_answer_request,
   publication_request_admission,
   publication_request_from_create,
   PublicationRequestEnqueue, RequestEnqueued, RequestAlreadyPresent, RequestNotEnqueued,
   RequestAdmission, RequestAdmitted, RequestUndecodableDocument,
   RequestOutsideCapability, RequestMisaddressed,
-  publication_helper_credential_env_var,
 }
 import gunbc.roadmap.roadmap_publish_observe {
   PublicationCredentialSource, CredentialSourceAbsent,
@@ -43,6 +41,7 @@ import gunbc.host.host_layout {
   publication_request_dir,
   publication_answer_dir,
   publication_refused_dir,
+  publication_bare_mirror_path,
 }
 import gunbc.live_deploy.emit {
   live_deploy_protocol,
@@ -58,7 +57,6 @@ import gunbc.live_deploy.release_locus {
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
-  deployment_credential_env_path,
   deployment_publication_service_unit_name,
   deployment_owned_steps,
 }
@@ -433,18 +431,16 @@ fn serve_unit_text() -> String {
   render(doc: emit_systemd_unit_doc(spec: live_spec(), revision: live_revision(), now_epoch: claim_oidc_now()), proto: live_deploy_protocol)
 }
 
-test fn the_publication_unit_binds_the_credential_and_the_other_two_do_not() -> Bool {
-  string_contains(
-    s: publication_unit_text(),
-    pattern: join(["EnvironmentFile=-", deployment_credential_env_path(names: live_spec().names) as String], ""),
-  )
+test fn the_publication_unit_binds_no_environment_file_and_the_other_two_do_not() -> Bool {
+  !string_contains(s: publication_unit_text(), pattern: "EnvironmentFile")
   && !string_contains(s: belt_unit_text(), pattern: "EnvironmentFile")
   && !string_contains(s: serve_unit_text(), pattern: "EnvironmentFile")
 }
 
-test fn the_credential_variable_is_named_in_no_unit_that_spawns_a_worker() -> Bool {
-  !string_contains(s: belt_unit_text(), pattern: publication_helper_credential_env_var as String)
-  && !string_contains(s: serve_unit_text(), pattern: publication_helper_credential_env_var as String)
+test fn no_deployed_unit_names_github_token() -> Bool {
+  !string_contains(s: publication_unit_text(), pattern: "GITHUB_TOKEN")
+  && !string_contains(s: belt_unit_text(), pattern: "GITHUB_TOKEN")
+  && !string_contains(s: serve_unit_text(), pattern: "GITHUB_TOKEN")
 }
 
 // THE PRINCIPAL IS THE BOUNDARY, so the unit that reads the credential must not run as the account
@@ -479,6 +475,7 @@ test fn a_request_and_its_answer_are_addressed_in_different_directories() -> Boo
     != publication_answer_dir(instance_root: "/opt/gunbc")
   && publication_request_path_for(instance_root: "/opt/gunbc", key: "k")
     != publication_answer_path_for(instance_root: "/opt/gunbc", key: "k")
+    && string_contains(s: publication_bare_mirror_path(instance_root: "/opt/gunbc") as String, pattern: "publication-spool")
 }
 
 test fn two_instances_do_not_share_a_spool() -> Bool {

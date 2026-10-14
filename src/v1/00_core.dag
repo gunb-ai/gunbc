@@ -389,9 +389,6 @@ type CompilerDiagnostic
   | AlgebraApplicationEvidenceUnavailable { receiver_type: String, argument_index: Int, span: SourceSpan }
   | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: SourceSpan }
   | TestCodeReferenced { referrer: String, target: String, span: SourceSpan }
-  | TestCodeReferenceAdmitted { referrer: String, target: String, span: SourceSpan }
-  | TestCodeReferenceBudgetMismatch { referrer: String, declared: Int, observed: Int, span: SourceSpan }
-  | TestCodeReferenceRowOrphaned { referrer: String, span: SourceSpan }
   | MissingField       { field: String, type_name: String, span: SourceSpan }
   | SiblingOperandEffectOrderUndetermined { construct: String, first_operand: String, second_operand: String, span: SourceSpan }
   | PresentArmScrutineeTypeUnresolved { pattern: String, span: SourceSpan }
@@ -623,9 +620,6 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: s } => s
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: s } => s
     TestCodeReferenced { referrer: _, target: _, span: s } => s
-    TestCodeReferenceAdmitted { referrer: _, target: _, span: s } => s
-    TestCodeReferenceBudgetMismatch { referrer: _, declared: _, observed: _, span: s } => s
-    TestCodeReferenceRowOrphaned { referrer: _, span: s } => s
     MissingField       { field: _, type_name: _, span: s }     => s
     SiblingOperandEffectOrderUndetermined { construct: _, first_operand: _, second_operand: _, span: s } => s
     PresentArmScrutineeTypeUnresolved { pattern: _, span: s } => s
@@ -712,9 +706,6 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: d, observed: o, span: _ } =>
       concat(concat(concat("the declared frontier row for '", m), concat("' on receiver type '", t)), concat(concat("' no longer matches what this module contains: the row declares ", to_string(value: d)), concat(" occurrence(s) and ", to_string(value: o))), " were observed here. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.")
     TestCodeReferenced { referrer: r, target: t, span: _ } => concat("'", r, "' references test code '", t, "': a `test` declaration is entered only by the witness runner, so no declaration may call, name or import it. Move shared logic into an ordinary fn, or delete a test that only re-asserts other tests")
-    TestCodeReferenceAdmitted { referrer: r, target: t, span: _ } => concat("'", r, "' references test code '", t, "'; admitted by the declared test-reference debt ledger (v1.compiler.compile test_reference_debt), which may only shrink")
-    TestCodeReferenceRowOrphaned { referrer: r, span: _ } => concat("the test-reference debt row for '", r, "' names a module that no longer exists in the corpus: it is neither compiled here nor in the loaded name census. A row that can never be observed again must be deleted, not left to persist")
-    TestCodeReferenceBudgetMismatch { referrer: r, declared: d, observed: o, span: _ } => concat("the test-reference debt row for '", r, "' declares ", to_string(value: d), " reference(s) but ", to_string(value: o), " were observed. The count is an equality in both directions: more means new test-code references appeared and must be removed; fewer means debt was paid and the row must be lowered or deleted")
     MissingField       { field: f, type_name: t, span: _ }        => concat("missing required field '", f, "' in literal of type '", t, "'")
     SiblingOperandEffectOrderUndetermined { construct: c, first_operand: a, second_operand: b, span: _ } => concat("two sibling operands of '", c, "' each reach a declared effect ('", a, "' and '", b, "'), and nothing in the model orders them: sibling position is not a sequencing authority, and two realizations of this program may run them in opposite orders. Bind them with let, in the order this program needs, before constructing '", c, "'")
     PresentArmScrutineeTypeUnresolved { pattern: p, span: _ } => concat("a '", p, "' arm decides from the scrutinee's type whether it reads an optional's present value, and the checker could not resolve that type: the scrutinee's type is unresolved, typically because a generic variant upstream was constructed with no expected type, so its type arguments were never instantiated. Without that type the arm's meaning is undecided, so it refuses rather than guessing. Give the value that produces the scrutinee a declared type (annotate the let, or construct it inside a function whose return type declares it)")
@@ -877,9 +868,6 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     TextCrossingHasNoImplicitRoute { expected: _, got: _, route: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TestCodeReferenced { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
-    TestCodeReferenceAdmitted { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
-    TestCodeReferenceBudgetMismatch { referrer: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
-    TestCodeReferenceRowOrphaned { referrer: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     MissingField { field: _, type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     SiblingOperandEffectOrderUndetermined { construct: _, first_operand: _, second_operand: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     PresentArmScrutineeTypeUnresolved { pattern: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
