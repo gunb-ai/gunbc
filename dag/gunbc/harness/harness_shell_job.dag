@@ -39,6 +39,7 @@ type HarnessShellJob {
   command: String
   stdout_file: FilePath
   stderr_file: FilePath
+  stdio_note: String
   state: HarnessShellJobState
 }
 
@@ -55,6 +56,7 @@ fn harness_job_with_state(job: HarnessShellJob, state: HarnessShellJobState) -> 
     command: job.command,
     stdout_file: job.stdout_file,
     stderr_file: job.stderr_file,
+    stdio_note: job.stdio_note,
     state: state,
   }
 }
@@ -144,12 +146,45 @@ fn harness_command_table(jobs: List<HarnessShellJob>) -> String {
   }
 }
 
-fn harness_read_job_text(job: HarnessShellJob) -> String {
+type HarnessJobText
+  = JobTextRead { text: String }
+  | JobTextUnreadable { path: String, cause: String }
+
+fn harness_read_job_text(job: HarnessShellJob) -> HarnessJobText {
   let out = Filesystem.Read(path: job.stdout_file as String)
   let err = Filesystem.Read(path: job.stderr_file as String)
-  let stdout = if out.success { out.content } else { "" }
-  let stderr = if err.success { err.content } else { "" }
-  join([stdout, stderr], "")
+  if !out.success {
+    JobTextUnreadable { path: job.stdout_file as String, cause: out.error }
+  } else if !err.success {
+    JobTextUnreadable { path: job.stderr_file as String, cause: err.error }
+  } else {
+    JobTextRead { text: join([out.content, err.content], "") }
+  }
+}
+
+fn harness_kept_stdio_path(pending: FilePath, dest: FilePath, moved: Bool) -> FilePath {
+  if moved {
+    dest
+  } else {
+    pending
+  }
+}
+
+fn harness_stdio_move_note(
+  moved_out: Bool,
+  moved_err: Bool,
+  pending_out: FilePath,
+  pending_err: FilePath,
+) -> String {
+  if moved_out && moved_err {
+    ""
+  } else {
+    join([
+      "job output kept at the mktemp paths that hold the live fds",
+      if !moved_out { join([" (stdout: ", pending_out as String, ")"], "") } else { "" },
+      if !moved_err { join([" (stderr: ", pending_err as String, ")"], "") } else { "" },
+    ], "")
+  }
 }
 
 fn harness_await_pid(pid: Int, remaining: Second) -> ProcessReapOutcome {
@@ -279,17 +314,31 @@ fn harness_start_shell_job(
     match spawn.spawn {
       SpawnRefused { program, cause } => ShellSpawnFailed { program: program, cause: cause }
       Spawned { pid } => {
-        let stdout_file = harness_job_stdio_path(output_dir: job_output_directory, pid: pid, suffix: ".out")
-        let stderr_file = harness_job_stdio_path(output_dir: job_output_directory, pid: pid, suffix: ".err")
-        let _moved_out = shell.Move.File(source: pending_out.path, destination: stdout_file)
-        let _moved_err = shell.Move.File(source: pending_err.path, destination: stderr_file)
+        let dest_out = harness_job_stdio_path(output_dir: job_output_directory, pid: pid, suffix: ".out")
+        let dest_err = harness_job_stdio_path(output_dir: job_output_directory, pid: pid, suffix: ".err")
+        let moved_out = shell.Move.File(source: pending_out.path, destination: dest_out)
+        let moved_err = shell.Move.File(source: pending_err.path, destination: dest_err)
         ShellSpawned {
           job: HarnessShellJob {
             id: to_string(value: pid),
             pid: pid,
             command: command,
-            stdout_file: stdout_file,
-            stderr_file: stderr_file,
+            stdout_file: harness_kept_stdio_path(
+              pending: pending_out.path,
+              dest: dest_out,
+              moved: moved_out.success,
+            ),
+            stderr_file: harness_kept_stdio_path(
+              pending: pending_err.path,
+              dest: dest_err,
+              moved: moved_err.success,
+            ),
+            stdio_note: harness_stdio_move_note(
+              moved_out: moved_out.success,
+              moved_err: moved_err.success,
+              pending_out: pending_out.path,
+              pending_err: pending_err.path,
+            ),
             state: JobRunning,
           },
         }

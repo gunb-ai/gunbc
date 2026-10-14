@@ -6,7 +6,7 @@ import extdeps.languages.json.emit { json_object, json_kv, json_string }
 import gunbc.harness.harness_wire { WireToolUseBlock }
 import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellJobState, JobRunning, JobFinished, JobExitedOutcome,
-  harness_hand_in_blocked_by_running_jobs,
+  harness_hand_in_blocked_by_running_jobs, harness_kept_stdio_path, harness_stdio_move_note,
 }
 import gunbc.harness.harness_shell_job_policy { WaitRequestedMinutes, WaitMalformedMinutes, WaitUseDefault, WaitPaceReset }
 import gunbc.harness.harness_tool {
@@ -23,6 +23,7 @@ fn fixture_job(state: HarnessShellJobState) -> HarnessShellJob {
     command: "sleep 1",
     stdout_file: "/tmp/job-42.out" as FilePath,
     stderr_file: "/tmp/job-42.err" as FilePath,
+    stdio_note: "",
     state: state,
   }
 }
@@ -69,4 +70,17 @@ test fn a_malformed_wait_minutes_member_keeps_the_parse_cause() -> Bool {
     WaitUseDefault => false
     WaitRequestedMinutes { minutes: _ } => false
   }
+}
+
+test fn a_failed_stdio_rename_keeps_the_mktemp_path_and_says_so() -> Bool {
+  let pending = "/tmp/pending-out" as FilePath
+  let dest = "/tmp/job-9.out" as FilePath
+  harness_kept_stdio_path(pending: pending, dest: dest, moved: true) == dest
+    && harness_kept_stdio_path(pending: pending, dest: dest, moved: false) == pending
+    && harness_stdio_move_note(
+      moved_out: false,
+      moved_err: true,
+      pending_out: pending,
+      pending_err: "/tmp/pending-err" as FilePath,
+    ).contains("mktemp paths")
 }

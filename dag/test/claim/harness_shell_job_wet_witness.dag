@@ -11,18 +11,18 @@ import extdeps.tools.gnu_coreutils { pwd_command }
 import gunbc.command_runner { run_shell_command_capture, LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.harness.harness_shell_job_policy {
-  ShellJobSchedule, WaitUseDefault,
+  ShellJobSchedule, WaitUseDefault, WaitPaceReset,
 }
 import gunbc.harness.harness_tool {
   HarnessToolEnvironment, HarnessToolOutcome, ToolJob, ToolCompleted, ToolRefused, DurationExceeded,
   harness_tool_environment, harness_run_command_scheduled, harness_wait_jobs_scheduled,
-  harness_kill_job, harness_outcome_text,
+  harness_kill_job, harness_read_job_output, harness_outcome_text, harness_env_with_jobs,
 }
 import gunbc.harness.harness_shell_job {
+  HarnessShellJob, JobFinished, JobExitedOutcome,
   harness_observe_job, JobStillRunning, JobExited, JobSignaled, JobReapRefused,
   harness_job_is_running,
 }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn fixture_schedule() -> ShellJobSchedule {
@@ -270,6 +270,38 @@ test fn job_kill_keeps_the_job_running_unless_reap_confirms_death() -> Bool {
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
   let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
   dir.success && out.success && confirmed && text.contains("killed process group")
+}
+
+test fn unread_job_output_is_typed_unreadable_not_empty() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let missing = join([out.path, "/no-such-job.out"], "")
+  let job = HarnessShellJob {
+    id: "1",
+    pid: 1,
+    command: "true",
+    stdout_file: missing as FilePath,
+    stderr_file: missing as FilePath,
+    stdio_note: "",
+    state: JobFinished { outcome: JobExitedOutcome { code: 0 } },
+  }
+  let step = harness_read_job_output(
+    environment: harness_env_with_jobs(
+      environment: env_at(worktree: dir.path, output: out.path),
+      jobs: [job],
+      wait_pace: WaitPaceReset,
+    ),
+    id: "1",
+  )
+  let text = harness_outcome_text(outcome: step.outcome)
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success
+    && match step.outcome {
+      ToolRefused { disposition: _ } => text.contains("unreadable") && !text.contains("[exit 0]")
+      ToolCompleted { text: _, exit_code: _, standing: _ } => false
+      ToolJob { id: _, text: _ } => false
+    }
 }
 
 test fn run_command_does_not_dirty_the_worktree_git_status() -> Bool {
