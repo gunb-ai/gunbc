@@ -91,10 +91,12 @@ import gunbc.harness.harness_wire {
   harness_context_budget_for,
 }
 import gunbc.harness.harness_tool {
-  HarnessToolEnvironment, HarnessToolOutcome, ToolCompleted, ToolRefused,
+  HarnessToolEnvironment, HarnessToolOutcome, ToolCompleted, ToolRefused, ToolJob,
+  HarnessToolStep,
   harness_execute_tool_use, harness_outcome_text, harness_outcome_is_error,
   harness_offered_tools_json,
 }
+import gunbc.harness.harness_shell_job { harness_hand_in_blocked_by_running_jobs }
 import gunbc.harness.harness_tool_kind {
   harness_tool_of_wire_name, harness_tool_read_item_type, harness_tool_wire_name,
   HarnessToolRecognized, HarnessToolUnrecognized, HandInTool,
@@ -1029,16 +1031,34 @@ type HarnessToolResult {
   is_error: Bool
 }
 
-fn harness_execute_tool(
-  environment: HarnessToolEnvironment,
-  block: HarnessWireBlock,
-) -> HarnessToolResult {
-  let outcome = harness_execute_tool_use(environment: environment, block: block)
-  HarnessToolResult {
-    tool_use_id: harness_tool_use_id(block: block),
-    text: harness_outcome_text(outcome: outcome),
-    is_error: harness_outcome_is_error(outcome: outcome),
+type HarnessExecutedTools {
+  environment: HarnessToolEnvironment
+  results: List<HarnessToolResult>
+}
+
+fn harness_accumulate_tool(acc: HarnessExecutedTools, block: HarnessWireBlock) -> HarnessExecutedTools {
+  let step = harness_execute_tool_use(environment: acc.environment, block: block)
+  HarnessExecutedTools {
+    environment: step.environment,
+    results: concat(acc.results, [
+      HarnessToolResult {
+        tool_use_id: harness_tool_use_id(block: block),
+        text: harness_outcome_text(outcome: step.outcome),
+        is_error: harness_outcome_is_error(outcome: step.outcome),
+      },
+    ]),
   }
+}
+
+fn harness_execute_tools(
+  environment: HarnessToolEnvironment,
+  uses: List<HarnessWireBlock>,
+) -> HarnessExecutedTools {
+  fold(
+    uses,
+    init: HarnessExecutedTools { environment: environment, results: [] },
+    f: (acc, u) => harness_accumulate_tool(acc: acc, block: u),
+  )
 }
 
 // THE RESPONSE IS KEPT BESIDE THE REQUEST, EVERY ROUND. A refusal raised on a completion used to
@@ -1902,37 +1922,39 @@ fn harness_turn_round(
                 stop_reason: stop_reason,
               )
             Absent => {
-          let results = map(uses, u => harness_execute_tool(
-            environment: config.environment,
-            block: u,
-          ))
+          let executed = harness_execute_tools(environment: config.environment, uses: uses)
+          let config_after = harness_turn_config_with_environment(
+            config: config,
+            environment: executed.environment,
+          )
+          let results = executed.results
           let usage_after_tools = harness_event_round_usage(
             step: steps_taken + 1,
             input_tokens: input_tokens,
             output_tokens: output_tokens,
             clock: clock,
             tool_calls: list_length(items: uses),
-            files_changed: harness_worktree_files_changed(environment: config.environment),
+            files_changed: harness_worktree_files_changed(environment: config_after.environment),
           )
           let stepped = concat(concat(events, [usage_after_tools]), harness_tool_round_events(uses: uses))
-          match harness_write_events(config: config, events: stepped) {
-            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-            HarnessEventsWritten => match harness_completion_observe(completion: config.completion) {
+          match harness_write_events(config: config_after, events: stepped) {
+            HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config_after, detail: d)
+            HarnessEventsWritten => match harness_completion_observe(completion: config_after.completion) {
               CompletionReached { path } => {
                 let done = concat(stepped, [harness_event_turn_completed_by_artifact(path: path)])
-                match harness_write_events(config: config, events: done) {
-                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                match harness_write_events(config: config_after, events: done) {
+                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config_after, detail: d)
                   HarnessEventsWritten => TurnCompletedByArtifact { path: path, steps_taken: steps_taken + 1 }
                 }
               }
               CompletionIndeterminate { cause } => harness_turn_continue(
-                config: config, messages: messages, blocks: blocks, results: results,
+                config: config_after, messages: messages, blocks: blocks, results: results,
                 steps_remaining: steps_remaining, steps_taken: steps_taken, input_tokens: input_tokens,
                 events: concat(stepped, [harness_event_completion_indeterminate(cause: cause)]),
                 repairs_used: repairs_used,
               )
               CompletionNotReached => harness_turn_continue(
-                config: config, messages: messages, blocks: blocks, results: results,
+                config: config_after, messages: messages, blocks: blocks, results: results,
                 steps_remaining: steps_remaining, steps_taken: steps_taken, input_tokens: input_tokens,
                 events: stepped,
                 repairs_used: repairs_used,
@@ -2608,6 +2630,27 @@ type HarnessHandInSeat
   = HandInSeatReady { config: HarnessTurnConfig }
   | HandInSeatReleaseRefused { detail: String }
 
+fn harness_turn_config_with_environment(config: HarnessTurnConfig, environment: HarnessToolEnvironment) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: config.backend_url,
+    model: config.model,
+    max_tokens: config.max_tokens,
+    serving_unit: config.serving_unit,
+    reasoning_mode: config.reasoning_mode,
+    wire_shape: config.wire_shape,
+    system_prompt: config.system_prompt,
+    supervision: config.supervision,
+    request_scratch_path: config.request_scratch_path,
+    events_path: config.events_path,
+    context_budget: config.context_budget,
+    request_deadline: config.request_deadline,
+    environment: environment,
+    completion: config.completion,
+    backend_access: config.backend_access,
+    acceptance_capacity: config.acceptance_capacity,
+  }
+}
+
 fn harness_turn_config_with_capacity(config: HarnessTurnConfig, acceptance_capacity: HarnessAcceptanceCapacity) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: config.backend_url,
@@ -2772,6 +2815,38 @@ fn harness_event_session_outcome(event_type: String, handin: String, detail: Str
   ]))
 }
 
+type HarnessHandInRoundPrep
+  = HandInRoundBlocked {
+      environment: HarnessToolEnvironment
+      results: List<HarnessToolResult>
+      detail: String
+    }
+  | HandInRoundClear {
+      environment: HarnessToolEnvironment
+      results: List<HarnessToolResult>
+    }
+
+fn harness_prepare_hand_in_round(
+  environment: HarnessToolEnvironment,
+  uses: List<HarnessWireBlock>,
+) -> HarnessHandInRoundPrep {
+  let others = uses |> filter(u => !harness_block_is_hand_in(block: u))
+  let executed = harness_execute_tools(environment: environment, uses: others)
+  match harness_hand_in_blocked_by_running_jobs(jobs: executed.environment.jobs) {
+    Present { value: detail } =>
+      HandInRoundBlocked {
+        environment: executed.environment,
+        results: executed.results,
+        detail: detail,
+      }
+    Absent =>
+      HandInRoundClear {
+        environment: executed.environment,
+        results: executed.results,
+      }
+  }
+}
+
 fn harness_turn_execute_hand_in(
   config: HarnessTurnConfig,
   messages: List<JsonValue>,
@@ -2788,52 +2863,88 @@ fn harness_turn_execute_hand_in(
   text: String,
   stop_reason: AnthropicStopReason,
 ) -> HarnessTurnOutcome {
-  let others = uses |> filter(u => !harness_block_is_hand_in(block: u))
-  let other_results = map(others, u => harness_execute_tool(environment: config.environment, block: u))
-  let usage_after = harness_event_round_usage(
-    step: steps_taken + 1,
-    input_tokens: input_tokens,
-    output_tokens: output_tokens,
-    clock: clock,
-    tool_calls: list_length(items: uses),
-    files_changed: harness_worktree_files_changed(environment: config.environment),
-  )
-  let stepped = concat(concat(events, [usage_after]), harness_tool_round_events(uses: uses))
-  match harness_write_events(config: config, events: stepped) {
-    HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-    HarnessEventsWritten => {
-      let observed = harness_submission_gate_observe(environment: config.environment)
-      match harness_handin_route(supervision: config.supervision, observed: observed) {
-        Absent => {
-          let refused = HarnessToolResult {
-            tool_use_id: harness_tool_use_id(block: hand_block),
-            text: "hand_in refused: the submission is not a ready candidate, or this session is not on the hand-in route",
-            is_error: true,
-          }
+  match harness_prepare_hand_in_round(environment: config.environment, uses: uses) {
+    HandInRoundBlocked { environment: env_after, results: other_results, detail: blocked } => {
+      let config_after = harness_turn_config_with_environment(
+        config: config,
+        environment: env_after,
+      )
+      let refused = HarnessToolResult {
+        tool_use_id: harness_tool_use_id(block: hand_block),
+        text: blocked,
+        is_error: true,
+      }
+      let usage_after = harness_event_round_usage(
+        step: steps_taken + 1,
+        input_tokens: input_tokens,
+        output_tokens: output_tokens,
+        clock: clock,
+        tool_calls: list_length(items: uses),
+        files_changed: harness_worktree_files_changed(environment: config_after.environment),
+      )
+      let stepped = concat(concat(events, [usage_after]), harness_tool_round_events(uses: uses))
+      match harness_write_events(config: config_after, events: stepped) {
+        HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config_after, detail: d)
+        HarnessEventsWritten =>
           harness_turn_continue(
-            config: config, messages: messages, blocks: blocks,
+            config: config_after, messages: messages, blocks: blocks,
             results: concat(other_results, [refused]),
             steps_remaining: steps_remaining, steps_taken: steps_taken, input_tokens: input_tokens,
             events: stepped, repairs_used: repairs_used,
           )
+      }
+    }
+    HandInRoundClear { environment: env_after, results: other_results } => {
+      let config_after = harness_turn_config_with_environment(
+        config: config,
+        environment: env_after,
+      )
+      let usage_after = harness_event_round_usage(
+        step: steps_taken + 1,
+        input_tokens: input_tokens,
+        output_tokens: output_tokens,
+        clock: clock,
+        tool_calls: list_length(items: uses),
+        files_changed: harness_worktree_files_changed(environment: config_after.environment),
+      )
+      let stepped = concat(concat(events, [usage_after]), harness_tool_round_events(uses: uses))
+      match harness_write_events(config: config_after, events: stepped) {
+        HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config_after, detail: d)
+        HarnessEventsWritten => {
+          let observed = harness_submission_gate_observe(environment: config_after.environment)
+          match harness_handin_route(supervision: config.supervision, observed: observed) {
+            Absent => {
+              let refused = HarnessToolResult {
+                tool_use_id: harness_tool_use_id(block: hand_block),
+                text: "hand_in refused: the submission is not a ready candidate, or this session is not on the hand-in route",
+                is_error: true,
+              }
+              harness_turn_continue(
+                config: config_after, messages: messages, blocks: blocks,
+                results: concat(other_results, [refused]),
+                steps_remaining: steps_remaining, steps_taken: steps_taken, input_tokens: input_tokens,
+                events: stepped, repairs_used: repairs_used,
+              )
+            }
+            Present { value: route } =>
+              harness_turn_hand_in(
+                config: config_after,
+                route: route,
+                messages: messages,
+                events: stepped,
+                steps_taken: steps_taken + 1,
+                text: text,
+                stop_reason: stop_reason,
+                input_tokens: input_tokens,
+                output_tokens: output_tokens,
+                tool_use_id: Present { value: harness_tool_use_id(block: hand_block) },
+                prior_results: other_results,
+                steps_remaining: steps_remaining,
+                repairs_used: repairs_used,
+                blocks: blocks,
+              )
+          }
         }
-        Present { value: route } =>
-          harness_turn_hand_in(
-            config: config,
-            route: route,
-            messages: messages,
-            events: stepped,
-            steps_taken: steps_taken + 1,
-            text: text,
-            stop_reason: stop_reason,
-            input_tokens: input_tokens,
-            output_tokens: output_tokens,
-            tool_use_id: Present { value: harness_tool_use_id(block: hand_block) },
-            prior_results: other_results,
-            steps_remaining: steps_remaining,
-            repairs_used: repairs_used,
-            blocks: blocks,
-          )
       }
     }
   }

@@ -25,12 +25,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// TerminateProcess sends SIGTERM only. The reaper's bound is at the CALLER (residual
+// TerminateProcess sends SIGTERM to ONE pid. The reaper's bound is at the CALLER (residual
 // reap only ever names a pid it read out of an inactive unit's own cgroup.procs, per
 // gunbc.host.host_hygiene_reaper_remediate) rather than at the signal — this service does not
-// widen to SIGKILL, does not accept an arbitrary signal name, and does not accept a
-// process group or -1/0 pid, which is the shape that turns "kill one pid" into "kill
-// everything the caller can reach".
+// widen to SIGKILL, does not accept an arbitrary signal name, and does not fold a process
+// group into this operation. kill(2) with a negative pid is a different POSIX form
+// (pubs.opengroup.org/onlinepubs/9699919799/functions/kill.html): it names a process group.
+// That form is TerminateProcessGroup, used by the harness shell-job backstop and job_kill,
+// not by the host reaper.
 service posix.Signal {
   operation TerminateProcess {
     requires none
@@ -46,6 +48,20 @@ service posix.Signal {
     }
     mock_response {
       0 => { success: true, stderr: "" } "hermetic posix.Signal.TerminateProcess"
+    }
+  }
+
+  operation TerminateProcessGroup {
+    requires none
+    input { pgid: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["kill", "-TERM", "-{pgid}"] }
+    exit {
+      0 => Unit
+      nonzero => String "kill -TERM process group failed"
     }
   }
 }

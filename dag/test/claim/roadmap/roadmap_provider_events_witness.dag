@@ -4,7 +4,8 @@ import std.types { Bool, String, Int, List }
 import extdeps.languages.json.emit { json_object }
 import gunbc.harness.harness_wire { WireToolUseBlock }
 import gunbc.harness.harness_tool_kind {
-  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool, harness_tool_wire_name,
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
+  WaitJobsTool, ReadJobOutputTool, KillJobTool, harness_tool_wire_name,
 }
 import std.measure { character_count, character_count_value }
 import gunbc.harness.harness_turn { harness_event_placement_waiting, harness_tool_round_events }
@@ -18,7 +19,8 @@ import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted,
   ProviderItemActivity, RunningCommand, EditingFiles, UsingConnectedTool, Searching,
   UpdatingPlan, ReasoningItem, Reporting, HarnessReadingFile, HarnessWritingFile,
-  HarnessEditingFile, HarnessHandingIn, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
+  HarnessEditingFile, HarnessHandingIn, HarnessWaitingOnJobs, HarnessReadingJobOutput,
+  HarnessKillingJob, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
   classify_claude_code_stream_line,
   ItemStarted, ItemCompleted,
   ProviderEventsParsed,
@@ -419,6 +421,9 @@ fn activity_tag(activity: ProviderItemActivity) -> String {
     HarnessWritingFile => "write"
     HarnessEditingFile => "edit"
     HarnessHandingIn => "handin"
+    HarnessWaitingOnJobs => "wait"
+    HarnessReadingJobOutput => "jobout"
+    HarnessKillingJob => "jobkill"
     HarnessRefusingUnrecognizedTool => "undeclared"
     EditingFiles => "other"
     UsingConnectedTool => "other"
@@ -476,6 +481,18 @@ test fn a_harness_file_edit_round_is_read_back_as_editing_apart_from_writing() -
 
 test fn a_harness_hand_in_round_is_read_back_as_handing_in() -> Bool {
   harness_tool_round_tags(tool: HandInTool) == "started:handin,completed:handin"
+}
+
+test fn a_harness_wait_round_is_read_back_as_waiting_on_jobs() -> Bool {
+  harness_tool_round_tags(tool: WaitJobsTool) == "started:wait,completed:wait"
+}
+
+test fn a_harness_job_output_round_is_read_back_as_reading_job_output() -> Bool {
+  harness_tool_round_tags(tool: ReadJobOutputTool) == "started:jobout,completed:jobout"
+}
+
+test fn a_harness_job_kill_round_is_read_back_as_killing_a_job() -> Bool {
+  harness_tool_round_tags(tool: KillJobTool) == "started:jobkill,completed:jobkill"
 }
 
 // A NAME THE HARNESS DOES NOT DECLARE IS NEVER REPORTED AS A COMMAND. The dispatcher refuses such a
@@ -792,7 +809,8 @@ test fn a_item_kind_partition_names_only_reporting() -> Bool {
   let activities: List<ProviderItemActivity> = [
     RunningCommand, EditingFiles, UsingConnectedTool, Searching, UpdatingPlan,
     ReasoningItem, Reporting, HarnessReadingFile, HarnessWritingFile,
-    HarnessEditingFile, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
+    HarnessEditingFile, HarnessHandingIn, HarnessWaitingOnJobs, HarnessReadingJobOutput,
+    HarnessKillingJob, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
   ]
   count(activities.filter(a => match provider_item_activity_kind(activity: a) {
                                  ItemKindReporting => true

@@ -2305,6 +2305,78 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "a_command_over_the_inline_hold_returns_a_job_not_duration_exceeded" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "a_command_over_the_inline_hold_returns_a_job_not_duration_exceeded",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "wait_with_no_running_job_is_refused" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "wait_with_no_running_job_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "run_command_pwd_equals_the_environment_working_directory" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "run_command_pwd_equals_the_environment_working_directory",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "wait_after_a_job_finishes_does_not_return_early_while_another_runs" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "wait_after_a_job_finishes_does_not_return_early_while_another_runs",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "wait_returns_when_a_job_finishes_before_the_timeout" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "wait_returns_when_a_job_finishes_before_the_timeout",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "wait_result_over_a_job_that_exited_1_does_not_say_exit_0" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "wait_result_over_a_job_that_exited_1_does_not_say_exit_0",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "the_backstop_kills_the_process_group" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "the_backstop_kills_the_process_group",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "job_kill_keeps_the_job_running_unless_reap_confirms_death" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "job_kill_keeps_the_job_running_unless_reap_confirms_death",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "unread_job_output_is_typed_unreadable_not_empty" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "unread_job_output_is_typed_unreadable_not_empty",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "job_output_of_a_finished_exit_3_job_does_not_say_exit_0" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "job_output_of_a_finished_exit_3_job_does_not_say_exit_0",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "run_command_does_not_dirty_the_worktree_git_status" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "run_command_does_not_dirty_the_worktree_git_status",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "hand_in_in_the_same_round_as_a_backgrounded_command_is_refused" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "hand_in_in_the_same_round_as_a_backgrounded_command_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.live_deploy.approval_broker_helper_readback_real_execution", function: "a_clean_observable_snapshot_reaches_the_grant_by_real_execution" },
       entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution.dag",
       function: "a_clean_observable_snapshot_reaches_the_grant_by_real_execution",

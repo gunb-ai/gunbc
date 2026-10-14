@@ -11,7 +11,8 @@ import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
 import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.harness.harness_tool { HarnessToolEnvironment }
+import std.filesystem { path_parent_directory }
+import gunbc.harness.harness_tool { HarnessToolEnvironment, harness_tool_environment }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnStoppedBySupervision, TurnSupervisionUnavailable, TurnAcceptanceUnavailable, HarnessSupervision, Unsupervised, SupervisedRounds, HarnessAcceptanceRoute, harness_tool_contract_wire,
   CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
@@ -95,8 +96,6 @@ data harness_macbook_working_directory: FilePath = "/Users/briansrls/gunbc" as F
 data harness_request_scratch_path: FilePath = "/tmp/gunbc-harness-request.json" as FilePath
 
 data harness_probe_events_path: FilePath = "/tmp/gunbc-harness-probe-events.jsonl" as FilePath
-
-data harness_default_duration_limit_seconds: Int = 120
 
 data harness_default_step_budget: Int = 8
 
@@ -220,11 +219,11 @@ fn harness_turn_exit_released(outcome: HarnessTurnOutcome, seat: HarnessSeatRele
 data harness_default_system_prompt: String = harness_guidance_prose(rows: harness_probe_guidance())
 
 fn harness_macbook_environment() -> HarnessToolEnvironment {
-  HarnessToolEnvironment {
+  harness_tool_environment(
     working_directory: harness_macbook_working_directory,
     timeout_program: harness_macbook_timeout_program,
-    duration_limit_seconds: harness_default_duration_limit_seconds,
-  }
+    job_output_directory: path_parent_directory(path: harness_request_scratch_path as String) as FilePath,
+  )
 }
 
 // THE WINDOW COMES FROM THE SURFACE THE HARNESS ACTUALLY POSTS TO. The first cut of this row read
@@ -682,11 +681,11 @@ fn harness_worker_config(
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
-    environment: HarnessToolEnvironment {
+    environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
-      duration_limit_seconds: harness_default_duration_limit_seconds,
-    },
+      job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
+    ),
     completion: CompletesOnProviderStop,
     backend_access: backend.access,
     acceptance_capacity: acceptance_capacity,
@@ -987,11 +986,11 @@ fn harness_reviewer_config(
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
-    environment: HarnessToolEnvironment {
+    environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
-      duration_limit_seconds: harness_default_duration_limit_seconds,
-    },
+      job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
+    ),
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
     acceptance_capacity: KeepBindingAlive,
@@ -1072,11 +1071,11 @@ fn harness_auditor_config(
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
     request_deadline: harness_request_deadline,
-    environment: HarnessToolEnvironment {
+    environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
-      duration_limit_seconds: harness_default_duration_limit_seconds,
-    },
+      job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
+    ),
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
     acceptance_capacity: KeepBindingAlive,

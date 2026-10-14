@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_acceptance_outcome_witness_test
 
-import std.types { Bool, String, List, list_length }
+import std.types { Bool, String, List }
 import std.optional { Present, Absent }
 import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
@@ -21,6 +21,7 @@ import gunbc.harness.harness_turn {
 }
 import gunbc.harness.harness_wire { AnthropicMessagesShape, OpenAiChatCompletionsShape }
 import gunbc.harness.harness_tool { harness_offered_tools }
+import gunbc.harness.harness_tool_kind { HarnessTool, ReadFileTool, harness_tool_wire_name }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderAwaitingAcceptance, ProviderCompleted, ProviderRunning,
   parse_codex_jsonl, provider_execution_state,
@@ -145,12 +146,16 @@ test fn same_wording_and_changed_code_is_a_fresh_hand_in() -> Bool {
     })
 }
 
+fn wire_names_the_tool(wire: String, tool: HarnessTool) -> Bool {
+  wire.contains(join(["\"name\": \"", harness_tool_wire_name(tool: tool), "\""], ""))
+}
+
 test fn the_wire_contract_is_the_offered_tools() -> Bool {
   let a = harness_tool_contract_wire(shape: AnthropicMessagesShape)
   let o = harness_tool_contract_wire(shape: OpenAiChatCompletionsShape)
-  list_length(items: harness_offered_tools()) == 2
-    && a.contains("run_command") && a.contains("hand_in") && !a.contains("read_file")
-    && o.contains("run_command") && o.contains("hand_in") && !o.contains("read_file")
+  all(harness_offered_tools(), t => wire_names_the_tool(wire: a, tool: t) && wire_names_the_tool(wire: o, tool: t))
+    && !wire_names_the_tool(wire: a, tool: ReadFileTool)
+    && !wire_names_the_tool(wire: o, tool: ReadFileTool)
 }
 
 test fn the_tool_result_is_the_outcome() -> Bool {

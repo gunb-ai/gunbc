@@ -3,6 +3,7 @@ module test.claim.harness_tool_kind
 import std.types { Bool, String }
 import gunbc.harness.harness_tool_kind {
   HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
+  WaitJobsTool, ReadJobOutputTool, KillJobTool,
   HarnessToolRead, HarnessToolRecognized, HarnessToolUnrecognized,
   harness_tool_wire_name, harness_tool_of_wire_name,
   harness_tool_item_type, harness_tool_read_item_type, harness_unrecognized_tool_item_type,
@@ -21,6 +22,9 @@ fn item_read_tag(item_type: String) -> String {
         WriteFileTool => "write"
         EditFileTool => "edit"
         HandInTool => "handin"
+        WaitJobsTool => "wait"
+        ReadJobOutputTool => "jobout"
+        KillJobTool => "jobkill"
       }
     ItemIsUnrecognizedToolUse => "undeclared"
     ItemIsNotAHarnessToolUse => "not-a-tool-use"
@@ -37,6 +41,9 @@ test fn each_harness_tool_item_kind_reads_back_as_its_own_tool() -> Bool {
     && tool_round_trip_tag(tool: WriteFileTool) == "write"
     && tool_round_trip_tag(tool: EditFileTool) == "edit"
     && tool_round_trip_tag(tool: HandInTool) == "handin"
+    && tool_round_trip_tag(tool: WaitJobsTool) == "wait"
+    && tool_round_trip_tag(tool: ReadJobOutputTool) == "jobout"
+    && tool_round_trip_tag(tool: KillJobTool) == "jobkill"
 }
 
 test fn an_unrecognized_tool_name_is_written_as_the_undeclared_kind_never_a_tool_kind() -> Bool {
@@ -65,6 +72,9 @@ fn wire_read_tag(read: HarnessToolRead) -> String {
         WriteFileTool => "write"
         EditFileTool => "edit"
         HandInTool => "handin"
+        WaitJobsTool => "wait"
+        ReadJobOutputTool => "jobout"
+        KillJobTool => "jobkill"
       }
     HarnessToolUnrecognized { name: n } => "refused:" + n
   }
@@ -80,6 +90,9 @@ test fn each_harness_tool_wire_name_reads_back_as_its_own_tool() -> Bool {
     && wire_round_trip_tag(tool: WriteFileTool) == "write"
     && wire_round_trip_tag(tool: EditFileTool) == "edit"
     && wire_round_trip_tag(tool: HandInTool) == "handin"
+    && wire_round_trip_tag(tool: WaitJobsTool) == "wait"
+    && wire_round_trip_tag(tool: ReadJobOutputTool) == "jobout"
+    && wire_round_trip_tag(tool: KillJobTool) == "jobkill"
 }
 
 test fn a_wire_name_no_tool_spells_is_refused_with_that_name() -> Bool {

@@ -204,5 +204,6 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
     decl_ref(module_path: "extdeps.browser.chromium", decl_name: "chromium_version_command"),
+    decl_ref(module_path: "gunbc.harness.harness_shell_job", decl_name: "harness_backstopped_shell_command"),
   ]
   = ProgramIdentity { invocation: invocation, catalog: UncatalogedDebt }
