@@ -2389,14 +2389,18 @@ fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbo
 }
 
 // WHETHER THIS MODULE MAY BIND A ROSTER SURFACE HEAD (concat, count). The one authority is
-// collection_roster_rows: surface name → the template DeclarationRef. The head binds only if this
-// module imported that template identity from its declaring module, or is that declaring module
-// (own declarations). There is no ambient last-tier bind.
+// collection_roster_rows: surface head → the template DeclarationRef. The head binds only if an
+// import's origin composed with the imported name is that declaration's identity (origin.leaf ==
+// declaration_ref_path), or this module is the declaring module. Not a decl_name string match.
 fn collection_roster_template_visible(ctx: ResolveContext, row: DeclarationRef) -> Bool {
-  let template = symbol_intern_lexeme(lexeme: row.decl_name)
-  match map_lookup(m: ctx.namespace.imported_origins, key: template) {
-    Present { value: origin } => qualified_name_to_dotted_string(qn: origin) == row.module_path
-    Absent => qualified_name_to_dotted_string(qn: ctx.namespace.declared_in) == row.module_path
+  let path = declaration_ref_path(r: row)
+  match qualified_name_last_segment(qn: path) {
+    Absent => false
+    Present { value: leaf } =>
+      match map_lookup(m: ctx.namespace.imported_origins, key: leaf) {
+        Present { value: origin } => qualified_name_snoc(qn: origin, segment: leaf) == path
+        Absent => ctx.namespace.declared_in == qualified_name_init(qn: path)
+      }
   }
 }
 
