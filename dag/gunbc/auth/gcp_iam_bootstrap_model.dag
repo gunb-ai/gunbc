@@ -74,6 +74,11 @@ fn iam_bootstrap_apply_federation() -> DedicatedFederation {
     service_account_member: federated_service_account_member(email: iam_converge_service_account), secret_grants: [] }
 }
 
+// Every federation whose pool and account the identities stage may create: the job's own two and every target.
+fn iam_bootstrap_identity_federations() -> List<DedicatedFederation> {
+  gcp_iam_converge_targets + [gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()]
+}
+
 fn iam_bootstrap_resource_key(resource: IamBootstrapResource) -> String {
   match resource {
     BootstrapProject => join(["projects/", fleet_secrets_project_id as String], "")
@@ -96,7 +101,7 @@ fn iam_bootstrap_capability_bindings() -> List<IamBootstrapBinding> {
       iam_bootstrap_binding(resource: BootstrapPool { pool: f.pool_id }, role: BootstrapApplyRole { role: ConvergeProviderRole }, account: iam_converge_service_account),
       iam_bootstrap_binding(resource: BootstrapAccount { account: f.service_account }, role: BootstrapApplyRole { role: ConvergeAccountPolicyRole }, account: iam_converge_service_account),
     ] + map(f.secret_grants, g => iam_bootstrap_binding(resource: BootstrapSecret { secret: g.target.secret }, role: BootstrapApplyRole { role: ConvergeSecretPolicyRole }, account: iam_converge_service_account)))
-  let observe = flat_map(gcp_iam_converge_targets + [gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()], f => [
+  let observe = flat_map(iam_bootstrap_identity_federations(), f => [
     iam_bootstrap_binding(resource: BootstrapPool { pool: f.pool_id }, role: BootstrapObservePool, account: iam_observe_service_account),
     iam_bootstrap_binding(resource: BootstrapAccount { account: f.service_account }, role: BootstrapObserveAccount, account: iam_observe_service_account),
   ] + map(f.secret_grants, g => iam_bootstrap_binding(resource: BootstrapSecret { secret: g.target.secret }, role: BootstrapObserveSecret, account: iam_observe_service_account)))
