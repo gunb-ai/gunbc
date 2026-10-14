@@ -112,7 +112,7 @@ fn nvar_failure_alias() -> QualifiedName {
   Cons { head: ^aca, tail: Cons { head: ^ExitFailure, tail: Empty } }
 }
 
-fn nvar_bind_nullary_arm(index: SymbolIndex, alias: QualifiedName, declaring: QualifiedName) -> SymbolIndex {
+fn nvar_bind_nullary_arm(index: SymbolIndex, arm_alias: QualifiedName, declaring: QualifiedName) -> SymbolIndex {
   let with_arm = symbol_index_mark_declared_payload(
     index: symbol_index_insert(index: index, qualified_path: declaring, resolved: nvar_empty_payload()),
     qualified_path: declaring,
@@ -121,11 +121,11 @@ fn nvar_bind_nullary_arm(index: SymbolIndex, alias: QualifiedName, declaring: Qu
   symbol_index_mark_declared_payload(
     index: symbol_index_bind_at(
       index: with_arm,
-      binding_path: alias,
+      binding_path: arm_alias,
       declaring_path: declaring,
       resolved: nvar_empty_payload()
     ),
-    qualified_path: alias,
+    qualified_path: arm_alias,
     kind: VariantArmPayload
   )
 }
@@ -134,8 +134,8 @@ fn nvar_cli_index() -> SymbolIndex {
   let with_module = symbol_index_mark_module_root(index: empty_symbol_index(), qualified_path: nvar_module())
   let with_type = symbol_index_insert(index: with_module, qualified_path: nvar_coproduct_path(), resolved: nvar_empty_payload())
   nvar_bind_nullary_arm(
-    index: nvar_bind_nullary_arm(index: with_type, alias: nvar_rust_alias(), declaring: nvar_rust_declaring()),
-    alias: nvar_c_alias(),
+    index: nvar_bind_nullary_arm(index: with_type, arm_alias: nvar_rust_alias(), declaring: nvar_rust_declaring()),
+    arm_alias: nvar_c_alias(),
     declaring: nvar_c_declaring()
   )
 }
