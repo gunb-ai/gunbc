@@ -417,6 +417,34 @@ fn publication_refused_dir(instance_root: String) -> String {
   join([publication_spool_root(instance_root: instance_root), "/requests-refused"], "")
 }
 
+// THE BELT DISPATCH SPOOL, THE OS-PRINCIPAL SERVICE-WRITE ROUTE. HTTP /dispatch stays human-only
+// (gunbc.auth.request_authentication human_write_admission, ServeActionDispatchNode). Automation
+// writes a request file as the instance service user; the belt drains it as that User=
+// (live_deploy_belt_dispatch_spool_drain_service_unit_file). Authority is
+// gunbc.live_deploy.emit spool_inbox_directory_mode / dispatch_spool_request_mode (other.write
+// false, group the service principal), the same kernel grant as the publication spool.
+// apply_dispatch_spool_steps creates the directories; gunbc.roadmap.roadmap_dispatch_spool is the
+// only reader of a request's bytes.
+fn dispatch_spool_root(instance_root: String) -> String {
+  join([instance_root, "/dispatch-spool"], "")
+}
+
+fn dispatch_request_dir(instance_root: String) -> String {
+  join([dispatch_spool_root(instance_root: instance_root), "/requests"], "")
+}
+
+fn dispatch_request_staging_dir(instance_root: String) -> String {
+  join([dispatch_spool_root(instance_root: instance_root), "/requests-staging"], "")
+}
+
+fn dispatch_answer_dir(instance_root: String) -> String {
+  join([dispatch_spool_root(instance_root: instance_root), "/answers"], "")
+}
+
+fn dispatch_refused_dir(instance_root: String) -> String {
+  join([dispatch_spool_root(instance_root: instance_root), "/requests-refused"], "")
+}
+
 // THE HELPER KEEPS ITS OWN BARE MIRROR UNDER THE SPOOL ROOT. A fresh mktemp mirror packs the whole
 // reachable history on every publish; this path persists so a later fetch is a delta. The spool
 // root is installed owned by the publication principal (apply_publication_spool_steps); the helper
