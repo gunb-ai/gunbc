@@ -12,14 +12,6 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 data parse_verdict_request_family: String = "parse-verdict"
 data parse_verdict_receipt_accepted: String = "Accepted"
 
-fn parse_verdict_receipt_line_prefix() -> String {
-  join([parse_verdict_request_family, "\t"], "")
-}
-
-fn parse_verdict_walk_accepted_line(source_digest: String) -> String {
-  concat(parse_verdict_receipt_line_prefix(), source_digest, "\t", parse_verdict_receipt_accepted)
-}
-
 fn parse_verdict_stored_accepted_line(source_digest: String, compiler: String) -> String {
   join([parse_verdict_request_family, "\t", source_digest, "\t", compiler, "\t", parse_verdict_receipt_accepted], "")
 }

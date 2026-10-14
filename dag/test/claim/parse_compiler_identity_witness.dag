@@ -1,7 +1,6 @@
 module test.claim.parse_compiler_identity_witness
 
 import std.types { Bool }
-import std.algebra { length }
 import v2.compiler.self_host.seed_retention_frontier {
   ReasonDeclaredElsewhere,
   seed_retention_frontier_roster,
@@ -13,8 +12,6 @@ import gunbc.parse_verdict_schema {
   parse_compiler_schema_entry,
   parse_verdict_request_family,
   parse_verdict_receipt_accepted,
-  parse_verdict_receipt_line_prefix,
-  parse_verdict_walk_accepted_line,
   parse_verdict_stored_accepted_line,
   parse_verdict_pr2_restore_frontier,
   parse_verdict_reuse_from,
@@ -23,13 +20,24 @@ import gunbc.parse_verdict_schema {
   FreshIdentityWalked,
   EvictedRefused,
 }
+import extdeps.filesystem.filesystem_io
 
-test fn parse_compiler_entries_are_tokenize_parse_and_schema() -> Bool {
-  let es = parse_compiler_identity_entries()
-  length(xs: es) == 3
-    && any(es, e => e == parse_compiler_tokenize_entry)
-    && any(es, e => e == parse_compiler_parse_entry)
-    && any(es, e => e == parse_compiler_schema_entry)
+data native_lane_runner_source_path: String = "src/v1/stage0/src/cli_run/native_lane_runner.rs"
+
+fn rust_str_const_line(name: String, value: String) -> String {
+  join(["const ", name, ": &str = \"", value, "\";"], "")
+}
+
+// THE SEED HASHER MUST NAME THE SCHEMA ROOTS. parse_compiler_identity_entries is the membership
+// authority; the host consts are the route. A rename on one side alone reds here.
+test fn the_seed_parse_compiler_entry_consts_match_the_schema() -> Bool {
+  let runner = Filesystem.Read(path: native_lane_runner_source_path, expect: ExpectSuccess).content
+  (parse_compiler_identity_entries()
+    == [parse_compiler_tokenize_entry, parse_compiler_parse_entry, parse_compiler_schema_entry])
+    && string_contains(s: runner, pattern: rust_str_const_line(name: "PARSE_COMPILER_TOKENIZE_ENTRY", value: parse_compiler_tokenize_entry))
+    && string_contains(s: runner, pattern: rust_str_const_line(name: "PARSE_COMPILER_PARSE_ENTRY", value: parse_compiler_parse_entry))
+    && string_contains(s: runner, pattern: rust_str_const_line(name: "PARSE_COMPILER_SCHEMA_ENTRY", value: parse_compiler_schema_entry))
+    && string_contains(s: runner, pattern: "fn parse_compiler_identity_entries()")
 }
 
 test fn a_changed_identity_is_a_fresh_walk_and_never_saves_on_a_pr() -> Bool {
@@ -55,12 +63,6 @@ test fn same_identity_with_a_miss_is_evicted() -> Bool {
     Reused { compiler: _ } => false
     FreshIdentityWalked { compiler: _ } => false
   }
-}
-
-test fn the_walk_line_is_family_digest_and_accepted() -> Bool {
-  parse_verdict_receipt_line_prefix() == join([parse_verdict_request_family, "\t"], "")
-    && parse_verdict_walk_accepted_line(source_digest: "abc")
-      == join([parse_verdict_request_family, "\tabc\t", parse_verdict_receipt_accepted], "")
 }
 
 test fn the_stored_line_stamps_compiler() -> Bool {
