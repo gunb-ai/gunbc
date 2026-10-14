@@ -1,7 +1,7 @@
 module gunbc.harness.harness_turn
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr, GitRef }
-import std.measure { TokenCount, token_count_value, Second, second, second_count, money_amount_micro }
+import std.measure { TokenCount, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -35,11 +35,9 @@ import gunbc.harness.harness_seat {
   harness_hosted_inflight_acquire, harness_hosted_inflight_release, hosted_inflight_carried,
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, HarnessOperatorBound,
   harness_release_seat, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseNotApplicable, HarnessSeatReleaseRefused,
-  harness_bind_seat, AnyAdmittedModel,
+  harness_bind_seat, AnyAdmittedModel, harness_cli_admission,
 }
 import product.capacity.lease { LeasePolicy, QuiescenceRequired }
-import product.fabric.demand { AdmissionTerms, BuyTerms, admission_terms, debt_payoff_objective }
-import extdeps.currency.currency { Usd }
 import extdeps.tools.hostname
 import gunbc.fabric.fabric_quota { quota_window_start }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
@@ -2639,24 +2637,11 @@ fn harness_release_fleet_seat_for_handin(config: HarnessTurnConfig) -> HarnessHa
         HarnessSeatReleased { partition: _ } =>
           HandInSeatReady { config: harness_turn_config_with_capacity(config: config, acceptance_capacity: FleetSeatReleasedForAcceptance { binding: binding }) }
         HarnessHostedCredentialRemoved =>
-          HandInSeatReady { config: harness_turn_config_with_capacity(config: config, acceptance_capacity: KeepBindingAlive) }
+          HandInSeatReleaseRefused { detail: "a fleet seat release answered as a hosted credential removal; the seat may still be held" }
         HarnessSeatReleaseRefused { detail } => HandInSeatReleaseRefused { detail: detail }
         HarnessSeatReleaseNotApplicable { why } => HandInSeatReleaseRefused { detail: why }
       }
   }
-}
-
-fn harness_revision_admission() -> AdmissionTerms {
-  admission_terms(
-    buy: BuyTerms {
-      budget_account: "harness-cli",
-      currency: Usd,
-      reservation_price: money_amount_micro(count: 0),
-      maximum_buy_order: money_amount_micro(count: 0),
-    },
-    deadline: none,
-    objective: debt_payoff_objective,
-  )
 }
 
 fn harness_rebind_fleet_for_revision(config: HarnessTurnConfig, prior: HarnessSeatBinding, handin: String) -> HarnessHandInSeat {
@@ -2685,7 +2670,7 @@ fn harness_rebind_fleet_for_revision(config: HarnessTurnConfig, prior: HarnessSe
             release_law: QuiescenceRequired,
           },
           session: none,
-          admission: harness_revision_admission(),
+          admission: harness_cli_admission(),
         )
         match rebound {
           HarnessSeatRefused { detail: d } => HandInSeatReleaseRefused { detail: d }
@@ -2853,8 +2838,19 @@ fn harness_turn_execute_hand_in(
   }
 }
 
-fn harness_turn_acceptance_unavailable(config: HarnessTurnConfig, handin: String, cause: String, steps_taken: Int, events: List<String>) -> HarnessTurnOutcome {
-  match harness_write_events(config: config, events: concat(events, [harness_event_session_outcome(event_type: "turn.acceptance_unavailable", handin: handin, detail: cause)])) {
+fn harness_event_acceptance_unavailable(handin: String?, cause: String) -> String {
+  match handin {
+    Absent =>
+      serialize_json(v: json_object([
+        json_kv(key: "type", value: json_string(s: "turn.acceptance_unavailable")),
+        json_kv(key: "detail", value: json_string(s: cause)),
+      ]))
+    Present { value: h } => harness_event_session_outcome(event_type: "turn.acceptance_unavailable", handin: h, detail: cause)
+  }
+}
+
+fn harness_turn_acceptance_unavailable(config: HarnessTurnConfig, handin: String?, cause: String, steps_taken: Int, events: List<String>) -> HarnessTurnOutcome {
+  match harness_write_events(config: config, events: concat(events, [harness_event_acceptance_unavailable(handin: handin, cause: cause)])) {
     HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
     HarnessEventsWritten => TurnAcceptanceUnavailable { cause: cause, steps_taken: steps_taken }
   }
@@ -2881,7 +2877,7 @@ fn harness_turn_hand_in(
     HandInWorktreeUnreadable { cause } =>
       harness_turn_acceptance_unavailable(
         config: config,
-        handin: "",
+        handin: none,
         cause: cause,
         steps_taken: steps_taken,
         events: events,
@@ -2900,13 +2896,13 @@ fn harness_turn_hand_in(
           let entry = join([route.route.inbox, "/", attempt_handin_entry_name(node_id: route.route.node_id, attempt_key: route.route.attempt_key, handin: handin)], "")
           let woke = Filesystem.Write(path: entry, content: "")
           if !woke.success {
-            harness_turn_acceptance_unavailable(config: config, handin: handin, cause: join(["the hand-in could not be recorded in the event spool at ", entry, ": ", woke.error], ""), steps_taken: steps_taken, events: recorded)
+            harness_turn_acceptance_unavailable(config: config, handin: Present { value: handin }, cause: join(["the hand-in could not be recorded in the event spool at ", entry, ": ", woke.error], ""), steps_taken: steps_taken, events: recorded)
           } else {
             match harness_release_fleet_seat_for_handin(config: config) {
               HandInSeatReleaseRefused { detail } =>
                 harness_turn_acceptance_unavailable(
                   config: config,
-                  handin: handin,
+                  handin: Present { value: handin },
                   cause: join(["fleet seat could not be released at a quiescent hand-in: ", detail], ""),
                   steps_taken: steps_taken,
                   events: recorded,
@@ -2976,7 +2972,7 @@ fn harness_await_acceptance(
     Absent =>
       if polls_left <= 0 {
         harness_turn_acceptance_unavailable(
-          config: config, handin: handin,
+          config: config, handin: Present { value: handin },
           cause: harness_acceptance_wait_expired_cause(handin: handin),
           steps_taken: steps_taken, events: events,
         )
@@ -3040,14 +3036,14 @@ fn harness_apply_acceptance(
       }
     }
     AcceptanceUnavailable { cause } =>
-      harness_turn_acceptance_unavailable(config: config, handin: handin, cause: cause, steps_taken: steps_taken, events: events)
+      harness_turn_acceptance_unavailable(config: config, handin: Present { value: handin }, cause: cause, steps_taken: steps_taken, events: events)
     AcceptanceChangesRequested { stage, findings } => {
       let dir = config.environment.working_directory as String
       let submitted = join([dir, "/", submission_artifact_name as String], "")
       let kept = join([dir, "/.gunbc-submission.", handin, ".json"], "")
       let moved = shell.Move.File(source: submitted as FilePath, destination: kept as FilePath)
       if !moved.success {
-        harness_turn_acceptance_unavailable(config: config, handin: handin, cause: join(["changes were requested, but the handed-in submission could not be moved aside to ", kept], ""), steps_taken: steps_taken, events: events)
+        harness_turn_acceptance_unavailable(config: config, handin: Present { value: handin }, cause: join(["changes were requested, but the handed-in submission could not be moved aside to ", kept], ""), steps_taken: steps_taken, events: events)
       } else {
         let revising = concat(events, [harness_event_session_outcome(event_type: "session.revision_started", handin: handin, detail: stage)])
         match harness_write_events(config: config, events: revising) {
@@ -3057,7 +3053,7 @@ fn harness_apply_acceptance(
               HandInSeatReleaseRefused { detail } =>
                 harness_turn_acceptance_unavailable(
                   config: config,
-                  handin: handin,
+                  handin: Present { value: handin },
                   cause: join(["changes were requested, but a fleet seat could not be rebound for revision: ", detail], ""),
                   steps_taken: steps_taken,
                   events: revising,

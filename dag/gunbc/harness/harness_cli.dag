@@ -9,7 +9,7 @@ import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMa
 import gunbc.harness.harness_reasoning_wire { HarnessReasoningLevel, ReasoningMaximum, harness_reasoning_level_wire }
 import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
-import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count, money_amount_micro }
+import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
@@ -40,11 +40,9 @@ import gunbc.harness.harness_seat { harness_turn_request, harness_seat_pointer_o
   HarnessSeatRelease, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseNotApplicable, HarnessSeatReleaseRefused, harness_release_seat,
   harness_seat_release_wire, harness_release_held, harness_release_capability,
   HarnessReleaseCapability, harness_release_capability_wire,
-  ServingModelRequirement, AnyAdmittedModel,
+  ServingModelRequirement, AnyAdmittedModel, harness_cli_admission,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, QuiescenceRequired, GrantIdentity }
-import product.fabric.demand { AdmissionTerms, BuyTerms, DemandObjective, admission_terms, debt_payoff_objective }
-import extdeps.currency.currency { Usd }
 import gunbc.serving.serving_front_door {
   ServingSeatPermit, SeatPermitMinted, SeatPermitNotMinted, serving_seat_permit_claims, mint_serving_seat_permit,
 }
@@ -353,23 +351,6 @@ type HarnessSeatWait {
 
 // Stated CLI policy: batch belt turns do not value delay. A per-invocation flag is a
 // declared frontier — gunbc run --function has no --arg for this field.
-data harness_cli_demand_objective: DemandObjective = debt_payoff_objective
-
-// The seat request every belt-spawned role makes; the waiting fold asks it once up front and once
-// after each announced interval.
-fn harness_cli_admission() -> AdmissionTerms {
-  admission_terms(
-    buy: BuyTerms {
-      budget_account: "harness-cli",
-      currency: Usd,
-      reservation_price: money_amount_micro(count: 0),
-      maximum_buy_order: money_amount_micro(count: 0),
-    },
-    deadline: none,
-    objective: harness_cli_demand_objective,
-  )
-}
-
 fn harness_bind_belt_seat(role: String, system_prompt: String, brief: String, actor: NonEmptyStr, attempt: NonEmptyStr) -> HarnessSeatBinding {
   harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: role, shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: actor, attempt: attempt, policy: harness_seat_policy, session: none, admission: harness_cli_admission())
 }

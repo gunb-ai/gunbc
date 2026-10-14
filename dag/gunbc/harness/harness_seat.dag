@@ -66,8 +66,9 @@ import product.fabric.selection {
 }
 import product.fabric.demand {
   ObservationReceiptRef, AdmissionTerms, demand_delay_valuation,
+  BuyTerms, admission_terms, DemandObjective, debt_payoff_objective,
 }
-import extdeps.currency.currency { CurrencyCode }
+import extdeps.currency.currency { CurrencyCode, Usd }
 import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding }
 import std.algebra { trim }
 import gunbc.serving.turn_admission {
@@ -1174,6 +1175,21 @@ data harness_placement_rounds: Nat = 3
 // the Work carries and the one the candidate screen applies are one value with one source. A caller
 // that constructed the request itself could hand in a request naming one requirement beside a
 // screen argument naming another.
+data harness_cli_demand_objective: DemandObjective = debt_payoff_objective
+
+fn harness_cli_admission() -> AdmissionTerms {
+  admission_terms(
+    buy: BuyTerms {
+      budget_account: "harness-cli",
+      currency: Usd,
+      reservation_price: money_amount_micro(count: 0),
+      maximum_buy_order: money_amount_micro(count: 0),
+    },
+    deadline: none,
+    objective: harness_cli_demand_objective,
+  )
+}
+
 fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms) -> HarnessSeatBinding {
   match harness_requirement_placement(requirement: requirement, class: class) {
     LeasedFromHostedQuota => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }

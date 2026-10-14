@@ -18,10 +18,10 @@ import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
 import gunbc.harness.harness_seat { harness_turn_request,
   HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, HarnessOperatorBound, harness_bind_seat, HarnessSeatReleased, HarnessHostedCredentialRemoved,
   HarnessSeatReleaseRefused, HarnessSeatReleaseNotApplicable, harness_release_seat, harness_seat_release_wire, harness_now_epoch,
-  AnyAdmittedModel,
+  AnyAdmittedModel, harness_cli_admission,
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, serving_co_tenancy_class_wire }
-import gunbc.harness.harness_cli { harness_seat_policy, harness_cli_admission }
+import gunbc.harness.harness_cli { harness_seat_policy }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageServed }
 import gunbc.fabric.fabric_event_log {
   SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused, fabric_seat_acquire, seat_acquisition_wire,
