@@ -171,7 +171,7 @@ pub type Bool = bool;
 
 pub type Unit = ();
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Never {}
 
 #[allow(unreachable_code)]

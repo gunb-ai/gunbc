@@ -663,9 +663,10 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
 }
 
 pub fn rust_shared_wrap_ctor(inner_expr: String) -> String {
-    if ((v1_rt::starts_with(inner_expr.clone(), "panic!(".to_string())
+    if (((v1_rt::starts_with(inner_expr.clone(), "panic!(".to_string())
         || v1_rt::starts_with(inner_expr.clone(), "compile_error!(".to_string()))
         || v1_rt::starts_with(inner_expr.clone(), "unreachable!(".to_string()))
+        || v1_rt::starts_with(inner_expr.clone(), "v1_rt::never(".to_string()))
     {
         inner_expr.clone()
     } else {
@@ -7837,7 +7838,7 @@ pub fn hand_maintained_map_key_required_type_names() -> Rc<Vec<String>> {
 pub fn generated_rust_lint_relaxations() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["unused_imports".to_string(), "unused_variables".to_string(), "unused_mut".to_string(), "unused_parens".to_string(), "dead_code".to_string(), "non_shorthand_field_patterns".to_string(), "suspicious_double_ref_op".to_string(), "clippy::all".to_string()])
+            Rc::new(vec!["unused_imports".to_string(), "unused_variables".to_string(), "unused_mut".to_string(), "unused_parens".to_string(), "dead_code".to_string(), "non_shorthand_field_patterns".to_string(), "suspicious_double_ref_op".to_string(), "unreachable_code".to_string(), "clippy::all".to_string()])
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())

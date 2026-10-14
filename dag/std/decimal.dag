@@ -108,7 +108,7 @@ fn admit_exact_decimal(units: Int, fraction_digits: Int) -> ExactDecimalAdmissio
 // because dropping a zero there would change the number rather than its spelling.
 fn canonical_exact_decimal(d: ExactDecimal) -> ExactDecimal {
   if d.fraction_digits < 0 {
-    ExactDecimal { units: absurd(never()), fraction_digits: 0 }
+    absurd(never())
   } else if d.fraction_digits == 0 {
     ExactDecimal { units: d.units, fraction_digits: 0 }
   } else if d.units - ((d.units / 10) * 10) == 0 {

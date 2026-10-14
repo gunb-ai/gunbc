@@ -532,6 +532,7 @@ fn rust_shared_wrap_ctor(inner_expr: String) -> String {
   if starts_with(s: inner_expr, prefix: "panic!(")
     || starts_with(s: inner_expr, prefix: "compile_error!(")
     || starts_with(s: inner_expr, prefix: "unreachable!(")
+    || starts_with(s: inner_expr, prefix: "v1_rt::never(")
   {
     inner_expr
   } else {
@@ -4098,6 +4099,7 @@ data generated_rust_lint_relaxations: List<String> = [
   "dead_code",
   "non_shorthand_field_patterns",
   "suspicious_double_ref_op",
+  "unreachable_code",
   "clippy::all"
 ]
 
