@@ -17,6 +17,10 @@ import gunbc.roadmap.roadmap_dispatch_spool {
   dispatch_spool_outcome_key,
   DispatchSpoolRequestRefused,
   DispatchSpoolAnswerWriteFailed,
+  DispatchSpoolRequestUnreadable,
+  dispatch_spool_outcome_disposition,
+  OutcomeRecorded,
+  OutcomeStopsTheLine,
 }
 import gunbc.host.host_layout { dispatch_request_dir }
 import gunbc.live_deploy.emit {
@@ -122,6 +126,15 @@ test fn a_human_only_action_on_the_service_spool_is_refused() -> Bool {
 test fn dispatched_and_refused_outcomes_stay_distinct() -> Bool {
   dispatch_spool_outcome_key(o: DispatchSpoolRequestRefused { entry: "e", detail: "d" })
     != dispatch_spool_outcome_key(o: DispatchSpoolAnswerWriteFailed { entry: "e", detail: "d" })
+}
+
+test fn an_unreadable_request_is_named_apart_from_a_refused_one_and_stops_the_line() -> Bool {
+  dispatch_spool_outcome_key(o: DispatchSpoolRequestUnreadable { entry: "e", detail: "d" })
+    != dispatch_spool_outcome_key(o: DispatchSpoolRequestRefused { entry: "e", detail: "d" })
+    && match dispatch_spool_outcome_disposition(o: DispatchSpoolRequestUnreadable { entry: "e", detail: "d" }) {
+      OutcomeStopsTheLine { detail: _ } => true
+      OutcomeRecorded => false
+    }
 }
 
 test fn the_dispatch_spool_path_wakes_the_drain_on_a_non_empty_request_directory() -> Bool {

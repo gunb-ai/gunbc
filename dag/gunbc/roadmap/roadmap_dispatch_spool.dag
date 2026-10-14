@@ -360,6 +360,10 @@ fn dispatch_spool_answer_admitted(
   }
 }
 
+// A LISTED ENTRY THAT THEN CANNOT BE READ STILL LEAVES THE PENDING SET. Left in requests/ it keeps
+// DirectoryNotEmpty= true and retriggers the drain until TriggerLimit* fails the path unit — the
+// publication-path storm (gunbc.rung_drop.publication_path_unbounded_retrigger). The peer retires
+// HelperRequestUnreadable the same way; there is no reason for this arm to diverge.
 fn dispatch_spool_entry_outcome(
   instance: HostDashboardInstance,
   instance_root: String,
@@ -379,10 +383,14 @@ fn dispatch_spool_entry_outcome(
     let read = Filesystem.Read(path: path)
     match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
       FilesystemReadRefused { error } =>
-        DispatchSpoolRequestUnreadable {
+        dispatch_spool_retire_request(
+          instance_root: instance_root,
           entry: entry,
-          detail: join(["the dispatch request could not be read: ", path, " (", error, ")"], ""),
-        }
+          refused: DispatchSpoolRequestUnreadable {
+            entry: entry,
+            detail: join(["the dispatch request could not be read: ", path, " (", error, ")"], ""),
+          },
+        )
       FilesystemReadSucceeded { content } =>
         match dispatch_request_admission(entry: entry, request_text: content) {
           DispatchRequestAdmitted { request } =>
