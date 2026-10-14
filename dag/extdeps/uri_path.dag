@@ -198,7 +198,7 @@ fn match_path_template(template: PathTemplate, path: String) -> PathTemplateMatc
 // the template string (`/servers/{server_id}`). This is the one parser of that form; native service
 // lowering (v2.compiler.service_realization rest_path_template_cause) and the seed's REST effect
 // derivation both call it. Level-1 simple `{name}` holes in a path segment; query after `?` is
-// stripped here, not parsed as a hole.
+// stripped here for matching. parse_query_template owns that suffix (same parse_segment_tokens).
 fn parse_path_template(raw: String) -> PathTemplateParseResult {
   let path_only = match raw |> split(delimiter: "?") |> first {
     Present { value: p } => p
@@ -244,6 +244,33 @@ fn uri_query_string(path: String) -> String {
   match path |> split(delimiter: "?") |> skip(1) |> first {
     Present { value: q } => q
     Absent => ""
+  }
+}
+
+// RFC 6570 `{name}` holes after `?`: the `?`/`&` split lives here, not in the REST lowering wall.
+// Each pair is parse_segment_tokens; empty query is an empty token list. Not a general RFC 6570
+// rewrite — level-1 simple holes only, same as path segments.
+fn parse_query_template(raw: String) -> PathTemplateParseResult {
+  let q = uri_query_string(path: raw)
+  if q == "" {
+    ParsedPathTemplate { template: PathTemplate { tokens: [] } }
+  } else {
+    fold(q |> split(delimiter: "&"), init: ParsedPathTemplate { template: PathTemplate { tokens: [] } }, f: (acc, pair) =>
+      match acc {
+        MalformedPathTemplate => acc
+        ParsedPathTemplate { template: t } =>
+          if pair == "" {
+            ParsedPathTemplate { template: t }
+          } else {
+            match parse_segment_tokens(seg: pair) {
+              MalformedPathSegment { segment: s, reason: r } =>
+                MalformedPathTemplate { raw: raw, segment: s, reason: r }
+              ParsedSegmentTokens { tokens: toks } =>
+                ParsedPathTemplate { template: PathTemplate { tokens: concat(t.tokens, toks) } }
+            }
+          }
+      }
+    )
   }
 }
 
