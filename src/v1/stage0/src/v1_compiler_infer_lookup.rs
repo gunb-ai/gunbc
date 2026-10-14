@@ -619,34 +619,11 @@ pub fn func_decl_binding_for_call(
             match (*borrowed_census_decl(type_env.clone(), name.clone())).clone() {
                 BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
                     declaration: bd, ..
-                } => {
-                    let located = constructor_declaration_for_admission(
-                        type_env.clone(),
-                        bd.owner_module_path.clone(),
-                        name.clone(),
-                    );
-                    match (*located).clone() {
-                        ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable {
-                            identity,
-                            cause,
-                        } => match crate::v1_compiler_infer_method::bare_call_non_declaration_binding(
-                            name.clone(),
-                        ) {
-                            crate::v1_compiler_infer_method::NonDeclarationBinding::DeclarationOnly => {
-                                Rc::new(
-                                    ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable {
-                                        identity,
-                                        cause,
-                                    },
-                                )
-                            }
-                            _ => Rc::new(
-                                ConstructorDeclarationLookup::NotAdmissionBearingReference {},
-                            ),
-                        },
-                        other => Rc::new(other),
-                    }
-                }
+                } => constructor_declaration_for_admission(
+                    type_env.clone(),
+                    bd.owner_module_path.clone(),
+                    name.clone(),
+                ),
                 BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous { candidates: _, .. } => {
                     Rc::new(ConstructorDeclarationLookup::NotAdmissionBearingReference {})
                 }

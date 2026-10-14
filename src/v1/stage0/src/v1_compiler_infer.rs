@@ -185,13 +185,13 @@ use crate::v1_compiler_infer_lookup::DeclaredArgContract::{
     ContractKnown, ContractUnavailable, MethodUnresolved,
 };
 pub use crate::v1_compiler_infer_lookup::{
-    census_declaration_identity, declared_arg_types_for_method, field_summary_for_type,
-    func_decl_binding_for_call, global_bare_callable_node, lookup_coproduct_common_field_node,
-    lookup_field_type_node, lookup_func_sig, lookup_in_scope, lookup_structural_method,
-    map_key_type_in_env, map_value_type_in_env, product_field_result_type,
-    resolve_known_method_node, resolve_method_receiver_type, resolve_scrutinee_type_node,
-    resolved_declaration_call_target, resolved_plain_call_target_for_outcome,
-    set_element_type_in_env,
+    census_declaration_identity, constructor_declaration_for_admission,
+    declared_arg_types_for_method, field_summary_for_type, func_decl_binding_for_call,
+    global_bare_callable_node, lookup_coproduct_common_field_node, lookup_field_type_node,
+    lookup_func_sig, lookup_in_scope, lookup_structural_method, map_key_type_in_env,
+    map_value_type_in_env, product_field_result_type, resolve_known_method_node,
+    resolve_method_receiver_type, resolve_scrutinee_type_node, resolved_declaration_call_target,
+    resolved_plain_call_target_for_outcome, set_element_type_in_env,
 };
 pub use crate::v1_compiler_infer_lookup::{
     ConstructorDeclarationLookup, DeclarationLookupFailure, DeclaredArgContract,
@@ -1718,15 +1718,12 @@ pub fn declaration_lookup_failure_label(cause: Rc<DeclarationLookupFailure>) -> 
     }
 }
 
-pub fn constructor_call_admission_diags(
-    callee_name: String,
+pub fn constructor_admission_diags_from_lookup(
+    lookup: Rc<ConstructorDeclarationLookup>,
     scope: Rc<InferScope>,
     span: Rc<SourceSpan>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    if !constructor_reference_admission_enforced_now() {
-        Rc::new(vec![])
-    } else {
-        match (*crate::v1_compiler_infer_lookup::func_decl_binding_for_call(scope.func_env.clone(), scope.type_env.clone(), callee_name.clone())).clone() {
+    match (*lookup).clone() {
     ConstructorDeclarationLookup::ExactConstructorDeclaration { identity, declaration: declaration_node, .. } => match crate::v1_std_core::fn_admit_callers(declaration_node.clone(), scope.type_env.clone().source_indices.clone()) {
     Some(entries) => {
             let uninterpretable = crate::v1_std_core::admit_callers_entry_uninterpretable_spans(entries.clone());
@@ -1768,6 +1765,55 @@ match caller_decl_coords(scope.clone()) {
     ConstructorDeclarationLookup::NotAdmissionBearingReference => Rc::new(vec![]),
     ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable { identity, cause, .. } => Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor reference admission cannot establish the declaration identity of '".to_string(), identity.decl_name.clone()), "' owned by '".to_string()), identity.owner_module_path.clone()), "': ".to_string()), declaration_lookup_failure_label(cause.clone())), " -- refusing rather than reading admission facts off a resolved value node".to_string()), span.clone(), scope.module_name.clone())]),
 }
+}
+
+pub fn constructor_call_admission_diags(
+    callee_name: String,
+    scope: Rc<InferScope>,
+    span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if !constructor_reference_admission_enforced_now() {
+        Rc::new(vec![])
+    } else {
+        constructor_admission_diags_from_lookup(
+            crate::v1_compiler_infer_lookup::func_decl_binding_for_call(
+                scope.func_env.clone(),
+                scope.type_env.clone(),
+                callee_name.clone(),
+            ),
+            scope.clone(),
+            span.clone(),
+        )
+    }
+}
+
+pub fn constructor_call_admission_diags_for_outcome(
+    outcome: Rc<CallTargetOutcome>,
+    scope: Rc<InferScope>,
+    span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if !constructor_reference_admission_enforced_now() {
+        Rc::new(vec![])
+    } else {
+        match (*outcome).clone() {
+            CallTargetOutcome::DeclaredCallableResolved { declared, .. }
+            | CallTargetOutcome::DeclaredCallableIdentityResolved { declared, .. } => {
+                constructor_admission_diags_from_lookup(
+                    crate::v1_compiler_infer_lookup::constructor_declaration_for_admission(
+                        scope.type_env.clone(),
+                        declared.owner_module_path.clone(),
+                        declared.decl_name.clone(),
+                    ),
+                    scope.clone(),
+                    span.clone(),
+                )
+            }
+            CallTargetOutcome::BuiltinCallableResolved { .. }
+            | CallTargetOutcome::LocallyBoundCallee { .. }
+            | CallTargetOutcome::CallableUnresolved { .. }
+            | CallTargetOutcome::CallableAmbiguous { .. }
+            | CallTargetOutcome::LocallyBoundBindingMissing { .. } => Rc::new(vec![]),
+        }
     }
 }
 
@@ -1883,6 +1929,30 @@ pub fn constructor_reference_admission_early_refusal(
                 span.clone(),
                 scope.clone(),
             )),
+            std::option::Option::None => std::option::Option::None,
+        }
+    }
+}
+
+pub fn constructor_reference_admission_for_outcome(
+    outcome: Rc<CallTargetOutcome>,
+    span: Rc<SourceSpan>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<InferResult>> {
+    {
+        let admission_diags = constructor_call_admission_diags_for_outcome(
+            outcome.clone(),
+            scope.clone(),
+            span.clone(),
+        );
+        match admission_diags.clone().first().cloned() {
+            Some(_) => Some(Rc::new(InferResult {
+                typed: semantic_expr_error_node(
+                    "constructor call admission refused".to_string(),
+                    span.clone(),
+                ),
+                diagnostics: admission_diags.clone(),
+            })),
             std::option::Option::None => std::option::Option::None,
         }
     }
@@ -13184,8 +13254,8 @@ Rc::new(InferResult {
                     span.clone(),
                     scope.clone(),
                 ),
-                _ => match constructor_reference_admission_unshadowed(
-                    func_name.clone(),
+                _ => match constructor_reference_admission_for_outcome(
+                    call_target.clone(),
                     span.clone(),
                     scope.clone(),
                 ) {
@@ -23680,25 +23750,35 @@ pub fn call_target_for_direct_call(
                         primitive_name: func_name.clone(),
                     }),
                     std::option::Option::None => {
-                        match crate::v1_compiler_infer_lookup::census_declaration_identity(
-                            scope.type_env.clone(),
+                        if crate::v1_compiler_infer_method::is_empty_map_constructor(
+                            func_name.clone(),
+                        ) || crate::v1_compiler_infer_method::is_empty_set_constructor(
                             func_name.clone(),
                         ) {
-                            Some(bd) => {
-                                Rc::new(CallTargetOutcome::DeclaredCallableIdentityResolved {
-                                    declared: Rc::new(DeclaredCallableIdentity {
-                                        owner_module_path: bd.owner_module_path.clone(),
-                                        decl_name: crate::v1_std_core::qualified_last_segment(
-                                            func_name.clone(),
-                                        ),
-                                    }),
-                                    borrowed_declaration: bd.node.clone(),
-                                })
-                            }
-                            std::option::Option::None => {
-                                Rc::new(CallTargetOutcome::CallableUnresolved {
-                                    name: func_name.clone(),
-                                })
+                            Rc::new(CallTargetOutcome::BuiltinCallableResolved {
+                                primitive_name: func_name.clone(),
+                            })
+                        } else {
+                            match crate::v1_compiler_infer_lookup::census_declaration_identity(
+                                scope.type_env.clone(),
+                                func_name.clone(),
+                            ) {
+                                Some(bd) => {
+                                    Rc::new(CallTargetOutcome::DeclaredCallableIdentityResolved {
+                                        declared: Rc::new(DeclaredCallableIdentity {
+                                            owner_module_path: bd.owner_module_path.clone(),
+                                            decl_name: crate::v1_std_core::qualified_last_segment(
+                                                func_name.clone(),
+                                            ),
+                                        }),
+                                        borrowed_declaration: bd.node.clone(),
+                                    })
+                                }
+                                std::option::Option::None => {
+                                    Rc::new(CallTargetOutcome::CallableUnresolved {
+                                        name: func_name.clone(),
+                                    })
+                                }
                             }
                         }
                     }

@@ -183,6 +183,9 @@ import v1.compiler.infer_sigs {
   FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
   CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
   callable_identity_label, callable_candidate_labels,
+  CallTargetOutcome, DeclaredCallableResolved, DeclaredCallableIdentityResolved,
+  BuiltinCallableResolved, LocallyBoundCallee, CallableUnresolved, CallableAmbiguous,
+  LocallyBoundBindingMissing,
   DerivedCalleeSig, DerivedFromSig, NoDerivableSig,
   NoDerivableSigReason, DerivationSigUnresolved, DerivationSigAmbiguous,
   func_sig_for_derivation
@@ -232,7 +235,7 @@ import v1.compiler.infer_lookup {
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig,
   resolved_plain_call_target_for_outcome, resolved_declaration_call_target, census_declaration_identity,
-  global_bare_callable_node, func_decl_binding_for_call,
+  global_bare_callable_node, func_decl_binding_for_call, constructor_declaration_for_admission,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
   ExactDeclarationIdentity, DeclarationLookupFailure, DeclarationNotIndexedAtQualifiedName
@@ -1159,6 +1162,81 @@ fn declaration_lookup_failure_label(cause: DeclarationLookupFailure) -> String {
 // already here and already correct. Self-calls obey the same rule -- a recursive sealed function
 // lists itself -- because an invisible self exception would replace the module wildcard with a
 // smaller undeclared one.
+fn constructor_admission_diags_from_lookup(
+  lookup: ConstructorDeclarationLookup,
+  scope: InferScope,
+  span: SourceSpan
+) -> List<ErrorNode> {
+  match lookup {
+    ExactConstructorDeclaration { identity: identity, declaration: declaration_node } =>
+      match fn_admit_callers(n: declaration_node, source_indices: scope.type_env.source_indices) {
+        Present { value: entries } =>
+          let uninterpretable = admit_callers_entry_uninterpretable_spans(entries: entries)
+          if uninterpretable |> count > 0 {
+            uninterpretable |> map(entry_span =>
+              make_error_node(
+                diagnostic: AdmitCallersEntryNotDeclRef {
+                  constructor_decl_name: identity.decl_name,
+                  span: entry_span
+                },
+                module_name: scope.module_name
+              )
+            )
+          } else {
+            let permitted = admit_callers_entry_coords(entries: entries)
+            match caller_decl_coords(scope: scope) {
+              Present { value: caller } =>
+                if permitted |> any(p => decl_ref_coords_equal(a: p, b: caller)) {
+                  []
+                } else {
+                  [
+                    make_error_node(
+                      diagnostic: ConstructorCallAdmissionRefused {
+                        constructor_module_path: identity.owner_module_path,
+                        constructor_decl_name: identity.decl_name,
+                        caller_module_path: caller.module_path,
+                        caller_decl_name: caller.decl_name,
+                        permitted_callers: permitted |> map(p => decl_ref_coords_label(coords: p)),
+                        span: span
+                      },
+                      module_name: scope.module_name
+                    )
+                  ]
+                }
+              Absent =>
+                [
+                  make_error_node(
+                    diagnostic: ConstructorCallAdmissionRefused {
+                      constructor_module_path: identity.owner_module_path,
+                      constructor_decl_name: identity.decl_name,
+                      caller_module_path: scope.module_name,
+                      caller_decl_name: "<unknown>",
+                      permitted_callers: permitted |> map(p => decl_ref_coords_label(coords: p)),
+                      span: span
+                    },
+                    module_name: scope.module_name
+                  )
+                ]
+            }
+          }
+        Absent => []
+      }
+    NotAdmissionBearingReference => []
+    AdmissionBearingDeclarationUnavailable { identity: identity, cause: cause } =>
+      [
+        inference_error(
+          message: concat(
+            "constructor reference admission cannot establish the declaration identity of '",
+            identity.decl_name, "' owned by '", identity.owner_module_path, "': ",
+            declaration_lookup_failure_label(cause: cause),
+            " -- refusing rather than reading admission facts off a resolved value node"),
+          span: span,
+          module_name: scope.module_name
+        )
+      ]
+  }
+}
+
 fn constructor_call_admission_diags(
   callee_name: String,
   scope: InferScope,
@@ -1167,77 +1245,52 @@ fn constructor_call_admission_diags(
   if !constructor_reference_admission_enforced_now() {
     []
   } else {
-    match func_decl_binding_for_call(
-      func_env: scope.func_env,
-      type_env: scope.type_env,
-      name: callee_name
-    ) {
-      ExactConstructorDeclaration { identity: identity, declaration: declaration_node } =>
-        match fn_admit_callers(n: declaration_node, source_indices: scope.type_env.source_indices) {
-          Present { value: entries } =>
-            let uninterpretable = admit_callers_entry_uninterpretable_spans(entries: entries)
-            if uninterpretable |> count > 0 {
-              uninterpretable |> map(entry_span =>
-                make_error_node(
-                  diagnostic: AdmitCallersEntryNotDeclRef {
-                    constructor_decl_name: identity.decl_name,
-                    span: entry_span
-                  },
-                  module_name: scope.module_name
-                )
-              )
-            } else {
-              let permitted = admit_callers_entry_coords(entries: entries)
-              match caller_decl_coords(scope: scope) {
-                Present { value: caller } =>
-                  if permitted |> any(p => decl_ref_coords_equal(a: p, b: caller)) {
-                    []
-                  } else {
-                    [
-                      make_error_node(
-                        diagnostic: ConstructorCallAdmissionRefused {
-                          constructor_module_path: identity.owner_module_path,
-                          constructor_decl_name: identity.decl_name,
-                          caller_module_path: caller.module_path,
-                          caller_decl_name: caller.decl_name,
-                          permitted_callers: permitted |> map(p => decl_ref_coords_label(coords: p)),
-                          span: span
-                        },
-                        module_name: scope.module_name
-                      )
-                    ]
-                  }
-                Absent =>
-                  [
-                    make_error_node(
-                      diagnostic: ConstructorCallAdmissionRefused {
-                        constructor_module_path: identity.owner_module_path,
-                        constructor_decl_name: identity.decl_name,
-                        caller_module_path: scope.module_name,
-                        caller_decl_name: "<unknown>",
-                        permitted_callers: permitted |> map(p => decl_ref_coords_label(coords: p)),
-                        span: span
-                      },
-                      module_name: scope.module_name
-                    )
-                  ]
-              }
-            }
-          Absent => []
-        }
-      NotAdmissionBearingReference => []
-      AdmissionBearingDeclarationUnavailable { identity: identity, cause: cause } =>
-        [
-          inference_error(
-            message: concat(
-              "constructor reference admission cannot establish the declaration identity of '",
-              identity.decl_name, "' owned by '", identity.owner_module_path, "': ",
-              declaration_lookup_failure_label(cause: cause),
-              " -- refusing rather than reading admission facts off a resolved value node"),
-            span: span,
-            module_name: scope.module_name
-          )
-        ]
+    constructor_admission_diags_from_lookup(
+      lookup: func_decl_binding_for_call(
+        func_env: scope.func_env,
+        type_env: scope.type_env,
+        name: callee_name
+      ),
+      scope: scope,
+      span: span
+    )
+  }
+}
+
+fn constructor_call_admission_diags_for_outcome(
+  outcome: CallTargetOutcome,
+  scope: InferScope,
+  span: SourceSpan
+) -> List<ErrorNode> {
+  if !constructor_reference_admission_enforced_now() {
+    []
+  } else {
+    match outcome {
+      DeclaredCallableResolved { sig: _, declared: declared } =>
+        constructor_admission_diags_from_lookup(
+          lookup: constructor_declaration_for_admission(
+            type_env: scope.type_env,
+            owner_module_path: declared.owner_module_path,
+            name: declared.decl_name
+          ),
+          scope: scope,
+          span: span
+        )
+      DeclaredCallableIdentityResolved { declared: declared, borrowed_declaration: _ } =>
+        constructor_admission_diags_from_lookup(
+          lookup: constructor_declaration_for_admission(
+            type_env: scope.type_env,
+            owner_module_path: declared.owner_module_path,
+            name: declared.decl_name
+          ),
+          scope: scope,
+          span: span
+        )
+      BuiltinCallableResolved { primitive_name: _ } => []
+      LocallyBoundCallee { name: _, binding: _ } => []
+      CallableUnresolved { name: _ } => []
+      CallableAmbiguous { candidates: _ } => []
+      LocallyBoundBindingMissing { name: _ } => []
     }
   }
 }
@@ -1349,6 +1402,25 @@ fn constructor_reference_admission_early_refusal(
   match admission_diags |> first {
     Present { value: _ } =>
       Present { value: constructor_reference_admission_refusal(callee_name: callee_name, span: span, scope: scope) }
+    Absent => Absent
+  }
+}
+
+fn constructor_reference_admission_for_outcome(
+  outcome: CallTargetOutcome,
+  span: SourceSpan,
+  scope: InferScope
+) -> InferResult? {
+  let admission_diags = constructor_call_admission_diags_for_outcome(outcome: outcome, scope: scope, span: span)
+  match admission_diags |> first {
+    Present { value: _ } =>
+      Present { value: InferResult {
+        typed: semantic_expr_error_node(
+          message: "constructor call admission refused",
+          span: span
+        ),
+        diagnostics: admission_diags
+      } }
     Absent => Absent
   }
 }
@@ -8734,7 +8806,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       LocallyBoundBindingMissing { name: missing_local } =>
         scope_map_disagreement_refusal(name: missing_local, span: span, scope: scope)
       _ =>
-      match constructor_reference_admission_unshadowed(callee_name: func_name, span: span, scope: scope) {
+      match constructor_reference_admission_for_outcome(outcome: call_target, span: span, scope: scope) {
         Present { value: refusal } => refusal
         Absent =>
       let sig = call_target_declared_sig(outcome: call_target)
@@ -13849,12 +13921,16 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
           match infer_builtin_call_type(name: func_name) {
             Present { value: _ } => BuiltinCallableResolved { primitive_name: func_name }
             Absent =>
-              match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
-                Present { value: bd } => DeclaredCallableIdentityResolved {
-                  declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
-                  borrowed_declaration: bd.node
+              if is_empty_map_constructor(name: func_name) || is_empty_set_constructor(name: func_name) {
+                BuiltinCallableResolved { primitive_name: func_name }
+              } else {
+                match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
+                  Present { value: bd } => DeclaredCallableIdentityResolved {
+                    declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
+                    borrowed_declaration: bd.node
+                  }
+                  Absent => CallableUnresolved { name: func_name }
                 }
-                Absent => CallableUnresolved { name: func_name }
               }
           }
       }

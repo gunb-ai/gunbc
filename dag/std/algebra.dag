@@ -245,7 +245,8 @@ type FinitelySupportedFunction<K, V> {
 // `FreeMonoid` is the one a list literal elaborates to (v2.std.map_introduction carries its head
 // path and constructor). It is NOT a second
 // constructor of the carrier: it is the carrier's own insert (the `map_insert` row of
-// `finitely_supported_function_templates`) folded over its own empty (the `empty_map` row), in
+// `finitely_supported_function_templates`) folded over the kernel empty-collection constructor
+// `empty_map` (not a template row), in
 // authored order. It lives HERE, below `std.types`, because `std.types`' own map literals elaborate
 // to it; a home that imports `std.types` (v2.std.collection) would close an import cycle.
 //
