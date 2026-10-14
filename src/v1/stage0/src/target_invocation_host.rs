@@ -478,6 +478,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("keyed-roster-build-scaling"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/keyed_roster_build_scaling.dag",
+            },
+        ),
+        (
             instrument_label("native-serve"),
             TargetProducer::NativeServeProgram {
                 entry: "dag/gunbc/instruments/native_serve_fixture.dag",

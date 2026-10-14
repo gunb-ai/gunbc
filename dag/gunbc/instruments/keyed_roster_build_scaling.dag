@@ -1,0 +1,89 @@
+module gunbc.instruments.keyed_roster_build_scaling
+
+import std.types { String, Int, Bool, List }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
+import std.key_relation { SubjectKey }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey, keyed_roster_build, keyed_roster_index, keyed_roster_index_operations }
+
+// KEYED_ROSTER_BUILD IS LINEAR IN ITS KEY COUNT, AS A NAMED INSTRUMENT. `gunbc test
+// //gunbc/instruments:keyed-roster-build-scaling` emits this closure, builds it and runs it natively
+// over 256, 512 and 1024 DISTINCT SubjectKey<String> keys. Observation: total index operations
+// (keyed_roster_index_operations: map_lookups + map_inserts + key_prepends + order_reversals) are
+// exactly linear, ops(2n) - 2*ops(n) is the same constant at both doublings, and each ops(n) stays
+// within the per-n bound 3n+2. Quadratic construction (the keyed_roster_build that folded
+// keyed_roster_insert_into_unique over a key_eq predicate) fails the first clause by a margin that
+// grows with n.
+//
+// THE COUNTERS ARE THE INDEX REPORTING ON ITSELF, so they are not the falsifier. The independent
+// falsifier is the interpreter's eval-step reading of the same build at the same sizes, with the
+// keys-only generation subtracted, taken by gunbc.test.claim.keyed_roster_build_scaling_baseline-style
+// claim_batch runs and recorded in the PR that introduced this row; a disagreement between the two
+// is a defect in the counters, not a pass.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type KeyedRosterScalingRow {
+  keys: Int
+  built: Bool
+  operations: Int
+}
+
+fn doubled_keys(keys: List<String>) -> List<String> {
+  concat(map(keys, fn(k) { concat(k, "0") }), map(keys, fn(k) { concat(k, "1") }))
+}
+
+fn keys_256() -> List<String> {
+  doubled_keys(keys: doubled_keys(keys: doubled_keys(keys: doubled_keys(keys: doubled_keys(keys: doubled_keys(keys: doubled_keys(keys: doubled_keys(keys: [""]))))))))
+}
+
+fn keys_512() -> List<String> {
+  doubled_keys(keys: keys_256())
+}
+
+fn keys_1024() -> List<String> {
+  doubled_keys(keys: keys_512())
+}
+
+fn rows_of(keys: List<String>) -> List<KeyedRow<SubjectKey<String>, Int>> {
+  map(keys, fn(k) { KeyedRow { row_key: SubjectKey { subject: k }, value: 0 } })
+}
+
+fn scaling_row(keys: List<String>) -> KeyedRosterScalingRow {
+  let rows = rows_of(keys: keys)
+  let built = match keyed_roster_build(incomings: rows) {
+    KeyedRosterBuilt { rows: out } => count(out) == count(keys)
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+  KeyedRosterScalingRow {
+    keys: count(keys),
+    built: built,
+    operations: keyed_roster_index_operations(index: keyed_roster_index(rows: rows)),
+  }
+}
+
+fn within_bound(r: KeyedRosterScalingRow) -> Bool {
+  r.operations <= 3 * r.keys + 2
+}
+
+fn row_text(r: KeyedRosterScalingRow) -> String {
+  concat("keys ", concat(to_string(value: r.keys), concat(" built=", concat((if r.built { "true" } else { "false" }), concat(" operations=", concat(to_string(value: r.operations), "\n"))))))
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let a = scaling_row(keys: keys_256())
+  let b = scaling_row(keys: keys_512())
+  let c = scaling_row(keys: keys_1024())
+  let first_second_difference = b.operations - 2 * a.operations
+  let second_second_difference = c.operations - 2 * b.operations
+  let stdout = concat(row_text(r: a), concat(row_text(r: b), concat(row_text(r: c), concat("second_difference ", concat(to_string(value: first_second_difference), concat(" ", concat(to_string(value: second_second_difference), "\n")))))))
+  let terminal = if !(a.built && b.built && c.built) {
+    NativeClaimNotHeld { reason: "keyed_roster_build refused distinct keys: no observation of its cost" }
+  } else if first_second_difference != second_second_difference {
+    NativeClaimNotHeld { reason: "operations are not linear in key count" }
+  } else if !(within_bound(r: a) && within_bound(r: b) && within_bound(r: c)) {
+    NativeClaimNotHeld { reason: "operations exceed the per-n bound 3n+2" }
+  } else {
+    NativeClaimHeld
+  }
+  NativeClaimReport { stdout: stdout, terminal: terminal }
+}

@@ -749,6 +749,22 @@ fn value_position_block_nests_binding() -> TargetBinding {
   TargetBinding { target: value_position_block_nests_label() producer: NativeClaimProgramProducer { entry: value_position_block_nests_entry() deadline: value_position_block_nests_child_deadline() } }
 }
 
+// KEYED_ROSTER_BUILD SCALING: gunbc.instruments.keyed_roster_build_scaling builds distinct
+// SubjectKey rosters at 256, 512 and 1024 keys as a NativeClaimDriver program and holds when total
+// index operations are exactly linear. Run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:keyed-roster-build-scaling`.
+fn keyed_roster_build_scaling_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "keyed-roster-build-scaling" } }
+}
+
+fn keyed_roster_build_scaling_entry() -> String {
+  "dag/gunbc/instruments/keyed_roster_build_scaling.dag"
+}
+
+fn keyed_roster_build_scaling_binding() -> TargetBinding {
+  TargetBinding { target: keyed_roster_build_scaling_label() producer: NativeClaimProgramProducer { entry: keyed_roster_build_scaling_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
 fn type_declaration_use_census_binding() -> TargetBinding {
   TargetBinding { target: type_declaration_use_census_label() producer: V2NativeCensusProducer { reading: TypeDeclarationUseReading } }
 }
@@ -916,7 +932,7 @@ fn instrument_targets() -> List<Label> {
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label()
+    native_emission_controls_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), keyed_roster_build_scaling_label(), native_serve_label()
   ]
 }
 
@@ -935,7 +951,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding()
+    native_emission_controls_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), keyed_roster_build_scaling_binding(), native_serve_binding()
   ]
 }
 
