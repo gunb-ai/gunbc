@@ -1,0 +1,25 @@
+module test.claim.compute.compute_run_unit_cold_witness
+
+import std.types { Bool }
+import std.algebra { all }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  fleet_compute_hermetic_dashboard_instance, srv1_live_dashboard_instance,
+}
+import gunbc.instrument_targets { compute_run_unit_cold_label }
+import gunbc.emitted_subject_build_gate { emitted_subject_build_rows }
+import extdeps.bazel.label { render_label, label_eq }
+
+test fn the_hermetic_instance_is_not_srv1_live() -> Bool {
+  let h = fleet_compute_hermetic_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  (h.instance_id != live.instance_id)
+    && (h.host_identity != live.host_identity)
+    && ((h.repo_root as String) != (live.repo_root as String))
+    && ((h.instance_root as String) != (live.instance_root as String))
+}
+
+test fn the_cold_instrument_is_not_a_required_emit_build_row() -> Bool {
+  let want = compute_run_unit_cold_label()
+  all(emitted_subject_build_rows(), row => !label_eq(a: row.label, b: want))
+    && (render_label(l: want) == "//gunbc/instruments:compute-run-unit-cold")
+}

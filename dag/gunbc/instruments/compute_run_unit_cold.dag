@@ -1,0 +1,164 @@
+module gunbc.instruments.compute_run_unit_cold
+
+import std.types { String, Bool, Int, List, FilePath, GitRef, NonEmptyStr }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.measure { kibibyte }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.roadmap.roadmap_dashboard_instance { fleet_compute_hermetic_dashboard_instance, HostDashboardInstance }
+import gunbc.compute.work_provider_local {
+  ComputeLayout, compute_layout, compute_run_unit, compute_exec, ComputeExecOk, ComputeExecFailed,
+  compute_command_argv, compute_operation_env, ComputeUnitRunExecuted, ComputeUnitRunRefused,
+  NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire,
+}
+import gunbc.compute.work_request { work_default_build }
+import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
+import extdeps.git { shape_git_worktree_add_detached_argv }
+import extdeps.systemd.systemd_run {
+  SystemdRunWaitSummary, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
+  ServiceResultFormatNotGrounded, SummaryNoInvocation, SummarySuppressedByQuietLauncher,
+  SummaryCaptureEmpty, SummaryLineAbsent,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// WAVE-0 B: drive compute_run_unit's real systemd-run --user unit through a cold cargo release
+// build of work_default_build. The host producer (gunbc.test //gunbc/instruments:compute-run-unit-cold)
+// refuses with SubjectUnreached (exit 2) when /run/user/<uid>/bus is absent; this fold is reached
+// only after that check, and it holds only if a unit was actually invoked (SummaryNoInvocation is
+// a miss, never a pass).
+
+data compute_run_unit_cold_identity: String = "c01d000000000001"
+
+fn hermetic_instance() -> HostDashboardInstance {
+  fleet_compute_hermetic_dashboard_instance()
+}
+
+fn hermetic_layout() -> ComputeLayout {
+  compute_layout(instance: hermetic_instance(), identity_hex: compute_run_unit_cold_identity)
+}
+
+fn mkdir_ok(instance: HostDashboardInstance, path: String) -> Bool {
+  match compute_exec(program: instance.toolchain.directory_create as String, workdir: "/tmp", args: ["-p", path]) {
+    ComputeExecOk { stdout: _, stderr: _ } => true
+    ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
+  }
+}
+
+fn observe_head(instance: HostDashboardInstance, workdir: String) -> String {
+  match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: workdir, args: ["rev-parse", "HEAD"]) {
+    ComputeExecOk { stdout, stderr: _ } => trim(s: stdout)
+    ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""
+  }
+}
+
+fn unit_was_invoked(summary: SystemdRunWaitSummary) -> Bool {
+  match summary.result {
+    ServiceResultRead { result: _ } => true
+    ServiceResultUnrecognized { wire: _ } => true
+    ServiceResultFormatNotGrounded { standing: _ } => true
+    ServiceResultNotReported { absence } => match absence {
+      SummaryNoInvocation => false
+      SummarySuppressedByQuietLauncher => true
+      SummaryCaptureEmpty => true
+      SummaryLineAbsent => true
+    }
+  }
+}
+
+fn prepare_checkout(instance: HostDashboardInstance, layout: ComputeLayout, head: String) -> String {
+  let listed = Filesystem.List(path: layout.checkout)
+  if listed.success {
+    ""
+  } else {
+    match compute_exec(
+      program: compute_program(instance: instance, cap: GitWorkspaceCapability),
+      workdir: ".",
+      args: shape_git_worktree_add_detached_argv(path: layout.checkout as FilePath, commit: head as GitRef),
+    ) {
+      ComputeExecOk { stdout: _, stderr: _ } => ""
+      ComputeExecFailed { exit_code, stdout: _, stderr } =>
+        join(["git worktree add exited ", to_string(value: exit_code), ": ", stderr], "")
+    }
+  }
+}
+
+fn compute_run_unit_cold_exit() -> CliWireResponse {
+  let instance = hermetic_instance()
+  let layout = hermetic_layout()
+  let roots_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
+    && mkdir_ok(instance: instance, path: instance.repo_root as String)
+    && mkdir_ok(instance: instance, path: layout.work_dir)
+    && mkdir_ok(instance: instance, path: layout.target_dir)
+    && mkdir_ok(instance: instance, path: layout.attempts_dir)
+  if !roots_ok {
+    CliWirePrintable {
+      bytes: join(["compute-run-unit-cold: could not create layout under ", layout.root], ""),
+      exit: ExitFailure { code: 1, reason: "layout directories were not created" },
+    }
+  } else {
+    let head = observe_head(instance: instance, workdir: ".")
+    if head == "" {
+      CliWirePrintable {
+        bytes: "compute-run-unit-cold: HEAD could not be read from the invoking checkout",
+        exit: ExitFailure { code: 1, reason: "HEAD unreadable" },
+      }
+    } else {
+      let wt = prepare_checkout(instance: instance, layout: layout, head: head)
+      if wt != "" {
+        CliWirePrintable { bytes: wt, exit: ExitFailure { code: 1, reason: wt } }
+      } else {
+        let granted = kibibyte(count: 16777216)
+        let op = work_default_build()
+        match compute_run_unit(
+          instance: instance,
+          layout: layout,
+          identity_hex: compute_run_unit_cold_identity,
+          argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency),
+          env: compute_operation_env(op: op),
+          granted: granted,
+        ) {
+          ComputeUnitRunRefused { cause: _ } =>
+            CliWirePrintable {
+              bytes: "compute-run-unit-cold: systemd-run option words refused",
+              exit: ExitFailure { code: 1, reason: "unit launch refused" },
+            }
+          ComputeUnitRunExecuted { run: unit_run } => {
+            let invoked = unit_was_invoked(summary: unit_run.summary)
+            let exec_ok = match unit_run.exec {
+              ComputeExecOk { stdout: _, stderr: _ } => true
+              ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
+            }
+            let bytes = join([
+              "compute-run-unit-cold identity=", compute_run_unit_cold_identity, "\n",
+              "target_dir=", layout.target_dir, "\n",
+              "checkout=", layout.checkout, "\n",
+              "unit_invoked=", if invoked { "true" } else { "false" }, "\n",
+              "unit result: ", compute_summary_result_wire(summary: unit_run.summary), "\n",
+              "unit peak: ", compute_summary_peak_wire(summary: unit_run.summary), "\n",
+              match unit_run.exec {
+                ComputeExecOk { stdout, stderr } => join(["exec=ok\n", stdout, stderr], "")
+                ComputeExecFailed { exit_code, stdout, stderr } =>
+                  join(["exec=failed exit=", to_string(value: exit_code), "\n", stdout, stderr], "")
+              },
+            ], "")
+            if invoked && exec_ok {
+              CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+            } else {
+              CliWirePrintable {
+                bytes: bytes,
+                exit: ExitFailure {
+                  code: 1,
+                  reason: if !invoked {
+                    "no systemd unit was invoked (SummaryNoInvocation)"
+                  } else {
+                    "the unit ran and the command failed"
+                  },
+                },
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -57,6 +57,7 @@ import gunbc.target_binding {
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
   RegenRoundCostProducer,
+  ComputeRunUnitColdProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -683,6 +684,14 @@ fn regen_round_cost_binding() -> TargetBinding {
   TargetBinding { target: regen_round_cost_label() producer: RegenRoundCostProducer {} }
 }
 
+fn compute_run_unit_cold_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compute-run-unit-cold" } }
+}
+
+fn compute_run_unit_cold_binding() -> TargetBinding {
+  TargetBinding { target: compute_run_unit_cold_label() producer: ComputeRunUnitColdProducer {} }
+}
+
 fn emitted_crate_workspace_binding() -> TargetBinding {
   TargetBinding { target: emitted_crate_workspace_label() producer: EmittedCrateWorkspaceProducer {} }
 }
@@ -913,6 +922,7 @@ fn instrument_targets() -> List<Label> {
     self_host_behavioral_equivalence_label(), dependency_demand_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
     regen_round_cost_label(),
+    compute_run_unit_cold_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
@@ -932,6 +942,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     regen_round_cost_binding(),
+    compute_run_unit_cold_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),

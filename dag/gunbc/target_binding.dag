@@ -60,6 +60,7 @@ type TargetProducer
   | InterpolationHoleCensusProducer
   | SharedTypeLeafCollisionCensusProducer
   | RegenRoundCostProducer
+  | ComputeRunUnitColdProducer
   | NativeClaimProgramProducer { entry: String, deadline: Millisecond }
   | NativeServeProgramProducer { entry: String }
 
@@ -101,6 +102,7 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     InterpolationHoleCensusProducer {} => optional_absent()
     SharedTypeLeafCollisionCensusProducer {} => optional_absent()
     RegenRoundCostProducer {} => optional_absent()
+    ComputeRunUnitColdProducer {} => optional_absent()
     NativeServeProgramProducer { entry: _ } => optional_absent()
   }
 }
