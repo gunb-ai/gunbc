@@ -1,5 +1,5 @@
 module v2.test.claim.cli.population_verbs
-import std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { Bool, List, Map }
 import gunbc.parse_population_refusals { RefusalClass }
 import v2.cli.population_verbs {
@@ -67,7 +67,7 @@ fn held_parse_report_text() -> String {
 // The begun declaration as a fixture tally. A duplicated declaration is carried as a tally whose
 // located lines are the duplicated keys, so the clean-start control below refuses it.
 fn begun(classes: List<RefusalClass>) -> PopulationParse {
-  match population_parse_begin(classes: classes, compiler: none) {
+  match population_parse_begin(classes: classes, compiler: optional_absent()) {
     PopulationBegun { tally: tally } => tally
     PopulationDeclarationDuplicated { keys: keys } => {
       let no_declared: List<DeclaredRefusal> = []
@@ -80,7 +80,7 @@ fn begun(classes: List<RefusalClass>) -> PopulationParse {
         judged: no_judged,
         refusals: keys,
         accepted_receipts: [],
-        compiler: none
+        compiler: optional_absent()
       }
     }
   }
@@ -96,7 +96,7 @@ fn judge(tally: PopulationParse, judgment: Judgment) -> PopulationParse {
 // The verdict over a supplied walk: the same two steps `parse_population_listed` takes over the real
 // enumeration, with the member judgments supplied.
 fn verdict(classes: List<RefusalClass>, judgments: List<Judgment>) -> PopulationReport {
-  match population_parse_begin(classes: classes, compiler: Present { value: fixture_compiler }) {
+  match population_parse_begin(classes: classes, compiler: optional_present(value: fixture_compiler)) {
     PopulationDeclarationDuplicated { keys: keys } => population_declaration_duplicated_report(keys: keys)
     PopulationBegun { tally: tally } =>
       population_parse_report(tally: fold_list(xs: judgments, empty: tally, cons: fn(acc, judgment) { judge(tally: acc, judgment: judgment) }))

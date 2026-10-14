@@ -286,7 +286,7 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
         CliParseSeekOption { entry: "", roots: Empty, target: cli_default_emit_target }
       } else {
         match cli_roots_verb_of_spelling(spelling: arg) {
-          Present { value: kind } => CliParseSeekRootsOption { kind: kind, roots: Empty, compiler: none }
+          Present { value: kind } => CliParseSeekRootsOption { kind: kind, roots: Empty, compiler: optional_absent() }
           Absent =>
             CliParseFailed {
               reason: ^cli_unknown_verb,
@@ -326,7 +326,7 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           detail: concat(cli_option_compiler, " takes the parse-compiler identity, and an option followed it")
         }
       } else {
-        CliParseSeekRootsOption { kind: kind, roots: roots, compiler: Present { value: arg } }
+        CliParseSeekRootsOption { kind: kind, roots: roots, compiler: optional_present(value: arg) }
       }
     CliParseSeekRootsValue { kind: kind, roots: roots, compiler: compiler } =>
       if cli_arg_is_option(arg: arg) || arg == cli_option_compiler {
