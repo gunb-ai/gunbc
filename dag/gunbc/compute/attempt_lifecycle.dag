@@ -451,13 +451,31 @@ fn attempt_advance_payload<P>(
                   detail: join(["the attempt slot keyed ", reference as String, " names reference ", codec.reference_of(rec)], ""),
                 }
               } else {
-                let next = codec.with_state(rec, next_state)
-                attempt_commit_bytes(
-                  root: root,
-                  reference: reference,
-                  state: next_state,
-                  payload: codec.encode(next) as NonEmptyStr,
-                  expected: ExpectSlotGeneration { generation: expected })
+                match next_state {
+                  AttemptLaunching =>
+                    match codec.state_of(rec) {
+                      AttemptReserved =>
+                        attempt_commit_bytes(
+                          root: root,
+                          reference: reference,
+                          state: next_state,
+                          payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
+                          expected: ExpectSlotGeneration { generation: expected })
+                      AttemptLaunching =>
+                        AttemptTransitionRefused { detail: "begin_launch requires AttemptReserved" }
+                      AttemptTerminal { verdict: _, detail: _ } =>
+                        AttemptTransitionRefused { detail: "begin_launch requires AttemptReserved" }
+                    }
+                  AttemptReserved =>
+                    AttemptTransitionRefused { detail: "advance will not rewrite a slot back to Reserved" }
+                  AttemptTerminal { verdict: _, detail: _ } =>
+                    attempt_commit_bytes(
+                      root: root,
+                      reference: reference,
+                      state: next_state,
+                      payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
+                      expected: ExpectSlotGeneration { generation: expected })
+                }
               }
           }
       }
