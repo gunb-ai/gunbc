@@ -268,6 +268,30 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
   - `gunbc.observation_ci_render::ci_event_line`
   - `gunbc.observation_ci_render::ci_render_line`
 
+### Cardinality / absence
+
+**Owns.** Presence and absence, optional-layer nesting, collection emptiness and nonemptiness, and the preservation of these facts from source through typing, execution, realization and declared ingestion conversions. Cardinality belongs to a named position and measure within the value's structure. Operator rulings of 2026-10-13, applying to every layer: `gunbc.design_ruling cardinality_one_concept`, `gunbc.design_ruling dag_absence_is_one_meaning`, `gunbc.design_ruling explicit_present_is_the_authoring_policy`, `gunbc.design_ruling optional_sugar_is_declaration_bound`, `gunbc.design_ruling nonemptiness_is_constructed_or_proved`, `gunbc.design_ruling native_first_complete_cuts`.
+
+**Boundaries.**
+
+- Failure causes, search progress, policy states and independently governed upstream null or missing states retain their own meanings. Factor their optional parts without erasing those distinctions; classify by contract, not by a variant-name suffix.
+- Conversion legality is section 4's judgment. This domain checks inhabitance and preservation; target realization cannot authorize a conversion, and a stated departure does not waive another design obligation.
+- Data cardinality is not evaluation multiplicity or a termination proof. The existing bound witnesses are not a claim that general collection-interval propagation or every acceptance path is implemented.
+
+**Existing authorities**
+
+- **Presence and sequences** — the canonical optional, possibly-empty sequence and nonempty sequence carriers
+  - `std.optional::Optional`
+  - `std.algebra::FreeMonoid`
+  - `std.algebra::FreeSemigroup`
+- **Optional-layer structure** — read and construct consecutive optional layers without collapsing their depth
+  - `v2.std.optional_layers::type_node_occupancy_read`
+  - `v2.std.optional_layers::wrap_type_node_occupancy`
+- **Declared-type boundaries** — the existing producer-versus-declared-type inhabitance judgment
+  - `v2.std.inhabitance::declared_type_inhabitance`
+- **Natural bounds** — the existing natural-order witness from which its two bounds are read
+  - `v2.std.cardinality::NatLeWitness`
+
 ## 3c. Consumption (who consumes a change, and how)
 
 Conformance asks whether a change inhabits existing models; **consumption asks the converse of every model it adds: who consumes it, and by what executing route** (ruling `gunbc.design_ruling consumption_interrogated_separately`). §5 already rules that a typecheck and a grep are not consumers, but folded into other questions it let a diff add a well-shaped type, a row and a witness that the row exists while nothing read the row. A declaration nothing consumes is §2's redundant work in its purest form.

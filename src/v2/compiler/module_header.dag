@@ -28,9 +28,11 @@ import v2.std.text { String }
 //
 // HOW MUCH OF THE FILE IS READ IS DECIDED BY THE GRAMMAR TOO. The header is a handful of tokens at the
 // head of a file whose body is thousands, and lexing the body to read the header was the cost this
-// reader exists to avoid: the lexer walks a window of the file's scalars (v2.compiler.tokenize
+// reader exists to avoid: the lexer is shown a window of the file's scalars (v2.compiler.tokenize
 // tokenize_prefix_prepared, whose tokens are the leading tokens of the whole lex) and the window grows
-// by doubling while it cannot settle the reading. A window settles it exactly when its lex is complete,
+// by doubling while it cannot settle the reading. Only the window crosses into structural text, so the
+// cost of an attempt follows the window and not the file; a token the window's edge falls inside is
+// undecided, not emitted, and a larger window decides it. A window settles it exactly when its lex is complete,
 // or the production ACCEPTED and left unread at least the production's tail: the tokens a parse examines
 // beyond the ones it consumes, derived from the grammar (v2.compiler.grammar_reach
 // grammar_production_tail). An accepted parse that examined only the tokens it was handed is the parse
@@ -143,8 +145,9 @@ fn module_header_read_from(reader: ModuleHeaderReader, file: String, content: St
 
 // One attempt over a window of `window` scalars, and the doubled window when it does not settle.
 // Descent: the window is at least one (module_header_read_from refuses otherwise) and doubles, and a
-// window grows only when the walk stopped at its limit with scalars left, so it is below the file's
-// scalar count; at or past the count the lex is complete and the attempt settles.
+// window grows only when its prefix is not complete, which is only when the file has scalars past the
+// window, so it is below the file's scalar count; at or past the count the carrier is the whole file,
+// the lex is complete and the attempt settles.
 fn module_header_read_window(reader: ModuleHeaderReader, modeled: PreparedModeledGrammar, file: Symbol, content: String, window: Int) -> ModuleHeaderRead {
   match tokenize_prefix_prepared(text: content, file: file, prepared: reader.lex, limit: LexWalkUntil { scalars: window }) {
     Rejected { diagnostics: d } => ModuleHeaderRefused { cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) }

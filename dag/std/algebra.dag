@@ -1194,6 +1194,23 @@ fn trim(s: String) -> String {
   if s == s { pure_dag_seam_unreachable_string() } else { pure_dag_seam_unreachable_string() }
 }
 
+// Substring search on kernel host text (`std.types` String / v1 `&str`), not on
+// `v2.std.text` `String` = `FreeMonoid<Char>`. Both arguments are already host text, so there is
+// no UnicodeScalarSequenceUnfold crossing. Distinct from FreeMonoid collection `contains` (element
+// membership of one Char). The scalar profile already lists this operation as `contains`
+// [ReceiverSelf, ReceiverSelf] beside `trim` / `starts_with`; this free fn is the importable
+// authority for that row, same placement as `trim`. It is not `std.types string_non_empty`: that
+// is a where-predicate for NonEmptyStr inhabitance, not a text operation, and `std.types` already
+// refuses to share `non_empty` with algebra. HostRealizedSeam is not an algebra-only class
+// (`map_insert` lives on `v2.std.collection`). Contract: std.primitives string_contains_contract.
+// Runtime bridge exists (`rt_function_registry` string_contains → v1_rt::string_contains), so this
+// is a HostRealizedSeam self-call. Native emit: rust_host_string_op_fn_emit, selected by this
+// declaration's projection row (not by the bare name `string_contains`). Import
+// std.algebra { string_contains }; bare string_contains is the same Class B pool coincidence as trim.
+fn string_contains(s: String, pattern: String) -> Bool {
+  string_contains(s: s, pattern: pattern)
+}
+
 type FreeMonoidUniqueState<T> {
   seen: FreeMonoid<T>
   unique: Bool

@@ -1,4 +1,4 @@
-module gunbc.namespace_cut.parsed_import_statement_production
+module v2.workflow.parsed_import_statement_production
 
 import std.import_statement { ParsedImportStatements, ParsedImportObservation }
 import std.types { String }

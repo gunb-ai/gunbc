@@ -5,7 +5,7 @@ import extdeps.exec.command { ArgvCommand, shell_command_render, env_prefixed_co
 import extdeps.sudo.elevation { sudo_preserve_environment_command }
 import extdeps.languages.bash.invocation { bash_script_argv }
 import extdeps.systemd.systemctl { systemctl_enable_now_command }
-import v2.std.orchestration { EnvSet }
+import std.env_binding { EnvSet }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.auth.github_apps {

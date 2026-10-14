@@ -55,7 +55,7 @@ data entry_cause: NativeRouteExclusionCause = NativeEntryResolutionLimit { reaso
 data other_cause: NativeRouteExclusionCause = CompilerFrontierAttributed { reason: ^some_other_frontier_cause }
 
 fn whole_pattern() -> TargetPattern {
-  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr] } }
+  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr] } }
 }
 
 fn narrow_pattern() -> TargetPattern {
