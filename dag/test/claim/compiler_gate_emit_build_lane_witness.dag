@@ -17,6 +17,7 @@ import gunbc.witness.compiler_gate_workflow {
 }
 import gunbc.ci.ci_compile_shape_receipt {
   compile_shape_receipt_step_name, compile_shape_receipt_script, compile_shape_receipt_prefix,
+  compile_shape_receipt_observes_axes,
 }
 import gunbc.required_ci_contract_epoch {
   required_ci_context_name,
@@ -174,21 +175,16 @@ test fn the_compile_shape_receipt_precedes_the_seed_build() -> Bool {
 }
 
 test fn the_compile_shape_receipt_names_the_shape_axes() -> Bool {
-  let s = compile_shape_receipt_script()
-  string_contains(s: s, pattern: compile_shape_receipt_prefix)
-    && string_contains(s: s, pattern: "nproc=")
-    && string_contains(s: s, pattern: "cargo_build_jobs=")
-    && string_contains(s: s, pattern: "makeflags=")
-    && string_contains(s: s, pattern: "jobserver_auth=")
-    && string_contains(s: s, pattern: "tokens=")
-    && string_contains(s: s, pattern: "cpu.max=")
-    && string_contains(s: s, pattern: "cpu.stat=")
+  compile_shape_receipt_observes_axes(script: compile_shape_receipt_script())
 }
 
+// THE PLANTED BODY GOES THROUGH THE SAME CHECKER AS THE PRODUCER. A literal that merely
+// lacks `cpu.max=` is not a test of anything until that checker refuses it; the live script
+// must still pass, so deleting cpu.max from the producer turns the positive red too.
 test fn w_RED_a_script_without_cpu_max_is_not_the_receipt() -> Bool {
-  let planted = concat(compile_shape_receipt_prefix, " nproc=8 cargo_build_jobs=unset")
-  !string_contains(s: planted, pattern: "cpu.max=")
-    && string_contains(s: compile_shape_receipt_script(), pattern: "cpu.max=")
+  let planted = concat(compile_shape_receipt_prefix, " nproc=8 cargo_build_jobs=unset makeflags=unset jobserver_auth=absent tokens=unset")
+  !compile_shape_receipt_observes_axes(script: planted)
+    && compile_shape_receipt_observes_axes(script: compile_shape_receipt_script())
 }
 
 // THE COMMITTED WORKFLOW CARRIES THE RECEIPT (pairing obligation): a generator change that
