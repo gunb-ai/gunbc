@@ -7095,6 +7095,10 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
                 module_index.clone(),
             ),
             fn_decl_items: base_info.fn_decl_items.clone(),
+            fn_map_key_bounds: v1_fn_map_key_bound_table(
+                base_info.fn_decl_items.clone(),
+                closure_source_indices.clone(),
+            ),
             recursive_type_set: recursive_type_set.clone(),
             fielded_variants: base_info.fielded_variants.clone(),
             positional_payload_variants: base_info.positional_payload_variants.clone(),
@@ -8387,6 +8391,10 @@ pub fn emit_module(
                 module_index.clone(),
             ),
             fn_decl_items: base_info.fn_decl_items.clone(),
+            fn_map_key_bounds: v1_fn_map_key_bound_table(
+                base_info.fn_decl_items.clone(),
+                merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
+            ),
             recursive_type_set: recursive_type_set.clone(),
             fielded_variants: base_info.fielded_variants.clone(),
             positional_payload_variants: base_info.positional_payload_variants.clone(),
@@ -11381,6 +11389,7 @@ pub fn emit_module_full(
             type_decl_items: emit_info.type_decl_items.clone(),
             data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
             fn_decl_items: emit_info.fn_decl_items.clone(),
+            fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
             recursive_type_set: emit_info.recursive_type_set.clone(),
             fielded_variants: emit_info.fielded_variants.clone(),
             positional_payload_variants: emit_info.positional_payload_variants.clone(),
@@ -16442,6 +16451,7 @@ pub fn emit_typed_item(
                         type_decl_items: emit_info.type_decl_items.clone(),
                         data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
                         fn_decl_items: emit_info.fn_decl_items.clone(),
+                        fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
                         recursive_type_set: emit_info.recursive_type_set.clone(),
                         fielded_variants: emit_info.fielded_variants.clone(),
                         positional_payload_variants: emit_info.positional_payload_variants.clone(),
@@ -19970,10 +19980,21 @@ pub fn v1_call_site_static_forwarded_param_names(
     }
 }
 
-pub fn v1_call_forwarding_equality_bound_param_names(
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ForwardedBoundClass {
+    EqualityForwarded,
+    MapKeyForwarded,
+}
+
+pub fn v1_call_forwarding_bound_param_names(
+    bound_class: ForwardedBoundClass,
     generic_param_names: Rc<Vec<String>>,
     body: Rc<Node>,
     fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    declared_map_key_bounds: Rc<HashMap<String, Rc<Vec<String>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -19981,10 +20002,12 @@ pub fn v1_call_forwarding_equality_bound_param_names(
             return Rc::new(vec![]);
         }
         let here = match (*body.expr_data.clone()).clone() {
-            ExprData::ExprCall { .. } => v1_call_site_equality_forwarded_param_names(
+            ExprData::ExprCall { .. } => v1_call_site_forwarded_param_names(
+                bound_class.clone(),
                 body.clone(),
                 generic_param_names.clone(),
                 fn_decl_items.clone(),
+                declared_map_key_bounds.clone(),
                 source_indices.clone(),
             ),
             _ => Rc::new(vec![]),
@@ -19994,10 +20017,12 @@ pub fn v1_call_forwarding_equality_bound_param_names(
             |acc: Rc<Vec<String>>, child: Rc<Node>| {
                 crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
                     acc,
-                    v1_call_forwarding_equality_bound_param_names(
+                    v1_call_forwarding_bound_param_names(
+                        bound_class.clone(),
                         generic_param_names.clone(),
                         child.clone(),
                         fn_decl_items.clone(),
+                        declared_map_key_bounds.clone(),
                         source_indices.clone(),
                     ),
                 )
@@ -20006,10 +20031,12 @@ pub fn v1_call_forwarding_equality_bound_param_names(
     })
 }
 
-pub fn v1_call_site_equality_forwarded_param_names(
+pub fn v1_call_site_forwarded_param_names(
+    bound_class: ForwardedBoundClass,
     call: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
     fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    declared_map_key_bounds: Rc<HashMap<String, Rc<Vec<String>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     {
@@ -20021,10 +20048,9 @@ pub fn v1_call_site_equality_forwarded_param_names(
                 std::option::Option::None => Rc::new(vec![]),
                 Some(callee_body) => {
                     let callee_params = callee_item.params.clone();
-                    let callee_type_params = function_type_params(callee_params.clone());
                     let callee_generic_param_names = Rc::new({
                         let mut __result = Vec::new();
-                        for p in callee_type_params.iter().cloned() {
+                        for p in function_type_params(callee_params.clone()).iter().cloned() {
                             __result.push(crate::v1_std_core::generic_param_name_at(
                                 p.clone(),
                                 si.clone(),
@@ -20032,21 +20058,175 @@ pub fn v1_call_site_equality_forwarded_param_names(
                         }
                         __result
                     });
-                    let callee_eq_param_names = v1_fn_body_equality_bound_param_names(
-                        callee_body.clone(),
-                        callee_generic_param_names.clone(),
-                        si.clone(),
-                    );
+                    let callee_bound_param_names = match bound_class.clone() {
+                        ForwardedBoundClass::EqualityForwarded => {
+                            v1_fn_body_equality_bound_param_names(
+                                callee_body.clone(),
+                                callee_generic_param_names.clone(),
+                                si.clone(),
+                            )
+                        }
+                        ForwardedBoundClass::MapKeyForwarded => {
+                            match v1_rt::map_get(&declared_map_key_bounds, callee_name.clone()) {
+                                Some(declared) => declared.clone(),
+                                std::option::Option::None => Rc::new(vec![]),
+                            }
+                        }
+                    };
                     v1_call_forwarding_forwarded_param_names(
                         call.clone(),
                         function_value_params(callee_params.clone()),
                         callee_generic_param_names.clone(),
-                        callee_eq_param_names.clone(),
+                        callee_bound_param_names.clone(),
                         generic_param_names.clone(),
                         si.clone(),
                     )
                 }
             },
+        }
+    }
+}
+
+pub fn v1_fn_map_key_bound_table(
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    {
+        let names = Rc::new(v1_rt::sorted_map_keys(&fn_decl_items));
+        let seed = names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(
+                &fn_decl_items,
+                n.clone(),
+            ) {
+                Some(item) => {
+                    let generics = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in function_type_params(item.params.clone()).iter().cloned() {
+                            __result.push(crate::v1_std_core::generic_param_name_at(
+                                p.clone(),
+                                source_indices.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    let bound = v1_fn_signature_map_key_param_names(
+                        function_value_params(item.params.clone()),
+                        crate::v1_compiler_infer_types::resolved_type(item.clone()),
+                        generics.clone(),
+                        source_indices.clone(),
+                    );
+                    if ((bound.clone().len() as i64) > 0) {
+                        v1_rt::rc_map_insert(acc.clone(), n.clone(), bound.clone())
+                    } else {
+                        acc.clone()
+                    }
+                }
+                std::option::Option::None => acc.clone(),
+            },
+        );
+        v1_fn_map_key_bound_fixpoint(
+            names.clone(),
+            fn_decl_items.clone(),
+            source_indices.clone(),
+            seed.clone(),
+            (names.clone().len() as i64),
+        )
+    }
+}
+
+pub fn v1_fn_map_key_bound_total(table: Rc<HashMap<String, Rc<Vec<String>>>>) -> i64 {
+    Rc::new(v1_rt::map_values(&table))
+        .iter()
+        .cloned()
+        .fold(0, |acc: i64, l: Rc<Vec<String>>| {
+            v1_rt::int_add(acc, (l.clone().len() as i64))
+        })
+}
+
+pub fn v1_fn_map_key_bound_fixpoint(
+    mut __tco_loop_names: Rc<Vec<String>>,
+    mut __tco_loop_fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_table: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut __tco_loop_fuel: i64,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut names = __tco_loop_names;
+        #[allow(unused_mut)]
+        let mut fn_decl_items = __tco_loop_fn_decl_items;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        #[allow(unused_mut)]
+        let mut table = __tco_loop_table;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
+        if (fuel.clone() <= 0) {
+            return table.clone();
+        }
+        let next = names.iter().cloned().fold(
+            table.clone(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(
+                &fn_decl_items,
+                n.clone(),
+            ) {
+                Some(item) => match item.body.clone() {
+                    std::option::Option::None => acc.clone(),
+                    Some(body) => {
+                        let generics = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in function_type_params(item.params.clone()).iter().cloned() {
+                                __result.push(crate::v1_std_core::generic_param_name_at(
+                                    p.clone(),
+                                    source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        });
+                        let forwarded = v1_call_forwarding_bound_param_names(
+                            ForwardedBoundClass::MapKeyForwarded,
+                            generics.clone(),
+                            body.clone(),
+                            fn_decl_items.clone(),
+                            acc.clone(),
+                            source_indices.clone(),
+                        );
+                        let existing = match v1_rt::map_get(&acc, n.clone()) {
+                            Some(e) => e.clone(),
+                            std::option::Option::None => Rc::new(vec![]),
+                        };
+                        let merged =
+                            crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                                existing.clone(),
+                                forwarded.clone(),
+                            );
+                        if ((merged.clone().len() as i64) > 0) {
+                            v1_rt::rc_map_insert(acc.clone(), n.clone(), merged.clone())
+                        } else {
+                            acc.clone()
+                        }
+                    }
+                },
+                std::option::Option::None => acc.clone(),
+            },
+        );
+        if (v1_fn_map_key_bound_total(next.clone()) == v1_fn_map_key_bound_total(table.clone())) {
+            break next.clone();
+        } else {
+            {
+                let __tco_0 = names;
+                let __tco_1 = fn_decl_items;
+                let __tco_2 = source_indices;
+                let __tco_3 = next.clone();
+                let __tco_4 = v1_rt::int_sub(fuel, 1);
+                __tco_loop_names = __tco_0;
+                __tco_loop_fn_decl_items = __tco_1;
+                __tco_loop_source_indices = __tco_2;
+                __tco_loop_table = __tco_3;
+                __tco_loop_fuel = __tco_4;
+                continue;
+            }
         }
     }
 }
@@ -20249,22 +20429,35 @@ pub fn emit_fn_def(
             generic_param_names.clone(),
             si.clone(),
         );
-        let call_forwarding_eq_param_names = v1_call_forwarding_equality_bound_param_names(
+        let call_forwarding_eq_param_names = v1_call_forwarding_bound_param_names(
+            ForwardedBoundClass::EqualityForwarded,
             generic_param_names.clone(),
             body.clone(),
             emit_info.fn_decl_items.clone(),
+            emit_info.fn_map_key_bounds.clone(),
             si.clone(),
         );
         let eq_param_names = crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
             self_eq_param_names.clone(),
             call_forwarding_eq_param_names.clone(),
         );
-        let map_key_param_names = v1_fn_signature_map_key_param_names(
-            value_params.clone(),
-            inferred.clone(),
-            generic_param_names.clone(),
-            si.clone(),
-        );
+        let map_key_param_names =
+            crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                v1_fn_signature_map_key_param_names(
+                    value_params.clone(),
+                    inferred.clone(),
+                    generic_param_names.clone(),
+                    si.clone(),
+                ),
+                v1_call_forwarding_bound_param_names(
+                    ForwardedBoundClass::MapKeyForwarded,
+                    generic_param_names.clone(),
+                    body.clone(),
+                    emit_info.fn_decl_items.clone(),
+                    emit_info.fn_map_key_bounds.clone(),
+                    si.clone(),
+                ),
+            );
         let set_element_param_names =
             crate::v1_compiler_trait_derive_emit::v1_fn_signature_set_element_param_names(
                 v1_rt::rc_list_push(
@@ -29200,6 +29393,7 @@ pub fn emit_rust_fold_method_call(
                                 .data_variant_wire_spellings
                                 .clone(),
                             fn_decl_items: emit_info.fn_decl_items.clone(),
+                            fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
                             recursive_type_set: emit_info.recursive_type_set.clone(),
                             fielded_variants: emit_info.fielded_variants.clone(),
                             positional_payload_variants: emit_info
@@ -29251,6 +29445,7 @@ pub fn emit_rust_fold_method_call(
                                     .data_variant_wire_spellings
                                     .clone(),
                                 fn_decl_items: emit_info.fn_decl_items.clone(),
+                                fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
                                 recursive_type_set: emit_info.recursive_type_set.clone(),
                                 fielded_variants: emit_info.fielded_variants.clone(),
                                 positional_payload_variants: emit_info
