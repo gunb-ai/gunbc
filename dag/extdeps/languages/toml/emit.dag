@@ -1,8 +1,10 @@
 module extdeps.languages.toml.emit
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { Bool, String, List, Int }
 import v2.std.collection { list_at_optional }
-import std.algebra { list_head, skip, HeadFound, HeadAbsent }
+import std.algebra { list_head, skip }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.toml.types {
@@ -197,12 +199,12 @@ fn toml_render_comment(text: String) -> String {
 fn toml_render_trailing_comment(text: String) -> String {
   let lines = toml_comment_lines(text: text)
   match list_head(xs: lines) {
-    HeadFound { value: first } =>
+    Present { value: first } =>
       concat(
         concat("  # ", concat(first, "\n")),
         skip(xs: lines, n: 1) |> map(line => concat("# ", concat(line, "\n"))) |> join(separator: "")
       )
-    HeadAbsent => "\n"
+    Absent => "\n"
   }
 }
 

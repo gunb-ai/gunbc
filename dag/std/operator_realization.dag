@@ -1,4 +1,6 @@
 module std.operator_realization
+import std.optional { Absent, Optional, Present }
+
 
 import std.coercion { TypeDeclarationProvenance, CorpusDeclared, KernelMinted, DeclarationIdentityAbsent }
 
@@ -66,7 +68,7 @@ type OperandRealization
 // A structural declaration is reached by a NAME -- that is what a declaration reference is -- so a
 // resolved type node whose authored name is empty is not a reference to one; it is a node inference
 // built for a field access or a match-arm binder over a generic coproduct (measured: v2.compiler.02_parse
-// parse_current_position, `t.start + 1` where t binds the value of ListHeadResult<T>, is the whole
+// parse_current_position, `t.start + 1` where t binds the value of Optional<T>, is the whole
 // unnamed-operand population of the v2 closure under an arithmetic operator). Refusing there would
 // refuse an operand nothing suggests is structural. What still refuses is the case the refusal is
 // FOR: a type node that DOES name a declaration whose identity the caller could not resolve.

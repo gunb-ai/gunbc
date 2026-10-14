@@ -4,7 +4,7 @@ import std.types { List }
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
-import std.algebra { Cons, Empty, FreeMonoid, contains, TailAbsent, TailFound, length, list_map, list_snoc_item, list_tail, skip, zip_map }
+import std.algebra { Cons, Empty, FreeMonoid, contains, length, list_map, list_snoc_item, list_tail, skip, zip_map }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -2729,8 +2729,8 @@ fn infer_match(
 ) -> Outcome<InferredFacts> {
   let positional_targets = node_positional_child_targets(node: node)
   match list_tail(xs: positional_targets) {
-    TailAbsent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
-    TailFound { tail: arms } =>
+    Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
+    Present { value: arms } =>
       if arms |> any(fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
         infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
       } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
@@ -2777,10 +2777,7 @@ fn infer_type_head_and_args(t: Node) -> InferTypeHeadArgs {
       match list_at_optional(xs: targets, index: 0) {
         Absent => InferTypeHeadArgs { head: t, args: Empty }
         Present { value: head } =>
-          match list_tail(xs: targets) {
-            TailFound { tail: args } => InferTypeHeadArgs { head: head, args: args }
-            TailAbsent => InferTypeHeadArgs { head: head, args: Empty }
-          }
+          InferTypeHeadArgs { head: head, args: skip(xs: targets, n: 1) }
       }
     TypeNode { connective: _ } => InferTypeHeadArgs { head: t, args: Empty }
     ComputationNode { behavior: _ } => InferTypeHeadArgs { head: t, args: Empty }
@@ -2913,10 +2910,7 @@ fn infer_coproduct_arm_pattern_constructed(pat: Node) -> InferCoproductArmPatter
           match qualified_name_last_segment(qn: path) {
             Absent => ArmPatternUnread
             Present { value: tag } =>
-              match list_tail(xs: pat.children) {
-                TailFound { tail: fields } => ArmPatternVariant { tag: tag, fields: fields }
-                TailAbsent => ArmPatternVariant { tag: tag, fields: Empty }
-              }
+              ArmPatternVariant { tag: tag, fields: skip(xs: pat.children, n: 1) }
           }
       }
   }
@@ -3204,8 +3198,8 @@ fn infer_match_coproduct(
       Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
       Present { value: scrutinee_target } =>
         match list_tail(xs: positional_targets) {
-          TailAbsent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
-          TailFound { tail: arms } =>
+          Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+          Present { value: arms } =>
             match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
               Rejected { diagnostics: r } => Rejected { diagnostics: r }
               Accepted { value: _, diagnostics: cd } =>
@@ -3556,10 +3550,7 @@ fn infer_equality_not_derived(node: Node, od: Diagnostics) -> Outcome<InferredFa
 }
 
 fn infer_transform_argument_targets(node: Node) -> List<Node> {
-  match list_tail(xs: node_positional_child_targets(node: node)) {
-    TailAbsent => Empty
-    TailFound { tail: t } => t
-  }
+  skip(xs: node_positional_child_targets(node: node), n: 1)
 }
 
 fn infer_operator_arrow(operator: Node) -> Optional<Node> {

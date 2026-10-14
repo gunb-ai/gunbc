@@ -1,4 +1,6 @@
 module gunbc.roadmap.roadmap_launch_deployment_receipt
+import std.optional { Absent, Optional, Present }
+
 
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, LaunchEnvironment }
 
@@ -728,13 +730,13 @@ type RoadmapLaunchDeploymentVerdict
 fn roadmap_launch_deployment_verdict(subject: RoadmapLaunchDeploymentSubject, facts: RoadmapLaunchDeploymentFacts) -> RoadmapLaunchDeploymentVerdict {
   let blockers = roadmap_launch_deployment_blockers(s: subject, f: facts)
   match list_head(xs: blockers) {
-    HeadAbsent =>
+    Absent =>
       DeploymentComplete {
         subject: subject,
         facts: facts,
         proof: DeploymentCompleteProof { receipt_identity: roadmap_launch_deployment_receipt_identity_hex(subject: subject, facts: facts) },
       }
-    HeadFound { value: first } =>
+    Present { value: first } =>
       DeploymentIncomplete { subject: subject, facts: facts, first_blocker: first, further_blockers: blockers |> skip(1) }
   }
 }
