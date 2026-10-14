@@ -15,8 +15,10 @@ module test.claim.entry_authority_witness
 //
 // THE ENTRY ARMS ARE THE POSITIVE AND NEGATIVE CONTROLS OF THE AUTHORITY ITSELF. One declared entry
 // yields exactly that driver's main even with effects beside it (effects do not add a second
-// root); two declarations and an unmodeled driver each yield their own typed refusal main rather
-// than a guess. The entry declarations are recognized by the `CompilerEntryDriver` type name and
+// root); an unmodeled driver, a module repeating its entry row, and a retained-host entry beside
+// another each yield their own typed refusal main rather than a guess. Two entries in two modules
+// are not a refusal: a compilation has an entry SET (std.compiler_entry), and the set arms below
+// read one `src/bin/<module>.rs` per entry from one emission. The entry declarations are recognized by the `CompilerEntryDriver` type name and
 // the authored driver spelling (v1.compiler.emit_rust module_compiler_pipeline_entry_decls), so
 // the fixtures declare that type locally and import nothing -- a two-module closure per arm, not
 // the corpus.
@@ -69,8 +71,24 @@ test fn one_declared_entry_is_the_sole_root_beside_an_effect() -> Bool {
   compile_dag_rust_emit_check(ea_one_entry_source, "src/main.rs", ["compile_dag_source_to_target_text"], [ea_absent_entry_marker, "Subcommand"])
 }
 
-test fn two_declared_entries_refuse_as_ambiguous() -> Bool {
-  compile_dag_rust_emit_check(ea_two_entries_source, "src/main.rs", ["REFUSED: the corpus declares more than one compiler pipeline entry"], ["compile_dag_source_to_target_text"])
+test fn a_module_declaring_its_entry_row_twice_refuses_naming_the_module() -> Bool {
+  compile_dag_rust_emit_check(ea_two_entries_source, "src/main.rs", ["REFUSED: a module declares its compiler pipeline entry more than once (ea_two_entries)"], ["compile_dag_source_to_target_text"])
+}
+
+data ea_entry_set_source: String = "module ea_entry_set\n\nimport gunbc.instruments.native_serve_fixture { native_serve_handle }\nimport gunbc.instruments.native_emission_controls { native_claim_report }\n"
+
+data ea_retained_host_beside_entry_source: String = "module ea_retained_host_beside_entry\n\nimport std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }\nimport gunbc.instruments.native_serve_fixture { native_serve_handle }\n\ndata compiler_pipeline_entry: CompilerEntryDriver = RetainedHostCliKernel\n"
+
+// THE POSITIVE CONTROL OF THE ENTRY SET: two entry modules with different drivers (and different
+// effect denominators) in ONE emission each render their own main, and neither main carries the
+// other's driver.
+test fn two_entry_modules_render_one_bin_each_from_one_emission() -> Bool {
+  compile_dag_rust_emit_check(ea_entry_set_source, "src/bin/gunbc_instruments_native_serve_fixture.rs", ["native_serve_handle"], ["native_claim_report", "REFUSED"])
+    && compile_dag_rust_emit_check(ea_entry_set_source, "src/bin/gunbc_instruments_native_emission_controls.rs", ["let report = native_claim_report();"], ["native_serve_handle", "REFUSED"])
+}
+
+test fn a_retained_host_entry_beside_another_entry_refuses() -> Bool {
+  compile_dag_rust_emit_check(ea_retained_host_beside_entry_source, "src/main.rs", ["REFUSED: a retained-host compiler pipeline entry shares an emission with other entries"], ["Subcommand"])
 }
 
 test fn an_unmodeled_entry_driver_refuses() -> Bool {
@@ -88,8 +106,8 @@ test fn a_native_claim_entry_renders_a_one_call_main_that_only_writes_and_exits(
   compile_dag_rust_emit_check(ea_native_claim_source, "src/main.rs", ["let report = native_claim_report();", "print!(\"\{\}\", report.stdout);", "NativeClaimTerminal::NativeClaimHeld => std::process::exit(0)", "std::process::exit(1)", "std::process::exit(2)"], ["std::env::args", "read_to_string", "read_dir", "*code as i32", ea_absent_entry_marker])
 }
 
-// The exactly-one rule holds across driver kinds: a NativeClaimDriver entry beside a NativeCliDriver
-// one is the same ambiguity as two entries of one kind, and neither main is rendered.
-test fn a_native_claim_entry_beside_another_entry_refuses_as_ambiguous() -> Bool {
-  compile_dag_rust_emit_check(ea_native_claim_two_entries_source, "src/main.rs", ["REFUSED: the corpus declares more than one compiler pipeline entry"], ["native_claim_report", "v2_cli_run"])
+// The repeated-row refusal holds across driver kinds: one module declaring a NativeClaimDriver row
+// and a NativeCliDriver row has no single driver, and neither main is rendered.
+test fn a_module_declaring_two_driver_kinds_refuses_naming_the_module() -> Bool {
+  compile_dag_rust_emit_check(ea_native_claim_two_entries_source, "src/main.rs", ["REFUSED: a module declares its compiler pipeline entry more than once (ea_native_claim_two)"], ["native_claim_report", "v2_cli_run"])
 }

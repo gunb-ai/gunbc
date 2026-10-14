@@ -220,8 +220,8 @@ fn self_host_label() -> Label {
 //
 // IT IS A SEPARATE LABEL BECAUSE IT IS A SEPARATE CLOSURE, not because the question is different.
 // The two closures are DIFFERENT rather than nested, and neither contains the other's
-// `compiler_pipeline_entry` declaration -- which is precisely why they can coexist under the
-// emitter's exactly-one rule. They are also close in size, so size is not the argument: the
+// `compiler_pipeline_entry` declaration -- so an emission of both is an entry set over the union
+// of two closures (std.compiler_entry), not one closure. They are also close in size, so size is not the argument: the
 // argument is membership. This closure reaches modules `v2.compiler.source_root_eval`'s does not,
 // `v2.extdeps.languages.rust` among them, so a green here and a green there are two facts about
 // two compilations and neither is evidence about the other. One label carrying both would let a

@@ -69,16 +69,13 @@ import std.types { List }
 // `SourceRootEvalDriver`, whose rendered main answers `census` and `adjudicate` and has no compile
 // mode. The second generation is the v2 -> v2 boundary, and this module is the door it goes through.
 //
-// WHY IT IS A SECOND ENTRY MODULE RATHER THAN A MODE ON THE FIRST. The emitter admits EXACTLY ONE
-// `compiler_pipeline_entry` declaration per closure (`v1.compiler.emit_rust`
-// `compiler_pipeline_entry_decl` answers `none` for both zero and two, and
-// `compiler_pipeline_entry_is_ambiguous` refuses the emission by name), because one emitted crate
-// has one entry point. Adding a compile mode to the eval driver's main would therefore have meant
+// WHY IT IS A SECOND ENTRY MODULE RATHER THAN A MODE ON THE FIRST. Each entry
+// declares its own `compiler_pipeline_entry` driver and renders its own main (`v1.compiler.emit_rust`
+// `emit_main_files`; a module declaring the row twice is refused by name). Adding a compile mode to the eval driver's main would therefore have meant
 // growing the ~500 lines of Rust that driver is already declared seed debt for, for a mode that
 // wants none of its universe derivation, receipt admission or cost partition. This module's import
-// closure does not reach `v2.compiler.compile` at all, so the two entries never appear in one
-// closure and the emitter's exactly-one rule is satisfied by construction rather than by a flag
-// that selects between them.
+// closure does not reach `v2.compiler.compile` at all, so the two entries share a library, not a
+// main.
 //
 // THE TWO CLOSURES ARE DIFFERENT, NOT NESTED, AND THAT IS THE FACT WORTH CARRYING -- not their
 // relative size, which is close enough to be no argument at all. This closure reaches modules the

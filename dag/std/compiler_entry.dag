@@ -75,12 +75,11 @@ import std.measure {
 // trigger retiring ITS row ("the rendered main becomes one call into that fold"), so this arm adds
 // a door without adding the debt the arm beside it carries.
 //
-// WHY IT IS A FOURTH ARM AND NOT A MODE ON SourceRootEvalDriver. One emitted crate has one entry
-// point, and the emitter admits exactly one compiler_pipeline_entry declaration per closure, so the
-// alternative was not "a mode" but "more rendered Rust inside the eval driver's main" -- for a verb
-// that wants none of its universe derivation, receipt admission or cost partition. The two entry
-// modules never meet: v2.cli.compile_cli's closure does not reach v2.compiler.compile, so
-// exactly-one holds by construction and not by a flag choosing between them.
+// WHY IT IS A FOURTH ARM AND NOT A MODE ON SourceRootEvalDriver. Each entry has its own driver and
+// bin, so the alternative was not "a mode" but "more rendered Rust inside the eval driver's main" --
+// for a verb that wants none of its universe derivation, receipt admission or cost partition. The
+// two entry modules' closures are disjoint only above the shared library: v2.cli.compile_cli's
+// closure does not reach v2.compiler.compile, and an emission of both is the union of the two.
 //
 // WHAT THIS ARM IS NOT. It is not the retained host kernel's replacement: `gunbc`'s verbs dispatch
 // into v1_compiler.cli_run, which a self-emitted crate does not contain, and nothing here reaches
@@ -136,9 +135,17 @@ type NativeClaimReport {
 // read the request line, header lines and exactly the body length it was handed within the
 // contract's byte limits and timeout, call the handler once per request, write the returned
 // value -- serially, one request at a time, as the seed does. It is a fifth arm and not a mode on
-// NativeCliDriver for the reason that arm gives for itself: one crate has one entry point, and a
+// NativeCliDriver for the reason that arm gives for itself: each entry has its own driver, and a
 // served program's main shares nothing with the compile CLI's. Instrument:
 // `gunbc test //gunbc/instruments:native-serve`.
+// A COMPILATION HAS AN ENTRY SET. Each module declaring a `compiler_pipeline_entry` row of this type
+// is one entry with its own driver and its own bin; the emission is one shared library over the
+// UNION of the entries' closures plus one main per entry, so a module two entries both reach is
+// emitted and built once (DESIGN section 2). One entry renders `src/main.rs`; several render
+// `src/bin/<module>.rs`. Consumer: v1.compiler.emit_rust `emit_main_files`. The refusals that remain
+// are those that still mean something: a module declaring the row twice (same entry twice, or two
+// drivers for one entry) and a RetainedHostCliKernel entry beside any other, because the retained
+// host is the seed's own crate and binary. Witness: test.claim.entry_authority_witness.
 type CompilerEntryDriver
   = RetainedHostCliKernel
   | DirectIngestDriver

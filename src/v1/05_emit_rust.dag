@@ -3760,7 +3760,8 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
       module_name: name,
       projections: test_projections |> filter(p => p.module_name == name)))
   let has_services = has_service_items(typed: typed)
-  let has_pipeline = compiler_pipeline_entry_is_retained_host(modules: typed.modules)
+  let entry_decls = compiler_pipeline_entry_decls(modules: typed.modules)
+  let has_pipeline = compiler_pipeline_entries_include_retained_host(decls: entry_decls)
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
   let rust_crate = EmittedRustCrate {
     crate_name: crate_name,
@@ -3769,12 +3770,15 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
       renders_async_services: has_services || closure_renders_async_trait_resource(typed: typed)
     }
   }
-  let native_effects = native_entry_effects(modules: typed.modules, registry: ctx.registry)
-  let native_effect_refusals = native_entry_effect_diagnostics(effects: native_effects, modules: typed.modules)
+  let native_effects = entry_decls |> flat_map(d => match native_entry_effects(modules: typed.modules, registry: ctx.registry, d: d) {
+    Present { value: e } => [e]
+    Absent => []
+  })
+  let native_effect_refusals = native_effects |> flat_map(e => native_entry_effect_diagnostics(effects: Present { value: e }, modules: typed.modules))
   if native_effect_refusals |> count > 0 {
     return EmitResult { files: [], diagnostics: native_effect_refusals, emitted_edges: [], rust_crates: [] }
   }
-  let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name, effects: native_effects)
+  let main_files = emit_main_files(decls: entry_decls, has_services: has_services, crate_name: crate_name, effects: native_effects)
   let cli_dispatch_file = if has_pipeline { [emit_gunbc_cli_dispatch_generated(crate_name: crate_name)] } else { [] }
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }
@@ -3805,13 +3809,13 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   )
   let lib_file = emit_lib_rs_from_paths(all_module_paths: all_mod_paths, has_compiler_tests: has_pipeline)
   let emitted_paths = concat(
-    [lib_file.path, main_file.path],
+    concat([lib_file.path], main_files |> map(f => f.path)),
     all_mod_paths,
     compiler_tests_file |> map(f => f.path),
     test_file_paths
   )
   let population_manifest = emit_emitted_population_manifest(paths: emitted_paths)
-  let emitted_files = concat([lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
+  let emitted_files = concat([lib_file], main_files, all_mod_files, compiler_tests_file, test_files)
   let files = concat(emitted_files, [population_manifest])
   let module_files_with_tests = concat(all_mod_files, compiler_tests_file)
   let module_basenames = module_files_with_tests |> fold(init: empty_map(), f: (acc, f) => map_insert(acc, rust_emitted_module_basename(path: f.path), true))
@@ -18312,18 +18316,15 @@ fn emit_gunbc_cli_dispatch_generated_for_rows(crate_name: String, rows: List<Cli
 // policy are three facts) -- which module is the entry is the interface, which driver realizes it
 // is realization, and the dispatch selecting a realization is itself realization.
 //
-// TWO ENTRIES IN ONE CORPUS IS AN INVALID STATE AND REFUSES AT ITS OWN GRAIN. One emitted crate
-// has one entry point; a corpus declaring two has no answer to which one the binary runs, and
-// answering with the first would be the silent wrong choice this repair exists to remove.
+// A COMPILATION HAS AN ENTRY SET (std.compiler_entry). Each declaring module is one entry with its
+// own driver and main; the shared library covers the union closure. THE INVALID STATE THAT REMAINS
+// IS ONE ENTRY WITH NO SINGLE DRIVER: a module declaring the row twice has no answer to which
+// driver its main renders, and answering with the first would be the silent wrong choice.
 //
-// THE AMBIGUOUS CASE IS DECIDED BEFORE THE ABSENT CASE, and that ordering is the whole point.
-// `compiler_pipeline_entry_decl` answers `none` for BOTH zero entries and two, so a corpus with two
-// pipelines would otherwise fall through to `emit_entry_point_absent_main_rs` and report "no entry
-// point" -- loud, but naming the wrong cause, which is the anemic-diagnostic half of DESIGN
-// section 5: a failure arm must refuse with the located facts rather than widen into a neighbouring
-// arm's message. `compiler_pipeline_entry_is_ambiguous` is asked first and emits a refusal naming
-// every colliding module, so the three states -- one entry, none, several -- have three distinct
-// emissions. The RED is authorable: two `.dag` files each carrying a CompilerEntryDriver row.
+// THE REPEATED-ROW CASE IS DECIDED BEFORE THE ABSENT CASE: a refusal names the located facts rather
+// than widening into a neighbouring arm's message (DESIGN section 5). `emit_main_files` asks the
+// set-level refusals first, so the states -- none, one, several, repeated, mixed with the retained
+// host -- have distinct emissions. Each RED is authorable: `.dag` files carrying the rows.
 
 data compiler_entry_driver_type_name: String = "CompilerEntryDriver"
 
@@ -18368,37 +18369,16 @@ fn compiler_pipeline_entry_decls(modules: List<TypedModule>) -> List<CompilerPip
   modules |> flat_map(tm => module_compiler_pipeline_entry_decls(tm: tm))
 }
 
-fn compiler_pipeline_entry_decl(modules: List<TypedModule>) -> CompilerPipelineEntryDecl? {
-  let decls = compiler_pipeline_entry_decls(modules: modules)
-  if (decls |> count) == 1 { decls |> first } else { none }
+fn compiler_pipeline_entry_is_retained_host(d: CompilerPipelineEntryDecl) -> Bool {
+  d.driver == compiler_entry_retained_host_driver
 }
 
-fn corpus_has_compiler_pipeline(modules: List<TypedModule>) -> Bool {
-  match compiler_pipeline_entry_decl(modules: modules) {
-    Present { value: _ } => true
-    Absent => false
-  }
+fn compiler_pipeline_entries_include_retained_host(decls: List<CompilerPipelineEntryDecl>) -> Bool {
+  (decls |> filter(d => compiler_pipeline_entry_is_retained_host(d: d)) |> count) > 0
 }
 
-fn compiler_pipeline_entry_module_name(modules: List<TypedModule>) -> String {
-  match compiler_pipeline_entry_decl(modules: modules) {
-    Present { value: d } => d.module_name
-    Absent => ""
-  }
-}
-
-fn compiler_pipeline_entry_is_retained_host(modules: List<TypedModule>) -> Bool {
-  match compiler_pipeline_entry_decl(modules: modules) {
-    Present { value: d } => d.driver == compiler_entry_retained_host_driver
-    Absent => false
-  }
-}
-
-fn compiler_pipeline_entry_is_source_root_eval(modules: List<TypedModule>) -> Bool {
-  match compiler_pipeline_entry_decl(modules: modules) {
-    Present { value: d } => d.driver == compiler_entry_source_root_eval_driver
-    Absent => false
-  }
+fn compiler_pipeline_entry_is_source_root_eval(d: CompilerPipelineEntryDecl) -> Bool {
+  d.driver == compiler_entry_source_root_eval_driver
 }
 
 // THE DRIVER NAME IS READ FROM THE DECLARATION'S BODY, AND AN UNRECOGNISED READING USED TO PICK AN
@@ -18414,38 +18394,25 @@ fn compiler_pipeline_entry_is_source_root_eval(modules: List<TypedModule>) -> Bo
 // The partition is now closed by name: a driver reading equal to none of the three declared
 // drivers refuses the emission, naming the module and the reading it got, so the defect surfaces
 // as a located compile_error instead of a plausible binary.
-fn compiler_pipeline_entry_driver_is_known(modules: List<TypedModule>) -> Bool {
-  match compiler_pipeline_entry_decl(modules: modules) {
-    Present { value: d } =>
-      d.driver == compiler_entry_retained_host_driver
-      || d.driver == compiler_entry_source_root_eval_driver
-      || d.driver == compiler_entry_direct_ingest_driver
-      || d.driver == compiler_entry_native_cli_driver
-      || d.driver == compiler_entry_native_claim_driver
-      || d.driver == compiler_entry_native_serve_driver
-    Absent => true
-  }
+fn compiler_pipeline_entry_driver_is_known(d: CompilerPipelineEntryDecl) -> Bool {
+  d.driver == compiler_entry_retained_host_driver
+    || d.driver == compiler_entry_source_root_eval_driver
+    || d.driver == compiler_entry_direct_ingest_driver
+    || d.driver == compiler_entry_native_cli_driver
+    || d.driver == compiler_entry_native_claim_driver
+    || d.driver == compiler_entry_native_serve_driver
 }
 
-fn compiler_pipeline_entry_is_native_claim(modules: List<TypedModule>) -> Bool {
-  match compiler_pipeline_entry_decl(modules: modules) {
-    Present { value: d } => d.driver == compiler_entry_native_claim_driver
-    Absent => false
-  }
+fn compiler_pipeline_entry_is_native_claim(d: CompilerPipelineEntryDecl) -> Bool {
+  d.driver == compiler_entry_native_claim_driver
 }
 
-fn compiler_pipeline_entry_is_native_serve(modules: List<TypedModule>) -> Bool {
-  match compiler_pipeline_entry_decl(modules: modules) {
-    Present { value: d } => d.driver == compiler_entry_native_serve_driver
-    Absent => false
-  }
+fn compiler_pipeline_entry_is_native_serve(d: CompilerPipelineEntryDecl) -> Bool {
+  d.driver == compiler_entry_native_serve_driver
 }
 
-fn compiler_pipeline_entry_is_native_cli(modules: List<TypedModule>) -> Bool {
-  match compiler_pipeline_entry_decl(modules: modules) {
-    Present { value: d } => d.driver == compiler_entry_native_cli_driver
-    Absent => false
-  }
+fn compiler_pipeline_entry_is_native_cli(d: CompilerPipelineEntryDecl) -> Bool {
+  d.driver == compiler_entry_native_cli_driver
 }
 
 // THE DIRECT-INGEST ARM IS ASKED BY NAME, WHICH IT WAS NOT BEFORE. It used to be the RESIDUE of the
@@ -18457,18 +18424,8 @@ fn compiler_pipeline_entry_is_native_cli(modules: List<TypedModule>) -> Bool {
 // reading would have rendered the direct-ingest main had this predicate not been added in the same
 // change. So each arm is now asked for itself and the selection ends in a refusal rather than in an
 // arm.
-fn compiler_pipeline_entry_is_direct_ingest(modules: List<TypedModule>) -> Bool {
-  match compiler_pipeline_entry_decl(modules: modules) {
-    Present { value: d } => d.driver == compiler_entry_direct_ingest_driver
-    Absent => false
-  }
-}
-
-fn compiler_pipeline_entry_driver_reading(modules: List<TypedModule>) -> String {
-  match compiler_pipeline_entry_decl(modules: modules) {
-    Present { value: d } => d.driver
-    Absent => ""
-  }
+fn compiler_pipeline_entry_is_direct_ingest(d: CompilerPipelineEntryDecl) -> Bool {
+  d.driver == compiler_entry_direct_ingest_driver
 }
 
 // THE READING IS ESCAPED INTO THE LITERAL IT LANDS IN. Both interpolations are arbitrary source
@@ -18491,24 +18448,41 @@ fn emit_unknown_compiler_pipeline_driver_main_rs(module_name: String, driver_rea
   }
 }
 
-fn compiler_pipeline_entry_is_ambiguous(modules: List<TypedModule>) -> Bool {
-  (compiler_pipeline_entry_decls(modules: modules) |> count) > 1
+// A module declaring a CompilerEntryDriver row more than once names no single driver for its own
+// entry: it is the same entry declared twice (identical rows) or one module with two drivers
+// (differing rows), and either way no main can be rendered without choosing a row.
+fn compiler_pipeline_entry_repeated_module_names(decls: List<CompilerPipelineEntryDecl>) -> List<String> {
+  unique_strings(items: decls
+    |> filter(d => (decls |> filter(e => e.module_name == d.module_name) |> count) > 1)
+    |> map(d => d.module_name))
 }
 
-fn compiler_pipeline_entry_module_names(modules: List<TypedModule>) -> String {
-  compiler_pipeline_entry_decls(modules: modules)
-    |> map(d => d.module_name)
-    |> join(separator: ", ")
+// A retained-host entry is the seed's clap front end over hand-authored host Rust and names the crate
+// `v1_compiler`; it cannot share an emission with another entry whose crate is `v1_compiled`.
+fn compiler_pipeline_entry_set_mixes_retained_host(decls: List<CompilerPipelineEntryDecl>) -> Bool {
+  (decls |> count) > 1 && compiler_pipeline_entries_include_retained_host(decls: decls)
 }
 
-fn emit_ambiguous_compiler_pipeline_main_rs(module_names: String) -> TextFile {
+fn emit_repeated_compiler_pipeline_entry_main_rs(module_names: String) -> TextFile {
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
       "// Generated by v1 compiler -- do not edit.\n\n",
-      "compile_error!(\"REFUSED: the corpus declares more than one compiler pipeline entry (",
-      module_names,
-      ") -- one emitted crate has one entry point, so no main can be emitted without choosing among them\");\n"
+      "compile_error!(\"REFUSED: a module declares its compiler pipeline entry more than once (",
+      escape_string_literal_body(s: module_names),
+      ") -- one entry has one driver, so no main can be emitted without choosing among its rows\");\n"
+    ),
+  }
+}
+
+fn emit_retained_host_entry_set_main_rs(module_names: String) -> TextFile {
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.\n\n",
+      "compile_error!(\"REFUSED: a retained-host compiler pipeline entry shares an emission with other entries (",
+      escape_string_literal_body(s: module_names),
+      ") -- the retained host is the seed's own crate and binary, not one entry among several\");\n"
     ),
   }
 }
@@ -18539,10 +18513,10 @@ type NativeEntryEffects {
   admissions: List<NativeEffectRealizationAdmission>
 }
 
-fn native_entry_function_name(modules: List<TypedModule>) -> String? {
-  if compiler_pipeline_entry_is_native_serve(modules: modules) { Present { value: native_serve_entry_function } }
-  else if compiler_pipeline_entry_is_native_cli(modules: modules) { Present { value: native_cli_entry_function } }
-  else if compiler_pipeline_entry_is_native_claim(modules: modules) { Present { value: native_claim_entry_function } }
+fn native_entry_function_name(d: CompilerPipelineEntryDecl) -> String? {
+  if compiler_pipeline_entry_is_native_serve(d: d) { Present { value: native_serve_entry_function } }
+  else if compiler_pipeline_entry_is_native_cli(d: d) { Present { value: native_cli_entry_function } }
+  else if compiler_pipeline_entry_is_native_claim(d: d) { Present { value: native_claim_entry_function } }
   else { none }
 }
 
@@ -18560,18 +18534,18 @@ fn native_effect_decl_sites(modules: List<TypedModule>, kind: ParsedModuleItemKi
   })
 }
 
-fn native_entry_denominator(modules: List<TypedModule>) -> NativeEffectDenominator {
-  if compiler_pipeline_entry_is_native_serve(modules: modules) { native_service_route_denominator }
-  else if compiler_pipeline_entry_is_native_claim(modules: modules) { native_claim_route_denominator }
+fn native_entry_denominator(d: CompilerPipelineEntryDecl) -> NativeEffectDenominator {
+  if compiler_pipeline_entry_is_native_serve(d: d) { native_service_route_denominator }
+  else if compiler_pipeline_entry_is_native_claim(d: d) { native_claim_route_denominator }
   else { native_compiler_route_denominator }
 }
 
-fn native_entry_effects(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> NativeEntryEffects? {
-  match native_entry_function_name(modules: modules) {
+fn native_entry_effects(modules: List<TypedModule>, registry: Map<String, ItemInfo>, d: CompilerPipelineEntryDecl) -> NativeEntryEffects? {
+  match native_entry_function_name(d: d) {
     Absent => none
     Present { value: entry_fn } => {
-      let entry_module = compiler_pipeline_entry_module_name(modules: modules)
-      let denominator = native_entry_denominator(modules: modules)
+      let entry_module = d.module_name
+      let denominator = native_entry_denominator(d: d)
       let entry_si = modules
         |> filter(tm => authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module) == entry_module)
         |> map(tm => tm.type_env.source_indices)
@@ -18673,41 +18647,64 @@ fn native_effect_bindings(effects: NativeEntryEffects?, crate_name: String) -> L
   }
 }
 
-fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: String, effects: NativeEntryEffects?) -> TextFile {
-  let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules: modules)
-  let pipeline_module = compiler_pipeline_entry_module_name(modules: modules)
-  if compiler_pipeline_entry_is_ambiguous(modules: modules) {
-    return emit_ambiguous_compiler_pipeline_main_rs(
-      module_names: compiler_pipeline_entry_module_names(modules: modules)
-    )
+// The main of ONE entry. A driver reading matching no declared driver refuses, each arm is asked
+// by name, and the selection ends in a refusal rather than in an arm.
+fn emit_driver_main_rs(d: CompilerPipelineEntryDecl, crate_name: String, effects: NativeEntryEffects?) -> TextFile {
+  let pipeline_module = d.module_name
+  if compiler_pipeline_entry_driver_is_known(d: d) == false {
+    return emit_unknown_compiler_pipeline_driver_main_rs(module_name: pipeline_module, driver_reading: d.driver)
   }
-  if compiler_pipeline_entry_driver_is_known(modules: modules) == false {
-    return emit_unknown_compiler_pipeline_driver_main_rs(
-      module_name: compiler_pipeline_entry_module_name(modules: modules),
-      driver_reading: compiler_pipeline_entry_driver_reading(modules: modules)
-    )
+  if compiler_pipeline_entry_is_source_root_eval(d: d) {
+    return emit_source_root_eval_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
   }
-  if corpus_has_compiler_pipeline(modules: modules) && (retained_host_pipeline == false) {
-    if compiler_pipeline_entry_is_source_root_eval(modules: modules) {
-      return emit_source_root_eval_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
-    }
-    if compiler_pipeline_entry_is_native_cli(modules: modules) {
-      return emit_native_cli_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
-    }
-    if compiler_pipeline_entry_is_native_claim(modules: modules) {
-      return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
-    }
-    if compiler_pipeline_entry_is_native_serve(modules: modules) {
-      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
-    }
-    if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
-      return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
-    }
-    return emit_unknown_compiler_pipeline_driver_main_rs(
-      module_name: pipeline_module,
-      driver_reading: compiler_pipeline_entry_driver_reading(modules: modules)
-    )
+  if compiler_pipeline_entry_is_native_cli(d: d) {
+    return emit_native_cli_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
   }
+  if compiler_pipeline_entry_is_native_claim(d: d) {
+    return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
+  }
+  if compiler_pipeline_entry_is_native_serve(d: d) {
+    return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
+  }
+  if compiler_pipeline_entry_is_direct_ingest(d: d) {
+    return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+  }
+  emit_unknown_compiler_pipeline_driver_main_rs(module_name: pipeline_module, driver_reading: d.driver)
+}
+
+fn native_effects_of_entry(all: List<NativeEntryEffects>, d: CompilerPipelineEntryDecl) -> NativeEntryEffects? {
+  all |> filter(e => e.entry_module == d.module_name) |> first
+}
+
+// THE MAINS OF AN EMISSION: ONE PER DECLARED ENTRY. A compilation has an entry SET (std.compiler_entry);
+// a single entry keeps `src/main.rs` exactly as before, and each of several is `src/bin/<module>.rs`
+// beside one shared library. The set-level refusals are the only ones left: a module repeating its
+// entry row, and a retained-host entry sharing an emission.
+fn emit_main_files(decls: List<CompilerPipelineEntryDecl>, has_services: Bool, crate_name: String, effects: List<NativeEntryEffects>) -> List<TextFile> {
+  let repeated = compiler_pipeline_entry_repeated_module_names(decls: decls)
+  if (repeated |> count) > 0 {
+    return [emit_repeated_compiler_pipeline_entry_main_rs(module_names: repeated |> join(separator: ", "))]
+  }
+  if compiler_pipeline_entry_set_mixes_retained_host(decls: decls) {
+    return [emit_retained_host_entry_set_main_rs(module_names: decls |> map(d => d.module_name) |> join(separator: ", "))]
+  }
+  if (decls |> count) > 1 {
+    return decls |> map(d => {
+      let main = emit_driver_main_rs(d: d, crate_name: crate_name, effects: native_effects_of_entry(all: effects, d: d))
+      TextFile { path: concat(rust_source_root(), "bin/", module_to_filename(name: d.module_name), rust_source_ext()), content: main.content }
+    })
+  }
+  match decls |> first {
+    Present { value: d } => if compiler_pipeline_entry_is_retained_host(d: d) {
+      [emit_main_rs(retained_host_pipeline: true, pipeline_module: d.module_name, has_services: has_services, crate_name: crate_name)]
+    } else {
+      [emit_driver_main_rs(d: d, crate_name: crate_name, effects: native_effects_of_entry(all: effects, d: d))]
+    }
+    Absent => [emit_main_rs(retained_host_pipeline: false, pipeline_module: "", has_services: has_services, crate_name: crate_name)]
+  }
+}
+
+fn emit_main_rs(retained_host_pipeline: Bool, pipeline_module: String, has_services: Bool, crate_name: String) -> TextFile {
   if retained_host_pipeline == false {
     return emit_entry_point_absent_main_rs(crate_name: crate_name)
   }
