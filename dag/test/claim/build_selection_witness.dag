@@ -8,11 +8,11 @@ import gunbc.host.memory_change_evaluation { evaluate_memory_change, ProductionM
 import gunbc.host.mtcollins_memory_change { mtcollins_witnessed_configuration, mtcollins_replay_proposal, mtcollins_memory_evidence_from_capture }
 
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import extdeps.currency.currency { Eur, Usd }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.measure { Bandwidth, ByteSize, MoneyOnce, Watt, byte_size, money_amount_micro, watt }
+import std.measure { Bandwidth, ByteSize, MoneyOnce, Watt, byte_size, money_amount_micro, money_once_micros, watt }
 import std.pareto {
   DominatedBy,
   NotComputable,
@@ -28,6 +28,8 @@ import product.build_fulfillment {
   CashLineUnfulfilled,
   ConstructibleCeiling,
   CeilingDerived,
+  CeilingDepthUnread,
+  CeilingRefused,
   CeilingUnconstrainedByAnyLine,
   CompatibilityUnread,
   LineResolution,
@@ -39,6 +41,14 @@ import product.build_fulfillment {
 }
 import product.build_selection {
   BuildCandidate,
+  BuildAxisReading,
+  MagnitudeBytes,
+  MagnitudeBandwidth,
+  MagnitudeMoney,
+  MagnitudeUnitCount,
+  MagnitudeWatts,
+  cash_reading,
+  ceiling_reading,
   build_selection_axes,
   build_standing,
   project_entry,
@@ -167,7 +177,7 @@ test fn w_a_tradeoff_is_not_a_domination() -> Bool {
 //
 // The wording was "pending evidence" until std.pareto split that arm in two, and the distinction
 // lands exactly here: an UNREAD compatibility is a hole in the inputs, so no standing can be
-// derived at all. That is not the same answer as two present-but-overlapping readings, which do
+// computed at all. That is not the same answer as two present-but-overlapping readings, which do
 // yield a standing and merely fail to separate. Same refusal to call it a winner; different reason,
 // different remedy — supply the reading, rather than measure it more sharply.
 fn pending_build(fixture_roles: List<MtCollinsChannelPopulationRole>) -> BuildCandidate {
@@ -339,4 +349,50 @@ test fn w_the_projected_entry_is_keyed_by_declaration_identity() -> Bool {
       count(e.readings) == 5 && count(e.missing_inputs) == 0
     }
   }
+}
+
+fn reading_money_micros(r: BuildAxisReading) -> Int {
+  match r.magnitude {
+    MagnitudeMoney { money: m } => money_once_micros(q: m)
+    MagnitudeBytes { bytes: _ } => -1
+    MagnitudeWatts { watts: _ } => -1
+    MagnitudeBandwidth { bandwidth: _ } => -1
+    MagnitudeUnitCount { units: _ } => -1
+  }
+}
+
+fn reading_units(r: BuildAxisReading) -> Nat {
+  match r.magnitude {
+    MagnitudeUnitCount { units: u } => u
+    MagnitudeBytes { bytes: _ } => 0
+    MagnitudeMoney { money: _ } => 0
+    MagnitudeWatts { watts: _ } => 0
+    MagnitudeBandwidth { bandwidth: _ } => 0
+  }
+}
+
+test fn w_cash_reading_names_every_cash_projection_arm() -> Bool {
+  let priced = cash_reading(cash: CashDerived { cash: usd_micros(count: 1000000) }, declared: Usd)
+  let owned = cash_reading(cash: CashNoPurchaseLines, declared: Usd)
+  let refused = cash_reading(cash: CashRefused { cause: CashLineUnfulfilled { part: part_ref } }, declared: Usd)
+  reading_money_micros(r: priced) == 1000000
+    && reading_money_micros(r: owned) == 0
+    && reading_money_micros(r: refused) == 0
+}
+
+test fn w_cash_reading_priced_arm_is_not_the_zero_reading() -> Bool {
+  reading_money_micros(r: cash_reading(cash: CashDerived { cash: usd_micros(count: 1000000) }, declared: Usd)) != 0
+}
+
+test fn w_ceiling_reading_names_every_constructible_ceiling_arm() -> Bool {
+  let bounded = ceiling_reading(ceiling: CeilingDerived { builds: 7, bottlenecks: [purchase_line()], bottleneck_units: 224 })
+  let unconstrained = ceiling_reading(ceiling: CeilingUnconstrainedByAnyLine)
+  let refused = ceiling_reading(ceiling: CeilingRefused { cause: CeilingDepthUnread { part: part_ref, obligation: "unread" as NonEmptyStr } })
+  reading_units(r: bounded) == 7
+    && reading_units(r: unconstrained) == 0
+    && reading_units(r: refused) == 0
+}
+
+test fn w_ceiling_reading_bounded_arm_is_not_the_zero_reading() -> Bool {
+  reading_units(r: ceiling_reading(ceiling: CeilingDerived { builds: 7, bottlenecks: [purchase_line()], bottleneck_units: 224 })) != 0
 }

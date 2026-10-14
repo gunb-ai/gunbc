@@ -45,8 +45,6 @@ import product.build_fulfillment {
   NewPurchase,
   OwnedInventory,
 }
-import std.roster_frontier { FrontierRow, PathSubject }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE DOMAIN PROJECTOR. std.pareto is the Pareto-assessment spine and knows
 // nothing about hardware; this module is the one place that turns a resolved
@@ -160,7 +158,7 @@ fn one_missing(axis: DeclarationRef, name: NonEmptyStr) -> List<AxisGap> {
   [AxisGap { axis: axis, cause: name }]
 }
 
-// A line feeds the two derived axes and no others.
+// A line feeds the two fulfillment axes and no others.
 fn line_gap(name: NonEmptyStr) -> List<AxisGap> {
   [AxisGap { axis: cash_axis, cause: name }, AxisGap { axis: ceiling_axis, cause: name }]
 }
@@ -243,16 +241,20 @@ fn candidate_missing_inputs(candidate: BuildCandidate, declared: CurrencyCode) -
 // exists to stop a zero being invented for an UNREADABLE answer, not to stop
 // one being reported for a readable one. A refused cash answer never reaches
 // here at all, because it is a declared missing input above.
+fn cash_zero_reading(declared: CurrencyCode) -> BuildAxisReading {
+  BuildAxisReading {
+    axis: cash_axis,
+    magnitude: MagnitudeMoney {
+      money: MoneyOnce { amount: money_amount_micro(count: 0), currency: declared },
+    },
+  }
+}
+
 fn cash_reading(cash: CashProjection, declared: CurrencyCode) -> BuildAxisReading {
   match cash {
     CashDerived { cash: c } => BuildAxisReading { axis: cash_axis, magnitude: MagnitudeMoney { money: c } }
-    _ =>
-      BuildAxisReading {
-        axis: cash_axis,
-        magnitude: MagnitudeMoney {
-          money: MoneyOnce { amount: money_amount_micro(count: 0), currency: declared },
-        },
-      }
+    CashNoPurchaseLines => cash_zero_reading(declared: declared)
+    CashRefused { cause: _ } => cash_zero_reading(declared: declared)
   }
 }
 
@@ -261,11 +263,16 @@ fn cash_reading(cash: CashProjection, declared: CurrencyCode) -> BuildAxisReadin
 // here is unreachable-by-construction rather than a substituted answer: an
 // entry declaring a missing input is incomparable in std.pareto and is excluded
 // as a challenger, so it can neither win nor poison the field.
+fn ceiling_zero_reading() -> BuildAxisReading {
+  BuildAxisReading { axis: ceiling_axis, magnitude: MagnitudeUnitCount { units: 0 } }
+}
+
 fn ceiling_reading(ceiling: ConstructibleCeiling) -> BuildAxisReading {
   match ceiling {
     CeilingDerived { builds: b, bottlenecks: _, bottleneck_units: _ } =>
       BuildAxisReading { axis: ceiling_axis, magnitude: MagnitudeUnitCount { units: b } }
-    _ => BuildAxisReading { axis: ceiling_axis, magnitude: MagnitudeUnitCount { units: 0 } }
+    CeilingUnconstrainedByAnyLine => ceiling_zero_reading()
+    CeilingRefused { cause: _ } => ceiling_zero_reading()
   }
 }
 
@@ -305,19 +312,3 @@ fn build_standing(
   )
 }
 
-data nfr_reason_build_axis_reading_unreachable_arm: String = "axis-reading projection over CashProjection and ConstructibleCeiling: the Derived arm yields its magnitude and the wildcard answers a zero magnitude for the empty arm (CashNoPurchaseLines is a genuine zero; CeilingUnconstrainedByAnyLine is declared a missing input by ceiling_missing) and for the Refused arm, which candidate_missing_inputs has already declared missing, so the refused reading is construction-unreachable at the only caller (per the in-file note above cash_reading) rather than a fabricated zero. Landed with I-3 inventory-aware build fulfillment (#8543, 2026-08-19) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_dissolve_build_axis_reading_refined_carrier: DissolutionCondition = unbound_dissolution(description: "BuildCandidate carries its cash and ceiling on a refined Derived-only carrier once candidate_missing_inputs has admitted it (illegal states unrepresentable at the reading), so the readings match totally over the refined carrier and the unreachable arms delete with their rows")
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "cash_reading" },
-      reason: nfr_reason_build_axis_reading_unreachable_arm,
-      dissolution: nfr_dissolve_build_axis_reading_refined_carrier,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "ceiling_reading" },
-      reason: nfr_reason_build_axis_reading_unreachable_arm,
-      dissolution: nfr_dissolve_build_axis_reading_refined_carrier,
-    },
-]
