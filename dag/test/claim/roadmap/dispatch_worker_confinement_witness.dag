@@ -8,12 +8,17 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_worker_path_is_writable,
   attempt_state_prepare_argv_for_instance,
   dispatch_attempt_verification_dir_for_instance,
+  dispatch_attempt_state_path_for_instance,
+  dispatch_attempt_worker_log_path_for_instance,
+  dispatch_attempt_launch_path_for_instance,
   attempt_unit_substate_has_exited,
   dispatch_review_unit_properties,
 }
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
 import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
 import extdeps.exec.command { argv_words }
+import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_path_for_instance }
+import std.filesystem { path_parent_directory }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
@@ -66,11 +71,18 @@ test fn the_worker_unit_confines_writes_to_the_instance_root() -> Bool {
 test fn the_srv1_worker_cannot_write_the_deployed_binary_or_tree() -> Bool {
   let inst = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
-  let wt = join([dashboard_instance_dispatch_worktree_root(instance: inst) as String, "/probe-a-key"], "")
-  let scratch = join([dashboard_instance_dispatch_attempt_state_root(instance: inst) as String, "/probe-a-key"], "")
-  let lab_wt = join([dashboard_instance_dispatch_worktree_root(instance: lab) as String, "/probe-a-key"], "")
-  let lab_scratch = join([dashboard_instance_dispatch_attempt_state_root(instance: lab) as String, "/probe-a-key"], "")
-  !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: "/opt/gunbc")
+  let node = "probe-node" as RoadmapNodeId
+  let key = "probe-a-key"
+  let wt = join([dashboard_instance_dispatch_worktree_root(instance: inst) as String, "/", key], "")
+  let attempt = dispatch_attempt_state_path_for_instance(instance: inst, node_id: node, attempt_key: key)
+  let log = dispatch_attempt_worker_log_path_for_instance(instance: inst, node_id: node, attempt_key: key)
+  let scratch = path_parent_directory(path: log)
+  let lab_wt = join([dashboard_instance_dispatch_worktree_root(instance: lab) as String, "/", key], "")
+  let lab_log = dispatch_attempt_worker_log_path_for_instance(instance: lab, node_id: node, attempt_key: key)
+  let lab_scratch = path_parent_directory(path: lab_log)
+  string_contains(s: log, pattern: "/worker/worker-stdout.log")
+    && scratch == join([attempt, "/worker"], "")
+    && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: "/opt/gunbc")
     && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: "/opt/gunbc/bin")
     && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: inst.serve_binary as String)
     && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: inst.repo_root as String)
@@ -78,6 +90,11 @@ test fn the_srv1_worker_cannot_write_the_deployed_binary_or_tree() -> Bool {
     && dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: wt)
     && dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: join([wt, "/session/probe"], ""))
     && dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: scratch)
+    && dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: log)
+    && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: attempt)
+    && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: attempt_request_binding_path_for_instance(instance: inst, node_id: node, attempt_key: key))
+    && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: dispatch_attempt_launch_path_for_instance(instance: inst, node_id: node, attempt_key: key))
+    && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: join([attempt, "/forged-owner-record"], ""))
     && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: dashboard_instance_dispatch_attempt_state_root(instance: inst) as String)
     && !dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: dashboard_instance_dispatch_worktree_root(instance: inst) as String)
     && dispatch_worker_path_is_writable(instance: inst, working_directory: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/.git/worktrees/attempt"], ""))
@@ -109,6 +126,7 @@ test fn the_prepare_step_creates_the_verification_directory_with_the_attempt_dir
   )
   string_contains(s: wire, pattern: verification_dir)
     && string_contains(s: verification_dir, pattern: "/verification")
+    && string_contains(s: wire, pattern: "/worker/")
 }
 
 // DISCRIMINATING: the worker unit no longer outlives its process (reversal of 2026-09-05, bold-bee-114

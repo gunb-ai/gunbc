@@ -12,7 +12,7 @@ data protect_carve_out_reopens_the_protected_subject: RecurringFailureMode = Rec
 
     "SPECIMEN (smart-gull-336 item c, operator plan 2026-10-13): gunbc.roadmap.roadmap_dispatch_actuator dispatch_worker_writable_paths yielded ReadWritePaths=/opt/gunbc on srv1_live_dashboard_instance (instance_root=/opt/gunbc), covering /opt/gunbc/bin and /opt/gunbc/gunbc. The module claimed a refused write; on srv1 that claim did not hold.",
 
-    "REPAIR: the writable set is this attempt's working_directory, the directory that holds its stdout log, and repo/.git (the common git dir a linked worktree commit/stash/fetch writes). Not instance_root, not the whole worktree root, not the whole attempt-state root, not the exit spool. dispatch_worker_path_is_writable is the membership fold.",
+    "REPAIR: the writable set is this attempt's working_directory, the parent of dispatch_attempt_worker_log_path_for_instance (the worker/ child), and repo/.git. Not instance_root, not the attempt directory (request-binding.json, launch-identity.json), not the attempt-state root, not the exit spool. dispatch_worker_path_is_writable is the membership fold.",
 
     "RUNG FOUND AT: mitigatable — the kernel would refuse the write if the carve-out were narrower; with the wide carve-out the invalid write is a silent success. After this change, mechanically preventable: test.claim.roadmap.dispatch_worker_confinement_witness the_srv1_worker_cannot_write_the_deployed_binary_or_tree is the discriminating dry RED (writable=/opt/gunbc covers bin on main; after the derivation it does not). The wet systemd-run probe is test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness, OfflineLocalRecipe, because it needs a user systemd manager and the live /opt/gunbc layout.",
 
