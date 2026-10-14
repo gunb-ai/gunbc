@@ -17,7 +17,7 @@ import v2.cli.population_verbs {
   population_parse_refused,
   population_parse_report,
 }
-import gunbc.parse_verdict_schema { parse_verdict_receipt_line_prefix }
+import gunbc.parse_verdict_schema { parse_verdict_walk_accepted_line }
 import std.algebra { fold_list, length, list_head }
 import v2.std.collection { empty_map }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -64,9 +64,7 @@ fn held_parse_report_text(parsed: String, declared: String) -> String {
     " module(s); ",
     declared,
     " refusal(s) declared by gunbc.parse_population_refusals, each met\n",
-    parse_verdict_receipt_line_prefix,
-    fixture_source_digest,
-    "\tAccepted"
+    parse_verdict_walk_accepted_line(source_digest: fixture_source_digest)
   )
 }
 

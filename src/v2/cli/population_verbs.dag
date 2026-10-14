@@ -5,7 +5,7 @@ import std.algebra { Cons, fold_list, is_empty, length, list_head, list_map, lis
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
-import gunbc.parse_verdict_schema { parse_verdict_receipt_line_prefix }
+import gunbc.parse_verdict_schema { parse_verdict_walk_accepted_line }
 import gunbc.source_layout_namespaces { layout_namespaces }
 import gunbc.source_root_read {
   SourceRootPathsRead,
@@ -346,7 +346,7 @@ fn population_parse_accepted(tally: PopulationParse, key: String, source_digest:
         judged: tally.judged,
         refusals: tally.refusals,
         accepted_receipts: Cons {
-          head: concat(parse_verdict_receipt_line_prefix, source_digest, "\tAccepted"),
+          head: parse_verdict_walk_accepted_line(source_digest: source_digest),
           tail: tally.accepted_receipts
         }
       }
