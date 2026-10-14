@@ -1563,24 +1563,138 @@ fn infer_declaration_reference_facts_indexed(
             inner: inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
           )
         Present { value: declared } =>
-          match infer_declaration_callable_evidence(declared: declared) {
-            Absent =>
-              inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
-            Present { value: callable } =>
-              infer_reference_facts_or_frontier(
-                o: infer_facts_denoting(
-                  o: inferred_facts_from_derived_type(
-                    node: n,
-                    derived_type: infer_reference_value_type(callable: callable),
-                    descent: Holds { value: descent_proof }
-                  ),
-                  declaration: declared
-                ),
+          match symbol_index_declared_payload_at(index: resolved.resolved_declarations, qualified_path: path) {
+            Present { value: VariantArmPayload } =>
+              infer_variant_arm_value_reference_facts(
                 n: n,
+                resolved: resolved,
+                path: path,
+                declared: declared,
+                descent_proof: descent_proof
+              )
+            Present { value: RecordTypePayload } =>
+              infer_declaration_callable_reference_facts(
+                n: n,
+                declared: declared,
+                descent_proof: descent_proof
+              )
+            Absent =>
+              infer_declaration_callable_reference_facts(
+                n: n,
+                declared: declared,
                 descent_proof: descent_proof
               )
           }
       }
+}
+
+// THE VALUE TYPE OF A VARIANT-ARM REFERENCE IS THE DECLARING COPRODUCT, never the arm's
+// payload Conj. That Conj is the constructor's input shape. One function answers for both
+// the declaration-reference facts fold and the operand-type reader: a missing claimant
+// refuses declaration_identity_unavailable; a payload-bearing arm used bare stays
+// GroundingNotDerived; a nullary arm is the coproduct. Expected-type checking is not this
+// repair, and the payload answer is not a reachable alternative.
+type InferVariantArmReferenceValue
+  = VariantArmReferenceValueCoproduct { coproduct: QualifiedName }
+  | VariantArmReferenceValueNotDerived
+  | VariantArmReferenceValueIdentityUnavailable
+
+fn infer_variant_arm_reference_value(
+  index: SymbolIndex,
+  arm_path: QualifiedName,
+  declared: Node
+) -> InferVariantArmReferenceValue {
+  match infer_coproduct_path_of_variant_arm(index: index, arm_path: arm_path) {
+    Absent => VariantArmReferenceValueIdentityUnavailable
+    Present { value: coproduct } =>
+      if infer_empty_product_shape(node: declared) {
+        VariantArmReferenceValueCoproduct { coproduct: coproduct }
+      } else {
+        VariantArmReferenceValueNotDerived
+      }
+  }
+}
+
+fn infer_variant_arm_reference_value_optional(
+  node: Node,
+  resolved: ResolvedTree
+) -> Optional<InferVariantArmReferenceValue> {
+  match declaration_reference_path_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: path } =>
+      match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
+        Absent => optional_absent()
+        Present { value: declared } =>
+          match symbol_index_declared_payload_at(index: resolved.resolved_declarations, qualified_path: path) {
+            Present { value: VariantArmPayload } =>
+              optional_present(
+                value: infer_variant_arm_reference_value(
+                  index: resolved.resolved_declarations,
+                  arm_path: path,
+                  declared: declared
+                )
+              )
+            Present { value: RecordTypePayload } => optional_absent()
+            Absent => optional_absent()
+          }
+      }
+  }
+}
+
+fn infer_variant_arm_value_reference_facts(
+  n: Node,
+  resolved: ResolvedTree,
+  path: QualifiedName,
+  declared: Node,
+  descent_proof: TerminationProof
+) -> Outcome<InferredFacts> {
+  match infer_variant_arm_reference_value(
+    index: resolved.resolved_declarations,
+    arm_path: path,
+    declared: declared
+  ) {
+    VariantArmReferenceValueIdentityUnavailable =>
+      outcome_rejected(infer_declaration_identity_unavailable_diagnostic(at: n))
+    VariantArmReferenceValueNotDerived =>
+      inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+    VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
+      infer_reference_facts_or_frontier(
+        o: infer_facts_denoting(
+          o: inferred_facts_from_derived_type(
+            node: n,
+            derived_type: declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic),
+            descent: Holds { value: descent_proof }
+          ),
+          declaration: declared
+        ),
+        n: n,
+        descent_proof: descent_proof
+      )
+  }
+}
+
+fn infer_declaration_callable_reference_facts(
+  n: Node,
+  declared: Node,
+  descent_proof: TerminationProof
+) -> Outcome<InferredFacts> {
+  match infer_declaration_callable_evidence(declared: declared) {
+    Absent =>
+      inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+    Present { value: callable } =>
+      infer_reference_facts_or_frontier(
+        o: infer_facts_denoting(
+          o: inferred_facts_from_derived_type(
+            node: n,
+            derived_type: infer_reference_value_type(callable: callable),
+            descent: Holds { value: descent_proof }
+          ),
+          declaration: declared
+        ),
+        n: n,
+        descent_proof: descent_proof
+      )
+  }
 }
 
 // A REFERENCE TO A `data` CONSTANT USES ITS VALUE, so it is typed at the constant's declared type, the
@@ -1997,27 +2111,40 @@ fn infer_branch_operand_resolved_type_with_entries(
     Accepted { value: literal, diagnostics: _ } =>
       infer_binding_value_type_witness(binding: infer_literal_type_binding(literal: literal), at: node)
     Rejected { diagnostics: _ } =>
-      match resolved_tree_lexical_binding(tree: resolved, reference: node) {
-        Present { value: binding } =>
-          match binding.standing {
-            LexicalDeclared { node: declared } =>
-              match infer_operand_declared_type_instantiated(declared: declared, instances: instances) {
-                Present { value: instantiated } => Holds { value: instantiated }
-                Absent =>
+      match infer_variant_arm_reference_value_optional(node: node, resolved: resolved) {
+        Present { value: verdict } =>
+          match verdict {
+            VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
+              Holds {
+                value: declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic)
+              }
+            VariantArmReferenceValueNotDerived => inferred_facts_resolved_type(facts: facts)
+            VariantArmReferenceValueIdentityUnavailable =>
+              Violates { diagnostic: infer_declaration_identity_unavailable_diagnostic(at: node) }
+          }
+        Absent =>
+          match resolved_tree_lexical_binding(tree: resolved, reference: node) {
+            Present { value: binding } =>
+              match binding.standing {
+                LexicalDeclared { node: declared } =>
+                  match infer_operand_declared_type_instantiated(declared: declared, instances: instances) {
+                    Present { value: instantiated } => Holds { value: instantiated }
+                    Absent =>
+                      match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
+                        Present { value: value_type } => Holds { value: value_type }
+                        Absent => inferred_facts_resolved_type(facts: facts)
+                      }
+                  }
+                LexicalValued { node: _ } =>
                   match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
                     Present { value: value_type } => Holds { value: value_type }
                     Absent => inferred_facts_resolved_type(facts: facts)
                   }
+                LexicalOwedFormal { field_type: _ } => inferred_facts_resolved_type(facts: facts)
+                LexicalUntyped => inferred_facts_resolved_type(facts: facts)
               }
-            LexicalValued { node: _ } =>
-              match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
-                Present { value: value_type } => Holds { value: value_type }
-                Absent => inferred_facts_resolved_type(facts: facts)
-              }
-            LexicalOwedFormal { field_type: _ } => inferred_facts_resolved_type(facts: facts)
-            LexicalUntyped => inferred_facts_resolved_type(facts: facts)
+            Absent => inferred_facts_resolved_type(facts: facts)
           }
-        Absent => inferred_facts_resolved_type(facts: facts)
       }
   }
 }
@@ -5971,21 +6098,22 @@ fn infer_arrow_empty_domain_edge(parent: Node, edge: Edge, children_remaining: I
     TypeNode { connective: Arrow } =>
       (children_remaining == length(xs: parent.children))
         && (edge.label == Positional)
-        && (length(xs: edge.target.children) == 0)
-        && (match edge.target.kind {
-          TypeNode { connective: Conj } => true
-          TypeNode { connective: Atom { identity: _ } } => false
-          TypeNode { connective: Disj } => false
-          TypeNode { connective: Arrow } => false
-          TypeNode { connective: Occupancy } => false
-          TypeNode { connective: Instantiation } => false
-          ComputationNode { behavior: _ } => false
-        })
+        && infer_empty_product_shape(node: edge.target)
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+// THE EMPTY PRODUCT IS A CHILDLESS CONJ. Sum nullary payloads, an Arrow's empty domain, and a
+// nullary coproduct-arm reference all ask this one shape; a marker on it must move every consumer.
+fn infer_empty_product_shape(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } => length(xs: node.children) == 0
+    TypeNode { connective: _ } => false
     ComputationNode { behavior: _ } => false
   }
 }
@@ -6204,11 +6332,7 @@ fn infer_sum_nullary_payload_edge(parent: Node, edge: Edge) -> Bool {
         Authored { name: _ } => true
         Positional => false
       })
-        && (length(xs: edge.target.children) == 0)
-        && (match edge.target.kind {
-          TypeNode { connective: Conj } => true
-          _ => false
-        })
+        && infer_empty_product_shape(node: edge.target)
     _ => false
   }
 }
