@@ -199,6 +199,17 @@ pub fn dag_non_name_keywords() -> Rc<HashMap<String, bool>> {
     CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
 }
 
+pub fn dag_non_pattern_binder_keywords() -> Rc<HashMap<String, bool>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            let mut __m = HashMap::new();
+            __m.insert("match".to_string(), true);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+}
+
 pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     thread_local! {
             static CACHED: Rc<Vec<Rc<OperatorSpec>>> = {
@@ -348,6 +359,7 @@ pub fn dag_parse_environment() -> Rc<ParseEnvironment> {
                 Rc::new(ParseEnvironment {
         syntax_spec: dag_syntax_spec(),
         non_name_keywords: dag_non_name_keywords(),
+        non_pattern_binder_keywords: dag_non_pattern_binder_keywords(),
     })
             };
         }
