@@ -3962,14 +3962,18 @@ fn fleet_converge_mtcollins1_boot_pair_build_step() -> Step {
 }
 
 // FAN POLICY IS A PHASE OF THIS JOB, NOT A SECOND MODE. The operator addendum (2026-10-14) forbids
-// a machine sitting on a controller default unobserved after boot. The existing MtCollins1FanObserve
-// mode is not renamed; this job runs the same read (first sample is out-of-band drift, including a
-// hand-set Cooling Manager disable) before the power cycle so the series is not mixed with chassis
-// writes it cannot see. PWM members are bound (fan_pwm_all STRING); this step still reads first.
-fn fleet_converge_mtcollins1_boot_fan_observe_step() -> Step {
+// a machine sitting on a controller default unobserved after boot. The unit is a parameter of the
+// step, not a new step id (cut 7). This is a GitHub Actions job step of its own: steps in one job
+// run strictly sequentially, so this interpreter exits before the boot step's concurrent pair
+// (gunbc_ci_mtcollins1_boot_watcher_background_line `gunbc run ... &` plus the boot `gunbc run`).
+// It is not a child of that pair. Runs 38639170770 and 38640990281 thrashed srv1 on that pair
+// (still-owl-732). This phase does not raise that pair's budget. PWM write / guard / restore is
+// a named follow-up (megarac_fan_boot_phase_write_plan, megarac_thermal_guard_verdict,
+// megarac_fan_run_exit_restore), not this PR.
+fn fleet_converge_fan_policy_phase_step(host: NonEmptyStr) -> Step {
   RunStep {
-    name: Present { value: "Mt. Collins fan policy phase: observe Cooling Manager and PWM (reads only; first sample is drift)" },
-    id: Present { value: "mtcollins1_boot_fan_observe" },
+    name: Present { value: join(["Fan policy phase: observe Cooling Manager and PWM (reads only; first sample is drift; unit=", host as String, ")"], "") },
+    id: Present { value: "fan_policy_phase" },
     run: gunbc_ci_mtcollins1_fan_observe_invoke(),
     shell: none,
     env: Present { value: [
@@ -3982,13 +3986,13 @@ fn fleet_converge_mtcollins1_boot_fan_observe_step() -> Step {
   }
 }
 
-fn fleet_converge_mtcollins1_boot_fan_observe_receipt_upload_step() -> Step {
+fn fleet_converge_fan_policy_phase_receipt_upload_step() -> Step {
   UsesStep {
-    name: Present { value: "Upload Mt. Collins boot-phase fan observation series" },
-    id: Present { value: "mtcollins1_boot_fan_observe_receipt_upload" },
+    name: Present { value: "Upload fan-policy-phase observation series" },
+    id: Present { value: "fan_policy_phase_receipt_upload" },
     uses: upload_artifact_action,
     with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-boot-fan-observation")),
+      kv(key: "name", value: yaml_string(s: "fan-policy-phase-observation")),
       kv(key: "path", value: yaml_string(s: mtcollins1_fan_observation_receipt_path)),
       kv(key: "if-no-files-found", value: yaml_string(s: "error")),
       kv(key: "retention-days", value: yaml_int(n: 30)),
@@ -4010,9 +4014,9 @@ fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: 
       service_account: fleet_converge_mtcollins1_boot_service_account(),
     ),
     fleet_key_step,
-    fleet_converge_mtcollins1_boot_fan_observe_step(),
+    fleet_converge_fan_policy_phase_step(host: operator_host_mtcollins1 as NonEmptyStr),
     boot_step,
-    fleet_converge_mtcollins1_boot_fan_observe_receipt_upload_step(),
+    fleet_converge_fan_policy_phase_receipt_upload_step(),
     fleet_converge_mtcollins1_boot_receipt_upload_step(),
     ci_fleet_key_agent_cleanup_step(),
   ])

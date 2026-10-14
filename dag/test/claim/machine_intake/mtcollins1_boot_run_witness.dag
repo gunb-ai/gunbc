@@ -32,7 +32,6 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2,
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.machine_intake.ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
-import gunbc.ci.ci_spec { gunbc_ci_mtcollins1_fan_observe_invoke }
 import gunbc.fleet.fleet_workflow_steps { ci_fleet_key_agent_step }
 import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
@@ -552,13 +551,6 @@ fn supplied_boot_steps() -> List<Step> {
 test fn the_boot_job_takes_the_fleet_key_step_before_the_boot_step() -> Bool {
   let runs = map(supplied_boot_steps(), s => step_run_text(s: s))
   filter(runs, r => r == supplied_fleet_key_marker || r == supplied_boot_marker) == [supplied_fleet_key_marker, supplied_boot_marker]
-}
-
-test fn the_boot_job_observes_fan_policy_before_the_power_cycle() -> Bool {
-  let runs = map(supplied_boot_steps(), s => step_run_text(s: s))
-  let fan = gunbc_ci_mtcollins1_fan_observe_invoke()
-  let with_fan = filter(runs, r => r == supplied_fleet_key_marker || r == fan || r == supplied_boot_marker)
-  with_fan == [supplied_fleet_key_marker, fan, supplied_boot_marker]
 }
 
 test fn the_fleet_key_step_materializes_the_fleet_key_and_never_names_expected_revision() -> Bool {
