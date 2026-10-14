@@ -164,8 +164,8 @@ data frontend_eval_tasks: List<EvalTask> = [
     id: "frame_boundary.sentinel" as NonEmptyStr, class: CrossModuleNameSentinel,
     subject: decl_ref(module_path: "std.frame_boundary", decl_name: "tree_coverage"),
     subject_path: frame_boundary_path, entry_path: frame_boundary_entry,
-    mutation: TextMutation { old: "namespace_tree_eq(a: c.tree, b: tree)", new: "namespace_tree_equal(a: c.tree, b: tree)" },
-    expected_stage: RefusedAtResolve, expected_lexeme: "namespace_tree_equal",
+    mutation: TextMutation { old: "LifecycleGrade, LifecycleByConstruction, LifecycleByConvention,", new: "LifecycleGrade, LifecycleByConstruction, LifecycleByConventionn," },
+    expected_stage: RefusedAtResolve, expected_lexeme: "LifecycleByConventionn",
   },
   EvalTask {
     id: "evaluation_budget.nesting" as NonEmptyStr, class: ExpressionNesting,

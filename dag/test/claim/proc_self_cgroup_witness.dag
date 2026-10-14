@@ -17,7 +17,6 @@ import extdeps.linux.proc_self_cgroup {
   OutcomeTagMalformed,
   OutcomeTagObserved,
   unified_membership_outcome_tag_from_content,
-  unified_membership_outcome_tag_eq,
   read_unified_cgroup_membership_drift_sketch,
   unified_membership_outcome_tag,
 }
@@ -104,15 +103,16 @@ test fn cross_realization_fixture_law_observed_holds() -> Bool {
 }
 
 test fn cross_realization_parser_branch_mutation_red_control_holds() -> Bool {
-  !unified_membership_outcome_tag_eq(
-    a: unified_membership_outcome_tag_from_content(
+  !(
+    unified_membership_outcome_tag_from_content(
       content: fixture_hierarchy_zero_nonempty_controller,
-    ),
-    b: unified_membership_outcome_tag(
+    )
+    ==
+    unified_membership_outcome_tag(
       record: read_unified_cgroup_membership_drift_sketch(
         content: fixture_hierarchy_zero_nonempty_controller,
       ),
-    ),
+    )
   )
 }
 
@@ -338,4 +338,22 @@ test fn nearest_ancestor_predicate_uses_regular_file_peak_holds() -> Bool {
     And { lhs: _, rhs: And { lhs: _, rhs: Not { inner: std.path_intent.PathEntryKind { path: _, kind: RegularFile } } } } => true
     _ => false
   }
+}
+
+// D1 derived-equality backfill (unified_membership_outcome_tag_eq deleted): the hand fold
+// matched all four variants and, for OutcomeTagObserved, compared `ra as String == rb as String`.
+// NonEmptyStr is a refinement of String (string_non_empty), so `as String` drops only the
+// predicate, not a field — the primitive structural == on the field compares the same underlying
+// strings. Discriminating RED: distinct variants and a distinct relative_path must compare
+// unequal. Positive control: equal values (each variant) compare equal.
+test fn unified_membership_outcome_tag_derived_eq_red_and_positive_holds() -> Bool {
+  !(OutcomeTagMissing == OutcomeTagAmbiguous)
+    && !(OutcomeTagAmbiguous == OutcomeTagMalformed)
+    && !(OutcomeTagMalformed == OutcomeTagObserved { relative_path: "self/1234" as NonEmptyStr })
+    && !(OutcomeTagObserved { relative_path: "self/1234" as NonEmptyStr } == OutcomeTagObserved { relative_path: "self/9999" as NonEmptyStr })
+    && !(OutcomeTagObserved { relative_path: "self/1234" as NonEmptyStr } == OutcomeTagMissing)
+    && (OutcomeTagMissing == OutcomeTagMissing)
+    && (OutcomeTagAmbiguous == OutcomeTagAmbiguous)
+    && (OutcomeTagMalformed == OutcomeTagMalformed)
+    && (OutcomeTagObserved { relative_path: "self/1234" as NonEmptyStr } == OutcomeTagObserved { relative_path: "self/1234" as NonEmptyStr })
 }

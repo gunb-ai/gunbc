@@ -18,6 +18,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.spec {
   OwnedArtifactKind,
+  ComposeOwned, UpsertOwned,
   PublicationHelperPathUnit,
   FabricStorageServeUnit,
   FabricStorageServeMapping,
@@ -233,19 +234,23 @@ test fn only_an_exact_read_back_reports_success() -> Bool {
 
 fn ordering_tag(kind: OwnedArtifactKind) -> String {
   match kind {
-    GunbcSourceTree => "tree"
-    ServeBinary => "binary"
-    DeployedTreeRemoteUnit => "remote"
-    PublicationHelperPathUnit => "publication"
-    FabricStorageServeUnit => ""
-    FabricStorageServeMapping => ""
-    ApprovalBrokerFrontDoor => ""
-    TailnetDoorServeUnit => ""
-    BeltEventPathUnit => "belt"
-    TailscaleServeMapping => "route"
-    SystemdUnit => ""
-    FleetConvergeTimerUnit => ""
-    OidcConfigArtifact => ""
+    UpsertOwned { kind: uk } => match uk {
+      GunbcSourceTree => "tree"
+      ServeBinary => "binary"
+      DeployedTreeRemoteUnit => "remote"
+      PublicationHelperPathUnit => "publication"
+      BeltEventPathUnit => "belt"
+      TailscaleServeMapping => "route"
+      ApprovalBrokerFrontDoor => ""
+    }
+    ComposeOwned { kind: ck } => match ck {
+      FabricStorageServeUnit => ""
+      FabricStorageServeMapping => ""
+      TailnetDoorServeUnit => ""
+      SystemdUnit => ""
+      FleetConvergeTimerUnit => ""
+      OidcConfigArtifact => ""
+    }
   }
 }
 

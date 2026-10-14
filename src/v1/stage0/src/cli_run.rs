@@ -106,12 +106,12 @@ pub use native_lane_runner::{
     emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
     run_native_claim_program, run_native_process_memory_runs, run_native_serve_program,
     run_required_v2_native, run_self_host, run_type_declaration_use_census_runs,
-    run_v2_demand_census, run_v2_native_census, run_v2_native_cli, run_v2_native_frontier,
-    CensusInferRun, MeasuredSpawnRoute, NativeCensusRun, NativeChildMeasured,
-    NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
-    NativeProcessMemoryRuns, NativeRouteOutcome, NativeServeProgramRun, SelfHostHeld,
-    TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
-    MEASURED_SPAWN_RECEIPT_ENV,
+    run_v2_demand_census, run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli,
+    run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
+    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
+    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
+    NativeServeProgramRun, SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
+    MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND, MEASURED_SPAWN_RECEIPT_ENV,
 };
 pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
@@ -11267,11 +11267,11 @@ pub(crate) struct FloorRouteGapExpectation {
 /// against, not which figure exists.
 ///
 /// Named `RequiredFloorCostBasis`, not the bare `WitnessCostBasis` the ruling's prose uses,
-/// because `std_realization_schedule.rs` already declares a `WitnessCostBasis` for an
-/// unrelated concept (`MeasuredAtExactSubject | EstimatedFromSiblingClass`, a realization
-/// schedule's provenance for a cost figure, not a policy choice of which clock judges a
-/// completed claim). Two same-named public enums in one crate is the exact citation ambiguity
-/// DESIGN.md §3 rules against, so this type is scoped to the one lane that declares it.
+/// because `std.realization_schedule` already names `WitnessCostBasis` for an unrelated
+/// concept (`MeasuredAtExactSubject | EstimatedFromSiblingClass`, a realization schedule's
+/// provenance for a cost figure, not a policy choice of which clock judges a completed
+/// claim). Reusing that name here would be the citation ambiguity DESIGN.md §3 rules
+/// against, so this type is scoped to the one lane that declares it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequiredFloorCostBasis {
     CpuCost,

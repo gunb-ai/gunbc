@@ -1,9 +1,9 @@
 module v2.cli.repository_layout
 
 import std.types { Bool, List }
-import std.optional { Optional, optional_absent, optional_present }
+import std.optional { Optional, optional_absent, optional_present, Absent, Present }
 import v2.std.text { String }
-import std.algebra { HeadAbsent, HeadFound, list_head }
+import std.algebra { list_head }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.compiler.source_authority { ModuleFileRef, SourceStorageLayout, StorageNamespaceRoot }
 import gunbc.source_layout {
@@ -69,11 +69,11 @@ fn repository_tree_owns_path(tree: SourceRootRef, path: String) -> Bool {
 // governed tree. The trees are disjoint directories, so at most one owns a path.
 fn repository_module_file_of_path(path: String) -> Optional<ModuleFileRef> {
   match list_head(xs: [V2Tree, DagTree] |> filter(fn(tree) { repository_tree_owns_path(tree: tree, path: path) })) {
-    HeadFound { value: tree } => {
+    Present { value: tree } => {
       let directory_length = string_length(s: repository_tree_directory(tree: tree)) + 1
       optional_present(value: ModuleFileRef { tree: tree, relative_path: substring(s: path, start: directory_length, end: string_length(s: path)) })
     }
-    HeadAbsent => optional_absent()
+    Absent => optional_absent()
   }
 }
 
@@ -95,7 +95,7 @@ fn repository_root_argument_names_tree(tree: SourceRootRef, argument: String) ->
 
 fn repository_tree_of_root_argument(argument: String) -> Optional<SourceRootRef> {
   match list_head(xs: [V2Tree, DagTree] |> filter(fn(tree) { repository_root_argument_names_tree(tree: tree, argument: argument) })) {
-    HeadFound { value: tree } => optional_present(value: tree)
-    HeadAbsent => optional_absent()
+    Present { value: tree } => optional_present(value: tree)
+    Absent => optional_absent()
   }
 }

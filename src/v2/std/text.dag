@@ -1,6 +1,8 @@
 module v2.std.text
+import std.optional { Absent, Optional, Present }
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, contains, fold_list, for_all, is_empty, length, list_head, list_reverse, list_starts_with, list_tail, skip }
+
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, contains, fold_list, for_all, is_empty, length, list_head, list_reverse, list_starts_with, list_tail, skip }
 import std.types { Char }
 type String = FreeMonoid<Char>
 
@@ -24,11 +26,11 @@ fn string_is_empty(s: String) -> Bool {
 }
 fn string_head(s: String) -> CharResult {
   match list_head(xs: s) {
-    HeadFound { value: c } => CharFound { value: c }
-    HeadAbsent => CharAbsent
+    Present { value: c } => CharFound { value: c }
+    Absent => CharAbsent
   }
 }
-fn string_tail(s: String) -> ListTailResult<Char> {
+fn string_tail(s: String) -> Optional<FreeMonoid<Char>> {
   list_tail(xs: s)
 }
 

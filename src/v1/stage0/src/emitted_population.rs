@@ -65,14 +65,12 @@
 // src/std_effects.rs
 // src/std_emit_model.rs
 // src/std_error_primitives.rs
-// src/std_execution_mode.rs
 // src/std_graph.rs
 // src/std_import_statement.rs
 // src/std_induction.rs
 // src/std_integer.rs
 // src/std_interface_summary.rs
 // src/std_kernel_type_name.rs
-// src/std_key_relation.rs
 // src/std_keyed_roster.rs
 // src/std_keyed_row.rs
 // src/std_literal_elaboration.rs
@@ -87,8 +85,6 @@
 // src/std_operator_realization.rs
 // src/std_optional.rs
 // src/std_primitive_projection.rs
-// src/std_process_termination.rs
-// src/std_realization_schedule.rs
 // src/std_reference_binding_observation.rs
 // src/std_render_repeat_string_bootstrap.rs
 // src/std_repair_input_origin.rs
@@ -102,7 +98,6 @@
 // src/std_types.rs
 // src/std_unicode_scalar.rs
 // src/std_unicode_types.rs
-// src/std_witness_admission.rs
 // src/std_workspace_artifact.rs
 // src/v1_compiler_annotation_bind.rs
 // src/v1_compiler_artifact.rs

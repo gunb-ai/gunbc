@@ -42,13 +42,15 @@ import gunbc.auth.tracker_web_oauth_client {
 }
 import gunbc.live_deploy.emit {
   apply_step_effects, apply_oidc_config_steps_at,
+  apply_oidc_fragments, compose_host_script_decide_steps, compose_host_script_mutate_steps,
+  oidc_readback_refused_poison,
   live_deploy_serve_unit_emission, live_deploy_serve_unit_emission_at,
   LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
   live_deploy_oidc_unit_env_at, LiveDeployOidcEnvAdmitted, LiveDeployOidcEnvRefused,
 }
 import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, srv1_production_desired_deployment, selected_deployment_spec }
-import gunbc.live_deploy.spec { ArtifactStep, Dependency, OidcConfigArtifact }
+import gunbc.live_deploy.spec { ArtifactStep, Dependency, OidcConfigArtifact, ComposeOwned }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_empty_host_effects, claim_oidc_now }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
@@ -275,7 +277,7 @@ test fn lab_apply_identity_route_writes_oidc_config_file() -> Bool {
   let effects = apply_empty_host_effects(spec: spec)
   match filter(spec.steps, st => match st {
     ArtifactStep { step: art } => match art.kind {
-      OidcConfigArtifact => true
+      ComposeOwned { kind: OidcConfigArtifact } => true
       _ => false
     }
     Dependency { step: _ } => false
@@ -294,14 +296,21 @@ test fn lab_apply_oidc_config_refuses_when_console_readback_expired() -> Bool {
     Absent => false
     Present { value: until } =>
       let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
-      let sh = pipeline_steps_text(steps: apply_oidc_config_steps_at(
-        spec: spec,
-        now_epoch: until,
-        should_write: false,
-      ))
-      string_contains(s: sh, pattern: "__GUNBC_OIDC_READBACK_REFUSED__")
+      let fragments = apply_oidc_fragments(spec: spec, oidc_now: Present { value: until })
+      let sh = pipeline_steps_text(steps: compose_host_script_decide_steps(fragments: fragments))
+      string_contains(s: sh, pattern: oidc_readback_refused_poison)
+        && count(compose_host_script_mutate_steps(fragments: fragments)) == 0
         && !string_contains(s: sh, pattern: tracker_web_test_oidc_config_host_path as String)
   }
+}
+
+test fn lab_apply_oidc_refuses_without_an_observer_clock() -> Bool {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let fragments = apply_oidc_fragments(spec: spec, oidc_now: Absent)
+  let sh = pipeline_steps_text(steps: compose_host_script_decide_steps(fragments: fragments))
+  string_contains(s: sh, pattern: oidc_readback_refused_poison)
+    && string_contains(s: sh, pattern: "observer clock unreadable")
+    && count(compose_host_script_mutate_steps(fragments: fragments)) == 0
 }
 
 test fn lab_serve_unit_emission_refuses_when_console_readback_expired() -> Bool {
@@ -334,7 +343,7 @@ test fn lab_oidc_unit_env_refuses_when_console_readback_expired() -> Bool {
 test fn production_spec_has_no_oidc_config_artifact() -> Bool {
   !any(selected_deployment_spec(row: srv1_production_desired_deployment()).steps, st => match st {
     ArtifactStep { step: art } => match art.kind {
-      OidcConfigArtifact => true
+      ComposeOwned { kind: OidcConfigArtifact } => true
       _ => false
     }
     Dependency { step: _ } => false
