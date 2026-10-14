@@ -99,7 +99,7 @@ import extdeps.posix.path_ownership {
   path_ownership_verdict,
 }
 import extdeps.posix.identity { PosixOwnerSpec, posix_user_id_from_text, posix_group_id_from_text }
-import extdeps.sudo.elevation { sudo_elevate, sudo_program, sudo_elevate_command }
+import extdeps.sudo.elevation { sudo_elevate, sudo_program, sudo_elevate_command, sudo_elevate_argv }
 import gunbc.retained_shell_script {
   RetainedShellScript,
   retained_shell_script_to_transport,
@@ -325,7 +325,17 @@ import gunbc.live_deploy.operations {
   systemctl_enable_command,
   systemctl_restart_command,
 }
-import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, coreutils_install_file_argv, rm_force_command }
+import extdeps.tools.gnu_coreutils {
+  dd_overwrite_path_command,
+  coreutils_install_file_argv,
+  rm_force_command,
+  coreutils_rm_force_argv,
+  coreutils_rm_empty_directory_argv,
+  coreutils_rm_force_recursive_argv,
+}
+import extdeps.posix.test_utility {
+  test_exists_command,
+}
 import v2.std.compilers.cli_surface {
   cli_surface_of_literal_words,
   process_argv_expansion,
@@ -5154,6 +5164,445 @@ fn build_cache_path_kind_read(
             exit_success: o.success,
           )
       }
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// C2 — TYPED HOST REMOVAL. The leaf the live_deploy retract (and the W8 apply cutover)
+// consume to remove the gunbc source tree and its unit files, replacing the bash `rm -d` /
+// `rm -f` / `rm -rf` leaves under `set -euo pipefail` with an ordered typed sequence whose
+// every refusal is typed and names the arm, the step and the path — never a silent default
+// and never a widening.
+//
+// THREE ARMS, ONE PER RM SHAPE (gnu_coreutils.dag keeps `-f` / `-d` / `-rf` as separate names
+// because "Choosing -rf where -d was meant turns a loud refusal into silent destruction"):
+//   RemoveForce          -> coreutils_rm_force_argv            (rm -f p1 p2 ...)  up to 3 unit files
+//   RemoveEmptyDirectory -> coreutils_rm_empty_directory_argv  (rm -d path)        refuses a non-empty dir
+//   RemoveForceRecursive -> coreutils_rm_force_recursive_argv  (rm -rf path)       the gunbc source tree
+//
+// ELEVATION MATCHES THE BASH IT REPLACES: `sudo -n <rm shape>` (sudo_elevate_argv), the same
+// shell_privileged_command_text_of_argv the live_deploy script used. The read-back probes are
+// UNPRIVILEGED `test -e`: stat is not in the sudo roster (fleet_posix_accounts.dag) and the
+// deploy principal itself is unprivileged (emit.dag: "Principal: UNPRIVILEGED ci-runner"), so an
+// existence probe needs no elevation and is portable over the SshShell wall (only `-e` + the
+// path), unlike `stat -c %F` (the `%` is not a portable word). The verdict is carried by the
+// read-back, not by the exit status alone.
+//
+// THE VERDICT IS A PURE FOLD OVER SUPPLIED OUTCOMES (DESIGN 3): host_remove_verdict takes the
+// pre / read-back presence lists and the rm's RunArgvTransportOutcome and returns the
+// reconciliation. The witness supplies the boundary values (RemoveForce{[]}, EmptyDir{absent},
+// ForceRecursive{absent} = NoOp) and the one RED (the non-empty EmptyDir refusal) at this pure
+// interface — no operation, no sudo, no filesystem. host_remove_on_host is the thin impure leg:
+// pre-observe (test -e per path), dispatch (sudo -n rm), read-back (test -e), verdict. The FIRST
+// refusal stops the caller's fold; nothing here absorbs one.
+// ---------------------------------------------------------------------------
+
+type HostRemoveTarget
+  = RemoveForce { paths: List<NonEmptyStr> }
+  | RemoveEmptyDirectory { path: NonEmptyStr }
+  | RemoveForceRecursive { path: NonEmptyStr }
+
+type HostRemoveEvidence
+  = RemovedConfirmed { paths: List<String>, exit_code: Int }
+  | RemovedNoOp { path: String }
+
+// THE INNER (NOT-YET-ELEVATED) RM ARGV. Pure.
+fn host_remove_target_inner_argv(target: HostRemoveTarget) -> List<String> {
+  match target {
+    RemoveForce { paths: ps } =>
+      coreutils_rm_force_argv(paths: list_map(xs: ps, f: fn(p) { p as String }))
+    RemoveEmptyDirectory { path: p } =>
+      coreutils_rm_empty_directory_argv(path: p as String)
+    RemoveForceRecursive { path: p } =>
+      coreutils_rm_force_recursive_argv(path: p as String)
+  }
+}
+
+// THE FLAT ELEVATED ARGV: `sudo -n <rm shape> <paths>`. Pure; the witness reads this back and the
+// leaf dispatches it (via sudo_elevate_command on the same inner argv, so the two agree by
+// construction).
+fn host_remove_target_argv(target: HostRemoveTarget) -> List<String> {
+  sudo_elevate_argv(command: host_remove_target_inner_argv(target: target))
+}
+
+fn host_remove_arm_name(target: HostRemoveTarget) -> String {
+  match target {
+    RemoveForce { paths: _ } => "RemoveForce"
+    RemoveEmptyDirectory { path: _ } => "RemoveEmptyDirectory"
+    RemoveForceRecursive { path: _ } => "RemoveForceRecursive"
+  }
+}
+
+fn host_remove_step_name(target: HostRemoveTarget) -> String {
+  match target {
+    RemoveForce { paths: _ } => "remove-force"
+    RemoveEmptyDirectory { path: _ } => "remove-empty-dir"
+    RemoveForceRecursive { path: _ } => "remove-force-recursive"
+  }
+}
+
+// THE PATH FIELD FOR THE REASON STRING: the comma-joined target path(s), empty when the arm has
+// none (the empty-list refusal).
+fn host_remove_path_field(target: HostRemoveTarget) -> String {
+  match target {
+    RemoveForce { paths: ps } => join(list_map(xs: ps, f: fn(p) { p as String }), ",")
+    RemoveEmptyDirectory { path: p } => p as String
+    RemoveForceRecursive { path: p } => p as String
+  }
+}
+
+// EVERY REASON NAMES THE ARM, THE STEP AND THE PATH.
+fn host_remove_reason(
+  target: HostRemoveTarget,
+  verb: String,
+  detail: String,
+  pathfield: String,
+) -> String {
+  join(
+    [
+      "host_remove: ",
+      host_remove_arm_name(target: target),
+      " ",
+      verb,
+      " — ",
+      detail,
+      "; arm=",
+      host_remove_arm_name(target: target),
+      ", step=",
+      host_remove_step_name(target: target),
+      ", path=",
+      pathfield,
+    ],
+    "",
+  )
+}
+
+// THE REMOVAL VERDICT — PURE. pre_present / post_present are the per-target-path read-backs
+// (test -e, in target order: the path(s) that would be removed). outcome is the rm's own
+// RunArgvTransportOutcome. The boundary values the witness supplies:
+//   RemoveForce{paths:[]}            -> empty-list refusal (before any dispatch)
+//   RemoveEmptyDirectory on a NON-EMPTY dir -> the loud refusal, never widened to -rf (the RED)
+//   RemoveEmptyDirectory on an ABSENT dir   -> refusal (rm -d on an absent dir exits 1; NOT
+//                                              idempotent-success)
+//   read-back STILL PRESENT after an exit-0 rm -> did-not-converge refusal, names the path
+//   RemoveForceRecursive on an ABSENT dir, exit 0 -> Converged RemovedNoOp (rm -rf on absent is
+//                                                    idempotent)
+fn host_remove_verdict(
+  target: HostRemoveTarget,
+  pre_present: List<Bool>,
+  outcome: RunArgvTransportOutcome,
+  post_present: List<Bool>,
+) -> Reconciliation<HostRemoveTarget, HostRemoveEvidence> {
+  match target {
+    RemoveForce { paths: ps } => {
+    if list_length(items: ps) == 0 {
+      NotConverged {
+        reason: host_remove_reason(
+          target: target,
+          verb: "refused",
+          detail: "empty path list (rm -f needs an operand)",
+          pathfield: "",
+        ),
+        applied: target,
+      }
+    } else {
+      match outcome {
+        RunArgvTransportRefused { reason: why } =>
+          NotConverged {
+            reason: host_remove_reason(
+              target: target,
+              verb: "refused",
+              detail: join(["the typed transport refused the removal before any dispatch: ", why], ""),
+              pathfield: host_remove_path_field(target: target),
+            ),
+            applied: target,
+          }
+        RunArgvTransportObserved { observed: o } =>
+          if string_contains(s: o.stderr, pattern: "a password is required") {
+            NotConverged {
+              reason: host_remove_reason(
+                target: target,
+                verb: "refused",
+                detail: "sudo -n elevation unavailable",
+                pathfield: host_remove_path_field(target: target),
+              ),
+              applied: target,
+            }
+          } else if !o.success {
+            NotConverged {
+              reason: host_remove_reason(
+                target: target,
+                verb: "refused",
+                detail: join(["rm -f failed (exit ", to_string(o.exit_code), ")"], ""),
+                pathfield: host_remove_path_field(target: target),
+              ),
+              applied: target,
+            }
+          } else {
+            let still = fold_list(xs: post_present, empty: false, cons: (acc, b) => acc || b)
+            if still {
+              NotConverged {
+                reason: host_remove_reason(
+                  target: target,
+                  verb: "did not converge",
+                  detail: join([host_remove_path_field(target: target), " still present after read-back"], ""),
+                  pathfield: host_remove_path_field(target: target),
+                ),
+                applied: target,
+              }
+            } else {
+              Converged {
+                evidence: RemovedConfirmed {
+                  paths: list_map(xs: ps, f: fn(p) { p as String }),
+                  exit_code: o.exit_code,
+                },
+                applied: target,
+              }
+            }
+          }
+      }
+    }
+    }
+    RemoveEmptyDirectory { path: p } => {
+    let p_s = p as String
+    match outcome {
+      RunArgvTransportRefused { reason: why } =>
+        NotConverged {
+          reason: host_remove_reason(
+            target: target,
+            verb: "refused",
+            detail: join(["the typed transport refused the removal before any dispatch: ", why], ""),
+            pathfield: p_s,
+          ),
+          applied: target,
+        }
+      RunArgvTransportObserved { observed: o } =>
+        if string_contains(s: o.stderr, pattern: "a password is required") {
+          NotConverged {
+            reason: host_remove_reason(
+              target: target,
+              verb: "refused",
+              detail: "sudo -n elevation unavailable",
+              pathfield: p_s,
+            ),
+            applied: target,
+          }
+        } else if !o.success {
+          // Distinguish the NON-EMPTY dir (the loud refusal — the RED) from an ABSENT dir. Both
+          // `rm -d` outcomes exit 1, so the exit status alone cannot name the cause; the
+          // pre-observation carries the distinction. Widening to -rf here would turn a loud
+          // refusal into silent destruction.
+          let was_present = fold_list(xs: pre_present, empty: false, cons: (acc, b) => acc || b)
+          if was_present {
+            NotConverged {
+              reason: host_remove_reason(
+                target: target,
+                verb: "refused",
+                detail: join([p_s, " is not empty; rm -d failed (loud refusal, never widened to -rf)"], ""),
+                pathfield: p_s,
+              ),
+              applied: target,
+            }
+          } else {
+            NotConverged {
+              reason: host_remove_reason(
+                target: target,
+                verb: "refused",
+                detail: "no such path",
+                pathfield: p_s,
+              ),
+              applied: target,
+            }
+          }
+        } else {
+          let still = fold_list(xs: post_present, empty: false, cons: (acc, b) => acc || b)
+          if still {
+            NotConverged {
+              reason: host_remove_reason(
+                target: target,
+                verb: "did not converge",
+                detail: join([p_s, " still present after read-back"], ""),
+                pathfield: p_s,
+              ),
+              applied: target,
+            }
+          } else {
+            Converged {
+              evidence: RemovedConfirmed { paths: [p_s], exit_code: o.exit_code },
+              applied: target,
+            }
+          }
+        }
+    }
+    }
+    RemoveForceRecursive { path: p } => {
+    let p_s = p as String
+    match outcome {
+      RunArgvTransportRefused { reason: why } =>
+        NotConverged {
+          reason: host_remove_reason(
+            target: target,
+            verb: "refused",
+            detail: join(["the typed transport refused the removal before any dispatch: ", why], ""),
+            pathfield: p_s,
+          ),
+          applied: target,
+        }
+      RunArgvTransportObserved { observed: o } =>
+        if string_contains(s: o.stderr, pattern: "a password is required") {
+          NotConverged {
+            reason: host_remove_reason(
+              target: target,
+              verb: "refused",
+              detail: "sudo -n elevation unavailable",
+              pathfield: p_s,
+            ),
+            applied: target,
+          }
+        } else if !o.success {
+          NotConverged {
+            reason: host_remove_reason(
+              target: target,
+              verb: "refused",
+              detail: join(["rm -rf failed (exit ", to_string(o.exit_code), ")"], ""),
+              pathfield: p_s,
+            ),
+            applied: target,
+          }
+        } else {
+          let still = fold_list(xs: post_present, empty: false, cons: (acc, b) => acc || b)
+          if still {
+            NotConverged {
+              reason: host_remove_reason(
+                target: target,
+                verb: "did not converge",
+                detail: join([p_s, " still present after read-back"], ""),
+                pathfield: p_s,
+              ),
+              applied: target,
+            }
+          } else {
+            let was_absent = fold_list(xs: pre_present, empty: true, cons: (acc, b) => acc && !b)
+            if was_absent {
+              Converged {
+                evidence: RemovedNoOp { path: p_s },
+                applied: target,
+              }
+            } else {
+              Converged {
+                evidence: RemovedConfirmed { paths: [p_s], exit_code: o.exit_code },
+                applied: target,
+              }
+            }
+          }
+        }
+    }
+    }
+  }
+}
+
+type HostRemoveProbeOutcome
+  = HostRemoveProbeObserved { present: Bool }
+  | HostRemoveProbeRefused { reason: String }
+
+// THE READ-BACK PROBE. Unprivileged `test -e path`: exit 0 => present, non-zero => absent. A
+// transport refusal is carried as its own refusal, not as "absent" — an unprobed path is NOT an
+// absent path (fail-closed).
+fn host_remove_probe_present(path: NonEmptyStr, transport: HostEffectTransport) -> HostRemoveProbeOutcome {
+  match run_argv_over_host_effect_transport(
+    command: test_exists_command(path: path as String),
+    transport: transport,
+  ) {
+    RunArgvTransportRefused { reason: why } => HostRemoveProbeRefused { reason: why }
+    RunArgvTransportObserved { observed: o } => HostRemoveProbeObserved { present: o.success }
+  }
+}
+
+type HostRemoveProbeFold
+  = HostRemoveProbeFoldDone { present: List<Bool> }
+  | HostRemoveProbeFoldRefused { reason: String }
+
+// Probe every target path in order; the FIRST refusal stops the fold.
+fn host_remove_probe_fold(paths: List<NonEmptyStr>, transport: HostEffectTransport) -> HostRemoveProbeFold {
+  fold_list(
+    xs: paths,
+    empty: HostRemoveProbeFoldDone { present: Empty },
+    cons: fn(acc, path) {
+      match acc {
+        HostRemoveProbeFoldRefused { reason: _ } => acc
+        HostRemoveProbeFoldDone { present: ps } =>
+          match host_remove_probe_present(path: path, transport: transport) {
+            HostRemoveProbeObserved { present: b } =>
+              HostRemoveProbeFoldDone { present: list_snoc_item(xs: ps, item: b) }
+            HostRemoveProbeRefused { reason: why } => HostRemoveProbeFoldRefused { reason: why }
+          }
+      }
+    },
+  )
+}
+
+// THE LEAF — the thin impure leg over the host-effect transport. Ordered: pre-observe
+// (unprivileged test -e per path), dispatch the elevated rm, read back (test -e), verdict. The
+// first refusal stops the caller's fold; nothing here absorbs one.
+fn host_remove_on_host(
+  target: HostRemoveTarget,
+  transport: HostEffectTransport,
+) -> Reconciliation<HostRemoveTarget, HostRemoveEvidence> {
+  let force_empty = match target {
+    RemoveForce { paths: ps } => list_length(items: ps) == 0
+    RemoveEmptyDirectory { path: _ } => false
+    RemoveForceRecursive { path: _ } => false
+  }
+  if force_empty {
+    NotConverged {
+      reason: host_remove_reason(
+        target: target,
+        verb: "refused",
+        detail: "empty path list (rm -f needs an operand)",
+        pathfield: "",
+      ),
+      applied: target,
+    }
+  } else {
+    let paths = match target {
+      RemoveForce { paths: ps } => ps
+      RemoveEmptyDirectory { path: p } => [p]
+      RemoveForceRecursive { path: p } => [p]
+    }
+    match host_remove_probe_fold(paths: paths, transport: transport) {
+      HostRemoveProbeFoldRefused { reason: why } =>
+        NotConverged {
+          reason: join(
+            ["host_remove: pre-observation read-back refused (unprivileged test -e), so no removal was dispatched: ", why],
+            "",
+          ),
+          applied: target,
+        }
+      HostRemoveProbeFoldDone { present: pre_present } => {
+      let dispatch = run_argv_over_host_effect_transport(
+        command: sudo_elevate_command(command: host_remove_target_inner_argv(target: target)),
+        transport: transport,
+      )
+      match host_remove_probe_fold(paths: paths, transport: transport) {
+        HostRemoveProbeFoldRefused { reason: why } =>
+          NotConverged {
+            reason: join(
+              ["host_remove: read-back after the removal refused (unprivileged test -e), so convergence is unproven: ", why],
+              "",
+            ),
+            applied: target,
+          }
+        HostRemoveProbeFoldDone { present: post_present } =>
+          host_remove_verdict(
+            target: target,
+            pre_present: pre_present,
+            outcome: dispatch,
+            post_present: post_present,
+          )
+      }
+      }
+    }
   }
 }
 
