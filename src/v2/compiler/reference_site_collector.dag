@@ -17,6 +17,7 @@ import v2.std.node {
   TypeNode,
   EdgeLabel,
   StructuralLabel,
+  symbol_intern_lexeme,
 }
 import std.optional { Absent, Present }
 import v2.std.qualified_name {
@@ -335,11 +336,25 @@ fn reference_sites_in_node(
         TypeNode { connective: Conj } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
         TypeNode { connective: Disj } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
         TypeNode { connective: Arrow } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
-        TypeNode { connective: Occupancy } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
+        TypeNode { connective: Occupancy } =>
+          reference_sites_in_children(
+            acc: collection_snoc_site(acc: acc, scope: scope, site: ReferenceSite { position: position, spelling: occupancy_declaration_spelling() }),
+            position: position,
+            scope: scope,
+            node: node
+          )
         TypeNode { connective: Instantiation } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
         ComputationNode { behavior: _ } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
       }
   }
+}
+
+// `T?` IS SUGAR DECLARED BY std.optional (ruling gunbc.design_ruling optional_sugar_is_declaration_bound): an
+// Occupancy node mentions the Optional declaration it lowers from, exactly as an authored qualified
+// `std.optional.Optional` would, so module acquisition requests std.optional and a missing or incompatible
+// declaration refuses through the same path as any other unresolved reference.
+fn occupancy_declaration_spelling() -> QualifiedName {
+  [symbol_intern_lexeme(lexeme: "std"), symbol_intern_lexeme(lexeme: "optional"), symbol_intern_lexeme(lexeme: "Optional")]
 }
 
 type UnreadableModuleRoot {
