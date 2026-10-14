@@ -16,6 +16,7 @@ import extdeps.systemd.systemd_run {
 import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
+  modeled_system_slice_memory_max,
 }
 import gunbc.runner.runner_unit { runner_unit_prefix }
 
@@ -117,11 +118,11 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // UserSessionAbsent refuses: a host that owes the bound and has no user manager must not run
 // unbounded (review 80042). CiExempt / RunnerSlotExempt skip because those processes already sit
 // in a declared slot cgroup, not because the user manager is missing.
-// ExemptSystemUnit skips because a SYSTEM .service (read from /proc/self/cgroup, never from
-// User= or an env var) is already bounded by that unit and its declared slice; wrapping it
-// into --user gunbc-user-work.slice is a category error (receipt: gunbc-tree-sync.service
-// UserSessionAbsent on srv1 live_deploy of 4242613b). A path under /user.slice/ is session
-// work even if it names user@1000.service. Unreadable cgroup still refuses.
+// ExemptSystemUnit skips only when the enclosing slice is a modeled system slice that
+// declares MemoryMax (gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes).
+// A named .service under system.slice or any other uncapped/unmodeled slice refuses
+// UncappedSystemSlice { unit, slice } — silent exemption would let an unbounded system
+// unit escape the wrap. Path from /proc/self/cgroup, never User= or an env var.
 //
 // THIS REFUSAL IS OUTSIDE DECIDE-BEFORE-MUTATE. compose_host_script drops Mutate only when a
 // Decide fragment is HostScriptRefused. slice-control is Mutate with HostScriptProceed; the
@@ -131,13 +132,14 @@ data user_work_scope_ci_env_name: String = "GITHUB_ACTIONS"
 data user_work_scope_xdg_runtime_dir_env_name: String = "XDG_RUNTIME_DIR"
 data user_work_scope_user_slice_cgroup_needle: String = "/user.slice/"
 data user_work_scope_service_unit_suffix: String = ".service"
+data user_work_scope_slice_unit_suffix: String = ".slice"
 
 type UserWorkScopeCgroupRead
   = CgroupText { text: String }
   | CgroupReadFailed
 
 type SystemServiceCgroup
-  = SystemServiceNamed { unit: String }
+  = SystemServiceNamed { unit: String, slice: String }
   | NotSystemService
 
 type UserWorkScopeStanding
@@ -145,7 +147,8 @@ type UserWorkScopeStanding
   | RunnerSlotExempt
   | CiExempt
   | UnitTestExempt
-  | ExemptSystemUnit { unit: String }
+  | ExemptSystemUnit { unit: String, slice: String }
+  | UncappedSystemSlice { unit: String, slice: String }
   | UserSessionAbsent
   | UserManagerOwed
   | CgroupUnreadable
@@ -156,28 +159,53 @@ type UserWorkScopeStandingEffect
   | SkipUserWorkScope { standing: UserWorkScopeStanding }
   | RefuseUserWorkScope { standing: UserWorkScopeStanding }
 
+fn cgroup_path_segments(text: String) -> List<String> {
+  split(s: text.replace(from: "\n", to: "/"), delimiter: "/")
+    |> map(seg => trim(s: seg))
+    |> filter(seg => seg != "")
+}
+
+fn last_cgroup_unit_with_dot_suffix(text: String, suffix: String) -> String? {
+  match reverse(cgroup_path_segments(text: text) |> filter(seg => {
+    let parts = split(s: seg, delimiter: ".")
+    match reverse(parts).first() {
+      Absent => false
+      Present { value: last } => concat(".", last) == suffix && parts.length() >= 2
+    }
+  })).first() {
+    Absent => none
+    Present { value: unit } =>
+      if unit == "" {
+        none
+      } else {
+        Present { value: unit }
+      }
+  }
+}
+
 fn system_service_unit_from_cgroup(text: String) -> SystemServiceCgroup {
   if string_contains(s: text, pattern: user_work_scope_user_slice_cgroup_needle) {
     NotSystemService
   } else {
-    let named = split(s: text.replace(from: "\n", to: "/"), delimiter: "/")
-      |> map(seg => trim(s: seg))
-      |> filter(seg => {
-        let parts = split(s: seg, delimiter: ".")
-        match reverse(parts).first() {
-          Absent => false
-          Present { value: last } => concat(".", last) == user_work_scope_service_unit_suffix && parts.length() >= 2
-        }
-      })
-    match reverse(named).first() {
+    match last_cgroup_unit_with_dot_suffix(text: text, suffix: user_work_scope_service_unit_suffix) {
       Absent => NotSystemService
       Present { value: unit } =>
-        if unit == "" {
-          NotSystemService
-        } else {
-          SystemServiceNamed { unit: unit }
+        match last_cgroup_unit_with_dot_suffix(text: text, suffix: user_work_scope_slice_unit_suffix) {
+          Absent => SystemServiceNamed { unit: unit, slice: "" }
+          Present { value: slice } => SystemServiceNamed { unit: unit, slice: slice }
         }
     }
+  }
+}
+
+fn system_unit_standing_from_cgroup(text: String) -> UserWorkScopeStanding? {
+  match system_service_unit_from_cgroup(text: text) {
+    NotSystemService => none
+    SystemServiceNamed { unit, slice } =>
+      match modeled_system_slice_memory_max(unit: slice) {
+        Present { value: _ } => Present { value: ExemptSystemUnit { unit: unit, slice: slice } }
+        Absent => Present { value: UncappedSystemSlice { unit: unit, slice: slice } }
+      }
   }
 }
 
@@ -201,9 +229,9 @@ fn user_work_scope_standing(
         } else if string_contains(s: text, pattern: runner_unit_prefix) {
           RunnerSlotExempt
         } else {
-          match system_service_unit_from_cgroup(text: text) {
-            SystemServiceNamed { unit } => ExemptSystemUnit { unit: unit }
-            NotSystemService =>
+          match system_unit_standing_from_cgroup(text: text) {
+            Present { value: s } => s
+            Absent =>
               if user_manager_reachable {
                 UserManagerOwed
               } else if xdg_runtime_dir {
@@ -217,13 +245,47 @@ fn user_work_scope_standing(
   }
 }
 
+// THE STANDING AT THE PARENT OF THE MODELED-CAP EXEMPT (4242613b / #13966). Same observations,
+// no system-unit arm: a tree-sync cgroup is UserSessionAbsent. Discriminating RED for
+// tree_sync_under_its_declared_slice_is_exempt.
+fn user_work_scope_standing_before_system_unit_exempt(
+  unit_test: Bool,
+  github_actions: Bool,
+  cgroup: UserWorkScopeCgroupRead,
+  user_manager_reachable: Bool,
+  xdg_runtime_dir: Bool,
+) -> UserWorkScopeStanding {
+  if unit_test {
+    UnitTestExempt
+  } else if github_actions {
+    CiExempt
+  } else {
+    match cgroup {
+      CgroupReadFailed => CgroupUnreadable
+      CgroupText { text } =>
+        if string_contains(s: text, pattern: user_work_slice_unit_name as String) {
+          AlreadyInSlice
+        } else if string_contains(s: text, pattern: runner_unit_prefix) {
+          RunnerSlotExempt
+        } else if user_manager_reachable {
+          UserManagerOwed
+        } else if xdg_runtime_dir {
+          UserManagerProbeFailed
+        } else {
+          UserSessionAbsent
+        }
+    }
+  }
+}
+
 fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
   match s {
     AlreadyInSlice => "AlreadyInSlice"
     RunnerSlotExempt => "RunnerSlotExempt"
     CiExempt => "CiExempt"
     UnitTestExempt => "UnitTestExempt"
-    ExemptSystemUnit { unit } => join(["ExemptSystemUnit:", unit], "")
+    ExemptSystemUnit { unit, slice } => join(["ExemptSystemUnit:", slice, ":", unit], "")
+    UncappedSystemSlice { unit, slice } => join(["UncappedSystemSlice:", slice, ":", unit], "")
     UserSessionAbsent => "UserSessionAbsent"
     UserManagerOwed => "UserManagerOwed"
     CgroupUnreadable => "CgroupUnreadable"
@@ -238,7 +300,10 @@ fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeSta
     UnitTestExempt => SkipUserWorkScope { standing: UnitTestExempt }
     RunnerSlotExempt => SkipUserWorkScope { standing: RunnerSlotExempt }
     CiExempt => SkipUserWorkScope { standing: CiExempt }
-    ExemptSystemUnit { unit } => SkipUserWorkScope { standing: ExemptSystemUnit { unit: unit } }
+    ExemptSystemUnit { unit, slice } =>
+      SkipUserWorkScope { standing: ExemptSystemUnit { unit: unit, slice: slice } }
+    UncappedSystemSlice { unit, slice } =>
+      RefuseUserWorkScope { standing: UncappedSystemSlice { unit: unit, slice: slice } }
     CgroupUnreadable => RefuseUserWorkScope { standing: CgroupUnreadable }
     UserManagerProbeFailed => RefuseUserWorkScope { standing: UserManagerProbeFailed }
     UserSessionAbsent => RefuseUserWorkScope { standing: UserSessionAbsent }

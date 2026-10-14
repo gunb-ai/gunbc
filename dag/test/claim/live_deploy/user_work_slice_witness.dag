@@ -1,6 +1,7 @@
 module test.claim.live_deploy.user_work_slice_witness
 
 import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.optional { Present, Absent }
 import std.measure { byte_size_count, kibibyte, byte_size }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.filesystem.filesystem_io
@@ -16,6 +17,8 @@ import gunbc.live_deploy.slice_bounds {
   user_slice_backstop_memory_max_of, user_manager_remainder,
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
+  repository_convergence_slice_memory_max, repository_convergence_slice_unit_name,
+  declared_system_slice_memory_maxes, modeled_system_slice_memory_max,
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, user_work_charged_slots }
 import gunbc.live_deploy.served_slice_charge {
@@ -29,10 +32,12 @@ import gunbc.compute.unit_bounds {
   user_work_scope_standing, user_work_scope_standing_effect, user_work_scope_standing_wire,
   user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
   user_work_scope_user_slice_cgroup_needle, user_work_scope_service_unit_suffix,
-  system_service_unit_from_cgroup,
+  user_work_scope_slice_unit_suffix,
+  system_service_unit_from_cgroup, user_work_scope_standing_before_system_unit_exempt,
   CgroupText, CgroupReadFailed,
   SystemServiceNamed, NotSystemService,
-  AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, ExemptSystemUnit, UserSessionAbsent,
+  AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, ExemptSystemUnit, UncappedSystemSlice,
+  UserSessionAbsent,
   UserManagerOwed, CgroupUnreadable, UserManagerProbeFailed,
   WrapIntoUserWorkSlice, SkipUserWorkScope, RefuseUserWorkScope,
 }
@@ -192,8 +197,9 @@ test fn user_work_scope_standing_selects_from_supplied_observations() -> Bool {
                   match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: runner_unit_prefix }, user_manager_reachable: false, xdg_runtime_dir: false) {
                     RunnerSlotExempt =>
                       match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: join(["0::/system.slice/", gunbc_tree_sync_unit_name as String], "") }, user_manager_reachable: false, xdg_runtime_dir: false) {
-                        ExemptSystemUnit { unit } =>
+                        UncappedSystemSlice { unit, slice } =>
                           unit == (gunbc_tree_sync_unit_name as String)
+                            && slice == "system.slice"
                             && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: true, xdg_runtime_dir: false) {
                               UserManagerOwed =>
                                 match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: true) {
@@ -252,22 +258,30 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_service_unit_suffix`")
     && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_service_unit_suffix, "\"")))
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds system_service_unit_from_cgroup`")
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes` unit names")
+    && string_contains(s: seed, pattern: concat("\"", concat(repository_convergence_slice_unit_name as String, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_slice_unit_suffix`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_slice_unit_suffix, "\"")))
     && string_contains(s: seed, pattern: "ExemptSystemUnit")
+    && string_contains(s: seed, pattern: "UncappedSystemSlice")
     && string_contains(s: seed, pattern: "UserWorkScopeStanding::UserSessionAbsent =>")
     && string_contains(s: seed, pattern: "std::process::exit(2)")
 }
 
-test fn a_system_slice_named_service_cgroup_is_exempt() -> Bool {
+test fn a_system_slice_named_service_cgroup_refuses_uncapped() -> Bool {
   let cg = join(["0::/system.slice/", gunbc_tree_sync_unit_name as String], "")
   match system_service_unit_from_cgroup(text: cg) {
     NotSystemService => false
-    SystemServiceNamed { unit } =>
+    SystemServiceNamed { unit, slice } =>
       unit == (gunbc_tree_sync_unit_name as String)
+        && slice == "system.slice"
         && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
-          ExemptSystemUnit { unit: u } =>
+          UncappedSystemSlice { unit: u, slice: sl } =>
             u == unit
-              && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: u }) {
-                SkipUserWorkScope { standing: ExemptSystemUnit { unit: skipped } } => skipped == u
+              && sl == "system.slice"
+              && match user_work_scope_standing_effect(s: UncappedSystemSlice { unit: u, slice: sl }) {
+                RefuseUserWorkScope { standing: UncappedSystemSlice { unit: ru, slice: rs } } =>
+                  ru == u && rs == sl
                 _ => false
               }
           _ => false
@@ -282,10 +296,46 @@ test fn tree_sync_under_its_declared_slice_is_exempt() -> Bool {
     "/",
     gunbc_tree_sync_unit_name as String,
   ], "")
-  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
-    ExemptSystemUnit { unit } => unit == (gunbc_tree_sync_unit_name as String)
+  match modeled_system_slice_memory_max(unit: gunbc_repository_convergence_slice_unit_name as String) {
+    Absent => false
+    Present { value: max } =>
+      byte_size_count(b: max) == byte_size_count(b: repository_convergence_slice_memory_max)
+        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
+          ExemptSystemUnit { unit, slice } =>
+            unit == (gunbc_tree_sync_unit_name as String)
+              && slice == (gunbc_repository_convergence_slice_unit_name as String)
+              && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: unit, slice: slice }) {
+                SkipUserWorkScope { standing: ExemptSystemUnit { unit: eu, slice: es } } =>
+                  eu == unit && es == slice
+                _ => false
+              }
+          _ => false
+        }
+  }
+}
+
+test fn the_exempt_control_fails_at_the_parent_fold() -> Bool {
+  let cg = join([
+    "0::/",
+    gunbc_repository_convergence_slice_unit_name as String,
+    "/",
+    gunbc_tree_sync_unit_name as String,
+  ], "")
+  match user_work_scope_standing_before_system_unit_exempt(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
+    UserSessionAbsent =>
+      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
+        ExemptSystemUnit { unit: _, slice: _ } => true
+        _ => false
+      }
     _ => false
   }
+}
+
+test fn declared_system_slice_caps_are_the_slice_bound_rows() -> Bool {
+  let rows = declared_system_slice_memory_maxes()
+  any(rows, r => (r.unit as String) == (repository_convergence_slice_unit_name as String)
+    && byte_size_count(b: r.memory_max) == byte_size_count(b: repository_convergence_slice_memory_max))
+    && any(rows, r => byte_size_count(b: r.memory_max) == byte_size_count(b: approval_broker_slice_memory_max))
 }
 
 test fn a_user_session_cgroup_still_owes_the_wrap() -> Bool {
@@ -304,7 +354,7 @@ test fn a_user_session_cgroup_still_owes_the_wrap() -> Bool {
           }
         _ => false
       }
-    SystemServiceNamed { unit: _ } => false
+    SystemServiceNamed { unit: _, slice: _ } => false
   }
 }
 

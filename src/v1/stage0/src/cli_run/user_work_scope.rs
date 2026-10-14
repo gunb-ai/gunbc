@@ -23,13 +23,21 @@ const USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV: &str = "XDG_RUNTIME_DIR";
 const USER_SLICE_CGROUP_NEEDLE: &str = "/user.slice/";
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_service_unit_suffix`
 const SERVICE_UNIT_SUFFIX: &str = ".service";
+// SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_slice_unit_suffix`
+const SLICE_UNIT_SUFFIX: &str = ".slice";
+// SEED MIRROR of `gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes` unit names
+const MODELED_CAPPED_SYSTEM_SLICES: &[&str] = &[
+    "gunbc-repository-convergence.slice",
+    "gunbc-approval-broker.slice",
+];
 
 enum UserWorkScopeStanding {
     AlreadyInSlice,
     RunnerSlotExempt,
     CiExempt,
     UnitTestExempt,
-    ExemptSystemUnit { unit: String },
+    ExemptSystemUnit { unit: String, slice: String },
+    UncappedSystemSlice { unit: String, slice: String },
     UserSessionAbsent,
     UserManagerOwed,
     CgroupUnreadable,
@@ -42,7 +50,8 @@ pub fn reexec_into_user_work_slice_if_owed() {
         UserWorkScopeStanding::UserManagerOwed => wrap_now(),
         UserWorkScopeStanding::CgroupUnreadable
         | UserWorkScopeStanding::UserManagerProbeFailed
-        | UserWorkScopeStanding::UserSessionAbsent => {
+        | UserWorkScopeStanding::UserSessionAbsent
+        | UserWorkScopeStanding::UncappedSystemSlice { .. } => {
             eprintln!(
                 "error: cannot wrap into {USER_WORK_SLICE} ({})",
                 standing_wire(&standing)
@@ -66,8 +75,11 @@ fn standing_wire(s: &UserWorkScopeStanding) -> String {
         UserWorkScopeStanding::RunnerSlotExempt => "RunnerSlotExempt".to_string(),
         UserWorkScopeStanding::CiExempt => "CiExempt".to_string(),
         UserWorkScopeStanding::UnitTestExempt => "UnitTestExempt".to_string(),
-        UserWorkScopeStanding::ExemptSystemUnit { unit } => {
-            format!("ExemptSystemUnit:{unit}")
+        UserWorkScopeStanding::ExemptSystemUnit { unit, slice } => {
+            format!("ExemptSystemUnit:{slice}:{unit}")
+        }
+        UserWorkScopeStanding::UncappedSystemSlice { unit, slice } => {
+            format!("UncappedSystemSlice:{slice}:{unit}")
         }
         UserWorkScopeStanding::UserSessionAbsent => "UserSessionAbsent".to_string(),
         UserWorkScopeStanding::UserManagerOwed => "UserManagerOwed".to_string(),
@@ -99,16 +111,22 @@ fn wrap_now() {
     std::process::exit(1);
 }
 
+fn last_cgroup_unit_with_suffix(text: &str, suffix: &str) -> Option<String> {
+    text.split(['/', '\n'])
+        .map(str::trim)
+        .filter(|seg| seg.ends_with(suffix) && !seg.is_empty() && *seg != suffix)
+        .last()
+        .map(str::to_string)
+}
+
 // SEED MIRROR of `gunbc.compute.unit_bounds system_service_unit_from_cgroup`
-fn system_service_unit_from_cgroup(text: &str) -> Option<String> {
+fn system_service_unit_from_cgroup(text: &str) -> Option<(String, String)> {
     if text.contains(USER_SLICE_CGROUP_NEEDLE) {
         return None;
     }
-    text.split(['/', '\n'])
-        .map(str::trim)
-        .filter(|seg| seg.ends_with(SERVICE_UNIT_SUFFIX) && !seg.is_empty())
-        .last()
-        .map(str::to_string)
+    let unit = last_cgroup_unit_with_suffix(text, SERVICE_UNIT_SUFFIX)?;
+    let slice = last_cgroup_unit_with_suffix(text, SLICE_UNIT_SUFFIX).unwrap_or_default();
+    Some((unit, slice))
 }
 
 fn user_work_scope_standing() -> UserWorkScopeStanding {
@@ -128,8 +146,11 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
     if cg.contains(RUNNER_SLOT_CGROUP_NEEDLE) {
         return UserWorkScopeStanding::RunnerSlotExempt;
     }
-    if let Some(unit) = system_service_unit_from_cgroup(&cg) {
-        return UserWorkScopeStanding::ExemptSystemUnit { unit };
+    if let Some((unit, slice)) = system_service_unit_from_cgroup(&cg) {
+        if MODELED_CAPPED_SYSTEM_SLICES.contains(&slice.as_str()) {
+            return UserWorkScopeStanding::ExemptSystemUnit { unit, slice };
+        }
+        return UserWorkScopeStanding::UncappedSystemSlice { unit, slice };
     }
     let probe_ok = Command::new("systemctl")
         .args(["--user", "show-environment"])

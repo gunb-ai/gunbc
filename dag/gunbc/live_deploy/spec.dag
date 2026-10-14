@@ -28,7 +28,11 @@ import extdeps.tailscale.serve {
   tailscale_serve_route_member_path,
 }
 import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
-import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
+import gunbc.live_deploy.slice_bounds {
+  user_work_slice_unit_name,
+  repository_convergence_slice_unit_name,
+  approval_broker_slice_unit_name,
+}
 import gunbc.fleet.fleet_intent_network {
   srv1_tailscale_endpoint,
   fleet_intent_network,
@@ -428,7 +432,7 @@ data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_br
 
 data gunbc_approval_broker_unit_name: NonEmptyStr = "gunbc-approval-broker.service"
 
-data gunbc_approval_broker_slice_unit_name: NonEmptyStr = "gunbc-approval-broker.slice"
+data gunbc_approval_broker_slice_unit_name: NonEmptyStr = approval_broker_slice_unit_name
 
 // THE REPOSITORY CONVERGENCE ONESHOT'S SLICE, ONE PER HOST. Its bounds and the reason it is one per
 // host rather than per instance live with the rows in gunbc.live_deploy.slice_bounds; the admission
@@ -437,7 +441,7 @@ data gunbc_approval_broker_slice_unit_name: NonEmptyStr = "gunbc-approval-broker
 // hierarchy prefix with a serving slice: a dash in a slice name is a parent edge, so a name like
 // gunbc-roadmap-convergence.slice would sit INSIDE gunbc-roadmap.slice and inherit the bound it
 // exists to escape. That admission checks descent, not only equality, for this reason.
-data gunbc_repository_convergence_slice_unit_name: NonEmptyStr = "gunbc-repository-convergence.slice"
+data gunbc_repository_convergence_slice_unit_name: NonEmptyStr = repository_convergence_slice_unit_name
 
 fn gunbc_repository_convergence_slice_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", gunbc_repository_convergence_slice_unit_name as String], "") as NonEmptyStr
