@@ -1,10 +1,11 @@
 module std.native_test_realization
 
-import std.types { Bool, List, NonEmptyStr }
-import std.algebra { contains }
-import std.content_hash { ContentHash, content_hash_equal }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { contains, length }
+import std.content_hash { ContentHash, content_hash_equal, serialize_content_hash }
 import std.cache_identity { native_test_verdict_artifact_kind }
-import std.judgment_contract { DeclaredInput, DemandIdentity, identity_digest_component, identity_text_component }
+import std.judgment_contract { DeclaredInput, DemandIdentity, identity_digest_component, identity_text_component, length_prefixed_encode }
+import std.decl_ref { decl_ref }
 import std.materialization_provider {
   EvaluationIdentity,
   EvaluationResultBinding,
@@ -17,8 +18,9 @@ import std.materialization_provider {
 // HOW A NATIVE TEST VERDICT IS IDENTIFIED AND REALIZED (gunbc.plans.demand_engine_program D15, B2).
 // Four facts, never one key: the EvaluationIdentity says WHAT was judged, the
 // RealizationProductIdentity says WHICH built product judged it, the EvaluationResultBinding says
-// what the judgment's content is, and the RealizationReceipt joins the three with how the product was
-// obtained. Two admitted realizations of one EvaluationIdentity must agree on content, so a
+// what the judgment's content is, and the NativeTestVerdictReceipt joins the three. How a product or
+// result was obtained (served, committed) is std.materialization_provider RealizationReceipt's fact
+// and joins here when the provider serves native verdicts (B5); this module does not restate it. Two admitted realizations of one EvaluationIdentity must agree on content, so a
 // disagreement is a conflict and never two answers. This module carries identity, admission and the
 // per-test manifest only: no store, no scheduler, no Cargo adapter. DECLARED FRONTIER (DESIGN section
 // 3c): the production consumer is the native verdict route's realization step (roadmap node
@@ -83,8 +85,9 @@ fn native_test_evaluation_identity(subject: NativeTestEvaluationSubject) -> Eval
 }
 
 // THE BUILT PRODUCT. Its key always carries every declaration packaged into it: a crate is compiled as
-// a whole, so its bytes depend on all of them. Only an admitted realization can form one.
-type RealizationProductIdentity {
+// a whole, so its bytes depend on all of them. Only an admitted realization can form one, and only
+// form_realization_product constructs it, so its declarations are always in canonical order.
+type RealizationProductIdentity sole_constructor {
   realization: RustNativeRealization
   partition: ContentHash
   build_configuration: ContentHash
@@ -108,26 +111,96 @@ fn form_realization_product(
           realization: r,
           partition: partition,
           build_configuration: build_configuration,
-          packaged_declarations: packaged_declarations
+          packaged_declarations: packaged_declarations |> sort_by(d => serialize_content_hash(hash: d) as String)
         }
       }
     NativeHandlerRefused { handler: _, cause: c } => RealizationProductRefused { cause: c }
   }
 }
 
-// WHETHER CRATE NEIGHBOURS ARE KNOWN NOT TO CHANGE A DECLARATION'S MEANING (D15(d)). Admitted only with
-// the bounded population its evidence covered; nothing here admits it globally.
+// ONE CANONICAL TEXT PER PRODUCT: every realization axis and the ordered packaged declarations, each
+// length-prefixed, so two products are one key exactly when every fact agrees.
+fn realization_product_identity_canonical(product: RealizationProductIdentity) -> NonEmptyStr {
+  join([
+    length_prefixed_encode(s: "realization_product"),
+    length_prefixed_encode(s: serialize_content_hash(hash: product.realization.generator) as String),
+    length_prefixed_encode(s: serialize_content_hash(hash: product.realization.target_model) as String),
+    length_prefixed_encode(s: serialize_content_hash(hash: product.realization.toolchain) as String),
+    length_prefixed_encode(s: serialize_content_hash(hash: product.partition) as String),
+    length_prefixed_encode(s: serialize_content_hash(hash: product.build_configuration) as String),
+    join(product.packaged_declarations |> map(d => length_prefixed_encode(s: serialize_content_hash(hash: d) as String)), "")
+  ], "") as NonEmptyStr
+}
+
+// WHETHER CRATE NEIGHBOURS ARE KNOWN NOT TO CHANGE A DECLARATION'S MEANING (D15(d)). Independence is
+// admitted only through evidence bound to the exact realization it was established under, the bounded
+// declaration population it covered, and the adversarial controls that tried to break it. The record
+// is sealed: a caller cannot write one, and its one mint refuses evidence with no adversarial control
+// or no population. DECLARED FRONTIER: the mint's production caller is the composition falsifier of
+// B3 (adversarial co-residents built alone and beside the closure). TRIGGER: that falsifier lands and
+// is added to the mint's admit_callers; until then only the witness may mint.
+type CompositionIndependenceEvidence sole_constructor {
+  realization: RustNativeRealization
+  partition: ContentHash
+  build_configuration: ContentHash
+  population: List<ContentHash>
+  adversarial_controls: List<NonEmptyStr>
+}
+
+type CompositionEvidenceRefusal =
+  | NoAdversarialControls
+  | EmptyDeclarationPopulation
+
+type CompositionEvidenceAdmission
+  = CompositionEvidenceAdmitted { evidence: CompositionIndependenceEvidence }
+  | CompositionEvidenceRefused { cause: CompositionEvidenceRefusal }
+
+fn admit_composition_independence_evidence(
+  realization: RustNativeRealization,
+  partition: ContentHash,
+  build_configuration: ContentHash,
+  population: List<ContentHash>,
+  adversarial_controls: List<NonEmptyStr>
+) -> CompositionEvidenceAdmission admit_callers: [
+  decl_ref(module_path: "test.claim.native_test_realization_witness", decl_name: "ntr_evidence")
+] {
+  if length(xs: adversarial_controls) == 0 {
+    CompositionEvidenceRefused { cause: NoAdversarialControls }
+  } else if length(xs: population) == 0 {
+    CompositionEvidenceRefused { cause: EmptyDeclarationPopulation }
+  } else {
+    CompositionEvidenceAdmitted {
+      evidence: CompositionIndependenceEvidence {
+        realization: realization,
+        partition: partition,
+        build_configuration: build_configuration,
+        population: population,
+        adversarial_controls: adversarial_controls
+      }
+    }
+  }
+}
+
 type CompositionStanding
   = CompositionIndependenceUnadmitted
-  | CompositionIndependenceAdmitted { population: List<ContentHash> }
+  | CompositionIndependenceAdmitted { evidence: CompositionIndependenceEvidence }
 
-// THE KEY A STORED VERDICT IS LOOKED UP UNDER. With composition independence admitted for every
-// declaration in the product, the semantic EvaluationIdentity alone answers. Otherwise the crate's
-// neighbours are an input the EvaluationIdentity does not declare, so the key WIDENS to carry the
-// product's whole packaged declaration set; it never narrows on an assumption.
+fn composition_evidence_covers(evidence: CompositionIndependenceEvidence, product: RealizationProductIdentity) -> Bool {
+  content_hash_equal(left: evidence.realization.generator, right: product.realization.generator)
+    && content_hash_equal(left: evidence.realization.target_model, right: product.realization.target_model)
+    && content_hash_equal(left: evidence.realization.toolchain, right: product.realization.toolchain)
+    && content_hash_equal(left: evidence.partition, right: product.partition)
+    && content_hash_equal(left: evidence.build_configuration, right: product.build_configuration)
+    && (product.packaged_declarations |> all(d => contains(xs: evidence.population, item: d, eq: content_hash_equal)))
+}
+
+// THE KEY A STORED VERDICT IS LOOKED UP UNDER. Only admitted evidence covering this exact product lets
+// the semantic EvaluationIdentity answer alone. Otherwise the crate's neighbours are an input the
+// EvaluationIdentity does not declare, so the key carries the COMPLETE product identity: every
+// realization axis and the packaged declaration set. It never narrows on an assumption.
 type VerdictLookupKey
   = SemanticVerdictKey { evaluation: EvaluationIdentity }
-  | ProductScopedVerdictKey { evaluation: EvaluationIdentity, packaged_declarations: List<ContentHash> }
+  | ProductScopedVerdictKey { evaluation: EvaluationIdentity, product: RealizationProductIdentity }
 
 fn verdict_lookup_key(
   evaluation: EvaluationIdentity,
@@ -136,42 +209,50 @@ fn verdict_lookup_key(
 ) -> VerdictLookupKey {
   match standing {
     CompositionIndependenceUnadmitted =>
-      ProductScopedVerdictKey { evaluation: evaluation, packaged_declarations: product.packaged_declarations }
-    CompositionIndependenceAdmitted { population: population } =>
-      if product.packaged_declarations |> all(d => contains(xs: population, item: d, eq: content_hash_equal)) {
+      ProductScopedVerdictKey { evaluation: evaluation, product: product }
+    CompositionIndependenceAdmitted { evidence: evidence } =>
+      if composition_evidence_covers(evidence: evidence, product: product) {
         SemanticVerdictKey { evaluation: evaluation }
       } else {
-        ProductScopedVerdictKey { evaluation: evaluation, packaged_declarations: product.packaged_declarations }
+        ProductScopedVerdictKey { evaluation: evaluation, product: product }
       }
   }
 }
 
-type RealizationProvenance
-  = ProductServed
-  | ProductRebuilt
+fn verdict_lookup_key_canonical(key: VerdictLookupKey) -> NonEmptyStr {
+  match key {
+    SemanticVerdictKey { evaluation: e } =>
+      join([length_prefixed_encode(s: "semantic"), evaluation_identity_canonical(evaluation: e) as String], "") as NonEmptyStr
+    ProductScopedVerdictKey { evaluation: e, product: p } =>
+      join([
+        length_prefixed_encode(s: "product_scoped"),
+        evaluation_identity_canonical(evaluation: e) as String,
+        realization_product_identity_canonical(product: p) as String
+      ], "") as NonEmptyStr
+  }
+}
 
-type RealizationReceipt {
+type NativeTestVerdictReceipt {
   evaluation: EvaluationIdentity
   product: RealizationProductIdentity
   result: ResultContentIdentity
-  provenance: RealizationProvenance
 }
 
-fn realization_receipt_binding(receipt: RealizationReceipt) -> EvaluationResultBinding {
+fn native_test_verdict_receipt_binding(receipt: NativeTestVerdictReceipt) -> EvaluationResultBinding {
   EvaluationResultBinding { evaluation_identity: receipt.evaluation, result_content_identity: receipt.result }
 }
 
 // TWO RECEIPTS MEET ONLY AT ONE EVALUATION. Under one EvaluationIdentity their content must agree, so the
 // existing binding judgment decides consistency or conflict; receipts for different evaluations are
 // not comparable answers.
-type RealizationReceiptJoin
+type NativeTestVerdictReceiptJoin
   = ReceiptsJudged { outcome: EvaluationResultBindingOutcome }
   | ReceiptsJudgeDifferentEvaluations
 
-fn join_realization_receipts(first: RealizationReceipt, second: RealizationReceipt) -> RealizationReceiptJoin {
+fn join_native_test_verdict_receipts(first: NativeTestVerdictReceipt, second: NativeTestVerdictReceipt) -> NativeTestVerdictReceiptJoin {
   if (evaluation_identity_canonical(evaluation: first.evaluation) as String) == (evaluation_identity_canonical(evaluation: second.evaluation) as String) {
     ReceiptsJudged {
-      outcome: evaluation_result_binding_outcome(binding: realization_receipt_binding(receipt: first), observed: second.result)
+      outcome: evaluation_result_binding_outcome(binding: native_test_verdict_receipt_binding(receipt: first), observed: second.result)
     }
   } else {
     ReceiptsJudgeDifferentEvaluations
