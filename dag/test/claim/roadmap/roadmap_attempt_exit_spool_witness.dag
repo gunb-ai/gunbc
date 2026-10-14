@@ -9,8 +9,9 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptWorkerRole, AttemptReviewerRole, AttemptAuditorRole,
   attempt_exit_record_from_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
   AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
+  attempt_exit_vendor_pane_entry_name, attempt_exit_vendor_pane_result_word,
 }
-import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultSignal }
+import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultSignal, ServiceResultExitCode }
 
 // The hook is one typed mkdir argv whose single operand is the record's name, with the four stop
 // variables spelled as systemd expansions and no shell anywhere.
@@ -44,6 +45,26 @@ test fn an_exit_record_decodes_to_its_status_and_a_kill_to_its_signal() -> Bool 
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }
   exited && killed
+}
+
+test fn a_vendor_pane_record_derives_result_from_status() -> Bool {
+  let zero = attempt_exit_vendor_pane_entry_name(node_id: "n", attempt_key: "k", status: 0)
+  let killed_status = attempt_exit_vendor_pane_entry_name(node_id: "n", attempt_key: "k", status: 9)
+  let zero_ok = attempt_exit_vendor_pane_result_word(status: 0) == "success"
+    && match attempt_exit_entry_decode(entry_name: zero) {
+      AttemptExitEntryDecoded { record } =>
+        (match record.result { ServiceResultSuccess => true _ => false })
+          && (match record.end { AttemptProcessExitedWith { status } => status == 0 AttemptProcessSignaled { signal: _ } => false })
+      AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+    }
+  let nine_ok = attempt_exit_vendor_pane_result_word(status: 9) == "exit-code"
+    && match attempt_exit_entry_decode(entry_name: killed_status) {
+      AttemptExitEntryDecoded { record } =>
+        (match record.result { ServiceResultExitCode => true _ => false })
+          && (match record.end { AttemptProcessExitedWith { status } => status == 9 AttemptProcessSignaled { signal: _ } => false })
+      AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+    }
+  zero_ok && nine_ok
 }
 
 test fn a_name_that_is_not_seven_parts_or_whose_status_contradicts_its_code_is_malformed() -> Bool {

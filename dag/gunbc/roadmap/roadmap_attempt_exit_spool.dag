@@ -344,10 +344,40 @@ type AttemptExitRecordPut
   = AttemptExitRecordPutOk
   | AttemptExitRecordPutFailed { reason: String }
 
-// Vendor tmux panes have no ExecStopPost. This writes the same inbox mkdir-name record the unit
-// hook would have written. Callers that will reap must CHECK the result and keep the dead pane
-// when the write fails. Create-only mkdir: the spool must already exist; a missing or read-only
-// inbox is a failed write, not a parent-creating success.
+// A vendor pane gives one number (`pane_dead_status`), not systemd's three stop variables. Zero is
+// the documented success exit; any other number is an exit-code. The record is still the seven-part
+// inbox name so the decoder can read `end`, but invocation `vendorpane` marks the belt as the
+// writer — this is not ExecStopPost and must not mint `success` for a killed pane.
+fn attempt_exit_vendor_pane_result_word(status: Int) -> String {
+  if status == 0 {
+    "success"
+  } else {
+    "exit-code"
+  }
+}
+
+fn attempt_exit_vendor_pane_entry_name(node_id: String, attempt_key: String, status: Int) -> String {
+  join([
+    node_id,
+    attempt_exit_entry_separator,
+    attempt_key,
+    attempt_exit_entry_separator,
+    attempt_unit_role_token(role: AttemptWorkerRole),
+    attempt_exit_entry_separator,
+    "vendorpane",
+    attempt_exit_entry_separator,
+    attempt_exit_vendor_pane_result_word(status: status),
+    attempt_exit_entry_separator,
+    "exited",
+    attempt_exit_entry_separator,
+    to_string(value: status),
+  ], "")
+}
+
+// Vendor tmux panes have no ExecStopPost. The belt writes an inbox mkdir-name when it first sees
+// the dead pane, before it may reap. Callers that will reap must CHECK the result and keep the
+// dead pane when the write fails. Create-only mkdir is `mkdir_create_only_command`: the spool must
+// already exist; a missing or read-only inbox is a failed write, not a parent-creating success.
 fn attempt_exit_record_put_worker_exited(instance_root: String, node_id: String, attempt_key: String, status: Int) -> AttemptExitRecordPut {
   match attempt_exit_record_observe(instance_root: instance_root, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
     AttemptExitRecordFound { record: _ } => AttemptExitRecordPutOk
@@ -356,21 +386,13 @@ fn attempt_exit_record_put_worker_exited(instance_root: String, node_id: String,
       let path = join([
         attempt_exit_inbox_dir(instance_root: instance_root),
         "/",
-        node_id,
-        attempt_exit_entry_separator,
-        attempt_key,
-        attempt_exit_entry_separator,
-        attempt_unit_role_token(role: AttemptWorkerRole),
-        attempt_exit_entry_separator,
-        "vendorpane",
-        attempt_exit_entry_separator,
-        "success",
-        attempt_exit_entry_separator,
-        "exited",
-        attempt_exit_entry_separator,
-        to_string(value: status),
+        attempt_exit_vendor_pane_entry_name(node_id: node_id, attempt_key: attempt_key, status: status),
       ], "")
-      let ran = shell.Exec.RunArgv(program: "/usr/bin/mkdir", arguments: ["--", path])
+      let command = mkdir_create_only_command(path: path)
+      let ran = shell.Exec.RunArgv(
+        program: command.program.invocation as String,
+        arguments: command.arguments,
+      )
       if ran.exit_code == 0 {
         AttemptExitRecordPutOk
       } else {
