@@ -5,6 +5,8 @@ import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_
 import v2.std.collection { Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic {
   Correction,
+  DeclarationLocus,
+  declaration_locus,
   Diagnostic,
   node_locus,
   Outcome,
@@ -29,15 +31,19 @@ import v2.std.node {
   Connective,
   Disj,
   Edge,
+  EdgeLabel,
   LabeledEdges,
   Authored,
   Instantiation,
   Node,
   Occupancy,
+  Positional,
+  StructuralLabel,
   Symbol,
   TypeNode,
   edges_conform,
-  is_empty_conj_root
+  is_empty_conj_root,
+  label_occurrences
 }
 
 type SugarLowering
@@ -113,6 +119,79 @@ fn sugar_malformed_diagnostic(n: Node) -> Diagnostic {
     reason: ^sugar_reason_malformed,
     at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// A COPRODUCT VARIANT IS AUTHORED BY NAME, SO A REPEATED NAME IS A REPEATED VARIANT. This is the
+// declaration-time wall against gunbc.recurring_failure_mode
+// a_coproduct_declares_one_variant_twice: the Disj-building fold refuses a declaration whose
+// children do not carry pairwise distinct authored names, with a TYPED LOCATED diagnostic that
+// names the type the declaration belongs to AND the name that was declared twice -- not the
+// generic ^sugar_reason_malformed over a bare node locus. The type name is read from the
+// enclosing type_decl (threaded down the normalize recursion, since a Node carries no parent
+// pointer) and the repeated name is the first authored label that occurs more than once.
+fn sugar_repeated_authored_name(edges: List<Edge>) -> Symbol? {
+  fold(
+    edges,
+    init: no_repeated_authored_name(),
+    f: fn(acc, e) {
+      match e.label {
+        Authored { name: n } =>
+          if is_repeated_authored_name(name: n, edges: edges) {
+            optional_present(value: n)
+          } else {
+            acc
+          }
+        Positional => acc
+        StructuralLabel { label: _ } => acc
+      }
+    }
+  )
+}
+
+fn no_repeated_authored_name() -> Symbol? {
+  optional_absent()
+}
+
+fn is_repeated_authored_name(name: Symbol, edges: List<Edge>) -> Bool {
+  let label: EdgeLabel = Authored { name: name }
+  label_occurrences(label: label, children: edges) > 1
+}
+
+// TYPED REASON + DECLARATION LOCUS. The locus carries the declaration's qualified path
+// (the type's segments, then the repeated variant name) so a consumer names the subject by the
+// identity the containment tree already gives it -- the type T and the variant name declared
+// twice -- rather than re-parsing a rendering or pointing at a bare node. When the enclosing
+// type name is unavailable (no name could be read) the locus falls back to the node locus.
+fn sugar_duplicate_variant_diagnostic(
+  edges: List<Edge>,
+  shell: Node,
+  enclosing_type_name: Symbol?
+) -> Diagnostic {
+  match sugar_repeated_authored_name(edges: edges) {
+    Present { value: repeated } =>
+      match enclosing_type_name {
+        Present { value: type_name } =>
+          Diagnostic {
+            reason: ^sugar_reason_duplicate_variant_name,
+            at: declaration_locus(
+              declaration: Cons { head: type_name, tail: Cons { head: repeated, tail: Empty } }
+            ),
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        Absent =>
+          Diagnostic {
+            reason: ^sugar_reason_duplicate_variant_name,
+            at: node_locus(node: shell),
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+      }
+    Absent =>
+      Diagnostic {
+        reason: ^sugar_reason_duplicate_variant_name,
+        at: node_locus(node: shell),
+        correction: Unavailable { reason: UserInputBoundary }
+      }
   }
 }
 
@@ -360,7 +439,7 @@ fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoi
   )
 }
 
-fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node) -> Outcome<Node> {
+fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node, enclosing_type_name: Symbol?) -> Outcome<Node> {
   let variants = sugar_all_coproduct_variants(captured: captured)
   if !sugar_variants_form_coproduct(variants: variants) {
     Accepted { value: captured, diagnostics: None }
@@ -373,7 +452,15 @@ fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node) -> Outcome<Node>
             diagnostics: d
           }
         } else {
-          Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: sugar_duplicate_variant_diagnostic(
+                edges: edges,
+                shell: shell,
+                enclosing_type_name: enclosing_type_name
+              )
+            )
+          }
         }
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
     }
@@ -394,19 +481,29 @@ fn sugar_carries_separator(node: Node) -> Bool {
   }
 }
 
-fn sugar_separated_rhs_as_coproduct(rhs: Node, shell: Node) -> Outcome<Node> {
+fn sugar_separated_rhs_as_coproduct(rhs: Node, shell: Node, enclosing_type_name: Symbol?) -> Outcome<Node> {
   match rhs.kind {
     TypeNode { connective: Disj } => Accepted { value: rhs, diagnostics: None }
-    TypeNode { connective: Atom { identity: _ } } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
-    TypeNode { connective: Conj } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
-    TypeNode { connective: Arrow } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
-    TypeNode { connective: Occupancy } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
-    TypeNode { connective: Instantiation } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
-    ComputationNode { behavior: _ } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+    TypeNode { connective: Atom { identity: _ } } =>
+      sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
+    TypeNode { connective: Conj } =>
+      sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
+    TypeNode { connective: Arrow } =>
+      sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
+    TypeNode { connective: Occupancy } =>
+      sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
+    TypeNode { connective: Instantiation } =>
+      sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
+    ComputationNode { behavior: _ } =>
+      sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell, enclosing_type_name: enclosing_type_name)
   }
 }
 
-fn sugar_separated_rhs_as_coproduct_otherwise(rhs: Node, shell: Node) -> Outcome<Node> {
+fn sugar_separated_rhs_as_coproduct_otherwise(
+  rhs: Node,
+  shell: Node,
+  enclosing_type_name: Symbol?
+) -> Outcome<Node> {
   match sugar_named_child_optional(root: rhs, name: ^grammar_production_captured_node_projection) {
     Present { value: captured } =>
       match sugar_variants_to_disj_edges(variants: sugar_all_coproduct_variants(captured: captured)) {
@@ -414,7 +511,15 @@ fn sugar_separated_rhs_as_coproduct_otherwise(rhs: Node, shell: Node) -> Outcome
           if edges_conform(children: edges, d: LabeledEdges) {
             Accepted { value: sugar_type_node(connective: Disj, children: edges, n: shell), diagnostics: d }
           } else {
-            Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
+            Rejected {
+              diagnostics: diagnostics_singleton(
+                d: sugar_duplicate_variant_diagnostic(
+                  edges: edges,
+                  shell: shell,
+                  enclosing_type_name: enclosing_type_name
+                )
+              )
+            }
           }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
@@ -422,12 +527,12 @@ fn sugar_separated_rhs_as_coproduct_otherwise(rhs: Node, shell: Node) -> Outcome
   }
 }
 
-fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
+fn apply_sugar(rule: SugarRule, n: Node, folded: Node, enclosing_type_name: Symbol?) -> Outcome<Node> {
   match rule.lowering {
     SugarFoldCoproductPipeChain {} =>
       match sugar_named_child_optional(root: folded, name: ^grammar_production_captured_node_projection) {
         Present { value: captured } =>
-          match sugar_fold_coproduct_pipe_chain(captured: captured, shell: n) {
+          match sugar_fold_coproduct_pipe_chain(captured: captured, shell: n, enclosing_type_name: enclosing_type_name) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: result, diagnostics: d } =>
               match result.kind {
@@ -456,7 +561,7 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
           match sugar_sequence_pair_optional(node: captured) {
             Present { value: pair } =>
               if sugar_carries_separator(node: pair.left) {
-                sugar_separated_rhs_as_coproduct(rhs: pair.right, shell: n)
+                sugar_separated_rhs_as_coproduct(rhs: pair.right, shell: n, enclosing_type_name: enclosing_type_name)
               } else {
                 Accepted { value: pair.right, diagnostics: None }
               }

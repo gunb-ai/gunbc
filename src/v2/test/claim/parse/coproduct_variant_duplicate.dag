@@ -1,0 +1,81 @@
+module v2.test.claim.parse.coproduct_variant_duplicate
+
+import v2.test.claim.parse.parse_test_block_headed_operand_class { bc_parse_at }
+import v2.compiler.body_lowering_fold { BodyLoweredTree }
+import v2.compiler.normalize { normalize_node }
+import v2.std.node { Symbol }
+import v2.std.diagnostic {
+  Locus,
+  Rejected,
+  Accepted,
+  Outcome,
+  DeclarationLocus,
+  diagnostics_fatal,
+  diagnostics_fatal_reason
+}
+import std.algebra { Cons, Empty }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// The seed reads this to select the substrate-only (hermetic) execution: the probe's two claims
+// parse and normalize their own source in-process, touching no live tree.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// C2 (gunbc#): the Disj (coproduct) fold refuses a type declaration whose children do not carry
+// pairwise distinct AUTHORED names. A coproduct variant is authored by name, so a repeated name IS
+// a repeated variant. The refusal is a TYPED, LOCATED diagnostic -- reason
+// ^sugar_reason_duplicate_variant_name, at a DeclarationLocus naming the enclosing TYPE and the
+// name declared twice -- not the generic ^sugar_reason_malformed over a bare node locus. The
+// enclosing type name is threaded down the normalize recursion from the type_decl (a Node carries
+// no parent pointer), so the fold at the type_decl's rhs can name the declaration in its diagnostic.
+//
+// THE PAIRED PROBE IS THE DISCRIMINATING TEST (DESIGN section 5, "Done means executed"):
+//   duplicate_variant_duplicate_name_is_refused_with_a_typed_located_diagnostic  (RED pre-fix)
+//     -- pre-fix the refusal only said ^sugar_reason_malformed over a node locus, so this claim
+//        failed before the diagnostic was made typed and located.
+//   prefix_shared_variant_names_are_accepted  (POSITIVE CONTROL)
+//     -- variants that merely share a prefix (A and AB) have distinct authored names and conform,
+//        so they are accepted; a shared prefix is not a collision.
+// Both run the same REAL route: parse a top-level type declaration at its production, then run the
+// normalize pass, where the coproduct fold fires on the type_decl's rhs.
+
+// THE DECLARATION, PARSED AT ITS PRODUCTION AND LOWERED. Same route the parse-layer coproduct
+// probe (v2.test.claim.parse.parse_test_coproduct_leading_pipe) lowers through.
+fn cvd_lower(text: String) -> Outcome<BodyLoweredTree> {
+  match bc_parse_at(text: text, production: ^dag_production_type_decl) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: n, diagnostics: _ } => normalize_node(n: n)
+  }
+}
+
+// THE DECLARATION-LOCUS CHECK: the locus is a DeclarationLocus whose path is exactly
+// <type> <repeated> (two segments). Structural, so it needs no FreeMonoid Eq.
+fn cvd_is_decl_locus(type_name: Symbol, repeated: Symbol, at: Locus) -> Bool {
+  match at {
+    DeclarationLocus { declaration: path } =>
+      match path {
+        Cons { head: h, tail: Cons { head: r, tail: Empty } } => (h == type_name) && (r == repeated)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// (1) RED: `type T = A | A` is refused (not accepted), with reason
+// ^sugar_reason_duplicate_variant_name located at the declaration path T A.
+test fn duplicate_variant_duplicate_name_is_refused_with_a_typed_located_diagnostic() -> Bool {
+  match cvd_lower(text: "type T = A | A") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (diagnostics_fatal_reason(d: d) == ^sugar_reason_duplicate_variant_name)
+        && cvd_is_decl_locus(type_name: ^T, repeated: ^A, at: diagnostics_fatal(d: d).at)
+  }
+}
+
+// (2) POSITIVE CONTROL: `type T = A | AB` (variants share the prefix "A") is accepted -- distinct
+// authored names conform, so a shared prefix is not a collision.
+test fn prefix_shared_variant_names_are_accepted() -> Bool {
+  match cvd_lower(text: "type T = A | AB") {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
