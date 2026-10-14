@@ -213,10 +213,10 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: roster_decl(module_path: "gunbc.non_fold_residue", decl_name: "non_fold_residue_frontier"),
+    roster: roster_decl(module_path: "gunbc.non_fold_residue", decl_name: "nfr_dissolve_owning_fold"),
     unit_kind: "non-fold-residue site key (path::fn)",
     membership: DeclaredFrontier {
-      reason: "closed-coproduct wildcard sites classified un-migrated modeling (DESIGN §6). The roster name non_fold_residue_frontier is distributed: each subject module that still carries a site holds `data non_fold_residue_frontier` of DIRECT record literals, and membership is the host union of those lists (the seed reader walks production .dag files and parses only the list slice). STATED EXCEPTION: seven std/extdeps subjects cannot import gunbc, and their shared reason/dissolution idents cannot move into std, so those rows live in gunbc.non_fold_residue non_fold_residue_frontier. Per-row reasons and dissolution triggers in-row; the required floor judges diff-scoped and the whole-corpus census derives the union. POPULATION BOUND: the census types every module it can; a module carrying a blocking diagnostic is typed partially or not at all, so its wildcard sites are uncounted and unrostered=0 establishes the TYPED population only (the census output names the blocked modules; they re-census when they type)",
+      reason: "closed-coproduct wildcard sites classified un-migrated modeling (DESIGN §6). Membership is NOT this declaration: it is the host union of every subject-module `data non_fold_residue_frontier` list, produced by non_fold_residue_identity_join_triples in src/v1/stage0/src/cli_run/non_fold_residue.rs. gunbc.roster_registry.roster is a DeclarationRef, so it cannot name that seed reader or the distributed lists. This row cites nfr_dissolve_owning_fold so the citation resolves in the vocab module that owns the shared class strings; it is not a second membership list. Per-row reasons and dissolution triggers in-row; the required floor judges diff-scoped and the whole-corpus census derives the union.",
       dissolution: unbound_dissolution(description: "per row: the site's wildcard arm migrates to a total match (or the fn is declared kernel-permanent, forcing deletion — DESIGN §6 exclusivity) and the row deletes; roster-wide, the typed walk and reader fold into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364)")
     }
   },

@@ -1,5 +1,6 @@
 module v2.std.node
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item }
@@ -139,7 +140,6 @@ fn connective_from_coproduct_variant(
 fn behavior_coproduct_variants() -> List<Behavior> {
   [Value, Transform, Branch, Loop, Bind, Match]
 }
-
 
 type NodeKind
   = TypeNode { connective: Connective }
@@ -980,8 +980,6 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   })
 }
 
-
-
 // THE ONE PARSER OF AN ARROW'S DECLARED ORDER. An Arrow built from a declared signature carries one
 // ^arrow_signature_order_edge (v2.std.arrow_signature signature_order_edge): a Transform
 // whose positional children after the head are childless Atoms, one per domain binder, in declared
@@ -1432,7 +1430,6 @@ fn resolved_reference_kind_of_label(label: EdgeLabel) -> ResolvedReferenceMarkin
 // so a nullary `R {}` never reads as a reference. It is a Core structural marker of the typed
 // EdgeLabel coproduct planned in gunbc#12473 (arm ConstructTag), declared here in the form of its
 // sibling until that cut converts both.
-
 
 // AN ANONYMOUS RECORD LITERAL'S TAG IS ELIDED, NOT GUESSED. `data x: T = { f: v }` names no
 // constructor; the constructor is chosen by the EXPECTED type, which lowering (before resolve) cannot
@@ -3033,9 +3030,6 @@ fn algebra_empty_conj() -> Node {
 }
 }
 
-data nfr_dissolve_owning_fold: DissolutionCondition = unbound_dissolution(description: "the owning file's fold migration totals the match and the row deletes")
-
-data nfr_reason_typed_census_ca5ed1724b: String = "a top-level wildcard arm over a closed coproduct found by the whole-corpus TYPED census at main ca5ed1724b (#12610's joint landing; nfr_whole_corpus_typed_census, srv1, 2026-10-02). The typed walk keys on the scrutinee's inferred type, so it sees the local-binding, field and call scrutinees the deleted parameter-keyed scan never could; these sites predate the walk and are un-migrated modeling (DESIGN §6), rostered so the ratchet arms at unrostered=0"
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "src/v2/std/node.dag::arrow_body_construct_tag_leads" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "src/v2/std/node.dag::arrow_body_some_edge_targets_an_atom" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },

@@ -1,5 +1,6 @@
 module v2.lens.enforcement.receipts
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, contains }
@@ -259,9 +260,6 @@ fn derive_receipt(
   }
 }
 
-data nfr_dissolve_owning_fold: DissolutionCondition = unbound_dissolution(description: "the owning file's fold migration totals the match and the row deletes")
-
-data nfr_reason_land_red_era: String = "landed unrostered while the gate was red during the land-red-with-local-proof era (revoked 2026-07-12); declared so the ratchet re-arms"
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
       subject: PathSubject { path: "src/v2/lens/enforcement/receipts.dag::consumer_entry_identity_for" },

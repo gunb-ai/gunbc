@@ -105,9 +105,9 @@ pub(crate) fn nfr_identity_join_line(t: &NfrFrontierTriple) -> String {
     format!("{}\t{}\t{}", t.path, t.reason, t.dissolution)
 }
 
-/// The seven std/extdeps subjects may not import this module, and their shared reason
-/// and dissolution idents may not move into std. Their rows live in
-/// `dag/gunbc/non_fold_residue.dag` as a stated exception to co-location-at-home.
+/// Historical base trees hosted the seven std/extdeps rows in
+/// `dag/gunbc/non_fold_residue.dag`. Head rows live at home; this exception still
+/// admits those paths when reading a base file that has not yet moved them.
 const NFR_STD_EXTDEPS_EXCEPTION_HOST: &str = "dag/gunbc/non_fold_residue.dag";
 const NFR_STD_EXTDEPS_EXCEPTION_PREFIXES: &[&str] = &[
     "dag/extdeps/git.dag",

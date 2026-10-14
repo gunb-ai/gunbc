@@ -1,5 +1,6 @@
 module v2.lens.testgen
 
+import gunbc.non_fold_residue { nfr_dissolve_derived_equality, nfr_reason_structural_eq_mint }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
@@ -2487,9 +2488,6 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-data nfr_dissolve_derived_equality: DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
-
-data nfr_reason_structural_eq_mint: String = "structural equality fold (param scrutinee, off-variant wildcard arm returning false) — the eq-row class the dated roster blocks cite as their sibling anchor"
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
       subject: PathSubject { path: "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq" },

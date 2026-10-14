@@ -1,5 +1,6 @@
 module v2.workflow.dag_acceptance
 
+import gunbc.non_fold_residue { nfr_dissolve_derived_equality }
 import std.types { List }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import v2.compiler.compile {
@@ -1363,7 +1364,6 @@ data nfr_dissolve_acceptance_obligation_partition: DissolutionCondition = unboun
 
 data nfr_dissolve_acceptance_verdict_append: DissolutionCondition = unbound_dissolution(description: "the verdict is assembled once from the receipt's derived outcome partition (first and further labels computed together) rather than appended one label at a time, so the two append fns have no caller and delete with their rows — or the two matches become total over the three verdict arms")
 
-data nfr_dissolve_derived_equality: DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
       subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::execute_obligation" },

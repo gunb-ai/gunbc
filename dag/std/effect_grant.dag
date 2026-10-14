@@ -1,4 +1,6 @@
 module std.effect_grant
+import gunbc.non_fold_residue { nfr_dissolve_derived_equality, nfr_reason_namespace_tree_eq }
+import std.roster_frontier { FrontierRow, PathSubject }
 
 import std.types { Bool, String, List }
 import std.effects { EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect }
@@ -332,3 +334,11 @@ fn all_child_grants_bounded(child_grants: List<Grant>, parent_grants: List<Grant
 fn envelope_bounded_by(child: Envelope, parent: Envelope) -> Bool {
   all_child_grants_bounded(child_grants: child.grants, parent_grants: parent.grants)
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "dag/std/effect_grant.dag::namespace_tree_eq" },
+      reason: nfr_reason_namespace_tree_eq,
+      dissolution: nfr_dissolve_derived_equality,
+    },
+]
