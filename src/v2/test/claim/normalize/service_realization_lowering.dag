@@ -59,7 +59,7 @@ fn srl_child(n: Node, name: Symbol) -> Optional<Node> {
   match named_edge_target_lookup(children: n.children, name: name) {
     Found { target: t } => optional_present(value: t)
     Ambiguous => optional_absent()
-    Absent => optional_absent()
+    NotFound => optional_absent()
   }
 }
 
