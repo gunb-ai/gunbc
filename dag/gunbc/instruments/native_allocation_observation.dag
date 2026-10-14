@@ -1,79 +1,160 @@
 module gunbc.instruments.native_allocation_observation
 
-import std.types { Bool, Int, List, Map }
+import std.types { Bool, Int, List }
 import std.optional { Optional, Present, Absent }
-import v2.std.collection { list_at_optional }
 import std.realization_measurement { AllocationCounter }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
-import gunbc.emit_state_threading_specimen { SpecCursor, SpecAcc, spec_build, spec_walk_named, spec_summary }
+import gunbc.emit_state_threading_specimen { spec_build, spec_walk_tokens }
 
 // THE ALLOCATION READING OF THE STATE-THREADING SPECIMEN, taken by a binary that carries the counting
 // allocator BECAUSE this entry `uses` AllocationCounter (std.realization_measurement; the claim route's
 // NativeEffectRealizationAdmission). `gunbc test //gunbc/instruments:native-allocation-observation`
-// emits this closure, builds it and runs it in one process; nothing is interpreted, and a process
-// without the counting allocator refuses rather than reading zero.
+// emits this closure, builds it and runs it in one process; nothing is interpreted.
 //
-// THE REFERENCE IS A DECLARED FORM, NOT THE RUST MINIMUM. A .dag program cannot author a moved Rust
-// accumulator, so the reference here is the same algorithm threading ONLY the two fields that change
-// (the tokens and the index) and none of the carried ones. It bounds the specimen from below within
-// the substrate; the Rust-level minimum (moves, one Vec) is stated beside the specimen and its
-// distance is what the specimen reading exposes. Judgement is by ORDER ONLY: no operation count is
-// written in this module, so a change of host or collection library cannot move a verdict.
+// THREE ANSWERS, NOT ONE VERDICT, because a bound that reds when the repair succeeds punishes the repair:
+//   OBSERVATION   the meter worked: live, an empty window reads zero, a window around a known allocation
+//                 reads it on BOTH axes, and every walk returned the sequence it was given.
+//   CALIBRATION   the meter discriminates: a deliberately cloning walk reads above the reference.
+//   SUBJECT       whether the specimen meets its cost contract (no more allocator operations than the
+//                 reference). Reported as a READING with the counts, never as this label's invariant:
+//                 the label holds when the reading was taken honestly, and a specimen that is above the
+//                 reference reads UNQUALIFIED, one at or below it reads QUALIFIED, both held.
+// The counts are printed with the input size and the producer identity so the ordering is derived from
+// them by the reader, not asserted here.
 //
-// The cloning variant is the control that the order discriminates: it copies the whole token list
-// on every step, so it must read ABOVE the reference; a bound that passed it would not be a bound.
+// EVERY WINDOW KEEPS THE WALK'S RESULT: the closing read comes after the result exists and the result is
+// returned beside the readings, so its release is outside the window and an unused-allocation elision has
+// nothing to elide. Labels are empty (no allocation on the call) and the empty-window case measures the
+// meter's own residue directly.
+//
+// THE REFERENCE IS A DECLARED .dag FORM, NOT THE RUST MINIMUM: the same cursor, indexed lookup and stop
+// behavior, threading only the fields that change (tokens, index, done) and reading the source from the
+// enclosing scope. A moved Rust accumulator cannot be authored in .dag; the distance to that minimum is
+// what the SUBJECT reading exposes, and exact alloc/alloc_zeroed/realloc layouts need a Rust-level control
+// no .dag program can author (named blocker, so the byte check here is a lower bound on a known string).
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type RefAcc {
+  tokens: List<Int>
+  index: Int
+  done: Bool
+}
+
+type AllocationWindow {
+  tokens: List<Int>
+  operations: Int
+  bytes: Int
+}
+
+fn reference_walk(src: List<Int>) -> List<Int> {
+  let r = src |> fold(init: RefAcc { tokens: [], index: 0, done: false }, f: (acc, e) =>
+    if acc.done { acc } else {
+      match get(xs: src, index: acc.index) {
+        Present { value: h } => RefAcc { tokens: list_push(acc.tokens, h), index: acc.index + 1, done: false }
+        Absent => RefAcc { tokens: acc.tokens, index: acc.index, done: true }
+      }
+    })
+  r.tokens
+}
+
+fn cloning_walk(src: List<Int>) -> List<Int> {
+  src |> fold(init: [], f: (toks, e) => concat(toks, [e]) |> map(x => x))
+}
+
+fn window_of_specimen(src: List<Int>) -> AllocationWindow uses counter: AllocationCounter {
+  let ops_before = observed_allocation_operations("")
+  let bytes_before = observed_allocation_bytes("")
+  let tokens = spec_walk_tokens(src: src)
+  let ops_after = observed_allocation_operations("")
+  let bytes_after = observed_allocation_bytes("")
+  AllocationWindow { tokens: tokens, operations: ops_after - ops_before, bytes: bytes_after - bytes_before }
+}
+
+fn window_of_reference(src: List<Int>) -> AllocationWindow uses counter: AllocationCounter {
+  let ops_before = observed_allocation_operations("")
+  let bytes_before = observed_allocation_bytes("")
+  let tokens = reference_walk(src: src)
+  let ops_after = observed_allocation_operations("")
+  let bytes_after = observed_allocation_bytes("")
+  AllocationWindow { tokens: tokens, operations: ops_after - ops_before, bytes: bytes_after - bytes_before }
+}
+
+fn window_of_cloning(src: List<Int>) -> AllocationWindow uses counter: AllocationCounter {
+  let ops_before = observed_allocation_operations("")
+  let bytes_before = observed_allocation_bytes("")
+  let tokens = cloning_walk(src: src)
+  let ops_after = observed_allocation_operations("")
+  let bytes_after = observed_allocation_bytes("")
+  AllocationWindow { tokens: tokens, operations: ops_after - ops_before, bytes: bytes_after - bytes_before }
+}
+
+fn window_of_nothing() -> AllocationWindow uses counter: AllocationCounter {
+  let ops_before = observed_allocation_operations("")
+  let bytes_before = observed_allocation_bytes("")
+  let ops_after = observed_allocation_operations("")
+  let bytes_after = observed_allocation_bytes("")
+  AllocationWindow { tokens: [], operations: ops_after - ops_before, bytes: bytes_after - bytes_before }
+}
+
+// A KNOWN ALLOCATION: a string grown to 4096 characters is at least 4096 requested bytes and at least one
+// operation, whatever the collection library does elsewhere. The result is returned, so it is kept.
+fn grown_text(n: Int) -> String {
+  if n == 0 { "" } else { concat(grown_text(n: n - 1), "x") }
+}
+
+fn window_of_known_text() -> AllocationWindow uses counter: AllocationCounter {
+  let ops_before = observed_allocation_operations("")
+  let bytes_before = observed_allocation_bytes("")
+  let text = grown_text(n: 4096)
+  let ops_after = observed_allocation_operations("")
+  let bytes_after = observed_allocation_bytes("")
+  AllocationWindow { tokens: [string_length(text)], operations: ops_after - ops_before, bytes: bytes_after - bytes_before }
+}
 
 type AllocationCase {
   identity: String
   held: Bool
+  observed: String
 }
 
-fn reference_walk(src: List<Int>) -> Int {
-  let r = src |> fold(init: [], f: (toks, e) => list_push(toks, e))
-  count(r)
+fn count_text(label: String, n: Int) -> String {
+  concat(label, "=", to_string(value: n))
 }
 
-fn cloning_walk(src: List<Int>) -> Int {
-  let r = src |> fold(init: [], f: (toks, e) => concat(toks, [e]) |> map(x => x))
-  count(r)
-}
-
-fn allocations_of_specimen(src: List<Int>) -> Int uses counter: AllocationCounter {
-  let before = observed_allocation_operations("specimen")
-  let _ = spec_walk_named(src: src)
-  observed_allocation_operations("specimen") - before
-}
-
-fn allocations_of_reference(src: List<Int>) -> Int uses counter: AllocationCounter {
-  let before = observed_allocation_operations("reference")
-  let _ = reference_walk(src: src)
-  observed_allocation_operations("reference") - before
-}
-
-fn allocations_of_cloning(src: List<Int>) -> Int uses counter: AllocationCounter {
-  let before = observed_allocation_operations("cloning")
-  let _ = cloning_walk(src: src)
-  observed_allocation_operations("cloning") - before
+fn window_text(label: String, w: AllocationWindow) -> String {
+  concat(count_text(label: concat(label, "_ops"), n: w.operations), " ", count_text(label: concat(label, "_bytes"), n: w.bytes))
 }
 
 fn allocation_cases() -> List<AllocationCase> uses counter: AllocationCounter {
-  let src = spec_build(n: 2000)
-  let specimen = allocations_of_specimen(src: src)
-  let reference = allocations_of_reference(src: src)
-  let cloning = allocations_of_cloning(src: src)
+  let n = 2000
+  let src = spec_build(n: n)
+  let empty = window_of_nothing()
+  let known = window_of_known_text()
+  let specimen = window_of_specimen(src: src)
+  let reference = window_of_reference(src: src)
+  let cloning = window_of_cloning(src: src)
+  let reads_qualified = specimen.operations <= reference.operations
   [
-    AllocationCase { identity: "walks_agree", held: spec_walk_named(src: src) == 2000 + 2000 + 7 && reference_walk(src: src) == cloning_walk(src: src) },
-    AllocationCase { identity: "specimen_reads_above_reference", held: specimen > reference },
-    AllocationCase { identity: "cloning_variant_reads_above_reference", held: cloning > reference },
-    AllocationCase { identity: "reference_allocates_at_all", held: reference > 0 }
+    AllocationCase { identity: "observation_empty_window_reads_zero", held: empty.operations == 0 && empty.bytes == 0, observed: window_text(label: "empty", w: empty) },
+    AllocationCase { identity: "observation_known_allocation_reads_both_axes", held: known.operations >= 1 && known.bytes >= 4096, observed: window_text(label: "known_4096_text", w: known) },
+    AllocationCase { identity: "observation_walks_return_the_given_sequence", held: specimen.tokens == src && reference.tokens == src && cloning.tokens == src, observed: count_text(label: "tokens", n: count(src)) },
+    AllocationCase { identity: "calibration_cloning_control_reads_above_reference", held: cloning.operations > reference.operations, observed: concat(window_text(label: "cloning", w: cloning), " ", window_text(label: "reference", w: reference)) },
+    AllocationCase {
+      identity: "subject_reading_taken",
+      held: specimen.operations > 0 && reference.operations > 0,
+      observed: concat("n=", to_string(value: n), " producer=emitted-native-counting-allocator ", window_text(label: "specimen", w: specimen), " ", window_text(label: "reference", w: reference), " subject=", if reads_qualified { "QUALIFIED" } else { "UNQUALIFIED" })
+    }
   ]
+}
+
+fn case_line(c: AllocationCase) -> String {
+  concat("case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", c.observed, "\n")
 }
 
 fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
   let cases = allocation_cases()
-  let roster = "roster walks_agree,specimen_reads_above_reference,cloning_variant_reads_above_reference,reference_allocates_at_all\n"
   let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
   let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
-  NativeClaimReport { stdout: concat(roster, cases |> map(c => concat("case ", concat(c.identity, concat(if c.held { " held" } else { " not_held" }, concat(" observed=", concat(if c.held { "ordered" } else { "unordered" }, "\n")))))) |> join(separator: "")), terminal: terminal }
+  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
+  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
 }

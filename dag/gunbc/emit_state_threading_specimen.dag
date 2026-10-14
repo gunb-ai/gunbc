@@ -2,7 +2,6 @@ module gunbc.emit_state_threading_specimen
 
 import std.types { Bool, Int, List, Map }
 import std.optional { Optional, Present, Absent }
-import v2.std.collection { list_at_optional }
 
 // EMISSION-MINIMUM-COST building block: observation and state threading (roadmap node
 // emission-building-block-realization, first slice). Shape taken from the parse-population profile:
@@ -29,7 +28,7 @@ type SpecAcc {
 }
 
 fn spec_head(c: SpecCursor) -> Int {
-  match list_at_optional(xs: c.source, index: c.index) {
+  match get(xs: c.source, index: c.index) {
     Present { value: v } => v
     Absent => 0 - 1
   }
@@ -62,6 +61,13 @@ fn spec_walk(n: Int) -> Int {
   count(r.tokens) + r.pos + r.tag
 }
 
+// The specimen walk returning the token SEQUENCE it built, so a measuring caller keeps the result
+// (an unused result is allocation the release compiler may elide) and checks the walk, not a count.
+fn spec_walk_tokens(src: List<Int>) -> List<Int> {
+  let r = src |> fold(init: spec_init(src: src), f: (acc, e) => if acc.done { acc } else { spec_step(acc: acc) })
+  r.tokens
+}
+
 fn spec_init(src: List<Int>) -> SpecAcc {
   SpecAcc { remaining: SpecCursor { source: src, index: 0 }, tokens: [], pos: 0, done: false, context: empty_map(), tag: 7 }
 }
@@ -75,7 +81,7 @@ fn spec_summary(r: SpecAcc) -> Int {
 fn spec_walk_inline(src: List<Int>) -> Int {
   let r = src |> fold(init: spec_init(src: src), f: (acc, e) =>
     if acc.done { acc } else {
-      match list_at_optional(xs: acc.remaining.source, index: acc.remaining.index) {
+      match get(xs: acc.remaining.source, index: acc.remaining.index) {
         Present { value: h } => SpecAcc { remaining: SpecCursor { source: acc.remaining.source, index: acc.remaining.index + 1 }, tokens: list_push(acc.tokens, h), pos: acc.pos + 1, done: false, context: acc.context, tag: acc.tag }
         Absent => SpecAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, context: acc.context, tag: acc.tag }
       }
@@ -87,7 +93,7 @@ fn spec_walk_inline(src: List<Int>) -> Int {
 // is never mentioned beside its projections.
 fn spec_walk_inline_fieldwise(src: List<Int>) -> Int {
   let r = src |> fold(init: spec_init(src: src), f: (acc, e) =>
-    match list_at_optional(xs: acc.remaining.source, index: acc.remaining.index) {
+    match get(xs: acc.remaining.source, index: acc.remaining.index) {
       Present { value: h } => SpecAcc { remaining: SpecCursor { source: acc.remaining.source, index: acc.remaining.index + 1 }, tokens: list_push(acc.tokens, h), pos: acc.pos + 1, done: false, context: acc.context, tag: acc.tag }
       Absent => SpecAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, context: acc.context, tag: acc.tag }
     })
