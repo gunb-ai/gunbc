@@ -75,7 +75,8 @@ import v2.std.grammar {
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
   grammar_relation_row_to_node,
-  node_atom_identity_optional
+  node_atom_identity_optional,
+  parse_production_emitted_identity_optional
 }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature }

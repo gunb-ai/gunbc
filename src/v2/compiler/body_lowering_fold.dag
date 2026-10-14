@@ -166,6 +166,7 @@ import v2.std.diagnostic {
   diagnostics_merge,
   outcome_accepted,
   outcome_rejected,
+  outcome_with_diagnostics,
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
