@@ -290,6 +290,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_lau
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch { SnapshotFreeLaunch, CodexWithoutSnapshot }
+import gunbc.compute.compute_seat_ensure { SeatDischargeSkipped }
 import extdeps.llm.cli { ReasoningMedium, ProviderAccountDefaultModel }
 import test.claim.roadmap.roadmap_dispatch_actuator_witness { fx_prepared_launch, sized_derivable, fixture_ready_resolution }
 
@@ -1419,6 +1420,7 @@ test fn observe_refused_spawn_does_not_zero_the_discovery_pass() -> Bool {
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
+    seat_discharge: SeatDischargeSkipped { why: "witness" },
     discovery: BeltDiscovered { owed: 1, enqueues: [BeltObligationStarted { unit: "gunbc-obligation-attempt-n-k.service" as NonEmptyStr }] },
   }
   let receipt = belt_tick_receipt_from_result(
@@ -1438,6 +1440,7 @@ test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() 
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscoveryRefused { reason: "the attempts ledger is unobservable" },
     },
     observed_at: "2026-08-02T02:00:00Z",
@@ -1450,6 +1453,7 @@ test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() 
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscovered { owed: 2, enqueues: [
         BeltObligationHeld { unit: "gunbc-obligation-attempt-a-1.service" as NonEmptyStr },
         BeltObligationEnqueueRefused { unit: "gunbc-obligation-attempt-b-2.service" as NonEmptyStr, reason: "systemd-run exited 1" },
@@ -2406,6 +2410,7 @@ test fn transition_halted_tick_refuses_every_pass() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscoveryRefused { reason: launch_refusal_reason(r: refusal) },
     },
     observed_at: "2026-08-30T02:00:00Z",
@@ -2422,6 +2427,7 @@ test fn revision_refusal_keeps_discovery_independently_recorded() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscovered { owed: 0, enqueues: [] },
     },
     observed_at: "2026-08-30T02:00:00Z",

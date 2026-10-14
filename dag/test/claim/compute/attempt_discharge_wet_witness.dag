@@ -1,0 +1,297 @@
+module test.claim.compute.attempt_discharge_wet_witness
+
+import extdeps.shell
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { trim, string_contains }
+import std.measure { Kibibyte, kibibyte, kibibyte_count }
+import product.capacity.event_chain { PartitionId }
+import gunbc.compute.host_capacity {
+  ComputeCapacitySubject, compute_reserve_against, ComputeReservation, ComputeReserved,
+  ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
+}
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered, AttemptOwner, DispatchOwned, DirectInvocation,
+  UnitLifecycle, UnitTerminatedSuccess, UnitStillRunning, UnitLifecycleUnknown,
+  AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
+  AttemptTransition, AttemptAdvanced, attempt_open, attempt_begin_launch, attempt_terminate,
+}
+import gunbc.compute.work_provider_local {
+  UnitLifecycleSource, SuppliedUnitLifecycle, compute_reservation_reference,
+}
+import gunbc.compute.compute_seat_ensure {
+  SeatEnsureOutcome, SeatEnsureNoop, SeatEnsureReleased, SeatEnsureRefused, SeatEnsureRed,
+  compute_seat_ensure_in, seat_owned_by,
+  SeatDischargePass, SeatDischargeSkipped, SeatDischargeRan, SeatDischargeRefused, compute_seat_discharge_all,
+}
+
+// KILL-AT-EACH-TRANSITION CONTROLS FOR THE COMPUTE SEAT (gunbc.recurring_failure_mode
+// a_held_compute_seat_has_no_in_corpus_discharge). Every cell builds the state a process killed at one
+// transition leaves behind -- in a real temporary store, through the real attempt slot and the real
+// capacity ledger -- and then asks the one discharge door (compute_recover_attempt_in) through the
+// ensure what becomes of the seat. The unit's lifecycle is SUPPLIED (a unit is not available in a
+// tempdir); the supplied value is one the real observation produces, and the route is the door's.
+//
+// open -> reserve -> unit start -> unit end -> settle -> release are the transitions. A kill after
+// each one leaves: no seat | seat held, attempt Reserved | seat held, attempt Launching | seat held,
+// unit ended | seat held, attempt terminal. The seat is only ever held, never lost; the ensure returns
+// it once the owner is proven ended and keeps it otherwise.
+//
+// THIS FILE RUNS ON THE LOCAL-REPO WET LANE: rows in local_repo_wet_terminal, floor_route_gap (chunk
+// 21, the identities that reach fresh_root()) and ci_layer_roots witness_exclusion_frontier.
+
+data granted_kib: Int = 1048576
+data supplied_host: Kibibyte = kibibyte(count: 67108864)
+
+fn fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_seat_discharge.XXXXXX").path
+}
+
+fn subject_at(root: String) -> ComputeCapacitySubject {
+  ComputeCapacitySubject {
+    root: join([trim(s: root), "/capacity"], "") as NonEmptyStr,
+    partition: "compute-seat-discharge-wet-witness" as PartitionId,
+    appropriation: kibibyte(count: granted_kib * 4),
+    request: kibibyte(count: granted_kib),
+  }
+}
+
+fn attempts_at(root: String) -> NonEmptyStr {
+  join([trim(s: root), "/attempts"], "") as NonEmptyStr
+}
+
+fn record_of(reference: String, state: AttemptState, owner: AttemptOwner) -> AttemptRecord {
+  AttemptRecord {
+    identity: "feedfacefeedface",
+    reference: reference,
+    unit: join(["gunbc-compute-feedfacefeedface-", reference], ""),
+    granted: kibibyte(count: granted_kib),
+    opened_at: 1800,
+    launch_deadline: 2000,
+    state: state,
+    owner: owner,
+  }
+}
+
+fn dispatch_owner() -> AttemptOwner {
+  DispatchOwned { node_id: "node-a", attempt_key: "key-a" }
+}
+
+fn reserved(subject: ComputeCapacitySubject, reference: String) -> Bool {
+  match compute_reserve_against(subject: subject, reference: reference as NonEmptyStr, term_seconds: 60, total: supplied_host, available: supplied_host) {
+    ComputeReserved { grant: _, partition: _, amount: _, store: _ } => true
+    _ => false
+  }
+}
+
+fn committed(subject: ComputeCapacitySubject) -> Int {
+  match compute_capacity_standing_on(subject: subject) {
+    ComputeCapacityStandingRead { committed: c, ceiling: _, headroom: _, observed_available: _, observed_total: _ } => kibibyte_count(k: c)
+    ComputeCapacityStandingUnread { detail: _ } => 0 - 1
+  }
+}
+
+fn opened(root: String, reference: String, owner: AttemptOwner) -> Bool {
+  match attempt_open(root: attempts_at(root: root), record: record_of(reference: reference, state: AttemptReserved, owner: owner)) {
+    AttemptAdvanced { state: _, generation: _ } => true
+    _ => false
+  }
+}
+
+fn launching(root: String, reference: String) -> Bool {
+  match attempt_slot_read(root: attempts_at(root: root), reference: reference as NonEmptyStr) {
+    AttemptSlotHeld { record: rec, generation: g } =>
+      match attempt_begin_launch(root: attempts_at(root: root), record: rec, expected: g) {
+        AttemptAdvanced { state: _, generation: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn ended() -> UnitLifecycleSource {
+  SuppliedUnitLifecycle { lifecycle: UnitTerminatedSuccess { detail: "supplied: the unit ended" } }
+}
+
+fn running() -> UnitLifecycleSource {
+  SuppliedUnitLifecycle { lifecycle: UnitStillRunning { detail: "supplied: the unit is running" } }
+}
+
+fn unknown() -> UnitLifecycleSource {
+  SuppliedUnitLifecycle { lifecycle: UnitLifecycleUnknown { detail: "supplied: the manager did not answer" } }
+}
+
+fn ensure(root: String, reference: String, source: UnitLifecycleSource) -> SeatEnsureOutcome {
+  compute_seat_ensure_in(attempts_root: attempts_at(root: root), subject: subject_at(root: root), reference: reference as NonEmptyStr, source: source)
+}
+
+fn is_released(o: SeatEnsureOutcome) -> Bool {
+  match o { SeatEnsureReleased { reference: _, committed_before: b, committed_after: a } => kibibyte_count(k: b) - kibibyte_count(k: a) == granted_kib  _ => false }
+}
+
+fn is_noop(o: SeatEnsureOutcome) -> Bool {
+  match o { SeatEnsureNoop { reference: _, why: _ } => true  _ => false }
+}
+
+fn is_refused(o: SeatEnsureOutcome) -> Bool {
+  match o { SeatEnsureRefused { reference: _, reason: _ } => true  _ => false }
+}
+
+fn is_terminal(root: String, reference: String) -> Bool {
+  match attempt_slot_read(root: attempts_at(root: root), reference: reference as NonEmptyStr) {
+    AttemptSlotHeld { record: rec, generation: _ } => match rec.state { AttemptTerminal { verdict: _, detail: _ } => true  _ => false }
+    _ => false
+  }
+}
+
+// THE REGRESSION CONTROL, ENROLLED AND PERMANENT: the failure state itself. A killed attempt's seat is
+// held, and nothing in the attempt's own terminal path returns it; only the ensure does. If this goes
+// false, the seat is being returned by something other than the door and the other cells here are
+// asserting the wrong route.
+test fn a_killed_reserved_attempt_keeps_its_seat_charged_until_the_ensure_runs() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-kill", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-kill")
+    && committed(subject: subject) == granted_kib
+    && committed(subject: subject) == granted_kib
+}
+
+// KILL AFTER OPEN, BEFORE RESERVE: the record exists, the ledger holds nothing. The ensure closes the
+// attempt and reports that nothing was held; it releases no seat it never reserved.
+test fn a_kill_after_open_before_reserve_holds_no_seat_and_the_ensure_closes_the_attempt() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-open", owner: dispatch_owner())
+    && is_noop(o: ensure(root: root, reference: "r-open", source: ended()))
+    && committed(subject: subject) == 0
+    && is_terminal(root: root, reference: "r-open")
+}
+
+// KILL AFTER RESERVE, BEFORE UNIT START: the seat is held and the launch deadline has passed.
+test fn a_kill_after_reserve_is_discharged_once_the_launch_deadline_passes() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-res", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-res")
+    && is_released(o: ensure(root: root, reference: "r-res", source: running()))
+    && committed(subject: subject) == 0
+    && is_terminal(root: root, reference: "r-res")
+}
+
+// KILL AFTER UNIT START WITH THE UNIT ENDED: Launching, the unit proven ended -> the seat comes back.
+test fn a_kill_after_unit_start_with_an_ended_unit_is_discharged() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-end", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-end")
+    && launching(root: root, reference: "r-end")
+    && is_released(o: ensure(root: root, reference: "r-end", source: ended()))
+    && committed(subject: subject) == 0
+}
+
+// A LIVE OWNER IS NEVER DISCHARGED: Launching with the unit running is a Noop and the seat stays.
+test fn a_live_unit_keeps_its_seat_and_the_ensure_is_a_noop() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-live", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-live")
+    && launching(root: root, reference: "r-live")
+    && is_noop(o: ensure(root: root, reference: "r-live", source: running()))
+    && committed(subject: subject) == granted_kib
+    && !is_terminal(root: root, reference: "r-live")
+}
+
+// AN UNKNOWN LIFECYCLE IS A REFUSAL AND THE CHARGE IS KEPT: no free on doubt.
+test fn an_unknown_unit_lifecycle_refuses_and_keeps_the_charge() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-unk", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-unk")
+    && launching(root: root, reference: "r-unk")
+    && is_refused(o: ensure(root: root, reference: "r-unk", source: unknown()))
+    && committed(subject: subject) == granted_kib
+}
+
+// KILL BETWEEN THE TERMINAL GENERATION AND THE RELEASE: the attempt is already settled and the seat is
+// still charged. The old door declined this as "already terminal", making the window permanent.
+test fn a_kill_after_settle_before_release_is_discharged_from_the_terminal_record() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  let ok = opened(root: root, reference: "r-set", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-set")
+    && launching(root: root, reference: "r-set")
+  let settled = match attempt_slot_read(root: attempts_at(root: root), reference: "r-set" as NonEmptyStr) {
+    AttemptSlotHeld { record: rec, generation: g } =>
+      match attempt_terminate(root: attempts_at(root: root), record: rec, expected: g, verdict: AttemptRecovered, detail: "wet witness settle") {
+        AttemptAdvanced { state: _, generation: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+  ok && settled
+    && committed(subject: subject) == granted_kib
+    && is_released(o: ensure(root: root, reference: "r-set", source: ended()))
+    && committed(subject: subject) == 0
+}
+
+// A SECOND ENSURE FINDS NOTHING HELD AND RELEASES NOTHING TWICE.
+test fn a_second_ensure_over_a_discharged_seat_releases_nothing() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-twice", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-twice")
+    && is_released(o: ensure(root: root, reference: "r-twice", source: ended()))
+    && is_noop(o: ensure(root: root, reference: "r-twice", source: ended()))
+    && committed(subject: subject) == 0
+}
+
+// AN ABSENT SLOT IS NOT A RELEASE: the ensure refuses a reference no record names.
+test fn a_reference_no_record_names_is_refused_and_nothing_is_released() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  reserved(subject: subject, reference: "r-orphan")
+    && is_refused(o: ensure(root: root, reference: "r-orphan", source: ended()))
+    && committed(subject: subject) == granted_kib
+}
+
+// THE DRIVER KEEPS THE CHARGE WHEN NO EXIT RECORD PROVES THE ATTEMPT ENDED: an owned seat with no exit
+// record in the instance is skipped, never released on the attempt's absence from the spool.
+test fn the_driver_does_not_discharge_a_seat_without_an_exit_record() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-drv", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-drv")
+    && (match compute_seat_discharge_all(instance_root: root, attempts_root: attempts_at(root: root), subject: subject, source: ended()) {
+      SeatDischargeRan { outcomes: os } => count(os) == 0 || !any(os, o => is_released(o: o))
+      SeatDischargeSkipped { why: _ } => true
+      SeatDischargeRefused { reason: _ } => true
+    })
+    && committed(subject: subject) == granted_kib
+}
+
+// OWNERSHIP IS RECORDED, NOT INFERRED: only the recorded dispatch owner matches, and a direct
+// invocation matches no dispatch attempt. One attempt ending can never name another's seat.
+test fn a_seat_is_owned_only_by_its_recorded_dispatch_attempt() -> Bool {
+  let root = fresh_root()
+  let ok = opened(root: root, reference: "r-own", owner: dispatch_owner())
+    && opened(root: root, reference: "r-dir", owner: DirectInvocation { why: "wet witness" })
+  let own = attempt_slot_read(root: attempts_at(root: root), reference: "r-own" as NonEmptyStr)
+  let dir = attempt_slot_read(root: attempts_at(root: root), reference: "r-dir" as NonEmptyStr)
+  ok
+    && seat_owned_by(reading: own, node_id: "node-a", attempt_key: "key-a")
+    && !seat_owned_by(reading: own, node_id: "node-a", attempt_key: "key-b")
+    && !seat_owned_by(reading: own, node_id: "node-b", attempt_key: "key-a")
+    && !seat_owned_by(reading: dir, node_id: "node-a", attempt_key: "key-a")
+}
+
+// THE RESERVATION REFERENCE IS THE OWNER'S IDENTITY PLUS A RECORDED ORDINAL, NEVER A CLOCK: the same
+// identity at ordinal n and n+1 differ, the same pair is the same reference on every call, and no
+// `@` clock suffix survives.
+test fn the_reservation_reference_is_the_identity_and_its_ordinal() -> Bool {
+  let a = compute_reservation_reference(identity: "feedfacefeedface", ordinal: 0) as String
+  let b = compute_reservation_reference(identity: "feedfacefeedface", ordinal: 1) as String
+  a != b
+    && a == (compute_reservation_reference(identity: "feedfacefeedface", ordinal: 0) as String)
+    && !string_contains(s: a, pattern: "@")
+    && string_contains(s: a, pattern: "feedfacefeedface")
+}

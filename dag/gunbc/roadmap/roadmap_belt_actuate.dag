@@ -245,7 +245,7 @@ import gunbc.dispatch_selection { default_provider_selection_request, SizingProf
 import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import extdeps.systemd.systemd_run { systemd_run_user_transient_command, SystemdRunProperty, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, kibibyte }
 import gunbc.deploy_transition {
   ActuationAdmission,
   ActuationAdmitted,
@@ -327,9 +327,14 @@ import gunbc.roadmap.roadmap_publish_observe {
 }
 import gunbc.compute.work_request { RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
 import gunbc.compute.attempt_lifecycle { DispatchOwned }
+import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved }
+import gunbc.compute.compute_seat_ensure {
+  SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, compute_seat_discharge_all,
+}
 import gunbc.compute.work_provider_local {
   compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
   provide_result_host_record, host_record_was_written, host_record_wire,
+  compute_attempts_root, ObserveUnitLifecycle,
 }
 import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
   SharedComputationCitation, ComputationAttached, ComputationComputed,
@@ -1543,6 +1548,22 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
         Present { value: why } => SessionSettlePassRefused { detail: why }
         Absent => session_placement_settle_pass(instance: instance, stores: stores)
       }
+  }
+}
+
+// A COMPUTE SEAT OPENED FOR A DISPATCH ATTEMPT THAT HAS ENDED IS DISCHARGED, EVERY TICK. The belt is only the
+// executor: the ownership authority is the owner recorded in the compute attempt record, the trigger is the
+// attempt's exit record, and the release is gunbc.compute.work_provider_local compute_recover_attempt_in,
+// which re-proves unit termination itself (gunbc.compute.compute_seat_ensure compute_seat_discharge_all).
+fn belt_compute_seat_discharge_pass(instance: HostDashboardInstance) -> SeatDischargePass {
+  match compute_capacity_subject(instance: instance, request: kibibyte(count: 0)) {
+    ComputeSubjectHostUnresolved { host: h } => SeatDischargeRefused { reason: join(["no capacity subject resolves for host ", h as String], "") }
+    ComputeSubjectResolved { subject: subj } =>
+      compute_seat_discharge_all(
+        instance_root: instance.instance_root as String,
+        attempts_root: compute_attempts_root(instance: instance),
+        subject: subj,
+        source: ObserveUnitLifecycle)
   }
 }
 
@@ -4145,6 +4166,7 @@ type BeltTickResult {
   spawn_outcomes: List<BeltSpawnOutcome>,
   teardown_outcomes: List<BeltTeardownOutcome>,
   discovery: BeltDiscovery,
+  seat_discharge: SeatDischargePass,
 }
 
 fn belt_tick_empty_reconcile(state: SpawnMode) -> BeltReconcile {
@@ -4447,6 +4469,7 @@ fn belt_tick_for_instance(
         reconcile: pass.reconcile,
         spawn_outcomes: spawn_outcomes,
         teardown_outcomes: teardown_outcomes,
+        seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
         discovery: BeltDiscoveryRefused { reason: launch_refusal_reason(r: refusal) },
       }
     TickPassesRun =>
@@ -4456,6 +4479,7 @@ fn belt_tick_for_instance(
         reconcile: pass.reconcile,
         spawn_outcomes: spawn_outcomes,
         teardown_outcomes: teardown_outcomes,
+        seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
         discovery: belt_discover_for_instance(instance: instance),
       }
   }
@@ -4692,6 +4716,7 @@ fn belt_run_once_in(
         reconcile: belt_tick_empty_reconcile(state: roadmap_belt_production_spawn_mode),
         spawn_outcomes: [],
         teardown_outcomes: [],
+        seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
         discovery: belt_discover_for_instance(instance: instance),
       }
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
