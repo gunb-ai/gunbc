@@ -14211,7 +14211,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                     }
                                 } else {
                                     if ((!callee_is_body_binding.clone() && crate::v1_compiler_infer_method::is_empty_map_constructor(func_name.clone())) && match (*crate::v1_compiler_infer_lookup::resolved_plain_call_target_for_outcome(call_target.clone())).clone() {
-    CallTargetIdentity::RuntimePrimitiveCall { primitive_name: _, .. } => true,
+    CallTargetIdentity::RuntimePrimitiveCall { .. } => true,
     _ => false,
 }) {
                             {
@@ -14314,7 +14314,7 @@ match bare_m.clone() {
 }
                         } else {
                             if ((!callee_is_body_binding.clone() && crate::v1_compiler_infer_method::is_empty_set_constructor(func_name.clone())) && match (*crate::v1_compiler_infer_lookup::resolved_plain_call_target_for_outcome(call_target.clone())).clone() {
-    CallTargetIdentity::RuntimePrimitiveCall { primitive_name: _, .. } => true,
+    CallTargetIdentity::RuntimePrimitiveCall { .. } => true,
     _ => false,
 }) {
                                 {
