@@ -723,7 +723,15 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
     } else { [] }
     let kind_diags = type_param_kind_diagnostics(carrier: n, decl: decl, type_name: type_name, env: env, module_name: module_name)
     let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1, masked: masked))
-    let resolved_args = map(arg_results, ar => ar.resolved)
+    // A nested type application is a use site, the same fact rendered_use_site_type stamps at a
+    // parameter root. The container arm leaves List.inferred empty; without this wrap, Optional<List<T>>
+    // carries an unstamped List while List<T> as the root is stamped — one construction of one question.
+    let resolved_args = n.children |> enumerate |> map(pair =>
+      match arg_results |> skip(pair.first) |> first {
+        Present { value: ar } => rendered_use_site_type(authored: pair.second, resolved: ar.resolved)
+        Absent => pair.second
+      }
+    )
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
     let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
       let idx = pair.first

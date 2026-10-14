@@ -1575,8 +1575,15 @@ Rc::new(NodeResolveResult {
                         });
                         let resolved_args = Rc::new({
                             let mut __result = Vec::new();
-                            for ar in arg_results.iter().cloned() {
-                                __result.push(ar.resolved.clone());
+                            for (idx, child) in n.children.clone().iter().cloned().enumerate() {
+                                if let Some(ar) = arg_results.get(idx).cloned() {
+                                    __result.push(rendered_use_site_type(
+                                        child.clone(),
+                                        ar.resolved.clone(),
+                                    ));
+                                } else {
+                                    __result.push(child.clone());
+                                }
                             }
                             __result
                         });

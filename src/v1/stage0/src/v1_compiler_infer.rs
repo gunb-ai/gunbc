@@ -259,6 +259,7 @@ pub use crate::v1_compiler_infer_types::{
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved, is_product_type,
     is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
     method_receiver_element_node, node_is_collection, node_is_element_collection,
+    collection_carrier_node,
     node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
     node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
     prefer_specific_type, resolve_type_variables_from_template, resolved_type,
@@ -15112,11 +15113,12 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let elements = texpr.children.clone();
             let elem_expected = match expected.clone() {
                 Some(exp) => {
+                    let col = collection_carrier_node(exp.clone());
                     if crate::v1_compiler_infer_types::node_is_element_collection(
-                        exp.clone(),
+                        col.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     ) {
-                        match exp.children.clone().first().cloned() {
+                        match col.children.clone().first().cloned() {
                             Some(elem) => Some(crate::v1_compiler_infer_types::child_type_node(
                                 elem.clone(),
                             )),
@@ -17039,7 +17041,21 @@ pub fn record_lit_expected_through_generic_alias(
                 break std::option::Option::None;
             }
             Some(exp) => {
-                if (((fuel.clone() <= 0) || (exp.connective.clone() != Connective::NoConnective))
+                if ((exp.name.clone() == "Optional".to_string())
+                    || (crate::v1_std_core::authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        exp.clone(),
+                    ) == "Optional".to_string())
+                    || (match exp.inferred.clone().as_deref() {
+                        Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => {
+                            rt.name.clone() == "Optional".to_string()
+                        }
+                        _ => false,
+                    }))
+                {
+                    break expected.clone();
+                } else if (((fuel.clone() <= 0)
+                    || (exp.connective.clone() != Connective::NoConnective))
                     || ((exp.children.clone().len() as i64) == 0))
                 {
                     break expected.clone();
@@ -17277,24 +17293,37 @@ pub fn present_value_expected_from_optional(
     field_name: String,
     value: Rc<Node>,
     expected: Option<Rc<Node>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     {
-        let value_is_construction = match (*value.expr_data.clone()).clone() {
-            ExprData::ExprRecordLit { parent_enum: _, .. } => true,
-            _ => false,
-        };
-        if (((type_name.clone() != "Present".to_string())
+        if ((type_name.clone() != "Present".to_string())
             || (field_name.clone() != "value".to_string()))
-            || (value_is_construction.clone() == false))
         {
             std::option::Option::None
         } else {
             match expected.clone() {
                 Some(exp) => {
-                    if (exp.return_cardinality.clone() == Cardinality::CardOptional) {
-                        Some(crate::v1_std_core::with_required_cardinality(exp.clone()))
-                    } else {
+                    let peeled_optional = ((exp.return_cardinality.clone()
+                        == Cardinality::CardOptional)
+                        || ((exp.name.clone() == "Optional".to_string())
+                            && ((exp.children.clone().len() as i64) == 1))
+                        || ((exp.name.clone() == "Optional".to_string())
+                            && (exp.connective.clone() == Disj)));
+                    if (peeled_optional.clone() == false) {
                         std::option::Option::None
+                    } else {
+                        let inner = extract_optional_inner_node(exp.clone());
+                        match (*value.expr_data.clone()).clone() {
+                            ExprData::ExprRecordLit { parent_enum: _, .. } => Some(inner.clone()),
+                            ExprData::ExprListLit => {
+                                if node_admits_list_literal(inner.clone(), source_indices.clone()) {
+                                    Some(inner.clone())
+                                } else {
+                                    std::option::Option::None
+                                }
+                            }
+                            _ => std::option::Option::None,
+                        }
                     }
                 }
                 std::option::Option::None => std::option::Option::None,
@@ -17635,7 +17664,7 @@ let field_conformance_type = match field_declared_type.clone() {
             },
     std::option::Option::None => error_type(),
 };
-let field_expected = match present_value_expected_from_optional(tn_str.clone(), fi_name.clone(), crate::v1_std_core::field_init_node_value(fi.clone()), expected.clone()) {
+let field_expected = match present_value_expected_from_optional(tn_str.clone(), fi_name.clone(), crate::v1_std_core::field_init_node_value(fi.clone()), expected.clone(), scope.type_env.clone().source_indices.clone()) {
     Some(element) => Some(element.clone()),
     std::option::Option::None => match field_declared_type.clone() {
     Some(declared_ft) => {
@@ -18018,11 +18047,15 @@ Rc::new(FieldInferResult {
                 let is_present_ctor = ((type_name.clone().unwrap() == "Present".to_string())
                     && (local_variant_parent.clone().as_deref()
                         == expected_optional_parent.clone().as_deref()));
+                let present_application_owner = match expected_owner.clone() {
+                    Some(coproduct) => coproduct.clone(),
+                    std::option::Option::None => raw_resolved.clone(),
+                };
                 let applied_expected_owner = if is_present_ctor.clone() {
                     std::option::Option::None
                 } else {
                     variant_literal_expected_application(
-                        raw_resolved.clone(),
+                        present_application_owner.clone(),
                         expected.clone(),
                         scope.clone(),
                     )
@@ -18048,13 +18081,41 @@ Rc::new(FieldInferResult {
                             })
                             .first()
                             .cloned();
-                            match val_field.clone() {
+                            let payload_optional = match val_field.clone() {
                                 Some(val_fir) => crate::v1_std_core::with_optional_cardinality(
                                     crate::v1_compiler_infer_types::resolved_type(
                                         val_fir.infer_result.clone().typed.clone(),
                                     ),
                                 ),
                                 std::option::Option::None => raw_resolved.clone(),
+                            };
+                            match expected.clone() {
+                                Some(exp) => {
+                                    if ((exp.name.clone() == "Optional".to_string())
+                                        || (crate::v1_std_core::authored_name_at(
+                                            scope.type_env.clone().source_indices.clone(),
+                                            exp.clone(),
+                                        ) == "Optional".to_string()))
+                                    {
+                                        exp.clone()
+                                    } else {
+                                        match exp.inferred.clone().as_deref() {
+                                            Some(
+                                                crate::v1_std_core::InferredNode::Resolved {
+                                                    node: rt,
+                                                },
+                                            ) => {
+                                                if (rt.name.clone() == "Optional".to_string()) {
+                                                    rt.clone()
+                                                } else {
+                                                    payload_optional.clone()
+                                                }
+                                            }
+                                            _ => payload_optional.clone(),
+                                        }
+                                    }
+                                }
+                                std::option::Option::None => payload_optional.clone(),
                             }
                         }
                     } else {
