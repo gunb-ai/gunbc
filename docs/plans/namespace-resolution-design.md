@@ -784,11 +784,13 @@ is the Optional mint only). A bare `concat` / `count` binds only when the module
 template identity (or is `std.algebra`). Native: `resolve_atom_unscoped` reads
 `collection_roster_rows` and unbound-refuses a roster head that is not visible — it does not
 fall through to `resolve_atom_primitive_authority`. Seed: `infer_builtin_call_type` / the
-builtin registry still admit concat/count (v1 semantics-frozen). That seed/native split is
-`gunbc.rung_drop` `native_concat_count_import_scope_until_corpus_imports` (temporary
-Mitigatable; restoration is native concat/count bind under import-visible template identity
-plus a compile_cli emit with no unbound concat/count first-fatal). `map_insert` /
-`empty_map` / `map_lookup` wait on #13872's real fns.
+builtin registry still admit concat/count (v1 semantics-frozen). That is a declared
+migration window / unclimbed seed path, not a rung drop: the seed never held import-scoped
+resolution, and native is climbing. The window is bounded by the generated corpus import
+sweep (gunbc#14017). Restoration: native `emit --entry v2.cli.compile_cli` over dag + src/v2
+first-fatals no concat/count as `resolve_reason_unbound_symbol` for missing template
+import. `map_get` is deleted; `map_lookup` is the survivor. `map_insert` / `empty_map` /
+`map_lookup` wait on #13872's real fns.
 
 **RULED — the (Y) expected-type filter (operator, 2026-07-22; recorded in §4).** The re-adjudication
 is done: the pool-filter reading of (Y) dies with the `global_bare` tier (there is never a pool
