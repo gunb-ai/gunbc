@@ -1555,9 +1555,9 @@ fn native_census_positions_absorb_accepted(
   }
 }
 
-// A LATER DIAGNOSTIC'S LOCUS, RESOLVED AT THE DEMAND. NodeLocus uses the owner map then the same
-// native_file_refusal_at the front-end refusal already uses; a miss is Unresolved, never a guessed
-// line. Textual loci use the stored file text.
+// A LATER DIAGNOSTIC'S LOCUS, RESOLVED AT THE DEMAND. NodeLocus uses the owner map, then the same
+// native_file_refusal_from_occurrence the front-end NodeLocus arm already uses; a miss is
+// Unresolved, never a guessed line. Textual loci use the stored file text.
 fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
   match at {
     Textual { file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
@@ -1574,7 +1574,7 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
               match map_lookup(positions.files, owner_path) {
                 Absent => FileRefusalAtUnresolvedNode
                 Present { value: file } =>
-                  native_file_refusal_at(at: NodeLocus { anchor: a }, path: owner_path, spans: file.spans, text: file.text)
+                  native_file_refusal_from_occurrence(spans: file.spans, id: id, path: owner_path, text: file.text)
               }
           }
       }
