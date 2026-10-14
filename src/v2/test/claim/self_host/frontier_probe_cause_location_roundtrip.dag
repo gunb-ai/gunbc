@@ -13,14 +13,14 @@ import v2.test.fixture.frontier_probe_cause_location_manifest_fixture {
   frontier_probe_cause_location_emitted_receipt
 }
 import v2.std.diagnostic { ByteRange, WholeFile }
-import v2.std.text { String }
 
-// RELOAD half of the emit-reload round trip. The fixture beside this file is a historical
-// emitted receipt, mechanically adapted to FreeSemigroup; these claims prove that receipt
-// parses, typechecks against the live carrier, and still carries the location after a
-// front-end round trip. Emitting a location the manifest cannot reload is worse than
-// dropping it, because it fails at reload rather than at the edit — that is the exact
-// defect this pair exists to catch.
+// RELOAD half of the last survey receipt. #8344 deleted frontier_probe_survey, so this
+// pair cannot re-prove that a live emitter writes this text. The fixture is that
+// historical receipt with rejection_chain relabelled FreeSemigroup; these claims prove
+// it still parses, typechecks, and carries the location. The mint that produces
+// FreeSemigroup<Symbol> is exercised by
+// v2.test.claim.self_host.frontier_probe_assemble_detail
+// assemble_receipt_carries_the_whole_rejection_chain_and_its_fatal_cause.
 
 fn roundtrip_extent_start() -> Int {
   match frontier_probe_cause_location_emitted_receipt.assemble_detail {
