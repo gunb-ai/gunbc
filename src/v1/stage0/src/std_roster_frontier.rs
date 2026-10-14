@@ -17,7 +17,6 @@ pub use crate::std_dissolution::{
     bound_dissolution, dissolution_status, dissolution_trigger_ref, unbound_dissolution,
 };
 pub use crate::std_dissolution::{DissolutionCondition, DissolutionStatus, DissolutionTrigger};
-pub use crate::std_key_relation::SubjectKey;
 pub use crate::std_keyed_roster::keyed_roster_build;
 pub use crate::std_keyed_roster::KeyedRosterBuild;
 use crate::std_keyed_roster::KeyedRosterBuild::{KeyedRosterBuildDuplicateKey, KeyedRosterBuilt};
@@ -141,15 +140,12 @@ pub fn frontier_subject_key(subject: Rc<FrontierSubject>) -> String {
 
 pub fn frontier_rows_to_keyed_rows(
     rows: Rc<Vec<Rc<FrontierRow>>>,
-) -> Rc<Vec<Rc<KeyedRow<Rc<SubjectKey<Rc<FrontierSubject>>>, Rc<FrontierRow>>>>> {
+) -> Rc<Vec<Rc<KeyedRow<Rc<FrontierSubject>, Rc<FrontierRow>>>>> {
     Rc::new({
         let mut __result = Vec::new();
         for row in rows.iter().cloned() {
             __result.push(Rc::new(KeyedRow {
-                row_key: Rc::new(SubjectKey {
-                    subject: row.subject.clone(),
-                    _phantom: std::marker::PhantomData,
-                }),
+                row_key: row.subject.clone(),
                 value: row.clone(),
                 _phantom: std::marker::PhantomData,
             }));
@@ -161,7 +157,10 @@ pub fn frontier_rows_to_keyed_rows(
 pub fn frontier_rows_keyed_roster_build(
     rows: Rc<Vec<Rc<FrontierRow>>>,
 ) -> Rc<KeyedRosterBuild<Rc<FrontierSubject>, Rc<FrontierRow>>> {
-    crate::std_keyed_roster::keyed_roster_build(frontier_rows_to_keyed_rows(rows.clone()))
+    crate::std_keyed_roster::keyed_roster_build(
+        frontier_rows_to_keyed_rows(rows.clone()),
+        frontier_subject_eq,
+    )
 }
 
 pub fn frontier_path_subjects(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<String>> {
