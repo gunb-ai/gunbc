@@ -1,6 +1,6 @@
 module gunbc.crate_partition
 
-import std.algebra { collection_concat_shape }
+import std.algebra { collection_concat_shape, collection_map_shape, collection_map_get_shape }
 import std.types { Bool, Int, List, NonEmptyStr, String, brand }
 import std.optional { Absent, Optional, Present, optional_present }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

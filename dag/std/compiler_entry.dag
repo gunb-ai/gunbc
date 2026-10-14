@@ -1,5 +1,6 @@
 module std.compiler_entry
 
+import std.algebra { collection_map_shape }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure {
   Nanosecond,

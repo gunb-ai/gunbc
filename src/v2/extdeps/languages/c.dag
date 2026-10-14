@@ -34,6 +34,7 @@ import std.algebra {
   empty_map,
   map_insert,
   collection_concat_shape
+import std.algebra { collection_concat_shape, collection_map_shape }
 }
 import std.graph {
   CallGraph,

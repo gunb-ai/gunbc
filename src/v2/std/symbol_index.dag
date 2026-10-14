@@ -2,7 +2,7 @@ module v2.std.symbol_index
 
 
 import std.types { List, Map }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, contains, fold_list, is_empty, length, list_head, empty_map, map_insert, map_contains_key, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, contains, fold_list, is_empty, length, list_head, empty_map, map_insert, map_contains_key, map_lookup, collection_map_shape }
 import v2.std.witness { map_get_checked }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }

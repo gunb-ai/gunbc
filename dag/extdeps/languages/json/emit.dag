@@ -1,7 +1,7 @@
 module extdeps.languages.json.emit
 
 import std.optional { Present, Absent }
-import std.algebra { collection_concat_shape, collection_count_shape }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme, json_number_lexeme }
 import extdeps.numeric.base16 { int_to_upper_hex }

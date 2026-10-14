@@ -1,5 +1,6 @@
 module std.roster_frontier
 
+import std.algebra { collection_map_shape }
 import std.keyed_row { KeyedRow }
 import std.decl_ref {
   DeclarationRef,
