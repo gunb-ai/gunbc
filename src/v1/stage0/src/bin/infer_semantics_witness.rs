@@ -2426,11 +2426,25 @@ fn main() -> ExitCode {
         ),
     ];
 
+    let filter = std::env::args().nth(1);
+    let mut ran = 0usize;
     for (name, test) in tests {
+        if let Some(f) = &filter {
+            if !name.contains(f) {
+                continue;
+            }
+        }
+        ran += 1;
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(test));
         if result.is_err() {
             return fail(format!("{name} panicked"));
         }
+    }
+    if filter.is_some() && ran == 0 {
+        return fail(format!(
+            "no infer_semantics_witness test name contains '{}'",
+            filter.unwrap()
+        ));
     }
 
     ExitCode::SUCCESS

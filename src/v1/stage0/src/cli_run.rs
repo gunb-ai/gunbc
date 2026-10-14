@@ -9876,13 +9876,16 @@ mod closure_edge_demand_tests {
         );
     }
 
-    /// A qualified name whose module is not in the pool must refuse. Restoring fill cannot
-    /// invent a missing provider.
+    /// A module path with no provider in the pool must refuse. Restoring fill cannot invent
+    /// one. `ghost.provider.one()` with no declared prefix is field access on unbound `ghost`
+    /// (`longest_declared_module_prefix` only classifies a chain whose prefix is already in
+    /// the pool). An `import` is the spelling the closure fixpoint treats as a module path
+    /// without that prefix.
     #[test]
     fn host_reconcile_refuses_a_qualified_name_with_no_provider() {
         let fixture = Fixture::new(&[(
             "entry.dag",
-            "module dotted_entry\nfn main() -> Int { ghost.provider.one() }\n",
+            "module dotted_entry\nimport ghost.provider { one }\nfn main() -> Int { ghost.provider.one() }\n",
         )]);
         let index = fixture.index();
         let outcome =
