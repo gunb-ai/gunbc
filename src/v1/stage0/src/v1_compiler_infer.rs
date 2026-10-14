@@ -15208,10 +15208,12 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                 elem.clone(),
                                             )
                                         }
-                                        std::option::Option::None => unit_type(),
+                                        std::option::Option::None => {
+                                            type_variable_node("empty_list_element".to_string())
+                                        }
                                     }
                                 } else {
-                                    unit_type()
+                                    type_variable_node("empty_list_element".to_string())
                                 }
                             }
                             std::option::Option::None => {

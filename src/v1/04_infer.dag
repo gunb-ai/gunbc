@@ -9708,9 +9708,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 if node_is_element_collection(n: exp, source_indices: scope.type_env.source_indices) {
                   match exp.children |> first {
                     Present { value: elem } => child_type_node(ch: elem)
-                    Absent => unit_type
+                    Absent => type_variable_node(id: "empty_list_element")
                   }
-                } else { unit_type }
+                } else { type_variable_node(id: "empty_list_element") }
               Absent => type_variable_node(id: "empty_list_element")
             }
           }

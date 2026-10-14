@@ -1,0 +1,34 @@
+module v2.test.claim.execution.empty_list_at_generic_accumulator
+
+import std.algebra { fold_list, list_snoc_item }
+import std.types { Bool, Int, List, String }
+
+// SUBJECT: an empty list literal at a generic fold accumulator is an UNSOLVED element, never the empty
+// product. v1.compiler.infer typed `[]` whose expected type was not a collection (the accumulator
+// formal `A` of std.algebra fold_list) as List<Unit>, so `acc` reached a List<String> formal as
+// `declared String, produced Product(Unit)` and the program refused to resolve
+// (v2.test.claim.execution.infer_product_introduction product_introduction_conj_names).
+//
+// BOUNDARY: the claim program itself is the subject -- it resolves only if the literal is not typed
+// List<Unit>. MUTATION: restoring unit_type in the empty-literal branch of ExprListLit makes this
+// module refuse to resolve, so every claim below is red.
+
+fn elga_names_step(acc: List<String>, n: Int) -> List<String> {
+  list_snoc_item(xs: acc, item: "n")
+}
+
+fn elga_names(xs: List<Int>) -> List<String> {
+  fold_list(
+    xs: xs,
+    empty: [],
+    cons: fn(acc, n) { elga_names_step(acc: acc, n: n) }
+  )
+}
+
+test fn empty_list_at_generic_accumulator_resolves_holds() -> Bool {
+  elga_names(xs: [1, 2, 3]) == ["n", "n", "n"]
+}
+
+test fn empty_list_at_generic_accumulator_over_empty_domain_holds() -> Bool {
+  elga_names(xs: []) == []
+}
