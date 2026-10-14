@@ -622,3 +622,86 @@ fn cardinality_proves_nonempty(c: CardinalityConstraint) -> Bool {
     Present { value: l } => Zero < l
   }
 }
+
+// PER-OPERATION COUNT LAWS, keyed by the operation's identity (notes/cardinality-absence-analysis.md
+// section 6: propagation follows declared operations). The operations are std.algebra's; the rows live here
+// because this module imports std.algebra (the carrier cannot sit below its own operands), so the dependency
+// runs one way. An operation with no row has NO law: the answer is Absent (typed undecidable), never a guessed
+// bound.
+type CardinalityCountLaw
+  = CountLiteralEmpty
+  | CountPreserved
+  | CountFloored
+  | CountSummed
+  | CountPlusOne
+  | CountAtLeastZero
+
+type CardinalityLawRow {
+  operation: Symbol
+  law: CardinalityCountLaw
+}
+
+data cardinality_operation_laws: List<CardinalityLawRow> = [
+  CardinalityLawRow { operation: ^freemonoid_empty, law: CountLiteralEmpty },
+  CardinalityLawRow { operation: ^list_append, law: CountSummed },
+  CardinalityLawRow { operation: ^list_snoc_item, law: CountPlusOne },
+  CardinalityLawRow { operation: ^list_map, law: CountPreserved },
+  CardinalityLawRow { operation: ^list_reverse, law: CountPreserved },
+  CardinalityLawRow { operation: ^filter, law: CountFloored },
+  CardinalityLawRow { operation: ^concat, law: CountSummed },
+  CardinalityLawRow { operation: ^list_flat_map, law: CountAtLeastZero }
+]
+
+fn cardinality_law_for(operation: Symbol) -> Optional<CardinalityCountLaw> {
+  fold(cardinality_operation_laws, init: Absent, f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if row.operation == operation {
+          Present { value: row.law }
+        } else {
+          Absent
+        }
+    }
+  })
+}
+
+// Applies a law to the operand constraints (receiver first). A wrong operand arity is Absent, not a guess.
+fn cardinality_apply_law(law: CardinalityCountLaw, operands: List<CardinalityConstraint>) -> Optional<CardinalityConstraint> {
+  match law {
+    CountLiteralEmpty =>
+      match operands {
+        Empty => Present { value: cardinality_exact(count: Zero) }
+        Cons { head: _, tail: _ } => Absent
+      }
+    CountPreserved =>
+      match operands {
+        Cons { head: a, tail: Empty } => Present { value: cardinality_map(c: a) }
+        _ => Absent
+      }
+    CountFloored =>
+      match operands {
+        Cons { head: a, tail: Empty } => Present { value: cardinality_filter(c: a) }
+        _ => Absent
+      }
+    CountSummed =>
+      match operands {
+        Cons { head: a, tail: Cons { head: b, tail: Empty } } => Present { value: cardinality_concat(a: a, b: b) }
+        _ => Absent
+      }
+    CountPlusOne =>
+      match operands {
+        Cons { head: a, tail: Empty } => Present { value: cardinality_concat(a: a, b: cardinality_exact(count: Succ { prev: Zero })) }
+        _ => Absent
+      }
+    CountAtLeastZero =>
+      match operands {
+        Cons { head: a, tail: Empty } =>
+          match a {
+            CardinalityImpossible => Present { value: CardinalityImpossible }
+            _ => Present { value: CardinalityAtLeast { lower: Zero } }
+          }
+        _ => Absent
+      }
+  }
+}

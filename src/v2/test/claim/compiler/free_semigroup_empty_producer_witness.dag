@@ -15,17 +15,20 @@ import v2.std.qualified_name { declaration_reference_node, qualified_name_from_d
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.inhabitance { DeclaredTypeObligation, InhabitanceRefused, declared_type_inhabitance, inhabitance_declaration_heads_differ, position_declared_return }
 import std.optional { Absent, Present }
+import std.types { List }
 import std.nat { Nat, Zero, Succ }
 import v2.std.cardinality {
   CardinalityAtLeast,
   CardinalityConstraint,
   CardinalityBounded,
   CardinalityImpossible,
+  cardinality_apply_law,
   cardinality_between,
   cardinality_concat,
   cardinality_exact,
   cardinality_filter,
   cardinality_join,
+  cardinality_law_for,
   cardinality_lower,
   cardinality_map,
   cardinality_proves_nonempty
@@ -63,12 +66,12 @@ data fse_let_empty_source: String = "module v2.test.fse_let_empty\n\ntype FsList
 
 data fse_call_empty_source: String = "module v2.test.fse_call_empty\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fse_make() -> FsList<Int> { FsEmpty }\n\nfn fse_via_call() -> Int { fse_take(xs: fse_make()) }\n"
 
-data fse_own_list_ok_source: String = "module v2.test.fse_own_list_ok\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\nfn fse_make() -> FsList<Int> { FsEmpty }\n"
-
 data fse_param_list_source: String = "module v2.test.fse_param_list\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fse_via_param(ys: FsList<Int>) -> Int { fse_take(xs: ys) }\n"
 
+data fse_param_nonempty_ok_source: String = "module v2.test.fse_param_nonempty_ok\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fse_via_param(zs: FsNonEmpty<Int>) -> Int { fse_take(xs: zs) }\n"
+
 data fse_ingest: SourceRootIngest = [
-  rcf_read(source: fse_own_list_ok_source, id: ^fse_own_list_ok_read, unit: ^fse_own_list_ok_cu, path: "src/v2/test/fixture/free_semigroup_empty/own_list_ok.dag"),
+  rcf_read(source: fse_param_nonempty_ok_source, id: ^fse_param_nonempty_ok_read, unit: ^fse_param_nonempty_ok_cu, path: "src/v2/test/fixture/free_semigroup_empty/param_nonempty_ok.dag"),
   rcf_read(source: fse_param_list_source, id: ^fse_param_list_read, unit: ^fse_param_list_cu, path: "src/v2/test/fixture/free_semigroup_empty/param_list.dag"),
   rcf_read(source: fse_let_empty_source, id: ^fse_let_empty_read, unit: ^fse_let_empty_cu, path: "src/v2/test/fixture/free_semigroup_empty/let_empty.dag"),
   rcf_read(source: fse_call_empty_source, id: ^fse_call_empty_read, unit: ^fse_call_empty_cu, path: "src/v2/test/fixture/free_semigroup_empty/call_empty.dag"),
@@ -171,8 +174,14 @@ test fn fse_a_constructed_generic_nonempty_value_is_accepted_holds() -> Bool {
   fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_generic_ok"))
 }
 
-// BINDING AND OPERATION SEAMS, executed on the real route: the empty producer reaches the nonempty consumer
-// through a let binding and through a call result, not only at the literal site.
+// BINDING AND OPERATION SEAMS, executed on the real route. The let and call REDs are NON-DISCRIMINATING until
+// the declared-return / let-position solve of an open nullary-arm binder lands (routed to royal-raven-317, the
+// one instantiation route of #13964): `fn make() -> FsList<Int> { FsEmpty }` is itself refused today
+// (arrow_body_does_not_inhabit_declared_return, identical before and after #13910/#13964), so these two may
+// refuse for that reason instead of the argument seam. The PARAMETER seam below is the discriminating one: its
+// positive control (a nonempty parameter) is accepted and its RED refuses at the argument, and it needs the
+// parameter-path index of #13974 (on main a bare parameter argument is refused at resolve), so this witness
+// is ordered after #13974.
 test fn fse_empty_through_a_let_binding_at_a_nonempty_formal_refuses_holds() -> Bool {
   rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_let_empty"), reason: ^application_argument_does_not_inhabit)
 }
@@ -234,14 +243,67 @@ test fn fse_a_reversed_range_is_impossible_holds() -> Bool {
   }
 }
 
-test fn fse_probe_empty_at_own_list_return_accepted_holds() -> Bool {
-  fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_own_list_ok"))
+// PARAMETER-SOURCED SEAM (discriminating): a possibly-empty parameter reaches a nonempty formal through a bare
+// parameter reference. Positive control and RED differ ONLY in the parameter's declared type.
+test fn fse_a_nonempty_parameter_at_a_nonempty_formal_is_accepted_holds() -> Bool {
+  fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_param_nonempty_ok"))
 }
 
-test fn fse_probe_param_list_at_nonempty_formal_refused_holds() -> Bool {
+test fn fse_a_possibly_empty_parameter_at_a_nonempty_formal_refuses_holds() -> Bool {
   rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_param_list"), reason: ^application_argument_does_not_inhabit)
 }
 
-test fn fse_probe_param_list_accepted_holds() -> Bool {
-  fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_param_list"))
+// COUNT LAWS KEYED BY OPERATION IDENTITY: an operation with a row has its law; one without has NONE (Absent,
+// typed undecidable), never a guessed bound.
+fn fse_law_proves_nonempty(operation: Symbol, operands: List<CardinalityConstraint>) -> Bool {
+  match cardinality_law_for(operation: operation) {
+    Absent => false
+    Present { value: law } =>
+      match cardinality_apply_law(law: law, operands: operands) {
+        Absent => false
+        Present { value: c } => cardinality_proves_nonempty(c: c)
+      }
+  }
+}
+
+test fn fse_append_law_proves_nonempty_when_one_side_is_holds() -> Bool {
+  fse_law_proves_nonempty(operation: ^list_append, operands: [cardinality_exact(count: fse_one()), CardinalityAtLeast { lower: Zero }])
+}
+
+test fn fse_append_law_does_not_prove_two_possibly_empty_sides_holds() -> Bool {
+  !fse_law_proves_nonempty(operation: ^list_append, operands: [CardinalityAtLeast { lower: Zero }, CardinalityAtLeast { lower: Zero }])
+}
+
+test fn fse_filter_law_floors_a_nonempty_receiver_holds() -> Bool {
+  !fse_law_proves_nonempty(operation: ^filter, operands: [cardinality_exact(count: fse_two())])
+}
+
+test fn fse_map_law_preserves_a_nonempty_receiver_holds() -> Bool {
+  fse_law_proves_nonempty(operation: ^list_map, operands: [cardinality_exact(count: fse_two())])
+}
+
+test fn fse_snoc_law_proves_nonempty_from_a_possibly_empty_receiver_holds() -> Bool {
+  fse_law_proves_nonempty(operation: ^list_snoc_item, operands: [CardinalityAtLeast { lower: Zero }])
+}
+
+test fn fse_empty_constructor_law_is_exactly_zero_holds() -> Bool {
+  !fse_law_proves_nonempty(operation: ^freemonoid_empty, operands: [])
+}
+
+test fn fse_an_operation_without_a_row_has_no_law_holds() -> Bool {
+  match cardinality_law_for(operation: ^fse_no_such_operation) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn fse_a_wrong_operand_arity_has_no_answer_holds() -> Bool {
+  match cardinality_law_for(operation: ^list_append) {
+    Absent => false
+    Present { value: law } =>
+      match cardinality_apply_law(law: law, operands: [cardinality_exact(count: fse_one())]) {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
 }
