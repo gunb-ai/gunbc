@@ -71,7 +71,7 @@ impl QualificationRefusal {
                 "NoCgroupWithMemoryPeak — no cgroup from {searched_from} up to the root carries a \
                  readable memory.peak, so this invocation has no enforceable limit to measure \
                  against. Wrap it: systemd-run --user --scope -p MemoryMax=<bytes> \
-                 -p MemoryHigh=infinity -- gunbc test //gunbc/instruments:floor-memory-qualification. \
+                 -p MemoryHigh=infinity -- <command>. \
                  Note that MemoryHigh=max is the CGROUP spelling and systemd rejects it; the \
                  systemd spelling is infinity, and a dropped property yields a CONSTRAINED run \
                  reported as uncensored."
@@ -94,8 +94,7 @@ impl QualificationRefusal {
                  supervisor ({strangers:?}). memory.peak is a property of the CGROUP, not of a \
                  process, so a neighbour's allocation would be reported as the floor's demand. \
                  Give the measurement a cgroup of its own: systemd-run --user --scope \
-                 -p MemoryMax=<bytes> -p MemoryHigh=infinity -- gunbc test \
-                 //gunbc/instruments:floor-memory-qualification",
+                 -p MemoryMax=<bytes> -p MemoryHigh=infinity -- <command>",
                 strangers.len()
             ),
             QualificationRefusal::MeasurementCgroupHasChildren { dir, children } => format!(
