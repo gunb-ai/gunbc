@@ -447,7 +447,7 @@ fn demand_census_resource_prefix(index: SymbolIndex, path: QualifiedName) -> Opt
 
 // The edge a core contract marker names, through v2.std.node edge_is_core. v2.std.node
 // arrow_signature_edges_conform admits at most one of each on an Arrow, so the first is the only one.
-// (v2.std.node core_edge_target_lookup answers the same question; its third arm is spelled Absent,
+// (v2.std.node core_edge_target_lookup answers the same question; its miss arm is NotFound,
 // which this module's Optional matches already bind.)
 fn demand_census_edge_target(children: List<Edge>, marker: CoreEdgeLabel) -> Optional<Node> {
   fold(children, init: optional_absent(), f: fn(acc, e) {
@@ -601,6 +601,7 @@ type DemandCensusUnboundLocus
 type DemandCensusUnobserved
   = UnobservedFileRefused
   | UnobservedModuleResolveRefused { first_reason: Symbol, first_unbound: Optional<DemandCensusUnboundLocus> }
+  | UnobservedImporteeRefused { importee_file: Symbol, importee_cause: Symbol }
   | UnobservedFunctionUnnamed
   | UnobservedFunctionNotDeclared
   | UnobservedAuthoredTypeUnresolved
@@ -830,6 +831,7 @@ fn demand_census_unobserved_word(u: DemandCensusUnobserved) -> String {
   match u {
     UnobservedFileRefused => "file_refused"
     UnobservedModuleResolveRefused { first_reason: _, first_unbound: _ } => "module_resolve_refused"
+    UnobservedImporteeRefused { importee_file: _, importee_cause: _ } => "importee_refused"
     UnobservedFunctionUnnamed => "function_unnamed"
     UnobservedFunctionNotDeclared => "function_not_declared"
     UnobservedAuthoredTypeUnresolved => "authored_type_unresolved"
@@ -963,6 +965,8 @@ fn demand_census_row_line(r: DemandCensusRow) -> String {
             " resolve_reason=", symbol_lexeme(sym: r),
             " ", demand_census_unbound_site_text(u: u)
           ])
+        UnobservedImporteeRefused { importee_file: file, importee_cause: cause } =>
+          demand_census_text(parts: [reason_part, " importee=", symbol_lexeme(sym: file), " importee_cause=", symbol_lexeme(sym: cause)])
         UnobservedFileRefused => reason_part
         UnobservedFunctionUnnamed => reason_part
         UnobservedFunctionNotDeclared => reason_part
@@ -1190,6 +1194,7 @@ fn demand_census_lines(r: DemandCensusReport) -> List<String> {
 type DemandCensusModuleStanding
   = DemandModuleResolved { readings: List<DemandCensusAuthoredReading> }
   | DemandModuleResolveRefused { authored: List<AuthoredUsesFunction>, first_reason: Symbol, first_unbound: Optional<DemandCensusUnboundLocus> }
+  | DemandModuleImporteeRefused { authored: List<AuthoredUsesFunction>, importee_file: Symbol, importee_cause: Symbol }
 
 type DemandCensusAuthoredReading {
   authored: AuthoredUsesFunction
@@ -1218,6 +1223,10 @@ fn demand_census_report(
         fold_list(xs: fs, empty: acc, cons: fn(a, f) {
           list_snoc_item(xs: a, item: demand_census_row_unobserved(function: demand_census_function_path(authored: f), reason: demand_census_alias_or_module_unobserved(authored: f, first_reason: reason, first_unbound: unbound)))
         })
+      DemandModuleImporteeRefused { authored: fs, importee_file: file, importee_cause: cause } =>
+        fold_list(xs: fs, empty: acc, cons: fn(a, f) {
+          list_snoc_item(xs: a, item: demand_census_row_unobserved(function: demand_census_function_path(authored: f), reason: demand_census_alias_or_importee_unobserved(authored: f, importee_file: file, importee_cause: cause)))
+        })
       DemandModuleResolved { readings: rs } =>
         fold_list(xs: rs, empty: acc, cons: fn(a, r) { list_snoc_item(xs: a, item: demand_census_resolved_row(vocabulary: vocabulary, reading: r, demand: demand)) })
     }
@@ -1233,6 +1242,7 @@ fn demand_census_report(
     resolve_refused_modules: fold_list(xs: standings, empty: 0, cons: fn(n, s) {
       match s {
         DemandModuleResolveRefused { authored: _, first_reason: _, first_unbound: _ } => n + 1
+        DemandModuleImporteeRefused { authored: _, importee_file: _, importee_cause: _ } => n + 1
         DemandModuleResolved { readings: _ } => n
       }
     })
@@ -1244,6 +1254,17 @@ fn demand_census_alias_or_module_unobserved(authored: AuthoredUsesFunction, firs
     UsesAliasBindConflict => UnobservedAliasConflict
     UsesAliasBindUnestablished => UnobservedAliasUnestablished
     UsesAliasBindUnique => UnobservedModuleResolveRefused { first_reason: first_reason, first_unbound: first_unbound }
+  }
+}
+
+// THE ROOT, NOT THE SYMPTOM: a module whose import target the context refused at ingest finds every
+// imported name unbound only because the target's declarations never entered the index, so its rows file
+// the refused importee (v2.compiler.compile native_import_target_attribution decides it), not an unbound.
+fn demand_census_alias_or_importee_unobserved(authored: AuthoredUsesFunction, importee_file: Symbol, importee_cause: Symbol) -> DemandCensusUnobserved {
+  match authored.alias_bind {
+    UsesAliasBindConflict => UnobservedAliasConflict
+    UsesAliasBindUnestablished => UnobservedAliasUnestablished
+    UsesAliasBindUnique => UnobservedImporteeRefused { importee_file: importee_file, importee_cause: importee_cause }
   }
 }
 

@@ -4,8 +4,6 @@ import extdeps.languages.dag.syntax { dag_parse_environment }
 
 import std.syntax { LiteralValue, BinOp, ParseEnvironment }
 import std.compiler_entry { CompilerEntryDriver, RetainedHostCliKernel }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.types { NonEmptyStr }
 
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
@@ -26,8 +24,7 @@ import v1.std.core {
   UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index,
   field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at,
   foreach_variable_at, expr_method_name_at, InternTable, empty_intern_table, pre_intern_tokens,
-  DeclarationMarker, Unmarked, TestMarked, TestCodeReferenced, TestCodeReferenceAdmitted,
-  TestCodeReferenceBudgetMismatch, TestCodeReferenceRowOrphaned, FunctionValueBinding, LocalValueBinding, VariantValueBinding,
+  DeclarationMarker, Unmarked, TestMarked, TestCodeReferenced, FunctionValueBinding, LocalValueBinding, VariantValueBinding,
   MatchBoundBinding, ServiceValueBinding
 }
 
@@ -221,19 +218,9 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
   )
 }
 
-// WHETHER THIS COMPILE KNOWS THE WHOLE CORPUS, stated by the caller rather than inferred from the
-// census. The census holds the indexed modules OUTSIDE the compile closure, so a whole-tree compile
-// has an empty census and the most complete knowledge there is; reading an empty census as
-// ignorance made the orphan refusal unreachable on exactly the run that deletes a module (review
-// 68429). The caller states CorpusKnown only when its index spans every witness-layer root the
-// ledger's rows are derived from; an index over narrower user roots is CorpusUnknown, because a row
-// whose module lies outside it is absent from that compile, not orphaned (review 68527).
-type CorpusScope = CorpusKnown | CorpusUnknown
-
 type CompilePipelineOptions {
   analyze_complexity: Bool,
-  census_only_sources: List<SourceFile>,
-  corpus: CorpusScope
+  census_only_sources: List<SourceFile>
 }
 
 // Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup,
@@ -256,66 +243,15 @@ type CompilePipelineOptions {
 // A module is never classified by its members: importing an ordinary declaration out of a module
 // that also holds tests is not a reference.
 // All are decided here from the typed graph and the parsed marker, once per compile.
-//
-// THE LEDGER IS A RATCHET AT IDENTITY GRAIN. The references that existed when this wall landed
-// are admitted per (module, referrer, target) with an exact count -- the count is only how many
-// times one referrer names one target -- so a new target under an old referrer has no row and
-// refuses, and a row whose observed count differs in either direction refuses too. The ceiling
-// row is gunbc.compile_clean_diagnostic_policy advisory_class_ceilings TestCodeReferenceAdmitted,
-// and every row carries the dissolution that ends it.
+// A reference that reaches TestMarked is TestCodeReferenced; otherwise there is no
+// test-reference diagnostic. There is no admission ledger: a hypothetical future
+// exception is not a consumer.
 
 type TestReferenceOccurrence {
   module_name: String
   referrer: String
   target: String
   span: SourceSpan
-}
-
-// WHAT A ROW IS, typed rather than inferred from its module name. A corpus debt row names a corpus
-// module and must be evaluated wherever the corpus is known; the fixture control row names a module
-// that exists only in the wall's own floor fixture and is evaluated only when that fixture compiles.
-type TestReferenceRowScope = CorpusDebtRow | FixtureControlRow
-
-type TestReferenceDebtRow {
-  module_name: String
-  referrer: String
-  target: String
-  occurrences: Int
-  scope: TestReferenceRowScope
-  dissolution: DissolutionCondition
-}
-
-// WHAT THIS COMPILE KNOWS ABOUT THE REST OF THE CORPUS. Under CorpusKnown the census is every
-// indexed module outside the compile closure (possibly none, on a whole-tree compile), so a module
-// that is neither typed nor in it does not exist. Under CorpusUnknown, as in a single-file or
-// fixture compile, absence says nothing and no row can be judged orphaned.
-type CensusKnowledge = CensusLoaded { modules: Map<String, Bool> } | CensusAbsent
-
-fn test_reference_debt_dissolution() -> DissolutionCondition {
-  unbound_dissolution(description: "the reference is removed: a roll-up test that only re-asserts enrolled tests is deleted, or the shared logic moves into an ordinary fn that both callers use; the row is then deleted, which the equality budget forces" as NonEmptyStr)
-}
-
-fn test_reference_row(module_name: String, referrer: String, target: String, occurrences: Int) -> TestReferenceDebtRow {
-  TestReferenceDebtRow { module_name: module_name, referrer: referrer, target: target, occurrences: occurrences, scope: CorpusDebtRow, dissolution: test_reference_debt_dissolution() }
-}
-
-// THE FIRST ROW IS THE WALL'S OWN CONTROL, NOT DEBT. Every other row names a corpus module, so a
-// fixture that reproduced one would collide with the loaded corpus and the census would refuse
-// instead of answering -- that is how the paid-down claim passed locally and failed on the floor
-// (review 67402). `wall.fixture.paid_down` exists only in the wall's fixture source, so the
-// paid-down arm of the equality budget has an executing red that cannot be paid down out from
-// under it. Its scope is FixtureControlRow, so an orphan judgment never applies to it.
-fn test_reference_debt() -> List<TestReferenceDebtRow> {
-  [
-    TestReferenceDebtRow { module_name: "wall.fixture.paid_down", referrer: "reader", target: "wall.fixture.paid_down.leaf", occurrences: 1, scope: FixtureControlRow, dissolution: test_reference_debt_dissolution() },
-    // DISCHARGED (roadmap node test-reference-discipline-remainder): the 28 CorpusDebtRow
-    // entries naming test.claim.climbing_hold_witness_roster (22), the roll-up claim of
-    // test.claim.materialization_provider_consumer_hand_rust_witness (4), and the citation in
-    // test.claim.native_witness_transition_receipt_witness (2) are gone together with the
-    // references they paid for -- the roster file is deleted, the roll-up claim and its import
-    // are removed, and the shared evidence moved into an ordinary fn that both callers use.
-    // The wall's own control row above stays: it is FixtureControlRow, not debt.
-  ]
 }
 
 fn test_reference_import_referrer() -> String {
@@ -515,105 +451,20 @@ fn module_test_references(m: TypedModule, modules_by_name: Map<String, TypedModu
 // One key per (module, referrer, target) identity, so admission and the budget are map lookups built
 // once per compile rather than scans of the ledger or the occurrence list (DESIGN section 6: a
 // quadratic fold is always fixed, whatever the realized n).
-fn test_reference_key(module_name: String, referrer: String, target: String) -> String {
-  concat(module_name, "|", referrer, "|", target)
+fn test_reference_occurrence_diag(o: TestReferenceOccurrence) -> ErrorNode {
+  make_error_node(diagnostic: TestCodeReferenced { referrer: concat(o.module_name, ".", o.referrer), target: o.target, span: o.span }, module_name: o.module_name)
 }
 
-fn test_reference_occurrence_key(o: TestReferenceOccurrence) -> String {
-  test_reference_key(module_name: o.module_name, referrer: o.referrer, target: o.target)
-}
-
-fn test_reference_occurrence_diag(o: TestReferenceOccurrence, debt_keys: Map<String, Bool>) -> ErrorNode {
-  let referrer = concat(o.module_name, ".", o.referrer)
-  if map_contains_key(debt_keys, test_reference_occurrence_key(o: o)) {
-    make_error_node(diagnostic: TestCodeReferenceAdmitted { referrer: referrer, target: o.target, span: o.span }, module_name: o.module_name)
-  } else {
-    make_error_node(diagnostic: TestCodeReferenced { referrer: referrer, target: o.target, span: o.span }, module_name: o.module_name)
-  }
-}
-
-fn observed_test_reference_count(counts: Map<String, Int>, key: String) -> Int {
-  match map_get(counts, key) {
-    Present { value: n } => n
-    Absent => 0
-  }
-}
-
-// A ROW WHOSE MODULE IS NOT COMPILED is not evidence of anything by itself: most compiles are a
-// closure. It becomes a refusal only when the caller states CorpusKnown and the module is in
-// neither the typed closure nor the census -- the module is gone, and a row
-// that can never be observed again would otherwise persist forever without refusing (review 67730,
-// operator ruling 2026-09-19). The fixture control row is exempt by its declared scope, not by name.
-fn test_reference_unevaluated_row_diag(row: TestReferenceDebtRow, census: CensusKnowledge) -> List<ErrorNode> {
-  match row.scope {
-    FixtureControlRow => []
-    CorpusDebtRow =>
-      match census {
-        CensusAbsent => []
-        CensusLoaded { modules: known } =>
-          if map_contains_key(known, row.module_name) { [] } else {
-            [make_error_node(diagnostic: TestCodeReferenceRowOrphaned { referrer: concat(row.module_name, ".", row.referrer, " -> ", row.target), span: no_span() }, module_name: row.module_name)]
-          }
-      }
-  }
-}
-
-fn test_reference_budget_diag(row: TestReferenceDebtRow, counts: Map<String, Int>, first_spans: Map<String, SourceSpan>, compiled_modules: Map<String, SourceSpan>, census: CensusKnowledge) -> List<ErrorNode> {
-  match map_get(compiled_modules, row.module_name) {
-    Absent => test_reference_unevaluated_row_diag(row: row, census: census)
-    Present { value: module_span } => {
-      let key = test_reference_key(module_name: row.module_name, referrer: row.referrer, target: row.target)
-      let observed = observed_test_reference_count(counts: counts, key: key)
-      if observed == row.occurrences { [] } else {
-        let span = match map_get(first_spans, key) {
-          Present { value: s } => s
-          Absent => module_span
-        }
-        [make_error_node(diagnostic: TestCodeReferenceBudgetMismatch { referrer: concat(row.module_name, ".", row.referrer, " -> ", row.target), declared: row.occurrences, observed: observed, span: span }, module_name: row.module_name)]
-      }
-    }
-  }
-}
-
-// ONLY A CORPUS DEBT ROW ADMITS. The fixture control row exists to exercise the paid-down budget
-// arm, and a scope that shields it from the orphan judgment must not also make it admission
-// authority: a source that inhabits its exact identity would otherwise have a new serving-to-test
-// reference admitted with a matching count (side-chat review of 504596b). A reference on the
-// control identity therefore refuses like any unledgered one.
-fn test_reference_admission_insert(acc: Map<String, Bool>, row: TestReferenceDebtRow) -> Map<String, Bool> {
-  match row.scope {
-    CorpusDebtRow => map_insert(acc, test_reference_key(module_name: row.module_name, referrer: row.referrer, target: row.target), true)
-    FixtureControlRow => acc
-  }
-}
-
-fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>, census: CensusKnowledge) -> List<ErrorNode> {
+fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   let test_keys = test_marked_declaration_keys(typed: typed, source_indices: source_indices)
   let modules_by_name = typed.modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m))
-  let compiled_modules = typed.modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m.module.span))
-  let occurrences = typed.modules |> flat_map(m => module_test_references(m: m, modules_by_name: modules_by_name, test_keys: test_keys, source_indices: source_indices))
-  let counts = occurrences |> fold(init: empty_map(), f: (acc, o) =>
-    map_insert(acc, test_reference_occurrence_key(o: o), observed_test_reference_count(counts: acc, key: test_reference_occurrence_key(o: o)) + 1)
-  )
-  let first_spans = occurrences |> fold(init: empty_map(), f: (acc, o) =>
-    if map_contains_key(acc, test_reference_occurrence_key(o: o)) { acc } else { map_insert(acc, test_reference_occurrence_key(o: o), o.span) }
-  )
-  let debt = test_reference_debt()
-  let debt_keys = debt |> fold(init: empty_map(), f: (acc, r) => test_reference_admission_insert(acc: acc, row: r))
-  let occurrence_diags = occurrences |> map(o => test_reference_occurrence_diag(o: o, debt_keys: debt_keys))
-  let budget_diags = debt |> flat_map(r => test_reference_budget_diag(row: r, counts: counts, first_spans: first_spans, compiled_modules: compiled_modules, census: census))
-  concat(occurrence_diags, budget_diags)
-}
-
-fn test_reference_census(fill_modules: List<Node>, census_si: Map<String, NewlineIndex>, corpus: CorpusScope) -> CensusKnowledge {
-  match corpus {
-    CorpusUnknown => CensusAbsent
-    CorpusKnown => CensusLoaded { modules: fill_modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: census_si, node: m), true)) }
-  }
+  typed.modules
+    |> flat_map(m => module_test_references(m: m, modules_by_name: modules_by_name, test_keys: test_keys, source_indices: source_indices))
+    |> map(o => test_reference_occurrence_diag(o: o))
 }
 
 fn default_compile_pipeline_options() -> CompilePipelineOptions {
-  CompilePipelineOptions { analyze_complexity: false, census_only_sources: [], corpus: CorpusUnknown }
+  CompilePipelineOptions { analyze_complexity: false, census_only_sources: [] }
 }
 
 fn run_complexity_analysis(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> ComplexityReport {
@@ -1610,7 +1461,6 @@ type CensusFillParse {
   newline_indices: List<NewlineIndex>,
   diagnostics: List<ErrorNode>
   occurrence_transport: OccurrenceTransport
-  annotations: SourceAnnotationGraph
 }
 
 type CensusModuleRetention
@@ -1636,9 +1486,8 @@ fn census_retain_parse_result(result: ParseResult, retention: CensusModuleRetent
 
 // Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's
 // imports live in the compile closure or a different tree view; resolving against a fill-only pool
-// fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse
-// errors only — those are load-bearing (a broken-parse module contributes no names to the census)
-// and must surface, never be skipped.
+// fabricates unresolved-import diagnostics about the view, not the modules). Fill diagnostics are
+// not an entry-compile verdict: whole-corpus body grammaticality belongs to `run_dag_parse_sweep`.
 
 // TOKENIZE INSIDE THE FOLD, NOT INTO A LIST AHEAD OF IT. The census fill's population is the
 // WHOLE indexed pool minus the compile closure, so for an `--entry` compile it is ~5.4k modules
@@ -1663,12 +1512,10 @@ fn census_retain_parse_result(result: ParseResult, retention: CensusModuleRetent
 // ORDER ids are assigned in, which no consumer reads: names are resolved positionally through
 // `authored_name_at` against the newline index, never by intern id.
 //
-// WHAT THIS DELIBERATELY DOES NOT CHANGE: every module is still parsed with FULL BODIES and its
-// parse diagnostics still surface. That is load-bearing and is not a formality — a body-level
-// parse break in a non-closure module (balanced braces, invalid inside) is invisible to the
-// heads-only module index and is caught HERE and nowhere else. The discriminating RED is a
-// planted `fn body_probe(x: Int) -> Int { let = = = 9 }` in a module outside the entry's
-// closure: it must keep refusing with `expected name, found Eq`.
+// Out-of-closure body grammaticality is owned by the corpus parse sweep, not by this fill.
+// A planted `fn body_probe(x: Int) -> Int { let = = = 9 }` outside an entry's closure must
+// leave that entry compile unchanged and refuse only at `run_dag_parse_sweep` with
+// `expected name, found Eq`.
 // ONE CENSUS FOLD, TWO AXES. Main parameterized this fold on RETENTION while this branch
 // parameterized it on the parse ENVIRONMENT; keeping both variants would fork one fold into two
 // bodies that drift (section 3), so the axes meet in a single core and the named wrappers delegate
@@ -1708,11 +1555,6 @@ fn parse_census_fill_sources_with(
       occurrence_allocator: acc.occurrence_allocator,
       env: environment
     )
-    let bound = bind_annotations(
-      transport: parsed.occurrence_transport,
-      extents: parsed.source_extents,
-      captures: p.annotations
-    )
     let retained_result = census_retain_parse_result(result: parsed.result, retention: retention)
     FrontendAccum {
       parse_results: list_push(acc.parse_results, retained_result),
@@ -1727,7 +1569,7 @@ fn parse_census_fill_sources_with(
       newline_indices: list_push(acc.newline_indices, p.newline_index),
       intern_table: parsed.intern_table,
       occurrence_allocator: parsed.occurrence_allocator,
-      annotations: source_annotation_graph_concat(left: acc.annotations, right: bound),
+      annotations: acc.annotations,
     }
   )
   let parse_results = parsed.parse_results
@@ -1743,7 +1585,6 @@ fn parse_census_fill_sources_with(
         module_occurrence_input_transport(input: input)
       )
     ),
-    annotations: parsed.annotations,
   }
 }
 
@@ -1913,11 +1754,11 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let all_diags = concat(typed_diags, complexity_diags)
       let ownership = extract_ownership_proofs(typed: typed)
       let ownership_diags = ownership_diagnostics(proofs: ownership)
-      let test_reference_diags = test_reference_diagnostics(typed: typed, source_indices: source_indices, census: test_reference_census(fill_modules: fill.modules, census_si: census_si, corpus: options.corpus))
+      let test_reference_diags = test_reference_diagnostics(typed: typed, source_indices: source_indices)
       let _ = trace_mark("compile.analyses.done")
       ResolvedPipelineResult {
         graph: typed,
-        diagnostics: concat(frontend.diagnostics, fill.diagnostics, norm_diags, all_diags, ownership_diags, test_reference_diags),
+        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags, test_reference_diags),
         source_indices: source_indices,
         complexity: complexity,
         ownership: ownership,

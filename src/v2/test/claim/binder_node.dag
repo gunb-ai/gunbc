@@ -3,7 +3,7 @@ module v2.test.claim.binder_node
 import std.types { List }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.lens.unit_modeling { field_unit_violation }
-import v2.std.type_binder { type_binder_node_conforms }
+import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_binder_node_conforms, type_decl_view }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.node_query {
   binder_edge,
@@ -193,4 +193,26 @@ fn bn_reason_absent(r: Optional<Symbol>) -> Bool {
 test fn a_lens_refuses_a_field_that_is_not_a_binder() -> Bool {
   bn_reason_is(r: bn_unit_lens_reason(edge: Edge { label: Authored { name: ^x }, target: bn_atom(identity: ^Text) }), expected: ^member_not_a_binder)
     && bn_reason_absent(r: bn_unit_lens_reason(edge: binder_edge(name: ^x, type_node: bn_atom(identity: ^Text))))
+}
+
+fn bn_view_is_not_a_type_decl(n: Node) -> Bool {
+  match type_decl_view(target: n) {
+    NotATypeDecl => true
+    GenericTypeDecl { binders: _, member: _ } => false
+    TypeAlias { binders: _, aliased: _ } => false
+    OpaqueTypeDecl { binders: _ } => false
+    PlainTypeDecl { member: _ } => false
+  }
+}
+
+test fn an_import_decl_identity_is_not_a_type_decl() -> Bool {
+  bn_view_is_not_a_type_decl(
+    n: bn_conj(children: [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: bn_atom(identity: ^dag_surface_import_decl) }])
+  )
+}
+
+test fn a_parse_projection_without_readable_identity_is_not_a_type_decl() -> Bool {
+  bn_view_is_not_a_type_decl(
+    n: bn_conj(children: [Edge { label: Authored { name: ^grammar_production_captured_node_projection }, target: bn_atom(identity: ^bn_captured_without_identity) }])
+  )
 }

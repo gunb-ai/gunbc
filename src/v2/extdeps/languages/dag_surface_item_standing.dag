@@ -1,0 +1,77 @@
+module v2.extdeps.languages.dag_surface_item_standing
+
+import std.algebra { Cons, Empty, fold_list }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { List }
+import v2.std.node { Symbol }
+
+// WHETHER A DAG SURFACE ITEM DECLARES A TYPE. One row per emitted identity that inhabits a module
+// as an item (`v2.extdeps.languages.dag` `dag_grammar_top_level_item_productions`) plus the
+// structural shells those items sit in (module, top_level_item, import_block). Projected by
+// `dag_surface_item_row`; `v2.std.type_binder` `type_decl_view` consumes standing, and
+// `v2.compiler.symbol_index_fill` reads index_members from the non-type arm.
+// `v2.extdeps.languages.dag` `dag_grammar_top_level_item_standing_join` is the identity join:
+// every top-level production emitted identity has a row here.
+//
+// This module is a leaf: `v2.std.grammar` and `v2.extdeps.languages.dag` both import
+// `v2.std.compilers.target_model`, which imports `v2.std.type_binder`, so neither can be the
+// consumer of standing from type_binder without a cycle. The standing fact is still the grammar's:
+// the rows name the same emitted identities the production rows emit.
+
+// WHETHER FILL WALKS THE ITEM'S MEMBERS. Only a non-type carrier answers: `fn` / `test fn` /
+// `data` / `service` / `resource` walk (parameters, fields, operations); an import carrier never
+// does. Type-declaration carriers have no constructor for this fact — they are indexed through
+// type_decl_view.
+type DagSurfaceIndexMembers
+  = DagSurfaceWalkIndexMembers
+  | DagSurfaceNoIndexMembers
+
+type DagSurfaceItemStanding
+  = DagSurfaceTypeDeclaration
+  | DagSurfaceNonTypeDeclaration { index_members: DagSurfaceIndexMembers }
+
+type DagSurfaceItemStandingRow {
+  emitted: Symbol
+  standing: DagSurfaceItemStanding
+}
+
+fn dag_surface_item_standing_rows() -> List<DagSurfaceItemStandingRow> {
+  [
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_import_decl, standing: DagSurfaceNonTypeDeclaration { index_members: DagSurfaceNoIndexMembers } },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_import_block, standing: DagSurfaceNonTypeDeclaration { index_members: DagSurfaceNoIndexMembers } },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_alias_decl, standing: DagSurfaceTypeDeclaration },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_type_decl, standing: DagSurfaceTypeDeclaration },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_data_decl, standing: DagSurfaceNonTypeDeclaration { index_members: DagSurfaceWalkIndexMembers } },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_fn_decl, standing: DagSurfaceNonTypeDeclaration { index_members: DagSurfaceWalkIndexMembers } },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_test_fn_decl, standing: DagSurfaceNonTypeDeclaration { index_members: DagSurfaceWalkIndexMembers } },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_service_decl, standing: DagSurfaceNonTypeDeclaration { index_members: DagSurfaceWalkIndexMembers } },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_resource_decl, standing: DagSurfaceNonTypeDeclaration { index_members: DagSurfaceWalkIndexMembers } },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_module, standing: DagSurfaceNonTypeDeclaration { index_members: DagSurfaceNoIndexMembers } },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_top_level_item, standing: DagSurfaceNonTypeDeclaration { index_members: DagSurfaceNoIndexMembers } }
+  ]
+}
+
+fn dag_surface_item_row(id: Symbol) -> Optional<DagSurfaceItemStandingRow> {
+  fold_list(
+    xs: dag_surface_item_standing_rows(),
+    empty: optional_absent(),
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if row.emitted == id {
+            optional_present(value: row)
+          } else {
+            optional_absent()
+          }
+      }
+    }
+  )
+}
+
+fn dag_surface_item_standing(id: Symbol) -> Optional<DagSurfaceItemStanding> {
+  match dag_surface_item_row(id: id) {
+    Present { value: row } => optional_present(value: row.standing)
+    Absent => optional_absent()
+  }
+}

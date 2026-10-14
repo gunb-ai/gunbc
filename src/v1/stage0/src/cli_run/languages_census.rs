@@ -324,6 +324,7 @@ pub(crate) fn languages_decl_records_cached() -> &'static [LanguagesDeclConsumer
     LANGUAGES_DECL_RECORDS.get_or_init(languages_decl_records_inner)
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Whether the process-wide census has already been built — PROVENANCE for the floor's
 /// preparation warm (`FloorPreparationPhase` `LanguagesConsumerCensusBuild`), so a warm that
 /// finds the artifact already in hand reports `already-warm-on-entry` instead of a zero build.
@@ -331,6 +332,7 @@ pub(crate) fn languages_decl_records_already_built() -> bool {
     LANGUAGES_DECL_RECORDS.get().is_some()
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Whether the floor's prepared subject carries the authority the census reads. The inventory
 /// form panics on its absence by design (a census with no authority has no rows to answer for),
 /// so the preparation warm asks first and skips, printed, rather than stopping a subject that

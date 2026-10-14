@@ -54,6 +54,7 @@ import gunbc.live_deploy.release_locus {
   HelperLocus,
 }
 import gunbc.cli_invoke { NamedArgumentAdmission, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.executor_privileged_operation {
   SystemdDaemonReload,
   executor_privileged_operation_sudoers_line,
@@ -93,10 +94,15 @@ data release_a_dir: String = "/opt/gunbc/approval-broker/releases/0123456789abcd
 
 // ── ARGV PIN ──────────────────────────────────────────────────────────────────────────────
 // The exact words the verb runs. There is no --arg, and no word is a pattern. Every path names the
-// root-owned snapshot of one release.
+// root-owned snapshot of one release. STALE EXPECTATION (bisect: already false at #13818 parent):
+// the pin omitted env(1) + GUNBC_WORKSPACE_ROOT, which gunbc_entry_run_argv has carried since
+// #12563 (RunGunbcEntryAs / env_prefixed_argv). Sibling the_grant_line_is_pinned already names
+// that binding. The name of the env var is the scaffold row, not a second literal.
 test fn the_helper_argv_is_pinned_word_for_word() -> Bool {
   approval_ntfy_runtime_observe_helper_argv(revision: rev_a()) == [
     "/usr/bin/sudo", "-n", "-u", "gunbc-ntfy",
+    "/usr/bin/env",
+    concat(gunbc_workspace_root_env_name, concat("=", snapshot_a_dir)),
     concat(snapshot_a_dir, "/gunbc"),
     "run",
     "--source-root", concat(snapshot_a_dir, "/dag"),

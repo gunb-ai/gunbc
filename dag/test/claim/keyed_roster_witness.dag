@@ -18,8 +18,10 @@ import std.keyed_roster {
   keyed_roster_duplicated,
   keyed_roster_contains,
   keyed_roster_insert,
+  keyed_roster_locate_duplicate,
   keyed_roster_union,
 }
+import std.optional { Absent, Present }
 import std.roster_frontier { FrontierRow, PathSubject, decl_field_ref, decl_ref, frontier_row_decl, frontier_rows_keyed_roster_build, frontier_rows_well_formed }
 import std.dissolution { unbound_dissolution }
 import std.types { Bool, String, List }
@@ -384,4 +386,53 @@ test fn subject_key_keeps_path_and_decl_subjects_distinct_though_strings_collide
     KeyedRosterBuilt { rows: _ } => true
     KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
+}
+
+// ---- K2 pins ported to the SubjectKey API (expected values unchanged from #13946).
+fn rows_abba() -> List<KeyedRow<SubjectKey<String>, FixtureGrant>> {
+  [kr(k: "a", tag: "first"), kr(k: "b", tag: "first"), kr(k: "b", tag: "second"), kr(k: "a", tag: "second")]
+}
+
+// (3) a successful build keeps authored order, pinned in both directions.
+test fn keyed_roster_build_keeps_authored_order_of_rows() -> Bool {
+  match keyed_roster_build(incomings: [kr(k: "a", tag: "repo"), kr(k: "b", tag: "repo")]) {
+    KeyedRosterBuilt { rows: rows } =>
+      map(rows, r => r.row_key.subject) == ["a", "b"]
+        && match keyed_roster_build(incomings: [kr(k: "b", tag: "repo"), kr(k: "a", tag: "repo")]) {
+          KeyedRosterBuilt { rows: rows2 } => map(rows2, r => r.row_key.subject) == ["b", "a"]
+          KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+        }
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+// (4) a duplicate key is refused even when the colliding VALUES are equal.
+test fn keyed_roster_build_refuses_duplicate_key_even_when_values_equal() -> Bool {
+  match keyed_roster_build(incomings: [kr(k: "a", tag: "first"), kr(k: "b", tag: "same"), kr(k: "b", tag: "same"), kr(k: "a", tag: "second")]) {
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+      k.subject == "b" && f.value.audience == "same" && d.value.audience == "same"
+    KeyedRosterBuilt { rows: _ } => false
+  }
+}
+
+// (5) an already-invalid roster is refused BEFORE the incoming insert is handled (precheck precedes
+// the incoming-key lookup), including when the incoming also collides.
+test fn keyed_roster_insert_into_already_invalid_roster_refused_before_insert() -> Bool {
+  match keyed_roster_insert(rows: rows_abba(), incoming: kr(k: "c", tag: "repo")) {
+    KeyedRosterInvalidRoster { key: k, first: _, duplicate: _ } => k.subject == "a"
+    KeyedRosterInserted { rows: _ } => false
+    KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
+  }
+    && match keyed_roster_insert(rows: rows_abba(), incoming: kr(k: "a", tag: "incoming")) {
+      KeyedRosterInvalidRoster { key: k, first: _, duplicate: _ } => k.subject == "a"
+      KeyedRosterInserted { rows: _ } => false
+      KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
+    }
+}
+
+// distinct == [a, b], duplicated == [b, a] on the index of [a, b, b, a] (the K2 index facts).
+test fn index_of_abba_reports_distinct_ab_and_duplicated_ba() -> Bool {
+  let index = keyed_roster_index(rows: rows_abba())
+  map(keyed_roster_distinct(index: index), k => k.subject) == ["a", "b"]
+    && map(keyed_roster_duplicated(index: index), k => k.subject) == ["b", "a"]
 }

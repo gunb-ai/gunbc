@@ -2,7 +2,7 @@ module std.bounded_nat
 
 import std.types { Int, Bool, List }
 import std.measure { BitWidth, bit_width, bit_width_count }
-import std.bitwise { bitwise_pow2 }
+import std.power_of_two { bitwise_pow2 }
 
 // ARITHMETIC ON BOUNDED NATURALS, AS DECLARED OPERATIONS RATHER THAN INFIX.
 //
@@ -23,10 +23,9 @@ import std.bitwise { bitwise_pow2 }
 // take a width as a VALUE and the witnesses pass bit_width(count: 32) today, so nothing stops
 // std.bitwise passing one too.
 //
-// THE ACTUAL BLOCKER IS AN IMPORT CYCLE. std.bounded_nat imports std.bitwise for bitwise_pow2, so
-// std.bitwise cannot import std.bounded_nat back, and DESIGN 3 makes acyclicity the import graph's
-// ONLY structural law -- a wall rather than a preference. It is breakable: relocate bitwise_pow2
-// below both and the cycle is gone.
+// THE IMPORT CYCLE IS BROKEN: bitwise_pow2 lives in std.power_of_two, below both this module and
+// std.bitwise, so std.bitwise may import this family. (std.induction int_pow_bounded is not that
+// function: it is partial, linear and capped, where callers here need a total 2^n over [0, 62].)
 //
 // THE SECOND COST, STATED BESIDE IT so the next reader sees the real shape rather than a one-line
 // blocker: after the cycle is broken, every word32_* operation answers a BoundedNatArith, a six-arm
