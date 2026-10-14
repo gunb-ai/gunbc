@@ -325,7 +325,7 @@ data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_
 //      from a variable reference, and the tree-sync restart carries a `|| { ...; exit 1; }`
 //      diagnosis tail. BoundOperationInvocation names an operation and its inputs; it cannot carry
 //      a redirect, a word with an expansion in it, or a failure branch.
-//   3. THE LINE IS NOT A COMMAND AT ALL -- `set -euo pipefail`, the EXIT trap, and the
+//   3. THE LINE IS NOT A COMMAND AT ALL -- `set -euo pipefail` and the
 //      __GUNBC_*_REFUSED__ poison markers, which are deliberately not valid shell.
 //   4. THE BODY IS HAND-AUTHORED SHELL from another module (the sudoers install, the memory-cap
 //      block, the receipt echo), which is that module's own census row, not this one's.

@@ -1761,7 +1761,7 @@ test fn apply_frame_merges_stderr_onto_stdout() -> Bool {
     s: pipeline_steps_text(steps: deploy_apply_frame_decide_steps(spec: deployment_spec_srv1())),
     pattern: line,
   )
-    && string_contains(s: line, pattern: "2>&1")
+    && line == "'exec' 2>&1"
     && !string_contains(s: line, pattern: "__GUNBC_BASH_EMIT_REFUSED__")
 }
 
