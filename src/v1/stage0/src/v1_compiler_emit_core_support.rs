@@ -32,7 +32,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct EmitResult {
     pub files: Rc<Vec<Rc<TextFile>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -40,7 +40,7 @@ pub struct EmitResult {
     pub rust_crates: Rc<Vec<Rc<EmittedRustCrate>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct TestProjection {
     pub module_name: String,
     pub service_name: String,
@@ -52,7 +52,7 @@ pub struct TestProjection {
     pub type_env: Rc<TypeEnv>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct JsonControlEscape {
     pub delimiter: String,
     pub replacement: String,
@@ -224,7 +224,7 @@ pub fn escape_json_string(s: String) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ModuleFilenameOwners {
     pub owners: Rc<HashMap<String, String>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -889,13 +889,13 @@ pub fn is_type_decl_item(
             && ((item.children.clone().len() as i64) == 0)))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct EmittedSymbolBinding {
     pub symbol: String,
     pub identity: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct EmittedSymbolOwners {
     pub owners: Rc<HashMap<String, String>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,

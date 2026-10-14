@@ -29,7 +29,16 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum EdgeKind {
@@ -39,14 +48,14 @@ pub enum EdgeKind {
     Projected,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct EdgeClassification {
     pub kind: EdgeKind,
     pub site: String,
     pub span_start: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct BindingUsage {
     pub name: String,
     pub binding_kind: Option<Rc<VarBindingKind>>,
@@ -85,7 +94,7 @@ pub fn binding_fan_out(usage: Rc<BindingUsage>) -> i64 {
     .len() as i64)
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum OwnershipDecision {
     SoleOwner {
@@ -112,7 +121,7 @@ impl OwnershipDecision {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct FoldAccUnwrapProof {
     pub site_key: String,
     pub acc_param_name: String,
@@ -123,14 +132,14 @@ pub struct FoldAccUnwrapProof {
     pub eligible: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct FoldAccUseSummary {
     pub whole_acc_uses: i64,
     pub field_moves: Rc<Vec<String>>,
     pub nested_acc_refs: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct OwnershipProof {
     pub func_name: String,
     pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
@@ -138,7 +147,7 @@ pub struct OwnershipProof {
     pub fold_acc_unwrap: Rc<Vec<Rc<FoldAccUnwrapProof>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct UsageAccum {
     pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
     pub fold_call_nodes: Rc<Vec<Rc<Node>>>,

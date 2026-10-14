@@ -18,12 +18,12 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ExternalAuthority {
     pub uri: Rc<Uri>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Eq, std::hash::Hash)]
 pub struct ObservedReceipt {
     receipt: Rc<DeclarationRef>,
 }
@@ -33,7 +33,7 @@ impl ObservedReceipt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum CitedFigureStanding {
     CitedToAuthority { authority: Rc<ExternalAuthority> },
@@ -79,12 +79,12 @@ pub fn external_subject_symbolic_identity_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ExternalSubjectRef {
     pub declaration: Rc<DeclarationRef>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ExternalModelScope {
     pub subject: Rc<ExternalSubjectRef>,
     pub first_citation: Rc<ExternalAuthority>,
@@ -104,7 +104,7 @@ pub fn external_subject_ref_eq(a: Rc<ExternalSubjectRef>, b: Rc<ExternalSubjectR
     crate::std_decl_ref::declaration_ref_eq(a.declaration.clone(), b.declaration.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct FactCitation {
     pub fact: Rc<DeclarationRef>,
     pub authority: Rc<ExternalAuthority>,
@@ -119,7 +119,7 @@ pub fn external_model_scope_decision_kernel_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct DeclaredScopeFacts {
     pub module: NonEmptyStr,
     pub scope: Rc<ExternalModelScope>,
@@ -127,7 +127,7 @@ pub struct DeclaredScopeFacts {
     pub consumer_coverage_rows: Rc<Vec<Rc<DeclarationRef>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ScopeFinding {
     ForeignSubjectRow {
@@ -149,7 +149,7 @@ impl ScopeFinding {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ScopeDecision {
     ScopeCoherent,
@@ -258,7 +258,7 @@ pub fn external_model_scope_portfolio_decision(
     ))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct DownstreamSupportRoster {
     pub module: NonEmptyStr,
     pub coverage_rows: Rc<Vec<Rc<DeclarationRef>>>,

@@ -16,7 +16,16 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum AnnotationPlacement {
@@ -24,7 +33,7 @@ pub enum AnnotationPlacement {
     TrailingAfterSemanticToken,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct UnboundAnnotationCapture {
     pub lexeme: String,
     pub origin: Rc<SourceSpan>,
@@ -41,21 +50,21 @@ pub enum AnnotationScope {
     ErasedSourceRegion { extent: Rc<SourceSpan> },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct AnnotationGap {
     pub scope: Rc<AnnotationScope>,
     pub before: Option<Rc<AnnotationScope>>,
     pub after: Option<Rc<AnnotationScope>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct AnnotationRegion {
     pub scope: Rc<AnnotationScope>,
     pub extent: Rc<SourceSpan>,
     pub parent: Rc<AnnotationScope>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SourceAnnotationDebt {
     pub gap: Rc<AnnotationGap>,
     pub text: String,
@@ -63,7 +72,7 @@ pub struct SourceAnnotationDebt {
     pub placement: AnnotationPlacement,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SourceAnnotationGraph {
     pub rows: Rc<Vec<Rc<SourceAnnotationDebt>>>,
 }
@@ -126,7 +135,16 @@ pub fn placement_from_line_prefix(indent_only: bool) -> AnnotationPlacement {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum AnnotationLineShape {
@@ -135,7 +153,7 @@ pub enum AnnotationLineShape {
     CodeLine,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct AnnotationLineState {
     pub previous: AnnotationLineShape,
     pub current: AnnotationLineShape,
@@ -183,7 +201,7 @@ pub fn advance_annotation_line_state(
         })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct NormalizedAnnotationCapture {
     pub text: String,
     pub origin: Rc<SourceSpan>,
@@ -196,7 +214,7 @@ pub fn region_contains(extent: Rc<SourceSpan>, origin: Rc<SourceSpan>) -> bool {
     ((extent.start.clone() <= origin.start.clone()) && (origin.end.clone() <= extent.end.clone()))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct AnnotationRegionIndex {
     pub children: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
 }
@@ -408,7 +426,7 @@ pub fn annotation_gap_of(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct AnnotationAttachAcc {
     pub rows: Rc<Vec<Rc<SourceAnnotationDebt>>>,
     pub pending: Option<Rc<SourceAnnotationDebt>>,
@@ -503,7 +521,7 @@ pub fn attach_annotations(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct KeyedAnnotationRow {
     pub scope_key: String,
     pub before_key: Option<String>,
@@ -511,7 +529,7 @@ pub struct KeyedAnnotationRow {
     pub text: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct KeyedAnnotationRowWalk {
     pub rest: Rc<Vec<Rc<KeyedAnnotationRow>>>,
     pub agreed: bool,
