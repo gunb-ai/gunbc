@@ -105,27 +105,6 @@ pub(crate) fn nfr_identity_join_line(t: &NfrFrontierTriple) -> String {
     format!("{}\t{}\t{}", t.path, t.reason, t.dissolution)
 }
 
-/// Historical base trees hosted the seven std/extdeps rows in
-/// `dag/gunbc/non_fold_residue.dag`. Head rows live at home; this exception still
-/// admits those paths when reading a base file that has not yet moved them.
-const NFR_STD_EXTDEPS_EXCEPTION_HOST: &str = "dag/gunbc/non_fold_residue.dag";
-const NFR_STD_EXTDEPS_EXCEPTION_PREFIXES: &[&str] = &[
-    "dag/extdeps/git.dag",
-    "dag/extdeps/languages/markdown.dag",
-    "dag/extdeps/linux/proc_self_cgroup.dag",
-    "dag/extdeps/tools/ldd.dag",
-    "dag/std/effect_grant.dag",
-    "dag/std/effects.dag",
-    "dag/std/occurrence_binding_candidates.dag",
-    "dag/std/occurrence_binding_resolve.dag",
-    "dag/gunbc/namespace_cut/namespace_reference_derived_closure_admission.dag",
-];
-
-fn nfr_std_extdeps_home_exception(host: &str, path_prefix: &str) -> bool {
-    host == NFR_STD_EXTDEPS_EXCEPTION_HOST
-        && NFR_STD_EXTDEPS_EXCEPTION_PREFIXES.contains(&path_prefix)
-}
-
 fn nfr_expr_ident(
     value: std::rc::Rc<crate::v1_std_core::Node>,
     source_indices: std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
@@ -394,9 +373,7 @@ fn non_fold_residue_units_from_parse_source(
             });
             if home == NfrHomeCheck::Require {
                 let prefix = path.split("::").next().unwrap_or("");
-                if prefix != module_rel_path
-                    && !nfr_std_extdeps_home_exception(module_rel_path, prefix)
-                {
+                if prefix != module_rel_path {
                     panic!(
                         "nfr frontier reader: row path {path:?} in {module_rel_path} is not at \
                          home (subject file prefix {prefix:?} must equal the hosting module \

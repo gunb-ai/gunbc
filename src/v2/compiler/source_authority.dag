@@ -90,8 +90,6 @@ import std.content_hash {
 import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.std.text { CharAbsent, CharFound, String, string_head, string_is_empty }
 import v2.std.witness { Holds, Violates, Witness }
-import std.roster_frontier { FrontierRow, PathSubject }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data source_authority_module_note: String = "Wave 2 Gate-A flip lane: v2.compiler.source_authority is the cross-tree ingest and round-trip authority (parse→normalize→resolve→serialize laws over DagSourceReadWitness / SourceRootIngest). Curated seed-linked scaffold defers full tree behavioral oracle until emitter Rc/Optional coherence (#6775) greens rustc on the closure."
 
@@ -2062,15 +2060,3 @@ fn layout_verdict_holds(verdict: LayoutVerdict) -> Bool {
     LayoutRefused { refusals: _ } => false
   }
 }
-
-data nfr_reason_content_hash_structural_refusal: String = "ContentHash family structural filter at SourceRef list digest boundary (PR #7762): only Fnv1a64Structural participates in population digest; other family arms refuse as SourceRefContentHashStructuralNonFnv1a64 rather than silently coercing cross-family hashes. Declared at landing so the ratchet re-arms."
-
-data nfr_dissolve_content_hash_structural_refusal: DissolutionCondition = unbound_dissolution(description: "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)")
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "src/v2/compiler/source_authority.dag::source_ref_content_hash_structural" },
-      reason: nfr_reason_content_hash_structural_refusal,
-      dissolution: nfr_dissolve_content_hash_structural_refusal,
-    },
-]

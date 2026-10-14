@@ -35,8 +35,6 @@ import extdeps.llm.claude_code_stream_json {
   ClaudeCodeLineUnreadable,
   claude_code_stream_line,
 }
-import std.roster_frontier { FrontierRow, PathSubject }
-import gunbc.non_fold_residue { nfr_dissolve_provider_terminal_absorb, nfr_reason_provider_terminal_absorb }
 
 // THE HARNESS ARMS ARE THE READ SIDE OF gunbc.harness.harness_tool_kind. A harness tool use is
 // written with an item type derived from its HarnessTool, and provider_item_activity inverts that same
@@ -896,16 +894,3 @@ fn provider_execution_carried_detail(state: ProviderExecutionState) -> String? {
     ProviderEventsRefused { activity: _, detail } => Present { value: detail }
   }
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_provider_events.dag::provider_execution_detail" },
-      reason: nfr_reason_provider_terminal_absorb,
-      dissolution: nfr_dissolve_provider_terminal_absorb,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_provider_events.dag::provider_execution_fold_event" },
-      reason: nfr_reason_provider_terminal_absorb,
-      dissolution: nfr_dissolve_provider_terminal_absorb,
-    },
-]

@@ -1,6 +1,8 @@
 module std.occurrence_binding_candidates
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_reason_structural_eq_mint, nfr_dissolve_derived_equality }
 
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, FilePath }
 import std.algebra { FreeMonoid, Empty, Cons }
@@ -3022,3 +3024,16 @@ fn section13_population_law_roster_denominator_holds(
 }
 
 data section13_module_path_is_symbolic_dissolve_on: DissolutionCondition = unbound_dissolution(description: "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling i")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::declaration_exposure_eq" },
+      reason: nfr_reason_structural_eq_mint,
+      dissolution: nfr_dissolve_derived_equality,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::section13_population_law_id_eq" },
+      reason: nfr_reason_structural_eq_mint,
+      dissolution: unbound_dissolution(description: "DISSOLVE-ON: Section13PopulationLawId equality becomes derived from inhabitance (dag/std/algebra, DESIGN §3/§4) and the hand nested-match equality fold deletes with the row"),
+    },
+]
