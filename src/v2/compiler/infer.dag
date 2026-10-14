@@ -1590,8 +1590,11 @@ fn infer_declaration_reference_facts_indexed(
 
 // THE VALUE TYPE OF A VARIANT-ARM REFERENCE IS THE DECLARING COPRODUCT, never the arm's
 // payload Conj. That Conj is the constructor's input shape. A GENERIC coproduct is applied
-// to fresh open type-parameter atoms (infer_coproduct_type_applied_open); the use site
-// solves those binders. It is never the bare head, and never UndecidableGenericFormal.
+// to fresh open type-parameter atoms (infer_coproduct_type_applied_open). The use site is
+// the same instantiation already used for variant-arm fields and generic call args:
+// infer_judge_formal_args → infer_judge_generic_formal → infer_type_instantiated on the
+// produced type with those instances. It is never the bare head, never a second solver,
+// and never UndecidableGenericFormal.
 // One function answers for both the declaration-reference facts fold and the operand-type
 // reader: a missing claimant refuses declaration_identity_unavailable; a payload-bearing
 // arm used bare stays GroundingNotDerived; a nullary arm is that applied coproduct.
@@ -1607,51 +1610,6 @@ fn infer_open_type_param_atom(name: Symbol) -> Node {
     kind: TypeNode { connective: Atom { identity: name } },
     children: [],
     occurrence_id: OccurrenceSynthetic
-  }
-}
-
-fn infer_node_is_open_param_atom(n: Node, name: Symbol) -> Bool {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } => (id == name) && (length(xs: n.children) == 0)
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
-}
-
-fn infer_args_are_open_params(params: List<Symbol>, args: List<Node>) -> Bool {
-  match params {
-    Empty =>
-      match args {
-        Empty => true
-        Cons { head: _, tail: _ } => false
-      }
-    Cons { head: p, tail: pt } =>
-      match args {
-        Empty => false
-        Cons { head: a, tail: at } =>
-          infer_node_is_open_param_atom(n: a, name: p) && infer_args_are_open_params(params: pt, args: at)
-      }
-  }
-}
-
-fn infer_open_coproduct_binders(t: Node, declarations: SymbolIndex) -> Optional<List<Symbol>> {
-  match t.kind {
-    TypeNode { connective: Instantiation } =>
-      let ha = infer_type_head_and_args(t: t)
-      match declaration_reference_path_optional(node: ha.head) {
-        Absent => optional_absent()
-        Present { value: path } =>
-          let params = symbol_index_declared_type_params_at(index: declarations, qualified_path: path)
-          if (length(xs: params) == 0) || (length(xs: params) != length(xs: ha.args)) {
-            optional_absent()
-          } else if infer_args_are_open_params(params: params, args: ha.args) {
-            optional_present(value: params)
-          } else {
-            optional_absent()
-          }
-      }
-    TypeNode { connective: _ } => optional_absent()
-    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
@@ -4085,7 +4043,7 @@ fn infer_judge_declared_position(
             reason: undecidable_argument_type_not_derived()
           )
         Holds { value: produced } =>
-          let obligation = infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: formal.declared), produced: infer_solve_open_generic_coproduct_type(produced: infer_type_instantiated(t: produced, instances: instances), expected: infer_declared_type_denotation(declared: formal.declared), declarations: declarations), application: application, type_variables: type_params, declarations: declarations)
+          let obligation = infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: formal.declared), produced: infer_type_instantiated(t: produced, instances: instances), application: application, type_variables: type_params, declarations: declarations)
           match declared_type_inhabitance(obligation: obligation) {
             Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
             InhabitanceUndecidable { reason: reason } =>
@@ -4201,23 +4159,6 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
           }
         TypeNode { connective: _ } => InferFormalMatched { instances: instances }
         ComputationNode { behavior: _ } => InferFormalMatched { instances: instances }
-      }
-  }
-}
-
-// A NULLARY GENERIC ARM IS OPEN UNTIL THE USE SITE SOLVES IT. The authority emits
-// Instantiation of the coproduct at its declared binders (infer_coproduct_type_applied_open).
-// Matching those binders against the position's declared type (never inhabitance
-// type_variables, never UndecidableGenericFormal) is the solve: FsEmpty at FsList<Int>
-// becomes FsList<Int>. A concrete produced type is left as written, so FsList<Bool> at
-// FsList<Int> still refuses.
-fn infer_solve_open_generic_coproduct_type(produced: Node, expected: Node, declarations: SymbolIndex) -> Node {
-  match infer_open_coproduct_binders(t: produced, declarations: declarations) {
-    Absent => produced
-    Present { value: binders } =>
-      match infer_match_generic_formal(formal: produced, produced: expected, type_params: binders, instances: Empty, declarations: declarations) {
-        InferFormalShapeMismatch => produced
-        InferFormalMatched { instances: matched } => infer_type_instantiated(t: produced, instances: matched)
       }
   }
 }

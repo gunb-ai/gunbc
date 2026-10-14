@@ -93,6 +93,8 @@ data rcf_fs_color_source: String = "module v2.test.rcf_fs_color\n\ntype NvarColo
 
 data rcf_fs_conflict_source: String = "module v2.test.rcf_fs_conflict\n\ntype FsList<T>\n  = FsEmpty\n  | FsNonEmpty { head: T, tail: FsList<T> }\n\ndata rcf_fs_wrong_elem: FsList<Int> = FsNonEmpty { head: 1, tail: FsNonEmpty { head: \"a\", tail: FsEmpty } }\n"
 
+data rcf_fs_position_source: String = "module v2.test.rcf_fs_position\n\ntype FsList<T>\n  = FsEmpty\n  | FsNonEmpty { head: T, tail: FsList<T> }\n\ndata rcf_fs_bools: FsList<Bool> = FsNonEmpty { head: true, tail: FsEmpty }\n\ndata rcf_fs_at_int: FsList<Int> = FsNonEmpty { head: 1, tail: rcf_fs_bools }\n"
+
 fn rcf_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
@@ -118,7 +120,8 @@ data rcf_ingest: SourceRootIngest = [
   rcf_read(source: rcf_pattern_source, id: ^rcf_pattern_read, unit: ^rcf_pattern_cu, path: "src/v2/test/fixture/record_construct_field/pattern.dag"),
   rcf_read(source: rcf_fs_list_source, id: ^rcf_fs_list_read, unit: ^rcf_fs_list_cu, path: "src/v2/test/fixture/record_construct_field/fs_list.dag"),
   rcf_read(source: rcf_fs_color_source, id: ^rcf_fs_color_read, unit: ^rcf_fs_color_cu, path: "src/v2/test/fixture/record_construct_field/fs_color.dag"),
-  rcf_read(source: rcf_fs_conflict_source, id: ^rcf_fs_conflict_read, unit: ^rcf_fs_conflict_cu, path: "src/v2/test/fixture/record_construct_field/fs_conflict.dag")
+  rcf_read(source: rcf_fs_conflict_source, id: ^rcf_fs_conflict_read, unit: ^rcf_fs_conflict_cu, path: "src/v2/test/fixture/record_construct_field/fs_conflict.dag"),
+  rcf_read(source: rcf_fs_position_source, id: ^rcf_fs_position_read, unit: ^rcf_fs_position_cu, path: "src/v2/test/fixture/record_construct_field/fs_position.dag")
 ]
 
 fn rcf_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
@@ -154,6 +157,7 @@ fn rcf_resolved_pattern() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject
 fn rcf_resolved_fs() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs") }
 fn rcf_resolved_fs_color() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_color") }
 fn rcf_resolved_fs_conflict() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_conflict") }
+fn rcf_resolved_fs_position() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_fs_position") }
 
 // INFER'S VERDICT, READ WHOLE. A refusal carries the advisories pending when it fired ahead of the
 // refusing diagnostic (v2.std.diagnostic rejected_with_pending), so the refusal is looked for by
@@ -550,10 +554,17 @@ test fn rcf_nongeneric_nullary_arm_field_is_accepted_and_decided_holds() -> Bool
   rcf_member_accepted_and_decided(resolved: rcf_resolved_fs_color(), member: ^rcf_fs_box)
 }
 
-// A NULLARY ARM FITS ANY FsList<X> AND CANNOT CONFLICT ON ITS OWN. The discriminating red is two
-// payload arms that disagree on T: FsNonEmpty{head: 1, tail: FsNonEmpty{head: "a", tail: FsEmpty}}
-// at FsList<Int>. Open binders must not make the element type free; the inner head still refuses
-// record_field_value_does_not_inhabit.
+// MIXED HEADS SHARE ONE BINDER. FsNonEmpty{head: 1, tail: FsNonEmpty{head: "a", tail: FsEmpty}}
+// at FsList<Int> refuses record_field_value_does_not_inhabit: T is solved once from the outer
+// head and the inner head must inhabit that instance. Open binders cannot each be solved
+// separately. A nullary arm alone cannot be this red (it fits any FsList<X>).
 test fn rcf_generic_nullary_arm_conflicting_element_type_refuses_holds() -> Bool {
   rcf_refuses_with(resolved: rcf_resolved_fs_conflict(), reason: ^record_field_value_does_not_inhabit)
+}
+
+// POSITION-VS-VALUE, DISTINCT FROM MIXED HEADS: a value already FsList<Bool> (payload head true,
+// nullary tail) at a FsList<Int> field refuses the same reason. This is not the nullary arm
+// conflicting on its own.
+test fn rcf_generic_nullary_arm_position_vs_value_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: rcf_resolved_fs_position(), reason: ^record_field_value_does_not_inhabit)
 }
