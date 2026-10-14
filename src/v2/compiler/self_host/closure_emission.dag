@@ -250,6 +250,13 @@ fn closure_normalize_loop(
 // other member's full tree is needed to resolve this one. The modifier channel is the CLOSURE's
 // (every member NormalizedTree), not this tree alone: an imported unsealed type is covered as
 // not-sealed, and an imported sealed type still refuses.
+// THE INDEX INFER READS IS THE SAME VALUE RESOLVE ALREADY TOOK. closure_emission_of_members
+// fills symbol_index once (symbol_index_fill_module_roots over the members) and hands that
+// binding to resolve_walk_in_context and to resolved_tree_outcome as closure_declarations —
+// no second fill, no cache. empty_symbol_index() here left unique-variant aliases
+// (aca.ExitFailure → aca.ProcessExit.ExitFailure) without claimants, so infer fell back to
+// qualified_name_init of the alias spelling. Uncovered then refused as unread. Covering is
+// carrying this produced index, not widening Uncovered into not-sealed.
 fn closure_resolve_member(
   lm: LanguageModel,
   tree: NormalizedTree,
@@ -272,7 +279,7 @@ fn closure_resolve_member(
           policy: default_name_resolution_policy()
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index(), unavailable_providers: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
+      ).walk, symbol_index: symbol_index, closure_declarations: symbol_index, unavailable_providers: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
     }
   )
 }

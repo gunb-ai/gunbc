@@ -80,6 +80,14 @@ const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/compile.dag";
 /// than this file growing a second copy of that sequence.
 const V2_NATIVE_CLI_ENTRY: &str = "src/v2/cli/compile_cli.dag";
 
+pub(crate) fn native_compile_entry() -> &'static str {
+    NATIVE_COMPILE_ENTRY
+}
+
+pub(crate) fn v2_native_cli_entry() -> &'static str {
+    V2_NATIVE_CLI_ENTRY
+}
+
 /// The malformed control: deliberately unterminating bytes any honest front-end must refuse at
 /// tokenize. THE COMMITTED CARRIER IS NOT A `.dag` FILE — the bytes are not a dag program, and
 /// carrying the extension put them in the changed-witness observation's parse path, where the
@@ -3025,31 +3033,6 @@ fn population_parsed_count(report: &str) -> Option<usize> {
         .ok()
 }
 
-/// How many `.dag` files lie under a governed tree directory, walked on disk: the referent the parse
-/// verb's population is joined to. The verb walks the namespaces the layout declares and parses each
-/// module; this reads the directory, so a verb that walked fewer modules than the tree holds cannot
-/// satisfy the join by agreeing with itself.
-fn count_dag_files(root: &Path) -> Result<usize, String> {
-    let mut count = 0;
-    let mut pending = vec![root.to_path_buf()];
-    while let Some(directory) = pending.pop() {
-        let entries = std::fs::read_dir(&directory)
-            .map_err(|e| format!("reading {}: {e}", directory.display()))?;
-        for entry in entries {
-            let entry = entry.map_err(|e| format!("reading {}: {e}", directory.display()))?;
-            let kind = entry
-                .file_type()
-                .map_err(|e| format!("reading {}: {e}", entry.path().display()))?;
-            if kind.is_dir() {
-                pending.push(entry.path());
-            } else if entry.path().extension().is_some_and(|ext| ext == "dag") {
-                count += 1;
-            }
-        }
-    }
-    Ok(count)
-}
-
 /// The number of declared refusals a held parse report says it met, or `None` when it carries no tally,
 /// which the verb never does: it prints the tally even when nothing is declared, so a report without one
 /// is a verb that stopped reporting what it judged. A held report meets EVERY declared refusal, so this
@@ -3102,8 +3085,9 @@ fn population_refusal_framed(stderr: &str, parts: &[&str]) -> bool {
 /// (`v2.cli.population_verbs`) are folds over what the host handed them; claims over those folds
 /// supply the observations, so these walks are the inhabitance that the BUILT binary reads real
 /// directories and decides with the real verdicts -- deleting the integration makes a control here
-/// fail. Both verbs hold over the live governed roots (`dag` and `src/v2`), which is the job these
-/// verbs have on `witnesses`; every other control differs from a holding one in a single fact:
+/// fail. `check-layout` holds over the live governed roots (`dag` and `src/v2`); `parse-population` is
+/// walked over fixture roots only (`gunbc.rung_drop.required_live_root_parse_population_withdrawn`).
+/// Every other control differs from a holding one in a single fact:
 ///
 /// - `parse-population` over the door fixture's root refuses every declared refusal the root does not
 ///   hold (the declaration is an obligation on the walk) and nothing else, and over the materialized
@@ -3163,8 +3147,8 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
         )
     };
 
-    // THE JOB THE VERBS HAVE ON `witnesses`: both hold over the live governed roots.
-    eprintln!("v2-native-cli: population controls — check-layout and parse-population over the live roots");
+    // `check-layout` holds over the live governed roots.
+    eprintln!("v2-native-cli: population controls — check-layout over the live roots");
     let live = [live_dag.as_path(), live_v2.as_path()];
     let layout_live = run_cli_door(binary, &population_argv("check-layout", &live))?;
     if layout_live.status != Some(0)
@@ -3175,33 +3159,12 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
             &layout_live,
         ));
     }
-    let parse_live = run_cli_door(binary, &population_argv("parse-population", &live))?;
-    // THE VERDICT IS THE VERB'S (`v2.cli.population_verbs` `population_parse_report`): a declared refusal
-    // the walk did not meet is a located red the verb reports itself, so the list cannot outlive its files
-    // there. THIS JOIN IS ONLY REDUNDANT EVIDENCE THAT THE VERB JUDGED THE POPULATION IT NAMES: a held
-    // report without its tally, or one whose modules (parsed outright plus refused as declared) are not
-    // the `.dag` files the two trees hold on disk, did not walk the repository, whatever it printed.
-    let walked_files = count_dag_files(&live_dag)? + count_dag_files(&live_v2)?;
-    let declared_live = population_declared_met(&parse_live.stdout);
-    let population_unjudged = match (population_parsed_count(&parse_live.stdout), declared_live) {
-        (Some(parsed), Some(met)) => parsed + met != walked_files,
-        _ => true,
-    };
-    if parse_live.status != Some(0)
-        || !parse_live.stdout.starts_with(POPULATION_PARSES_HEAD)
-        || population_unjudged
-    {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=NativePopulationParseDoesNotHoldOverTheLiveRoots — status={:?} stdout={} stderr={}",
-            parse_live.status,
-            population_excerpt_lines(&parse_live.stdout, 2000),
-            population_excerpt(&parse_live.stderr)
-        ));
-    }
-    eprintln!(
-        "v2-native-cli: live roots — check-layout held; parse-population: {}",
-        parse_live.stdout.trim()
-    );
+    // PARSE-POPULATION IS NOT WALKED OVER THE LIVE ROOTS ON `witnesses`: the whole-population parse cost
+    // ~18 minutes of every run and pushed the required job past its 90-minute cap. A module's parse
+    // verdict outside the two emitted closures is not judged on the required path, which is the loss
+    // `gunbc.rung_drop.required_live_root_parse_population_withdrawn` declares; the fixture roots below still
+    // walk the verb on real directories, so deleting the integration keeps a control red.
+    eprintln!("v2-native-cli: live roots — check-layout held; parse-population not walked over the live roots");
 
     // PARSE: the door root is refused for the declaration alone, the malformed specimen is refused by file.
     let door = run_cli_door(
@@ -3210,8 +3173,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     )?;
     // THE DOOR ROOT HOLDS ONE CLEAN MODULE AND NONE OF THE DECLARED ONES, so the declaration is the only
     // thing that can refuse it: every declared refusal is a module this root does not have, one located
-    // line each, and nothing else is reported (the module it holds parses). The line count is the live
-    // report's own count of met refusals, a join of two runs of the verb on the size of the declaration.
+    // line each, and nothing else is reported (the module it holds parses).
     let door_text = door.stdout.trim();
     let door_declared_unmet = door_text
         .lines()
@@ -3220,16 +3182,14 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     let door_is_only_the_unmet_declaration = !door_text.is_empty()
         && door_text
             .lines()
-            .all(|line| line.contains(POPULATION_UNMET_MARKER))
-        && declared_live == Some(door_declared_unmet);
+            .all(|line| line.contains(POPULATION_UNMET_MARKER));
     // WITH NO DECLARED REFUSAL THE DECLARATION CANNOT REFUSE THE DOOR ROOT: there is no unmet class to
     // report, so the root's one clean module parses and the verb holds with its zero tally. That is the
-    // only reading consistent with the live report (`declared_live == Some(0)`); the unmet-declaration
+    // only reading in which the door root holds; the unmet-declaration
     // arm below runs whenever a class is declared; its discriminating case with a SUPPLIED roster is the claim suite
     // `v2.test.claim.cli.population_verbs` `a_walk_that_never_met_a_declared_refusal_does_not_hold`, since the built
     // binary reads only the compiled roster.
-    let door_holds_with_nothing_declared = declared_live == Some(0)
-        && door.status == Some(0)
+    let door_holds_with_nothing_declared = door.status == Some(0)
         && population_parsed_count(&door.stdout) == Some(1)
         && population_declared_met(&door.stdout) == Some(0);
     if !door_holds_with_nothing_declared
@@ -4190,45 +4150,8 @@ fn run_relaying_as_it_runs(mut command: Command) -> std::io::Result<std::process
 /// printed `accepted_file_advisories` rows do not match refuses, so a receipt saved from this
 /// stdout cannot claim an advisory population it does not carry.
 fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<NativeCensusRun, String> {
-    let terminal = stdout
-        .lines()
-        .rev()
-        .find_map(|line| {
-            serde_json::from_str::<serde_json::Value>(line)
-                .ok()
-                .filter(|v| v.get("_terminal").is_some())
-        })
-        .ok_or_else(|| {
-            format!(
-                "V2-NATIVE-CENSUS REFUSAL cause=NoTerminalMarker — the census run (exit {exit:?}) printed no terminal marker"
-            )
-        })?;
-    if terminal.get("_terminal").and_then(|t| t.as_str()) != Some("complete")
-        || terminal.get("mode").and_then(|m| m.as_str()) != Some("census-infer")
-    {
-        return Err(format!(
-            "V2-NATIVE-CENSUS REFUSAL cause=TerminalNotComplete — {terminal}"
-        ));
-    }
-    let need_u64 = |key: &str| -> Result<u64, String> {
-        terminal.get(key).and_then(|v| v.as_u64()).ok_or_else(|| {
-            format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no {key}: {terminal}")
-        })
-    };
-    let advised_files = need_u64("advised_files")?;
-    let mut advisory_rows = Vec::new();
-    for line in stdout.lines() {
-        if let Some(advised) = serde_json::from_str::<serde_json::Value>(line)
-            .ok()
-            .and_then(|v| v.get("accepted_file_advisories").cloned())
-        {
-            advisory_rows.push(decode_file_advisories_row(&advised, line).map_err(|c| {
-                format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowMalformed — {c}")
-            })?);
-        }
-    }
-    advised_files_agree(advised_files, &advisory_rows)
-        .map_err(|c| format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowsDisagree — {c}"))?;
+    let terminal = decode_census_terminal(stdout, exit, "census-infer")?;
+    let need_u64 = |key: &str| census_terminal_u64(&terminal, key);
     let type_census = terminal
         .get("type_census")
         .and_then(|v| v.as_str())
@@ -4248,10 +4171,159 @@ fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<Native
         file_refusals: need_u64("file_refusals")?,
         residual_rows: need_u64("residual_rows")?,
         modules: need_u64("modules")?,
-        advised_files,
+        advised_files: need_u64("advised_files")?,
         inferred: need_u64("inferred")?,
         infer_refused: need_u64("infer_refused")?,
         type_census,
+    })
+}
+
+fn census_terminal_u64(terminal: &serde_json::Value, key: &str) -> Result<u64, String> {
+    terminal.get(key).and_then(|v| v.as_u64()).ok_or_else(|| {
+        format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no {key}: {terminal}")
+    })
+}
+
+/// THE TERMINAL BOTH CENSUS-INFER WALKS PRINT, decoded once: the last terminal line, required
+/// complete and of the verb that was spawned, with its `advised_files` count checked against the
+/// printed `accepted_file_advisories` rows. A terminal of the other verb refuses, so a scoped run's
+/// stdout can never be read as a whole-corpus receipt or the other way round.
+fn decode_census_terminal(
+    stdout: &str,
+    exit: Option<i32>,
+    mode: &str,
+) -> Result<serde_json::Value, String> {
+    let terminal = stdout
+        .lines()
+        .rev()
+        .find_map(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
+                .filter(|v| v.get("_terminal").is_some())
+        })
+        .ok_or_else(|| {
+            format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=NoTerminalMarker — the census run (exit {exit:?}) printed no terminal marker"
+            )
+        })?;
+    if terminal.get("_terminal").and_then(|t| t.as_str()) != Some("complete")
+        || terminal.get("mode").and_then(|m| m.as_str()) != Some(mode)
+    {
+        return Err(format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=TerminalNotComplete — {terminal}"
+        ));
+    }
+    let advised_files = census_terminal_u64(&terminal, "advised_files")?;
+    let mut advisory_rows = Vec::new();
+    for line in stdout.lines() {
+        if let Some(advised) = serde_json::from_str::<serde_json::Value>(line)
+            .ok()
+            .and_then(|v| v.get("accepted_file_advisories").cloned())
+        {
+            advisory_rows.push(decode_file_advisories_row(&advised, line).map_err(|c| {
+                format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowMalformed — {c}")
+            })?);
+        }
+    }
+    advised_files_agree(advised_files, &advisory_rows)
+        .map_err(|c| format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowsDisagree — {c}"))?;
+    Ok(terminal)
+}
+
+/// WHETHER THE SCOPED RUN'S POPULATION IS THE SUBJECT'S WHOLE CLOSURE, as the terminal states it:
+/// `v2.compiler.compile` `NativeCensusScope`'s two arms, and nothing else. A blocked population is
+/// carried with its block count, never reported as closed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeCensusScopeWord {
+    Closed,
+    Blocked { blocks: u64 },
+}
+
+/// One `census-scoped` run's terminal, decoded: the subject it acquired, whether that closure is
+/// closed or blocked, and the census counts over the acquired population.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeCensusScopedRun {
+    pub subject: String,
+    pub scope: NativeCensusScopeWord,
+    pub cause_groups: u64,
+    pub roots: u64,
+    pub file_refusals: u64,
+    pub residual_rows: u64,
+    pub modules: u64,
+    pub advised_files: u64,
+    pub inferred: u64,
+    pub infer_refused: u64,
+}
+
+/// `gunbc test //gunbc/instruments:v2-native-census-scoped`: the emitted compiler's `census-scoped`
+/// verb over the bound subject's acquired closure (gunbc.plans.census_scoped_run). The rows are
+/// relayed whole, as `run_v2_native_census` relays them; the terminal is decoded and its
+/// `subject_label` must be the label this instrument bound, so a run is never reported as another
+/// subject's.
+pub fn run_v2_native_census_scoped(
+    subject_label: &str,
+    source_roots: &[String],
+) -> Result<NativeCensusScopedRun, String> {
+    eprintln!(
+        "{}",
+        host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution())
+    );
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let mut args = vec!["census-scoped".to_string(), subject_label.to_string()];
+    args.extend(source_roots.iter().cloned());
+    let mut command = Command::new(&preparation.binary_path);
+    command.args(&args);
+    let output = run_relaying_as_it_runs(command).map_err(|e| {
+        format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+            preparation.binary_path.display()
+        )
+    })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("V2-NATIVE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
+    })?;
+    decode_native_census_scoped_output(&stdout, output.status.code(), subject_label)
+}
+
+fn decode_native_census_scoped_output(
+    stdout: &str,
+    exit: Option<i32>,
+    subject_label: &str,
+) -> Result<NativeCensusScopedRun, String> {
+    let terminal = decode_census_terminal(stdout, exit, "census-scoped")?;
+    let need_u64 = |key: &str| census_terminal_u64(&terminal, key);
+    let need_str =
+        |key: &str| -> Result<String, String> {
+            terminal.get(key).and_then(|v| v.as_str()).map(str::to_string).ok_or_else(|| {
+            format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no {key}: {terminal}")
+        })
+        };
+    let observed_label = need_str("subject_label")?;
+    if observed_label != subject_label {
+        return Err(format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=SubjectDisagrees — bound {subject_label:?}, observed {observed_label:?}: {terminal}"
+        ));
+    }
+    let scope = match (need_str("acquisition")?.as_str(), need_u64("blocks")?) {
+        ("closed", 0) => NativeCensusScopeWord::Closed,
+        ("blocked", blocks) if blocks > 0 => NativeCensusScopeWord::Blocked { blocks },
+        (word, blocks) => {
+            return Err(format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=ScopeWordUnknown — acquisition {word:?} with {blocks} blocks is neither closed with none nor blocked with some: {terminal}"
+            ))
+        }
+    };
+    Ok(NativeCensusScopedRun {
+        subject: need_str("subject")?,
+        scope,
+        cause_groups: need_u64("cause_groups")?,
+        roots: need_u64("roots")?,
+        file_refusals: need_u64("file_refusals")?,
+        residual_rows: need_u64("residual_rows")?,
+        modules: need_u64("modules")?,
+        advised_files: need_u64("advised_files")?,
+        inferred: need_u64("inferred")?,
+        infer_refused: need_u64("infer_refused")?,
     })
 }
 
@@ -5371,6 +5443,42 @@ mod tests {
             summary.contains("advised a.dag reasons=r,s"),
             "got: {summary}"
         );
+    }
+
+    const SCOPED_TERMINAL: &str = "{\"_terminal\":\"complete\",\"mode\":\"census-scoped\",\
+        \"subject_label\":\"//v2/a:all\",\"subject\":\"v2.a\",\"acquisition\":\"blocked\",\"blocks\":2,\
+        \"modules\":3,\"file_refusals\":1,\"advised_files\":0,\"residual_rows\":0,\"cause_groups\":1,\
+        \"roots\":1,\"inferred\":2,\"infer_refused\":0}\n";
+
+    #[test]
+    fn a_scoped_terminal_decodes_its_subject_and_its_blocked_scope() {
+        let run = decode_native_census_scoped_output(SCOPED_TERMINAL, Some(0), "//v2/a:all")
+            .expect("a complete scoped terminal of the bound subject decodes");
+        assert_eq!(run.subject, "v2.a");
+        assert_eq!(run.scope, NativeCensusScopeWord::Blocked { blocks: 2 });
+        assert_eq!(run.modules, 3);
+    }
+
+    // DISCRIMINATING: the same terminal read for another bound subject refuses, so a run is never
+    // reported as the subject it was not.
+    #[test]
+    fn a_scoped_terminal_of_another_subject_refuses() {
+        let cause = decode_native_census_scoped_output(SCOPED_TERMINAL, Some(0), "//v2/b:all")
+            .expect_err("a different bound subject refuses");
+        assert!(cause.contains("SubjectDisagrees"), "got: {cause}");
+    }
+
+    // DISCRIMINATING: each verb's decode refuses the other verb's terminal, and a scope word whose
+    // block count contradicts it refuses rather than being read as either arm.
+    #[test]
+    fn the_scoped_and_whole_corpus_terminals_are_not_interchangeable() {
+        assert!(decode_native_census_output(SCOPED_TERMINAL, Some(0)).is_err());
+        let infer = SCOPED_TERMINAL.replace("census-scoped", "census-infer");
+        assert!(decode_native_census_scoped_output(&infer, Some(0), "//v2/a:all").is_err());
+        let closed_with_blocks = SCOPED_TERMINAL.replace("\"blocked\"", "\"closed\"");
+        let cause = decode_native_census_scoped_output(&closed_with_blocks, Some(0), "//v2/a:all")
+            .expect_err("closed with blocks refuses");
+        assert!(cause.contains("ScopeWordUnknown"), "got: {cause}");
     }
 
     #[test]

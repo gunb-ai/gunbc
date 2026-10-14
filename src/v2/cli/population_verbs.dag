@@ -1,7 +1,7 @@
 module v2.cli.population_verbs
 
 import std.types { Bool, Int, List, Map }
-import std.algebra { Cons, Empty, HeadAbsent, HeadFound, fold_list, is_empty, length, list_head, list_map, list_reverse, skip }
+import std.algebra { Cons, Empty, fold_list, is_empty, length, list_head, list_map, list_reverse, skip }
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
@@ -107,8 +107,8 @@ fn tree_files(binding: SourceRootBinding) -> TreeFiles {
 
 fn layout_headers_go(reader: ModuleHeaderReader, host_directory: String, pending: List<ModuleFileRef>, acc: List<LayoutFileHeader>) -> LayoutHeaders {
   match list_head(xs: pending) {
-    HeadAbsent => LayoutHeadersRead { headers: acc }
-    HeadFound { value: file } =>
+    Absent => LayoutHeadersRead { headers: acc }
+    Present { value: file } =>
       match acquisition_probe(host_directory: host_directory, file: file) {
         ModuleFilePresent { file: _, content: content } =>
           layout_headers_go(
@@ -126,8 +126,8 @@ fn layout_headers_go(reader: ModuleHeaderReader, host_directory: String, pending
 
 fn layout_bindings_headers(reader: ModuleHeaderReader, pending: List<SourceRootBinding>, acc: List<LayoutFileHeader>) -> LayoutHeaders {
   match list_head(xs: pending) {
-    HeadAbsent => LayoutHeadersRead { headers: acc }
-    HeadFound { value: binding } =>
+    Absent => LayoutHeadersRead { headers: acc }
+    Present { value: binding } =>
       match tree_files(binding: binding) {
         TreeFilesRefused { path: path, kind: kind, cause: cause } =>
           LayoutHeadersRefused { cause: concat("could not walk ", path, ": ", kind, ": ", cause) }

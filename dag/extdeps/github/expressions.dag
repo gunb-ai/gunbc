@@ -1,9 +1,11 @@
 module extdeps.github.expressions
+import std.optional { Absent, Optional, Present }
+
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Lossless }
-import std.algebra { fold_list, list_head, skip, HeadFound, HeadAbsent, length }
+import std.algebra { fold_list, list_head, skip, length }
 import std.types { Bool, List, String, Int }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -684,13 +686,13 @@ fn eval_format_args(args: List<Expression>, github_path: fn(List<String>) -> Git
     ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatArityNotOneSubstitution { argument_count: n } } }
   } else {
     match list_head(xs: args) {
-      HeadAbsent => ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatArityNotOneSubstitution { argument_count: 0 } } }
-      HeadFound { value: tmpl } =>
+      Absent => ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatArityNotOneSubstitution { argument_count: 0 } } }
+      Present { value: tmpl } =>
         match tmpl {
           StringLiteral { value: t } =>
             match list_head(xs: skip(xs: args, n: 1)) {
-              HeadAbsent => ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatArityNotOneSubstitution { argument_count: n } } }
-              HeadFound { value: arg } =>
+              Absent => ExpressionEvaluationRefused { cause: UnmodeledFormat { cause: FormatArityNotOneSubstitution { argument_count: n } } }
+              Present { value: arg } =>
                 match evaluate_expression(expression: arg, github_path: github_path) {
                   ExpressionEvaluationRefused { cause: c } => ExpressionEvaluationRefused { cause: c }
                   ExpressionValue { value: arg0 } => apply_format_arg0(template: t, arg0: arg0)

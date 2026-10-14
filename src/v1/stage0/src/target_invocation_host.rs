@@ -249,8 +249,14 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum V2NativeCensusReading {
     RefusalCensus,
+    /// `subject` is the bound PACKAGE's segments; rendered as a package pattern only at argv.
+    ScopedRefusalCensus {
+        subject: &'static [&'static str],
+    },
     TypeDeclarationUse,
-    NativeProcessMemory { workload: NativeMeasuredWorkload },
+    NativeProcessMemory {
+        workload: NativeMeasuredWorkload,
+    },
 }
 
 /// `gunbc.instruments.native_process_memory_reading` `NativeCensusVerb`.
@@ -308,6 +314,7 @@ pub enum TargetProducer {
     DependencyDemandCensus,
     GenericIdentityCensus,
     InterpolationHoleCensus,
+    SharedTypeLeafCollisionCensus,
     RegenRoundCost,
     /// `NativeClaimProgramProducer { entry, deadline }`: the entry is carried so a second program
     /// of the same shape is a registry row, never another variant. The Millisecond deadline is
@@ -395,6 +402,20 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("v2-native-census-scoped"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::ScopedRefusalCensus {
+                    subject: &[
+                        "v2",
+                        "test",
+                        "claim",
+                        "parse",
+                        "expression_bodied_fn_decl_parse",
+                    ],
+                },
+            },
+        ),
+        (
             instrument_label("type-declaration-use-census"),
             TargetProducer::V2NativeCensus {
                 reading: V2NativeCensusReading::TypeDeclarationUse,
@@ -442,6 +463,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("native-emission-controls"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_emission_controls.dag",
+            },
+        ),
+        (
+            instrument_label("native-xl2-rehearsal"),
+            TargetProducer::NativeClaimProgram {
+                entry: "src/v2/workflow/namespace_xl2_rehearsal_native.dag",
             },
         ),
         (
@@ -511,6 +538,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("interpolation-hole-census"),
             TargetProducer::InterpolationHoleCensus,
+        ),
+        (
+            instrument_label("shared-type-leaf-collision-census"),
+            TargetProducer::SharedTypeLeafCollisionCensus,
         ),
         (
             instrument_label("regen-round-cost"),
@@ -899,6 +930,14 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             reading: V2NativeCensusReading::RefusalCensus,
         } => run_v2_native_census(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::ScopedRefusalCensus { subject },
+        } => run_v2_native_census_scoped(
+            &render_target_pattern(&TargetPattern::PackageTargets(
+                subject.iter().map(|s| s.to_string()).collect(),
+            )),
+            &self_host_source_roots(),
+        ),
+        TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_type_declaration_use_census(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
@@ -941,6 +980,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         }
         TargetProducer::InterpolationHoleCensus => {
             run_interpolation_hole_census(&self_host_source_roots())
+        }
+        TargetProducer::SharedTypeLeafCollisionCensus => {
+            run_shared_type_leaf_collision_census(&self_host_source_roots())
         }
         TargetProducer::RegenRoundCost => run_regen_round_cost_instrument(),
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
@@ -1293,6 +1335,42 @@ fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
                 run.cause_groups,
                 run.roots,
                 run.type_census.word()
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
+/// THE SCOPED V2-NATIVE CENSUS PRODUCER (`gunbc.instrument_targets` `v2_native_census_scoped_label`). A
+/// report on the same terms as `run_v2_native_census`: a completed run is held whether its closure is
+/// closed or blocked -- the scope is the finding, stated in the message -- and a run that did not
+/// complete, or completed for another subject, is the subject unreached.
+fn run_v2_native_census_scoped(subject: &str, source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_native_census_scoped(subject, source_roots) {
+        Ok(run) => InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message: format!(
+                "v2-native-census-scoped: subject={} scope={} modules={} file_refusals={} \
+                 advised_files={} residual_rows={} inferred={} infer_refused={} cause_groups={} \
+                 roots={}; the population is the subject's acquired closure (census_scope line \
+                 above), its rows grouped by fatal reason in the cause_group lines",
+                run.subject,
+                match run.scope {
+                    cli_run::NativeCensusScopeWord::Closed => "closed".to_string(),
+                    cli_run::NativeCensusScopeWord::Blocked { blocks } =>
+                        format!("blocked({blocks})"),
+                },
+                run.modules,
+                run.file_refusals,
+                run.advised_files,
+                run.residual_rows,
+                run.inferred,
+                run.infer_refused,
+                run.cause_groups,
+                run.roots
             ),
         },
         Err(cause) => InvocationOutcome {
@@ -4625,6 +4703,273 @@ fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
     }
 }
 
+/// `gunbc.instrument_targets` `shared_type_leaf_collision_census_label`.
+///
+/// TRANSPORT: load each measured closure, `compile_to_resolved`, emit, and ask cargo
+/// once per subject. Sharing rows and fixture standing are
+/// `v1.tests.claim.shared_type_leaf_collision_census`. Independent sharing is
+/// `v1.compiler.emit_rust` `maybe_mark_shared_type` per declaration. Standing is the
+/// three fixture cargo controls; the live rows are a report (sharing at declaration
+/// grain, rustc at subject grain). Completed cargo is a subject-grain finding;
+/// NotAttempted / DidNotComplete / DependencyFetchFailed are SubjectUnreached.
+fn shared_type_census_subject_build_from_cargo_verdict(
+    verdict: &crate::cli_run::emitted_closure_compile_host::CargoVerdict,
+) -> Result<
+    std::rc::Rc<crate::v1_tests_claim_shared_type_leaf_collision_census::SubjectBuild>,
+    String,
+> {
+    use crate::cli_run::emitted_closure_compile_host::{cargo_verdict_summary, CargoVerdict};
+    use crate::v1_tests_claim_shared_type_leaf_collision_census as census;
+    match verdict {
+        CargoVerdict::Completed { status, .. } if *status == 0 => Ok(census::build_accepted()),
+        CargoVerdict::Completed { .. } => Ok(census::build_refused(cargo_verdict_summary(verdict))),
+        CargoVerdict::NotAttempted { .. }
+        | CargoVerdict::DidNotComplete { .. }
+        | CargoVerdict::DependencyFetchFailed { .. } => Err(cargo_verdict_summary(verdict)),
+    }
+}
+
+fn shared_type_census_termination(
+    standing_held: bool,
+    mapping_controls_hold: bool,
+    live_unobserved: bool,
+) -> Termination {
+    if !standing_held || !mapping_controls_hold {
+        Termination::ObservationDidNotHold
+    } else if live_unobserved {
+        Termination::SubjectUnreached
+    } else {
+        Termination::ObservationHeld
+    }
+}
+
+fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationOutcome {
+    use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    use crate::v1_compiler_emit_rust::emit_rust;
+    use crate::v1_tests_claim_shared_type_leaf_collision_census as census;
+    use std::rc::Rc;
+
+    const PREFIX: &str = "shared-type-leaf-collision-census";
+    const FIXTURE_DIR: &str = "fixtures/shared_type_leaf_collision";
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("{PREFIX}: subject unreached: {detail}"),
+    };
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return unreached(format!("could not anchor at the workspace root: {e}"));
+    }
+
+    fn load_dir(dir: &str) -> Result<Vec<Rc<SourceFile>>, String> {
+        let mut out = Vec::new();
+        let entries = std::fs::read_dir(dir).map_err(|e| format!("{dir}: {e}"))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("{dir}: {e}"))?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+                continue;
+            }
+            let content =
+                std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            out.push(Rc::new(SourceFile {
+                path: path.to_string_lossy().to_string(),
+                content,
+            }));
+        }
+        if out.is_empty() {
+            return Err(format!("{dir}: no .dag files"));
+        }
+        out.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(out)
+    }
+
+    fn subject_build_of_cargo(
+        entry: &str,
+        graph: Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
+    ) -> Result<Rc<census::SubjectBuild>, String> {
+        let emit = emit_rust(graph);
+        match super::emitted_closure_compile_host::cargo_verdict_of_emit(entry, &emit) {
+            Err(cause) => Err(cause),
+            Ok(verdict) => shared_type_census_subject_build_from_cargo_verdict(&verdict),
+        }
+    }
+
+    fn print_report(kind: &str, subject: &str, report: Rc<census::SubjectCollisionReport>) {
+        println!(
+            "{PREFIX}: {}",
+            census::subject_summary_line(kind.to_string(), subject.to_string(), report.clone())
+        );
+        for row in report.rows.iter() {
+            println!(
+                "{PREFIX}: {}",
+                census::collision_report_line(subject.to_string(), row.clone())
+            );
+        }
+    }
+
+    fn classify_sources(
+        label: &str,
+        sources: Vec<Rc<SourceFile>>,
+    ) -> Result<Rc<census::SubjectCollisionReport>, String> {
+        let compiled = compile_to_resolved(Rc::new(sources.into()));
+        let graph = compiled
+            .graph
+            .clone()
+            .ok_or_else(|| format!("{label}: compile_to_resolved produced no graph"))?;
+        let rows = census::collisions_of_graph(graph.clone());
+        let build = subject_build_of_cargo(label, graph)?;
+        Ok(census::subject_report(rows, build))
+    }
+
+    let fixture_sources = match load_dir(FIXTURE_DIR) {
+        Ok(all) => all,
+        Err(e) => return unreached(e),
+    };
+    let select = |names: &[&str]| {
+        fixture_sources
+            .iter()
+            .filter(|s| {
+                let name = std::path::Path::new(&s.path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                names.iter().any(|want| name == *want)
+            })
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    let refuse_sources = select(&["copy_word.dag", "shared_word.dag", "red_entry.dag"]);
+    let silent_sources = select(&["silent_zcopy.dag", "silent_share.dag", "silent_entry.dag"]);
+    let green_sources = select(&["green_a.dag", "green_b.dag", "green_entry.dag"]);
+    if refuse_sources.len() != 3 {
+        return unreached("refuse fixture files missing".to_string());
+    }
+    if silent_sources.len() != 3 {
+        return unreached("silent fixture files missing".to_string());
+    }
+    if green_sources.len() != 3 {
+        return unreached("green fixture files missing".to_string());
+    }
+
+    let refuse_report = match classify_sources("stlc.red_entry", refuse_sources) {
+        Ok(report) => report,
+        Err(e) => return unreached(e),
+    };
+    let silent_report = match classify_sources("stlc.silent_entry", silent_sources) {
+        Ok(report) => report,
+        Err(e) => return unreached(e),
+    };
+    let green_report = match classify_sources("stlc.green_entry", green_sources) {
+        Ok(report) => report,
+        Err(e) => return unreached(e),
+    };
+    print_report("fixture", "stlc.red_entry", refuse_report.clone());
+    print_report("fixture", "stlc.silent_entry", silent_report.clone());
+    print_report("fixture", "stlc.green_entry", green_report.clone());
+
+    let standing = census::fixture_standing(
+        refuse_report.clone(),
+        silent_report.clone(),
+        green_report.clone(),
+    );
+    for line in standing.lines() {
+        println!("{PREFIX}: {line}");
+    }
+    let held = census::fixture_controls_hold(
+        refuse_report.clone(),
+        silent_report.clone(),
+        green_report.clone(),
+    );
+
+    use super::emitted_closure_compile_host::CargoVerdict;
+    let unobserved_mapped = [
+        CargoVerdict::NotAttempted {
+            reason: "bounded-control-unobserved".to_string(),
+        },
+        CargoVerdict::DidNotComplete {
+            detail: "bounded-control-unobserved".to_string(),
+        },
+        CargoVerdict::DependencyFetchFailed {
+            status: None,
+            stderr_tail: "bounded-control-unobserved".to_string(),
+        },
+    ]
+    .iter()
+    .all(|v| shared_type_census_subject_build_from_cargo_verdict(v).is_err());
+    let unobserved_live_control = unobserved_mapped && !census::observation_held(held, true);
+    let completed_nonzero_control = census::build_is_refused_finding(refuse_report.build.clone())
+        && census::build_is_reportable_finding(refuse_report.build.clone())
+        && census::observation_held(held, false);
+    println!(
+        "{PREFIX}: {}",
+        census::control_line(
+            "unobserved_live_with_standing_unreaches".to_string(),
+            unobserved_live_control,
+        )
+    );
+    println!(
+        "{PREFIX}: {}",
+        census::control_line(
+            "completed_nonzero_refusal_does_not_unreach".to_string(),
+            completed_nonzero_control,
+        )
+    );
+    let mapping_controls_hold = unobserved_live_control && completed_nonzero_control;
+
+    let mut subjects: Vec<(String, String)> = Vec::new();
+    for (label, producer) in instrument_registry() {
+        match producer {
+            TargetProducer::SelfHost => subjects.push((
+                label.target.clone(),
+                cli_run::native_compile_entry().to_string(),
+            )),
+            TargetProducer::V2NativeCli => subjects.push((
+                label.target.clone(),
+                cli_run::v2_native_cli_entry().to_string(),
+            )),
+            TargetProducer::NativeClaimProgram { entry } => {
+                subjects.push((label.target.clone(), entry.to_string()));
+            }
+            _ => {}
+        }
+    }
+
+    let mut reports_ok = true;
+    for (name, entry) in subjects {
+        match cli_run::load_sources_for_entry_with_pool_index(source_roots, &entry, false) {
+            Ok(sources) => match classify_sources(&name, sources) {
+                Ok(report) => print_report("closure", &name, report),
+                Err(e) => {
+                    reports_ok = false;
+                    println!("{PREFIX}: subject kind=closure name={name} unreached {e}");
+                }
+            },
+            Err(e) => {
+                reports_ok = false;
+                println!("{PREFIX}: subject kind=closure name={name} unreached {e}");
+            }
+        }
+    }
+
+    let live_unobserved = !reports_ok;
+    InvocationOutcome {
+        termination: shared_type_census_termination(
+            held,
+            mapping_controls_hold,
+            live_unobserved,
+        ),
+        message: format!(
+            "{PREFIX}: {} (controls over {FIXTURE_DIR}; report over required subjects and NativeClaimProgramProducer entries)",
+            if census::observation_held(held && mapping_controls_hold, live_unobserved) {
+                "STANDING held"
+            } else if live_unobserved && held && mapping_controls_hold {
+                "subject unreached"
+            } else {
+                "STANDING unmet"
+            }
+        ),
+    }
+}
+
 /// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
 /// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
 /// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
@@ -4764,5 +5109,81 @@ fn run_regen_round_cost_instrument() -> InvocationOutcome {
                 round.round_failures.join("; ")
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod shared_type_census_cargo_mapping_tests {
+    use super::*;
+    use crate::cli_run::emitted_closure_compile_host::CargoVerdict;
+    use crate::v1_tests_claim_shared_type_leaf_collision_census as census;
+
+    fn completed(status: i32) -> CargoVerdict {
+        CargoVerdict::Completed {
+            status,
+            stderr_tail: "error[E0204]: bounded-control".to_string(),
+            probe_line: None,
+            probe_diagnostic: None,
+            warning_count: 0,
+            warning_headers: Vec::new(),
+            cargo_network_retries: 0,
+            first_error: None,
+        }
+    }
+
+    #[test]
+    fn unobserved_cargo_outcomes_are_unreached_not_refused_findings() {
+        let not_attempted = CargoVerdict::NotAttempted {
+            reason: "live-subject-not-attempted".to_string(),
+        };
+        let did_not = CargoVerdict::DidNotComplete {
+            detail: "live-subject-did-not-complete".to_string(),
+        };
+        let fetch = CargoVerdict::DependencyFetchFailed {
+            status: Some(1),
+            stderr_tail: "live-subject-fetch-failed".to_string(),
+        };
+        let na = shared_type_census_subject_build_from_cargo_verdict(&not_attempted);
+        let dc = shared_type_census_subject_build_from_cargo_verdict(&did_not);
+        let ff = shared_type_census_subject_build_from_cargo_verdict(&fetch);
+        assert!(na.as_ref().unwrap_err().contains("NotAttempted"));
+        assert!(na
+            .as_ref()
+            .unwrap_err()
+            .contains("live-subject-not-attempted"));
+        assert!(dc.as_ref().unwrap_err().contains("DidNotComplete"));
+        assert!(dc
+            .as_ref()
+            .unwrap_err()
+            .contains("live-subject-did-not-complete"));
+        assert!(ff.as_ref().unwrap_err().contains("DependencyFetchFailed"));
+        assert!(ff
+            .as_ref()
+            .unwrap_err()
+            .contains("live-subject-fetch-failed"));
+        assert_eq!(
+            shared_type_census_termination(true, true, true),
+            Termination::SubjectUnreached
+        );
+        assert!(!census::observation_held(true, true));
+    }
+
+    #[test]
+    fn completed_nonzero_is_a_reportable_refusal_and_does_not_unreach() {
+        let build = shared_type_census_subject_build_from_cargo_verdict(&completed(101)).unwrap();
+        assert!(census::build_is_refused_finding(build.clone()));
+        assert!(census::build_is_reportable_finding(build));
+        assert!(census::observation_held(true, false));
+        assert_eq!(
+            shared_type_census_termination(true, true, false),
+            Termination::ObservationHeld
+        );
+    }
+
+    #[test]
+    fn completed_zero_is_accepted() {
+        let build = shared_type_census_subject_build_from_cargo_verdict(&completed(0)).unwrap();
+        assert!(!census::build_is_refused_finding(build.clone()));
+        assert!(census::build_is_reportable_finding(build));
     }
 }

@@ -4,16 +4,11 @@ import std.types { List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.std.text { String }
+import std.env_binding { EnvBinding }
 import std.algebra { FreeMonoid }
-import std.optional {
-  Optional
-}
+import std.optional { Optional, Absent, Present }
 import v2.std.diagnostic { EmitDirective }
 import v2.std.node { Symbol }
-
-type EnvBinding
-  = EnvSet { name: String, value: String }
-  | EnvUnset { name: String }
 
 type RedirectSpec
   = StdoutAndStderr
@@ -149,7 +144,7 @@ type Pipeline {
   on_failure: FailurePolicy
 }
 
-data pipeline_steps_empty_arm_note: String = "Pipeline.steps is a plain FreeMonoid<PipelineStep> with no NonEmpty variant and no smart constructor, so steps: Empty (a zero-step Pipeline) is legally constructible today -- consistent with orch_emit_pipeline's existing HeadAbsent -> \"\" no-op convention at the top level. Nested as an If arm, orch_emit_if_step spells an empty arm's body as the bash no-op \":\" (never an empty token span, which is invalid bash), uniformly for every arm shape including both arms empty -- a Predicate executes a command (ExitZero/LogMatches/StrEq/etc., v2.std.orchestration), so even a both-empty If is a real \"run the condition, discard the outcome\" intent, not dead code, and is never refused. A NonEmpty<PipelineStep> carrier was considered and declined: zero occurrences in tree today, and it would touch this type plus every Pipeline constructor for a currently-unexercised case (the purity trap, DESIGN.md sec 6) -- revisit if empty-Pipeline construction sites start appearing."
+data pipeline_steps_empty_arm_note: String = "Pipeline.steps is a plain FreeMonoid<PipelineStep> with no NonEmpty variant and no smart constructor, so steps: Empty (a zero-step Pipeline) is legally constructible today -- consistent with orch_emit_pipeline's existing Absent -> \"\" no-op convention at the top level. Nested as an If arm, orch_emit_if_step spells an empty arm's body as the bash no-op \":\" (never an empty token span, which is invalid bash), uniformly for every arm shape including both arms empty -- a Predicate executes a command (ExitZero/LogMatches/StrEq/etc., v2.std.orchestration), so even a both-empty If is a real \"run the condition, discard the outcome\" intent, not dead code, and is never refused. A NonEmpty<PipelineStep> carrier was considered and declined: zero occurrences in tree today, and it would touch this type plus every Pipeline constructor for a currently-unexercised case (the purity trap, DESIGN.md sec 6) -- revisit if empty-Pipeline construction sites start appearing."
 
 // v2.std.orchestration Pipeline/PipelineStep is the bash-emit scaffold: Do-run leaves carry command
 // strings for foreign-executor/bootstrap emission via v2.compiler.emit_orchestration.

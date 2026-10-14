@@ -10,12 +10,11 @@ import v2.std.orchestration {
   If,
   Pipeline,
   FailFast,
-  EnvSet,
-  EnvUnset,
   Exit,
   Predicate,
-  ExitZero
+  ExitZero,
 }
+import std.env_binding { EnvSet, EnvUnset }
 import std.optional { Optional, Present }
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }

@@ -8,8 +8,6 @@ use self::CarrierRowMembership::*;
 use self::CollectionSizeEffect::*;
 use self::ContainerSource::*;
 use self::CostShape::*;
-use self::ListHeadResult::*;
-use self::ListTailResult::*;
 use self::Ordering::*;
 pub use crate::std_error_primitives::pure_dag_seam_unreachable_string;
 use crate::std_error_primitives::DivError::*;
@@ -2360,30 +2358,28 @@ pub fn fold_list<T: Clone, A: Clone>(
     mut __tco_loop_empty: A,
     mut __tco_loop_cons: impl Fn(A, T) -> A + Clone,
 ) -> A {
-    {
-        let mut __tco_cursor: usize = 0;
-        loop {
-            #[allow(unused_mut)]
-            let mut empty = __tco_loop_empty;
-            #[allow(unused_mut)]
-            let mut cons = __tco_loop_cons;
-            #[allow(unused_mut)]
-            let mut xs = __tco_loop_xs.clone();
-            {
-                let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor) == 0 {
-                    break empty.clone();
-                } else {
-                    let h = (*__fm)[__tco_cursor + 0].clone();
-                    {
-                        let __tco_0 = cons(empty, h.clone());
-                        let __tco_1 = cons;
-                        let __tco_2 = __tco_cursor + 1;
-                        __tco_loop_empty = __tco_0;
-                        __tco_loop_cons = __tco_1;
-                        __tco_cursor = __tco_2;
-                        continue;
-                    }
+    loop {
+        #[allow(unused_mut)]
+        let mut xs = __tco_loop_xs;
+        #[allow(unused_mut)]
+        let mut empty = __tco_loop_empty;
+        #[allow(unused_mut)]
+        let mut cons = __tco_loop_cons;
+        {
+            let __fm = xs.clone();
+            if __fm.is_empty() {
+                break empty.clone();
+            } else {
+                let h = (*__fm)[0].clone();
+                let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                {
+                    let __tco_0 = t.clone();
+                    let __tco_1 = cons(empty, h.clone());
+                    let __tco_2 = cons;
+                    __tco_loop_xs = __tco_0;
+                    __tco_loop_empty = __tco_1;
+                    __tco_loop_cons = __tco_2;
+                    continue;
                 }
             }
         }
@@ -2456,81 +2452,26 @@ pub fn list_flat_map<T: Clone, U: Clone>(
     })
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-#[serde(bound(
-    serialize = "T: Clone + serde::Serialize",
-    deserialize = "T: Clone + serde::Deserialize<'de>"
-))]
-#[serde(tag = "_variant")]
-pub enum ListTailResult<T> {
-    TailFound { tail: Rc<FreeMonoid<T>> },
-    TailAbsent,
-}
-impl<T: Clone> ListTailResult<T> {
-    pub fn tail(&self) -> Rc<FreeMonoid<T>> {
-        match self {
-            ListTailResult::TailFound { tail: __val, .. } => __val.clone(),
-            ListTailResult::TailAbsent => panic!("no tail on unit variant"),
-        }
-    }
-}
-
-impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ListTailResult<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::TailFound { tail } => f.debug_struct("TailFound").field("tail", tail).finish(),
-            Self::TailAbsent => f.write_str("TailAbsent"),
-        }
-    }
-}
-
-impl<T: Clone + PartialEq> PartialEq for ListTailResult<T> {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::TailFound { tail: a_tail }, Self::TailFound { tail: b_tail }) => {
-                a_tail == b_tail
-            }
-            (Self::TailAbsent, Self::TailAbsent) => true,
-            _ => false,
-        }
-    }
-}
-
-pub fn list_tail<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<ListTailResult<T>> {
+pub fn list_tail<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Option<Rc<FreeMonoid<T>>> {
     {
         let __fm = xs.clone();
         if __fm.is_empty() {
-            Rc::new(ListTailResult::TailAbsent)
+            std::option::Option::None
         } else {
             let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            Rc::new(ListTailResult::TailFound { tail: t.clone() })
+            Some(t.clone())
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum ListHeadResult<T> {
-    HeadFound { value: T },
-    HeadAbsent,
-}
-impl<T: Clone> ListHeadResult<T> {
-    pub fn value(&self) -> T {
-        match self {
-            ListHeadResult::HeadFound { value: __val, .. } => __val.clone(),
-            ListHeadResult::HeadAbsent => panic!("no value on unit variant"),
-        }
-    }
-}
-
-pub fn list_head<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<ListHeadResult<T>> {
+pub fn list_head<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Option<T> {
     {
         let __fm = xs.clone();
         if __fm.is_empty() {
-            Rc::new(ListHeadResult::HeadAbsent)
+            std::option::Option::None
         } else {
             let h = (*__fm)[0].clone();
-            Rc::new(ListHeadResult::HeadFound { value: h.clone() })
+            Some(h.clone())
         }
     }
 }
@@ -2664,29 +2605,27 @@ pub fn list_find_first<T: Clone>(
     mut __tco_loop_xs: Rc<FreeMonoid<T>>,
     mut __tco_loop_predicate: impl Fn(T) -> bool + Clone,
 ) -> Option<T> {
-    {
-        let mut __tco_cursor: usize = 0;
-        loop {
-            #[allow(unused_mut)]
-            let mut predicate = __tco_loop_predicate;
-            #[allow(unused_mut)]
-            let mut xs = __tco_loop_xs.clone();
-            {
-                let __fm = xs.clone();
-                if (__fm.len() - __tco_cursor) == 0 {
-                    break crate::std_optional::optional_absent();
+    loop {
+        #[allow(unused_mut)]
+        let mut xs = __tco_loop_xs;
+        #[allow(unused_mut)]
+        let mut predicate = __tco_loop_predicate;
+        {
+            let __fm = xs.clone();
+            if __fm.is_empty() {
+                break crate::std_optional::optional_absent();
+            } else {
+                let h = (*__fm)[0].clone();
+                let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                if predicate(h.clone()) {
+                    break crate::std_optional::optional_present(h.clone());
                 } else {
-                    let h = (*__fm)[__tco_cursor + 0].clone();
-                    if predicate(h.clone()) {
-                        break crate::std_optional::optional_present(h.clone());
-                    } else {
-                        {
-                            let __tco_0 = predicate;
-                            let __tco_1 = __tco_cursor + 1;
-                            __tco_loop_predicate = __tco_0;
-                            __tco_cursor = __tco_1;
-                            continue;
-                        }
+                    {
+                        let __tco_0 = t.clone();
+                        let __tco_1 = predicate;
+                        __tco_loop_xs = __tco_0;
+                        __tco_loop_predicate = __tco_1;
+                        continue;
                     }
                 }
             }
