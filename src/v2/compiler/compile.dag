@@ -1391,18 +1391,25 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // parse-grain witness, and native compile-door coverage climbs when admitted subjects enter
 // validate_then_compile (gunbc.v2_compile_obligation_census native_door_entry_trigger).
 
-// RESOLVED POSITIONS OF ACCEPTED FILES, JOINED BY OCCURRENCE ID. Each value is a FileRefusalAt
-// computed at absorb against THAT file's span index and text, so later resolve/infer diagnostics
-// that carry a NodeLocus look up a line rather than a raw locus. Keys are occurrence ids because
-// that is the join the later diagnostic still names; the stored value is never a Locus. Refused
-// parses do not contribute: their ids are reused by the next file (native_test_context_absorb).
+// ACCEPTED FILES' SPAN INDEXES, JOINED BY OCCURRENCE ID TO THE FILE THAT MINTED THEM. The census
+// locates a later resolve/infer fatal by looking up the owner and resolving that file's index at
+// the demand (native_census_locate), not by converting every occurrence to a line at absorb
+// (DESIGN §2: one undeclared pure demand may recompute; §6: ids × bytes through
+// source_line_col_at_byte is a quadratic fold). The stored values are a path and a SpanIndex, never
+// a Locus on the census row. Refused parses do not contribute: their ids are reused by the next
+// file (native_test_context_absorb). A colliding id already in `owner` is left as it was (base-wins).
+type NativeCensusFileSpans {
+  spans: SpanIndex
+  text: String
+}
+
 type NativeCensusPositionTable {
-  by_occurrence: Map<OccurrenceId, FileRefusalAt>
-  texts: Map<Symbol, String>
+  owner: Map<OccurrenceId, Symbol>
+  files: Map<Symbol, NativeCensusFileSpans>
 }
 
 fn native_census_position_table_empty() -> NativeCensusPositionTable {
-  NativeCensusPositionTable { by_occurrence: empty_map(), texts: empty_map() }
+  NativeCensusPositionTable { owner: empty_map(), files: empty_map() }
 }
 
 // The source-root index and the active roots live on `resolution` (ResolutionContext binds them once
@@ -1480,19 +1487,25 @@ fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, text: Strin
     NodeLocus { anchor: a } =>
       match node_occurrence_id_optional(node: a.at) {
         Absent => FileRefusalAtUnresolvedNode
-        Present { value: id } =>
-          match span_index_textual_locus_optional(index: spans, id: id) {
-            Absent => FileRefusalAtUnresolvedNode
-            Present { value: resolved } =>
-              match resolved {
-                Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
-                SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
-                NodeLocus { anchor: _ } => FileRefusalAtUnresolvedNode
-                InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
-                DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
-              }
-          }
+        Present { value: id } => native_file_refusal_from_occurrence(spans: spans, id: id, path: path, text: text)
       }
+  }
+}
+
+fn native_file_refusal_from_occurrence(spans: SpanIndex, id: OccurrenceId, path: Symbol, text: String) -> FileRefusalAt {
+  match span_index_textual_locus_optional(index: spans, id: id) {
+    Absent => FileRefusalAtUnresolvedNode
+    Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, text: text)
+  }
+}
+
+fn native_file_refusal_from_resolved_locus(resolved: Locus, path: Symbol, text: String) -> FileRefusalAt {
+  match resolved {
+    Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+    SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+    NodeLocus { anchor: _ } => FileRefusalAtUnresolvedNode
+    InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
+    DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
   }
 }
 
@@ -1510,11 +1523,9 @@ fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, text:
   }
 }
 
-// ONE ACCEPTED FILE'S SPAN INDEX, FOLDED INTO RESOLVED POSITIONS. map_keys is the same host
-// enumeration provenance uses to merge an index; each id is resolved HERE against this file's
-// spans and text so the table never holds a Locus. A colliding id already in the table is left
-// as it was (base-wins): inserting a refused parse's ids first would then surface as the wrong
-// file's line, which the collision control in v2.test.claim.native_census.located_refusal refuses.
+// ONE ACCEPTED FILE, RECORDED FOR LATER LOOKUP. Occurrence ids are owned by this path (base-wins);
+// the span index and text stay with the file so a later fatal can resolve a line through
+// native_file_refusal_at. A refused parse never enters this table.
 fn native_census_positions_absorb_accepted(
   table: NativeCensusPositionTable,
   path: Symbol,
@@ -1522,36 +1533,23 @@ fn native_census_positions_absorb_accepted(
   text: String
 ) -> NativeCensusPositionTable {
   NativeCensusPositionTable {
-    by_occurrence: fold_list(
+    owner: fold_list(
       xs: map_keys(spans.entries),
-      empty: table.by_occurrence,
+      empty: table.owner,
       cons: fn(acc, id) {
         match map_lookup(acc, id) {
           Present { value: _ } => acc
-          Absent => map_insert(m: acc, key: id, value: native_census_position_from_span(spans: spans, id: id, path: path, text: text))
+          Absent => map_insert(m: acc, key: id, value: path)
         }
       }
     ),
-    texts: map_insert(m: table.texts, key: path, value: text)
+    files: map_insert(m: table.files, key: path, value: NativeCensusFileSpans { spans: spans, text: text })
   }
 }
 
-fn native_census_position_from_span(spans: SpanIndex, id: OccurrenceId, path: Symbol, text: String) -> FileRefusalAt {
-  match span_index_textual_locus_optional(index: spans, id: id) {
-    Absent => FileRefusalAtUnresolvedNode
-    Present { value: resolved } =>
-      match resolved {
-        Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
-        SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
-        NodeLocus { anchor: _ } => FileRefusalAtUnresolvedNode
-        InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
-        DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
-      }
-  }
-}
-
-// A LATER DIAGNOSTIC'S LOCUS, AGAINST POSITIONS ALREADY RESOLVED. NodeLocus looks up the absorb
-// table; a miss is Unresolved, never a guessed line. Textual loci use the file's stored text.
+// A LATER DIAGNOSTIC'S LOCUS, RESOLVED AT THE DEMAND. NodeLocus uses the owner map then the same
+// native_file_refusal_at the front-end refusal already uses; a miss is Unresolved, never a guessed
+// line. Textual loci use the stored file text.
 fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
   match at {
     Textual { file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
@@ -1562,17 +1560,22 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
       match node_occurrence_id_optional(node: a.at) {
         Absent => FileRefusalAtUnresolvedNode
         Present { value: id } =>
-          match map_lookup(positions.by_occurrence, id) {
+          match map_lookup(positions.owner, id) {
             Absent => FileRefusalAtUnresolvedNode
-            Present { value: resolved } => resolved
+            Present { value: owner_path } =>
+              match map_lookup(positions.files, owner_path) {
+                Absent => FileRefusalAtUnresolvedNode
+                Present { value: file } =>
+                  native_file_refusal_at(at: NodeLocus { anchor: a }, path: owner_path, spans: file.spans, text: file.text)
+              }
           }
       }
   }
 }
 
 fn native_census_locate_textual(file: Symbol, extent: Extent, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
-  match map_lookup(positions.texts, file) {
-    Present { value: text } => native_file_refusal_textual(file: file, extent: extent, path: path, text: text)
+  match map_lookup(positions.files, file) {
+    Present { value: stored } => native_file_refusal_textual(file: file, extent: extent, path: path, text: stored.text)
     Absent =>
       if file == path {
         FileRefusalAtUnresolvedNode
@@ -1610,18 +1613,14 @@ fn native_census_locate_fatal(chain: NonEmptyDiagnostics, path: Symbol, position
 // which is a change to the parse core and its own package, not a fold-threading detail.
 //
 // THE CONSTRAINT THAT MAKES THE CURRENT ARM SAFE, NAMED RATHER THAN ASSUMED. Reusing a refused
-// parse's ids is sound exactly while nothing retains that parse's node loci. Today nothing does:
-// `native_test_vocabulary` `NativeTestFileRefusal` keeps `path` and a chain of links whose positions
-// are RESOLVED at the absorb (line and byte column, or a named port) -- no `Locus`, no occurrence id.
-// The accepted arm publishes the same resolved shape into `NativeCensusPositionTable` (occurrence id
-// to FileRefusalAt, never a Locus) so a later resolve/infer diagnostic can look up a line; the
-// refused arm does not contribute, because those ids are the ones the next file re-mints.
-// Widening either record to carry the front end's raw loci WITHOUT FIRST ADVANCING THIS MARK REOPENS THE
-// COLLISION -- a refused file's retained `NodeLocus` would carry an
-// id the next file re-mints and records a span for, and `span_index_merge` is base-wins, so the
-// join would answer with a confident wrong file rather than refusing (DESIGN section 5). Whoever
-// widens that record owns this precondition, and it is written here because that is where the reuse
-// happens.
+// parse's ids is sound exactly while nothing retains that parse's node loci. File refusals still
+// resolve at absorb (`NativeTestFileRefusal` keeps path and FileRefusalAt -- no `Locus`). The
+// accepted arm records the file's span index under NativeCensusPositionTable for on-demand locate
+// of a later resolve/infer fatal; the refused arm does not contribute, because those ids are the
+// ones the next file re-mints. Publishing a refused parse's index into that table WITHOUT FIRST
+// ADVANCING THIS MARK REOPENS THE COLLISION -- a later lookup would answer with a confident wrong
+// file rather than refusing (DESIGN section 5). Whoever widens that record owns this precondition,
+// and it is written here because that is where the reuse happens.
 fn native_test_context_absorb(
   state: NativeTestContextFoldState,
   read: DagSourceReadWitness,
