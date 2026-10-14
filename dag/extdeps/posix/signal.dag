@@ -1,6 +1,7 @@
 module extdeps.posix.signal
 
 import std.types { NonEmptyStr, String, Bool, Int }
+import std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -130,6 +131,84 @@ fn linux_standard_signal_of_name(name: String) -> LinuxStandardSignal? {
   else if name == "PWR" { Present { value: SignalPwr } }
   else if name == "SYS" { Present { value: SignalSys } }
   else { none }
+}
+
+fn linux_standard_signal_wire_name(signal: LinuxStandardSignal) -> String {
+  match signal {
+    SignalHup => "HUP"
+    SignalInt => "INT"
+    SignalQuit => "QUIT"
+    SignalIll => "ILL"
+    SignalTrap => "TRAP"
+    SignalAbrt => "ABRT"
+    SignalBus => "BUS"
+    SignalFpe => "FPE"
+    SignalKill => "KILL"
+    SignalUsr1 => "USR1"
+    SignalSegv => "SEGV"
+    SignalUsr2 => "USR2"
+    SignalPipe => "PIPE"
+    SignalAlrm => "ALRM"
+    SignalTerm => "TERM"
+    SignalStkflt => "STKFLT"
+    SignalChld => "CHLD"
+    SignalCont => "CONT"
+    SignalStop => "STOP"
+    SignalTstp => "TSTP"
+    SignalTtin => "TTIN"
+    SignalTtou => "TTOU"
+    SignalUrg => "URG"
+    SignalXcpu => "XCPU"
+    SignalXfsz => "XFSZ"
+    SignalVtalrm => "VTALRM"
+    SignalProf => "PROF"
+    SignalWinch => "WINCH"
+    SignalIo => "IO"
+    SignalPwr => "PWR"
+    SignalSys => "SYS"
+  }
+}
+
+fn linux_standard_signal_of_number(n: Int) -> LinuxStandardSignal? {
+  if n == 1 { Present { value: SignalHup } }
+  else if n == 2 { Present { value: SignalInt } }
+  else if n == 3 { Present { value: SignalQuit } }
+  else if n == 4 { Present { value: SignalIll } }
+  else if n == 5 { Present { value: SignalTrap } }
+  else if n == 6 { Present { value: SignalAbrt } }
+  else if n == 7 { Present { value: SignalBus } }
+  else if n == 8 { Present { value: SignalFpe } }
+  else if n == 9 { Present { value: SignalKill } }
+  else if n == 10 { Present { value: SignalUsr1 } }
+  else if n == 11 { Present { value: SignalSegv } }
+  else if n == 12 { Present { value: SignalUsr2 } }
+  else if n == 13 { Present { value: SignalPipe } }
+  else if n == 14 { Present { value: SignalAlrm } }
+  else if n == 15 { Present { value: SignalTerm } }
+  else if n == 16 { Present { value: SignalStkflt } }
+  else if n == 17 { Present { value: SignalChld } }
+  else if n == 18 { Present { value: SignalCont } }
+  else if n == 19 { Present { value: SignalStop } }
+  else if n == 20 { Present { value: SignalTstp } }
+  else if n == 21 { Present { value: SignalTtin } }
+  else if n == 22 { Present { value: SignalTtou } }
+  else if n == 23 { Present { value: SignalUrg } }
+  else if n == 24 { Present { value: SignalXcpu } }
+  else if n == 25 { Present { value: SignalXfsz } }
+  else if n == 26 { Present { value: SignalVtalrm } }
+  else if n == 27 { Present { value: SignalProf } }
+  else if n == 28 { Present { value: SignalWinch } }
+  else if n == 29 { Present { value: SignalIo } }
+  else if n == 30 { Present { value: SignalPwr } }
+  else if n == 31 { Present { value: SignalSys } }
+  else { none }
+}
+
+fn linux_standard_signal_render(n: Int) -> String {
+  match linux_standard_signal_of_number(n: n) {
+    Present { value: s } => join(["SIG", linux_standard_signal_wire_name(signal: s)], "")
+    Absent => join(["signal ", to_string(n)], "")
+  }
 }
 
 fn linux_standard_signal_number(signal: LinuxStandardSignal) -> Int {
