@@ -31,6 +31,10 @@ import std.optional { Present, Absent }
 // this roster whole and the host enum, lane match and REQUIRED_CI_PHASES list delete atomically.
 // Until then the parallel representation is this module's declared debt and the per-run joins are
 // its wall.
+// WitnessesLane is the withdrawn v1 interpreter lane's CLI word (`--required-lane witnesses`), not
+// the GitHub required-context id. That id is gunbc.required_ci_contract_epoch required_ci_context_name
+// (`v2-bootstrap`). The two shared a spelling until the context rename; they are different facts
+// and the host join for this roster still keys on the CLI word.
 type RequiredCiLane
   = BuildLane
   | WitnessesLane
