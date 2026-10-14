@@ -11,6 +11,7 @@ fn fixture_v4_tick() -> BeltTickReceipt {
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRecorded,
   }
 }
