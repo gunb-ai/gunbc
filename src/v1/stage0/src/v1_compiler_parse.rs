@@ -2563,6 +2563,17 @@ pub fn tok_is_keyword_name(tok: Option<Rc<Token>>, env: Rc<ParseEnvironment>) ->
     }
 }
 
+pub fn keyword_may_bind_as_pattern_name(text: String, env: Rc<ParseEnvironment>) -> bool {
+    match v1_rt::lookup(&env.non_pattern_binder_keywords.clone(), text.clone()) {
+        Some(_) => false,
+        std::option::Option::None => match v1_rt::lookup(&env.non_name_keywords.clone(), text.clone())
+        {
+            Some(_) => false,
+            std::option::Option::None => true,
+        },
+    }
+}
+
 pub fn shape_display_name(shape: TokenShape) -> String {
     match shape.clone() {
         TokenShape::ShKeyword => "keyword".to_string(),
@@ -17660,8 +17671,7 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                         err: std::option::Option::None,
                     }),
                     std::option::Option::None => {
-                        if ((kw_text.clone() != "match".to_string())
-                            && tok_is_keyword_name(tok.clone(), ctx.env.clone()))
+                        if keyword_may_bind_as_pattern_name(kw_text.clone(), ctx.env.clone())
                         {
                             let rest = token_stream_advance(tokens.clone(), 1);
                             let minted = mint_parsed_node_identity(
@@ -17904,6 +17914,42 @@ pub fn parse_variant_bindings_brace_acc(
         } else {
             let binding_from = tokens.clone();
             let bind_span = token_span(token_stream_first(tokens.clone()));
+            let first_tok = token_stream_first(tokens.clone());
+            match first_tok.clone() {
+                Some(t) => {
+                    if is_keyword_shape(t.shape.clone()) {
+                        match v1_rt::lookup(
+                            &ctx.env.clone().syntax_spec.clone().keyword_literals.clone(),
+                            t.text.clone(),
+                        ) {
+                            Some(_) => {}
+                            std::option::Option::None => {
+                                if !keyword_may_bind_as_pattern_name(
+                                    t.text.clone(),
+                                    ctx.env.clone(),
+                                ) {
+                                    return Rc::new(BindingsResult {
+                                        field_bindings: Rc::new(vec![]),
+                                        tokens: tokens.clone(),
+                                        ctx: ctx.clone(),
+                                        err: Some(parse_error(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "pattern binder '".to_string(),
+                                                    t.text.clone(),
+                                                ),
+                                                "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier".to_string(),
+                                            ),
+                                            t.span.clone(),
+                                        )),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                std::option::Option::None => {}
+            }
             let r = expect_name(tokens.clone(), ctx.env.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(BindingsResult {
@@ -17957,7 +18003,7 @@ pub fn parse_variant_bindings_brace_acc(
                     }
                 }
                 EatResult::EatUnchanged { tokens: __eu, .. } => {
-                    if (field_name.clone() == "match".to_string()) {
+                    if !keyword_may_bind_as_pattern_name(field_name.clone(), ctx.env.clone()) {
                         return Rc::new(BindingsResult {
                             field_bindings: Rc::new(vec![]),
                             tokens: tokens.clone(),

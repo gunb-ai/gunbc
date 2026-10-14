@@ -29,6 +29,12 @@ data match_shorthand_source: String = "module zqxkwbind.probe\n\ntype Context = 
 
 data match_colon_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { reported_alias: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { reported_alias: match } => true, _ => false } }\n"
 
+data acquire_shorthand_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { acquire: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { acquire } => true, _ => false } }\n"
+
+data acquire_colon_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { reported_alias: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { reported_alias: acquire } => true, _ => false } }\n"
+
+data release_colon_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { reported_alias: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { reported_alias: release } => true, _ => false } }\n"
+
 data identifier_binder_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { reported_alias: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { reported_alias: value } => value == \"abc\", _ => false } }\n"
 
 data name_keyword_module_binder_source: String = "module zqxkwbind.probe\n\ntype Exposure = ModuleExposure { module: String }\n\nfn probe(e: Exposure) -> Bool { match e { ModuleExposure { module: module } => module == \"m\", _ => false } }\n"
@@ -78,6 +84,18 @@ test fn keyword_binder_refused_at_pattern_span_holds() -> Bool {
 // RED: `reported_alias: match` is the same refusal at parse_pattern, not FieldNotFound.
 test fn colon_match_binder_refused_at_keyword_token_holds() -> Bool {
   parse_error_at_keyword(source: match_colon_source, keyword: "match")
+}
+
+test fn acquire_shorthand_refused_at_keyword_token_holds() -> Bool {
+  parse_error_at_keyword(source: acquire_shorthand_source, keyword: "acquire")
+}
+
+test fn acquire_colon_refused_at_keyword_token_holds() -> Bool {
+  parse_error_at_keyword(source: acquire_colon_source, keyword: "acquire")
+}
+
+test fn release_colon_refused_at_keyword_token_holds() -> Bool {
+  parse_error_at_keyword(source: release_colon_source, keyword: "release")
 }
 
 // CONTROL: identifier binder `value` parses.

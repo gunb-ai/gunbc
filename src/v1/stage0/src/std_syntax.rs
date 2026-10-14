@@ -160,6 +160,8 @@ pub struct SyntaxSpec {
 pub struct ParseEnvironment {
     pub syntax_spec: Rc<SyntaxSpec>,
     pub non_name_keywords: Rc<HashMap<String, bool>>,
+    #[serde(default)]
+    pub non_pattern_binder_keywords: Rc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
