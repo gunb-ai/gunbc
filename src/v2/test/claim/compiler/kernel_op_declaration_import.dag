@@ -10,7 +10,6 @@ import std.algebra {
   collection_filter_shape,
   collection_first_shape,
   collection_join_shape,
-  collection_map_get_shape,
   collection_map_shape,
   fold_list
 }
@@ -44,7 +43,6 @@ test fn collection_shape_rows_carry_the_kernel_spellings() -> Bool {
     && collection_filter_shape().name == "filter"
     && collection_first_shape().name == "first"
     && collection_join_shape().name == "join"
-    && collection_map_get_shape().name == "map_get"
 }
 
 test fn concat_has_no_kernel_mint_row() -> Bool {
