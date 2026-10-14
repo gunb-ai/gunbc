@@ -41,10 +41,10 @@ import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import gunbc.harness.harness_seat {
   HarnessCallerTurn, harness_caller_turn, harness_current_grant_in, harness_commit_fence,
   HarnessCommitFenceReady, HarnessCommitGrantUnread, HarnessCommitClockUnread,
-  harness_grant_retired_in,
+  harness_grant_retired_in, HarnessSeatRefused,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.harness.harness_cli { harness_worker_cli }
+import gunbc.harness.harness_cli { harness_worker_cli, harness_bind_belt_seat }
 import std.decl_ref { DeclarationRef }
 import v2.std.decl_index { decl_facts_at }
 import std.optional { Present, Absent }
@@ -270,7 +270,7 @@ test fn w_modeled_rows_are_durable_and_the_serving_route_is_not_and_has_no_route
   })
     && (match caller_backlog_standing(rows: serving_route_caller_retry_rows) {
       DurableCallerBacklog => false
-      ExternalRetryObligation { unmet: us } => length(us) == 2
+      ExternalRetryObligation { unmet: us } => length(us) == 7
       CallerBacklogRosterMalformed { duplicated: _ } => false
     })
     && established_basis(p: PersistBeforeOffer) == (persist_before_offer_basis as String)
@@ -679,4 +679,18 @@ test fn w_the_worker_entry_refuses_a_malformed_belt_turn_before_offering_work() 
   worker_refused_unoffered(e: worker_with_turn(dispatch_node: "", turn_ordinal: 1, state_root: "/tmp/r"))
     && worker_refused_unoffered(e: worker_with_turn(dispatch_node: "node", turn_ordinal: -1, state_root: "/tmp/r"))
     && worker_refused_unoffered(e: worker_with_turn(dispatch_node: "node", turn_ordinal: 1, state_root: ""))
+}
+
+// THE BELT WORKER'S PLACEMENT IS THE OPERATOR ENDPOINT, WHICH TAKES NO SEAT (review 79937): a durable turn there has no
+// grant a completion could be fenced against, so the bind refuses it before any work is offered instead of running
+// the turn and failing the exit. Crossed at the real belt bind (BatchQualityTolerant, AnyAdmittedModel).
+test fn w_a_durable_turn_placed_on_the_operator_endpoint_is_refused_before_work_is_offered() -> Bool {
+  match harness_caller_turn(dispatch_node: "node", turn_ordinal: 1, state_root: "/tmp/r") {
+    none => false
+    Present { value: t } =>
+      match harness_bind_belt_seat(role: "worker", system_prompt: "p", brief: "b", actor: "a" as NonEmptyStr, attempt: "k" as NonEmptyStr, turn: Present { value: t }) {
+        HarnessSeatRefused { detail: d } => string_contains(s: d, pattern: "operator endpoint, which takes no seat")
+        _ => false
+      }
+  }
 }

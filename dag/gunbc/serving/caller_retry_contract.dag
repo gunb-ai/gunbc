@@ -109,26 +109,24 @@ fn modeled_caller_backlog() -> CallerBacklogStanding {
 
 // ── WHAT THE SERVING ROUTE'S CALLERS ESTABLISH TODAY ─────────────────────────────────────────────
 //
-// One row per property, switched to the model's basis ONLY where execution on this route now establishes
-// it. The belt-spawned worker (gunbc.harness.harness_cli harness_worker_cli) passes the dispatch node,
-// turn ordinal and instance backlog root to gunbc.harness.harness_seat harness_bind_seat, which admits the
-// turn through resume_waiting_durable / persist_waiting_durable, notes the placement round's typed
-// RecoveryEvents (note_recovery_durable), keeps the work waiting across zero supply
-// (apply_ready_supply_law), rebinds the record to the granted seat only by naming the predecessor it expects (rebind_reservation_durable admits one retry, and the harness proves the predecessor's seat retired in the partition first), and commits completion through
-// commit_attempt_durable against the grant read from the seat partition. Turns bound without a key
-// (the probe, reviewer, auditor and supervisor entries) make no durable record, and stay outside this
-// claim. Two rows stay unestablished: a pending placement still exits with the refusal's status, and no
-// entry point yet withdraws a turn through cancel_work_durable.
+// One row per property, switched to the model's basis ONLY where execution on this route establishes it.
+// The belt-spawned worker binds BatchQualityTolerant with AnyAdmittedModel, which gunbc.harness.harness_seat
+// harness_requirement_placement places on the operator endpoint, and that endpoint takes no seat. The
+// durable folds (admit, rebind, fenced completion) run only on a fleet-seat placement, so a worker turn
+// cannot reach them: harness_bind_seat refuses a durable turn placed on the operator endpoint before any
+// work is offered, rather than running it and failing the exit. Every property stays unestablished
+// until the belt places a durable turn on a fleet seat (the fold wiring itself is exercised by the
+// harness_seat and caller_backlog witnesses on a fleet binding).
 data serving_route_caller_retry_rows: List<DurableRetryPropertyRow> = [
-  DurableRetryPropertyRow { property: PersistBeforeOffer, standing: RetryPropertyEstablished { basis: persist_before_offer_basis } },
+  DurableRetryPropertyRow { property: PersistBeforeOffer, standing: RetryPropertyUnestablished { obligation: "the belt worker's placement is the operator endpoint, which takes no seat, so its durable turn reaches no caller_backlog fold (gunbc.harness.harness_seat harness_bind_seat refuses it); established only once the belt places a durable turn on a fleet seat" as NonEmptyStr } },
   DurableRetryPropertyRow { property: RetriableRefusal, standing: RetryPropertyUnestablished {
     obligation: "a pending placement exits with the same status as a refusal (gunbc.harness.harness_cli harness_placement_pending_exit), so a belt reading the exit cannot tell come-back-later from terminal; the typed arm gunbc.serving.caller_backlog caller_retry_disposition is read inside the bind, not at the exit" as NonEmptyStr } },
-  DurableRetryPropertyRow { property: StableTurnIdentity, standing: RetryPropertyEstablished { basis: stable_turn_identity_basis } },
-  DurableRetryPropertyRow { property: IdempotentRetryDuplicateSuppression, standing: RetryPropertyEstablished { basis: idempotent_retry_basis } },
-  DurableRetryPropertyRow { property: NoExpiryOnLongWait, standing: RetryPropertyEstablished { basis: no_expiry_on_long_wait_basis } },
+  DurableRetryPropertyRow { property: StableTurnIdentity, standing: RetryPropertyUnestablished { obligation: "the belt worker's placement is the operator endpoint, which takes no seat, so its durable turn reaches no caller_backlog fold (gunbc.harness.harness_seat harness_bind_seat refuses it); established only once the belt places a durable turn on a fleet seat" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: IdempotentRetryDuplicateSuppression, standing: RetryPropertyUnestablished { obligation: "the belt worker's placement is the operator endpoint, which takes no seat, so its durable turn reaches no caller_backlog fold (gunbc.harness.harness_seat harness_bind_seat refuses it); established only once the belt places a durable turn on a fleet seat" as NonEmptyStr } },
+  DurableRetryPropertyRow { property: NoExpiryOnLongWait, standing: RetryPropertyUnestablished { obligation: "the belt worker's placement is the operator endpoint, which takes no seat, so its durable turn reaches no caller_backlog fold (gunbc.harness.harness_seat harness_bind_seat refuses it); established only once the belt places a durable turn on a fleet seat" as NonEmptyStr } },
   DurableRetryPropertyRow { property: DurableCancellation, standing: RetryPropertyUnestablished {
     obligation: "a turn withdrawn by its caller has no durable record a later retry would honour on this route: no entry point calls gunbc.serving.caller_backlog cancel_work_durable, though the rebind and commit folds already refuse cancelled work" as NonEmptyStr } },
-  DurableRetryPropertyRow { property: NoDoubleExecution, standing: RetryPropertyEstablished { basis: no_double_execution_basis } },
+  DurableRetryPropertyRow { property: NoDoubleExecution, standing: RetryPropertyUnestablished { obligation: "the belt worker's placement is the operator endpoint, which takes no seat, so its durable turn reaches no caller_backlog fold (gunbc.harness.harness_seat harness_bind_seat refuses it); established only once the belt places a durable turn on a fleet seat" as NonEmptyStr } },
 ]
 
 fn caller_backlog_wire(s: CallerBacklogStanding) -> String {
