@@ -3022,10 +3022,15 @@ const POPULATION_DECLARED_TALLY_TAIL: &str =
 /// (`v2.cli.population_verbs` `population_parse_unmet`).
 const POPULATION_UNMET_MARKER: &str = "but the population parse never met the module";
 
+/// The held tally is the first line. Later lines are request-key receipts
+/// (`parse-verdict <TAB> …`) and are not part of the tally preimage.
+fn population_tally_line(report: &str) -> &str {
+    report.trim().lines().next().unwrap_or("")
+}
+
 /// The count of modules a held parse report says parsed outright (`population parses: N module(s)...`).
 fn population_parsed_count(report: &str) -> Option<usize> {
-    report
-        .trim()
+    population_tally_line(report)
         .strip_prefix(POPULATION_PARSES_HEAD)?
         .split_once(POPULATION_PARSED_UNIT)?
         .0
@@ -3038,8 +3043,7 @@ fn population_parsed_count(report: &str) -> Option<usize> {
 /// is a verb that stopped reporting what it judged. A held report meets EVERY declared refusal, so this
 /// is also the size of the declaration.
 fn population_declared_met(report: &str) -> Option<usize> {
-    report
-        .trim()
+    population_tally_line(report)
         .strip_suffix(POPULATION_DECLARED_TALLY_TAIL)?
         .rsplit("; ")
         .next()?
