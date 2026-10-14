@@ -2358,28 +2358,30 @@ pub fn fold_list<T: Clone, A: Clone>(
     mut __tco_loop_empty: A,
     mut __tco_loop_cons: impl Fn(A, T) -> A + Clone,
 ) -> A {
-    loop {
-        #[allow(unused_mut)]
-        let mut xs = __tco_loop_xs;
-        #[allow(unused_mut)]
-        let mut empty = __tco_loop_empty;
-        #[allow(unused_mut)]
-        let mut cons = __tco_loop_cons;
-        {
-            let __fm = xs.clone();
-            if __fm.is_empty() {
-                break empty.clone();
-            } else {
-                let h = (*__fm)[0].clone();
-                let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                {
-                    let __tco_0 = t.clone();
-                    let __tco_1 = cons(empty, h.clone());
-                    let __tco_2 = cons;
-                    __tco_loop_xs = __tco_0;
-                    __tco_loop_empty = __tco_1;
-                    __tco_loop_cons = __tco_2;
-                    continue;
+    {
+        let mut __tco_cursor: usize = 0;
+        loop {
+            #[allow(unused_mut)]
+            let mut empty = __tco_loop_empty;
+            #[allow(unused_mut)]
+            let mut cons = __tco_loop_cons;
+            #[allow(unused_mut)]
+            let mut xs = __tco_loop_xs.clone();
+            {
+                let __fm = xs.clone();
+                if (__fm.len() - __tco_cursor) == 0 {
+                    break empty.clone();
+                } else {
+                    let h = (*__fm)[__tco_cursor + 0].clone();
+                    {
+                        let __tco_0 = cons(empty, h.clone());
+                        let __tco_1 = cons;
+                        let __tco_2 = __tco_cursor + 1;
+                        __tco_loop_empty = __tco_0;
+                        __tco_loop_cons = __tco_1;
+                        __tco_cursor = __tco_2;
+                        continue;
+                    }
                 }
             }
         }
@@ -2605,27 +2607,29 @@ pub fn list_find_first<T: Clone>(
     mut __tco_loop_xs: Rc<FreeMonoid<T>>,
     mut __tco_loop_predicate: impl Fn(T) -> bool + Clone,
 ) -> Option<T> {
-    loop {
-        #[allow(unused_mut)]
-        let mut xs = __tco_loop_xs;
-        #[allow(unused_mut)]
-        let mut predicate = __tco_loop_predicate;
-        {
-            let __fm = xs.clone();
-            if __fm.is_empty() {
-                break crate::std_optional::optional_absent();
-            } else {
-                let h = (*__fm)[0].clone();
-                let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                if predicate(h.clone()) {
-                    break crate::std_optional::optional_present(h.clone());
+    {
+        let mut __tco_cursor: usize = 0;
+        loop {
+            #[allow(unused_mut)]
+            let mut predicate = __tco_loop_predicate;
+            #[allow(unused_mut)]
+            let mut xs = __tco_loop_xs.clone();
+            {
+                let __fm = xs.clone();
+                if (__fm.len() - __tco_cursor) == 0 {
+                    break crate::std_optional::optional_absent();
                 } else {
-                    {
-                        let __tco_0 = t.clone();
-                        let __tco_1 = predicate;
-                        __tco_loop_xs = __tco_0;
-                        __tco_loop_predicate = __tco_1;
-                        continue;
+                    let h = (*__fm)[__tco_cursor + 0].clone();
+                    if predicate(h.clone()) {
+                        break crate::std_optional::optional_present(h.clone());
+                    } else {
+                        {
+                            let __tco_0 = predicate;
+                            let __tco_1 = __tco_cursor + 1;
+                            __tco_loop_predicate = __tco_0;
+                            __tco_cursor = __tco_1;
+                            continue;
+                        }
                     }
                 }
             }
