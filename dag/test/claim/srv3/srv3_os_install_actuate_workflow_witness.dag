@@ -94,7 +94,7 @@ test fn srv3_grant_scope_names_the_boot_override_resource() -> Bool {
   }
   scope_covered_by_any(granted: g.scopes, required: boot)
     && scope_covered_by_any(granted: g.scopes, required: reset)
-    && namespace_tree_eq(a: srv3_system_reset_resource.tree, b: ServiceOpTree { service: "redfish" })
+    && srv3_system_reset_resource.tree == ServiceOpTree { service: "redfish" }
     && !position_under(target: srv3_system_reset_resource, root: srv3_boot_override_resource)
 }
 

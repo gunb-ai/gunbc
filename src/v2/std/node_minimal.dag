@@ -247,34 +247,11 @@ fn minimal_node_kind_live_field_count(kind: MinimalNodeKind) -> Int {
   minimal_node_kind_placed_fields(kind: kind) |> count
 }
 
-fn node_superset_field_eq(left: NodeSupersetField, right: NodeSupersetField) -> Bool {
-  match left {
-    NsfName => match right { NsfName => true  _ => false }
-    NsfIdent => match right { NsfIdent => true  _ => false }
-    NsfSpan => match right { NsfSpan => true  _ => false }
-    NsfIdentSpan => match right { NsfIdentSpan => true  _ => false }
-    NsfChildren => match right { NsfChildren => true  _ => false }
-    NsfConnective => match right { NsfConnective => true  _ => false }
-    NsfParams => match right { NsfParams => true  _ => false }
-    NsfInferred => match right { NsfInferred => true  _ => false }
-    NsfReturnCardinality => match right { NsfReturnCardinality => true  _ => false }
-    NsfUses => match right { NsfUses => true  _ => false }
-    NsfBody => match right { NsfBody => true  _ => false }
-    NsfTransport => match right { NsfTransport => true  _ => false }
-    NsfProperties => match right { NsfProperties => true  _ => false }
-    NsfTypeAnnotation => match right { NsfTypeAnnotation => true  _ => false }
-    NsfIsSelfRecursive => match right { NsfIsSelfRecursive => true  _ => false }
-    NsfHasNonTailSelfCall => match right { NsfHasNonTailSelfCall => true  _ => false }
-    NsfMatchPattern => match right { NsfMatchPattern => true  _ => false }
-    NsfExprData => match right { NsfExprData => true  _ => false }
-  }
-}
-
 fn list_contains_node_superset_field(
   xs: List<NodeSupersetField>,
   field: NodeSupersetField
 ) -> Bool {
-  xs |> any(f => node_superset_field_eq(left: f, right: field))
+  xs |> any(f => f == field)
 }
 
 fn dedup_node_superset_fields(xs: List<NodeSupersetField>) -> List<NodeSupersetField> {
@@ -393,7 +370,7 @@ fn minimal_node_superset_field_unused_by_kind(
 ) -> Bool {
   !(
     minimal_node_kind_placed_fields(kind: kind)
-      |> any(f => node_superset_field_eq(left: f, right: field))
+      |> any(f => f == field)
   )
 }
 

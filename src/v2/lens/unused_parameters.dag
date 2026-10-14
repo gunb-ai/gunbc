@@ -92,7 +92,7 @@ fn already_in_unused(unused: List<UnusedParameterFact>, declaration: Node) -> Bo
 fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
   UnusedParametersFact {
     unused: fold(use_fact.uses, init: std.algebra.Empty, f: fn(acc, classified) {
-      if use_relation_eq(a: classified.classification, b: IsStructuralComposition) {
+      if (classified.classification == IsStructuralComposition) {
         let candidate = classified.dependency.dependent
         if already_in_unused(unused: acc, declaration: candidate) {
           acc
@@ -120,32 +120,11 @@ fn unused_parameters_witness(tree: InferredTree, dependencies: List<DependencyVi
   }
 }
 
-fn use_relation_eq(a: UseRelation, b: UseRelation) -> Bool {
-  match a {
-    IsUseOfDeclaration => match b {
-      IsUseOfDeclaration => true
-      _ => false
-    }
-    IsStructuralComposition => match b {
-      IsStructuralComposition => true
-      _ => false
-    }
-    IsNonUseDependency => match b {
-      IsNonUseDependency => true
-      _ => false
-    }
-    RequiresResolutionWitness => match b {
-      RequiresResolutionWitness => true
-      _ => false
-    }
-  }
-}
-
 fn use_classification_classified_eq(
   a: ClassifiedDependencyView<UseRelation>,
   b: ClassifiedDependencyView<UseRelation>
 ) -> Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: use_relation_eq)
+  classified_dependency_view_eq(a: a, b: b, classification_eq: fn(a, b) { a == b })
 }
 
 fn use_classification_fact_eq(a: UseClassificationFact, b: UseClassificationFact) -> Bool {

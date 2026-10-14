@@ -106,20 +106,30 @@ data gunbc_service_uid: Int = 1000
 // the roots that were Owned were removed by an empty-directory rmdir, and that teardown is not carried
 // forward -- a retract leaves directories exactly as it found them.
 
-type OwnedArtifactKind =
+// Nested by realization route so each variant name exists once. Compose-owned
+// kinds are unwritable at emit_artifact_upsert; that function takes
+// UpsertArtifactKind only. The one apply/retract dispatch matches ComposeOwned
+// vs UpsertOwned totally — no mapping function.
+type ComposeOwnedArtifactKind =
+    SystemdUnit
+  | FleetConvergeTimerUnit
+  | FabricStorageServeUnit
+  | FabricStorageServeMapping
+  | TailnetDoorServeUnit
+  | OidcConfigArtifact
+
+type UpsertArtifactKind =
     ServeBinary
   | GunbcSourceTree
-  | SystemdUnit
   | BeltEventPathUnit
-  | FleetConvergeTimerUnit
   | TailscaleServeMapping
   | DeployedTreeRemoteUnit
   | PublicationHelperPathUnit
-  | FabricStorageServeUnit
-  | FabricStorageServeMapping
   | ApprovalBrokerFrontDoor
-  | TailnetDoorServeUnit
-  | OidcConfigArtifact
+
+type OwnedArtifactKind
+  = ComposeOwned { kind: ComposeOwnedArtifactKind }
+  | UpsertOwned { kind: UpsertArtifactKind }
 
 // AN ENSURED HOST RESOURCE: converged on every apply, never torn down, TeardownRefuses{
 // TeardownOutsideOwnership}. Only packages remain; the directory arms became owned-directory targets.
@@ -189,19 +199,23 @@ type TeardownDisposition
 
 fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDisposition {
   match kind {
-    ServeBinary => TeardownActs
-    DeployedTreeRemoteUnit => TeardownActs
-    GunbcSourceTree => TeardownActs
-    SystemdUnit => TeardownActs
-    BeltEventPathUnit => TeardownActs
-    FleetConvergeTimerUnit => TeardownActs
-    TailscaleServeMapping => TeardownActs
-    PublicationHelperPathUnit => TeardownActs
-    FabricStorageServeUnit => TeardownActs
-    FabricStorageServeMapping => TeardownActs
-    ApprovalBrokerFrontDoor => TeardownActs
-    TailnetDoorServeUnit => TeardownActs
-    OidcConfigArtifact => TeardownActs
+    ComposeOwned { kind: ck } => match ck {
+      SystemdUnit => TeardownActs
+      FleetConvergeTimerUnit => TeardownActs
+      FabricStorageServeUnit => TeardownActs
+      FabricStorageServeMapping => TeardownActs
+      TailnetDoorServeUnit => TeardownActs
+      OidcConfigArtifact => TeardownActs
+    }
+    UpsertOwned { kind: uk } => match uk {
+      ServeBinary => TeardownActs
+      GunbcSourceTree => TeardownActs
+      BeltEventPathUnit => TeardownActs
+      TailscaleServeMapping => TeardownActs
+      DeployedTreeRemoteUnit => TeardownActs
+      PublicationHelperPathUnit => TeardownActs
+      ApprovalBrokerFrontDoor => TeardownActs
+    }
   }
 }
 
@@ -688,7 +702,7 @@ data deployment_tailnet_door_function_suffix: String = "_door"
 fn deployment_tailnet_door_steps(names: DeploymentNames) -> List<DeploymentArtifactStep> {
   match deployment_tailnet_door_socket(names: names) {
     Absent => []
-    Present { value: _ } => [DeploymentArtifactStep { kind: TailnetDoorServeUnit, path: deployment_tailnet_door_unit_path(names: names) }]
+    Present { value: _ } => [DeploymentArtifactStep { kind: ComposeOwned { kind: TailnetDoorServeUnit }, path: deployment_tailnet_door_unit_path(names: names) }]
   }
 }
 
@@ -1138,22 +1152,22 @@ fn deployment_owned_steps(
   holding: RoleSingletonHolding,
 ) -> List<DeploymentArtifactStep> {
   concat([
-    DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr },
-    DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: UpsertOwned { kind: ServeBinary }, path: instance.serve_binary as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: UpsertOwned { kind: GunbcSourceTree }, path: instance.repo_root as String as NonEmptyStr },
     DeploymentArtifactStep {
-      kind: DeployedTreeRemoteUnit,
+      kind: UpsertOwned { kind: DeployedTreeRemoteUnit },
       path: deployment_tree_remote_unit_path(names: names),
     },
   ], concat(deployment_oidc_config_steps(instance: instance), concat([
-    DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
+    DeploymentArtifactStep { kind: ComposeOwned { kind: SystemdUnit }, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep {
-      kind: PublicationHelperPathUnit,
+      kind: UpsertOwned { kind: PublicationHelperPathUnit },
       path: deployment_publication_path_unit_path(names: names),
     },
-    DeploymentArtifactStep { kind: BeltEventPathUnit, path: deployment_belt_exit_path_unit_path(names: names) },
+    DeploymentArtifactStep { kind: UpsertOwned { kind: BeltEventPathUnit }, path: deployment_belt_exit_path_unit_path(names: names) },
   ], concat(deployment_tailnet_door_steps(names: names), concat([
     DeploymentArtifactStep {
-      kind: TailscaleServeMapping,
+      kind: UpsertOwned { kind: TailscaleServeMapping },
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
     },
   ], concat(
@@ -1172,7 +1186,7 @@ fn deployment_owned_steps(
 fn deployment_oidc_config_steps(instance: HostDashboardInstance) -> List<DeploymentArtifactStep> {
   match tracker_web_oidc_serve_placement(instance_id: instance.instance_id) {
     TrackerWebOidcServeReady { config: cfg } => [
-      DeploymentArtifactStep { kind: OidcConfigArtifact, path: cfg.config_path },
+      DeploymentArtifactStep { kind: ComposeOwned { kind: OidcConfigArtifact }, path: cfg.config_path },
     ]
     TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
     TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
@@ -1207,7 +1221,7 @@ fn deployment_approval_broker_front_door_steps(holding: RoleSingletonHolding) ->
   if holds && approval_front_door_mounts_installed() {
     [
       DeploymentArtifactStep {
-        kind: ApprovalBrokerFrontDoor,
+        kind: UpsertOwned { kind: ApprovalBrokerFrontDoor },
         path: tailscale_serve_route_member_path(endpoint: approval_broker_confirm_front_door(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)),
       },
     ]
@@ -1223,8 +1237,8 @@ fn deployment_approval_broker_front_door_steps(holding: RoleSingletonHolding) ->
 fn deployment_fabric_storage_steps(holding: RoleSingletonHolding, names: DeploymentNames) -> List<DeploymentArtifactStep> {
   match holding {
     HoldsProdRoleSingletons { holder } => [
-      DeploymentArtifactStep { kind: FabricStorageServeUnit, path: deployment_fabric_storage_unit_path(names: names) },
-      DeploymentArtifactStep { kind: FabricStorageServeMapping, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: holder.instance))) },
+      DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeUnit }, path: deployment_fabric_storage_unit_path(names: names) },
+      DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeMapping }, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: holder.instance))) },
     ]
     HoldsNoRoleSingleton => []
   }

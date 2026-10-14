@@ -1,4 +1,6 @@
 module v2.workflow.bash_command_fold_serialize
+import std.optional { Absent, Optional, Present }
+
 
 import v2.std.grammar { node_atom_identity_optional }
 
@@ -20,6 +22,7 @@ import v2.extdeps.languages.bash {
   bash_stmt_subshell_emitted,
   bash_stmt_subshell_target_model,
   bash_redir_stderr_to_file_source_text,
+  bash_redir_from_file_source_text,
   bash_redir_to_file_source_text,
   bash_stmt_with_redir_emitted,
   bash_stmt_with_redir_target_model,
@@ -38,14 +41,7 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_translation_rules_budget_for_row,
   bash_fold_unsupported_variant_diagnostic
 }
-import std.algebra {
-  list_head,
-  list_tail,
-  HeadFound,
-  HeadAbsent,
-  TailFound,
-  TailAbsent
-}
+import std.algebra { list_head, list_tail }
 import v2.std.collection {
   Absent,
   Map,
@@ -145,16 +141,16 @@ fn bash_fold_serialize_stmts_semi_from(
   rest: List<Node>
 ) -> Outcome<String> {
   match list_head(xs: rest) {
-    HeadAbsent => Accepted { value: acc, diagnostics: None }
-    HeadFound { value: s } =>
+    Absent => Accepted { value: acc, diagnostics: None }
+    Present { value: s } =>
       bind_outcome(
         o: bash_fold_serialize_node(stmt: s),
         f: fn(part) {
           let next = if first { part } else { concat(acc, concat("; ", part)) }
           match list_tail(xs: rest) {
-            TailFound { tail: t } =>
+            Present { value: t } =>
               bash_fold_serialize_stmts_semi_from(acc: next, first: false, rest: t)
-            TailAbsent => Accepted { value: next, diagnostics: None }
+            Absent => Accepted { value: next, diagnostics: None }
           }
         }
       )
@@ -243,6 +239,8 @@ fn bash_fold_serialize_with_redir_node(stmt: Node) -> Outcome<String> {
                     bash_fold_serialize_with_redir_file(stmt: stmt, stmt_spelling: stmt_spelling, redir_of: fn(p) { bash_redir_to_file_source_text(path: p) })
                   } else if redir_binding == ^bash_production_fold_redir_stderr_to_file {
                     bash_fold_serialize_with_redir_file(stmt: stmt, stmt_spelling: stmt_spelling, redir_of: fn(p) { bash_redir_stderr_to_file_source_text(path: p) })
+                  } else if redir_binding == ^bash_production_fold_redir_from_file {
+                    bash_fold_serialize_with_redir_file(stmt: stmt, stmt_spelling: stmt_spelling, redir_of: fn(p) { bash_redir_from_file_source_text(path: p) })
                   } else {
                     bash_fold_serialize_refused(variant: ^bash_fold_serialize_redir_binding_unsupported)
                   }
@@ -316,16 +314,16 @@ fn bash_fold_serialize_word_list_spelling_from(
   rest: List<Node>
 ) -> Outcome<String> {
   match list_head(xs: rest) {
-    HeadAbsent => Accepted { value: acc, diagnostics: None }
-    HeadFound { value: w } =>
+    Absent => Accepted { value: acc, diagnostics: None }
+    Present { value: w } =>
       bind_outcome(
         o: bash_fold_serialize_word_node(word: w),
         f: fn(part) {
           let next = if first { part } else { concat(acc, part) }
           match list_tail(xs: rest) {
-            TailFound { tail: t } =>
+            Present { value: t } =>
               bash_fold_serialize_word_list_spelling_from(acc: next, first: false, rest: t)
-            TailAbsent => Accepted { value: next, diagnostics: None }
+            Absent => Accepted { value: next, diagnostics: None }
           }
         }
       )
@@ -656,20 +654,20 @@ fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
 
 fn bash_fold_serialize_body(stmts: List<Node>) -> Outcome<String> {
   match list_head(xs: stmts) {
-    HeadAbsent => Accepted { value: "", diagnostics: None }
-    HeadFound { value: s } =>
+    Absent => Accepted { value: "", diagnostics: None }
+    Present { value: s } =>
       bind_outcome(
         o: bash_fold_serialize_node(stmt: s),
         f: fn(part) {
           match list_tail(xs: stmts) {
-            TailFound { tail: t } =>
+            Present { value: t } =>
               bind_outcome(
                 o: bash_fold_serialize_body(stmts: t),
                 f: fn(rest) {
                   Accepted { value: concat(concat(part, "\n"), rest), diagnostics: None }
                 }
               )
-            TailAbsent => Accepted { value: concat(part, "\n"), diagnostics: None }
+            Absent => Accepted { value: concat(part, "\n"), diagnostics: None }
           }
         }
       )

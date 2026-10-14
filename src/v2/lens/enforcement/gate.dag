@@ -1,9 +1,11 @@
 module v2.lens.enforcement.gate
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { List }
 import v2.std.text { String }
-import std.algebra { for_all, contains, non_empty, list_head, HeadFound, HeadAbsent }
-import v2.lens.registry { LensRegistryEntryV0, LensIdV0, lens_id_v0_eq }
+import std.algebra { for_all, contains, non_empty, list_head }
+import v2.lens.registry { LensRegistryEntryV0, LensIdV0 }
 import v2.lens.enforcement.vocab {
   SubjectRoster,
   EnforcementMode, AuditOnly, Blocking, enforcement_mode_satisfies,
@@ -104,7 +106,7 @@ fn leg_of(ok: Bool, reason: String) -> LegVerdict {
 
 fn contract_answers(c: LensContract, p: IntentProperty) -> Bool {
   match p {
-    LensFamily { lens } => lens_id_v0_eq(left: c.entry.lens_id, right: lens)
+    LensFamily { lens } => c.entry.lens_id == lens
     LensHygieneLiveness => false
     LensHygieneSelfApply => false
     LensClosureQuestionZero => false
@@ -114,13 +116,13 @@ fn contract_answers(c: LensContract, p: IntentProperty) -> Bool {
 }
 
 fn receipt_matches(r: EnrollmentDiscoveryReceipt, cid: LensIdV0) -> Bool {
-  lens_id_v0_eq(left: r.contract_id, right: cid)
+  r.contract_id == cid
 }
 
 fn find_receipt(cid: LensIdV0, receipts: List<EnrollmentDiscoveryReceipt>) -> ReceiptLookup {
   match list_head(xs: filter(xs: receipts, predicate: fn(r) { receipt_matches(r: r, cid: cid) })) {
-    HeadFound { value: r } => ReceiptFound { value: r }
-    HeadAbsent => ReceiptAbsent
+    Present { value: r } => ReceiptFound { value: r }
+    Absent => ReceiptAbsent
   }
 }
 
@@ -154,8 +156,8 @@ fn discovered_covers_required(required_subjects: SubjectRoster, discovered: Subj
 
 fn find_answering_contract(intent: StandingIntent, contracts: List<LensContract>) -> ContractLookup {
   match list_head(xs: filter(xs: contracts, predicate: fn(c) { contract_answers(c: c, p: intent.property) })) {
-    HeadFound { value: c } => ContractFound { value: c }
-    HeadAbsent => ContractAbsent
+    Present { value: c } => ContractFound { value: c }
+    Absent => ContractAbsent
   }
 }
 

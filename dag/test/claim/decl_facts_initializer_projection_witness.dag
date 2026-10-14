@@ -1,4 +1,6 @@
 module test.claim.decl_facts_initializer_projection_witness
+import std.optional { Absent, Optional, Present }
+
 
 import test.fixture.decl_facts_reflection.ambiguous_shared_a
 import test.fixture.decl_facts_reflection.ambiguous_specimen
@@ -24,7 +26,7 @@ import v2.std.decl_facts_skeleton {
   skeleton_authored_string_absent_from_marshal_atom_channel,
 }
 import v2.std.decl_index { DeclFact, decl_facts_at }
-import std.algebra { HeadAbsent, HeadFound, list_head }
+import std.algebra { list_head }
 import std.types { List, String }
 import test.fixture.decl_facts_authored_string_channel.specimens
 import v2.std.data_initializer_identity {
@@ -326,12 +328,12 @@ test fn decl_facts_concat_string_initializer_carries_authored_lexemes() -> Bool 
     pool_roots: authored_string_channel_pool_roots,
     qualified_name: planted_concat_string_qn
   )) {
-    HeadFound { value: fact } =>
+    Present { value: fact } =>
       skeleton_contains_all_authored_string_literals(
         node: fact.node,
         lexemes: ["concat-left", "concat-right"]
       )
-    HeadAbsent => false
+    Absent => false
   }
 }
 
@@ -340,11 +342,11 @@ test fn decl_facts_authored_string_does_not_fork_constructor_spelling_channel() 
     pool_roots: authored_string_channel_pool_roots,
     qualified_name: authored_string_channel_qn
   )) {
-    HeadFound { value: fact } =>
+    Present { value: fact } =>
       skeleton_authored_string_absent_from_marshal_atom_channel(
         node: fact.node,
         lexeme: "SingleAuthority"
       )
-    HeadAbsent => false
+    Absent => false
   }
 }

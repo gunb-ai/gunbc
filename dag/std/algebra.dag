@@ -1253,25 +1253,17 @@ fn list_flat_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> FreeMonoid<U>) -> FreeMono
   })
 }
 
-type ListTailResult<T>
-  = TailFound { tail: FreeMonoid<T> }
-  | TailAbsent
-
-fn list_tail<T>(xs: FreeMonoid<T>) -> ListTailResult<T> {
+fn list_tail<T>(xs: FreeMonoid<T>) -> Optional<FreeMonoid<T>> {
   match xs {
-    Empty => TailAbsent
-    Cons { head: _, tail: t } => TailFound { tail: t }
+    Empty => Absent
+    Cons { head: _, tail: t } => Present { value: t }
   }
 }
 
-type ListHeadResult<T>
-  = HeadFound { value: T }
-  | HeadAbsent
-
-fn list_head<T>(xs: FreeMonoid<T>) -> ListHeadResult<T> {
+fn list_head<T>(xs: FreeMonoid<T>) -> Optional<T> {
   match xs {
-    Empty => HeadAbsent
-    Cons { head: h, tail: _ } => HeadFound { value: h }
+    Empty => Absent
+    Cons { head: h, tail: _ } => Present { value: h }
   }
 }
 

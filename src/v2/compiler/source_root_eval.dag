@@ -182,10 +182,18 @@ import v2.compiler.module_acquisition {
   PopulationReadRefused,
   SourceRootBinding,
   VerifiedAcquisition,
+  CensusAcquisition,
+  CensusAcquisitionBlocked,
+  CensusAcquisitionClosed,
+  CensusAcquisitionRefused,
+  CensusBlock,
+  acquire_census_closure_of,
   acquire_verified,
   acquisition_first_duplicate,
   acquisition_ingest,
   acquisition_module_path,
+  acquisition_refusal_text,
+  census_acquisition_ingest,
   enumerate_bound_modules,
   read_population,
 }
@@ -1228,6 +1236,7 @@ type NativeDriverVerb
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
   | NativeDriverCensusInfer { source_roots: FreeMonoid<String> }
   | NativeDriverDemandCensus { source_roots: FreeMonoid<String> }
+  | NativeDriverCensusScoped { subject: String, source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
 
 type NativeDriverPlan
@@ -1245,9 +1254,13 @@ data native_driver_verb_census_infer: String = "census-infer"
 
 data native_driver_verb_demand_census: String = "demand-census"
 
+data native_driver_verb_census_scoped: String = "census-scoped"
+
+data native_driver_census_scoped_needs_subject: String = "REFUSED: census-scoped takes a subject package label before the source roots"
+
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | demand-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> <source-root>... | demand-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
@@ -1280,6 +1293,8 @@ type NativeDriverParseState
   | DriverCensusResolveRoots { roots: FreeMonoid<String> }
   | DriverCensusInferRoots { roots: FreeMonoid<String> }
   | DriverDemandCensusRoots { roots: FreeMonoid<String> }
+  | DriverCensusScopedSeekSubject
+  | DriverCensusScopedRoots { subject: String, roots: FreeMonoid<String> }
   | DriverAdjudicateSeekFacts
   | DriverAdjudicateOptions { facts_path: String }
   | DriverAdjudicateSeekPatternValue { facts_path: String }
@@ -1289,7 +1304,7 @@ type NativeDriverParseState
 fn native_driver_unknown_verb_detail(word: String) -> String {
   concat(
     concat("REFUSED: unknown mode ", word),
-    " -- expected adjudicate, census, census-resolve, census-infer or demand-census"
+    " -- expected adjudicate, census, census-resolve, census-infer, census-scoped or demand-census"
   )
 }
 
@@ -1309,6 +1324,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverCensusInferRoots { roots: [] }
       } else if word == native_driver_verb_demand_census {
         DriverDemandCensusRoots { roots: [] }
+      } else if word == native_driver_verb_census_scoped {
+        DriverCensusScopedSeekSubject
       } else if word == native_driver_verb_adjudicate {
         DriverAdjudicateSeekFacts
       } else {
@@ -1325,6 +1342,14 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusInferRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverDemandCensusRoots { roots: roots } =>
       DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverCensusScopedSeekSubject =>
+      match native_census_subject_module(label: word) {
+        NativeCensusSubjectModuleUnavailable { reason: reason } =>
+          DriverParseRefused { reason: reason, detail: concat("REFUSED: census-scoped subject ", word, " names no module") }
+        NativeCensusSubjectModuleNamed { module: _ } => DriverCensusScopedRoots { subject: word, roots: [] }
+      }
+    DriverCensusScopedRoots { subject: subject, roots: roots } =>
+      DriverCensusScopedRoots { subject: subject, roots: list_snoc_item(xs: roots, item: word) }
     DriverAdjudicateSeekFacts =>
       DriverAdjudicateOptions { facts_path: word }
     DriverAdjudicateOptions { facts_path: facts_path } =>
@@ -1381,6 +1406,13 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
     DriverDemandCensusRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
+    DriverCensusScopedSeekSubject =>
+      NativeDriverPlanRefused {
+        reason: ^native_driver_census_scoped_without_subject,
+        detail: native_driver_census_scoped_needs_subject
+      }
+    DriverCensusScopedRoots { subject: subject, roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusScoped { subject: subject, source_roots: roots } }
     DriverAdjudicateOptions { facts_path: facts_path } =>
       NativeDriverPlanned {
         verb: NativeDriverAdjudicate {
@@ -1420,6 +1452,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensusResolve { source_roots: roots } => roots
         NativeDriverCensusInfer { source_roots: roots } => roots
         NativeDriverDemandCensus { source_roots: roots } => roots
+        NativeDriverCensusScoped { subject: _, source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
       }
   }
@@ -3518,6 +3551,49 @@ fn native_census_infer_completeness(outcome: NativeInferCensusOutcome) -> Native
 // and the subject's closure is walked over the census's own import graph. A root is "in the N7 closure"
 // exactly when the subject module reaches it. The label is the instrument's own fact, never a CLI option.
 data native_census_subject_label: String = "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all"
+
+type NativeCensusScope
+  = NativeCensusScopeClosed { subject: String, members: Int }
+  | NativeCensusScopeBlocked { subject: String, members: Int, blocked_first: CensusBlock, blocked_rest: List<CensusBlock> }
+
+type NativeCensusScoped {
+  scope: NativeCensusScope
+  ingest: SourceRootIngest
+}
+
+fn native_census_scoped_from(subject: String, acquisition: CensusAcquisition) -> Outcome<NativeCensusScoped> {
+  match acquisition {
+    CensusAcquisitionRefused { refusal: refusal } =>
+      native_lane_refused(reason: ^native_census_scoped_acquisition_refused, detail: acquisition_refusal_text(refusal: refusal))
+    CensusAcquisitionClosed { entries: _, modules: modules, reads: _ } =>
+      outcome_accepted(value: NativeCensusScoped {
+        scope: NativeCensusScopeClosed { subject: subject, members: length(xs: modules) },
+        ingest: census_acquisition_ingest(modules: modules, blocks: [])
+      })
+    CensusAcquisitionBlocked { entries: _, modules: modules, blocked_first: first, blocked_rest: rest, reads: _ } =>
+      outcome_accepted(value: NativeCensusScoped {
+        scope: NativeCensusScopeBlocked { subject: subject, members: length(xs: modules), blocked_first: first, blocked_rest: rest },
+        ingest: census_acquisition_ingest(modules: modules, blocks: Cons { head: first, tail: rest })
+      })
+  }
+}
+
+fn native_lane_census_scoped_ingest(label: String, source_roots: FreeMonoid<String>) -> Outcome<NativeCensusScoped> {
+  match native_census_subject_module(label: label) {
+    NativeCensusSubjectModuleUnavailable { reason: reason } => native_lane_refused(reason: reason, detail: label)
+    NativeCensusSubjectModuleNamed { module: subject } =>
+      let resolved = source_root_bindings(roots: source_roots)
+      match resolved {
+        SourceRootsBound { bindings: bindings } =>
+          native_census_scoped_from(
+            subject: subject,
+            acquisition: acquire_census_closure_of(layout: repository_storage_layout(), bindings: bindings, entries: [subject])
+          )
+        SourceRootsUnrecognized { argument: _ } => native_lane_roots_refusal(bindings: resolved)
+        SourceRootsDuplicated { argument: _ } => native_lane_roots_refusal(bindings: resolved)
+      }
+  }
+}
 
 type NativeCensusSubjectClosure
   = NativeCensusSubjectClosureRead { subject: String, members: Map<String, Bool> }
