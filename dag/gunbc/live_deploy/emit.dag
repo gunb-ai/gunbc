@@ -1042,7 +1042,11 @@ fn leftover_timer_not_found_readback_intent() -> Node {
 // verbs on it. These two are the first members in this emitter whose modes are NOT the shared 0755
 // constant, and they are stated here with the dependents that force them written above -- which is
 // the input that derivation will eventually consume, not a second convention beside it.
-data publication_spool_request_mode: FileMode = FileMode {
+//
+// spool_inbox_directory_mode is the one group-write / other-closed inbox bits. Publication and
+// dispatch each cite it under their own name so a later derivation can split them without moving
+// the publication apply off a name it already owns.
+data spool_inbox_directory_mode: FileMode = FileMode {
   owner: PermissionBits { read: true, write: true, execute: true },
   group: PermissionBits { read: false, write: true, execute: true },
   other: PermissionBits { read: false, write: false, execute: false },
@@ -1051,7 +1055,13 @@ data publication_spool_request_mode: FileMode = FileMode {
   sticky: false,
 }
 
+data publication_spool_request_mode: FileMode = spool_inbox_directory_mode
+
+data dispatch_spool_request_mode: FileMode = spool_inbox_directory_mode
+
 data publication_spool_answer_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
+
+data dispatch_spool_answer_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
 fn apply_dispatch_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [
@@ -1062,25 +1072,25 @@ fn apply_dispatch_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
       path: dispatch_spool_root(instance_root: spec.service.instance_root as String),
     )),
     deploy_raw(command: install_directory_owned_command(
-      mode: publication_spool_request_mode,
+      mode: dispatch_spool_request_mode,
       owner: spec.service.service_user,
       group: spec.service.service_user,
       path: dispatch_request_dir(instance_root: spec.service.instance_root as String),
     )),
     deploy_raw(command: install_directory_owned_command(
-      mode: publication_spool_request_mode,
+      mode: dispatch_spool_request_mode,
       owner: spec.service.service_user,
       group: spec.service.service_user,
       path: dispatch_request_staging_dir(instance_root: spec.service.instance_root as String),
     )),
     deploy_raw(command: install_directory_owned_command(
-      mode: publication_spool_answer_mode,
+      mode: dispatch_spool_answer_mode,
       owner: spec.service.service_user,
       group: spec.service.service_user,
       path: dispatch_answer_dir(instance_root: spec.service.instance_root as String),
     )),
     deploy_raw(command: install_directory_owned_command(
-      mode: publication_spool_answer_mode,
+      mode: dispatch_spool_answer_mode,
       owner: spec.service.service_user,
       group: spec.service.service_user,
       path: dispatch_refused_dir(instance_root: spec.service.instance_root as String),

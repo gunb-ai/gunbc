@@ -25,7 +25,7 @@ import gunbc.roadmap.roadmap_dispatch_spool {
 }
 import gunbc.host.host_layout { dispatch_request_dir, dispatch_request_staging_dir }
 import gunbc.live_deploy.emit {
-  publication_spool_request_mode,
+  dispatch_spool_request_mode,
   live_deploy_belt_dispatch_spool_path_unit_file,
   live_deploy_belt_dispatch_spool_drain_service_unit_file,
   apply_dispatch_spool_steps,
@@ -48,8 +48,8 @@ fn well_formed_entry() -> String {
 
 test fn dispatch_request_directory_mode_refuses_other_writers() -> Bool {
   let steps = pipeline_steps_text(steps: apply_dispatch_spool_steps(spec: live_spec()))
-  !publication_spool_request_mode.other.write
-    && publication_spool_request_mode.group.write
+  !dispatch_spool_request_mode.other.write
+    && dispatch_spool_request_mode.group.write
     && string_contains(s: steps, pattern: dispatch_request_dir(instance_root: live_spec().service.instance_root as String))
     && string_contains(s: steps, pattern: dispatch_request_staging_dir(instance_root: live_spec().service.instance_root as String))
 }
