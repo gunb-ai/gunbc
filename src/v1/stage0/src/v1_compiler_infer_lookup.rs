@@ -491,28 +491,6 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedC
     }
 }
 
-pub fn func_decl_owner_module(func_env: Rc<ResolvedFuncEnv>, name: String) -> Option<String> {
-    match v1_rt::map_get(&func_env.local.clone(), name.clone()) {
-        Some(_) => Some(func_env.name.clone()),
-        std::option::Option::None => match func_env.parents.clone().iter().cloned().fold(
-            std::option::Option::None,
-            |found: _, p: Rc<ResolvedFuncEnv>| {
-                if (found.clone() != std::option::Option::None) {
-                    found.clone()
-                } else {
-                    match v1_rt::map_get(&p.local.clone(), name.clone()) {
-                        Some(_) => Some(p.name.clone()),
-                        std::option::Option::None => std::option::Option::None,
-                    }
-                }
-            },
-        ) {
-            Some(owner) => Some(owner.clone()),
-            std::option::Option::None => std::option::Option::None,
-        },
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExactDeclarationIdentity {
     pub owner_module_path: String,
@@ -602,35 +580,6 @@ pub fn constructor_declaration_for_admission(
                     ),
                 },
             ),
-        }
-    }
-}
-
-pub fn func_decl_binding_for_call(
-    func_env: Rc<ResolvedFuncEnv>,
-    type_env: Rc<TypeEnv>,
-    name: String,
-) -> Rc<ConstructorDeclarationLookup> {
-    match func_decl_owner_module(func_env.clone(), name.clone()) {
-        Some(owner) => {
-            constructor_declaration_for_admission(type_env.clone(), owner.clone(), name.clone())
-        }
-        std::option::Option::None => {
-            match (*borrowed_census_decl(type_env.clone(), name.clone())).clone() {
-                BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
-                    declaration: bd, ..
-                } => constructor_declaration_for_admission(
-                    type_env.clone(),
-                    bd.owner_module_path.clone(),
-                    name.clone(),
-                ),
-                BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous { candidates: _, .. } => {
-                    Rc::new(ConstructorDeclarationLookup::NotAdmissionBearingReference {})
-                }
-                BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound => {
-                    Rc::new(ConstructorDeclarationLookup::NotAdmissionBearingReference {})
-                }
-            }
         }
     }
 }

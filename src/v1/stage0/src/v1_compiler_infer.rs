@@ -186,7 +186,7 @@ use crate::v1_compiler_infer_lookup::DeclaredArgContract::{
 };
 pub use crate::v1_compiler_infer_lookup::{
     census_declaration_identity, constructor_declaration_for_admission,
-    declared_arg_types_for_method, field_summary_for_type, func_decl_binding_for_call,
+    declared_arg_types_for_method, field_summary_for_type,
     global_bare_callable_node, lookup_coproduct_common_field_node, lookup_field_type_node,
     lookup_func_sig, lookup_in_scope, lookup_structural_method, map_key_type_in_env,
     map_value_type_in_env, product_field_result_type, resolve_known_method_node,
@@ -1767,26 +1767,6 @@ match caller_decl_coords(scope.clone()) {
 }
 }
 
-pub fn constructor_call_admission_diags(
-    callee_name: String,
-    scope: Rc<InferScope>,
-    span: Rc<SourceSpan>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    if !constructor_reference_admission_enforced_now() {
-        Rc::new(vec![])
-    } else {
-        constructor_admission_diags_from_lookup(
-            crate::v1_compiler_infer_lookup::func_decl_binding_for_call(
-                scope.func_env.clone(),
-                scope.type_env.clone(),
-                callee_name.clone(),
-            ),
-            scope.clone(),
-            span.clone(),
-        )
-    }
-}
-
 pub fn constructor_call_admission_diags_for_outcome(
     outcome: Rc<CallTargetOutcome>,
     scope: Rc<InferScope>,
@@ -1872,65 +1852,6 @@ pub fn caller_resource_requirements(scope: Rc<InferScope>) -> Rc<Vec<Rc<Resource
     ) {
         Some(info) => info.resource_requirements.clone(),
         std::option::Option::None => Rc::new(vec![]),
-    }
-}
-
-pub fn constructor_reference_admission_refusal(
-    callee_name: String,
-    span: Rc<SourceSpan>,
-    scope: Rc<InferScope>,
-) -> Rc<InferResult> {
-    Rc::new(InferResult {
-        typed: semantic_expr_error_node(
-            v1_rt::concat(
-                v1_rt::concat(
-                    "constructor call admission refused for '".to_string(),
-                    callee_name.clone(),
-                ),
-                "'".to_string(),
-            ),
-            span.clone(),
-        ),
-        diagnostics: constructor_call_admission_diags(
-            callee_name.clone(),
-            scope.clone(),
-            span.clone(),
-        ),
-    })
-}
-
-pub fn constructor_reference_admission_unshadowed(
-    callee_name: String,
-    span: Rc<SourceSpan>,
-    scope: Rc<InferScope>,
-) -> Option<Rc<InferResult>> {
-    if v1_rt::map_has(&scope.body_locals.clone(), callee_name.clone()) {
-        std::option::Option::None
-    } else {
-        constructor_reference_admission_early_refusal(
-            callee_name.clone(),
-            span.clone(),
-            scope.clone(),
-        )
-    }
-}
-
-pub fn constructor_reference_admission_early_refusal(
-    callee_name: String,
-    span: Rc<SourceSpan>,
-    scope: Rc<InferScope>,
-) -> Option<Rc<InferResult>> {
-    {
-        let admission_diags =
-            constructor_call_admission_diags(callee_name.clone(), scope.clone(), span.clone());
-        match admission_diags.clone().first().cloned() {
-            Some(_) => Some(constructor_reference_admission_refusal(
-                callee_name.clone(),
-                span.clone(),
-                scope.clone(),
-            )),
-            std::option::Option::None => std::option::Option::None,
-        }
     }
 }
 
@@ -12874,8 +12795,8 @@ pub fn infer_expr_body(
                 scope.type_env.clone().source_indices.clone(),
             );
             let span = texpr.span.clone();
-            match constructor_reference_admission_unshadowed(
-                name.clone(),
+            match constructor_reference_admission_for_outcome(
+                call_target_for_direct_call(scope.clone(), name.clone()),
                 span.clone(),
                 scope.clone(),
             ) {

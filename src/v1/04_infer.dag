@@ -235,7 +235,7 @@ import v1.compiler.infer_lookup {
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig,
   resolved_plain_call_target_for_outcome, resolved_declaration_call_target, census_declaration_identity,
-  global_bare_callable_node, func_decl_binding_for_call, constructor_declaration_for_admission,
+  global_bare_callable_node, constructor_declaration_for_admission,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
   ExactDeclarationIdentity, DeclarationLookupFailure, DeclarationNotIndexedAtQualifiedName
@@ -1237,26 +1237,6 @@ fn constructor_admission_diags_from_lookup(
   }
 }
 
-fn constructor_call_admission_diags(
-  callee_name: String,
-  scope: InferScope,
-  span: SourceSpan
-) -> List<ErrorNode> {
-  if !constructor_reference_admission_enforced_now() {
-    []
-  } else {
-    constructor_admission_diags_from_lookup(
-      lookup: func_decl_binding_for_call(
-        func_env: scope.func_env,
-        type_env: scope.type_env,
-        name: callee_name
-      ),
-      scope: scope,
-      span: span
-    )
-  }
-}
-
 fn constructor_call_admission_diags_for_outcome(
   outcome: CallTargetOutcome,
   scope: InferScope,
@@ -1353,59 +1333,10 @@ fn caller_resource_requirements(scope: InferScope) -> List<ResourceRequirement> 
   }
 }
 
-fn constructor_reference_admission_refusal(
-  callee_name: String,
-  span: SourceSpan,
-  scope: InferScope
-) -> InferResult {
-  InferResult {
-    typed: semantic_expr_error_node(
-      message: concat("constructor call admission refused for '", callee_name, "'"),
-      span: span
-    ),
-    diagnostics: constructor_call_admission_diags(callee_name: callee_name, scope: scope, span: span)
-  }
-}
-
-// Admission decides a RESOLVED DECLARATION IDENTITY, never an identifier spelling. A body
-// binding shadows any declaration of the same spelling, so a local named `token` must win
-// normally even when a sealed `token` constructor exists elsewhere; refusing it would be a
-// fabricated refusal, which DESIGN section 5 forbids exactly as it forbids the fail-open this
-// wall closes. body_locals is the corpus's existing shadowing authority for precisely this
-// question (call_locals_shadow_note: a let-bound or parameter callee skips sig lookup), so it
-// is reused rather than a second notion of shadowing being minted beside it.
-// EXECUTED EVIDENCE COVERS TWO BINDER FORMS, not four. The controls prove fn-parameter and
-// let shadowing (ct_constructor_call_admission_shadowing_test). Whatever binder forms
-// body_locals populates -- match binders and lambda parameters among them -- inherit this arm
-// by construction, because the arm reads body_locals rather than enumerating forms; but
-// inheritance by construction is not execution, and this comment previously asserted all four
-// as though they were controlled. Adding the two missing forms is a control addition, not a
-// design change: the discriminator is already the right one.
-fn constructor_reference_admission_unshadowed(
-  callee_name: String,
-  span: SourceSpan,
-  scope: InferScope
-) -> InferResult? {
-  if map_has(scope.body_locals, callee_name) {
-    none
-  } else {
-    constructor_reference_admission_early_refusal(callee_name: callee_name, span: span, scope: scope)
-  }
-}
-
-fn constructor_reference_admission_early_refusal(
-  callee_name: String,
-  span: SourceSpan,
-  scope: InferScope
-) -> InferResult? {
-  let admission_diags = constructor_call_admission_diags(callee_name: callee_name, scope: scope, span: span)
-  match admission_diags |> first {
-    Present { value: _ } =>
-      Present { value: constructor_reference_admission_refusal(callee_name: callee_name, span: span, scope: scope) }
-    Absent => Absent
-  }
-}
-
+// Admission consumes CallTargetOutcome. A body-local callee is LocallyBoundCallee and is not
+// a declaration-admission subject, so a local named `token` still wins when a sealed `token`
+// exists elsewhere. EXECUTED EVIDENCE COVERS TWO BINDER FORMS, not four
+// (ct_constructor_call_admission_shadowing_test).
 fn constructor_reference_admission_for_outcome(
   outcome: CallTargetOutcome,
   span: SourceSpan,
@@ -8513,7 +8444,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
     ExprVar { binding_kind: _ } =>
       let name = expr_var_name_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
-      match constructor_reference_admission_unshadowed(callee_name: name, span: span, scope: scope) {
+      match constructor_reference_admission_for_outcome(outcome: call_target_for_direct_call(scope: scope, func_name: name), span: span, scope: scope) {
         Present { value: refusal } => refusal
         Absent =>
       match expected_deciding_variant_owner(expected: expected, name: name, scope: scope) {

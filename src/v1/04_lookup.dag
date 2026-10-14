@@ -505,25 +505,6 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLo
   }
 }
 
-fn func_decl_owner_module(func_env: ResolvedFuncEnv, name: String) -> String? {
-  match map_get(func_env.local, name) {
-    Present { value: _ } => Present { value: func_env.name }
-    Absent =>
-      match fold(func_env.parents, init: none, f: (found, p) =>
-        if found != none { found }
-        else {
-          match map_get(p.local, name) {
-            Present { value: _ } => Present { value: p.name }
-            Absent => none
-          }
-        }
-      ) {
-        Present { value: owner } => Present { value: owner }
-        Absent => none
-      }
-  }
-}
-
 // Admission reads declaration metadata (admit_callers) off the node this lookup returns, so
 // the node must be the DECLARATION. Four of the five node sources feeding this lookup were
 // binding-resolved VALUE nodes -- b.resolved, cand.binding.resolved, binding.resolved --
@@ -534,18 +515,12 @@ fn func_decl_owner_module(func_env: ResolvedFuncEnv, name: String) -> String? {
 // one-arity name happened to resolve through the symbol index and refused correctly. Arity
 // was a correlate of which path ran, never the distinguishing fact, so the repair is
 // uniform rather than arity-specific.
-// THE OWNER MUST BE LOCATED, NOT GUESSED. Only func_decl_owner_module and
-// borrowed_census_decl positively assert that a declaration of this name lives in the module
-// they name; the str_bindings arm and the trailing default both answer with the REFERENCING
-// module, which is a guess about location. Resolving against a guessed owner and then treating
-// the index miss as unrecoverable turns a wrong guess into a hard refusal: measured on the
-// whole tree that fabricated 11 refusals over three ordinary data declarations
-// (srv3_nbd_proxy_local_port, gnu_bash_subject_ref, extdeps_external_authority_anchor), none of
-// them constructors, and the last of them a per-module anchor convention declared under that one
-// name in 459 modules across dag/extdeps -- so a guessed owner picks one of 459 homes and the
-// index miss that follows says nothing about admission. So a name no locating authority claims is
-// NotAdmissionBearingReference, and the unavailable arm is reserved for the genuinely anomalous
-// case -- a located declaration the index cannot produce.
+// THE OWNER MUST BE THE IDENTITY CALL RESOLUTION SELECTED, NOT A SPELLING RECONSTRUCTION.
+// constructor_declaration_for_admission is handed an exact owner+name from CallTargetOutcome;
+// it must not guess the referencing module. A located declaration the product index cannot
+// produce stays AdmissionBearingDeclarationUnavailable and must never be projected to
+// NotAdmissionBearingReference. A name no locating authority claims is
+// NotAdmissionBearingReference.
 // THE VALUE NODE IS NOT AN ADMISSION FALLBACK. An earlier revision kept it as one and argued
 // the change could only add refusals; that is not sufficient, because a fabricated refusal is
 // a wrong answer exactly as a fabricated success is (DESIGN section 5), and keeping it would
@@ -581,36 +556,6 @@ fn constructor_declaration_for_admission(
       AdmissionBearingDeclarationUnavailable {
         identity: identity,
         cause: DeclarationNotIndexedAtQualifiedName { qualified_name: qualified }
-      }
-  }
-}
-
-// Admission metadata is readable only from one exact declaration. Ambiguity and absence differ
-// for name resolution, but neither supplies an identity whose admit_callers policy can be read,
-// so both are explicitly non-admission-bearing here; the call-signature seam retains and refuses
-// the ambiguity with its candidate menu.
-fn func_decl_binding_for_call(
-  func_env: ResolvedFuncEnv,
-  type_env: TypeEnv,
-  name: String
-) -> ConstructorDeclarationLookup {
-  match func_decl_owner_module(func_env: func_env, name: name) {
-    Present { value: owner } =>
-      constructor_declaration_for_admission(
-        type_env: type_env,
-        owner_module_path: owner,
-        name: name
-      )
-    Absent =>
-      match borrowed_census_decl(type_env: type_env, name: name) {
-        BorrowedCensusDeclFound { declaration: bd } =>
-          constructor_declaration_for_admission(
-            type_env: type_env,
-            owner_module_path: bd.owner_module_path,
-            name: name
-          )
-        BorrowedCensusDeclAmbiguous { candidates: _ } => NotAdmissionBearingReference {}
-        BorrowedCensusDeclNotFound => NotAdmissionBearingReference {}
       }
   }
 }

@@ -9943,6 +9943,85 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// Regression specimen: `get` is a registered builtin. A same-spelled off-product census
+    /// declaration must not become an admission subject. Census-before-builtin / spelling
+    /// admission used to refuse this as if `fx.get_decl.get` were the callee.
+    #[test]
+    fn host_reconcile_builtin_get_skips_off_product_census_declaration() {
+        let fixture = Fixture::new(&[
+            (
+                "get_decl.dag",
+                "module fx.get_decl\nfn get(xs: List<Int>, index: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"fx.never\", decl_name: \"never\")]\n{ 0 }\n",
+            ),
+            (
+                "helper.dag",
+                "module fx.helper\nfn unused_import() -> Int { 0 }\n",
+            ),
+            (
+                "entry.dag",
+                "module fx.entry\nimport fx.helper { unused_import }\nfn main() -> Optional<Int> { get([1, 2], 0) }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let (graph, _) =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy())
+                .expect("builtin get must not fail host resolve because a census get exists");
+        let blocking: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        assert!(
+            blocking
+                .iter()
+                .all(|d| !d.contains("fx.get_decl") && !d.contains("admit")),
+            "builtin get must not run declaration admission against the census owner: {blocking:?}"
+        );
+        let names: BTreeSet<_> = graph
+            .modules
+            .iter()
+            .map(|m| m.type_env.module_path.clone())
+            .collect();
+        assert!(
+            !names.contains("fx.get_decl"),
+            "off-product census get must stay out of the typed graph: {names:?}"
+        );
+    }
+
+    /// A selected source declaration whose owner is spelled `v2.std.collection` still
+    /// enforces `admit_callers`. Module name is not an exemption.
+    #[test]
+    fn host_reconcile_collection_owner_still_enforces_admit_callers() {
+        let fixture = Fixture::new(&[
+            (
+                "collection.dag",
+                "module v2.std.collection\nfn secret() -> Int\n  admit_callers: [decl_ref(module_path: \"fx.never\", decl_name: \"never\")]\n{ 7 }\n",
+            ),
+            (
+                "entry.dag",
+                "module fx.entry\nimport v2.std.collection { secret }\nfn main() -> Int { secret() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let outcome =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy());
+        let err = match outcome {
+            Err(e) => e,
+            Ok((graph, _)) => graph
+                .diagnostics
+                .iter()
+                .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+                .map(|d| format!("{:?}", d.diagnostic))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        assert!(
+            err.contains("v2.std.collection") && err.contains("secret"),
+            "declared collection-owner sealed constructor must still refuse: {err}"
+        );
+    }
+
     /// THE INDEX ROUTE READS THE INDEX'S PARSE. `load_sources_for_entry_with_index` (the discovery
     /// route's loader) follows a dotted reference through the one parse per file the index owns:
     /// after the first entry its closure files are in `parsed_references`, and a second entry
