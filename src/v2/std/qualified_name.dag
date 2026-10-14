@@ -50,7 +50,9 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
         }}
       }
     TypeNode { connective: Atom { identity: sym } } =>
-      if count(n.children) == 0 {
+      if (sym == ^dag_token_string_literal) || (sym == ^dag_token_int_literal) || (sym == ^dag_token_float_literal) {
+        qn_fold_init_otherwise(n: n)
+      } else if count(n.children) == 0 {
         QnFoldDone { qn: Cons { head: sym, tail: Empty } }
       } else {
         QnFoldError { diag: Diagnostic {

@@ -155,6 +155,12 @@ import v2.extdeps.languages.dag {
 // what a node IS, never a mention it makes -- the graft body's
 // namespace_graft_module_body marker reaches this fold as a direct child. Same
 // rule as symbol_index_fill_containment_edge and export admission.
+fn authored_edge_carries_literal_payload(sym: Symbol) -> Bool {
+  (sym == ^string_literal_value_field)
+    || (sym == ^integer_literal_magnitude_field)
+    || (sym == ^float_literal_lexeme_field)
+}
+
 fn reference_sites_in_edge(
   acc: ScopedReferenceSiteCollection,
   position: List<EdgeLabel>,
@@ -163,7 +169,7 @@ fn reference_sites_in_edge(
 ) -> ScopedReferenceSiteCollection {
   match edge.label {
     Authored { name: sym } =>
-      if sym == ^grammar_production_identity_node_projection {
+      if (sym == ^grammar_production_identity_node_projection) || authored_edge_carries_literal_payload(sym: sym) {
         acc
       } else {
         reference_sites_in_node(
@@ -284,15 +290,31 @@ fn collection_snoc_site(
 // and its segment atoms are that mention's spelling rather than mentions of their own. Descending
 // after emitting would count `a.b.C` four times.
 //
-// AN INT LITERAL ATOM CARRIES A VALUE, NOT A NAME: the resolver's own atom arm short-circuits it
-// before any lookup, so admitting it here would manufacture an unbound mention the resolver never
-// asks about.
+// A LITERAL ATOM CARRIES A VALUE, NOT A NAME (DESIGN sections 3 and 4). The interned payload of a
+// string literal is a zero-child Atom whose identity lexeme may contain dots; qn_fold_init will
+// read that shape as a one-segment QualifiedName, and every reader of this population -- resolve,
+// the occurrence/reference census, dependency demand, module acquisition -- would then treat data
+// as a mention. The skip that used to sit on the Rejected arm never ran when the fold accepted the
+// payload, so the exclusion lives on the payload EDGE (authored_edge_carries_literal_payload) and
+// here, before the fold is asked. Readers that consume collect_module_reference_sites /
+// collect_scoped_module_reference_sites (v2.compiler.module_acquisition,
+// v2.lens.module_graph, v2.compiler.resolution_provenance module_dependencies_from_sites) do not
+// rely on literals being present: a literal is not a mention those folds resolve.
+fn node_is_literal_atom(node: Node) -> Bool {
+  dag_node_is_int_literal_atom(node: node)
+    || dag_node_is_float_literal_atom(node: node)
+    || dag_node_is_string_literal_atom(node: node)
+}
+
 fn reference_sites_in_node(
   acc: ScopedReferenceSiteCollection,
   position: List<EdgeLabel>,
   scope: SiteScope,
   node: Node
 ) -> ScopedReferenceSiteCollection {
+  if node_is_literal_atom(node: node) {
+    acc
+  } else {
   match qualified_name_from_node(root: node) {
     Accepted { value: qn, diagnostics: _ } =>
       if is_empty(xs: qn) {
@@ -315,13 +337,6 @@ fn reference_sites_in_node(
           match dag_symbol_literal_name_optional(node: node) {
             Present { value: _ } => acc
             Absent =>
-          if dag_node_is_int_literal_atom(node: node) {
-            acc
-          } else if dag_node_is_float_literal_atom(node: node) {
-            acc
-          } else if dag_node_is_string_literal_atom(node: node) {
-            acc
-          } else {
             collection_snoc_site(
               acc: acc,
               scope: scope,
@@ -331,7 +346,6 @@ fn reference_sites_in_node(
               }
             )
           }
-          }
         TypeNode { connective: Conj } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
         TypeNode { connective: Disj } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
         TypeNode { connective: Arrow } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
@@ -339,6 +353,7 @@ fn reference_sites_in_node(
         TypeNode { connective: Instantiation } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
         ComputationNode { behavior: _ } => reference_sites_in_children(acc: acc, position: position, scope: scope, node: node)
       }
+  }
   }
 }
 

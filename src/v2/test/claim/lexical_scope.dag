@@ -294,6 +294,31 @@ test fn a_name_the_module_never_declares_is_not_bound() -> Bool {
 // The collector's plain population is the scoped one with the head dropped: the same sites, in the same
 // order, so a consumer of the plain collection (the module-graph lens, the census instruments) reads what it
 // read before the heads existed.
+// A STRING LITERAL IS DATA, NOT A NAME. The interned payload of `"v2.std.logic"` is one atom whose
+// lexeme contains dots; treating it as a mention would populate resolve, the occurrence census and
+// dependency demand with a site that source never wrote (DESIGN sections 3 and 4). The paired
+// control is the real qualified reference in the same module: excluding the literal must not drop it.
+fn literal_and_qualified_subject() -> String {
+  "module v2.test.subject\n\nfn subject() -> String {\n  \"v2.std.logic\"\n}\n\nfn uses() -> Bool {\n  v2.std.logic.and(a: true, b: true)\n}\n"
+}
+
+test fn a_dotted_string_literal_is_not_a_reference_site() -> Bool {
+  head_of_site(content: literal_and_qualified_subject(), spelling: "v2.std.logic") == "no-site"
+}
+
+test fn a_qualified_reference_beside_a_dotted_string_literal_is_still_a_site() -> Bool {
+  head_of_site(content: literal_and_qualified_subject(), spelling: "v2.std.logic.and") == "unbound"
+}
+
+// RED: a literal whose text is a name the module declares does not bind. Marker is a declaration
+// (an edge label, never a mention); the only occurrence of the spelling in the tree is the string.
+test fn a_string_literal_spelling_a_declared_name_is_not_a_site() -> Bool {
+  head_of_site(
+    content: "module v2.test.subject\n\ntype Marker {}\n\ndata identity: String = \"Marker\"\n\nfn subject() -> String { identity }\n",
+    spelling: "Marker"
+  ) == "no-site"
+}
+
 test fn the_plain_collection_is_the_scoped_collection_with_the_head_dropped() -> Bool {
   match prepare_grammar(grammar: dag_language_model().grammar) {
     Rejected { diagnostics: _ } => false
