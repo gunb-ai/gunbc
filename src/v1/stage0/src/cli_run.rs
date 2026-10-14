@@ -9906,6 +9906,38 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// The same missing module with no import is field access on unbound `ghost`, not a
+    /// qualified module path. A green here with the import-specimen diagnostic would mean
+    /// the two spellings had been collapsed.
+    #[test]
+    fn host_reconcile_refuses_unimported_ghost_provider_as_field_access() {
+        let fixture = Fixture::new(&[(
+            "entry.dag",
+            "module dotted_entry\nfn main() -> Int { ghost.provider.one() }\n",
+        )]);
+        let index = fixture.index();
+        let outcome =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy());
+        let err = match outcome {
+            Err(e) => e,
+            Ok((graph, _)) => graph
+                .diagnostics
+                .iter()
+                .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+                .map(|d| format!("{:?}", d.diagnostic))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        assert!(
+            !err.is_empty(),
+            "unimported ghost.provider.one() must refuse"
+        );
+        assert!(
+            err.contains("ghost") && !err.contains("ghost.provider"),
+            "unimported spelling is unbound ghost, not a module-path ghost.provider: {err}"
+        );
+    }
+
     /// Unique-bare `secret` lives in an unacquired module. Gate one (an unrelated import)
     /// turns the bare pull off, so fill used to supply Exact for admit_callers. After the
     /// fill cut, constructor admission must still refuse rather than remap to a no-op.
