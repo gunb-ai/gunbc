@@ -248,18 +248,20 @@ test fn dpo_importer_of_dep_is_declarer_refused_through_bad() -> Bool {
   }
 }
 
-test fn dpo_gone_module_makes_every_name_declarer_refused() -> Bool {
-  match dpo_verdict(module: "v2.test.dpo.gone_named_user", path: ^dpo_gone_named_user) {
+test fn dpo_gone_independent_names_stay_available() -> Bool {
+  match dpo_outcomes() {
     Absent => false
-    Present { value: named } =>
-      match dpo_verdict(module: "v2.test.dpo.gone_other_user", path: ^dpo_gone_other_user) {
-        Absent => false
-        Present { value: other } =>
-          dpo_refuses_with(v: named, reason: ^resolve_reason_declarer_refused)
-            && dpo_refuses_with(v: other, reason: ^resolve_reason_declarer_refused)
-            && !dpo_refuses_with(v: named, reason: ^resolve_reason_unbound_symbol)
-            && !dpo_refuses_with(v: other, reason: ^resolve_reason_unbound_symbol)
-      }
+    Present { value: outcomes } =>
+      declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.gone.Named"))
+        && declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.gone.Other"))
+        && match dpo_verdict(module: "v2.test.dpo.gone_named_user", path: ^dpo_gone_named_user) {
+          Absent => false
+          Present { value: named } =>
+            match dpo_verdict(module: "v2.test.dpo.gone_other_user", path: ^dpo_gone_other_user) {
+              Absent => false
+              Present { value: other } => dpo_accepted(v: named) && dpo_accepted(v: other)
+            }
+        }
   }
 }
 
@@ -306,11 +308,11 @@ test fn dpo_one_namespace_per_module() -> Bool {
   }
 }
 
-test fn dpo_declaration_depending_on_unavailable_module_is_not_published() -> Bool {
+test fn dpo_declaration_depending_on_gone_named_is_published() -> Bool {
   match dpo_outcomes() {
     Absent => false
     Present { value: outcomes } =>
-      !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.uses_gone.UsesGone"))
+      declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.uses_gone.UsesGone"))
   }
 }
 
