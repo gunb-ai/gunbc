@@ -214,6 +214,29 @@ Consequence for the caller graph:
   witness-dag census entry. Nothing on the required path refuses a merge if any one of them is left
   behind.
 
+**No required verdict reads the `.env` at all** (three independent facts, verified against
+origin/main):
+- The conservation census sample
+  (`v2.compiler.reference_conservation_census`
+  `reference_conservation_stratified_sample_paths`, line 497) holds exactly
+  `dag/test/claim/fabric/fci1_bounded_execution_context_emit_witness.dag` — a `.dag`, **not** the
+  `.env`. The conservation check, if it runs, reads that dag's content, never the `.env`'s bytes.
+- The fci1 emit-witness claim is **not** an admitted required-floor verdict:
+  `v2.workflow.required_floor` `long_home_prefixes()` is six `*.long.` prefixes and the
+  exact-grain admission list admits a fixed set of `test.claim.*` modules; neither
+  `test.claim.fabric.fci1_bounded_execution_context_emit_witness` nor
+  `v2.test.claim.namespace_xl0.reference_conservation` is admitted. (That witness reads the
+  *registry*, not the file — deleting a file does not move the registration, so it cannot pin the
+  file's presence regardless.)
+- The required job (`.github/workflows/witnesses.yml`) runs no generated-artifact drift step and
+  compares no generated artifact (`gunbc.rung_drop v1_required_lanes_withdrawn`).
+
+Consequently the retirement change must be **self-consistent**: no in-gate check enforces that the
+file, its registration, the producer decl_ref, the `.gitattributes` line and the census entry are
+removed together. The only consumers that would notice a stray registration are the **non-required**
+`gunbc.drift_watch_workflow` / `gunbc.heal_workflow` lanes (`gunbc.tier_o_artifact_emit`
+`tier_o_artifacts`), which do not block a merge.
+
 The in-gate conservation claim itself checks only the *emit dag's emitted content* (the expected
 `.env` text) and the conservation of the witness dag — **not** the shell scripts. The only in-gate
 references to the FCI-1 set are the generated-artifact registration and the emit dag, which are the
