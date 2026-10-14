@@ -3,7 +3,8 @@ module test.claim.roadmap.roadmap_belt_actuate_witness
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
-import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_outcome_with_release }
+import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_outcome_with_release, belt_seat_discharge_pass_outcome_from }
+import gunbc.compute.compute_seat_ensure { SeatDischargeRan, SeatDischargeRefused, SeatDischargeSkipped, SeatEnsureNoop, SeatEnsureRefused, SeatEnsureRed }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
@@ -1504,6 +1505,7 @@ test fn verification_presentation_reads_the_attempts_own_verify_step() -> Bool {
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRefused { reason: "the attempts ledger is unobservable" },
   }
   let blocked = belt_verification_presentation_detail(
@@ -1596,6 +1598,7 @@ test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
     "\"observed_at\":\"2026-08-02T02:00:00Z\",",
     "\"spawn_pass\":{\"outcome\":\"recorded\"},",
     "\"teardown_pass\":{\"outcome\":\"recorded\"},",
+    "\"seat_discharge_pass\":{\"outcome\":\"recorded\"},",
     "\"discovery_pass\":{\"outcome\":\"refused\"}}",
   ], "")
   match belt_tick_receipt_decode(raw: raw) {
@@ -3493,4 +3496,17 @@ test fn the_belt_addresses_the_attempt_its_spawn_commands_were_built_for() -> Bo
       }
     }
   }
+}
+
+// A SEAT DISCHARGE REACHES THE DURABLE TICK RECEIPT TYPED AND COUNTED: a red is Failed (and outranks a refusal),
+// a kept charge is Refused with its cause, a clean pass is Recorded, a refused pass is Refused. None is dropped.
+test fn the_seat_discharge_pass_reaches_the_tick_receipt_typed_and_counted() -> Bool {
+  let noop = SeatEnsureNoop { reference: "r1", why: "live" }
+  let refused = SeatEnsureRefused { reference: "r2", reason: "unit lifecycle unknown" }
+  let red = SeatEnsureRed { reference: "r3", reason: "settled but still charged" }
+  (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [noop] }) { BeltPassRecorded => true  _ => false })
+    && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeSkipped { why: "none" }) { BeltPassRecorded => true  _ => false })
+    && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [noop, refused] }) { BeltPassRefused { reason: r } => string_contains(s: r, pattern: "r2") && string_contains(s: r, pattern: "charge kept")  _ => false })
+    && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [refused, red, noop] }) { BeltPassFailed { reason: r } => string_contains(s: r, pattern: "r3")  _ => false })
+    && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRefused { reason: "stage unreadable" }) { BeltPassRefused { reason: r } => string_contains(s: r, pattern: "stage unreadable")  _ => false })
 }

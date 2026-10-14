@@ -180,10 +180,40 @@ fn seat_outcome_is_red(o: SeatEnsureOutcome) -> Bool {
   }
 }
 
-fn seat_discharge_pass_has_red(p: SeatDischargePass) -> Bool {
-  match p {
-    SeatDischargeRan { outcomes } => any(outcomes, o => seat_outcome_is_red(o: o))
+fn seat_outcome_is_refused(o: SeatEnsureOutcome) -> Bool {
+  match o {
+    SeatEnsureRefused { reference: _, reason: _ } => true
     _ => false
+  }
+}
+
+fn seat_outcome_reason(o: SeatEnsureOutcome) -> String {
+  match o {
+    SeatEnsureRed { reference: r, reason: why } => join([r, ": ", why], "")
+    SeatEnsureRefused { reference: r, reason: why } => join([r, ": ", why], "")
+    SeatEnsureNoop { reference: r, why: why } => join([r, ": ", why], "")
+    SeatEnsureReleased { reference: r, committed_before: _, committed_after: _ } => r
+  }
+}
+
+// THE PASS'S STANDING, COUNTED AND LOCATED: a red (settled but still charged, an unverified release) outranks
+// a refusal (the charge is kept and the cause is named); neither is ever folded into a clean pass.
+type SeatDischargeStanding
+  = SeatDischargeClean
+  | SeatDischargeHasRefusals { refused: Int, first: String }
+  | SeatDischargeHasReds { reds: Int, first: String }
+
+fn seat_discharge_pass_standing(p: SeatDischargePass) -> SeatDischargeStanding {
+  let outcomes = seat_discharge_outcomes(p: p)
+  let reds = outcomes |> filter(o => seat_outcome_is_red(o: o))
+  let refused = outcomes |> filter(o => seat_outcome_is_refused(o: o))
+  match reds.first() {
+    Present { value: r } => SeatDischargeHasReds { reds: count(reds), first: seat_outcome_reason(o: r) }
+    Absent =>
+      match refused.first() {
+        Present { value: r } => SeatDischargeHasRefusals { refused: count(refused), first: seat_outcome_reason(o: r) }
+        Absent => SeatDischargeClean
+      }
   }
 }
 

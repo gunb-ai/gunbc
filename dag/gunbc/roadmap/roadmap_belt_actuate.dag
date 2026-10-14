@@ -330,6 +330,7 @@ import gunbc.compute.attempt_lifecycle { DispatchOwned }
 import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved }
 import gunbc.compute.compute_seat_ensure {
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, compute_seat_discharge_all,
+  SeatDischargeStanding, SeatDischargeClean, SeatDischargeHasRefusals, SeatDischargeHasReds, seat_discharge_pass_standing,
 }
 import gunbc.compute.work_provider_local {
   compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
@@ -3624,6 +3625,7 @@ type BeltTickReceipt {
   launches: List<LaunchIdentity>,
   spawn_pass: BeltPassOutcome,
   teardown_pass: BeltPassOutcome,
+  seat_discharge_pass: BeltPassOutcome,
   discovery_pass: BeltPassOutcome,
 }
 
@@ -3651,7 +3653,7 @@ type BeltTickReceiptRead
 // longer reports those passes. It reports the passes it still runs -- spawn and teardown -- and the
 // discovery pass that hands outstanding obligations to their units. What each attempt's obligations
 // did is that attempt's own receipt (belt_attempt_obligation_receipt_path).
-data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v7"
+data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v8"
 
 // THE RECEIPT HAD NO WRITABLE HOME AND HAS NEVER BEEN WRITTEN ON ANY INSTANCE. The path was
 // <instance_root>/belt-last-tick.json; every instance_root on srv1 is root:root 0755 while the belt
@@ -3803,6 +3805,9 @@ fn belt_tick_receipt_decode_passes(doc: JsonValue, observed_at: String) -> BeltT
       match belt_pass_outcome_from_member(doc: doc, key: "teardown_pass") {
         BeltPassOutcomeUnreadable { reason: r } => BeltTickReceiptUnreadable { reason: r }
         BeltPassOutcomeDecoded { outcome: teardown_pass } =>
+         match belt_pass_outcome_from_member(doc: doc, key: "seat_discharge_pass") {
+          BeltPassOutcomeUnreadable { reason: r } => BeltTickReceiptUnreadable { reason: r }
+          BeltPassOutcomeDecoded { outcome: seat_discharge_pass } =>
           match belt_pass_outcome_from_member(doc: doc, key: "discovery_pass") {
             BeltPassOutcomeUnreadable { reason: r } => BeltTickReceiptUnreadable { reason: r }
             BeltPassOutcomeDecoded { outcome: discovery_pass } =>
@@ -3818,11 +3823,13 @@ fn belt_tick_receipt_decode_passes(doc: JsonValue, observed_at: String) -> BeltT
                         launches: launches,
                         spawn_pass: spawn_pass,
                         teardown_pass: teardown_pass,
+                        seat_discharge_pass: seat_discharge_pass,
                         discovery_pass: discovery_pass,
                       })
                   }
               }
           }
+         }
       }
   }
 }
@@ -3952,6 +3959,7 @@ fn belt_tick_receipt_identity_text(receipt: BeltTickReceipt) -> String {
     join(receipt.launches |> map(l => serialize_json(v: launch_identity_json(id: l))), ","), "|",
     belt_pass_outcome_key(o: receipt.spawn_pass), "|",
     belt_pass_outcome_key(o: receipt.teardown_pass), "|",
+    belt_pass_outcome_key(o: receipt.seat_discharge_pass), "|",
     belt_pass_outcome_key(o: receipt.discovery_pass),
   ], "")
 }
@@ -4033,6 +4041,7 @@ fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
     json_kv(key: "launches", value: json_array(elements: receipt.launches |> map(l => launch_identity_json(id: l)))),
     json_kv(key: "spawn_pass", value: belt_pass_outcome_json(o: receipt.spawn_pass)),
     json_kv(key: "teardown_pass", value: belt_pass_outcome_json(o: receipt.teardown_pass)),
+    json_kv(key: "seat_discharge_pass", value: belt_pass_outcome_json(o: receipt.seat_discharge_pass)),
     json_kv(key: "discovery_pass", value: belt_pass_outcome_json(o: receipt.discovery_pass)),
   ])
 }
@@ -4103,6 +4112,16 @@ fn belt_teardown_pass_outcome_from(
     } else {
       BeltPassRecorded
     }
+  }
+}
+
+// A SEAT-DISCHARGE PASS REACHES THE DURABLE RECEIPT TYPED AND COUNTED: a red is Failed, a kept charge with a
+// named cause is Refused, a clean pass is Recorded. Nothing is dropped between the driver and the receipt.
+fn belt_seat_discharge_pass_outcome_from(pass: SeatDischargePass) -> BeltPassOutcome {
+  match seat_discharge_pass_standing(p: pass) {
+    SeatDischargeHasReds { reds: n, first: why } => BeltPassFailed { reason: join([to_string(value: n), " seat discharge red(s); first: ", why], "") }
+    SeatDischargeHasRefusals { refused: n, first: why } => BeltPassRefused { reason: join([to_string(value: n), " seat discharge refusal(s), charge kept; first: ", why], "") }
+    SeatDischargeClean => BeltPassRecorded
   }
 }
 
@@ -13963,6 +13982,7 @@ fn belt_tick_receipt_from_result(
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
       TickPassesRun => belt_teardown_pass_outcome_from(host_refusal: result.host_refusal, teardown_outcomes: result.teardown_outcomes)
     }),
+    seat_discharge_pass: belt_seat_discharge_pass_outcome_from(pass: result.seat_discharge),
     discovery_pass: (match result.wholesale {
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
       TickPassesRun => belt_discovery_pass_outcome(discovery: result.discovery)
