@@ -10,7 +10,7 @@ import v2.std.node {
   Edge,
   Found,
   Ambiguous,
-  Absent,
+  NotFound,
   Authored,
   ArrowEffectClaimsEdge,
   ArrowExecutionModeClaimEdge,
@@ -130,7 +130,7 @@ fn arrow_contract_conforms(children: List<Edge>) -> Bool {
 // (v2.compiler.resolve), not of this pre-resolve wall.
 // THE EDGE TARGET IS READ OR THE WALL DOES NOT CLAIM IT. core_edge_target_lookup distinguishes
 // three states and each wall answers all three by name, matching arrow_body_target_conforms's
-// spelling in v2.std.node: an ABSENT edge is an undeclared operation, nothing to check here (D13
+// spelling in v2.std.node: a NotFound edge is an undeclared operation, nothing to check here (D13
 // step (b) reads it as Undecided downstream); an AMBIGUOUS edge -- two edges sharing one core
 // marker -- has no single target to read, so the wall refuses rather than grant conformance to a
 // target it cannot name. Naming the arms keeps a lookup state added later from silently inheriting
@@ -144,7 +144,7 @@ fn arrow_resource_requirements_edge_target_reads(children: List<Edge>) -> Bool {
           ((id == ^requirements_declared_none) || (id == ^requirements_opaque)) && (count(requirements.children) == 0)
         _ => false
       }
-    Absent => true
+    NotFound => true
     Ambiguous => false
   }
 }
@@ -152,7 +152,7 @@ fn arrow_resource_requirements_edge_target_reads(children: List<Edge>) -> Bool {
 fn arrow_effect_claims_edge_target_reads(children: List<Edge>) -> Bool {
   match core_edge_target_lookup(children: children, marker: ArrowEffectClaimsEdge) {
     Found { target: claims } => arrow_effect_claims_target_conforms(claims: claims)
-    Absent => true
+    NotFound => true
     Ambiguous => false
   }
 }
@@ -160,7 +160,7 @@ fn arrow_effect_claims_edge_target_reads(children: List<Edge>) -> Bool {
 fn arrow_execution_mode_edge_target_reads(children: List<Edge>) -> Bool {
   match core_edge_target_lookup(children: children, marker: ArrowExecutionModeClaimEdge) {
     Found { target: mode } => arrow_execution_mode_claim_target_conforms(mode: mode)
-    Absent => true
+    NotFound => true
     Ambiguous => false
   }
 }

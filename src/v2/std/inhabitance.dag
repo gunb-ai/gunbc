@@ -22,6 +22,7 @@ import v2.std.find_witness {
 }
 import v2.std.node {
   Atom,
+  Instantiation,
   Occupancy,
   ComputationNode,
   Conj,
@@ -48,6 +49,7 @@ import v2.std.arrow_signature {
   arrow_declared_parameter_order
 }
 import v2.std.node_query { declared_field_from_edge, node_positional_child_targets }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional }
 import v2.std.type_binder { edge_is_type_params }
 import v2.std.optional_layers {
   OccupancyWrapperMalformed,
@@ -273,12 +275,43 @@ fn inhabitance_pair_undecidable_reason_declared_then_produced(
   }
 }
 
+// THE NOMINAL HEAD OF A TYPE: the declaration an Instantiation applies (its first positional target), or
+// the node itself. Absent when the head is not a declaration reference (a type variable, a kernel atom).
+fn inhabitance_declaration_head(t: Node) -> Optional<QualifiedName> {
+  match t.kind {
+    TypeNode { connective: Instantiation } =>
+      match list_at_optional(xs: node_positional_child_targets(node: t), index: 0) {
+        Absent => Absent
+        Present { value: head } => declaration_reference_path_optional(node: head)
+      }
+    TypeNode { connective: _ } => declaration_reference_path_optional(node: t)
+    ComputationNode { behavior: _ } => Absent
+  }
+}
+
+// TWO DISTINCT NOMINAL DECLARATIONS ARE DECIDED WHATEVER THEIR ARGUMENTS. Introduction is nominal, so no
+// instantiation of a type variable inside `FreeMonoid<T>` makes it a `FreeSemigroup<Int>`: a variable in
+// the arguments undecides the argument comparison, never a head mismatch. This is what lets a produced
+// generic nullary variant (`Empty`) refuse at a product position instead of being counted unread.
+fn inhabitance_declaration_heads_differ(declared: Node, produced: Node) -> Bool {
+  match inhabitance_declaration_head(t: declared) {
+    Absent => false
+    Present { value: d } =>
+      match inhabitance_declaration_head(t: produced) {
+        Absent => false
+        Present { value: p } => !(d == p)
+      }
+  }
+}
+
 fn inhabitance_pair_undecidable_reason(
   declared: Node,
   produced: Node,
   type_variables: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
+  if inhabitance_declaration_heads_differ(declared: declared, produced: produced) {
+    Absent
+  } else if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
     || inhabitance_node_mentions_type_variable(n: produced, type_variables: type_variables) {
     inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
   } else {

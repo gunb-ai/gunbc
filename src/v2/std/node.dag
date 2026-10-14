@@ -1000,7 +1000,7 @@ type ArrowParameterOrderStep {
 
 fn arrow_signature_order_read(children: List<Edge>) -> ArrowParameterOrderRead {
   match core_edge_target_lookup(children: children, marker: ArrowSignatureOrderEdge) {
-    Absent => OrderAbsent
+    NotFound => OrderAbsent
     Ambiguous => OrderUnreadable
     Found { target: list } => arrow_signature_order_list_read(list: list)
   }
@@ -1272,12 +1272,12 @@ fn type_binder_order_conforms(children: List<Edge>) -> Bool {
 type NamedEdgeTargetLookup
   = Found { target: Node }
   | Ambiguous
-  | Absent
+  | NotFound
 
 fn edge_target_lookup_step(acc: NamedEdgeTargetLookup, hit: Bool, target: Node) -> NamedEdgeTargetLookup {
   if hit {
     match acc {
-      Absent => Found { target: target }
+      NotFound => Found { target: target }
       Found { target: _ } => Ambiguous
       Ambiguous => Ambiguous
     }
@@ -1288,7 +1288,7 @@ fn edge_target_lookup_step(acc: NamedEdgeTargetLookup, hit: Bool, target: Node) 
 
 // The edge carrying this AUTHORED name. A structural label is never found by spelling.
 fn named_edge_target_lookup(children: List<Edge>, name: Symbol) -> NamedEdgeTargetLookup {
-  fold(children, init: Absent, f: fn(acc, e) {
+  fold(children, init: NotFound, f: fn(acc, e) {
     match e.label {
       Authored { name: sym } => edge_target_lookup_step(acc: acc, hit: sym == name, target: e.target)
       StructuralLabel { label: _ } => acc
@@ -1298,7 +1298,7 @@ fn named_edge_target_lookup(children: List<Edge>, name: Symbol) -> NamedEdgeTarg
 }
 
 fn core_edge_target_lookup(children: List<Edge>, marker: CoreEdgeLabel) -> NamedEdgeTargetLookup {
-  fold(children, init: Absent, f: fn(acc, e) {
+  fold(children, init: NotFound, f: fn(acc, e) {
     edge_target_lookup_step(acc: acc, hit: edge_is_core(e: e, marker: marker), target: e.target)
   })
 }
@@ -1621,7 +1621,7 @@ fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
 
 fn arrow_body_target_conforms(children: List<Edge>) -> Bool {
   match arrow_body_target_lookup(children: children) {
-    Absent => true
+    NotFound => true
     Found { target: t } => arrow_body_target_is_valid_realization(target: t)
     Ambiguous => false
   }

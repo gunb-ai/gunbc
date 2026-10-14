@@ -3285,6 +3285,8 @@ type NativeImportTargetAttribution
 // The import targets are read from the module's own captured import rows
 // (v2.compiler.normalized_tree NormalizedTree import_bindings), and a row's target module is its path
 // less the imported name. The refused module is the one the refused file's header declares.
+// A resolve-*subject* refusal of the declarer is not this carrier: it is already
+// ClosureProviderRefusal on the tree (v2.compiler.resolve resolve_reason_declarer_refused).
 fn native_import_target_attribution(context: NativeTestContext, module: QualifiedName) -> NativeImportTargetAttribution {
   match context.resolution {
     Rejected { diagnostics: _ } => NativeImportTargetsUnreadable { reason: ^native_import_target_context_refused }
@@ -3342,10 +3344,26 @@ fn native_module_resolve_verdict(
         import_attribution: NativeImportTargetNotAsked
       }
     Absent =>
-      let step = native_test_resolve_module_walk(
-        context: context,
-        module: qualified_name_from_dotted_string(dotted: module)
-      )
+      match context.resolution {
+        Rejected { diagnostics: r } =>
+          NativeModuleResolveStep {
+            verdict: NativeModuleResolveRefused {
+              first: r,
+              rest: [],
+              observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
+            },
+            context: context,
+            import_attribution: NativeImportTargetsUnreadable { reason: ^native_import_target_context_refused }
+          }
+        Accepted { value: shared, diagnostics: d } =>
+          let closure = closure_declarations_demand(shared: shared)
+          let step = native_test_resolve_module_walk(
+            context: native_test_context_with_resolution(
+              context: context,
+              resolution: Accepted { value: closure.context, diagnostics: d }
+            ),
+            module: qualified_name_from_dotted_string(dotted: module)
+          )
       match step.walk {
         ResolveWalkRefused { first: f, rest: r, observation: o } =>
           let attribution = native_import_target_attribution(
@@ -3396,6 +3414,7 @@ fn native_module_resolve_verdict(
                 import_attribution: NativeImportTargetsUnreadable { reason: ^native_import_target_context_refused }
               }
           }
+      }
       }
   }
 }
