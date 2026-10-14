@@ -92,6 +92,7 @@ import v2.std.collection {
   map_lookup
 }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
+import v2.std.optional_layers { occupancy_declaration_spelling, wrap_type_node_occupancy_at }
 import std.optional {
   Absent,
   Optional,
@@ -3899,10 +3900,10 @@ fn resolve_node_walk_entered(
 // ambiguity where the head resolved.
 fn resolve_type_application(ctx: ResolveContext, walked: ResolveNodeWalk) -> ResolveNodeWalk {
   match walked {
-    ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
+    ResolveWalkAccepted { value: resolved, diagnostics: d, lexical: l } =>
       match resolve_type_application_refusal_optional(ctx: ctx, n: resolved) {
-        Absent => walked
-        Present { value: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
+        Absent => ResolveWalkAccepted { value: resolve_type_application_normalized(n: resolved), diagnostics: d, lexical: l }
+        Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
       }
     ResolveWalkRefused { first: _, rest: _, observation: _ } => walked
   }
@@ -4927,5 +4928,25 @@ fn resolve_walk_with_namespace_policy(
         tree.root
       }
     )))
+  }
+}
+
+// AN EXPLICIT `Optional<T>` WHOSE HEAD RESOLVED BY IDENTITY TO std.optional.Optional IS THE SAME TYPE AS `T?`
+// (ruling gunbc.design_ruling optional_sugar_is_declaration_bound), so it becomes the one Occupancy node the sugar
+// lowers to, at the application's own occurrence. The head is the resolved declaration path, never the leaf name: a
+// local type named Optional resolves to its own declaration and stays an Instantiation.
+fn resolve_type_application_normalized(n: Node) -> Node {
+  match node_positional_child_targets(node: n) {
+    Cons { head: head, tail: Cons { head: argument, tail: Empty } } =>
+      match declaration_reference_path_optional(node: head) {
+        Present { value: path } =>
+          if path == occupancy_declaration_spelling() {
+            wrap_type_node_occupancy_at(base: argument, occurrence_id: n.occurrence_id)
+          } else {
+            n
+          }
+        Absent => n
+      }
+    _ => n
   }
 }
