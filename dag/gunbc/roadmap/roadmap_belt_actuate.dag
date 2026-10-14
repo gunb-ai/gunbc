@@ -34,8 +34,8 @@ import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_events_projection_argv
 import gunbc.dispatch_credential_snapshot {
   TakenCredentialSnapshot,
   dispatch_credential_snapshot_discard,
-  CredentialSnapshotRemoved,
-  CredentialSnapshotRemovalFailed,
+  CredentialSnapshotTombstoned,
+  CredentialSnapshotTombstoneFailed,
 }
 import gunbc.dispatch_credential_acquisition {
   credential_admit_reader_or_discard,
@@ -2203,8 +2203,8 @@ fn belt_snapshot_discarded_unless_consumed(
     SnapshotConsumedByChild => outcome
     SnapshotDiscardRequired =>
       match dispatch_credential_snapshot_discard(snapshot: snapshot) {
-        CredentialSnapshotRemoved => outcome
-        CredentialSnapshotRemovalFailed { reason } =>
+        CredentialSnapshotTombstoned => outcome
+        CredentialSnapshotTombstoneFailed { reason } =>
           SpawnFailed {
             node_id: launch.node_id as String,
             step: "credential-snapshot-discard",
