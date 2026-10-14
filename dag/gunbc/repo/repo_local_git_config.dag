@@ -30,6 +30,9 @@ import std.realization_reconcile {
   Converged,
   NotConverged,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 
 // Repository-local Git configuration desired state for gunbc integration-policy projections
 // (generated-file conflict policy charter, lane 2). The merge-driver definition for
@@ -308,3 +311,13 @@ fn converge() -> ProcessExit {
       exit_failure(reason: concat("repo local git config converge refused: ", r))
   }
 }
+
+data nfr_reason_legacy_slice1_bridge: String = "projection over the legacy HostConvergeSlice1HostResult bridge (host_converge_slice1_unit_outcome_to_legacy_result) — off-variant arms reduce to the identity, so enumerating would clone the arm per variant; landed with #7009, surfaced by the scheduled cold falsifier (alert #7032)"
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "apply_repo_local_git_config_action_at_repo" },
+      reason: nfr_reason_legacy_slice1_bridge,
+      dissolution: unbound_dissolution(description: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberRemoved/MemberRemovalRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row"),
+    },
+]

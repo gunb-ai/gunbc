@@ -22,7 +22,7 @@ import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
 import gunbc.runner.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_root }
-import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, belt_tick_cadence }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, belt_tick_cadence, belt_credential_recovery_backstop }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.release_locus {
@@ -107,7 +107,7 @@ import extdeps.systemd.unit_file {
   TriggerLimitIntervalSec, TriggerLimitBurst,
   ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
   SystemdInstallSection, NotInstallable, Installable,
-  SystemdUnitDirective, Description, After, Wants, StartLimitIntervalSec, StartLimitBurst,
+  SystemdUnitDirective, Description, After, Wants, StartLimitIntervalSec, StartLimitBurst, OnSuccess, OnFailure,
   SystemdServiceDirective, ServiceType, OneshotMode, SimpleMode, ExecStart, Restart,
   Environment, WorkingDirectory, ServiceUser, ServiceGroup,
   TimeoutStartSec,
@@ -180,6 +180,8 @@ import gunbc.live_deploy.spec {
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_exit_path_unit_name, deployment_belt_exit_drain_service_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_discovery_service_unit_name,
+  deployment_belt_credential_recovery_unit_name, deployment_belt_credential_recovery_unit_path,
+  deployment_belt_credential_recovery_timer_unit_name, deployment_belt_credential_recovery_timer_unit_path,
   deployment_belt_exit_drain_service_unit_path, deployment_belt_answer_path_unit_path, deployment_belt_discovery_service_unit_path,
   deployment_belt_service_unit_path, deployment_belt_unit_install_target,
   deployment_publication_service_unit_name,
@@ -899,6 +901,8 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       Description { text: "gunbc roadmap belt launch (queues the one launch obligation: admission, spawn, teardown, discovery)" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
+      OnSuccess { unit: deployment_belt_credential_recovery_unit_name(names: spec.names) },
+      OnFailure { unit: deployment_belt_credential_recovery_unit_name(names: spec.names) },
     ],
     service: concat([
       ServiceType { mode: OneshotMode },
@@ -1161,6 +1165,27 @@ fn live_deploy_belt_exit_drain_service_unit_file(spec: DeploymentSpec) -> System
 
 fn live_deploy_belt_discovery_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt discovery (queues outstanding obligations, bounded)", function: "belt_discover_once_cli", install: NotInstallable)
+}
+
+fn live_deploy_belt_credential_recovery_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_belt_event_service_unit_file(
+    spec: spec,
+    description: "gunbc roadmap belt credential recovery (observes the recorded belt cgroup from its own unit)",
+    function: "belt_credential_recovery_cli",
+    install: NotInstallable)
+}
+
+fn live_deploy_belt_credential_recovery_timer_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  TimerUnitFile {
+    unit: [Description { text: "gunbc roadmap belt credential recovery backstop (does not depend on the belt continuing to tick)" as NonEmptyStr }],
+    timer: [
+      TimerUnit { target: deployment_belt_credential_recovery_unit_name(names: spec.names) },
+      OnBootSec { duration: systemd_time_span_of_seconds(d: belt_credential_recovery_backstop) },
+      OnUnitInactiveSec { duration: systemd_time_span_of_seconds(d: belt_credential_recovery_backstop) },
+      AccuracySec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }
 }
 
 fn live_deploy_belt_exit_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
@@ -3417,6 +3442,8 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         apply_belt_service_unit_write_step(spec: spec),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), file: live_deploy_belt_discovery_service_unit_file(spec: spec)),
+        apply_belt_unit_file_write_step(stage_name: deployment_belt_credential_recovery_unit_name(names: spec.names), file: live_deploy_belt_credential_recovery_unit_file(spec: spec)),
+        apply_belt_unit_file_write_step(stage_name: deployment_belt_credential_recovery_timer_unit_name(names: spec.names), file: live_deploy_belt_credential_recovery_timer_unit_file(spec: spec)),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), file: live_deploy_belt_exit_path_unit_file(spec: spec)),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
         deploy_raw(command: deploy_stage_install_command(
@@ -3426,6 +3453,8 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         )),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), dest: deployment_belt_exit_drain_service_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), dest: deployment_belt_discovery_service_unit_path(names: spec.names)),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_credential_recovery_unit_name(names: spec.names), dest: deployment_belt_credential_recovery_unit_path(names: spec.names)),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_credential_recovery_timer_unit_name(names: spec.names), dest: deployment_belt_credential_recovery_timer_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), dest: deployment_belt_answer_path_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: path),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
@@ -3434,6 +3463,8 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
         deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
         deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
+        deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_credential_recovery_timer_unit_name(names: spec.names))),
+        deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_credential_recovery_timer_unit_name(names: spec.names))),
       ],
       leftover_systemd_timer_retire_steps(
         unit: deployment_retired_belt_timer_unit_name(names: spec.names),
@@ -3532,6 +3563,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         concat(
           systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
           systemctl_disable_now_if_present_steps(unit: deployment_belt_answer_path_unit_name(names: spec.names), privileged: true),
+          systemctl_disable_now_if_present_steps(unit: deployment_belt_credential_recovery_timer_unit_name(names: spec.names), privileged: true),
         ),
         leftover_systemd_timer_retire_steps(
           unit: deployment_retired_belt_timer_unit_name(names: spec.names),
@@ -3544,6 +3576,8 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
           deployment_belt_answer_path_unit_path(names: spec.names) as String,
           deployment_belt_exit_drain_service_unit_path(names: spec.names) as String,
           deployment_belt_discovery_service_unit_path(names: spec.names) as String,
+          deployment_belt_credential_recovery_unit_path(names: spec.names) as String,
+          deployment_belt_credential_recovery_timer_unit_path(names: spec.names) as String,
           deployment_belt_service_unit_path(names: spec.names) as String,
         ])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),

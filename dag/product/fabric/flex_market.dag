@@ -23,7 +23,7 @@ import product.fabric.supply { seconds_per_hour }
 import std.pareto { SelectionAxis, AxisReading, AxisGap, ParetoEntry, HigherIsBetter, LowerIsBetter }
 import std.interval { degenerate_interval }
 import std.decision {
-  TermValuation as DecisionTermValuation,
+  TermValuation,
   ValuedObjective, CostPerAcceptedUnit, NetValue, SelectionPolicy,
   select_realization, RealizationSelectionResult, SelectedWithin, SelectionNeedsEvidence,
   SelectionNeedsPolicy, CandidateFieldUnestablished, NoFeasibleRealization, RealizationSelectionRefused,
@@ -195,7 +195,7 @@ fn flex_class_market_median(floors: List<MoneyPerHour>) -> FlexMarketMedian {
   if n == 0 {
     FlexMedianEmpty
   } else {
-    let currency_scan = fold(floors, init: none, f: (acc, row) =>
+    let currency_scan: CurrencyCode? = fold(floors, init: none, f: (acc, row) =>
       match acc {
         Absent => Present { value: row.currency }
         Present { value: c } =>
@@ -410,7 +410,7 @@ fn flex_level_from_identity(id: DeclarationRef) -> FlexBidLevel? {
 }
 
 fn flex_least_sampled_other(tallies: List<FlexLevelTally>, best: FlexBidLevel) -> FlexBidLevel? {
-  let other = fold(
+  let other: FlexLevelTally? = fold(
     filter(tallies, t => !flex_bid_level_eq(left: t.level, right: best)),
     init: none,
     f: (acc, t) =>
@@ -598,10 +598,10 @@ fn flex_level_valued_policy(currency: CurrencyCode) -> SelectionPolicy {
   ValuedObjective {
     identity: debt_payoff_objective.profile,
     valuations: [
-      DecisionTermValuation { term: term_money.identity, scale_micro: money_amount_micro(count: 1), goal: LowerIsBetter },
-      DecisionTermValuation { term: term_delay.identity, scale_micro: money_amount_micro(count: 0), goal: LowerIsBetter },
-      DecisionTermValuation { term: term_interruption.identity, scale_micro: money_amount_micro(count: 0), goal: LowerIsBetter },
-      DecisionTermValuation { term: term_accepted_work.identity, scale_micro: money_amount_micro(count: 1), goal: HigherIsBetter },
+      TermValuation { term: term_money.identity, scale_micro: money_amount_micro(count: 1), goal: LowerIsBetter },
+      TermValuation { term: term_delay.identity, scale_micro: money_amount_micro(count: 0), goal: LowerIsBetter },
+      TermValuation { term: term_interruption.identity, scale_micro: money_amount_micro(count: 0), goal: LowerIsBetter },
+      TermValuation { term: term_accepted_work.identity, scale_micro: money_amount_micro(count: 1), goal: HigherIsBetter },
     ],
     measure: CostPerAcceptedUnit { unit: term_accepted_work.identity },
     currency: currency,
@@ -697,7 +697,7 @@ fn flex_rank_policy(currency: CurrencyCode) -> SelectionPolicy {
   ValuedObjective {
     identity: flex_rank_objective,
     valuations: [
-      DecisionTermValuation { term: flex_term_vram_hour.identity, scale_micro: money_amount_micro(count: 1), goal: LowerIsBetter },
+      TermValuation { term: flex_term_vram_hour.identity, scale_micro: money_amount_micro(count: 1), goal: LowerIsBetter },
     ],
     measure: NetValue,
     currency: currency,

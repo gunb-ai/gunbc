@@ -1,7 +1,9 @@
 module extdeps.gpu.types
 
 import std.types { Int, NonEmptyStr, String, List, Bool }
-import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth, bandwidth_count }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.memory.types { MemoryFacts }
@@ -88,15 +90,32 @@ type GpuSmCacheGeometry {
   register_file_per_sm: ByteSize
 }
 
+// PACKAGE IS NOT THE HOST LINK. PcieAddInCard names the board; interconnect is that board's
+// endpoint capability (generation × width). An SXM module in an HGX tray is SxmModule: its
+// GPU-to-GPU fabric is NVLink, and a rental listing's "PCIe Gen5" is an observed host link of
+// that system, never an add-in-card fact. IntegratedComputePackage is a GPU nested in an SoC
+// or superchip. The three stay separate so P4 feasibility can refuse to treat a B200 as a
+// purchasable dual-slot card.
+type GpuPackageForm
+  = PcieAddInCard
+  | SxmModule
+  | IntegratedComputePackage
+
 // figure_citations cites the row's other published figures (bandwidth, power, memory, lane count),
 // each naming the row field it grounds; sm_cache_citations grounds sm_cache only.
+// execution_lane_count is absent when the cited datasheet does not state a CUDA-core / lane
+// count (NVIDIA unpublished B200/B300 SM counts); a consumer that needs lanes reads Present
+// or stops, never a fabricated zero.
+// memory_bandwidth is absent when the cited page only states a ceiling ("up to"), not an
+// exact rate; a consumer that needs bandwidth reads Present or stops.
 type GpuModelCatalogRow {
   vendor: Vendor<Hardware>
   model: NonEmptyStr
   microarchitecture: NonEmptyStr
-  execution_lane_count: HardwareThreadCount
+  package: GpuPackageForm
+  execution_lane_count: HardwareThreadCount?
   memory: MemoryFacts
-  memory_bandwidth: Bandwidth
+  memory_bandwidth: Bandwidth?
   boost_clock: Hertz?
   tdp_watts: Watt?
   compute_capability: GpuComputeCapability?
@@ -105,4 +124,19 @@ type GpuModelCatalogRow {
   sm_cache: GpuSmCacheGeometry?
   sm_cache_citations: List<FactCitation>
   figure_citations: List<FactCitation>
+}
+
+// Identity of a catalog row is the cited vendor plus the cited SKU name (NVIDIA's edition
+// spellings distinguish Workstation / Max-Q / Server). Package×VRAM×TDP is not enough: the
+// Workstation and Server PRO 6000 rows share those three and differ in model and bandwidth.
+fn gpu_catalog_row_eq(a: GpuModelCatalogRow, b: GpuModelCatalogRow) -> Bool {
+  (a.vendor.legal_name as String) == (b.vendor.legal_name as String)
+    && (a.model as String) == (b.model as String)
+}
+
+fn gpu_catalog_bandwidth_count(row: GpuModelCatalogRow) -> Nat? {
+  match row.memory_bandwidth {
+    Present { value: b } => Present { value: bandwidth_count(b: b) }
+    Absent => none
+  }
 }

@@ -904,7 +904,6 @@ fn emit_grammar_relation_row(
 }
 }
 
-
 fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   grammar_expr_terminal(token_class: token_class)
 }
@@ -7279,7 +7278,6 @@ fn dag_round_trip_authorities_ready() -> Bool {
   dag_round_trip_grammar_ready(lm: lm) &&
   dag_round_trip_trivia_fidelity_resolved()
 }
-
 
 fn dag_surface_identity_is_top_level_item(id: Symbol) -> Bool {
   fold_list(

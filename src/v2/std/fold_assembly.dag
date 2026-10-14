@@ -1,5 +1,11 @@
 module v2.std.fold_assembly
 import v2.std.node {
+  Disj,
+  Arrow,
+  Occupancy,
+  Instantiation,
+  ComputationNode,
+  Atom,
   Node,
   Edge,
   EdgeLabel,
