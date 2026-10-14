@@ -342,9 +342,10 @@ test fn the_appended_dotted_prefixes_still_match_segments_not_character_runs() -
 // deployed_tree_excluded_derived_files, the measured wall (deploy refused itself on writing them).
 // STALE EXPECTATION (bisect: already false before #13778/#13837): this claim asserted path_is_deployed
 // on those two paths, opposite the_derived_rung_drop_roster_is_excluded_as_a_file_not_a_prefix on
-// rung_drop/roster.dag. This claim now owns the recurring-failure-mode roster and that an authored
+// rung_drop/roster.dag. This claim (renamed from a_legacy_roster_file_is_not_exempt_from_candidate_admission,
+// whose name contradicted the assertion) now owns the recurring-failure-mode roster and that an authored
 // sibling row still ships; the rung_drop exact-file-not-prefix triple stays on the sibling only.
-test fn a_legacy_roster_file_is_not_exempt_from_candidate_admission() -> Bool {
+test fn the_recurring_failure_mode_roster_is_excluded_as_a_file_and_authored_rows_ship() -> Bool {
   !path_is_deployed(path: "dag/gunbc/recurring_failure_mode/roster.dag")
     && path_is_deployed(path: "dag/gunbc/recurring_failure_mode/empty_capture_read_as_clean_result.dag")
 }
