@@ -8502,7 +8502,11 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
 // field position from re-deriving the layer locally; the next rung is the same modeled layer
 // transition that predicate names.
 
-fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
+fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> String {
+  let field_leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: rt_field)
+  if type_var_in_fn_generic_scope(id: field_leaf, generic_param_names: generic_param_names) {
+    return ty
+  }
   let layer = shared_layer_of_type_expr(shared_types: shared_types, type_expr: rt_field, type_decl_items: type_decl_items, source_indices: source_indices)
   if match layer { SharedLayerRefuse { leaf: _, cause: _ } => true  _ => false } {
     return shared_layer_refuse_expr(leaf: match layer { SharedLayerRefuse { leaf: l, cause: _ } => l  _ => "" }, cause: match layer { SharedLayerRefuse { leaf: _, cause: c } => c  _ => "" })
@@ -8545,7 +8549,7 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   } else {
     render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
   }
-  let final_ty = rust_field_carrier_final_type(rt_field: rt_child, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices, env: env, type_decl_items: emit_info.type_decl_items)
+  let final_ty = rust_field_carrier_final_type(rt_field: rt_child, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices, env: env, type_decl_items: emit_info.type_decl_items, generic_param_names: generic_param_names)
   let needs_serde = struct_needs_serde(name: struct_name, emit_info: emit_info)
   let rename_attr = if !needs_serde { "" } else {
     match child.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == field_from_key_property_name) |> first {
@@ -8902,7 +8906,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
       let field_lines = child.children |> map(f =>
         let rt_f = resolved_type(n: f)
         let ty = render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
-        let final_ty = rust_field_carrier_final_type(rt_field: rt_f, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices, env: env, type_decl_items: emit_info.type_decl_items)
+        let final_ty = rust_field_carrier_final_type(rt_field: rt_f, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices, env: env, type_decl_items: emit_info.type_decl_items, generic_param_names: generic_param_names)
         emit_rust_field_definition(authored: authored_name(env: env, node: f), final_ty: final_ty, rename_attr: "", indent: "        ", visibility: "", needs_serde: true)
       )
       let fields_str = field_lines |> join(separator: "\n")
@@ -8912,7 +8916,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
     let field_lines = child.children |> map(f =>
       let rt_f = resolved_type(n: f)
       let ty = render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
-      let final_ty = rust_field_carrier_final_type(rt_field: rt_f, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices, env: env, type_decl_items: emit_info.type_decl_items)
+      let final_ty = rust_field_carrier_final_type(rt_field: rt_f, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices, env: env, type_decl_items: emit_info.type_decl_items, generic_param_names: generic_param_names)
       emit_rust_field_definition(authored: authored_name(env: env, node: f), final_ty: final_ty, rename_attr: "", indent: "        ", visibility: "", needs_serde: true)
     )
     let fields_str = field_lines |> join(separator: "\n")

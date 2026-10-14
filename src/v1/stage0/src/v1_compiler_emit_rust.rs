@@ -17739,8 +17739,15 @@ pub fn rust_field_carrier_final_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
     type_decl_items: Rc<TypeDeclIndex>,
+    generic_param_names: Rc<Vec<String>>,
 ) -> String {
     {
+        if type_var_in_fn_generic_scope(
+            rust_fn_sig_leaf_name(source_indices.clone(), rt_field.clone()),
+            generic_param_names.clone(),
+        ) {
+            return ty.clone();
+        }
         match shared_layer_of_type_expr(
             shared_types.clone(),
             rt_field.clone(),
@@ -17931,6 +17938,7 @@ pub fn emit_struct_field_from_child(
             env.source_indices.clone(),
             env.clone(),
             emit_info.type_decl_items.clone(),
+            generic_param_names.clone(),
         );
         let needs_serde = struct_needs_serde(struct_name.clone(), emit_info.clone());
         let rename_attr = if !needs_serde.clone() {
@@ -18960,6 +18968,7 @@ pub fn emit_variant_from_child(
                                             env.source_indices.clone(),
                                             env.clone(),
                                             emit_info.type_decl_items.clone(),
+                                            generic_param_names.clone(),
                                         );
                                         emit_rust_field_definition(
                                             crate::v1_compiler_infer_env::authored_name(
@@ -19016,6 +19025,7 @@ pub fn emit_variant_from_child(
                                     env.source_indices.clone(),
                                     env.clone(),
                                     emit_info.type_decl_items.clone(),
+                                    generic_param_names.clone(),
                                 );
                                 emit_rust_field_definition(
                                     crate::v1_compiler_infer_env::authored_name(
