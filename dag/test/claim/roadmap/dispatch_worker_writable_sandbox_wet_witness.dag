@@ -50,19 +50,39 @@ fn worker_probe_properties(instance: HostDashboardInstance, worktree: String, sc
   )
 }
 
-fn sandbox_touch_exit(instance: HostDashboardInstance, worktree: String, scratch: String, unit: NonEmptyStr, path: String) -> Int {
+type SandboxTouch
+  = SandboxTouchRan { exit_code: Int }
+  | SandboxTouchUnrunnable
+
+fn sandbox_touch(instance: HostDashboardInstance, worktree: String, scratch: String, unit: NonEmptyStr, path: String) -> SandboxTouch {
   match systemd_run_user_wait_command(
     unit: unit,
     properties: worker_probe_properties(instance: instance, worktree: worktree, scratch: scratch),
     setenv_bindings: [],
     command_argv: ["/usr/bin/touch", "--", path],
   ) {
-    SystemdSummaryPrintingWaitRefused { cause: _ } => 127
+    SystemdSummaryPrintingWaitRefused { cause: _ } => SandboxTouchUnrunnable
     SystemdSummaryPrintingWaitReady { wait: wait } =>
-      shell.Exec.RunArgv(
-        program: "systemd-run",
-        arguments: systemd_run_command_argument_words(command: wait.command),
-      ).exit_code
+      SandboxTouchRan {
+        exit_code: shell.Exec.RunArgv(
+          program: "systemd-run",
+          arguments: systemd_run_command_argument_words(command: wait.command),
+        ).exit_code,
+      }
+  }
+}
+
+fn sandbox_touch_write_refused(instance: HostDashboardInstance, worktree: String, scratch: String, unit: NonEmptyStr, path: String) -> Bool {
+  match sandbox_touch(instance: instance, worktree: worktree, scratch: scratch, unit: unit, path: path) {
+    SandboxTouchUnrunnable => false
+    SandboxTouchRan { exit_code } => exit_code != 0
+  }
+}
+
+fn sandbox_touch_wrote(instance: HostDashboardInstance, worktree: String, scratch: String, unit: NonEmptyStr, path: String) -> Bool {
+  match sandbox_touch(instance: instance, worktree: worktree, scratch: scratch, unit: unit, path: path) {
+    SandboxTouchUnrunnable => false
+    SandboxTouchRan { exit_code } => exit_code == 0
   }
 }
 
@@ -72,41 +92,41 @@ test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() 
   let scratch = probe_worker_dir(instance: inst)
   let attempt = probe_attempt_dir(instance: inst)
   ensure_probe_worker_dir(instance: inst) == 0
-    && sandbox_touch_exit(
+    && sandbox_touch_write_refused(
       instance: inst,
       worktree: wt,
       scratch: scratch,
       unit: "gunbc-writable-probe-bin.service" as NonEmptyStr,
       path: join([inst.serve_binary as String, ".write-probe"], ""),
-    ) != 0
-    && sandbox_touch_exit(
+    )
+    && sandbox_touch_write_refused(
       instance: inst,
       worktree: wt,
       scratch: scratch,
       unit: "gunbc-writable-probe-tree.service" as NonEmptyStr,
       path: join([inst.repo_root as String, "/.gunbc-worker-write-probe"], ""),
-    ) != 0
-    && sandbox_touch_exit(
+    )
+    && sandbox_touch_write_refused(
       instance: inst,
       worktree: wt,
       scratch: scratch,
       unit: "gunbc-writable-probe-binding.service" as NonEmptyStr,
       path: join([attempt, "/request-binding.json"], ""),
-    ) != 0
-    && sandbox_touch_exit(
+    )
+    && sandbox_touch_write_refused(
       instance: inst,
       worktree: wt,
       scratch: scratch,
       unit: "gunbc-writable-probe-attempt-file.service" as NonEmptyStr,
       path: join([attempt, "/forged-owner-record"], ""),
-    ) != 0
-    && sandbox_touch_exit(
+    )
+    && sandbox_touch_write_refused(
       instance: inst,
       worktree: wt,
       scratch: scratch,
       unit: "gunbc-writable-probe-hook.service" as NonEmptyStr,
       path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""),
-    ) != 0
+    )
 }
 
 test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
@@ -116,19 +136,19 @@ test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
   let probe = join([wt, "/.gunbc-worker-write-probe"], "")
   let log_probe = join([scratch, "/worker-stdout.log"], "")
   ensure_probe_worker_dir(instance: inst) == 0
-    && sandbox_touch_exit(
+    && sandbox_touch_wrote(
       instance: inst,
       worktree: wt,
       scratch: scratch,
       unit: "gunbc-writable-probe-wt.service" as NonEmptyStr,
       path: probe,
-    ) == 0
-    && sandbox_touch_exit(
+    )
+    && sandbox_touch_wrote(
       instance: inst,
       worktree: wt,
       scratch: scratch,
       unit: "gunbc-writable-probe-log.service" as NonEmptyStr,
       path: log_probe,
-    ) == 0
+    )
     && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe]).exit_code == 0
 }
