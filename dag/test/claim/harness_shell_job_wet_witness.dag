@@ -16,7 +16,7 @@ import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, WaitUseDefault, WaitPaceReset,
 }
 import gunbc.harness.harness_tool {
-  HarnessToolEnvironment, HarnessToolOutcome, ToolJob, ToolCompleted, ToolRefused, DurationExceeded,
+  HarnessToolEnvironment, HarnessToolOutcome, ToolJob, ToolCompleted, ToolReport, ToolRefused, DurationExceeded,
   harness_tool_environment, harness_run_command_scheduled, harness_wait_jobs_scheduled,
   harness_kill_job, harness_read_job_output, harness_outcome_text, harness_env_with_jobs,
 }
@@ -64,6 +64,7 @@ fn is_job(outcome: HarnessToolOutcome) -> Bool {
   match outcome {
     ToolJob { id: _, text: _ } => true
     ToolCompleted { text: _, exit_code: _, standing: _ } => false
+    ToolReport { text: _, standing: _ } => false
     ToolRefused { disposition: _ } => false
   }
 }
@@ -77,6 +78,7 @@ fn is_duration_exceeded(outcome: HarnessToolOutcome) -> Bool {
       }
     ToolJob { id: _, text: _ } => false
     ToolCompleted { text: _, exit_code: _, standing: _ } => false
+    ToolReport { text: _, standing: _ } => false
   }
 }
 
@@ -204,6 +206,26 @@ test fn wait_returns_when_a_job_finishes_before_the_timeout() -> Bool {
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
   let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
   dir.success && text.contains("a job finished before the wait elapsed") && text.contains("exit 7")
+    && !text.contains("[exit 0]")
+}
+
+test fn wait_result_over_a_job_that_exited_1_does_not_say_exit_0() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let started = harness_run_command_scheduled(
+    environment: env_at(worktree: dir.path, output: out.path),
+    command: "sleep 1; exit 1",
+    schedule: wait_early_schedule(),
+  )
+  let waited = harness_wait_jobs_scheduled(
+    environment: started.environment,
+    schedule: wait_early_schedule(),
+    request: WaitUseDefault,
+  )
+  let text = harness_outcome_text(outcome: waited.outcome)
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && text.contains("exit 1") && !text.contains("[exit 0]")
 }
 
 test fn the_backstop_kills_the_process_group() -> Bool {
@@ -308,6 +330,7 @@ test fn job_output_of_a_finished_exit_3_job_does_not_say_exit_0() -> Bool {
     && match read.outcome {
       ToolCompleted { text: _, exit_code, standing: _ } => exit_code == 3 && text.contains("[exit 3]")
       ToolRefused { disposition: _ } => false
+      ToolReport { text: _, standing: _ } => false
       ToolJob { id: _, text: _ } => false
     }
 }
@@ -340,6 +363,7 @@ test fn unread_job_output_is_typed_unreadable_not_empty() -> Bool {
     && match step.outcome {
       ToolRefused { disposition: _ } => text.contains("unreadable") && !text.contains("[exit 0]")
       ToolCompleted { text: _, exit_code: _, standing: _ } => false
+      ToolReport { text: _, standing: _ } => false
       ToolJob { id: _, text: _ } => false
     }
 }
@@ -384,6 +408,7 @@ test fn run_command_does_not_dirty_the_worktree_git_status() -> Bool {
     && match step.outcome {
       ToolCompleted { text: _, exit_code, standing: _ } => exit_code == 0
       ToolJob { id: _, text: _ } => false
+      ToolReport { text: _, standing: _ } => false
       ToolRefused { disposition: _ } => false
     }
 }

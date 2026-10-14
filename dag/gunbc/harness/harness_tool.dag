@@ -119,12 +119,25 @@ type HarnessToolOutcome
       exit_code: Int
       standing: HarnessOutputStanding
     }
+  | ToolReport { text: String, standing: HarnessOutputStanding }
   | ToolJob { id: String, text: String }
   | ToolRefused { disposition: HarnessToolDisposition }
+
+fn harness_output_standing_note(standing: HarnessOutputStanding) -> String {
+  match standing {
+    OutputComplete => ""
+    OutputTruncated { retained_bytes: kept, total_bytes: total } =>
+      join([
+        "\n[output truncated: ", to_string(value: kept), " of ",
+        to_string(value: total), " bytes retained]",
+      ], "")
+  }
+}
 
 fn harness_outcome_is_error(outcome: HarnessToolOutcome) -> Bool {
   match outcome {
     ToolCompleted { text: _, exit_code: code, standing: _ } => !(code == 0)
+    ToolReport { text: _, standing: _ } => false
     ToolJob { id: _, text: _ } => false
     ToolRefused { disposition: _ } => true
   }
@@ -136,15 +149,10 @@ fn harness_outcome_text(outcome: HarnessToolOutcome) -> String {
       join([
         text,
         "\n[exit ", to_string(value: code), "]",
-        match standing {
-          OutputComplete => ""
-          OutputTruncated { retained_bytes: kept, total_bytes: total } =>
-            join([
-              "\n[output truncated: ", to_string(value: kept), " of ",
-              to_string(value: total), " bytes retained]",
-            ], "")
-        },
+        harness_output_standing_note(standing: standing),
       ], "")
+    ToolReport { text, standing } =>
+      join([text, harness_output_standing_note(standing: standing)], "")
     ToolJob { id: _, text } => text
     ToolRefused { disposition: d } => harness_disposition_text(d: d)
   }
@@ -319,9 +327,8 @@ fn harness_job_output_outcome(job: HarnessShellJob, jobs: List<HarnessShellJob>)
 
 fn harness_text_with_table(text: String, jobs: List<HarnessShellJob>) -> HarnessToolOutcome {
   let bounded = harness_bounded_tool_text(text: join([text, "\n", harness_command_table(jobs: jobs)], ""))
-  ToolCompleted {
+  ToolReport {
     text: bounded.text,
-    exit_code: 0,
     standing: bounded.standing,
   }
 }

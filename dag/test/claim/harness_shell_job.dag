@@ -13,7 +13,7 @@ import gunbc.harness.harness_shell_job_policy { WaitRequestedMinutes, WaitMalfor
 import gunbc.harness.harness_tool {
   harness_wait_request_from_block, harness_kill_job, harness_tool_environment,
   harness_env_with_jobs, harness_outcome_text, harness_job_output_for_state,
-  ToolRefused, ToolCompleted, ToolJob,
+  harness_text_with_table, ToolRefused, ToolCompleted, ToolReport, ToolJob,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -58,6 +58,7 @@ test fn job_kill_refuses_a_finished_job_by_name() -> Bool {
   match step.outcome {
     ToolRefused { disposition: _ } => harness_outcome_text(outcome: step.outcome).contains("has finished")
     ToolCompleted { text: _, exit_code: _, standing: _ } => false
+    ToolReport { text: _, standing: _ } => false
     ToolJob { id: _, text: _ } => false
   }
 }
@@ -94,6 +95,7 @@ test fn job_output_of_a_finished_exit_3_job_does_not_say_exit_0() -> Bool {
     ToolCompleted { text: _, exit_code, standing: _ } =>
       exit_code == 3 && text.contains("[exit 3]") && !text.contains("[exit 0]")
     ToolRefused { disposition: _ } => false
+    ToolReport { text: _, standing: _ } => false
     ToolJob { id: _, text: _ } => false
   }
 }
@@ -103,8 +105,18 @@ test fn job_output_of_a_running_job_is_not_an_exit() -> Bool {
   match harness_job_output_for_state(job: job, jobs: [job], text: "so-far") {
     ToolJob { id, text } => id == "42" && text.contains("so-far")
     ToolCompleted { text: _, exit_code: _, standing: _ } => false
+    ToolReport { text: _, standing: _ } => false
     ToolRefused { disposition: _ } => false
   }
+}
+
+test fn wait_result_over_a_job_that_exited_1_does_not_say_exit_0() -> Bool {
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 1 } })
+  let text = harness_outcome_text(outcome: harness_text_with_table(
+    text: "a job finished before the wait elapsed",
+    jobs: [job],
+  ))
+  text.contains("exit 1") && !text.contains("[exit 0]") && !text.contains("[exit 1]")
 }
 
 test fn a_failed_stdio_rename_keeps_the_mktemp_path_and_says_so() -> Bool {
