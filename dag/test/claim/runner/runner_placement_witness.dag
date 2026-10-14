@@ -439,7 +439,8 @@ test fn srv1_derives_with_the_shakedown_slot_charged_at_its_real_size() -> Bool 
 // THE CPU ALLOCATION FOLD AT SUPPLIED VALUES (DESIGN 3, a witness discriminates at one interface).
 // The figures are the shapes the overseer reported placing by hand on 2026-10-14 -- srv1 128
 // threads, 512GiB, sessions 128GiB, 11 slots; srv3 128 threads, no sessions slice, 16 slots; srv4
-// 17 slots -- and the fold must reproduce 32 / 7, 0 / 7 and 0 / 7 with the 8-thread host reserve.
+// 17 slots -- and the fold must reproduce 32 / 8, 0 / 7 and 0 / 7 with the 8-thread host reserve:
+// (128 - 8 - 32) / 11 = 8, (128 - 8) / 16 = 7, (128 - 8) / 17 = 7.
 fn gib(n: Nat) -> ByteSize {
   byte_size(count: nat_mul(a: n, b: 1073741824))
 }
@@ -461,7 +462,7 @@ fn allocation_refused(r: HostCpuAllocationResolution) -> Bool {
 }
 
 test fn host_cpu_allocation_charges_sessions_by_memory_share_and_the_reserve() -> Bool {
-  allocation_is(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 512), session_pool: gib(n: 128), slots: 11), sessions: 32, per_slot: 7)
+  allocation_is(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 512), session_pool: gib(n: 128), slots: 11), sessions: 32, per_slot: 8)
     && allocation_is(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 502), session_pool: byte_size(0), slots: 16), sessions: 0, per_slot: 7)
     && allocation_is(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 502), session_pool: byte_size(0), slots: 17), sessions: 0, per_slot: 7)
 }
