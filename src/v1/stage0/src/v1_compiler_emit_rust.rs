@@ -82,6 +82,7 @@ pub use crate::v1_compiler_ownership::{analyze_ownership, analyze_single_fold, b
 pub use crate::v1_compiler_resolve::{get_exported_names};
 pub use crate::v1_compiler_runtime_rust::{rust_runtime_source, rust_runtime_cargo_features};
 pub use crate::v1_compiler_trait_bound_witness::{v1_rc_match_scrutinee_clone_bound_param_names, v1_union_bound_param_names, v1_call_forwarding_bound_wrapper_param_names, v1_equality_bound_param_name};
+pub use crate::v1_compiler_trait_derive_emit::{KeyedMapVerdict};
 pub use crate::v1_compiler_trait_derive_emit::{v1_emit_enum_derives, v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls, v1_fn_signature_set_element_param_names, v1_set_element_bound_spellings, v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds, v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement, v1_map_key_head_names_in_type_expr, v1_clone_impl_required_type_params, v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal, trait_derive_emit_fn_clone_bound_keyed_carrier_module, rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible};
 pub use crate::v1_std_core::{ParsedModuleItemKind, Node, InferredNode, NewlineIndex, ExprData, FieldSummary, VarBindingKind, CallTargetIdentity, DeclaredCallableIdentity, CallSemantics, ResolvedCallFormal, MethodSemantics, MatchPattern, TextFile, ErrorNode, UnaryOpKind, StringPart, Connective, Cardinality, LeafOwner, DeclarationMarker, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
 pub use crate::v1_std_core::{call_semantics_target, resolved_node_is_kernel_identity_for_name, match_pattern_is_irrefutable, declaration_provenance_of, type_reference_provenance, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, find_child_named, tuple_type_name, qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at, make_expr_node, field_binding_pattern, make_error_node, is_error_diagnostic, resource_use_resource, unaryop_operand, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, record_lit_named_field_value_optional, find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, field_from_key_property_name, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, no_span, with_required_cardinality, is_rest_transport, transport_base_path, empty_intern_table};
@@ -136,6 +137,7 @@ use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{UnitVariantPhantomP
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, TypeItem, OtherItem};
 use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, ItemNotFound};
 use crate::v1_compiler_languages::VisibilitySpec::{KeywordVisibility};
+use crate::v1_compiler_trait_derive_emit::KeyedMapVerdict::*;
 use crate::v1_std_core::CallSemantics::{PlainCallSemantics, ResolvedDirectCallSemantics, LookupCallSemantics, FunctionValueCallSemantics};
 use crate::v1_std_core::CallTargetIdentity::{RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall};
 use crate::v1_std_core::Cardinality::{Required, CardOptional};
@@ -18930,21 +18932,24 @@ pub fn v1_type_expr_all_names(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let resolved = crate::v1_compiler_infer_types::child_type_node(type_expr.clone());
         v1_rt::concat(
-            Rc::new(vec![crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
-                type_expr.clone(),
-            )]),
+            Rc::new(vec![
+                crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone()),
+                type_expr.name.clone(),
+                crate::v1_std_core::authored_name_at(source_indices.clone(), resolved.clone()),
+                resolved.name.clone(),
+            ]),
             Rc::new({
                 let mut __result = Vec::new();
-                for ch in type_expr.children.clone().iter().cloned() {
+                for ch in v1_rt::concat(type_expr.children.clone(), resolved.children.clone())
+                    .iter()
+                    .cloned()
+                {
                     __result.extend(
-                        (*v1_type_expr_all_names(
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
-                            source_indices.clone(),
-                        ))
-                        .iter()
-                        .cloned(),
+                        (*v1_type_expr_all_names(ch.clone(), source_indices.clone()))
+                            .iter()
+                            .cloned(),
                     );
                 }
                 __result
@@ -18957,22 +18962,39 @@ pub fn v1_map_key_nested_names_in_type_expr(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for key in crate::v1_compiler_trait_derive_emit::v1_map_key_head_type_exprs(
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let own = match (*crate::v1_compiler_trait_derive_emit::v1_type_expr_keyed_map_verdict(
             type_expr.clone(),
             source_indices.clone(),
-        )
-        .iter()
-        .cloned()
+        ))
+        .clone()
         {
-            __result.extend(
-                (*v1_type_expr_all_names(key.clone(), source_indices.clone()))
-                    .iter()
-                    .cloned(),
-            );
-        }
-        __result
+            KeyedMapVerdict::KeyedMap => match type_expr.children.clone().first().cloned() {
+                Some(key_child) => {
+                    v1_type_expr_all_names(key_child.clone(), source_indices.clone())
+                }
+                std::option::Option::None => Rc::new(vec![]),
+            },
+            KeyedMapVerdict::NotKeyedMap => Rc::new(vec![]),
+            KeyedMapVerdict::KeyedMapUndecidable { name: _, .. } => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            own.clone(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for ch in type_expr.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*v1_map_key_nested_names_in_type_expr(
+                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        )
     })
 }
 
