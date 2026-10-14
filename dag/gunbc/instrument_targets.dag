@@ -57,7 +57,6 @@ import gunbc.target_binding {
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
   RegenRoundCostProducer,
-  ComputeRunUnitColdProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -688,8 +687,16 @@ fn compute_run_unit_cold_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "compute-run-unit-cold" } }
 }
 
+fn compute_run_unit_cold_entry() -> String {
+  "dag/gunbc/instruments/compute_run_unit_cold.dag"
+}
+
+fn compute_run_unit_cold_child_deadline() -> Millisecond {
+  millisecond(count: 7200000)
+}
+
 fn compute_run_unit_cold_binding() -> TargetBinding {
-  TargetBinding { target: compute_run_unit_cold_label() producer: ComputeRunUnitColdProducer {} }
+  TargetBinding { target: compute_run_unit_cold_label() producer: NativeClaimProgramProducer { entry: compute_run_unit_cold_entry() deadline: compute_run_unit_cold_child_deadline() } }
 }
 
 fn emitted_crate_workspace_binding() -> TargetBinding {

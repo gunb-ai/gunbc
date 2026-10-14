@@ -316,7 +316,6 @@ pub enum TargetProducer {
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
     RegenRoundCost,
-    ComputeRunUnitCold,
     /// `NativeClaimProgramProducer { entry, deadline }`: the entry is carried so a second program
     /// of the same shape is a registry row, never another variant. The Millisecond deadline is
     /// read from `gunbc.instrument_targets` `native_claim_child_deadline_count` at spawn.
@@ -550,7 +549,9 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         ),
         (
             instrument_label("compute-run-unit-cold"),
-            TargetProducer::ComputeRunUnitCold,
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
+            },
         ),
     ]
 }
@@ -948,7 +949,13 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::NativeProcessMemory { workload },
         } => run_native_process_memory(&self_host_source_roots(), workload),
-        TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
+        TargetProducer::NativeClaimProgram { entry } => {
+            if entry == "dag/gunbc/instruments/compute_run_unit_cold.dag" {
+                run_cli_wire_census("compute-run-unit-cold", entry, "compute_run_unit_cold_exit")
+            } else {
+                run_native_claim_program(entry)
+            }
+        }
         TargetProducer::NativeServeProgram { entry } => run_native_serve_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
@@ -990,7 +997,6 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             run_shared_type_leaf_collision_census(&self_host_source_roots())
         }
         TargetProducer::RegenRoundCost => run_regen_round_cost_instrument(),
-        TargetProducer::ComputeRunUnitCold => run_compute_run_unit_cold(),
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
             "self-host-behavioral-equivalence",
             "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
@@ -5057,47 +5063,6 @@ fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
         },
-    }
-}
-
-fn user_runtime_dir_with_bus() -> Option<String> {
-    let status = std::fs::read_to_string("/proc/self/status").ok()?;
-    let uid = status
-        .lines()
-        .find(|l| l.starts_with("Uid:"))?
-        .split_whitespace()
-        .nth(1)?;
-    let d = format!("/run/user/{uid}");
-    if std::path::Path::new(&d).join("bus").exists() {
-        Some(d)
-    } else {
-        None
-    }
-}
-
-/// `gunbc test //gunbc/instruments:compute-run-unit-cold`. No user bus is SubjectUnreached
-/// (exit 2), never a green skip. When `/run/user/<uid>/bus` exists, bind that directory as
-/// this instrument's user-session realization onto the process that will exec `systemd-run
-/// --user` — not by reading ambient `XDG_RUNTIME_DIR`. The fold additionally `--setenv`s the
-/// same paths onto the unit.
-fn run_compute_run_unit_cold() -> InvocationOutcome {
-    match user_runtime_dir_with_bus() {
-        None => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
-            message: "compute-run-unit-cold: no observation: user session bus absent at /run/user/<uid>/bus (systemd-run --user cannot run)".to_string(),
-        },
-        Some(dir) => {
-            std::env::set_var("XDG_RUNTIME_DIR", &dir);
-            std::env::set_var(
-                "DBUS_SESSION_BUS_ADDRESS",
-                format!("unix:path={dir}/bus"),
-            );
-            run_cli_wire_census(
-                "compute-run-unit-cold",
-                "dag/gunbc/instruments/compute_run_unit_cold.dag",
-                "compute_run_unit_cold_exit",
-            )
-        }
     }
 }
 

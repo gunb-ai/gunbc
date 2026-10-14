@@ -24,8 +24,8 @@ test fn the_hermetic_compute_root_is_inside_the_job_workspace_not_opt_gunbc() ->
   let h = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath)
   let root = compute_root(instance: h) as String
   let live_root = srv1_live_dashboard_instance().instance_root as String
-  starts_with(s: root, prefix: join([workspace, "/"], ""))
-    && starts_with(s: h.instance_root as String, prefix: join([workspace, "/"], ""))
+  ((h.instance_root as String) == workspace)
+    && starts_with(s: root, prefix: join([workspace, "/"], ""))
     && (root != "/opt/gunbc")
     && !starts_with(s: root, prefix: "/opt/gunbc/")
     && !starts_with(s: h.instance_root as String, prefix: "/opt/gunbc/")
