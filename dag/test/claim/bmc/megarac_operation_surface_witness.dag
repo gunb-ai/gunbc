@@ -70,6 +70,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.megarac {
+  megarac_api_operations,
   megarac_op_fan_get_fan_info,
   megarac_op_fan_get_manager_status,
   megarac_op_fan_set_fan_speed,
@@ -208,6 +209,13 @@ test fn fan_control_paths_are_the_served_ui_routes() -> Bool {
     && (megarac_op_fan_set_fan_speed.path as String) == "/api/fan_control/set_fan_speed"
     && (megarac_op_fan_get_manager_status.http_method as String) == "GET"
     && (megarac_op_fan_set_fan_speed.http_method as String) == "POST"
+}
+
+test fn executed_megarac_ops_include_fan_gets_not_unexecuted_posts() -> Bool {
+  filter(megarac_api_operations, op => op == megarac_op_fan_get_manager_status).length() == 1
+    && filter(megarac_api_operations, op => op == megarac_op_fan_get_fan_info).length() == 1
+    && filter(megarac_api_operations, op => op == megarac_op_fan_set_manager_status).length() == 0
+    && filter(megarac_api_operations, op => op == megarac_op_fan_set_fan_speed).length() == 0
 }
 
 test fn missing_socket1_fans_are_physically_absent_not_zero_duty() -> Bool {
