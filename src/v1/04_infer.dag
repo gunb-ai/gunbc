@@ -138,7 +138,7 @@ import v1.compiler.infer_env { overlay_skips_kernel_name,
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
+  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -10694,9 +10694,7 @@ fn record_lit_expected_through_generic_alias(expected: Node?, scope: InferScope,
     Present { value: exp } =>
       // Nominal Optional<T> is the coproduct Present inhabits. Treating a kernel Optional
       // decl as a parameterized alias peels it to T / T? and Present { value: 5 } types as Int?.
-      if exp.name == "Optional"
-        || authored_name_at(source_indices: scope.type_env.source_indices, node: exp) == "Optional"
-        || (match exp.inferred { Present { value: Resolved { node: rt } } => rt.name == "Optional"  _ => false }) {
+      if node_is_std_optional(n: exp, scope: scope) {
         expected
       } else if fuel <= 0 || exp.connective != NoConnective || (exp.children |> count) == 0 {
         expected
@@ -10755,6 +10753,27 @@ fn transparent_alias_application_at_head(exp: Node, decl: Node, scope: InferScop
 }
 
 fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
+  let unrecovered_optional = match expected {
+    Present { value: exp } =>
+      if exp.return_cardinality == CardOptional { none } else {
+        match optional_declaration_reading(n: exp, scope: scope) {
+          OptionalUnrecovered { spelling: sp } => Present { value: sp }
+          _ => none
+        }
+      }
+    Absent => none
+  }
+  match unrecovered_optional {
+    Present { value: sp } =>
+      InferResult {
+        typed: semantic_expr_error_node(message: concat("expected type '", sp, "' names no identifiable declaration; its Optional payload cannot be stamped"), span: span),
+        diagnostics: [inference_error(
+          message: concat("the expected type spelled '", sp, "' resolves to no declaration the census can identify, so whether it is std.optional Optional is undecidable here; refusing rather than leaving its payload unstamped"),
+          span: span,
+          module_name: scope.module_name
+        )]
+      }
+    Absent =>
   match map_literal_expected_keyed_node(type_name: type_name, expected: expected, scope: scope) {
     Present { value: map_node } =>
       infer_map_literal(occurrence_identity: occurrence_identity, map_node: map_node, field_inits: field_inits, span: span, scope: scope)
@@ -10768,6 +10787,7 @@ fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: Stri
         scope: scope,
         expected: record_lit_expected_through_generic_alias(expected: expected, scope: scope, fuel: 8)
       )
+  }
   }
 }
 
@@ -10803,37 +10823,98 @@ fn type_node_mentions_any_name(n: Node, names: List<String>, source_indices: Map
   }
 }
 
-// `Present { value: v }` UNDER AN EXPECTED OPTIONAL EXPECTS THE PAYLOAD FOR ITS VALUE. Both
-// spellings peel through extract_optional_inner_node: `T?` (CardOptional) and nominal
-// `Optional<T>` (Required, one child). A nested record construction still receives the peeled
-// node. A list literal receives it only when that node admits a list, so `Present { value: [] }`
-// under `Map<K, V>?` still answers none and does not steal the list arm. A call is unchanged.
-fn present_value_expected_from_optional(type_name: String, field_name: String, value: Node, expected: Node?, source_indices: Map<String, NewlineIndex>) -> Node? {
-  if type_name != "Present" || field_name != "value" {
-    none
-  } else {
-    match expected {
-      Absent => none
-      Present { value: exp } =>
-        let inner = extract_optional_inner_node(n: exp)
-        let peeled = inner.occurrence_identity != exp.occurrence_identity
-          || inner.name != exp.name
-          || (inner.children |> count) != (exp.children |> count)
-          || inner.connective != exp.connective
-          || inner.return_cardinality != exp.return_cardinality
-        if peeled == false {
-          none
-        } else {
+// WHICH DECLARATION AN EXPECTED TYPE NAMES, ASKED OF THE CENSUS, NEVER OF A SPELLING. The nominal
+// Optional coproduct is std.optional::Optional (the declaration the kernel mint is bound to by
+// gunbc.structural_realization_bindings kernel_mint_declaration_rows); a user type that spells
+// itself Optional is a different declaration and reads IsOtherType. The authored spelling gates
+// only the REFUSAL arm: a reference spelled Optional whose declaration the census cannot identify
+// is OptionalUnrecovered, which the caller refuses typed and located rather than leaving the
+// payload unstamped (a List under it was silently erased in emitted Rust).
+type OptionalDeclarationReading
+  = IsStdOptional
+  | IsOtherType
+  | OptionalUnrecovered { spelling: String }
+
+fn node_is_std_optional(n: Node, scope: InferScope) -> Bool {
+  match optional_declaration_reading(n: n, scope: scope) {
+    IsStdOptional => true
+    _ => false
+  }
+}
+
+fn declaration_is_std_optional(d: DeclarationRef) -> Bool {
+  (d.module_path as String) == "std.optional" && (d.decl_name as String) == "Optional"
+}
+
+fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarationReading {
+  let spelling = qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: n))
+  match type_reference_declaration_reading(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+    TypeReferenceNamesDeclaration { declaration: d } =>
+      if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
+    TypeReferenceIsKernelType { name: kernel } =>
+      match kernel_mint_parent_identity(minted_name: kernel) {
+        VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } =>
+          if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
+        VariantParentIdentified { key: _ } => IsOtherType
+        VariantParentUnrecovered { cause: _ } =>
+          if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
+      }
+    TypeReferenceIsTypeVariable { id: _ } => IsOtherType
+    TypeReferenceUnidentified { authored: _, resolved: _ } =>
+      if spelling == "Optional" { OptionalUnrecovered { spelling: spelling } } else { IsOtherType }
+  }
+}
+
+// `Present { value: v }` UNDER AN EXPECTED OPTIONAL EXPECTS THE PAYLOAD FOR ITS VALUE. `T?`
+// (CardOptional) peels its cardinality; the nominal Optional is recognized by DECLARATION
+// IDENTITY (optional_declaration_reading), and the arm and its payload field are read from that
+// declaration's own arm, not from the spellings "Present"/"value". A nested record construction
+// receives the peeled node; a list literal only when that node admits a list, so
+// `Present { value: [] }` under `Map<K, V>?` still answers none; a call is unchanged.
+fn std_optional_payload_node(exp: Node, type_name: String, field_name: String, scope: InferScope) -> Node? {
+  let optional_ref = decl_ref(module_path: "std.optional", decl_name: "Optional")
+  let declaration = declaration_node_of_ref(d: optional_ref, env: scope.type_env)
+  match declaration {
+    Absent => none
+    Present { value: decl } =>
+      let arm = decl.children |> filter(a => a.name == type_name) |> first
+      match arm {
+        Absent => none
+        Present { value: arm_node } =>
+          let field = arm_node.children |> filter(f => f.name == field_name) |> first
+          match field {
+            Absent => none
+            Present { value: field_node } =>
+              match exp.children |> first {
+                Present { value: applied } => Present { value: applied }
+                Absent => Present { value: child_type_node(ch: field_node) }
+              }
+          }
+      }
+  }
+}
+
+fn present_value_expected_from_optional(type_name: String, field_name: String, value: Node, expected: Node?, scope: InferScope) -> Node? {
+  match expected {
+    Absent => none
+    Present { value: exp } =>
+      let payload = if exp.return_cardinality == CardOptional {
+        Present { value: with_required_cardinality(n: exp) }
+      } else if node_is_std_optional(n: exp, scope: scope) {
+        std_optional_payload_node(exp: exp, type_name: type_name, field_name: field_name, scope: scope)
+      } else { none }
+      match payload {
+        Absent => none
+        Present { value: inner } =>
           match value.expr_data {
             ExprRecordLit { parent_enum: _ } => Present { value: inner }
             ExprListLit =>
-              if node_admits_list_literal(n: inner, source_indices: source_indices) {
+              if node_admits_list_literal(n: inner, source_indices: scope.type_env.source_indices) {
                 Present { value: inner }
               } else { none }
             _ => none
           }
-        }
-    }
+      }
   }
 }
 
@@ -11025,7 +11106,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       } }
       Absent => error_type
     }
-    let field_expected = match present_value_expected_from_optional(type_name: tn_str, field_name: fi_name, value: field_init_node_value(n: fi), expected: expected, source_indices: scope.type_env.source_indices) {
+    let field_expected = match present_value_expected_from_optional(type_name: tn_str, field_name: fi_name, value: field_init_node_value(n: fi), expected: expected, scope: scope) {
       Present { value: element } => Present { value: element }
       Absent =>
         match field_declared_type {
@@ -11296,12 +11377,12 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       }
       match expected {
         Present { value: exp } =>
-          if exp.name == "Optional" || authored_name_at(source_indices: scope.type_env.source_indices, node: exp) == "Optional" {
+          if node_is_std_optional(n: exp, scope: scope) {
             exp
           } else {
             match exp.inferred {
               Present { value: Resolved { node: rt } } =>
-                if rt.name == "Optional" { rt } else { payload_optional }
+                if node_is_std_optional(n: rt, scope: scope) { rt } else { payload_optional }
               _ => payload_optional
             }
           }

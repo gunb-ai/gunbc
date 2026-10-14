@@ -1305,15 +1305,6 @@ fn extract_optional_inner_node(n: Node) -> Node {
       Present { value: inner } => inner
       Absent => n
     }
-  } else if n.name == "Optional" && n.connective == Disj {
-    match n.children |> filter(c => c.name == "Present") |> first {
-      Present { value: present_arm } =>
-        match present_arm.children |> filter(f => f.name == "value") |> first {
-          Present { value: vf } => child_type_node(ch: vf)
-          Absent => n
-        }
-      Absent => n
-    }
   } else { n }
 }
 
