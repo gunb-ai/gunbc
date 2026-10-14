@@ -2,7 +2,7 @@ module std.frame_boundary
 
 import std.types { Bool, String, List }
 import std.effect_grant {
-  NamespaceTree, namespace_tree_eq,
+  NamespaceTree,
   LifecycleGrade, LifecycleByConstruction, LifecycleByConvention,
 }
 
@@ -61,7 +61,7 @@ fn tree_coverage(closures: List<BoundaryClosure>, tree: NamespaceTree) -> TreeCo
     f: (acc, c) => match acc {
       Covered { grade: g } => acc
       Uncovered =>
-        if namespace_tree_eq(a: c.tree, b: tree) {
+        if (c.tree == tree) {
           Covered { grade: c.grade }
         } else {
           Uncovered

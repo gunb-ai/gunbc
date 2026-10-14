@@ -1,7 +1,7 @@
 module gunbc.target_binding
 
 import extdeps.bazel.label {
-  Label, LabelCanonicalityCause, LabelCanonical, LabelNonCanonical,
+  Label, PackageName, LabelCanonicalityCause, LabelCanonical, LabelNonCanonical,
   render_label, label_canonicality,
 }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
@@ -14,11 +14,6 @@ import gunbc.instruments.native_process_memory_reading { NativeMeasuredWorkload 
 // identity and dependency edges; this relation answers the separate realization question. In
 // particular, no command line, function name, or execution closure is carried here: selecting a
 // transport belongs to the later realization layer, not to either side of this model relation.
-// FloorMemoryQualificationProducer supervises a required-floor run inside a cgroup it shares with
-// the child, then reads memory.peak and memory.events from OUTSIDE the dead process. Deliberately
-// NOT the RequiredFloorProducer variant, which remains unbound: what it produces is a memory
-// QUALIFICATION, not a floor verdict, and reusing a differently-named slot for a different fact is
-// the meaning fork DESIGN section 3 forbids.
 // NativeClaimProgramProducer IS GENERIC OVER ITS ENTRY AND ITS HOST DEADLINE. The entry is the
 // NativeClaimDriver program; the deadline is a std.measure Millisecond wall budget on the child
 // process after emit and build. Exceeding it is ObservationDidNotHold (gunbc test exit 1): the bound
@@ -49,7 +44,6 @@ type TargetProducer
   | PrimitiveEgressCensusV2Producer
   | PrimitiveEgressCensusDagProducer
   | PrimitiveEgressCensusSeedProducer
-  | FloorMemoryQualificationProducer
   | TypedGraphExclusiveBytesProducer
   | TypedGraphExclusiveBytesFloorSubjectProducer
   | RequiredLaneResolutionCensusProducer
@@ -59,6 +53,7 @@ type TargetProducer
   | GenericIdentityCensusProducer
   | InterpolationHoleCensusProducer
   | SharedTypeLeafCollisionCensusProducer
+  | CardinalityRealizationProducer
   | RegenRoundCostProducer
   | NativeClaimProgramProducer { entry: String, deadline: Millisecond }
   | NativeServeProgramProducer { entry: String }
@@ -90,7 +85,6 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     PrimitiveEgressCensusV2Producer {} => optional_absent()
     PrimitiveEgressCensusDagProducer {} => optional_absent()
     PrimitiveEgressCensusSeedProducer {} => optional_absent()
-    FloorMemoryQualificationProducer {} => optional_absent()
     TypedGraphExclusiveBytesProducer {} => optional_absent()
     TypedGraphExclusiveBytesFloorSubjectProducer {} => optional_absent()
     RequiredLaneResolutionCensusProducer {} => optional_absent()
@@ -100,6 +94,7 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     GenericIdentityCensusProducer {} => optional_absent()
     InterpolationHoleCensusProducer {} => optional_absent()
     SharedTypeLeafCollisionCensusProducer {} => optional_absent()
+    CardinalityRealizationProducer {} => optional_absent()
     RegenRoundCostProducer {} => optional_absent()
     NativeServeProgramProducer { entry: _ } => optional_absent()
   }
@@ -110,6 +105,10 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
 // further census over the same walk is a variant here and a row there, never another producer.
 //   RefusalCensusReading: `census-infer`, the front-end/resolve/infer refusal report (gunbc#13026,
 //     census part 2). Its exit status is the type census's and is not read as this report's standing.
+//   ScopedRefusalCensusReading: `census-scoped`, the same refusal report over ONE SUBJECT'S ACQUIRED
+//     CLOSURE (gunbc.plans.census_scoped_run). `subject` is the PACKAGE the row binds -- typed as a
+//     package so only a subject that names one module is writable; it is rendered as the package
+//     pattern `//<package>:all` only at the verb's argv, and the terminal must name that rendering back.
 //   TypeDeclarationUseReading: `census-infer` with the type-declaration census's fixture and
 //     unindexed controls (the nominal-type plan's M0), read by
 //     gunbc.instruments.type_declaration_use_census_reading.
@@ -118,6 +117,7 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
 //     not; read by gunbc.instruments.native_process_memory_reading.
 type V2NativeCensusReading
   = RefusalCensusReading
+  | ScopedRefusalCensusReading { subject: PackageName }
   | TypeDeclarationUseReading
   | NativeProcessMemoryReading { workload: NativeMeasuredWorkload }
 

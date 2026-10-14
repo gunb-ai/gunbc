@@ -17,7 +17,6 @@ import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, 
 import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv, SystemdSetenvBinding,
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty,
-  systemd_run_user_wait_command,
   SystemdRunWaitSummary, systemd_run_wait_summary, SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, systemd_service_result_wire,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
@@ -29,7 +28,7 @@ import extdeps.systemd.systemd_run {
   systemd_run_option_words_refused_cause_detail,
 }
 import extdeps.systemd.systemctl
-import gunbc.compute.unit_bounds { compute_grant_unit_properties, compute_kill_mode_property, compute_kill_mode_value }
+import gunbc.compute.unit_bounds { compute_grant_unit_properties, compute_kill_mode_property, compute_kill_mode_value, gunbc_user_work_wait_command }
 import extdeps.transports.shell { ShellOutcome, ShellExited, ShellSpawnRefused }
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_events_path,
@@ -496,7 +495,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       ComputeExecOk { stdout: v, stderr: _ } => v
       ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""
     })
-    match systemd_run_user_wait_command(
+    match gunbc_user_work_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
       properties: compute_unit_properties(layout: layout, granted: granted),
       setenv_bindings: concat([
@@ -1238,7 +1237,7 @@ fn compute_begin_launch(layout: ComputeLayout, gate: AttemptGate) -> AttemptGate
   match gate {
     AttemptGateRefused { detail: d } => AttemptGateRefused { detail: d }
     AttemptGateReady { record: rec, generation: g } =>
-      compute_gate_from_transition(t: attempt_begin_launch(root: layout.attempts_dir as NonEmptyStr, record: rec, expected: g), record: rec, what: "the launch")
+      compute_gate_from_transition(t: attempt_begin_launch(root: layout.attempts_dir as NonEmptyStr, reference: rec.reference as NonEmptyStr, expected: g), record: rec, what: "the launch")
   }
 }
 
@@ -1271,7 +1270,7 @@ fn compute_settle_attempt(layout: ComputeLayout, gate: AttemptGate, verdict: Att
   match gate {
     AttemptGateRefused { detail: d } => AttemptUnsettleable { detail: d }
     AttemptGateReady { record: rec, generation: g } =>
-      match attempt_terminate(root: layout.attempts_dir as NonEmptyStr, record: rec, expected: g, verdict: verdict, detail: detail) {
+      match attempt_terminate(root: layout.attempts_dir as NonEmptyStr, reference: rec.reference as NonEmptyStr, expected: g, verdict: verdict, detail: detail) {
         AttemptAdvanced { state: _, generation: _ } => AttemptSettled
         AttemptLostRace { expected: e, observed: o } =>
           AttemptNotSettled { detail: join(["the attempt slot for ", rec.reference, " could not be closed: expected ", e, " and it holds ", o, "; the attempt stays open in the store and the seat's settlement is recorded only here"], "") }
@@ -2602,7 +2601,7 @@ fn compute_recover_attempt(instance: HostDashboardInstance, reference: NonEmptyS
             RecoveryUnitNotEnded { lifecycle: u } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }) }
             RecoveryStateNotRecoverable { state: st } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryStateNotRecoverable { state: st }) }
             RecoveryMayTerminate { reason: why } =>
-              match attempt_terminate(root: attempts_root, record: rec, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
+              match attempt_terminate(root: attempts_root, reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
                 AttemptLostRace { expected: e, observed: o } =>
                   RecoveryRefused { detail: join(["the attempt moved while recovery was deciding: expected ", e, " and the slot holds ", o, "; the observation this recovery would act on is stale, so nothing is released"], "") }
                 AttemptTransitionRefused { detail: d } => RecoveryRefused { detail: join(["the attempt slot would not take the terminal generation: ", d], "") }

@@ -22,7 +22,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   None
 }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v2.std.node { Disj, Arrow, Occupancy, Instantiation, ComputationNode, Atom, Conj, Node, Symbol, TypeNode }
 import v2.std.node_query {
   NamedChildAmbiguous,
   NamedChildFound,

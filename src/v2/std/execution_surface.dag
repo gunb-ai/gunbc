@@ -1,7 +1,9 @@
 module v2.std.execution_surface
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { List }
-import std.algebra { list_head, HeadFound, HeadAbsent }
+import std.algebra { list_head }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 import std.dissolution { DissolutionCondition }
@@ -108,14 +110,14 @@ fn shell_emission_authorize_steady_state(
   site: ShellEmissionSiteId
 ) -> ShellEmissionAuthorization {
   match list_head(xs: shell_emission_roster_lookup(roster: roster, site: site)) {
-    HeadFound { value: entry } =>
+    Present { value: entry } =>
       Authorized {
         justification: RosterException {
           roster_key: entry.roster_key,
           dissolution: entry.dissolution
         }
       }
-    HeadAbsent =>
+    Absent =>
       Refused { cause: RuntimePresentRequiresTypedRealization { capability: capability } }
   }
 }

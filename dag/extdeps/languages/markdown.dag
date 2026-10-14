@@ -1,4 +1,5 @@
 module extdeps.languages.markdown
+import std.types { List }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

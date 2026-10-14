@@ -6,6 +6,9 @@ import gunbc.roster_registry {
   ByContainment,
   ByDerivation,
   DeclaredFrontier,
+  RosterSubject,
+  SingleRoster,
+  DistributedRoster,
   RosterRegistration,
   roster_registry,
   registration_membership_is_standard
@@ -48,10 +51,7 @@ fn nonstandard_registrations_from(
       } else {
         list_snoc_item(
           xs: acc,
-          item: NonStandardRegistration {
-            roster_module_path: r.roster.module_path,
-            roster_decl_name: r.roster.decl_name
-          }
+          item: nonstandard_from_subject(subject: r.roster)
         )
       }
     }
@@ -89,11 +89,35 @@ fn roster_registry_standard_holds() -> Bool {
 
 data empty_declaration_refs: List<DeclarationRef> = []
 
+fn nonstandard_from_subject(subject: RosterSubject) -> NonStandardRegistration {
+  match subject {
+    SingleRoster { decl: d } =>
+      NonStandardRegistration {
+        roster_module_path: d.module_path,
+        roster_decl_name: d.decl_name
+      }
+    DistributedRoster { data_name: n, element_type: _ } =>
+      NonStandardRegistration {
+        roster_module_path: "(distributed)",
+        roster_decl_name: n
+      }
+  }
+}
+
+fn roster_subject_declaration_refs(subject: RosterSubject) -> List<DeclarationRef> {
+  match subject {
+    SingleRoster { decl: d } => [d]
+    DistributedRoster { data_name: _, element_type: e } => [e]
+  }
+}
+
 fn declaration_refs_from_registration(r: RosterRegistration) -> List<DeclarationRef> {
   match r.membership {
-    ByContainment => [r.roster]
-    ByDerivation { predicate: p } => [r.roster, p]
-    DeclaredFrontier { reason: _, dissolution: _ } => [r.roster]
+    ByContainment => roster_subject_declaration_refs(subject: r.roster)
+    ByDerivation { predicate: p } =>
+      concat(roster_subject_declaration_refs(subject: r.roster), [p])
+    DeclaredFrontier { reason: _, dissolution: _ } =>
+      roster_subject_declaration_refs(subject: r.roster)
   }
 }
 

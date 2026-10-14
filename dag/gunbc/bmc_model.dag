@@ -10,6 +10,8 @@ import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaObservation }
 import extdeps.bmc.ipmi_chassis_control {
   IpmiChassisControlAction, IpmiChassisPowerDown, IpmiChassisPowerUp, IpmiChassisPowerCycle, IpmiChassisHardReset,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // THE ONE BMC MODEL: scenario state and its transitions, nothing else. The controller operations and
 // their response shapes are interface facts owned by extdeps.bmc (ipmi, ipmi_chassis_control,
@@ -536,3 +538,8 @@ fn bmc_ipmi_get_user_access(world: BmcWorld, user: IpmiUserId, channel: IpmiChan
   filter(world.ipmi_user_access, r => (r.user as Int) == (user as Int) && (r.channel as Int) == (channel as Int))
     |> fold(init: wanted, f: (acc, r) => match acc { Absent => Present { value: r.privilege }  Present { value: _ } => acc })
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "bmc_event_eq" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "bmc_sol_drop_fired" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

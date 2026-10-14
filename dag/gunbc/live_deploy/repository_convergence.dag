@@ -61,6 +61,8 @@ import extdeps.git.worktree_enumeration {
   GitWorktreeSetReadRefused,
   GitWorktreeSetUndecodable,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // WHY THIS MODULE EXISTS, AS A MEASUREMENT RATHER THAN A PREFERENCE.
 //
@@ -1337,3 +1339,20 @@ fn repository_converge_wet(
     }
   }
 }
+
+data nfr_reason_git_text_observation_projection: String = "one-variant extraction over GitTextObservation: GitTextObserved yields its text and the wildcard arm is GitTextUnreadable, projected to the empty string (git_text_or_empty) or to none (git_text_value), dropping the refusal's operation, exit code and stderr at the helper. git_text_value is the discriminator repository_prestate_fault and the post-state fold use to REFUSE an unreadable head or reflog with git_text_refusal_detail, so at repository_convergence_compare the empty arm is construction-unreachable; at the observed_head receipt site it renders an unreadable head as empty text. Landed with the convergence-correctness slice (#9555, 2026-08-28) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
+
+data nfr_dissolve_git_text_observation_projection: DissolutionCondition = unbound_dissolution(description: "the convergence fold carries a refined observed-text carrier past the pre-state fault check (a String proven present by construction, never a GitTextObservation re-projected), so git_text_or_empty has no caller and deletes, and git_text_value becomes a total two-arm match or a std optional projection derived from the coproduct — the rows delete with that fold")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "git_text_or_empty" },
+      reason: nfr_reason_git_text_observation_projection,
+      dissolution: nfr_dissolve_git_text_observation_projection,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "git_text_value" },
+      reason: nfr_reason_git_text_observation_projection,
+      dissolution: nfr_dissolve_git_text_observation_projection,
+    },
+]

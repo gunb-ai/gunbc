@@ -240,7 +240,7 @@ test fn lowered_loop_carrier_is_a_generated_slot_not_the_authored_binder() -> Bo
             Absent => false
           }
         Ambiguous => false
-        v2.std.node.Absent => false
+        NotFound => false
       }
   }
 }
@@ -253,7 +253,7 @@ test fn duplicate_carrier_edge_is_malformed() -> Bool {
         Found { target: binder } =>
           !well_formed(n: with_duplicate_carrier_edge(n: lp, binder: binder))
         Ambiguous => false
-        v2.std.node.Absent => false
+        NotFound => false
       }
   }
 }

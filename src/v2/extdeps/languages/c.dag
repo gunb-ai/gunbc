@@ -144,6 +144,7 @@ import v2.std.compilers.compilation_unit {
   type_definition_row_identity
 }
 import v2.std.node {
+  ComputationNode,
   Arrow,
   Atom,
   Conj,

@@ -35,6 +35,11 @@ import std.optional {
 }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, outcome_accepted }
 import v2.std.node {
+  Disj,
+  Arrow,
+  Occupancy,
+  Instantiation,
+  ComputationNode,
   Atom,
   Conj,
   Edge,

@@ -1,6 +1,8 @@
 module gunbc.host.host_converge
 
 import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count, Second, second, second_count }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -29,9 +31,20 @@ import gunbc.session_admission_policy {
 import gunbc.session_reservation_policy {
   ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
   session_reservation_bytes,
+  session_slice_memory_high_for,
 }
 import gunbc.ci.ci_fleet { fleet_intent_offers }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.live_deploy.spec { gunbc_service_uid, gunbc_approval_broker_slice_unit_name }
+import gunbc.live_deploy.slice_bounds {
+  user_work_slice_memory_max_of, user_slice_backstop_memory_max_of, user_slice_backstop_memory_swap_max,
+  approval_broker_slice_memory_max, approval_broker_slice_memory_high,
+}
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived }
+import gunbc.live_deploy.served_slice_charge {
+  host_served_deployment_claim, ServedDeploymentClaimResolved, ServedDeploymentNotPlaced,
+  ServedDeploymentClaimUnmeasured,
+}
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_pressure_limit, gunbc_oomd_sessions_slice, pressure_is_kill }
 import extdeps.systemd {
@@ -71,6 +84,10 @@ data gunbc_runner_per_slot_cpu_dropin_path: String = runner_unit_dropin_path(fil
 data gunbc_runner_per_slot_high_dropin_path: String = runner_unit_dropin_path(file_name: "40-fleet-high.conf" as NonEmptyStr) as String
 data gunbc_runner_per_slot_tasks_dropin_path: String = runner_unit_dropin_path(file_name: "50-fleet-tasks.conf" as NonEmptyStr) as String
 data gunbc_runner_control_dropin_dir_prefix: String = "/etc/systemd/system.control/"
+// `systemctl set-property --runtime` writes here (systemd 255); it shadows the persistent
+// /etc/systemd/system.control drop-in until reboot or `systemctl revert`. Live 18/20 GiB on
+// gunbc-approval-broker.slice (2026-09-30) is that runtime residue: no row produces it.
+data gunbc_runtime_system_control_dropin_dir_prefix: String = "/run/systemd/system.control/"
 data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
 data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
 data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
@@ -683,7 +700,7 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
 // which is no longer necessarily kill. The old name read as a constant, and
 // that is how the stale `desired: "true"` label survived the policy flip to
 // ManagedOomAuto -- apply_value was already derived, the label was not.
-fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<ConvergeKnob> {
+fn session_host_knobs(slice_max: ByteSize, slice_high: ByteSize, per_session: ByteSize) -> List<ConvergeKnob> {
   let pressure_value = managed_oom_action_value(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure)
   let pressure_kill_desired = if pressure_is_kill(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure) { "true" } else { "false" }
   let pct = to_string(percent_count(p: gunbc_oomd_sessions_pressure_limit))
@@ -694,6 +711,13 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
       unit: gunbc_oomd_sessions_slice,
       property: systemd_memory_max_property,
       value: byte_size_count(b: slice_max)
+    ),
+    slice_numeric_knob(
+      slice: SessionsSlice,
+      name: "slice_high_bytes",
+      unit: gunbc_oomd_sessions_slice,
+      property: systemd_memory_high_property,
+      value: byte_size_count(b: slice_high)
     ),
     legacy_converge_knob(
       slice: SessionsSlice,
@@ -774,13 +798,20 @@ fn session_knob_standing_for(host: HostIdentity) -> SessionKnobStanding {
         cause: concat("the session reservation for this host is unestablished, so no slice_max can be grounded: ", why),
       }
     ReservationBytes { bytes: agg_bytes } =>
-      match session_admission_oomd_ceiling(p: gunbc_session_admission_policy) {
+      match session_slice_memory_high_for(host: host) {
         Absent =>
           SessionKnobsUngrounded {
-            cause: "the fleet admission policy declares no oomd eviction ceiling, so the per-session half of the slice cannot be written",
+            cause: "sessions.slice MemoryHigh is not authored for this host, so a Max-only converge would leave the live High as a second authority",
           }
-        Present { value: ceiling } =>
-          SessionKnobsDerived { knobs: session_host_knobs(slice_max: agg_bytes, per_session: ceiling) }
+        Present { value: high } =>
+          match session_admission_oomd_ceiling(p: gunbc_session_admission_policy) {
+            Absent =>
+              SessionKnobsUngrounded {
+                cause: "the fleet admission policy declares no oomd eviction ceiling, so the per-session half of the slice cannot be written",
+              }
+            Present { value: ceiling } =>
+              SessionKnobsDerived { knobs: session_host_knobs(slice_max: agg_bytes, slice_high: high, per_session: ceiling) }
+          }
       }
   }
 }
@@ -804,13 +835,183 @@ fn sessions_membership_probe(session_knobs: List<ConvergeKnob>) -> SessionsMembe
   }
 }
 
-fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) -> HostConverge {
+fn user_manager_instance_unit() -> String {
+  join(["user@", to_string(gunbc_service_uid), ".service"], "")
+}
+
+fn user_manager_backstop_knobs_from_slots(slots: Nat) -> List<ConvergeKnob> {
+  let work_max = user_work_slice_memory_max_of(slots: slots)
+  let backstop = user_slice_backstop_memory_max_of(work_slice_max: work_max)
+  [
+    slice_numeric_knob(
+      slice: GunbcSlice,
+      name: "user_manager_memory_max_bytes",
+      unit: user_manager_instance_unit(),
+      property: systemd_memory_max_property,
+      value: byte_size_count(b: backstop)
+    ),
+    slice_numeric_knob(
+      slice: GunbcSlice,
+      name: "user_manager_memory_swap_max_bytes",
+      unit: user_manager_instance_unit(),
+      property: systemd_memory_swap_max_property,
+      value: byte_size_count(b: user_slice_backstop_memory_swap_max())
+    ),
+  ]
+}
+
+type UserManagerBackstop
+  = UserManagerBackstopNotOwed
+  | UserManagerBackstopDerived { knobs: List<ConvergeKnob> }
+  | UserManagerBackstopRefused { cause: String }
+
+// THE BACKSTOP IS OWED WHERE THE --user WORK IS PLACED, not on every runner host.
+// NotPlaced is not owed. Unmeasured and a non-natural belt concurrent are refusals: the
+// fleet converge policy goes unsound rather than writing no knobs (review 79929).
+fn user_manager_backstop_for(host: HostIdentity) -> UserManagerBackstop {
+  match host_served_deployment_claim(host: host) {
+    ServedDeploymentNotPlaced => UserManagerBackstopNotOwed
+    ServedDeploymentClaimUnmeasured { cause } => UserManagerBackstopRefused { cause: cause }
+    ServedDeploymentClaimResolved { memory: _ } =>
+      match user_work_pool_slots() {
+        UserWorkPoolSlotsDerived { slots } =>
+          UserManagerBackstopDerived { knobs: user_manager_backstop_knobs_from_slots(slots: slots) }
+      }
+  }
+}
+
+fn approval_broker_runtime_cap_knobs() -> List<ConvergeKnob> {
+  [
+    slice_numeric_knob(
+      slice: GunbcSlice,
+      name: "approval_broker_memory_max_bytes",
+      unit: gunbc_approval_broker_slice_unit_name as String,
+      property: systemd_memory_max_property,
+      value: byte_size_count(b: approval_broker_slice_memory_max)
+    ),
+    slice_numeric_knob(
+      slice: GunbcSlice,
+      name: "approval_broker_memory_high_bytes",
+      unit: gunbc_approval_broker_slice_unit_name as String,
+      property: systemd_memory_high_property,
+      value: byte_size_count(b: approval_broker_slice_memory_high)
+    ),
+  ]
+}
+
+type ApprovalBrokerRuntimeCaps
+  = ApprovalBrokerRuntimeCapsNotOwed
+  | ApprovalBrokerRuntimeCapsDerived { knobs: List<ConvergeKnob> }
+  | ApprovalBrokerRuntimeCapsRefused { cause: String }
+
+// SAME PLACEMENT GATE AS THE USER-MANAGER BACKSTOP: the broker slice is a prod-role singleton,
+// so a runner-only host owes no MemoryMax/High converge for it. The live 18/20 GiB figures are
+// a /run/systemd/system.control set-property drop-in; desired is the model 16/14 GiB.
+fn approval_broker_runtime_caps_for(host: HostIdentity) -> ApprovalBrokerRuntimeCaps {
+  match host_served_deployment_claim(host: host) {
+    ServedDeploymentNotPlaced => ApprovalBrokerRuntimeCapsNotOwed
+    ServedDeploymentClaimUnmeasured { cause } => ApprovalBrokerRuntimeCapsRefused { cause: cause }
+    ServedDeploymentClaimResolved { memory: _ } =>
+      ApprovalBrokerRuntimeCapsDerived { knobs: approval_broker_runtime_cap_knobs() }
+  }
+}
+
+type SliceControlCaps {
+  unit: NonEmptyStr
+  memory_max: ByteSize
+  memory_high: ByteSize
+}
+
+// ONE STANDING FOR THE LIVE_DEPLOY SLICE-CONTROL MEMBER. Mapping Ungrounded / Unestablished /
+// missing High / ApprovalBrokerRuntimeCapsRefused to [] made "cannot derive" look like "not
+// owed", so apply_slice_control_converge_steps emitted no steps and live_deploy kept mutating
+// other members (review 80054 side-chat / clever-crane-830). Only a genuine absent placement
+// is NotOwed. A refused half refuses the whole member: converging one slice while leaving the
+// other hand drop-in would be a second authority.
+type SliceControl
+  = SliceControlNotOwed
+  | SliceControlDerived { caps: List<SliceControlCaps> }
+  | SliceControlRefused { cause: String }
+
+fn join_slice_control(left: SliceControl, right: SliceControl) -> SliceControl {
+  match left {
+    SliceControlRefused { cause: c } => SliceControlRefused { cause: c }
+    SliceControlNotOwed => right
+    SliceControlDerived { caps: a } =>
+      match right {
+        SliceControlRefused { cause: c } => SliceControlRefused { cause: c }
+        SliceControlNotOwed => SliceControlDerived { caps: a }
+        SliceControlDerived { caps: b } => SliceControlDerived { caps: concat(a, b) }
+      }
+  }
+}
+
+fn session_slice_control_for(host: HostIdentity) -> SliceControl {
+  match session_knob_standing_for(host: host) {
+    SessionKnobsNotOwed { cause: _ } => SliceControlNotOwed
+    SessionKnobsUngrounded { cause } => SliceControlRefused { cause: cause }
+    SessionKnobsDerived { knobs: _ } =>
+      match session_reservation_bytes(host: host) {
+        ReservationBytesNotApplicable =>
+          SliceControlRefused {
+            cause: "session knobs derived but session reservation is not applicable",
+          }
+        ReservationBytesUnestablished { cause } => SliceControlRefused { cause: cause }
+        ReservationBytes { bytes: max } =>
+          match session_slice_memory_high_for(host: host) {
+            Absent =>
+              SliceControlRefused {
+                cause: "sessions.slice MemoryHigh is not authored for this host, so a Max-only converge would leave the live High as a second authority",
+              }
+            Present { value: high } =>
+              SliceControlDerived {
+                caps: [
+                  SliceControlCaps {
+                    unit: gunbc_oomd_sessions_slice,
+                    memory_max: max,
+                    memory_high: high,
+                  },
+                ]
+              }
+          }
+      }
+  }
+}
+
+fn approval_broker_slice_control_for(host: HostIdentity) -> SliceControl {
+  match approval_broker_runtime_caps_for(host: host) {
+    ApprovalBrokerRuntimeCapsNotOwed => SliceControlNotOwed
+    ApprovalBrokerRuntimeCapsRefused { cause } => SliceControlRefused { cause: cause }
+    ApprovalBrokerRuntimeCapsDerived { knobs: _ } =>
+      SliceControlDerived {
+        caps: [
+          SliceControlCaps {
+            unit: gunbc_approval_broker_slice_unit_name,
+            memory_max: approval_broker_slice_memory_max,
+            memory_high: approval_broker_slice_memory_high,
+          },
+        ]
+      }
+  }
+}
+
+fn slice_control_caps_for(host: HostIdentity) -> SliceControl {
+  join_slice_control(
+    left: session_slice_control_for(host: host),
+    right: approval_broker_slice_control_for(host: host),
+  )
+}
+
+fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, backstop_knobs: List<ConvergeKnob>) -> HostConverge {
   HostConverge {
     identity: h.identity,
     knobs: concat(
       concat(
-        concat(gunbc_pinned_tree_knobs(host: h.identity), runner_host_knobs(h: h)),
-        session_knobs,
+        concat(
+          concat(gunbc_pinned_tree_knobs(host: h.identity), runner_host_knobs(h: h)),
+          session_knobs,
+        ),
+        backstop_knobs,
       ),
       codex_runtime_bundle_knobs(host: h.identity),
     ),
@@ -826,13 +1027,40 @@ fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) 
 // A refused host contributes NO converge target: it is not converged, and not silently converged
 // with a guessed size either. The refused roster stays readable through
 // fleet_deployment_completion for a consumer that needs to know the fleet is incomplete.
+type FleetConvergeAcc
+  = FleetConvergeHosts { hosts: List<HostConverge> }
+  | FleetConvergeUnsound { reason: String }
+
 fn fleet_converge_policy_from(plan: RunnerDeploymentPlan) -> ConvergePolicy {
-  ConvergePolicyDerived {
-    hosts: fold(plan.hosts, init: [], f: (acc, st) => match st {
-      HostRunnerDeploymentDerived { deployment: h } =>
-        concat(acc, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity))])
-      HostRunnerDeploymentRefused { refusal: _ } => acc
-    }),
+  match fold(plan.hosts, init: FleetConvergeHosts { hosts: [] }, f: (acc, st) => match acc {
+    FleetConvergeUnsound { reason } => FleetConvergeUnsound { reason: reason }
+    FleetConvergeHosts { hosts } =>
+      match st {
+        HostRunnerDeploymentRefused { refusal: _ } => FleetConvergeHosts { hosts: hosts }
+        HostRunnerDeploymentDerived { deployment: h } =>
+          match user_manager_backstop_for(host: h.identity) {
+            UserManagerBackstopRefused { cause } => FleetConvergeUnsound { reason: cause }
+            UserManagerBackstopNotOwed =>
+              FleetConvergeHosts {
+                hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: [])]),
+              }
+            UserManagerBackstopDerived { knobs } =>
+              match approval_broker_runtime_caps_for(host: h.identity) {
+                ApprovalBrokerRuntimeCapsRefused { cause } => FleetConvergeUnsound { reason: cause }
+                ApprovalBrokerRuntimeCapsNotOwed =>
+                  FleetConvergeHosts {
+                    hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: knobs)]),
+                  }
+                ApprovalBrokerRuntimeCapsDerived { knobs: broker } =>
+                  FleetConvergeHosts {
+                    hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: concat(knobs, broker))]),
+                  }
+              }
+          }
+      }
+  }) {
+    FleetConvergeUnsound { reason } => ConvergePolicyUnsound { reason: reason }
+    FleetConvergeHosts { hosts } => ConvergePolicyDerived { hosts: hosts }
   }
 }
 
