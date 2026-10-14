@@ -797,8 +797,11 @@ fn parse_module_judgment_contract(source_digest: Fnv1a64Structural, compiler: De
 // and declared inputs are READ FROM parse_module_judgment_contract, so the two requests cannot disagree on
 // which source under which parser they denote; only the kind (a verdict is not served as a tree) and the
 // required parts differ. The model has no output-subset request, so the narrower part set is its own
-// family. A refused parse is served only as a refusal arm; consumers re-parse refusals (a refusal's cause
-// is located at the file key, which the request deliberately does not carry).
+// family. A refused parse is served only as a refusal arm; consumers re-parse refusals, because the receipt
+// carries only Accepted verdicts. The cause TEXT was equal across two file keys on the tested shapes
+// (module_acquisition path-independence claims), but acquisition_parsed interns the file key into
+// tokenization, so a located diagnostic is not covered by a key that carries no file; re-parsing is the
+// conservative arm until a located refusal is shown path-independent.
 // DECLARED FRONTIER (DESIGN section 3c). Consumers: the main-run publisher that commits one verdict per
 // walked module, and the population-parse lookup that serves them. TRIGGER: both land under the
 // parse-population receipt cut (witnesses wall-time), publisher first.
