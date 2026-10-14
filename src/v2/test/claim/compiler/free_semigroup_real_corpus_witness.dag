@@ -59,3 +59,45 @@ test fn fsr_the_empty_list_literal_at_a_real_free_semigroup_return_refuses_holds
 test fn fsr_a_constructed_real_free_semigroup_is_accepted_holds() -> Bool {
   fsr_total(source: fsr_built_source) == 0
 }
+
+// PROBE-TEMP
+test fn p_fsr_literal_formal_source_runnable() -> Bool { fsr_total(source: fsr_literal_formal_source) >= 0 }
+test fn p_fsr_literal_formal_source_total0() -> Bool { fsr_total(source: fsr_literal_formal_source) == 0 }
+test fn p_fsr_literal_formal_source_total1() -> Bool { fsr_total(source: fsr_literal_formal_source) == 1 }
+test fn p_fsr_literal_formal_source_total2() -> Bool { fsr_total(source: fsr_literal_formal_source) == 2 }
+test fn p_fsr_literal_formal_source_total3() -> Bool { fsr_total(source: fsr_literal_formal_source) == 3 }
+test fn p_fsr_literal_formal_source_total4() -> Bool { fsr_total(source: fsr_literal_formal_source) == 4 }
+test fn p_fsr_literal_formal_source_DeclaredTypeNotInhabited() -> Bool { fsr_class_count(source: fsr_literal_formal_source, wanted: "DeclaredTypeNotInhabited") >= 1 }
+test fn p_fsr_literal_formal_source_UnresolvedType() -> Bool { fsr_class_count(source: fsr_literal_formal_source, wanted: "UnresolvedType") >= 1 }
+test fn p_fsr_literal_formal_source_InternalError() -> Bool { fsr_class_count(source: fsr_literal_formal_source, wanted: "InternalError") >= 1 }
+test fn p_fsr_literal_formal_source_TypeMismatch() -> Bool { fsr_class_count(source: fsr_literal_formal_source, wanted: "TypeMismatch") >= 1 }
+test fn p_fsr_empty_return_source_runnable() -> Bool { fsr_total(source: fsr_empty_return_source) >= 0 }
+test fn p_fsr_empty_return_source_total0() -> Bool { fsr_total(source: fsr_empty_return_source) == 0 }
+test fn p_fsr_empty_return_source_total1() -> Bool { fsr_total(source: fsr_empty_return_source) == 1 }
+test fn p_fsr_empty_return_source_total2() -> Bool { fsr_total(source: fsr_empty_return_source) == 2 }
+test fn p_fsr_empty_return_source_total3() -> Bool { fsr_total(source: fsr_empty_return_source) == 3 }
+test fn p_fsr_empty_return_source_total4() -> Bool { fsr_total(source: fsr_empty_return_source) == 4 }
+test fn p_fsr_empty_return_source_DeclaredTypeNotInhabited() -> Bool { fsr_class_count(source: fsr_empty_return_source, wanted: "DeclaredTypeNotInhabited") >= 1 }
+test fn p_fsr_empty_return_source_UnresolvedType() -> Bool { fsr_class_count(source: fsr_empty_return_source, wanted: "UnresolvedType") >= 1 }
+test fn p_fsr_empty_return_source_InternalError() -> Bool { fsr_class_count(source: fsr_empty_return_source, wanted: "InternalError") >= 1 }
+test fn p_fsr_empty_return_source_TypeMismatch() -> Bool { fsr_class_count(source: fsr_empty_return_source, wanted: "TypeMismatch") >= 1 }
+test fn p_fsr_literal_return_source_runnable() -> Bool { fsr_total(source: fsr_literal_return_source) >= 0 }
+test fn p_fsr_literal_return_source_total0() -> Bool { fsr_total(source: fsr_literal_return_source) == 0 }
+test fn p_fsr_literal_return_source_total1() -> Bool { fsr_total(source: fsr_literal_return_source) == 1 }
+test fn p_fsr_literal_return_source_total2() -> Bool { fsr_total(source: fsr_literal_return_source) == 2 }
+test fn p_fsr_literal_return_source_total3() -> Bool { fsr_total(source: fsr_literal_return_source) == 3 }
+test fn p_fsr_literal_return_source_total4() -> Bool { fsr_total(source: fsr_literal_return_source) == 4 }
+test fn p_fsr_literal_return_source_DeclaredTypeNotInhabited() -> Bool { fsr_class_count(source: fsr_literal_return_source, wanted: "DeclaredTypeNotInhabited") >= 1 }
+test fn p_fsr_literal_return_source_UnresolvedType() -> Bool { fsr_class_count(source: fsr_literal_return_source, wanted: "UnresolvedType") >= 1 }
+test fn p_fsr_literal_return_source_InternalError() -> Bool { fsr_class_count(source: fsr_literal_return_source, wanted: "InternalError") >= 1 }
+test fn p_fsr_literal_return_source_TypeMismatch() -> Bool { fsr_class_count(source: fsr_literal_return_source, wanted: "TypeMismatch") >= 1 }
+test fn p_fsr_built_source_runnable() -> Bool { fsr_total(source: fsr_built_source) >= 0 }
+test fn p_fsr_built_source_total0() -> Bool { fsr_total(source: fsr_built_source) == 0 }
+test fn p_fsr_built_source_total1() -> Bool { fsr_total(source: fsr_built_source) == 1 }
+test fn p_fsr_built_source_total2() -> Bool { fsr_total(source: fsr_built_source) == 2 }
+test fn p_fsr_built_source_total3() -> Bool { fsr_total(source: fsr_built_source) == 3 }
+test fn p_fsr_built_source_total4() -> Bool { fsr_total(source: fsr_built_source) == 4 }
+test fn p_fsr_built_source_DeclaredTypeNotInhabited() -> Bool { fsr_class_count(source: fsr_built_source, wanted: "DeclaredTypeNotInhabited") >= 1 }
+test fn p_fsr_built_source_UnresolvedType() -> Bool { fsr_class_count(source: fsr_built_source, wanted: "UnresolvedType") >= 1 }
+test fn p_fsr_built_source_InternalError() -> Bool { fsr_class_count(source: fsr_built_source, wanted: "InternalError") >= 1 }
+test fn p_fsr_built_source_TypeMismatch() -> Bool { fsr_class_count(source: fsr_built_source, wanted: "TypeMismatch") >= 1 }
