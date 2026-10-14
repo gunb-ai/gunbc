@@ -9903,6 +9903,46 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// Unique-bare `secret` lives in an unacquired module. Gate one (an unrelated import)
+    /// turns the bare pull off, so fill used to supply Exact for admit_callers. After the
+    /// fill cut, constructor admission must still refuse rather than remap to a no-op.
+    #[test]
+    fn host_reconcile_refuses_unacquired_unique_bare_sealed_constructor() {
+        let fixture = Fixture::new(&[
+            (
+                "hidden.dag",
+                "module fx.hidden\nfn secret() -> Int\n  admit_callers: [decl_ref(module_path: \"fx.other\", decl_name: \"never\")]\n{ 7 }\n",
+            ),
+            (
+                "helper.dag",
+                "module fx.helper\nfn unused_import() -> Int { 0 }\n",
+            ),
+            (
+                "ambient.dag",
+                "module fx.ambient\nimport fx.helper { unused_import }\nfn main() -> Int { secret() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let outcome = resolve_entry_with_parse_cache(
+            &index,
+            &fixture.0.join("ambient.dag").to_string_lossy(),
+        );
+        let err = match outcome {
+            Err(e) => e,
+            Ok((graph, _)) => graph
+                .diagnostics
+                .iter()
+                .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+                .map(|d| format!("{:?}", d.diagnostic))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        assert!(
+            err.contains("fx.hidden") && err.contains("secret"),
+            "unacquired unique-bare sealed constructor must refuse naming fx.hidden.secret: {err}"
+        );
+    }
+
     /// THE INDEX ROUTE READS THE INDEX'S PARSE. `load_sources_for_entry_with_index` (the discovery
     /// route's loader) follows a dotted reference through the one parse per file the index owns:
     /// after the first entry its closure files are in `parsed_references`, and a second entry

@@ -75,7 +75,15 @@ import v1.compiler.infer_service {
   check_service_method_call_node
 }
 
-import v1.compiler.infer_method { infer_builtin_call_type }
+import v1.compiler.infer_method {
+  infer_builtin_call_type,
+  bare_call_non_declaration_binding,
+  NonDeclarationBinding,
+  DeclarationOnly,
+  EmptyCollectionConstructor,
+  BuiltinFunction,
+  KernelMethodOnly
+}
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
@@ -547,8 +555,11 @@ fn func_decl_owner_module(func_env: ResolvedFuncEnv, name: String) -> String? {
 // NotAdmissionBearingReference, and the unavailable arm is reserved for the genuinely anomalous
 // case -- a declaration whose owner is this product's func-env ancestry and whose qualified
 // name the closure index still cannot produce. A tree-unique census owner whose module is
-// not in this product's index is not that case: it is a name this product did not acquire,
-// so it is NotAdmissionBearingReference rather than a fabricated whole-pool lookup.
+// not in this product's index is a name this product did not acquire. For a DeclarationOnly
+// spelling that remains callable via tree `global_bare`, that miss stays Unavailable (fail-closed).
+// Names `bare_call_non_declaration_binding` already classifies as kernel constructors, builtins
+// or kernel methods are NotAdmissionBearingReference: constructor admission must not demand a
+// pool wrapper identity for a spelling inference already binds without a declaration.
 // THE VALUE NODE IS NOT AN ADMISSION FALLBACK. An earlier revision kept it as one and argued
 // the change could only add refusals; that is not sufficient, because a fabricated refusal is
 // a wrong answer exactly as a fabricated success is (DESIGN section 5), and keeping it would
@@ -614,8 +625,14 @@ fn func_decl_binding_for_call(
           ) {
             ExactConstructorDeclaration { identity: identity, declaration: declaration } =>
               ExactConstructorDeclaration { identity: identity, declaration: declaration }
-            AdmissionBearingDeclarationUnavailable { identity: _, cause: _ } =>
-              NotAdmissionBearingReference {}
+            AdmissionBearingDeclarationUnavailable { identity: identity, cause: cause } =>
+              match bare_call_non_declaration_binding(name: name) {
+                DeclarationOnly =>
+                  AdmissionBearingDeclarationUnavailable { identity: identity, cause: cause }
+                EmptyCollectionConstructor => NotAdmissionBearingReference {}
+                BuiltinFunction => NotAdmissionBearingReference {}
+                KernelMethodOnly => NotAdmissionBearingReference {}
+              }
             NotAdmissionBearingReference {} => NotAdmissionBearingReference {}
           }
         BorrowedCensusDeclAmbiguous { candidates: _ } => NotAdmissionBearingReference {}
