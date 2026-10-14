@@ -35,6 +35,9 @@ service Clock {
       0 => Unit
       nonzero => String "date command failed"
     }
+    mock_response {
+      0 => { timestamp: "2026-09-27T01:00:00Z" } "hermetic Clock.Now is a supplied instant, not a live date"
+    }
   }
 
   operation UnixMillis {

@@ -66,6 +66,7 @@ import gunbc.auth.request_authentication {
   RequestIngress, IngressUnattested, IngressAttestedPeer, request_ingress_is_the_proxy,
   authenticated_viewer_label,
   human_write_admission,
+  csrf_write_decision,
   tracker_write_authorization_policy,
   roadmap_deployment_access_policy,
   ServeActionAssignIssue,
@@ -138,6 +139,7 @@ import gunbc.roadmap.roadmap_launch_admission {
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
   launch_refusal_label, launch_refusal_reason,
+  launch_observe_only_reason,
 }
 import gunbc.roadmap.roadmap_page { issue_detail_not_found_page, issue_create_page,
   roadmap_fleet_page,
@@ -636,10 +638,74 @@ fn serve_publish_with_follow_ups(instance: HostDashboardInstance, outcome: BeltP
 // that vendor's selection, which refuses typed when the vendor's offer or standing does not admit it.
 // An unknown label is a 400 naming the accepted set -- never a dispatch to the default, which would
 // run the attempt somewhere the operator did not ask.
+// CSRF IS DECIDABLE WITHOUT THE CLOCK. Session expiry is not: human_authentication_decision
+// reads observed_at only on GoogleOidcSession. A live session with no token must not Get
+// Clock.Now before csrf_write_decision refuses — that turned dispatch_without_csrf into
+// HostEffectRefused { operation: Now } instead of 403.
 fn serve_after_human_write(
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   route_path: NonEmptyStr,
   action: ServeRouteAction,
+  proceed: fn() -> ServeHttpResponse,
+) -> ServeHttpResponse {
+  let csrf_presented = issue_form_field(body: request.body, name: "csrf")
+  match request.security.authentication {
+    GoogleOidcSession { session: _ } =>
+      match csrf_write_decision(
+        route_path: route_path,
+        action: action,
+        security: request.security,
+        csrf_presented: csrf_presented,
+      ) {
+        Deny { refusal } =>
+          serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+        Permit =>
+          match human_write_admission(
+            route_path: route_path,
+            action: action,
+            security: request.security,
+            authorization_policy: tracker_write_authorization_policy,
+            deployment_policy: roadmap_deployment_access_policy,
+            csrf_presented: csrf_presented,
+            observed_at: human_write_observed_at(security: request.security),
+          ) {
+            Deny { refusal } =>
+              serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+            Permit => proceed()
+          }
+      }
+    FabricServiceEvidence { kind: _, authenticated_at: _ } =>
+      serve_after_human_write_rest(
+        request: request,
+        route_path: route_path,
+        action: action,
+        csrf_presented: csrf_presented,
+        proceed: proceed,
+      )
+    SessionStandingInvalid { standing: _ } =>
+      serve_after_human_write_rest(
+        request: request,
+        route_path: route_path,
+        action: action,
+        csrf_presented: csrf_presented,
+        proceed: proceed,
+      )
+    AuthAbsent =>
+      serve_after_human_write_rest(
+        request: request,
+        route_path: route_path,
+        action: action,
+        csrf_presented: csrf_presented,
+        proceed: proceed,
+      )
+  }
+}
+
+fn serve_after_human_write_rest(
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  route_path: NonEmptyStr,
+  action: ServeRouteAction,
+  csrf_presented: String,
   proceed: fn() -> ServeHttpResponse,
 ) -> ServeHttpResponse {
   match human_write_admission(
@@ -648,7 +714,7 @@ fn serve_after_human_write(
     security: request.security,
     authorization_policy: tracker_write_authorization_policy,
     deployment_policy: roadmap_deployment_access_policy,
-    csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    csrf_presented: csrf_presented,
     observed_at: human_write_observed_at(security: request.security),
   ) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
@@ -683,10 +749,24 @@ fn serve_dispatch_handler_response_over(
             body: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", "), "\n"], ""),
           )
         DispatchExecutorRequestDecoded { request: executor } =>
-          serve_dispatch_with_follow_ups(
-            instance: instance,
-            r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan(), node_id: node_id, request: LaunchAutonomous, executor: executor),
-          )
+          match instance.actuation {
+            DashboardObserveOnly =>
+              serve_dispatch_with_follow_ups(
+                instance: instance,
+                r: SpawnNotAdmitted {
+                  node_id: node_id,
+                  refusal: LaunchInstanceActuationRefused {
+                    instance_id: instance.instance_id as String,
+                    reason: launch_observe_only_reason,
+                  },
+                },
+              )
+            DashboardActuating =>
+              serve_dispatch_with_follow_ups(
+                instance: instance,
+                r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan(), node_id: node_id, request: LaunchAutonomous, executor: executor),
+              )
+          }
       }
     }
   })
