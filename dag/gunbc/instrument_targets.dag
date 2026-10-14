@@ -20,6 +20,7 @@ import gunbc.target_binding {
   EmittedCrateWorkspaceProducer,
   NativeClaimProgramProducer,
   NativeServeProgramProducer,
+  CliWireProgramProducer,
   native_claim_deadline_if_entry,
   CompileCleanDiagnosticCensusStanding,
   CompileCleanDiagnosticCensusCompleted,
@@ -691,12 +692,12 @@ fn compute_run_unit_cold_entry() -> String {
   "dag/gunbc/instruments/compute_run_unit_cold.dag"
 }
 
-fn compute_run_unit_cold_child_deadline() -> Millisecond {
-  millisecond(count: 7200000)
+fn compute_run_unit_cold_function() -> String {
+  "compute_run_unit_cold_exit"
 }
 
 fn compute_run_unit_cold_binding() -> TargetBinding {
-  TargetBinding { target: compute_run_unit_cold_label() producer: NativeClaimProgramProducer { entry: compute_run_unit_cold_entry() deadline: compute_run_unit_cold_child_deadline() } }
+  TargetBinding { target: compute_run_unit_cold_label() producer: CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_cold_function() } }
 }
 
 fn emitted_crate_workspace_binding() -> TargetBinding {
