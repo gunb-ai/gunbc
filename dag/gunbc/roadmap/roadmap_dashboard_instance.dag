@@ -1355,12 +1355,8 @@ type IsolatedJobToolchainHomes {
   rustup_home: FilePath
 }
 
-fn fleet_compute_hermetic_rust_shim(homes: IsolatedJobToolchainHomes, bin: String) -> FilePath {
-  if (homes.rustup_home as String) == "" {
-    dashboard_instance_child(root: homes.cargo_home, child: join(["bin/", bin], ""))
-  } else {
-    dashboard_instance_child(root: homes.cargo_home, child: join(["bin/", bin], ""))
-  }
+fn fleet_compute_hermetic_rust_shim(cargo_home: FilePath, bin: String) -> FilePath {
+  dashboard_instance_child(root: cargo_home, child: join(["bin/", bin], ""))
 }
 
 fn fleet_compute_hermetic_toolchain(homes: IsolatedJobToolchainHomes) -> DashboardToolchain {
@@ -1379,9 +1375,9 @@ fn fleet_compute_hermetic_toolchain(homes: IsolatedJobToolchainHomes) -> Dashboa
     link: "/usr/bin/ln" as FilePath,
     timeout: "/usr/bin/timeout" as FilePath,
     systemd_run: Present { value: "/usr/bin/systemd-run" as FilePath },
-    cargo: fleet_compute_hermetic_rust_shim(homes: homes, bin: "cargo"),
-    rustc: fleet_compute_hermetic_rust_shim(homes: homes, bin: "rustc"),
-    rustfmt: fleet_compute_hermetic_rust_shim(homes: homes, bin: "rustfmt"),
+    cargo: fleet_compute_hermetic_rust_shim(cargo_home: homes.cargo_home, bin: "cargo"),
+    rustc: fleet_compute_hermetic_rust_shim(cargo_home: homes.cargo_home, bin: "rustc"),
+    rustfmt: fleet_compute_hermetic_rust_shim(cargo_home: homes.cargo_home, bin: "rustfmt"),
   }
 }
 
