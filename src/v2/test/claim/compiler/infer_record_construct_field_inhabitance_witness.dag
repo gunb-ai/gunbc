@@ -91,7 +91,7 @@ data rcf_fs_list_source: String = "module v2.test.rcf_fs\n\ntype FsList<T>\n  = 
 
 data rcf_fs_color_source: String = "module v2.test.rcf_fs_color\n\ntype NvarColor\n  = NvarRed\n  | NvarBlue\n\ntype NvarBox {\n  c: NvarColor\n}\n\ndata rcf_fs_box: NvarBox = NvarBox { c: NvarRed }\n"
 
-data rcf_fs_conflict_source: String = "module v2.test.rcf_fs_conflict\n\ntype FsList<T>\n  = FsEmpty\n  | FsNonEmpty { head: T, tail: FsList<T> }\n\ndata rcf_fs_bools: FsList<Bool> = FsEmpty\n\ndata rcf_fs_wrong_elem: FsList<Int> = FsNonEmpty { head: 1, tail: rcf_fs_bools }\n"
+data rcf_fs_conflict_source: String = "module v2.test.rcf_fs_conflict\n\ntype FsList<T>\n  = FsEmpty\n  | FsNonEmpty { head: T, tail: FsList<T> }\n\ndata rcf_fs_wrong_elem: FsList<Int> = FsNonEmpty { head: 1, tail: FsNonEmpty { head: \"a\", tail: FsEmpty } }\n"
 
 fn rcf_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -550,8 +550,10 @@ test fn rcf_nongeneric_nullary_arm_field_is_accepted_and_decided_holds() -> Bool
   rcf_member_accepted_and_decided(resolved: rcf_resolved_fs_color(), member: ^rcf_fs_box)
 }
 
-// The arm in a conflicting element-type position still refuses: FsList<Bool> where FsList<Int>
-// is required is record_field_value_does_not_inhabit, not a silent widen.
+// A NULLARY ARM FITS ANY FsList<X> AND CANNOT CONFLICT ON ITS OWN. The discriminating red is two
+// payload arms that disagree on T: FsNonEmpty{head: 1, tail: FsNonEmpty{head: "a", tail: FsEmpty}}
+// at FsList<Int>. Open binders must not make the element type free; the inner head still refuses
+// record_field_value_does_not_inhabit.
 test fn rcf_generic_nullary_arm_conflicting_element_type_refuses_holds() -> Bool {
   rcf_refuses_with(resolved: rcf_resolved_fs_conflict(), reason: ^record_field_value_does_not_inhabit)
 }
