@@ -1130,10 +1130,9 @@ type DeclPhase1Row {
   module: QualifiedName
   name: Symbol
   path: QualifiedName
-  dotted: String
   local_refusal: Optional<NonEmptyDiagnostics>
   resolved: Optional<Node>
-  callees: List<String>
+  callees: List<QualifiedName>
 }
 
 type ClosurePhase1Acc {
@@ -1143,12 +1142,41 @@ type ClosurePhase1Acc {
   context: ResolutionContext
 }
 
-fn closure_collect_declaration_callees(n: Node, acc: List<String>) -> List<String> {
+fn closure_collect_declaration_callees(n: Node, acc: List<QualifiedName>) -> List<QualifiedName> {
   let here = match declaration_reference_path_optional(node: n) {
-    Present { value: qn } => list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: qn))
+    Present { value: qn } => list_snoc_item(xs: acc, item: qn)
     Absent => acc
   }
   fold(n.children, init: here, f: fn(a, e) { closure_collect_declaration_callees(n: e.target, acc: a) })
+}
+
+fn closure_unavailable_owner_refusal(
+  unavailable: List<ModuleOutcome>,
+  callee: QualifiedName
+) -> Optional<NonEmptyDiagnostics> {
+  let owner = qualified_name_init(qn: callee)
+  fold_list(xs: unavailable, empty: optional_absent(), cons: fn(acc, o) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match o {
+          ModuleUnavailable { module: m, refusal: r } =>
+            if m == owner { optional_present(value: r) } else { acc }
+          ModuleObserved { module: _, declarations: _ } => acc
+        }
+    }
+  })
+}
+
+fn closure_callee_blocking_refusal(
+  blocked: Map<QualifiedName, NonEmptyDiagnostics>,
+  unavailable: List<ModuleOutcome>,
+  callee: QualifiedName
+) -> Optional<NonEmptyDiagnostics> {
+  match map_lookup(m: blocked, key: callee) {
+    Present { value: r } => optional_present(value: r)
+    Absent => closure_unavailable_owner_refusal(unavailable: unavailable, callee: callee)
+  }
 }
 
 fn closure_filter_root_published(root: Node, published: Map<Symbol, Node>) -> Node {
@@ -1186,36 +1214,30 @@ fn closure_symbols_published(xs: FreeMonoid<Symbol>, published: Map<Symbol, Node
 }
 
 fn closure_phase2_blocked(
-  rows: List<DeclPhase1Row>
-) -> Map<String, NonEmptyDiagnostics> {
+  rows: List<DeclPhase1Row>,
+  unavailable: List<ModuleOutcome>
+) -> Map<QualifiedName, NonEmptyDiagnostics> {
   let seed = fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
     match row.local_refusal {
       Absent => acc
-      Present { value: r } => map_insert(m: acc, key: row.dotted, value: r)
+      Present { value: r } => map_insert(m: acc, key: row.path, value: r)
     }
-  })
-  let name_set = fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
-    map_insert(m: acc, key: row.dotted, value: row.dotted)
   })
   fold_list(xs: rows, empty: seed, cons: fn(blocked, _) {
     fold_list(xs: rows, empty: blocked, cons: fn(acc, row) {
-      match map_lookup(m: acc, key: row.dotted) {
+      match map_lookup(m: acc, key: row.path) {
         Present { value: _ } => acc
         Absent =>
           fold_list(xs: row.callees, empty: acc, cons: fn(hit, callee) {
-            match map_lookup(m: hit, key: row.dotted) {
+            match map_lookup(m: hit, key: row.path) {
               Present { value: _ } => hit
               Absent =>
-                if callee == row.dotted {
+                if callee == row.path {
                   hit
                 } else {
-                  match map_lookup(m: name_set, key: callee) {
+                  match closure_callee_blocking_refusal(blocked: hit, unavailable: unavailable, callee: callee) {
                     Absent => hit
-                    Present { value: _ } =>
-                      match map_lookup(m: hit, key: callee) {
-                        Absent => hit
-                        Present { value: r } => map_insert(m: hit, key: row.dotted, value: r)
-                      }
+                    Present { value: r } => map_insert(m: hit, key: row.path, value: r)
                   }
                 }
             }
@@ -1229,12 +1251,12 @@ fn closure_publish_module(
   nt: NormalizedTree,
   module_qn: QualifiedName,
   rows: List<DeclPhase1Row>,
-  blocked: Map<String, NonEmptyDiagnostics>,
+  blocked: Map<QualifiedName, NonEmptyDiagnostics>,
   index: SymbolIndex
 ) -> SymbolIndex {
   let published = fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
     if row.module == module_qn {
-      match map_lookup(m: blocked, key: row.dotted) {
+      match map_lookup(m: blocked, key: row.path) {
         Present { value: _ } => acc
         Absent =>
           match row.resolved {
@@ -1263,7 +1285,7 @@ fn closure_publish_module(
 fn closure_observed_outcome(
   module_qn: QualifiedName,
   rows: List<DeclPhase1Row>,
-  blocked: Map<String, NonEmptyDiagnostics>
+  blocked: Map<QualifiedName, NonEmptyDiagnostics>
 ) -> ModuleOutcome {
   ModuleObserved {
     module: module_qn,
@@ -1271,7 +1293,7 @@ fn closure_observed_outcome(
       if row.module == module_qn {
         list_snoc_item(
           xs: acc,
-          item: match map_lookup(m: blocked, key: row.dotted) {
+          item: match map_lookup(m: blocked, key: row.path) {
             Present { value: r } => DeclarationRefused { path: row.path, refusal: r }
             Absent => DeclarationAvailable { path: row.path }
           }
@@ -1323,7 +1345,6 @@ fn closure_phase1_walk_module(
                   module: module_qn,
                   name: binding.name,
                   path: path,
-                  dotted: qualified_name_to_dotted_string(qn: path),
                   local_refusal: optional_absent(),
                   resolved: optional_present(value: resolved),
                   callees: closure_collect_declaration_callees(n: resolved, acc: [])
@@ -1333,7 +1354,6 @@ fn closure_phase1_walk_module(
                   module: module_qn,
                   name: binding.name,
                   path: path,
-                  dotted: qualified_name_to_dotted_string(qn: path),
                   local_refusal: optional_present(value: first),
                   resolved: optional_absent(),
                   callees: closure_collect_declaration_callees(n: binding.declaration, acc: [])
@@ -1375,7 +1395,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
           }
         }
       )
-      let blocked = closure_phase2_blocked(rows: phase1.rows)
+      let blocked = closure_phase2_blocked(rows: phase1.rows, unavailable: phase1.unavailable)
       let index = fold_list(xs: phase1.trees, empty: empty_symbol_index(), cons: fn(acc, nt) {
         match qualified_name_from_module_node(root: nt.root) {
           Rejected { diagnostics: _ } => acc

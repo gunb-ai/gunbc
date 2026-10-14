@@ -64,6 +64,8 @@ data dpo_gone_named_user_source: String = "module v2.test.dpo.gone_named_user\n\
 
 data dpo_gone_other_user_source: String = "module v2.test.dpo.gone_other_user\n\nimport v2.test.dpo.gone { Other }\nfn go(x: Other) -> Other { x }\n"
 
+data dpo_uses_gone_source: String = "module v2.test.dpo.uses_gone\n\nimport v2.test.dpo.gone { Named }\ntype UsesGone = Named\n"
+
 fn dpo_read(text: String, id: Symbol, path: String, root: SourceRootRef) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: text, fidelity: Lossless },
@@ -84,7 +86,8 @@ fn dpo_ingest() -> List<DagSourceReadWitness> {
     dpo_read(text: dpo_never_user_source, id: ^dpo_never_user, path: "src/v2/test/fixture/dpo/never_user.dag", root: DagTree),
     dpo_read(text: dpo_gone_source, id: ^dpo_gone, path: "src/v2/test/fixture/dpo/gone.dag", root: DagTree),
     dpo_read(text: dpo_gone_named_user_source, id: ^dpo_gone_named_user, path: "src/v2/test/fixture/dpo/gone_named_user.dag", root: DagTree),
-    dpo_read(text: dpo_gone_other_user_source, id: ^dpo_gone_other_user, path: "src/v2/test/fixture/dpo/gone_other_user.dag", root: DagTree)
+    dpo_read(text: dpo_gone_other_user_source, id: ^dpo_gone_other_user, path: "src/v2/test/fixture/dpo/gone_other_user.dag", root: DagTree),
+    dpo_read(text: dpo_uses_gone_source, id: ^dpo_uses_gone, path: "src/v2/test/fixture/dpo/uses_gone.dag", root: DagTree)
   ]
 }
 
@@ -298,8 +301,16 @@ test fn dpo_one_namespace_per_module() -> Bool {
       match context.resolution {
         Rejected { diagnostics: _ } => false
         Accepted { value: shared, diagnostics: _ } =>
-          closure_declarations_demand(shared: shared).context.namespaces_built == 10
+          closure_declarations_demand(shared: shared).context.namespaces_built == 11
       }
+  }
+}
+
+test fn dpo_declaration_depending_on_unavailable_module_is_not_published() -> Bool {
+  match dpo_outcomes() {
+    Absent => false
+    Present { value: outcomes } =>
+      !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.uses_gone.UsesGone"))
   }
 }
 
