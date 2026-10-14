@@ -24,19 +24,21 @@ import product.fabric.flex_market {
   FlexReleaseNow, FlexReleaseHoldLast, FlexReleaseHoldUntilReplacement,
   FlexReleaseHoldCapUnreadable, FlexReleaseHoldCapUnobserved, FlexReleaseHoldCapPartial,
   FlexReleaseHoldRateUnconverted, FlexReleaseHoldCurrencyMismatch,
-  FlexReleaseAuthorized, FlexReleaseDenied, flex_release_window_start, flex_release_consider,
+  FlexReleasePlan, flex_release_pass,
   FlexCapAssessment, FlexCapOver, FlexCapUnder, FlexCapUnreadable,
   flex_quoted_bid, flex_class_market_median, flex_choose_bid_level,
   flex_vram_class, flex_ownership, flex_ours_only,
-  flex_owner_label_gunbc_flex, flex_card_dead, flex_cleanup_dead, flex_release_admit,
+  flex_owner_label_gunbc_flex, flex_card_dead, flex_cleanup_dead,
   flex_held_effective_rate, flex_dollars_per_vram, FlexVramHourlyQuoted, FlexVramHourlyZeroCapacity,
   flex_rank_entry, flex_select_owned_cards, flex_rank_policy, flex_rank_objective, flex_term_vram_hour,
   FlexRentalSample,
   FlexCardUnitEstablished, FlexCardUnitUnconfirmed, flex_rented_card_fungible, flex_ninfer_qwen_probe,
 }
 import gunbc.harness.harness_reasoning_wire {
-  Qwen3_8_27bOnNinfer, NemotronUltraFreeOnOpenRouter, Glm53FlashOnVllm,
-  harness_unit_tool_call_parser,
+  Qwen3_8_27bOnNinfer, NemotronUltraFreeOnOpenRouter, Glm53FlashOnVllm, DeepseekV4FlashOnVllm,
+  harness_unit_tool_call_parser, harness_serving_unit_compatibility,
+  HarnessUnitsIdentical, HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,
+  harness_serving_unit_fungible_pairs,
 }
 import extdeps.cloud.vast_ai { VastAiCreateAskRequest, VastAiChangeBidRequest }
 import std.decimal { ExactDecimal }
@@ -281,46 +283,77 @@ fn cap_under() -> FlexCapAssessment {
   FlexCapUnder { occupied: usd_hour(n: 0), cap: usd_hour(n: 1340000) }
 }
 
+fn two_running() -> List<FlexOwnedCard> {
+  [
+    owned(id: "a", vram: gib(n: 48), rate: 900000, held: false, running: true, loading: false, outbid: false, age: 0),
+    owned(id: "b", vram: gib(n: 48), rate: 600000, held: false, running: true, loading: false, outbid: false, age: 0),
+  ]
+}
+
 test fn release_never_drops_the_last_running_card() -> Bool {
-  match flex_release_admit(running_count: 1, cap: cap_over(), no_room: true, replacement_serving: true) {
-    FlexReleaseHoldLast => true
+  let plan = flex_release_pass(
+    cards: [owned(id: "only", vram: gib(n: 48), rate: 600000, held: true, running: true, loading: false, outbid: false, age: 0)],
+    ours: flex_owner_label_gunbc_flex,
+    cap: cap_over(),
+    no_room: true,
+    replacement_serving: true,
+  )
+  match plan.admit {
+    FlexReleaseHoldLast => (plan.actions |> length) == 0
     _ => false
   }
 }
 
 test fn a_value_release_waits_for_a_serving_replacement_unless_the_cap_requires_it() -> Bool {
-  match flex_release_admit(running_count: 2, cap: cap_under(), no_room: false, replacement_serving: false) {
+  let wait = flex_release_pass(
+    cards: two_running(),
+    ours: flex_owner_label_gunbc_flex,
+    cap: cap_under(),
+    no_room: false,
+    replacement_serving: false,
+  )
+  let now = flex_release_pass(
+    cards: two_running(),
+    ours: flex_owner_label_gunbc_flex,
+    cap: cap_over(),
+    no_room: false,
+    replacement_serving: false,
+  )
+  match wait.admit {
     FlexReleaseHoldUntilReplacement =>
-      match flex_release_admit(running_count: 2, cap: cap_over(), no_room: false, replacement_serving: false) {
-        FlexReleaseNow { because_over_cap: o, because_no_room: n, replacement_serving: r } => o && !n && !r
-        _ => false
-      }
+      ((wait.actions |> length) == 0)
+        && match now.admit {
+          FlexReleaseNow { because_over_cap: o, because_no_room: n, replacement_serving: r } =>
+            o && !n && !r && ((now.actions |> length) == 1)
+          _ => false
+        }
     _ => false
   }
 }
 
 test fn unread_cap_does_not_authorize_a_release() -> Bool {
-  match flex_release_admit(running_count: 2, cap: FlexCapUnreadable, no_room: true, replacement_serving: true) {
-    FlexReleaseHoldCapUnreadable => true
+  let plan = flex_release_pass(
+    cards: two_running(),
+    ours: flex_owner_label_gunbc_flex,
+    cap: FlexCapUnreadable,
+    no_room: true,
+    replacement_serving: true,
+  )
+  match plan.admit {
+    FlexReleaseHoldCapUnreadable => (plan.actions |> length) == 0
     _ => false
   }
 }
 
-test fn a_second_release_in_the_same_window_is_denied() -> Bool {
-  let first = flex_release_consider(
-    window: flex_release_window_start(running_count: 2),
+test fn a_release_pass_destroys_at_most_one_running_card() -> Bool {
+  let plan = flex_release_pass(
+    cards: two_running(),
+    ours: flex_owner_label_gunbc_flex,
     cap: cap_over(),
     no_room: false,
     replacement_serving: false,
   )
-  match first {
-    FlexReleaseAuthorized { admit: _, next: w1 } =>
-      match flex_release_consider(window: w1, cap: cap_over(), no_room: false, replacement_serving: false) {
-        FlexReleaseDenied { admit: _, window: _ } => true
-        FlexReleaseAuthorized { admit: _, next: _ } => false
-      }
-    FlexReleaseDenied { admit: _, window: _ } => false
-  }
+  (plan.actions |> length) == 1
 }
 
 test fn a_held_card_is_ranked_at_the_switch_premium() -> Bool {
@@ -468,6 +501,30 @@ test fn a_ninfer_qwen_catalog_unit_is_placeable_and_unconfirmed_is_not() -> Bool
     && flex_rented_card_fungible(required: Glm53FlashOnVllm, observed: FlexCardUnitEstablished { unit: Glm53FlashOnVllm })
     && !flex_rented_card_fungible(required: Qwen3_8_27bOnNinfer, observed: FlexCardUnitUnconfirmed)
     && !flex_rented_card_fungible(required: Glm53FlashOnVllm, observed: FlexCardUnitEstablished { unit: NemotronUltraFreeOnOpenRouter })
+}
+
+test fn catalog_compatibility_is_not_model_id_coincidence() -> Bool {
+  (harness_serving_unit_fungible_pairs |> length) == 0
+    && match harness_serving_unit_compatibility(required: Glm53FlashOnVllm, observed: Glm53FlashOnVllm) {
+      HarnessUnitsIdentical =>
+        match harness_serving_unit_compatibility(required: Qwen3_8_27bOnNinfer, observed: Glm53FlashOnVllm) {
+          HarnessUnitsIncompatible { required: _, observed: _ } =>
+            match harness_serving_unit_compatibility(required: Qwen3_8_27bOnNinfer, observed: DeepseekV4FlashOnVllm) {
+              HarnessUnitsIncompatible { required: _, observed: _ } =>
+                match harness_serving_unit_compatibility(required: Glm53FlashOnVllm, observed: DeepseekV4FlashOnVllm) {
+                  HarnessUnitsIncompatible { required: _, observed: _ } => true
+                  HarnessUnitsIdentical => false
+                  HarnessUnitsCatalogFungible => false
+                }
+              HarnessUnitsIdentical => false
+              HarnessUnitsCatalogFungible => false
+            }
+          HarnessUnitsIdentical => false
+          HarnessUnitsCatalogFungible => false
+        }
+      HarnessUnitsCatalogFungible => false
+      HarnessUnitsIncompatible { required: _, observed: _ } => false
+    }
 }
 
 test fn vllm_parser_names_stay_on_the_catalog_unit() -> Bool {

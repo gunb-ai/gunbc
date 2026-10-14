@@ -2,6 +2,7 @@ module product.fabric.flex_market
 
 import std.types { NonEmptyStr, Bool, Int, List, String, brand }
 import std.nat { Nat, Zero, Succ }
+import std.optional { Absent, Present }
 import std.rational { NonzeroNatFraction, nonzero_nat_fraction_field }
 import std.measure {
   MoneyAmountMicro, MoneyPerHour, MoneyRate, Second, ByteSize,
@@ -34,7 +35,9 @@ import std.decision {
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, Qwen3_8_27bOnNinfer, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
   NemotronUltraFreeOnOpenRouter,
-  harness_unit_placement, harness_unit_model_id, PlacedOnFleetSeat, RunOnOperatorEndpoint, LeasedFromHostedQuota,
+  harness_unit_placement, harness_serving_unit_compatibility, HarnessUnitsIdentical,
+  HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,
+  PlacedOnFleetSeat, RunOnOperatorEndpoint, LeasedFromHostedQuota,
 }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiDriverVersionRead, VastAiDriverVersionUnread, VastAiDriverVersionMalformed,
@@ -51,7 +54,7 @@ import extdeps.cloud.vast_ai {
 // after the held switch premium). Those identities are not fabric demand terms.
 //
 // DECLARED FRONTIERS (DESIGN §3c) for bright-moth-475 (wet loop, key custody, harness placement):
-data flex_wet_consumes_market_policy: DissolutionCondition = unbound_dissolution(description: "Wet create/destroy loop executes flex_quoted_bid, flex_choose_bid_level (via flex_select_scored_level / select_realization), flex_select_owned_cards, flex_cleanup_dead, flex_release_admit, and flex_ours_only over gunbc-flex. TRIGGER: that loop remains if test.claim.fabric.flex_market_witness is deleted. SUFFICIENT FOR deleting this row.")
+data flex_wet_consumes_market_policy: DissolutionCondition = unbound_dissolution(description: "Wet create/destroy loop executes flex_quoted_bid, flex_choose_bid_level (via flex_select_scored_level / select_realization), flex_select_owned_cards, flex_cleanup_dead, flex_release_pass, and flex_ours_only over gunbc-flex. TRIGGER: that loop remains if test.claim.fabric.flex_market_witness is deleted. SUFFICIENT FOR deleting this row.")
 
 data flex_owner_label_on_create: DissolutionCondition = unbound_dissolution(description: "Wet create PUT sets label from flex_owner_label_gunbc_flex. TRIGGER: create request carries that required owner. SUFFICIENT FOR deleting this row.")
 
@@ -740,7 +743,9 @@ type FlexReleaseWindow {
   remaining: Nat
 }
 
-fn flex_release_window_start(running_count: Nat) -> FlexReleaseWindow {
+fn flex_release_window_start(running_count: Nat) -> FlexReleaseWindow
+  admit_callers: [decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_release_pass")]
+{
   FlexReleaseWindow { running_count: running_count, remaining: Succ { prev: Zero } }
 }
 
@@ -749,7 +754,9 @@ fn flex_release_admit(
   cap: FlexCapAssessment,
   no_room: Bool,
   replacement_serving: Bool,
-) -> FlexReleaseAdmit {
+) -> FlexReleaseAdmit
+  admit_callers: [decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_release_consider")]
+{
   match cap {
     FlexCapUnreadable => FlexReleaseHoldCapUnreadable
     FlexCapUnobserved => FlexReleaseHoldCapUnobserved
@@ -790,7 +797,9 @@ fn flex_release_consider(
   cap: FlexCapAssessment,
   no_room: Bool,
   replacement_serving: Bool,
-) -> FlexReleaseStep {
+) -> FlexReleaseStep
+  admit_callers: [decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_release_pass")]
+{
   let admit = flex_release_admit(
     running_count: window.running_count,
     cap: cap,
@@ -817,6 +826,79 @@ fn flex_release_consider(
   }
 }
 
+fn flex_ours_running(cards: List<FlexOwnedCard>, ours: FlexOwnerLabel) -> List<FlexOwnedCard> {
+  filter(cards, c => (c.owner == ours) && c.running && !flex_card_dead(card: c))
+}
+
+fn flex_running_count(cards: List<FlexOwnedCard>) -> Nat {
+  fold(cards, init: Zero, f: (n, _) => Succ { prev: n })
+}
+
+fn flex_vram_hour_worse(left: FlexOwnedCard, right: FlexOwnedCard) -> Bool {
+  let left_rate = flex_held_effective_rate(rate: left.rate, held: left.held && (left.running || left.loading))
+  let right_rate = flex_held_effective_rate(rate: right.rate, held: right.held && (right.running || right.loading))
+  match flex_dollars_per_vram(rate: left_rate, vram: left.vram) {
+    FlexVramHourlyZeroCapacity => false
+    FlexVramHourlyQuoted { rate: lv } =>
+      match flex_dollars_per_vram(rate: right_rate, vram: right.vram) {
+        FlexVramHourlyZeroCapacity => true
+        FlexVramHourlyQuoted { rate: rv } =>
+          money_amount_micro_count(m: lv.amount) > money_amount_micro_count(m: rv.amount)
+      }
+  }
+}
+
+fn flex_pick_release_card(cards: List<FlexOwnedCard>) -> FlexOwnedCard? {
+  fold(
+    cards,
+    init: none,
+    f: (acc, card) =>
+      match acc {
+        Absent => Present { value: card }
+        Present { value: best } =>
+          if flex_vram_hour_worse(left: card, right: best) {
+            Present { value: card }
+          } else {
+            Present { value: best }
+          }
+      },
+  )
+}
+
+type FlexReleasePlan {
+  actions: List<FlexCleanupAction>
+  admit: FlexReleaseAdmit
+}
+
+fn flex_release_pass(
+  cards: List<FlexOwnedCard>,
+  ours: FlexOwnerLabel,
+  cap: FlexCapAssessment,
+  no_room: Bool,
+  replacement_serving: Bool,
+) -> FlexReleasePlan {
+  let running = flex_ours_running(cards: cards, ours: ours)
+  let step = flex_release_consider(
+    window: flex_release_window_start(running_count: flex_running_count(cards: running)),
+    cap: cap,
+    no_room: no_room,
+    replacement_serving: replacement_serving,
+  )
+  match step {
+    FlexReleaseDenied { admit: admit, window: _ } =>
+      FlexReleasePlan { actions: [], admit: admit }
+    FlexReleaseAuthorized { admit: admit, next: _ } =>
+      match flex_pick_release_card(cards: running) {
+        Absent => FlexReleasePlan { actions: [], admit: admit }
+        Present { value: card } =>
+          FlexReleasePlan {
+            actions: [FlexDestroy { id: card.id, why: FlexCleanupReleasedForValue }],
+            admit: admit,
+          }
+      }
+  }
+}
+
 fn flex_cleanup_dead(cards: List<FlexOwnedCard>, ours: FlexOwnerLabel) -> List<FlexCleanupAction> {
   map(
     filter(cards, c => c.owner == ours && flex_card_dead(card: c)),
@@ -835,7 +917,11 @@ type FlexCardProbe
   | FlexCardUnitUnconfirmed
 
 fn flex_catalog_unit_eq(left: HarnessServingUnit, right: HarnessServingUnit) -> Bool {
-  (harness_unit_model_id(unit: left) as String) == (harness_unit_model_id(unit: right) as String)
+  match harness_serving_unit_compatibility(required: left, observed: right) {
+    HarnessUnitsIdentical => true
+    HarnessUnitsCatalogFungible => true
+    HarnessUnitsIncompatible { required: _, observed: _ } => false
+  }
 }
 
 fn flex_rented_card_fungible(required: HarnessServingUnit, observed: FlexCardProbe) -> Bool {

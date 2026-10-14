@@ -73,7 +73,7 @@ import product.fabric.flex_vast_shadow {
 import std.rational { NonzeroNatFraction }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import extdeps.cloud.vast_ai {
-  VastAiOffer, VastAiInstance, VastAiInstances, VastAiCharges,
+  VastAiOffer, VastAiInstance, VastAiInstances, VastAiCharges, VastAiCharge,
   vast_ai_search_type_bid, vast_ai_quote_currency, vast_ai_keyset_page_limit,
   vast_ai_ingest_search_offer_driver, vast_ai_driver_version_from_search_offers_text,
   VastAiDriverVersionStanding, VastAiDriverVersionUnread, VastAiDriverVersionRead, VastAiDriverVersionMalformed,
@@ -236,6 +236,18 @@ fn wire_offer(name: String, ram: Int, bid: Bool, rentable: Bool) -> VastAiOffer 
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     gpu_ram: ram,
     driver_version: Present { value: "580.65.06" },
+  }
+}
+
+fn t_charge(start: Int, end: Int, desc: String) -> VastAiCharge {
+  VastAiCharge {
+    start: start,
+    end: end,
+    type: "compute",
+    source: "vast",
+    description: desc,
+    amount: ExactDecimal { units: 1, fraction_digits: 0 },
+    items: [],
   }
 }
 
@@ -618,6 +630,11 @@ test fn shadow_bid_records_m0_admission_and_stays_dry() -> Bool {
       FlexActuationDry => true
       FlexActuationWet => false
     }
+    && match receipt.candidates {
+      VastCandidateConsequencesUnestablished { offer_key: k, missing: ms } =>
+        (k == flex_vast_offer_key(offer: offer)) && ((ms |> length) > 0)
+      VastCandidateDerived { candidates: _ } => false
+    }
     && match receipt.admission {
       FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: _ } => false
       FlexBidUnchanged { bid: _, account: _, occupancy: _, window: _ } => false
@@ -666,14 +683,22 @@ test fn a_foreign_candidate_identity_does_not_ride_the_vast_offer() -> Bool {
     && (ra.offer_key == flex_vast_offer_key(offer: offer))
     && (ra.offer_key != ("offer-42" as OfferKey))
     && match bound_a {
-      FlexAttemptCandidateUnestablished { offer_key: k, missing: ms, machine: _ } =>
-        (k == flex_vast_offer_key(offer: offer)) && ((ms |> length) > 0)
-      FlexAttemptBound { attempt: _ } => false
+      FlexAttemptCandidateUnestablished { standing: s, machine: _ } =>
+        match s {
+          VastCandidateConsequencesUnestablished { offer_key: k, missing: ms } =>
+            (k == flex_vast_offer_key(offer: offer)) && ((ms |> length) > 0)
+          VastCandidateDerived { candidates: _ } => false
+        }
+      FlexAttemptBound { attempt: _, standing: _ } => false
     }
     && match bound_b {
-      FlexAttemptCandidateUnestablished { offer_key: k, missing: ms, machine: _ } =>
-        (k == flex_vast_offer_key(offer: offer)) && ((ms |> length) > 0)
-      FlexAttemptBound { attempt: _ } => false
+      FlexAttemptCandidateUnestablished { standing: s, machine: _ } =>
+        match s {
+          VastCandidateConsequencesUnestablished { offer_key: k, missing: ms } =>
+            (k == flex_vast_offer_key(offer: offer)) && ((ms |> length) > 0)
+          VastCandidateDerived { candidates: _ } => false
+        }
+      FlexAttemptBound { attempt: _, standing: _ } => false
     }
     && match ra.admission {
       FlexBidRefused { cause: FlexCandidateConsequencesUnestablished { offer_key: k, missing: _ } } =>
@@ -735,6 +760,74 @@ test fn instance_pages_exhaust_before_cap_or_reconcile() -> Bool {
       FlexChargesPageTurn { after_token: Present { value: "c" }, page: charges_last },
     ]) {
       FlexChargesComplete { roster: r } => ((r.results |> length) == 0) && (r.total == 0)
+      _ => false
+    })
+    && (match flex_fold_instance_pages(pages: [
+      FlexInstancesPageTurn {
+        after_token: none,
+        page: VastAiInstances {
+          success: true,
+          instances_found: 1,
+          total_instances: 100,
+          next_token: Present { value: "tok" },
+          instances: [inst(id: 1, machine_id: 1)],
+        },
+      },
+      FlexInstancesPageTurn {
+        after_token: Present { value: "tok" },
+        page: VastAiInstances {
+          success: true,
+          instances_found: 1,
+          total_instances: 2,
+          next_token: none,
+          instances: [inst(id: 2, machine_id: 2)],
+        },
+      },
+    ]) {
+      FlexInstancesUnreadable => true
+      _ => false
+    })
+    && (match flex_fold_charge_pages(pages: [
+      FlexChargesPageTurn {
+        after_token: none,
+        page: VastAiCharges {
+          success: true,
+          count: 1,
+          total: 100,
+          next_token: Present { value: "c" },
+          results: [t_charge(start: 1, end: 2, desc: "a")],
+        },
+      },
+      FlexChargesPageTurn {
+        after_token: Present { value: "c" },
+        page: VastAiCharges {
+          success: true,
+          count: 1,
+          total: 2,
+          next_token: none,
+          results: [t_charge(start: 3, end: 4, desc: "b")],
+        },
+      },
+    ]) {
+      FlexChargesUnreadable => true
+      _ => false
+    })
+    && (match flex_fold_charge_pages(pages: [
+      FlexChargesPageTurn {
+        after_token: none,
+        page: VastAiCharges {
+          success: true,
+          count: 2,
+          total: 2,
+          next_token: none,
+          results: [
+            t_charge(start: 1, end: 2, desc: "dup"),
+            t_charge(start: 1, end: 2, desc: "dup"),
+          ],
+        },
+      },
+    ]) {
+      FlexChargesUnreadable => true
       _ => false
     })
     && (match flex_write_decision(policy: live_policy(), roster: FlexInstancesUnobserved) {
