@@ -68,3 +68,5 @@ fn belt_attempt_obligation_unit_run_bound() -> Second {
     if second_count(s: b) > second_count(s: acc) { b } else { acc }
   })
 }
+
+data belt_credential_recovery_backstop: Second = second(count: 900)

@@ -15,9 +15,6 @@ import std.upsert_decision {
   Apply,
   Refuse,
 }
-
-
-
 type ProcessPortScope {
   listen_port: Int
   expected_owner_label: NonEmptyStr
