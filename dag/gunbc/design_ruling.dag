@@ -175,18 +175,25 @@ data native_first_complete_cuts: DesignRuling = DesignRuling {
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Native-first complete cuts, with eventual repository-wide retirement. Complete native consumer cohorts are prioritized; each migrated cohort uses one semantic authority across its participating layers and has no legacy fallback. The remainder is explicit, identity-based and shrink-only; counts are observations, not acceptance oracles. Whole-corpus naming cleanup and unrelated target completion do not gate the typed native closure. The parent roadmap node `cardinality-absence` cannot close until the retained paths are covered and the obsolete production authorities and migration allowances are gone.",
 }
 
-data managed_host_mode_names_drop_the_unit: DesignRuling = DesignRuling {
-  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "managed_host_mode_names_drop_the_unit"),
+data machine_mode_names_drop_the_unit: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "machine_mode_names_drop_the_unit"),
   decided: "2026-10-14",
   section: "3",
-  provenance: "Operator, to session merry-fox-82, approving the managed-host untangle cut-7 names: 'yeah those names sound fine to me, just record it. Please retire that yml if it's hand written'. The eight mtcollins1_* fleet-converge modes drop the unit from their names and take the host as a workflow input: mtcollins1_boot, _boot_admit and _boot_receipt_upload become managed_host_boot, managed_host_boot_admit and managed_host_boot_receipt_upload; the census image publish and member readback modes become managed_host_census_image_publish and managed_host_census_member_readback; the census QEMU host-observe and toolchain-converge modes become executor_host_census_qemu_host_observe and executor_host_census_qemu_toolchain_converge; the fan and KVM observer modes become managed_host_fan_observe, managed_host_kvm_observer_observe and managed_host_kvm_observer_release. A board-family prefix was declined because the bound host's observed identity already decides it. The 2026-10-03 rulings stand: one atomic transition with no aliases, live GCP IAM names byte-identical. The hand-authored mtcollins-canary.yml is retired.",
+  provenance: "Operator, to session merry-fox-82, approving the managed-host untangle cut-7 names: 'yeah those names sound fine to me, just record it. Please retire that yml if it's hand written'. Approved: the eight mtcollins1_* fleet-converge modes drop the unit from their names and take the subject as a workflow input, with no board-family prefix, in one atomic transition with no aliases (the 2026-10-03 rulings stand, live GCP IAM names byte-identical). The proposed managed_host_* spellings are HELD by the operator's later adoption of one_physical_machine_boot_transaction: the boot modes are named after that transaction once the old roots are deleted, and the executor-side census QEMU modes as executor_host_census_qemu_host_observe and executor_host_census_qemu_toolchain_converge. The hand-authored mtcollins-canary.yml is retired.",
 }
 
-data one_boot_procedure_for_every_machine: DesignRuling = DesignRuling {
-  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_boot_procedure_for_every_machine"),
+data one_physical_machine_boot_transaction: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_physical_machine_boot_transaction"),
   decided: "2026-10-14",
   section: "3",
-  provenance: "Operator, to session merry-fox-82: 'i needed all the srvN boot/convergence aligned with mtcollins ... i just want a unified boot workflow in the end' and 'no matter the machine'. There is one boot and arrival-convergence procedure for every machine, parameterized by the host, never one per unit or per fleet role. The srvN executor hosts are not a separate boot population: dispatching runs (executor) and being booted through a controller (managed) are two roles one host may hold, not two kinds of host. The parallel boot verticals that exist today (gunbc.srv3 boot-once CD and OS install, gunbc.host_reset_return for executor hosts, and the mtcollins1 boot run) are replacement-migration roots to be cut over onto the managed-host boot, following the managed-host untangle.",
+  provenance: "Operator, to session merry-fox-82: 'i needed all the srvN boot/convergence aligned with mtcollins ... i just want a unified boot workflow in the end' and 'no matter the machine', then adopting the side-chat design review of 2026-10-14 ('could we make sure to clean up all the machine stuff'). Every physical machine is booted through one transaction surface. A modeled request identifies the exact physical subject, desired target, revision and terminal requirement; observed control and delivery capabilities select the strategy; no workflow branches on the machine's label, board name or fleet participation. Boot is reusable by arrival qualification, OS provisioning, reset and recovery and does not own those lifecycles. Executor, serving and management are roles a machine holds, not machine kinds. gunbc.managed_host is not the universal machine population: BMC, provider, PXE, local-target and future control mechanisms are adapters behind physical-machine control standings. The mtcollins1 boot run, gunbc.srv3 boot-once and gunbc.host_reset_return controller actuation are replacement-migration roots that migrate to this transaction and are deleted.",
+}
+
+data physical_and_guest_control_remain_distinct: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "physical_and_guest_control_remain_distinct"),
+  decided: "2026-10-14",
+  section: "3",
+  provenance: "Operator, adopting the side-chat design review of 2026-10-14 given to session merry-fox-82. Physical machines and microVM guests do not share inventory, controller, media or power interfaces. They may share runtime identity, OS and configuration convergence, workload assignment, attempt and incarnation vocabulary, and independent-readback transaction semantics after the physical boot or guest start boundary.",
 }
 
 fn design_rulings() -> List<DesignRuling> {
@@ -212,8 +219,9 @@ fn design_rulings() -> List<DesignRuling> {
     optional_sugar_is_declaration_bound,
     nonemptiness_is_constructed_or_proved,
     native_first_complete_cuts,
-    managed_host_mode_names_drop_the_unit,
-    one_boot_procedure_for_every_machine,
+    machine_mode_names_drop_the_unit,
+    one_physical_machine_boot_transaction,
+    physical_and_guest_control_remain_distinct,
   ]
 }
 
