@@ -42,11 +42,16 @@ import v2.std.node_query {
 import v2.std.compilers.lexing { LexRules }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.node {
+  Arrow,
   Atom,
+  ComputationNode,
   Conj,
+  Disj,
   Edge,
+  Instantiation,
   Authored,
   Node,
+  Occupancy,
   Positional,
   Symbol,
   TypeNode,
@@ -279,7 +284,7 @@ fn grammar_expr_infix_table(
   InfixTable { operand: operand, continuation_guard: continuation_guard, operators: operators }
 }
 
-fn grammar_infix_row_lookup(rows: List<InfixOperatorRow>, token_class: Symbol) -> Optional<InfixOperatorRow> {
+fn grammar_infix_row_lookup(rows: List<InfixOperatorRow>, token_class: Symbol) -> std.optional.Optional<InfixOperatorRow> {
   match list_head(xs: rows) {
     HeadAbsent => optional_absent()
     HeadFound { value: row } =>
@@ -311,7 +316,7 @@ fn grammar_infix_right_min_power(row: InfixOperatorRow) -> Int {
   row.binding_power + 1
 }
 
-fn grammar_infix_operator_choice(rows: List<InfixOperatorRow>) -> Optional<GrammarExpr> {
+fn grammar_infix_operator_choice(rows: List<InfixOperatorRow>) -> std.optional.Optional<GrammarExpr> {
   match list_head(xs: rows) {
     HeadAbsent => optional_absent()
     HeadFound { value: row } =>
@@ -660,7 +665,7 @@ fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
 
 fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: std.optional.Optional<Symbol>) -> Node {
   match binding {
-    Present { value: binding } =>
+    Present { value: bound } =>
       Node {
         kind: TypeNode {
           connective: Conj
@@ -672,7 +677,7 @@ fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: std.opt
           ),
           grammar_named_edge(
             name: ^formal_terminal_occurrence_binding_node_projection,
-            target: grammar_atom(identity: binding)
+            target: grammar_atom(identity: bound)
           )
         ],
         occurrence_id: OccurrenceSynthetic
@@ -1269,10 +1274,10 @@ fn grammar_nested_block_edge(unit: Symbol, edges: List<Edge>) -> Edge {
 
 fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: std.optional.Optional<Symbol>) -> Edge {
   match binding {
-    Present { value: binding } =>
+    Present { value: bound } =>
       Edge {
         label: Positional,
-        target: grammar_concrete_bound_token_node(token_class: terminal.identity, binding: binding)
+        target: grammar_concrete_bound_token_node(token_class: terminal.identity, binding: bound)
       }
     Absent =>
       Edge {
@@ -2392,8 +2397,8 @@ fn derive_grammar_relation_token_edges_resolved(
       )
     }
   ) {
-    Holds { value: DeriveGrammarRelationTokensProgress { edges: result, conj_index: conj_index, conj_children: conj_children, children_rest: _, slots_rest: _ } } =>
-      if conj_index == conj_positional_child_count(children: conj_children) {
+    Holds { value: DeriveGrammarRelationTokensProgress { edges: result, conj_index: conj_index, conj_children: walked_conj_children, children_rest: _, slots_rest: _ } } =>
+      if conj_index == conj_positional_child_count(children: walked_conj_children) {
         Holds { value: result }
       } else {
         Violates {
@@ -2878,16 +2883,16 @@ fn rebuild_emitted_rhs_walk_step(
               ) {
                 Holds { value: token } =>
                   match token {
-                    BoundToken { token_class: token_class, binding: binding } =>
+                    BoundToken { token_class: token_class, binding: token_binding } =>
                       if token_class == terminal.identity &&
                         (
                           formal_binding_is_emitted_atom_from_slot(binding: binding_symbol) ||
-                            binding_symbol == binding
+                            binding_symbol == token_binding
                         ) {
                         RebuildRhsWalkOk {
                           children: list_snoc_item(
                             xs: children,
-                            item: rebuild_emitted_atom_node(identity: binding)
+                            item: rebuild_emitted_atom_node(identity: token_binding)
                           ),
                           token_index: token_index + 1
                         }
@@ -3828,7 +3833,7 @@ fn grammar_emit_parse_tree(root: GrammarRoot, tree: ParseTree) -> Outcome<List<G
 // v2.compiler.parse parse_wrap_production_captured builds); Absent for any node that is not a
 // production wrapper. Shared by the .dag language's surface readers and the parser's annotation
 // region roster, which both key on "is this a production".
-fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
+fn parse_production_emitted_identity_optional(node: Node) -> std.optional.Optional<Symbol> {
   match named_child_lookup(root: node, name: ^grammar_production_identity_node_projection) {
     NamedChildFound { target: id_node } => node_atom_identity_optional(node: id_node)
     NamedChildMissing => Absent

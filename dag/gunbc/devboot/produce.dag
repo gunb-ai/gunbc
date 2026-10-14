@@ -7,7 +7,7 @@ import std.content_hash { sha256_hex_digest }
 import extdeps.shell
 import extdeps.gunbc
 import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
-import v2.std.orchestration { EnvBinding, EnvSet }
+import std.env_binding { EnvBinding, EnvSet }
 import extdeps.git
 import extdeps.git.plumbing
 import extdeps.filesystem.filesystem_io { Filesystem }

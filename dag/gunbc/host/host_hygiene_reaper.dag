@@ -108,13 +108,8 @@ fn residual_reap_action_absorbing_fallback_widen_sketch(obs: ResidualSlotObserva
 }
 
 fn action_kills_build_cache_server(a: ResidualReapAction, obs: ResidualSlotObservation) -> Bool {
-  match obs.occupant {
-    CgroupBuildCacheServerOccupant => match a {
-      KillOccupantAndRemoveOverride => true
-      _ => false
-    }
-    _ => false
-  }
+  obs.occupant == CgroupBuildCacheServerOccupant
+    && a == KillOccupantAndRemoveOverride
 }
 
 type ResidualReapCheck
