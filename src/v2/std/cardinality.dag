@@ -652,13 +652,17 @@ data cardinality_operation_laws: List<CardinalityLawRow> = [
   CardinalityLawRow { operation: ^list_flat_map, law: CountAtLeastZero }
 ]
 
+fn cardinality_law_some(law: CardinalityCountLaw) -> Optional<CardinalityCountLaw> {
+  Present { value: law }
+}
+
 fn cardinality_law_for(operation: Symbol) -> Optional<CardinalityCountLaw> {
   fold(cardinality_operation_laws, init: Absent, f: fn(acc, row) {
     match acc {
       Present { value: _ } => acc
       Absent =>
         if row.operation == operation {
-          Present { value: row.law }
+          cardinality_law_some(law: row.law)
         } else {
           Absent
         }
