@@ -241,6 +241,7 @@ pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 use crate::closure_identity::{subject_digest_for_closure, transform_content_digest};
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::std_interface_summary::{module_key, typed_module_key};
+use crate::std_key_relation::SubjectKey;
 use crate::std_keyed_roster::{keyed_roster_build, KeyedRosterBuild};
 use crate::std_keyed_row::KeyedRow;
 

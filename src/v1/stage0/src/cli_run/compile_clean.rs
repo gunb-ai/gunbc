@@ -440,25 +440,30 @@ pub(crate) fn compile_clean_source_roots() -> Vec<String> {
 pub(crate) fn compile_clean_shard_entry_paths_from_decl_facts(
     decl_facts: &[ModuleDeclarationFactRaw],
 ) -> Result<Vec<String>, String> {
-    let incomings: Rc<im::Vector<Rc<KeyedRow<String, ModuleDeclarationFactRaw>>>> = Rc::new(
-        decl_facts
-            .iter()
-            .map(|decl| {
-                let path = workspace_relative_repo_path(&decl.path);
-                Rc::new(KeyedRow {
-                    row_key: path,
-                    value: decl.clone(),
-                    _phantom: std::marker::PhantomData,
+    let incomings: Rc<im::Vector<Rc<KeyedRow<Rc<SubjectKey<String>>, ModuleDeclarationFactRaw>>>> =
+        Rc::new(
+            decl_facts
+                .iter()
+                .map(|decl| {
+                    let path = workspace_relative_repo_path(&decl.path);
+                    Rc::new(KeyedRow {
+                        row_key: Rc::new(SubjectKey {
+                            subject: path,
+                            _phantom: std::marker::PhantomData,
+                        }),
+                        value: decl.clone(),
+                        _phantom: std::marker::PhantomData,
+                    })
                 })
-            })
-            .collect(),
-    );
-    match keyed_roster_build(incomings, |a: String, b: String| a == b).as_ref() {
+                .collect(),
+        );
+    match keyed_roster_build(incomings).as_ref() {
         KeyedRosterBuild::KeyedRosterBuilt { rows } => {
-            Ok(rows.iter().map(|row| row.row_key.clone()).collect())
+            Ok(rows.iter().map(|row| row.row_key.subject.clone()).collect())
         }
         KeyedRosterBuild::KeyedRosterBuildDuplicateKey { key, .. } => Err(format!(
-            "shard roster construction refused duplicate path key at admission: {key}"
+            "shard roster construction refused duplicate path key at admission: {}",
+            key.subject
         )),
     }
 }
