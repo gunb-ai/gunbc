@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_nesting { RoadmapMembership }
 // discharged, a resumed publication duplicating its PR, a later edit wearing a prior head's
 // evidence, a fanin that loses a side or mints over a conflict.
 
-import std.types { Bool, String, Int, List, NonEmptyStr, CommitSha }
+import std.types { Bool, String, Int, List, NonEmptyStr, CommitSha, FilePath }
 import std.minted_identity { minted_id_ordinal }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.repository { gunbc_repository }
@@ -376,7 +376,7 @@ test fn an_already_bound_publication_is_answered_as_observed_never_re_actuated()
       expected_base: "main" as NonEmptyStr,
       expected_head: "cccccccccccccccccccccccccccccccccccccccc" as CommitSha,
     },
-    worktree: "/wt",
+    mirror: "/tmp/publication-mirror.git" as FilePath,
     observed: observed,
   ) {
     PublicationBound { branch: _, pr_number, pr_head: _, url: _, draft: _ } => pr_number == 41
