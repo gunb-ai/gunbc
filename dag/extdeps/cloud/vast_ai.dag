@@ -112,11 +112,12 @@ type VastAiOffer {
   inet_up_cost: ExactDecimal
   inet_down_cost: ExactDecimal
   gpu_ram: Int
-  driver_version: VastAiDriverVersionStanding
+  driver_version: String?
 }
 
 // search-offers JSON driver_version is a string or null. Unread is JSON null/omitted.
 // Malformed is a present string that is not dotted decimal with a non-negative major.
+// Parse at vast_ai_ingest_search_offer_driver; the Search consumer must call that ingest.
 type VastAiDriverVersion {
   major: Nat
 }
@@ -128,6 +129,10 @@ type VastAiDriverVersionStanding
 
 fn vast_ai_driver_version_read(major: Nat) -> VastAiDriverVersionStanding {
   VastAiDriverVersionRead { version: VastAiDriverVersion { major: major } }
+}
+
+fn vast_ai_ingest_search_offer_driver(offer: VastAiOffer) -> VastAiDriverVersionStanding {
+  vast_ai_driver_version_from_search_offers_text(raw: offer.driver_version)
 }
 
 fn vast_ai_driver_version_from_search_offers_text(raw: String?) -> VastAiDriverVersionStanding {

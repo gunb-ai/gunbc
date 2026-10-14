@@ -25,6 +25,9 @@ import product.fabric.flex_policy {
 import product.fabric.flex_market {
   flex_owner_label_gunbc_flex, FlexOwnerLabel,
   flex_offer_meets_unit_driver,
+  FlexCapAssessment, FlexCapUnder, FlexCapAtLimit, FlexCapOver,
+  FlexCapNeedsExhaustedRoster, FlexCapUnreadable, FlexCapUnobserved,
+  FlexCapRateUnconverted, FlexCapCurrencyMismatch,
 }
 import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -55,106 +58,172 @@ data flex_rented_serving_allocation_join: DissolutionCondition = unbound_dissolu
 type FlexWriteDecision
   = FlexWriteHeldDry
   | FlexWriteBlockedUnreadable
+  | FlexWriteBlockedUnobserved
   | FlexWriteBlockedRateUnconverted
   | FlexWriteBlockedCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
   | FlexWriteBlockedPartialRoster
   | FlexWriteBlockedOverCap
   | FlexWriteWetUnwired
 
-// Keyset pages: Partial still has a next_token. Exhausted is the only standing
-// reconcile, confirmed-gone, cap, and wet write may consume.
+type FlexCompleteInstanceRoster sole_constructor {
+  instances: List<VastAiInstance>
+  total: Int
+}
+
+type FlexCompleteChargeRoster sole_constructor {
+  results: List<VastAiCharge>
+  total: Int
+}
+
+type FlexInstancesPageTurn {
+  after_token: String?
+  page: VastAiInstances
+}
+
+type FlexChargesPageTurn {
+  after_token: String?
+  page: VastAiCharges
+}
+
+// Unobserved is zero pages. Complete is terminal only after token-chained
+// pages whose unique instance ids match total. Partial still has next_token.
 type FlexInstancesStanding
-  = FlexInstancesExhausted { instances: List<VastAiInstance>, total: Int }
+  = FlexInstancesUnobserved
   | FlexInstancesPartial { next_token: String, observed: List<VastAiInstance>, total: Int }
   | FlexInstancesUnreadable
+  | FlexInstancesComplete { roster: FlexCompleteInstanceRoster }
 
 type FlexChargesStanding
-  = FlexChargesExhausted { results: List<VastAiCharge>, total: Int }
+  = FlexChargesUnobserved
   | FlexChargesPartial { next_token: String, observed: List<VastAiCharge>, total: Int }
   | FlexChargesUnreadable
+  | FlexChargesComplete { roster: FlexCompleteChargeRoster }
 
-type FlexCapAssessment
-  = FlexCapUnder { occupied: MoneyPerHour, cap: MoneyPerHour }
-  | FlexCapAtLimit { occupied: MoneyPerHour, cap: MoneyPerHour }
-  | FlexCapOver { occupied: MoneyPerHour, cap: MoneyPerHour }
-  | FlexCapNeedsExhaustedRoster
-  | FlexCapUnreadable
-  | FlexCapRateUnconverted
-  | FlexCapCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
-
-fn flex_instances_page(page: VastAiInstances) -> FlexInstancesStanding {
-  match page.next_token {
-    Present { value: tok } =>
-      FlexInstancesPartial { next_token: tok, observed: page.instances, total: page.total_instances }
-    Absent => FlexInstancesExhausted { instances: page.instances, total: page.total_instances }
-  }
-}
-
-fn flex_charges_page(page: VastAiCharges) -> FlexChargesStanding {
-  match page.next_token {
-    Present { value: tok } =>
-      FlexChargesPartial { next_token: tok, observed: page.results, total: page.total }
-    Absent => FlexChargesExhausted { results: page.results, total: page.total }
-  }
-}
-
-fn flex_instances_append(acc: FlexInstancesStanding, page: VastAiInstances) -> FlexInstancesStanding {
-  match acc {
-    FlexInstancesUnreadable => FlexInstancesUnreadable
-    FlexInstancesPartial { next_token: _, observed: prior, total: _ } =>
-      match flex_instances_page(page: page) {
-        FlexInstancesUnreadable => FlexInstancesUnreadable
-        FlexInstancesPartial { next_token: n, observed: more, total: t } =>
-          FlexInstancesPartial { next_token: n, observed: concat(prior, more), total: t }
-        FlexInstancesExhausted { instances: more, total: t } =>
-          FlexInstancesExhausted { instances: concat(prior, more), total: t }
-      }
-    FlexInstancesExhausted { instances: prior, total: _ } =>
-      match flex_instances_page(page: page) {
-        FlexInstancesUnreadable => FlexInstancesUnreadable
-        FlexInstancesPartial { next_token: n, observed: more, total: t } =>
-          FlexInstancesPartial { next_token: n, observed: concat(prior, more), total: t }
-        FlexInstancesExhausted { instances: more, total: t } =>
-          FlexInstancesExhausted { instances: concat(prior, more), total: t }
-      }
-  }
-}
-
-fn flex_charges_append(acc: FlexChargesStanding, page: VastAiCharges) -> FlexChargesStanding {
-  match acc {
-    FlexChargesUnreadable => FlexChargesUnreadable
-    FlexChargesPartial { next_token: _, observed: prior, total: _ } =>
-      match flex_charges_page(page: page) {
-        FlexChargesUnreadable => FlexChargesUnreadable
-        FlexChargesPartial { next_token: n, observed: more, total: t } =>
-          FlexChargesPartial { next_token: n, observed: concat(prior, more), total: t }
-        FlexChargesExhausted { results: more, total: t } =>
-          FlexChargesExhausted { results: concat(prior, more), total: t }
-      }
-    FlexChargesExhausted { results: prior, total: _ } =>
-      match flex_charges_page(page: page) {
-        FlexChargesUnreadable => FlexChargesUnreadable
-        FlexChargesPartial { next_token: n, observed: more, total: t } =>
-          FlexChargesPartial { next_token: n, observed: concat(prior, more), total: t }
-        FlexChargesExhausted { results: more, total: t } =>
-          FlexChargesExhausted { results: concat(prior, more), total: t }
-      }
-  }
-}
-
-fn flex_fold_instance_pages(pages: List<VastAiInstances>) -> FlexInstancesStanding {
+fn flex_instance_ids_unique(rows: List<VastAiInstance>) -> List<Int> {
   fold(
-    pages,
-    init: FlexInstancesExhausted { instances: [], total: 0 },
-    f: (acc, page) => flex_instances_append(acc: acc, page: page),
+    rows,
+    init: [],
+    f: (acc, row) =>
+      if any(acc, id => id == row.id) {
+        acc
+      } else {
+        concat(acc, [row.id])
+      },
   )
 }
 
-fn flex_fold_charge_pages(pages: List<VastAiCharges>) -> FlexChargesStanding {
+fn flex_mint_complete_instances(rows: List<VastAiInstance>, total: Int) -> FlexInstancesStanding {
+  let unique = flex_instance_ids_unique(rows: rows)
+  if ((unique |> length) != (rows |> length)) || ((rows |> length) != total) {
+    FlexInstancesUnreadable
+  } else {
+    FlexInstancesComplete {
+      roster: FlexCompleteInstanceRoster { instances: rows, total: total },
+    }
+  }
+}
+
+fn flex_mint_complete_charges(rows: List<VastAiCharge>, total: Int) -> FlexChargesStanding {
+  if (rows |> length) != total {
+    FlexChargesUnreadable
+  } else {
+    FlexChargesComplete {
+      roster: FlexCompleteChargeRoster { results: rows, total: total },
+    }
+  }
+}
+
+fn flex_roster_apply_instance_page(prior: List<VastAiInstance>, page: VastAiInstances) -> FlexInstancesStanding {
+  match page.next_token {
+    Present { value: n } =>
+      FlexInstancesPartial {
+        next_token: n,
+        observed: concat(prior, page.instances),
+        total: page.total_instances,
+      }
+    Absent => flex_mint_complete_instances(rows: concat(prior, page.instances), total: page.total_instances)
+  }
+}
+
+fn flex_roster_apply_charge_page(prior: List<VastAiCharge>, page: VastAiCharges) -> FlexChargesStanding {
+  match page.next_token {
+    Present { value: n } =>
+      FlexChargesPartial {
+        next_token: n,
+        observed: concat(prior, page.results),
+        total: page.total,
+      }
+    Absent => flex_mint_complete_charges(rows: concat(prior, page.results), total: page.total)
+  }
+}
+
+fn flex_roster_ingest_instance(
+  walk: FlexInstancesStanding,
+  requested_after: String?,
+  page: VastAiInstances,
+) -> FlexInstancesStanding {
+  match walk {
+    FlexInstancesUnreadable => FlexInstancesUnreadable
+    FlexInstancesComplete { roster: _ } => FlexInstancesUnreadable
+    FlexInstancesUnobserved =>
+      match requested_after {
+        Present { value: _ } => FlexInstancesUnreadable
+        Absent => flex_roster_apply_instance_page(prior: [], page: page)
+      }
+    FlexInstancesPartial { next_token: expected, observed: prior, total: _ } =>
+      match requested_after {
+        Absent => FlexInstancesUnreadable
+        Present { value: tok } =>
+          if tok != expected {
+            FlexInstancesUnreadable
+          } else {
+            flex_roster_apply_instance_page(prior: prior, page: page)
+          }
+      }
+  }
+}
+
+fn flex_roster_ingest_charge(
+  walk: FlexChargesStanding,
+  requested_after: String?,
+  page: VastAiCharges,
+) -> FlexChargesStanding {
+  match walk {
+    FlexChargesUnreadable => FlexChargesUnreadable
+    FlexChargesComplete { roster: _ } => FlexChargesUnreadable
+    FlexChargesUnobserved =>
+      match requested_after {
+        Present { value: _ } => FlexChargesUnreadable
+        Absent => flex_roster_apply_charge_page(prior: [], page: page)
+      }
+    FlexChargesPartial { next_token: expected, observed: prior, total: _ } =>
+      match requested_after {
+        Absent => FlexChargesUnreadable
+        Present { value: tok } =>
+          if tok != expected {
+            FlexChargesUnreadable
+          } else {
+            flex_roster_apply_charge_page(prior: prior, page: page)
+          }
+      }
+  }
+}
+
+fn flex_fold_instance_pages(pages: List<FlexInstancesPageTurn>) -> FlexInstancesStanding {
   fold(
     pages,
-    init: FlexChargesExhausted { results: [], total: 0 },
-    f: (acc, page) => flex_charges_append(acc: acc, page: page),
+    init: FlexInstancesUnobserved,
+    f: (acc, turn) =>
+      flex_roster_ingest_instance(walk: acc, requested_after: turn.after_token, page: turn.page),
+  )
+}
+
+fn flex_fold_charge_pages(pages: List<FlexChargesPageTurn>) -> FlexChargesStanding {
+  fold(
+    pages,
+    init: FlexChargesUnobserved,
+    f: (acc, turn) =>
+      flex_roster_ingest_charge(walk: acc, requested_after: turn.after_token, page: turn.page),
   )
 }
 
@@ -197,28 +266,35 @@ fn flex_labelled_standing(
   )
 }
 
+fn flex_cap_from_complete(
+  policy: FlexPolicy,
+  roster: FlexCompleteInstanceRoster,
+) -> FlexCapAssessment {
+  match flex_labelled_standing(instances: roster.instances, ours: policy.owner) {
+    FlexLabelledRateUnconverted => FlexCapRateUnconverted
+    FlexLabelledStandingBuilt { occupancy: occ } =>
+      match occupancy_sum(occupancy: occ, currency: policy.fleet_rate_cap.currency, ours: policy.owner) {
+        FlexOccupancyCurrencyMismatch { left: l, right: r } => FlexCapCurrencyMismatch { left: l, right: r }
+        FlexOccupancySummed { rate: occupied } =>
+          if !measure_le(a: occupied.amount, b: policy.fleet_rate_cap.amount) {
+            FlexCapOver { occupied: occupied, cap: policy.fleet_rate_cap }
+          } else {
+            if money_per_hour_micros(q: occupied) == money_per_hour_micros(q: policy.fleet_rate_cap) {
+              FlexCapAtLimit { occupied: occupied, cap: policy.fleet_rate_cap }
+            } else {
+              FlexCapUnder { occupied: occupied, cap: policy.fleet_rate_cap }
+            }
+          }
+      }
+  }
+}
+
 fn flex_cap_from_roster(policy: FlexPolicy, roster: FlexInstancesStanding) -> FlexCapAssessment {
   match roster {
     FlexInstancesUnreadable => FlexCapUnreadable
+    FlexInstancesUnobserved => FlexCapUnobserved
     FlexInstancesPartial { next_token: _, observed: _, total: _ } => FlexCapNeedsExhaustedRoster
-    FlexInstancesExhausted { instances: rows, total: _ } =>
-      match flex_labelled_standing(instances: rows, ours: policy.owner) {
-        FlexLabelledRateUnconverted => FlexCapRateUnconverted
-        FlexLabelledStandingBuilt { occupancy: occ } =>
-          match occupancy_sum(occupancy: occ, currency: policy.fleet_rate_cap.currency, ours: policy.owner) {
-            FlexOccupancyCurrencyMismatch { left: l, right: r } => FlexCapCurrencyMismatch { left: l, right: r }
-            FlexOccupancySummed { rate: occupied } =>
-              if !measure_le(a: occupied.amount, b: policy.fleet_rate_cap.amount) {
-                FlexCapOver { occupied: occupied, cap: policy.fleet_rate_cap }
-              } else {
-                if money_per_hour_micros(q: occupied) == money_per_hour_micros(q: policy.fleet_rate_cap) {
-                  FlexCapAtLimit { occupied: occupied, cap: policy.fleet_rate_cap }
-                } else {
-                  FlexCapUnder { occupied: occupied, cap: policy.fleet_rate_cap }
-                }
-              }
-          }
-      }
+    FlexInstancesComplete { roster: complete } => flex_cap_from_complete(policy: policy, roster: complete)
   }
 }
 
@@ -228,6 +304,7 @@ fn flex_write_decision(policy: FlexPolicy, roster: FlexInstancesStanding) -> Fle
     FlexActuationWet =>
       match flex_cap_from_roster(policy: policy, roster: roster) {
         FlexCapUnreadable => FlexWriteBlockedUnreadable
+        FlexCapUnobserved => FlexWriteBlockedUnobserved
         FlexCapNeedsExhaustedRoster => FlexWriteBlockedPartialRoster
         FlexCapRateUnconverted => FlexWriteBlockedRateUnconverted
         FlexCapCurrencyMismatch { left: l, right: r } => FlexWriteBlockedCurrencyMismatch { left: l, right: r }
@@ -396,11 +473,26 @@ fn flex_vast_offer_key(offer: VastAiOffer) -> OfferKey {
 // Search-offers does not carry start, transition, opportunity, readiness, a cited
 // region, or a use permit. Those stay unestablished: this adapter never copies a
 // caller CandidateOffer (id, shape, availability, consequences, evidence).
+type VastOfferCandidateStanding
+  = VastCandidateDerived { candidates: List<FlexScreenedCandidate<NonEmptyStr>> }
+  | VastCandidateConsequencesUnestablished { offer_key: OfferKey, missing: List<NonEmptyStr> }
+
 fn flex_candidates_from_vast_offer(
   offer: VastAiOffer,
   machine: FlexMachineKey,
-) -> List<FlexScreenedCandidate<NonEmptyStr>> {
-  []
+) -> VastOfferCandidateStanding {
+  let _account = machine.account
+  VastCandidateConsequencesUnestablished {
+    offer_key: flex_vast_offer_key(offer: offer),
+    missing: [
+      "start cost unobserved on search-offers" as NonEmptyStr,
+      "transition unobserved on search-offers" as NonEmptyStr,
+      "opportunity cost unobserved on search-offers" as NonEmptyStr,
+      "readiness unobserved on search-offers" as NonEmptyStr,
+      "cited region unobserved on search-offers" as NonEmptyStr,
+      "use permit unobserved on search-offers" as NonEmptyStr,
+    ],
+  }
 }
 
 fn flex_bind_attempt_to_offer(
@@ -408,11 +500,15 @@ fn flex_bind_attempt_to_offer(
   attempt: FlexBidAttempt<NonEmptyStr>,
 ) -> FlexBidAttempt<NonEmptyStr> {
   let machine = flex_machine_key_for_offer(account: attempt.machine.account, offer: offer)
+  let candidates = match flex_candidates_from_vast_offer(offer: offer, machine: machine) {
+    VastCandidateDerived { candidates: cs } => cs
+    VastCandidateConsequencesUnestablished { offer_key: _, missing: _ } => []
+  }
   FlexBidAttempt {
     machine: machine,
     min_bid: offer.min_bid,
     quote_currency: vast_ai_quote_currency,
-    candidates: flex_candidates_from_vast_offer(offer: offer, machine: machine),
+    candidates: candidates,
     subject: attempt.subject,
     on_demand_reference: attempt.on_demand_reference,
     requirements: attempt.requirements,
@@ -503,8 +599,10 @@ fn flex_reconcile_acquisition(
 ) -> FlexReconcileVerdict {
   match roster {
     FlexInstancesUnreadable => FlexAcquisitionUnknown
+    FlexInstancesUnobserved => FlexAcquisitionUnknown
     FlexInstancesPartial { next_token: _, observed: _, total: _ } => FlexReconcileNeedsExhaustedRoster
-    FlexInstancesExhausted { instances: instances, total: _ } =>
+    FlexInstancesComplete { roster: complete } =>
+      let instances = complete.instances
   // Answered create matches contract id only. Lost or refused may match the machine.
   match standing {
     FlexCreateAnswered { instance_id: id, machine_id: _, ask_id: _ } =>

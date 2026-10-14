@@ -60,7 +60,7 @@ import product.fabric.flex_market {
 }
 import extdeps.cloud.vast_ai {
   VastAiOffer, vast_ai_min_bid_money_per_hour, vast_ai_dph_total_money_per_hour,
-  vast_ai_quote_currency, vast_ai_driver_version_read,
+  vast_ai_quote_currency,
 }
 import test.claim.fabric.provider_use_fixture {
   fixture_admitted_for_offer, fixture_demand_for, fixture_work_for, fixture_route,
@@ -408,7 +408,7 @@ fn vast_min_sample() -> VastAiOffer {
     inet_up_cost: ExactDecimal { units: 1, fraction_digits: 3 },
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 3 },
     gpu_ram: 24576,
-    driver_version: vast_ai_driver_version_read(major: 580),
+    driver_version: Present { value: "580.65.06" },
   }
 }
 

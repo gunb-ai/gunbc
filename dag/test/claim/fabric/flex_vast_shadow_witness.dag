@@ -40,7 +40,8 @@ import product.fabric.flex_policy {
 import product.fabric.flex_market {
   FlexMarketQuoted, FlexBidLevelMarket, flex_owner_label_gunbc_flex,
   flex_ninfer_min_driver, flex_vllm_min_driver, flex_unit_min_host_driver,
-  flex_serving_unit_accepts_offer, flex_offer_meets_unit_driver,
+  flex_offer_meets_unit_driver,
+  FlexCapUnder, FlexCapOver, FlexCapAtLimit, FlexCapNeedsExhaustedRoster, FlexCapUnreadable, FlexCapUnobserved,
 }
 import product.fabric.flex_vast_shadow {
   flex_trial_fleet_rate_cap, flex_trial_total, flex_trial_policy, flex_objective,
@@ -49,18 +50,19 @@ import product.fabric.flex_vast_shadow {
   flex_gpu_class_matches, flex_offer_supported, flex_offer_in_shadow_field,
   flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
   flex_bind_attempt_to_offer, flex_vast_offer_key, flex_keyset_page_limit,
-  flex_instances_page, flex_fold_instance_pages, flex_cap_from_roster,
-  flex_charges_page, flex_fold_charge_pages, FlexChargesExhausted, FlexChargesPartial, FlexChargesUnreadable,
+  flex_fold_instance_pages, flex_cap_from_roster,
+  flex_fold_charge_pages, FlexChargesComplete, FlexChargesPartial, FlexChargesUnreadable, FlexChargesUnobserved,
+  FlexInstancesPageTurn, FlexChargesPageTurn, FlexInstancesComplete, FlexInstancesUnobserved,
+  flex_candidates_from_vast_offer, VastCandidateConsequencesUnestablished, VastCandidateDerived,
   flex_vast_api_read_grant, flex_delay_unvalued,
   FlexCreateLost, FlexCreateRefused, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire,
   FlexReconcileNeedsExhaustedRoster,
   flex_reconcile_acquisition,
   flex_qwen_serving_image, flex_qwen_published_tcp_port, flex_qwen_disk, flex_qwen_model_id,
-  flex_write_decision, FlexWriteHeldDry, FlexWriteBlockedUnreadable,
+  flex_write_decision, FlexWriteHeldDry, FlexWriteBlockedUnreadable, FlexWriteBlockedUnobserved,
   FlexWriteBlockedRateUnconverted, FlexWriteBlockedCurrencyMismatch,
   FlexWriteBlockedOverCap, FlexWriteBlockedPartialRoster, FlexWriteWetUnwired,
-  FlexInstancesStanding, FlexInstancesExhausted, FlexInstancesPartial, FlexInstancesUnreadable,
-  FlexCapUnder, FlexCapOver, FlexCapAtLimit, FlexCapNeedsExhaustedRoster, FlexCapUnreadable,
+  FlexInstancesStanding, FlexInstancesPartial, FlexInstancesUnreadable,
   flex_search_offers_inhabitance_frontier, flex_m3_rent_cooldown_starts_at_ask,
   flex_m3_pass_stops_at_first_failure,
   flex_wet_create_release_consumer_frontier, flex_rented_serving_allocation_join,
@@ -71,7 +73,7 @@ import std.dissolution { UnboundDissolution, BoundDissolution }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiInstance, VastAiInstances, VastAiCharges,
   vast_ai_search_type_bid, vast_ai_quote_currency, vast_ai_keyset_page_limit,
-  vast_ai_driver_version_read, vast_ai_driver_version_from_search_offers_text,
+  vast_ai_ingest_search_offer_driver, vast_ai_driver_version_from_search_offers_text,
   VastAiDriverVersionStanding, VastAiDriverVersionUnread, VastAiDriverVersionRead, VastAiDriverVersionMalformed,
 }
 import std.decision { CostPerAcceptedUnit, NetValue }
@@ -231,7 +233,7 @@ fn wire_offer(name: String, ram: Int, bid: Bool, rentable: Bool) -> VastAiOffer 
     inet_up_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     gpu_ram: ram,
-    driver_version: vast_ai_driver_version_read(major: 580),
+    driver_version: Present { value: "580.65.06" },
   }
 }
 
@@ -256,7 +258,18 @@ fn inst_labelled(id: Int, machine_id: Int, label: String?, dollars: Int) -> Vast
 }
 
 fn exhausted(rows: List<VastAiInstance>) -> FlexInstancesStanding {
-  FlexInstancesExhausted { instances: rows, total: 0 }
+  flex_fold_instance_pages(pages: [
+    FlexInstancesPageTurn {
+      after_token: none,
+      page: VastAiInstances {
+        success: true,
+        instances_found: rows |> length,
+        total_instances: rows |> length,
+        next_token: none,
+        instances: rows,
+      },
+    },
+  ])
 }
 
 test fn operator_template_and_policy_are_named_facts() -> Bool {
@@ -458,7 +471,7 @@ test fn supported_gpu_classes_screen_offers() -> Bool {
     && host_driver_screens_the_serving_unit()
 }
 
-fn wire_offer_driver(name: String, ram: Int, driver: VastAiDriverVersionStanding) -> VastAiOffer {
+fn wire_offer_driver(name: String, ram: Int, driver: String?) -> VastAiOffer {
   VastAiOffer {
     id: 7,
     machine_id: 42,
@@ -482,18 +495,16 @@ fn wire_offer_driver(name: String, ram: Int, driver: VastAiDriverVersionStanding
 }
 
 fn host_driver_screens_the_serving_unit() -> Bool {
-  let ok = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: vast_ai_driver_version_read(major: 580))
-  let unread = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: VastAiDriverVersionUnread)
-  let malformed = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: VastAiDriverVersionMalformed { raw: "x" })
-  let low_ninfer = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: vast_ai_driver_version_read(major: 570))
-  let vllm_ok = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: vast_ai_driver_version_read(major: 590))
-  let vllm_low = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: vast_ai_driver_version_read(major: 580))
+  let ok = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "580.65.06" })
+  let unread = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: none)
+  let malformed = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "x" })
+  let low_ninfer = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "570.0" })
+  let vllm_ok = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "590.0" })
+  let vllm_low = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "580.65.06" })
   flex_offer_meets_unit_driver(offer: ok, unit: Qwen3_8_27bOnNinfer)
     && !flex_offer_meets_unit_driver(offer: unread, unit: Qwen3_8_27bOnNinfer)
     && !flex_offer_meets_unit_driver(offer: malformed, unit: Qwen3_8_27bOnNinfer)
     && !flex_offer_meets_unit_driver(offer: low_ninfer, unit: Qwen3_8_27bOnNinfer)
-    && flex_serving_unit_accepts_offer(unit: Qwen3_8_27bOnNinfer, offer: ok)
-    && !flex_serving_unit_accepts_offer(unit: Qwen3_8_27bOnNinfer, offer: unread)
     && flex_offer_meets_unit_driver(offer: vllm_ok, unit: Glm53FlashOnVllm)
     && !flex_offer_meets_unit_driver(offer: vllm_low, unit: DeepseekV4FlashOnVllm)
     && flex_offer_in_shadow_field(offer: ok)
@@ -502,7 +513,12 @@ fn host_driver_screens_the_serving_unit() -> Bool {
 }
 
 fn driver_wire_standing_discriminates() -> Bool {
-  match vast_ai_driver_version_from_search_offers_text(raw: none) {
+  let from_search = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "580.65.06" })
+  match vast_ai_ingest_search_offer_driver(offer: from_search) {
+    VastAiDriverVersionRead { version: v } => v.major == 580
+    _ => false
+  }
+    && match vast_ai_driver_version_from_search_offers_text(raw: none) {
     VastAiDriverVersionUnread => true
     _ => false
   }
@@ -574,8 +590,7 @@ fn dry_pass_records_unreadable_list() -> Bool {
         FlexWriteHeldDry => true
         _ => false
       }
-    FlexInstancesExhausted { instances: _, total: _ } => false
-    FlexInstancesPartial { next_token: _, observed: _, total: _ } => false
+    _ => false
   }
 }
 
@@ -645,6 +660,11 @@ test fn a_foreign_candidate_identity_does_not_ride_the_vast_offer() -> Bool {
     && (ra.offer_key != ("offer-42" as OfferKey))
     && (bound_a.candidates |> length) == 0
     && (bound_b.candidates |> length) == 0
+    && match flex_candidates_from_vast_offer(offer: offer, machine: bound_a.machine) {
+      VastCandidateConsequencesUnestablished { offer_key: k, missing: ms } =>
+        (k == flex_vast_offer_key(offer: offer)) && ((ms |> length) > 0)
+      VastCandidateDerived { candidates: _ } => false
+    }
 }
 
 test fn instance_pages_exhaust_before_cap_or_reconcile() -> Bool {
@@ -665,34 +685,45 @@ test fn instance_pages_exhaust_before_cap_or_reconcile() -> Bool {
   let charges_open = VastAiCharges {
     success: true,
     count: 0,
-    total: 1,
+    total: 0,
     next_token: Present { value: "c" },
     results: [],
   }
   let charges_last = VastAiCharges {
     success: true,
     count: 0,
-    total: 1,
+    total: 0,
     next_token: none,
     results: [],
   }
   (flex_keyset_page_limit == vast_ai_keyset_page_limit)
-    && (match flex_instances_page(page: first) {
-      FlexInstancesPartial { next_token: t, observed: rows, total: n } =>
-        (t == "tok") && ((rows |> length) == 1) && (n == 2)
+    && (match flex_fold_instance_pages(pages: []) {
+      FlexInstancesUnobserved => true
       _ => false
     })
-    && (match flex_fold_instance_pages(pages: [first, last]) {
-      FlexInstancesExhausted { instances: rows, total: n } => ((rows |> length) == 2) && (n == 2)
+    && (match flex_fold_instance_pages(pages: [
+      FlexInstancesPageTurn { after_token: none, page: first },
+      FlexInstancesPageTurn { after_token: Present { value: "tok" }, page: last },
+    ]) {
+      FlexInstancesComplete { roster: r } => ((r.instances |> length) == 2) && (r.total == 2)
       _ => false
     })
-    && (match flex_charges_page(page: charges_open) {
-      FlexChargesPartial { next_token: t, observed: _, total: _ } => t == "c"
-      FlexChargesExhausted { results: _, total: _ } => false
-      FlexChargesUnreadable => false
+    && (match flex_fold_instance_pages(pages: [
+      FlexInstancesPageTurn { after_token: none, page: first },
+      FlexInstancesPageTurn { after_token: Present { value: "wrong" }, page: last },
+    ]) {
+      FlexInstancesUnreadable => true
+      _ => false
     })
-    && (match flex_fold_charge_pages(pages: [charges_open, charges_last]) {
-      FlexChargesExhausted { results: rows, total: n } => ((rows |> length) == 0) && (n == 1)
+    && (match flex_fold_charge_pages(pages: [
+      FlexChargesPageTurn { after_token: none, page: charges_open },
+      FlexChargesPageTurn { after_token: Present { value: "c" }, page: charges_last },
+    ]) {
+      FlexChargesComplete { roster: r } => ((r.results |> length) == 0) && (r.total == 0)
+      _ => false
+    })
+    && (match flex_write_decision(policy: live_policy(), roster: FlexInstancesUnobserved) {
+      FlexWriteBlockedUnobserved => true
       _ => false
     })
     && (match flex_cap_from_roster(

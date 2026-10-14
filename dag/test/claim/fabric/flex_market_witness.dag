@@ -22,6 +22,10 @@ import product.fabric.flex_market {
   FlexOwnedCard, FlexDestroy, FlexKeep, FlexCleanupOutbid, FlexCleanupStaleLoading,
   FlexCleanupNotRunningDropped, FlexCleanupReleasedForValue,
   FlexReleaseNow, FlexReleaseHoldLast, FlexReleaseHoldUntilReplacement,
+  FlexReleaseHoldCapUnreadable, FlexReleaseHoldCapUnobserved, FlexReleaseHoldCapPartial,
+  FlexReleaseHoldRateUnconverted, FlexReleaseHoldCurrencyMismatch,
+  FlexReleaseAuthorized, FlexReleaseDenied, flex_release_window_start, flex_release_consider,
+  FlexCapAssessment, FlexCapOver, FlexCapUnder, FlexCapUnreadable,
   flex_quoted_bid, flex_class_market_median, flex_choose_bid_level,
   flex_vram_class, flex_ownership, flex_ours_only,
   flex_owner_label_gunbc_flex, flex_card_dead, flex_cleanup_dead, flex_release_admit,
@@ -269,24 +273,53 @@ test fn cleanup_destroys_only_dead_owned_cards() -> Bool {
     }
 }
 
+fn cap_over() -> FlexCapAssessment {
+  FlexCapOver { occupied: usd_hour(n: 2000000), cap: usd_hour(n: 1340000) }
+}
+
+fn cap_under() -> FlexCapAssessment {
+  FlexCapUnder { occupied: usd_hour(n: 0), cap: usd_hour(n: 1340000) }
+}
+
 test fn release_never_drops_the_last_running_card() -> Bool {
-  match flex_release_admit(running_count: 1, over_cap: true, no_room: true, replacement_serving: true) {
+  match flex_release_admit(running_count: 1, cap: cap_over(), no_room: true, replacement_serving: true) {
     FlexReleaseHoldLast => true
-    FlexReleaseNow { because_over_cap: _, because_no_room: _, replacement_serving: _ } => false
-    FlexReleaseHoldUntilReplacement => false
+    _ => false
   }
 }
 
 test fn a_value_release_waits_for_a_serving_replacement_unless_the_cap_requires_it() -> Bool {
-  match flex_release_admit(running_count: 2, over_cap: false, no_room: false, replacement_serving: false) {
+  match flex_release_admit(running_count: 2, cap: cap_under(), no_room: false, replacement_serving: false) {
     FlexReleaseHoldUntilReplacement =>
-      match flex_release_admit(running_count: 2, over_cap: true, no_room: false, replacement_serving: false) {
+      match flex_release_admit(running_count: 2, cap: cap_over(), no_room: false, replacement_serving: false) {
         FlexReleaseNow { because_over_cap: o, because_no_room: n, replacement_serving: r } => o && !n && !r
-        FlexReleaseHoldLast => false
-        FlexReleaseHoldUntilReplacement => false
+        _ => false
       }
-    FlexReleaseHoldLast => false
-    FlexReleaseNow { because_over_cap: _, because_no_room: _, replacement_serving: _ } => false
+    _ => false
+  }
+}
+
+test fn unread_cap_does_not_authorize_a_release() -> Bool {
+  match flex_release_admit(running_count: 2, cap: FlexCapUnreadable, no_room: true, replacement_serving: true) {
+    FlexReleaseHoldCapUnreadable => true
+    _ => false
+  }
+}
+
+test fn a_second_release_in_the_same_window_is_denied() -> Bool {
+  let first = flex_release_consider(
+    window: flex_release_window_start(running_count: 2),
+    cap: cap_over(),
+    no_room: false,
+    replacement_serving: false,
+  )
+  match first {
+    FlexReleaseAuthorized { admit: _, next: w1 } =>
+      match flex_release_consider(window: w1, cap: cap_over(), no_room: false, replacement_serving: false) {
+        FlexReleaseDenied { admit: _, window: _ } => true
+        FlexReleaseAuthorized { admit: _, next: _ } => false
+      }
+    FlexReleaseDenied { admit: _, window: _ } => false
   }
 }
 
@@ -335,6 +368,61 @@ test fn unscored_ended_rentals_need_evidence_instead_of_a_market_default() -> Bo
 data id_cheap: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_cheap")
 data id_held: DeclarationRef = decl_ref(module_path: "test.claim.fabric.flex_market_witness", decl_name: "id_held")
 
+fn vram_hour_micros(rate: Nat, gib: Nat) -> Int? {
+  match flex_dollars_per_vram(rate: usd_hour(n: rate), vram: gibibyte_to_byte_size(g: gibibyte(count: gib))) {
+    FlexVramHourlyZeroCapacity => none
+    FlexVramHourlyQuoted { rate: q } => Present { value: money_amount_micro_count(m: q.amount) as Int }
+  }
+}
+
+test fn forty_eight_and_ninety_six_gib_readings_are_distinct_and_nonzero() -> Bool {
+  match vram_hour_micros(rate: 1000000, gib: 48) {
+    Absent => false
+    Present { value: a } =>
+      match vram_hour_micros(rate: 1000000, gib: 96) {
+        Absent => false
+        Present { value: b } => (a > 0) && (b > 0) && (a != b) && (b < a)
+      }
+  }
+}
+
+test fn a_price_change_reverses_the_cheaper_gib_hour_card() -> Bool {
+  match vram_hour_micros(rate: 1000000, gib: 48) {
+    Absent => false
+    Present { value: cheap48 } =>
+      match vram_hour_micros(rate: 1000000, gib: 96) {
+        Absent => false
+        Present { value: cheap96 } =>
+          match vram_hour_micros(rate: 400000, gib: 48) {
+            Absent => false
+            Present { value: cheaper48 } =>
+              match vram_hour_micros(rate: 1000000, gib: 96) {
+                Absent => false
+                Present { value: dear96 } => (cheap96 < cheap48) && (cheaper48 < dear96)
+              }
+          }
+      }
+  }
+}
+
+test fn held_premium_flips_only_across_its_gap() -> Bool {
+  let held = flex_held_effective_rate(rate: usd_hour(n: 1250000), held: true)
+  match flex_dollars_per_vram(rate: held, vram: gib(n: 48)) {
+    FlexVramHourlyZeroCapacity => false
+    FlexVramHourlyQuoted { rate: hv } =>
+      match flex_dollars_per_vram(rate: usd_hour(n: 1100000), vram: gib(n: 48)) {
+        FlexVramHourlyZeroCapacity => false
+        FlexVramHourlyQuoted { rate: offer_hi } =>
+          match flex_dollars_per_vram(rate: usd_hour(n: 990000), vram: gib(n: 48)) {
+            FlexVramHourlyZeroCapacity => false
+            FlexVramHourlyQuoted { rate: offer_lo } =>
+              (money_amount_micro_count(m: hv.amount) < money_amount_micro_count(m: offer_hi.amount))
+                && (money_amount_micro_count(m: offer_lo.amount) < money_amount_micro_count(m: hv.amount))
+          }
+      }
+  }
+}
+
 test fn ranking_selects_the_held_card_when_the_premium_covers_a_small_price_gap() -> Bool {
   let offer = owned(id: "offer", vram: gib(n: 48), rate: 1100000, held: false, running: false, loading: false, outbid: false, age: 0)
   let held = owned(id: "held", vram: gib(n: 48), rate: 1250000, held: true, running: true, loading: false, outbid: false, age: 0)
@@ -375,10 +463,11 @@ test fn zero_vram_rank_entry_declares_the_axis_gap() -> Bool {
 }
 
 test fn a_ninfer_qwen_catalog_unit_is_placeable_and_unconfirmed_is_not() -> Bool {
-  flex_rented_card_fungible(probe: flex_ninfer_qwen_probe())
-    && flex_rented_card_fungible(probe: FlexCardUnitEstablished { unit: Qwen3_8_27bOnNinfer })
-    && !flex_rented_card_fungible(probe: FlexCardUnitUnconfirmed)
-    && !flex_rented_card_fungible(probe: FlexCardUnitEstablished { unit: NemotronUltraFreeOnOpenRouter })
+  !flex_rented_card_fungible(required: Qwen3_8_27bOnNinfer, observed: flex_ninfer_qwen_probe())
+    && !flex_rented_card_fungible(required: Qwen3_8_27bOnNinfer, observed: FlexCardUnitEstablished { unit: Glm53FlashOnVllm })
+    && flex_rented_card_fungible(required: Glm53FlashOnVllm, observed: FlexCardUnitEstablished { unit: Glm53FlashOnVllm })
+    && !flex_rented_card_fungible(required: Qwen3_8_27bOnNinfer, observed: FlexCardUnitUnconfirmed)
+    && !flex_rented_card_fungible(required: Glm53FlashOnVllm, observed: FlexCardUnitEstablished { unit: NemotronUltraFreeOnOpenRouter })
 }
 
 test fn vllm_parser_names_stay_on_the_catalog_unit() -> Bool {

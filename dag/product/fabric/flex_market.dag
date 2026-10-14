@@ -1,14 +1,14 @@
 module product.fabric.flex_market
 
 import std.types { NonEmptyStr, Bool, Int, List, String, brand }
-import std.nat { Nat }
+import std.nat { Nat, Zero, Succ }
 import std.rational { NonzeroNatFraction, nonzero_nat_fraction_field }
 import std.measure {
   MoneyAmountMicro, MoneyPerHour, MoneyRate, Second, ByteSize,
   money_amount_micro, money_amount_micro_count, money_per_hour_micros,
   measure_add, measure_le, measure_scale_fraction_ceil, measure_sub,
   MeasureDifference, MeasureSubtrahendExceedsMinuend,
-  second, second_count, byte_size_count, gibibyte, gibibyte_to_byte_size,
+  second, second_count, byte_size_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size,
 }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.currency.currency { CurrencyCode }
@@ -34,10 +34,11 @@ import std.decision {
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, Qwen3_8_27bOnNinfer, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
   NemotronUltraFreeOnOpenRouter,
-  harness_unit_placement, PlacedOnFleetSeat, RunOnOperatorEndpoint, LeasedFromHostedQuota,
+  harness_unit_placement, harness_unit_model_id, PlacedOnFleetSeat, RunOnOperatorEndpoint, LeasedFromHostedQuota,
 }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiDriverVersionRead, VastAiDriverVersionUnread, VastAiDriverVersionMalformed,
+  vast_ai_ingest_search_offer_driver,
 }
 
 // Market-level interruptible bid, ranking, cleanup pacing, and ownership. Ctrl reference
@@ -46,7 +47,7 @@ import extdeps.cloud.vast_ai {
 //
 // Objective relation: bid-level choice uses fabric DemandObjective CostPerAcceptedUnit
 // (debt_payoff): term_money is total rental cost, term_accepted_work is productive seconds.
-// Card ranking is a different decision: NetValue over flex_term_vram_hour (MoneyPerByteHour
+// Card ranking is a different decision: NetValue over flex_term_vram_hour (MoneyPerGibibyteHour
 // after the held switch premium). Those identities are not fabric demand terms.
 //
 // DECLARED FRONTIERS (DESIGN §3c) for bright-moth-475 (wet loop, key custody, harness placement):
@@ -378,7 +379,7 @@ data flex_rank_evidence: DeclarationRef = decl_ref(module_path: "product.fabric.
 
 data flex_term_vram_hour: ObjectiveTerm = ObjectiveTerm {
   identity: decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_term_vram_hour"),
-  ground: TranscribedUncited { read_obligation: "card rank is money per VRAM-byte-hour after the held switch premium, not fabric accepted-work" as NonEmptyStr },
+  ground: TranscribedUncited { read_obligation: "card rank is money per VRAM-GiB-hour after the held switch premium, not fabric accepted-work" as NonEmptyStr },
 }
 
 fn flex_level_identity(level: FlexBidLevel) -> DeclarationRef {
@@ -491,7 +492,7 @@ fn flex_rank_assessment() -> DecisionAssessment {
   DecisionAssessment {
     subject: DecisionSubject {
       identity: flex_rank_subject,
-      question: "which owned interruptible card has the lowest money per VRAM-byte-hour" as NonEmptyStr,
+      question: "which owned interruptible card has the lowest money per VRAM-GiB-hour" as NonEmptyStr,
       parameters: [ContextParameter { identity: flex_rank_param }],
       constraints: [DecisionConstraint { identity: flex_rank_constraint }],
       objective: ObjectiveMeasure {
@@ -510,7 +511,7 @@ fn flex_rank_assessment() -> DecisionAssessment {
         variable: flex_rank_var,
         region: DecisionRegion { identity: flex_rank_region },
         relation: MonotoneDecreasing,
-        coupling: TranscribedUncited { read_obligation: "VRAM-byte-hour rank sensitivity is a flex policy bet; Vast search-offers documents the offer wire, not this monotone" as NonEmptyStr },
+        coupling: TranscribedUncited { read_obligation: "VRAM-GiB-hour rank sensitivity is a flex policy bet; Vast search-offers documents the offer wire, not this monotone" as NonEmptyStr },
       }
     ],
     constraints: [
@@ -630,16 +631,16 @@ fn flex_held_effective_rate(rate: MoneyPerHour, held: Bool) -> MoneyPerHour {
   }
 }
 
-type PerByteHour
+type PerGibibyteHour
 
-type MoneyPerByteHour = MoneyRate<PerByteHour>
+type MoneyPerGibibyteHour = MoneyRate<PerGibibyteHour>
 
 type FlexVramHourly
-  = FlexVramHourlyQuoted { rate: MoneyPerByteHour }
+  = FlexVramHourlyQuoted { rate: MoneyPerGibibyteHour }
   | FlexVramHourlyZeroCapacity
 
 fn flex_dollars_per_vram(rate: MoneyPerHour, vram: ByteSize) -> FlexVramHourly {
-  let n = byte_size_count(b: vram)
+  let n = gibibyte_count(g: gibibyte_ceiling(b: vram))
   if n == 0 {
     FlexVramHourlyZeroCapacity
   } else {
@@ -661,7 +662,7 @@ fn flex_rank_entry(id: DeclarationRef, label: NonEmptyStr, card: FlexOwnedCard) 
         display_label: label,
         readings: [],
         missing_inputs: [
-          AxisGap { axis: flex_term_vram_hour.identity, cause: "VRAM capacity is zero so money per byte-hour is unwritable" as NonEmptyStr },
+          AxisGap { axis: flex_term_vram_hour.identity, cause: "VRAM capacity is zero so money per GiB-hour is unwritable" as NonEmptyStr },
         ],
       }
     FlexVramHourlyQuoted { rate: ev } =>
@@ -704,6 +705,16 @@ fn flex_card_dead(card: FlexOwnedCard) -> Bool {
   card.outbid || (card.loading && second_count(s: card.loading_age) >= second_count(s: flex_stale_loading))
 }
 
+type FlexCapAssessment
+  = FlexCapUnder { occupied: MoneyPerHour, cap: MoneyPerHour }
+  | FlexCapAtLimit { occupied: MoneyPerHour, cap: MoneyPerHour }
+  | FlexCapOver { occupied: MoneyPerHour, cap: MoneyPerHour }
+  | FlexCapNeedsExhaustedRoster
+  | FlexCapUnreadable
+  | FlexCapUnobserved
+  | FlexCapRateUnconverted
+  | FlexCapCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
+
 type FlexCleanupWhy
   = FlexCleanupOutbid
   | FlexCleanupStaleLoading
@@ -718,21 +729,104 @@ type FlexReleaseAdmit
   = FlexReleaseNow { because_over_cap: Bool, because_no_room: Bool, replacement_serving: Bool }
   | FlexReleaseHoldLast
   | FlexReleaseHoldUntilReplacement
+  | FlexReleaseHoldCapUnreadable
+  | FlexReleaseHoldCapUnobserved
+  | FlexReleaseHoldCapPartial
+  | FlexReleaseHoldRateUnconverted
+  | FlexReleaseHoldCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
+
+type FlexReleaseWindow {
+  running_count: Nat
+  remaining: Nat
+}
+
+fn flex_release_window_start(running_count: Nat) -> FlexReleaseWindow {
+  FlexReleaseWindow { running_count: running_count, remaining: Succ { prev: Zero } }
+}
+
+fn flex_cap_is_over(cap: FlexCapAssessment) -> Bool {
+  match cap {
+    FlexCapOver { occupied: _, cap: _ } => true
+    FlexCapAtLimit { occupied: _, cap: _ } => true
+    FlexCapUnder { occupied: _, cap: _ } => false
+    FlexCapNeedsExhaustedRoster => false
+    FlexCapUnreadable => false
+    FlexCapUnobserved => false
+    FlexCapRateUnconverted => false
+    FlexCapCurrencyMismatch { left: _, right: _ } => false
+  }
+}
 
 fn flex_release_admit(
   running_count: Nat,
-  over_cap: Bool,
+  cap: FlexCapAssessment,
   no_room: Bool,
   replacement_serving: Bool,
 ) -> FlexReleaseAdmit {
-  if running_count <= 1 {
-    FlexReleaseHoldLast
-  } else {
-    if over_cap || no_room || replacement_serving {
-      FlexReleaseNow { because_over_cap: over_cap, because_no_room: no_room, replacement_serving: replacement_serving }
-    } else {
-      FlexReleaseHoldUntilReplacement
-    }
+  match cap {
+    FlexCapUnreadable => FlexReleaseHoldCapUnreadable
+    FlexCapUnobserved => FlexReleaseHoldCapUnobserved
+    FlexCapNeedsExhaustedRoster => FlexReleaseHoldCapPartial
+    FlexCapRateUnconverted => FlexReleaseHoldRateUnconverted
+    FlexCapCurrencyMismatch { left: l, right: r } => FlexReleaseHoldCurrencyMismatch { left: l, right: r }
+    FlexCapOver { occupied: _, cap: _ } =>
+      if running_count <= 1 {
+        FlexReleaseHoldLast
+      } else {
+        FlexReleaseNow { because_over_cap: true, because_no_room: no_room, replacement_serving: replacement_serving }
+      }
+    FlexCapAtLimit { occupied: _, cap: _ } =>
+      if running_count <= 1 {
+        FlexReleaseHoldLast
+      } else {
+        FlexReleaseNow { because_over_cap: true, because_no_room: no_room, replacement_serving: replacement_serving }
+      }
+    FlexCapUnder { occupied: _, cap: _ } =>
+      if running_count <= 1 {
+        FlexReleaseHoldLast
+      } else {
+        if no_room || replacement_serving {
+          FlexReleaseNow { because_over_cap: false, because_no_room: no_room, replacement_serving: replacement_serving }
+        } else {
+          FlexReleaseHoldUntilReplacement
+        }
+      }
+  }
+}
+
+type FlexReleaseStep
+  = FlexReleaseAuthorized { admit: FlexReleaseAdmit, next: FlexReleaseWindow }
+  | FlexReleaseDenied { admit: FlexReleaseAdmit, window: FlexReleaseWindow }
+
+fn flex_release_consider(
+  window: FlexReleaseWindow,
+  cap: FlexCapAssessment,
+  no_room: Bool,
+  replacement_serving: Bool,
+) -> FlexReleaseStep {
+  let admit = flex_release_admit(
+    running_count: window.running_count,
+    cap: cap,
+    no_room: no_room,
+    replacement_serving: replacement_serving,
+  )
+  match admit {
+    FlexReleaseNow { because_over_cap: _, because_no_room: _, replacement_serving: _ } =>
+      match window.remaining {
+        Zero => FlexReleaseDenied { admit: admit, window: window }
+        Succ { prev: _ } =>
+          FlexReleaseAuthorized {
+            admit: admit,
+            next: FlexReleaseWindow {
+              running_count: match window.running_count {
+                Zero => Zero
+                Succ { prev: p } => p
+              },
+              remaining: Zero,
+            },
+          }
+      }
+    _ => FlexReleaseDenied { admit: admit, window: window }
   }
 }
 
@@ -753,15 +847,20 @@ type FlexCardProbe
   = FlexCardUnitEstablished { unit: HarnessServingUnit }
   | FlexCardUnitUnconfirmed
 
-fn flex_rented_card_fungible(probe: FlexCardProbe) -> Bool {
-  match probe {
+fn flex_catalog_unit_eq(left: HarnessServingUnit, right: HarnessServingUnit) -> Bool {
+  (harness_unit_model_id(unit: left) as String) == (harness_unit_model_id(unit: right) as String)
+}
+
+fn flex_rented_card_fungible(required: HarnessServingUnit, observed: FlexCardProbe) -> Bool {
+  match observed {
     FlexCardUnitUnconfirmed => false
     FlexCardUnitEstablished { unit: u } =>
-      match harness_unit_placement(unit: u) {
-        RunOnOperatorEndpoint => true
-        PlacedOnFleetSeat => true
-        LeasedFromHostedQuota => false
-      }
+      flex_catalog_unit_eq(left: required, right: u)
+        && match harness_unit_placement(unit: u) {
+          PlacedOnFleetSeat => true
+          RunOnOperatorEndpoint => false
+          LeasedFromHostedQuota => false
+        }
   }
 }
 
@@ -782,7 +881,7 @@ fn flex_unit_min_host_driver(unit: HarnessServingUnit) -> Nat? {
 }
 
 fn flex_offer_driver_major(offer: VastAiOffer) -> Nat? {
-  match offer.driver_version {
+  match vast_ai_ingest_search_offer_driver(offer: offer) {
     VastAiDriverVersionUnread => none
     VastAiDriverVersionMalformed { raw: _ } => none
     VastAiDriverVersionRead { version: v } => Present { value: v.major }
@@ -800,7 +899,11 @@ fn flex_offer_meets_unit_driver(offer: VastAiOffer, unit: HarnessServingUnit) ->
   }
 }
 
-fn flex_serving_unit_accepts_offer(unit: HarnessServingUnit, offer: VastAiOffer) -> Bool {
-  flex_rented_card_fungible(probe: FlexCardUnitEstablished { unit: unit })
-    && flex_offer_meets_unit_driver(offer: offer, unit: unit)
+fn flex_serving_unit_accepts_offer(
+  required: HarnessServingUnit,
+  observed: FlexCardProbe,
+  offer: VastAiOffer,
+) -> Bool {
+  flex_rented_card_fungible(required: required, observed: observed)
+    && flex_offer_meets_unit_driver(offer: offer, unit: required)
 }
