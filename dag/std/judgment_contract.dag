@@ -90,6 +90,8 @@ data output_parse_tree: ArtifactOutputId = "parse_tree"
 
 data output_parse_diagnostics: ArtifactOutputId = "parse_diagnostics"
 
+data output_parse_verdict: ArtifactOutputId = "parse_verdict"
+
 data output_typed_module_interface: ArtifactOutputId = "typed_module_interface"
 
 data output_typecheck_diagnostics: ArtifactOutputId = "typecheck_diagnostics"

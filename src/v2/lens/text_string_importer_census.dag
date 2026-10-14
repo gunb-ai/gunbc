@@ -25,12 +25,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact, import_resolution_facts_live, reference_derived_import_resolution_facts_live, module_declaration_facts_live }
 import v2.std.node { Node, Atom, TypeNode, symbol_lexeme }
 import v2.std.provenance { SpanIndex, span_index_empty, node_occurrence_id_optional, span_index_textual_locus_optional }
-import std.optional { Optional }
+import std.optional { Optional, Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, Textual, ByteRange, WholeFile }
 import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
-import std.optional { Absent, Present }
 import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, length, list_reverse }
 import v2.std.source_position { source_newline_byte_offsets }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
@@ -160,9 +159,9 @@ data no_exclusions: List<String> = []
 
 // A structural function whose RESULT is a text carrier. Its arguments are always call-argument
 // crossings (host value into a code-point-sequence parameter: the lawful unfold of gunbc#12512);
-// its result is a crossing only when it is a text carrier. `ListTailResult` is `std.algebra`'s
-// cons view of a `FreeMonoid`, so its tail is the structural carrier.
-data text_carrier_heads: List<String> = ["String", "FreeMonoid", "FreeSemigroup", "ListTailResult"]
+// its result is a crossing only when it is a text carrier. A list tail is
+// Optional<FreeMonoid<T>> and is not a text carrier of its own.
+data text_carrier_heads: List<String> = ["String", "FreeMonoid", "FreeSemigroup"]
 
 type StructuralResultPosition
   = NoTextResult

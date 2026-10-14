@@ -5,7 +5,7 @@ import std.types { List }
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
-import std.algebra { Cons, Empty, FreeMonoid, contains, TailAbsent, TailFound, length, list_map, list_snoc_item, list_tail, skip, zip_map }
+import std.algebra { Cons, Empty, FreeMonoid, contains, length, list_map, list_snoc_item, list_tail, skip, zip_map }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -20,6 +20,7 @@ import v2.std.compilers.target_model {
   canonical_operation_op_sub,
   target_model_canonical_operation_member_declared_type,
 }
+import v2.compiler.lexical_scope { bind_binder }
 import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
 import v2.compiler.body_lowering_fold {
   TypeDeclModifier,
@@ -99,7 +100,7 @@ import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
-import v2.std.node { symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
+import v2.std.node { symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
@@ -1024,9 +1025,10 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
 // A LEXICAL BINDER'S REFERENCE IS GROUNDED BY THE BINDING RESOLVE RECORDED FOR IT. v2.compiler.resolve
 // mints it from a Lexical frame and records which binder answered it in ResolvedTree.lexical_bindings,
 // keyed by the reference's occurrence, so infer reads that binding and never searches scope. A binder
-// that declares a type (a lambda parameter's domain edge) grounds to it; one that declares none (a
-// `let` or a pattern binder, which carry no type here) is underived, as before. A reference resolve
-// did not record is the tree disagreeing with the resolver that produced it: refused, located.
+// whose type a sibling fixes -- a `let` (infer_let_body_frame) or a match-arm payload binder -- is typed by
+// the frame's InferBinderType row at its site; a binder that declares a type (a lambda parameter's domain
+// edge) grounds to it; any other binder is underived. A reference resolve did not record is the tree
+// disagreeing with the resolver that produced it: refused, located.
 fn infer_lexical_reference_facts(n: Node, resolved: ResolvedTree, instances: List<TypeVariableInstance>, binder_types: List<InferBinderType>) -> Outcome<InferredFacts> {
   match infer_descent_witness_for_node(n: n) {
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -1914,12 +1916,16 @@ type RefinementDeclaration {
 }
 
 fn refinement_declaration(index: SymbolIndex, reference: Node) -> Optional<RefinementDeclaration> {
-  match declaration_reference_path_optional(node: reference) {
-    Absent => Absent
-    Present { value: path } =>
-      match symbol_index_lookup(index: index, qualified_path: path) {
+  match refinement_declaration_of_node(decl: reference) {
+    Present { value: inline } => Present { value: inline }
+    Absent =>
+      match declaration_reference_path_optional(node: reference) {
         Absent => Absent
-        Present { value: decl } => refinement_declaration_of_node(decl: decl)
+        Present { value: path } =>
+          match symbol_index_lookup(index: index, qualified_path: path) {
+            Absent => Absent
+            Present { value: decl } => refinement_declaration_of_node(decl: decl)
+          }
       }
   }
 }
@@ -2726,8 +2732,8 @@ fn infer_match(
 ) -> Outcome<InferredFacts> {
   let positional_targets = node_positional_child_targets(node: node)
   match list_tail(xs: positional_targets) {
-    TailAbsent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
-    TailFound { tail: arms } =>
+    Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
+    Present { value: arms } =>
       if arms |> any(fn(arm) { infer_match_arm_pattern_is_literal(arm: arm) }) {
         infer_match_bool(node: node, partials: partials, entries: entries, resolved: resolved)
       } else if arms |> any(fn(arm) { infer_match_arm_pattern_is_constructor(arm: arm) }) {
@@ -2774,10 +2780,7 @@ fn infer_type_head_and_args(t: Node) -> InferTypeHeadArgs {
       match list_at_optional(xs: targets, index: 0) {
         Absent => InferTypeHeadArgs { head: t, args: Empty }
         Present { value: head } =>
-          match list_tail(xs: targets) {
-            TailFound { tail: args } => InferTypeHeadArgs { head: head, args: args }
-            TailAbsent => InferTypeHeadArgs { head: head, args: Empty }
-          }
+          InferTypeHeadArgs { head: head, args: skip(xs: targets, n: 1) }
       }
     TypeNode { connective: _ } => InferTypeHeadArgs { head: t, args: Empty }
     ComputationNode { behavior: _ } => InferTypeHeadArgs { head: t, args: Empty }
@@ -2909,10 +2912,7 @@ fn infer_coproduct_arm_pattern_constructed(pat: Node) -> InferCoproductArmPatter
           match qualified_name_last_segment(qn: path) {
             Absent => ArmPatternUnread
             Present { value: tag } =>
-              match list_tail(xs: pat.children) {
-                TailFound { tail: fields } => ArmPatternVariant { tag: tag, fields: fields }
-                TailAbsent => ArmPatternVariant { tag: tag, fields: Empty }
-              }
+              ArmPatternVariant { tag: tag, fields: skip(xs: pat.children, n: 1) }
           }
       }
   }
@@ -3199,8 +3199,8 @@ fn infer_match_coproduct(
       Absent => outcome_rejected(infer_match_shape_invalid_diagnostic(node: node))
       Present { value: scrutinee_target } =>
         match list_tail(xs: positional_targets) {
-          TailAbsent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
-          TailFound { tail: arms } =>
+          Absent => outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+          Present { value: arms } =>
             match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
               Rejected { diagnostics: r } => Rejected { diagnostics: r }
               Accepted { value: _, diagnostics: cd } =>
@@ -3551,10 +3551,7 @@ fn infer_equality_not_derived(node: Node, od: Diagnostics) -> Outcome<InferredFa
 }
 
 fn infer_transform_argument_targets(node: Node) -> List<Node> {
-  match list_tail(xs: node_positional_child_targets(node: node)) {
-    TailAbsent => Empty
-    TailFound { tail: t } => t
-  }
+  skip(xs: node_positional_child_targets(node: node), n: 1)
 }
 
 fn infer_operator_arrow(operator: Node) -> Optional<Node> {
@@ -5553,16 +5550,7 @@ fn infer_gather_bind_annotation_row_on_entries(
         children_remaining: 0
       )
     Accepted { value: _, diagnostics: d } =>
-      infer_gather_transform_frontier_on_entries(
-        node: node,
-        entries: entries,
-        pending: diagnostics_merge(outer: pending, inner: d),
-        partials: partials,
-        kinds: kinds,
-        resolved: resolved,
-        instances: infer_no_type_variable_instances(),
-        binder_types: infer_no_binder_types()
-      )
+      infer_gather_let_result_row(node: node, entries: entries, pending: diagnostics_merge(outer: pending, inner: d), partials: partials, kinds: kinds, resolved: resolved)
   }
 }
 
@@ -5831,7 +5819,21 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
             await_transform_row: false,
             children_remaining: length(xs: n.children)
           )
-        Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
+        Absent =>
+          match bind_binder(n: n) {
+            Present { value: _ } =>
+              infer_gather_fold_acc_ok(
+                node: n,
+                entries: empty_inferred_facts_entry_list(),
+                pending: None,
+                await_branch_row: false,
+                await_match_row: false,
+                await_loop_row: false,
+                await_transform_row: false,
+                children_remaining: length(xs: n.children)
+              )
+            Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
+          }
       }
       }
     TypeNode { connective: Atom { identity: _ } } => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
@@ -6319,6 +6321,7 @@ fn infer_gather_fold_step(
     || arrow_named_edge_is_metadata(e: edge)
     || infer_declaration_binder_edge(parent: acc.node, edge: edge)
     || match_arm_pattern_edge(parent: acc.node, edge: edge)
+    || bind_key_edge(parent: acc.node, edge: edge)
     || (resolved_reference_body_kind(target: acc.node) != NotMarkedReference) {
     infer_gather_fold_step_merged(
       acc: acc,
@@ -7049,6 +7052,9 @@ fn infer_gather_settled_row(
         resolved: resolved
       )
     Absent =>
+      if infer_is_let_bind(bind: acc.node) {
+        infer_gather_let_result_row(node: acc.node, entries: merged_entries, pending: merged_pending, partials: partials, kinds: kinds, resolved: resolved)
+      } else {
       match infer_declared_position_check(node: acc.node, entries: merged_entries, declarations: resolved.resolved_declarations) {
         Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
@@ -7068,6 +7074,7 @@ fn infer_gather_settled_row(
             partials: partials,
             resolved: resolved
           )
+      }
       }
   }
   }
@@ -7457,6 +7464,8 @@ fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherF
         infer_fold_carrier_frame(bind: parent, frame: infer_frame_inherited(frame: frame), acc: acc, loop_node: edge.target, resolved: resolved)
       } else if infer_loop_takes_collection_member(loop_node: parent) {
         infer_fold_member_frame(loop_node: parent, frame: infer_frame_inherited(frame: frame), acc: acc, step: edge.target, resolved: resolved)
+      } else if infer_let_body_edge(parent: parent, edge: edge) {
+        infer_let_body_frame(bind: parent, frame: infer_frame_inherited(frame: frame), acc: acc)
       } else {
         match parent.kind {
           ComputationNode { behavior: Match } =>
@@ -8012,6 +8021,98 @@ fn infer_bind_encodes_collection_fold(bind: Node) -> Bool {
 
 fn infer_bind_value(bind: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: bind), index: 1)
+}
+
+// AN ORDINARY `let`: a Bind whose binder key v2.compiler.lexical_scope bind_binder reads -- the one reader
+// resolve sites the binder with, so the frame row below is keyed exactly where resolve recorded the
+// binding -- and that does not encode a collection fold (that Bind's binder is the fold carrier, typed by
+// infer_fold_carrier_frame). An annotated let is one too; its annotation is a named edge beside the three
+// positionals.
+fn infer_is_let_bind(bind: Node) -> Bool {
+  match bind_binder(n: bind) {
+    Present { value: _ } => !infer_bind_encodes_collection_fold(bind: bind)
+    Absent => false
+  }
+}
+
+fn infer_bind_body(bind: Node) -> Optional<Node> {
+  list_at_optional(xs: node_positional_child_targets(node: bind), index: 2)
+}
+
+fn infer_let_body_edge(parent: Node, edge: Edge) -> Bool {
+  if infer_is_let_bind(bind: parent) {
+    match infer_bind_body(bind: parent) {
+      Present { value: body } => edge.target == body
+      Absent => false
+    }
+  } else {
+    false
+  }
+}
+
+// THE LET BODY IS ENTERED AFTER THE VALUE HAS SETTLED, under a frame with one InferBinderType row at the
+// binder's site: the dependent-child frame match arms and the fold carrier already use
+// (gunbc.recurring_failure_mode bind_and_match_binders_not_typed_from_their_dependency_sibling). An
+// annotated binder is typed by its annotation -- the declared type; the value is evidence judged against it
+// at PositionLetAnnotation (infer_bind_annotation_check), never a second answer for the binder. An
+// unannotated binder is typed by the value's settled type; a value with no derived type adds no row, so its
+// references stay on the counted frontier rather than taking a guessed type. The value is read from the
+// settled entries, never from resolve's LexicalValued node, which is the value before its own subtree was
+// resolved and so is not an entry key.
+fn infer_let_body_frame(bind: Node, frame: InferFrame, acc: InferGatherFoldAcc) -> InferFrame {
+  match bind_binder(n: bind) {
+    Absent => frame
+    Present { value: b } =>
+      match type_annotation_optional(n: bind) {
+        Present { value: annotation } =>
+          infer_frame_with_binder_type(frame: frame, row: InferBinderType { site: b.atom.occurrence_id, derived: infer_frame_instantiated(declared: annotation, instances: frame.instances) })
+        Absent =>
+          match infer_bind_value(bind: bind) {
+            Absent => frame
+            Present { value: value } =>
+              match infer_settled_type_at(target: value, entries: acc.entries) {
+                Absent => frame
+                Present { value: t } => infer_frame_with_binder_type(frame: frame, row: InferBinderType { site: b.atom.occurrence_id, derived: t })
+              }
+          }
+      }
+  }
+}
+
+fn infer_frame_with_binder_type(frame: InferFrame, row: InferBinderType) -> InferFrame {
+  InferFrame { instances: frame.instances, binder_types: list_snoc_item(xs: frame.binder_types, item: row), entering: frame.entering }
+}
+
+// THE LET IS ITS BODY: once the body has settled the Bind derives at the body's type -- not the
+// annotation's, not the value's -- so the enclosing check (a declared return, an argument) judges what
+// the let actually produces. A body with no derived type leaves the Bind on the counted frontier.
+fn infer_gather_let_result_row(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  resolved: ResolvedTree,
+) -> InferGatherFoldAcc {
+  match infer_bind_body(bind: node) {
+    Absent => infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved, instances: infer_no_type_variable_instances(), binder_types: infer_no_binder_types())
+    Present { value: body } =>
+      match infer_settled_type_at(target: body, entries: entries) {
+        Absent => infer_gather_transform_frontier_on_entries(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved, instances: infer_no_type_variable_instances(), binder_types: infer_no_binder_types())
+        Present { value: body_type } =>
+          match infer_descent_witness_for_node(n: node) {
+            Violates { diagnostic: d } =>
+              infer_gather_formed_facts_row(node: node, formed: Rejected { diagnostics: diagnostics_singleton(d: d) }, entries: entries, pending: pending)
+            Holds { value: descent_proof } =>
+              infer_gather_formed_facts_row(
+                node: node,
+                formed: inferred_facts_from_derived_type(node: node, derived_type: body_type, descent: Holds { value: descent_proof }),
+                entries: entries,
+                pending: pending
+              )
+          }
+      }
+  }
 }
 
 // THE CARRIER FORMAL IS INSTANTIATED FROM INIT, as the member formal is from the domain: the Bind's value

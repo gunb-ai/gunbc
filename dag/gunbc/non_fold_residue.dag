@@ -20,8 +20,6 @@ import std.types { List }
 // receipt on the PR. v1 seed-reader change is admissible because it unblocks residue
 // burn-down for the v2 program.
 
-data nfr_reason_namespace_tree_eq: String = "NamespaceTree structural equality residue (nested off-variant wildcard arm returning false), landed unrostered with effect_grant.dag in #6817 and surfaced when a later branch brought the file into the affected set"
-
 data nfr_dissolve_derived_equality: DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
 
 data nfr_reason_land_red_era: String = "landed unrostered while the gate was red during the land-red-with-local-proof era (revoked 2026-07-12); declared so the ratchet re-arms"
@@ -58,16 +56,6 @@ data nfr_observing_layer_home_prefixes: List<String> = [
 // Seed-mirrored subjects and extdeps coverage receipts: lists stay here.
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/std/effects.dag::key_source_eq" },
-      reason: nfr_reason_structural_eq_mint,
-      dissolution: nfr_dissolve_derived_equality,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::declaration_exposure_eq" },
-      reason: nfr_reason_structural_eq_mint,
-      dissolution: nfr_dissolve_derived_equality,
-    },
-  FrontierRow {
       subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::section13_population_law_id_eq" },
       reason: nfr_reason_structural_eq_mint,
       dissolution: unbound_dissolution(description: "DISSOLVE-ON: Section13PopulationLawId equality becomes derived from inhabitance (dag/std/algebra, DESIGN §3/§4) and the hand nested-match equality fold deletes with the row"),
@@ -91,11 +79,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       subject: PathSubject { path: "dag/extdeps/languages/markdown.dag::md_nested" },
       reason: nfr_reason_land_red_era,
       dissolution: nfr_dissolve_owning_fold,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "dag/extdeps/linux/proc_self_cgroup.dag::unified_membership_outcome_tag_eq" },
-      reason: nfr_reason_structural_eq_mint,
-      dissolution: nfr_dissolve_derived_equality,
     },
   FrontierRow {
       subject: PathSubject { path: "dag/extdeps/tools/ldd.dag::ldd_reading_of" },

@@ -30,6 +30,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   match_arm_pattern_edge,
+  bind_key_edge,
   arrow_signature_order_label,
   arrow_named_edge_is_metadata,
   node_subtree_nodes,
@@ -223,7 +224,8 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
 // THE NODES INFER DERIVES FACTS FOR: every node of the subtree except those under an Arrow's declared
 // order edge (arrow_signature_order_label, parameter LABELS), under a declaration's binder edge
 // (declaration_binder_edge, binder NAMES) and under a match arm's pattern edge
-// (v2.std.node match_arm_pattern_edge, a binding form). v2.compiler.infer declines both subtrees and carries each as
+// (v2.std.node match_arm_pattern_edge, a binding form) and a Bind's key (v2.std.node bind_key_edge, a binder name).
+// v2.compiler.infer declines these subtrees and carries each as
 // its parent's own evidence. Every stage that asks infer for a node's facts --
 // v2.compiler.program_partition's closure, a census over derived products -- walks THIS set, so none
 // demands facts infer was never asked to produce. It lives here, not in v2.std.node, because the binder
@@ -237,7 +239,7 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
 // (infer_facts_key_conflict). v2.compiler.infer's gather skips the same cells by the same accessor.
 fn node_inferred_subtree_nodes(root: Node) -> List<Node> {
   fold(root.children, init: [root], f: fn(acc, e) {
-    if (e.label == arrow_signature_order_label) || arrow_named_edge_is_metadata(e: e) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) != NotMarkedReference) {
+    if (e.label == arrow_signature_order_label) || arrow_named_edge_is_metadata(e: e) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) || bind_key_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) != NotMarkedReference) {
       acc
     } else {
       concat(acc, node_inferred_subtree_nodes(root: e.target))

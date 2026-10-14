@@ -1800,6 +1800,35 @@ fn match_arm_pattern_edge(parent: Node, edge: Edge) -> Bool {
     && edge_is_core(e: edge, marker: MatchArmPatternEdge)
 }
 
+// THE KEY EDGE OF A BIND: the first of a Bind's exactly three positionals, when it is an atom -- the shape
+// v2.compiler.lexical_scope bind_binder sites a `let` binder at. The key is a binder NAME, a binding form as a
+// match arm's pattern is, so infer declines it (v2.compiler.infer infer_gather_fold_step) and the walk over
+// the nodes infer derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes). The binder's
+// type is the InferBinderType row its references read, never a fact about the key atom.
+fn bind_key_edge_is(key: Edge, edge: Edge) -> Bool {
+  key == edge && match key.target.kind {
+    TypeNode { connective: Atom { identity: _ } } => true
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn bind_key_edge(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    ComputationNode { behavior: Bind } =>
+      if positional_child_count(children: parent.children) == 3 {
+        match positional_edges(children: parent.children) {
+          Cons { head: e0, tail: _ } => bind_key_edge_is(key: e0, edge: edge)
+          Empty => false
+        }
+      } else {
+        false
+      }
+    ComputationNode { behavior: _ } => false
+    TypeNode { connective: _ } => false
+  }
+}
+
 type MatchArmChildrenConformFold {
   ok: Bool
   skipped_scrutinee: Bool
