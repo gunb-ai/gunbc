@@ -10835,6 +10835,8 @@ type OptionalDeclarationReading
   | IsOtherType
   | OptionalUnrecovered { spelling: String }
 
+// The Bool is only read after infer_record_lit has refused OptionalUnrecovered (the refusal is
+// decided there, on the reading itself); every other site asks only "is it std.optional::Optional".
 fn node_is_std_optional(n: Node, scope: InferScope) -> Bool {
   match optional_declaration_reading(n: n, scope: scope) {
     IsStdOptional => true
