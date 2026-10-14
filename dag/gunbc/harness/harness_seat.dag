@@ -73,7 +73,7 @@ import std.algebra { trim }
 import std.checked_arithmetic { checked_int_to_nat }
 import product.fabric.execution { ReservationRef }
 import gunbc.serving.caller_backlog {
-  DispatchTurnKey, LogicalWorkId, WorkIdDerivation, WorkIdDerived, WorkIdKeyNotOctets, logical_work_id_of,
+  DispatchTurnKey, DurableAttemptStanding, LogicalWorkId, WorkIdDerivation, WorkIdDerived, WorkIdKeyNotOctets, logical_work_id_of,
   CallerWorkPhase, WorkWaiting, WorkCompleted, WorkCancelled, WorkRecoveryBoundExceeded, recovery_deficit_text,
   CallerWorkRecord, CallerBacklogSnapshot, empty_caller_backlog,
   RecoveryEvent, RecoveryProbe, RecoveryRequest,
