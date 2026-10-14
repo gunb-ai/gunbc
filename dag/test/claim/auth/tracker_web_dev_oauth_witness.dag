@@ -169,7 +169,7 @@ test fn srv2_hand_started_unit_is_unmodeled_and_not_adopted() -> Bool {
     )
     && match frontier_rows_keyed_roster_build(rows: tracker_web_oauth_frontier_rows) {
       KeyedRosterBuilt { rows: roster } =>
-        any(roster, kr => match kr.row_key {
+        any(roster, kr => match kr.row_key.subject {
           PathSubject { path: p } => p == "gunbc-dash-18082.service"
           _ => false
         })
@@ -261,7 +261,7 @@ test fn console_readback_is_independent_and_expires() -> Bool {
     }
     && match frontier_rows_keyed_roster_build(rows: tracker_web_oauth_frontier_rows) {
       KeyedRosterBuilt { rows: roster } =>
-        any(roster, kr => match kr.row_key {
+        any(roster, kr => match kr.row_key.subject {
           PathSubject { path: p } => p == (tracker_web_test_target_owned_domain as String)
           _ => false
         })

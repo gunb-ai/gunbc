@@ -20,7 +20,6 @@ import gunbc.doc_graph_roots {
   hand_authored_doc_binds_population,
   hand_authored_doc_binds,
   hand_authored_binds_to_keyed_rows,
-  hand_authored_bind_key_eq,
   hand_authored_doc_path,
   HandAuthoredDocBind, PlanDoc,
   HandAuthoredDocBindsBuilt,
@@ -131,11 +130,10 @@ test fn doc_graph_duplicate_bind_key_red_control() -> Bool {
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic negative control: two rows carrying one (home, slug) identity must refuse at keyed construction — proves the construction wall discriminates") },
   }
   match keyed_roster_build(
-    incomings: hand_authored_binds_to_keyed_rows(binds: [dup, dup]),
-    key_eq: hand_authored_bind_key_eq,
+    incomings: hand_authored_binds_to_keyed_rows(binds: [dup, dup])
   ) {
     KeyedRosterBuilt { rows: _ } => false
-    KeyedRosterBuildDuplicateKey { key: k, first: _, duplicate: _ } => k == "plan/synthetic-duplicate-identity-control"
+    KeyedRosterBuildDuplicateKey { key: k, first: _, duplicate: _ } => k.subject == "plan/synthetic-duplicate-identity-control"
   }
 }
 
@@ -153,7 +151,7 @@ fn fixture_union_branch_b_disjoint_bind() -> HandAuthoredDocBind {
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "synthetic-union-branch-b-disjoint",
-    primary_work: DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key_eq", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_binds_to_keyed_rows", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic union fixture: branch B disjoint bind key") },
   }
@@ -172,8 +170,7 @@ fn fixture_union_branch_b_overlap_bind() -> HandAuthoredDocBind {
 test fn doc_graph_bind_two_branch_union_disjoint_keys_admits() -> Bool {
   match keyed_roster_union(
     left: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_a_bind()]),
-    right: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_b_disjoint_bind()]),
-    key_eq: hand_authored_bind_key_eq,
+    right: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_b_disjoint_bind()])
   ) {
     KeyedRosterBuilt { rows: _ } => true
     KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
@@ -183,12 +180,11 @@ test fn doc_graph_bind_two_branch_union_disjoint_keys_admits() -> Bool {
 test fn doc_graph_bind_two_branch_union_overlap_refuses_red_control() -> Bool {
   match keyed_roster_union(
     left: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_a_bind()]),
-    right: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_b_overlap_bind()]),
-    key_eq: hand_authored_bind_key_eq,
+    right: hand_authored_binds_to_keyed_rows(binds: [fixture_union_branch_b_overlap_bind()])
   ) {
     KeyedRosterBuilt { rows: _ } => false
     KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
-      k == "plan/synthetic-union-branch-a"
+      k.subject == "plan/synthetic-union-branch-a"
         && f.value.slug == "synthetic-union-branch-a"
         && d.value.slug == "synthetic-union-branch-a"
   }
