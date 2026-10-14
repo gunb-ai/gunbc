@@ -130,3 +130,14 @@ test fn kps_mk8_executes() -> Bool {
   match cref_eval_of_call_to(o: cref_assemble(src: kpr_src()), name: ^mk8) { Present { value: Accepted { value: _, diagnostics: _ } } => true
     _ => false }
 }
+
+fn kpt_runs(src: String, name: Symbol) -> Bool {
+  match cref_eval_of_call_to(o: cref_assemble(src: src), name: name) { Present { value: Accepted { value: _, diagnostics: _ } } => true
+    _ => false }
+}
+
+test fn kpt_plain_int_param_fn_runs() -> Bool { kpt_runs(src: "module p\n\nfn plain(x: Int) -> Int {\n  x\n}\n\nfn consumer() -> Int {\n  plain(x: 3)\n}\n", name: ^plain) }
+test fn kpt_generic_unkinded_fn_runs() -> Bool { kpt_runs(src: "module p\n\nfn ident<t>(x: Int) -> Int {\n  x\n}\n\nfn consumer() -> Int {\n  ident(x: 3)\n}\n", name: ^ident) }
+test fn kpt_generic_kinded_fn_no_body_read_runs() -> Bool { kpt_runs(src: concat(kpe_prelude(), "fn constant<bits: Resolution>(x: Box<bits>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  constant(x: mk8())\n}\n"), name: ^constant) }
+test fn kpt_ctor_fn_runs() -> Bool { kpt_runs(src: concat(kpe_prelude(), "fn consumer() -> Int {\n  3\n}\n"), name: ^mk8) }
+test fn kpt_box_param_plain_fn_runs() -> Bool { kpt_runs(src: concat(kpe_prelude(), "fn take(x: Box<8>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  take(x: mk8())\n}\n"), name: ^take) }
