@@ -81,7 +81,7 @@ use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
 use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
 pub use crate::std_literal_elaboration::{
     elaborate_literal_at, kernel_grounding_for, kernel_mint_declaration_for,
-    literal_elaboration_refusal_message, literal_source_kind_of,
+    kernel_operation_mint_admitted, literal_elaboration_refusal_message, literal_source_kind_of,
 };
 pub use crate::std_literal_elaboration::{
     KernelGrounding, KernelGroundingLookup, KernelMintDeclarationLookup, LiteralElaboration,
@@ -30773,22 +30773,7 @@ pub fn kernel_mint_shape_diagnostics(
                 (*if (row.declaration.clone().module_path.clone() != module_name.clone()) {
                     Rc::new(vec![])
                 } else {
-                    if (row.minted_name.clone() != kernel_optional_mint_name()) {
-                        Rc::new(vec![crate::v1_std_core::make_error_node(
-                            Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
-                                declaration_name: row.declaration.clone().decl_name.clone(),
-                                cause: v1_rt::concat(
-                                    v1_rt::concat(
-                                        "the seed mints no kernel type named '".to_string(),
-                                        row.minted_name.clone(),
-                                    ),
-                                    "'".to_string(),
-                                ),
-                                span: module_span.clone(),
-                            }),
-                            module_name.clone(),
-                        )])
-                    } else {
+                    if (row.minted_name.clone() == kernel_optional_mint_name()) {
                         match crate::v1_compiler_infer_env::declaration_node_of_ref(
                             row.declaration.clone(),
                             env.clone(),
@@ -30823,6 +30808,41 @@ pub fn kernel_mint_shape_diagnostics(
                                 }
                             }
                         }
+                    } else if kernel_operation_mint_admitted(
+                        row.minted_name.clone(),
+                        row.declaration.clone().decl_name.clone(),
+                    ) {
+                        match crate::v1_compiler_infer_env::declaration_node_of_ref(
+                            row.declaration.clone(),
+                            env.clone(),
+                        ) {
+                            std::option::Option::None => {
+                                Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+                                        declaration_name: row.declaration.clone().decl_name.clone(),
+                                        cause: "this module does not declare it".to_string(),
+                                        span: module_span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )])
+                            }
+                            Some(_) => Rc::new(vec![]),
+                        }
+                    } else {
+                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                            Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
+                                declaration_name: row.declaration.clone().decl_name.clone(),
+                                cause: v1_rt::concat(
+                                    v1_rt::concat(
+                                        "the seed mints no kernel type named '".to_string(),
+                                        row.minted_name.clone(),
+                                    ),
+                                    "'".to_string(),
+                                ),
+                                span: module_span.clone(),
+                            }),
+                            module_name.clone(),
+                        )])
                     }
                 })
                 .iter()

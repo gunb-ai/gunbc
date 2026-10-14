@@ -19,7 +19,8 @@ import std.literal_elaboration {
   KernelMintDeclarationAbsent,
   KernelMintDeclarationAmbiguous,
   KernelMintDeclarationFound,
-  kernel_mint_declaration_for
+  kernel_mint_declaration_for,
+  kernel_operation_mint_admitted
 }
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
 import std.decl_ref { decl_ref, declaration_ref_eq }
@@ -31,7 +32,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT (i): a bare authored concat(a, b) binds to the one declaration
 // std.algebra.collection_concat_shape when that identity is imported; without the import it
-// refuses. No free fn concat. kernel_mint_declaration_rows stays Optional-only.
+// refuses. No free fn concat. Mint rows pair callee spellings to those identities. The shape
+// guard still refuses a name that is neither Optional nor an admitted pairing.
 
 // REAL PATH: the named templates in THIS MODULE'S import of std.algebra carry the kernel spellings.
 test fn collection_shape_rows_carry_the_kernel_spellings() -> Bool {
@@ -45,8 +47,26 @@ test fn collection_shape_rows_carry_the_kernel_spellings() -> Bool {
     && collection_map_insert_shape().name == "map_insert"
 }
 
-test fn concat_has_no_kernel_mint_row() -> Bool {
+test fn concat_mint_row_binds_the_algebra_template() -> Bool {
   match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "concat") {
+    KernelMintDeclarationFound { declaration: d } =>
+      declaration_ref_eq(a: d, b: decl_ref(module_path: "std.algebra", decl_name: "collection_concat_shape"))
+    KernelMintDeclarationAbsent => false
+    KernelMintDeclarationAmbiguous { row_count: _ } => false
+  }
+}
+
+// RED: kernel_mint_shape_diagnostics still refuses a minted_name that is not Optional and not
+// an admitted ruling-B pairing (same message class as #13178: no kernel type of that name).
+test fn undeclared_mint_name_is_not_admitted() -> Bool {
+  !kernel_operation_mint_admitted(minted_name: "not_a_kernel_mint", decl_name: "Optional")
+    && !kernel_operation_mint_admitted(minted_name: "concat", decl_name: "Optional")
+    && !kernel_operation_mint_admitted(minted_name: "Bool", decl_name: "collection_concat_shape")
+    && kernel_operation_mint_admitted(minted_name: "concat", decl_name: "collection_concat_shape")
+}
+
+test fn unbound_mint_name_has_no_row() -> Bool {
+  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "not_a_kernel_mint") {
     KernelMintDeclarationAbsent => true
     KernelMintDeclarationFound { declaration: _ } => false
     KernelMintDeclarationAmbiguous { row_count: _ } => false

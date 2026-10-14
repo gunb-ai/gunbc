@@ -381,6 +381,17 @@ pub fn kernel_mint_declaration_for(
     }
 }
 
+pub fn kernel_operation_mint_admitted(minted_name: String, decl_name: String) -> bool {
+    (minted_name == "concat" && decl_name == "collection_concat_shape")
+        || (minted_name == "count" && decl_name == "collection_count_shape")
+        || (minted_name == "map" && decl_name == "collection_map_shape")
+        || (minted_name == "filter" && decl_name == "collection_filter_shape")
+        || (minted_name == "first" && decl_name == "collection_first_shape")
+        || (minted_name == "join" && decl_name == "collection_join_shape")
+        || (minted_name == "map_get" && decl_name == "collection_map_get_shape")
+        || (minted_name == "map_insert" && decl_name == "collection_map_insert_shape")
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KernelMintOwnership {

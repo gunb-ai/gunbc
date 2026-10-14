@@ -780,7 +780,7 @@ root” reading is retired so it cannot license an ambient last-tier bind.
 
 **Declared frontier, not a present wall.** The one declaration for each collection callee is
 the `std.algebra` `collection_*_shape` row (no free `fn concat`; `kernel_mint_declaration_rows`
-stays the Optional mint only). Path (i): a bare authored `concat(a, b)` / `count(xs)` binds
+pairs Optional plus those callee spellings to the one identity each). Path (i): a bare authored `concat(a, b)` / `count(xs)` binds
 that row when the module imported the row’s declaration name
 (`collection_concat_shape` / `collection_count_shape`); without the import it refuses. That
 gate is `v2.compiler.resolve` `collection_roster_identity_imported`, and it covers only the

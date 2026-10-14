@@ -131,10 +131,44 @@ pub fn kernel_optional_mint_name() -> String {
 pub fn kernel_mint_declaration_rows() -> Rc<Vec<Rc<KernelMintDeclaration>>> {
     thread_local! {
             static CACHED: Rc<Vec<Rc<KernelMintDeclaration>>> = {
-                Rc::new(vec![Rc::new(KernelMintDeclaration {
-        minted_name: kernel_optional_mint_name(),
-        declaration: crate::std_decl_ref::decl_ref("std.optional".to_string(), "Optional".to_string()),
-    })])
+                Rc::new(vec![
+                    Rc::new(KernelMintDeclaration {
+                        minted_name: kernel_optional_mint_name(),
+                        declaration: crate::std_decl_ref::decl_ref("std.optional".to_string(), "Optional".to_string()),
+                    }),
+                    Rc::new(KernelMintDeclaration {
+                        minted_name: "concat".to_string(),
+                        declaration: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "collection_concat_shape".to_string()),
+                    }),
+                    Rc::new(KernelMintDeclaration {
+                        minted_name: "count".to_string(),
+                        declaration: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "collection_count_shape".to_string()),
+                    }),
+                    Rc::new(KernelMintDeclaration {
+                        minted_name: "map".to_string(),
+                        declaration: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "collection_map_shape".to_string()),
+                    }),
+                    Rc::new(KernelMintDeclaration {
+                        minted_name: "filter".to_string(),
+                        declaration: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "collection_filter_shape".to_string()),
+                    }),
+                    Rc::new(KernelMintDeclaration {
+                        minted_name: "first".to_string(),
+                        declaration: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "collection_first_shape".to_string()),
+                    }),
+                    Rc::new(KernelMintDeclaration {
+                        minted_name: "join".to_string(),
+                        declaration: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "collection_join_shape".to_string()),
+                    }),
+                    Rc::new(KernelMintDeclaration {
+                        minted_name: "map_get".to_string(),
+                        declaration: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "collection_map_get_shape".to_string()),
+                    }),
+                    Rc::new(KernelMintDeclaration {
+                        minted_name: "map_insert".to_string(),
+                        declaration: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "collection_map_insert_shape".to_string()),
+                    }),
+                ])
             };
         }
     CACHED.with(|c: &Rc<Vec<Rc<KernelMintDeclaration>>>| c.clone())
