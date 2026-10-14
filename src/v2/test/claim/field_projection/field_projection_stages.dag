@@ -774,7 +774,8 @@ fn fps_root_kind_namespace() -> Namespace {
     module_qn: base.module_qn,
     test_code: base.test_code,
     declared_in: Cons { head: ^p, tail: Empty },
-    imported_origins: base.imported_origins
+    imported_origins: base.imported_origins,
+    unavailable_providers: base.unavailable_providers
   }
 }
 

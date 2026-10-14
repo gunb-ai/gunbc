@@ -191,7 +191,8 @@ fn claim_resolve_context(module: QualifiedName, index: SymbolIndex) -> ResolveCo
     module_qn: module,
     test_code: empty.test_code,
     declared_in: module,
-    imported_origins: empty.imported_origins
+    imported_origins: empty.imported_origins,
+    unavailable_providers: empty.unavailable_providers
   }
   ResolveContext {
     scope: ScopeRoot { module: namespace },

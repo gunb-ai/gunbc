@@ -284,7 +284,8 @@ fn pr_ctx(kind: FrameKind) -> ResolveContext {
     module_qn: pr_qn(dotted: "m"),
     test_code: test_code_index_empty(),
     declared_in: pr_qn(dotted: "m"),
-    imported_origins: empty_map()
+    imported_origins: empty_map(),
+    unavailable_providers: []
   }
   ResolveContext {
     scope: ScopeFrame {
