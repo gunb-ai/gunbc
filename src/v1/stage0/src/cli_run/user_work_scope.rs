@@ -26,6 +26,9 @@ const SERVICE_UNIT_SUFFIX: &str = ".service";
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_slice_unit_suffix`
 const SLICE_UNIT_SUFFIX: &str = ".slice";
 // SEED MIRROR of `gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes` unit names
+// (rows already filtered by byte_size_count(memory_max) > 0 in modeled_system_slice_memory_max).
+// Wrap cannot eval the DAG; this list is seed-retained with user_work_scope.rs. A census name
+// missing here is a RED in `the_seed_trampoline_mirrors_the_declared_wrap_standing`.
 const MODELED_CAPPED_SYSTEM_SLICES: &[&str] = &[
     "gunbc-repository-convergence.slice",
     "gunbc-approval-broker.slice",
