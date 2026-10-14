@@ -375,42 +375,42 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "CgroupMemoryRead",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "leaf_cgroup_dir",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "nearest_cgroup_with_peak",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "read_file",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "read_count",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "events_field",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "children_of_cgroup",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "QualificationRefusal",
       field: WholeDeclaration
     },
@@ -420,22 +420,22 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "read_cgroup_memory",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "resolve_measurement_cgroup",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "strangers_in_cgroup",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
+      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "reset_or_baseline_peak",
       field: WholeDeclaration
     },

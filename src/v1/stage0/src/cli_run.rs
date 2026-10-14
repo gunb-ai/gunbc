@@ -87,6 +87,7 @@ mod active_workset;
 mod census_heads;
 mod checker_dependency;
 pub use checker_dependency::write_checker_inputs_record;
+mod claim_execution;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
@@ -95,6 +96,7 @@ mod native_lane_runner;
 mod native_product_cache;
 pub mod reach_base_standings;
 pub mod required_ci_measurement;
+pub use claim_execution::*;
 mod required_floor_runner;
 mod required_lane_roster;
 pub mod rostered_row_join;
@@ -114,11 +116,8 @@ pub use native_lane_runner::{
     MEASURED_SPAWN_RECEIPT_ENV,
 };
 pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
+pub use required_floor_runner::floor_seam;
 pub(crate) use required_floor_runner::*;
-pub use required_floor_runner::{
-    floor_seam, make_eval_context, make_eval_context_with_runtime_options, run_claim_measured,
-    run_required_floor,
-};
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
 pub mod pre_entry_phase;
@@ -213,6 +212,7 @@ mod required_regen_host;
 // `gunbc.target_invocation_seed_growth`.
 #[path = "behavioral_receipt_host.rs"]
 pub mod behavioral_receipt_host;
+pub mod cgroup_memory;
 pub mod floor_memory_supervisor;
 
 #[path = "target_invocation_host.rs"]

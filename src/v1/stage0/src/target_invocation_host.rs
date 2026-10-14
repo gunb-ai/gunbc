@@ -3072,8 +3072,8 @@ enum MemoryEnvelope {
     Bounded {
         grain: MemoryEnvelopeGrain,
         dir: std::path::PathBuf,
-        start: cli_run::floor_memory_supervisor::CgroupMemoryRead,
-        start_swap: cli_run::floor_memory_supervisor::CgroupSwapRead,
+        start: cli_run::cgroup_memory::CgroupMemoryRead,
+        start_swap: cli_run::cgroup_memory::CgroupSwapRead,
     },
 }
 
@@ -3131,20 +3131,18 @@ fn memory_envelope_requirement(
                         .to_string(),
                 );
             };
-            let start =
-                cli_run::floor_memory_supervisor::read_cgroup_memory(&dir).map_err(|refusal| {
-                    format!(
-                        "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
-                        refusal.render()
-                    )
-                })?;
-            let start_swap =
-                cli_run::floor_memory_supervisor::read_cgroup_swap(&dir).map_err(|refusal| {
-                    format!(
-                        "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
-                        refusal.render()
-                    )
-                })?;
+            let start = cli_run::cgroup_memory::read_cgroup_memory(&dir).map_err(|refusal| {
+                format!(
+                    "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
+                    refusal.render()
+                )
+            })?;
+            let start_swap = cli_run::cgroup_memory::read_cgroup_swap(&dir).map_err(|refusal| {
+                format!(
+                    "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
+                    refusal.render()
+                )
+            })?;
             Ok(MemoryEnvelope::Bounded {
                 grain,
                 dir,
@@ -3171,17 +3169,17 @@ fn memory_envelope_receipt(envelope: &MemoryEnvelope) -> Option<Result<String, S
     else {
         return None;
     };
-    let unreadable = |refusal: cli_run::floor_memory_supervisor::QualificationRefusal| {
+    let unreadable = |refusal: cli_run::cgroup_memory::QualificationRefusal| {
         format!(
             "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
             refusal.render()
         )
     };
-    let end = match cli_run::floor_memory_supervisor::read_cgroup_memory(dir) {
+    let end = match cli_run::cgroup_memory::read_cgroup_memory(dir) {
         Ok(read) => read,
         Err(refusal) => return Some(Err(unreadable(refusal))),
     };
-    let end_swap = match cli_run::floor_memory_supervisor::read_cgroup_swap(dir) {
+    let end_swap = match cli_run::cgroup_memory::read_cgroup_swap(dir) {
         Ok(read) => read,
         Err(refusal) => return Some(Err(unreadable(refusal))),
     };
@@ -3979,6 +3977,7 @@ fn typed_graph_exclusive_bytes_over(
 }
 
 fn run_floor_memory_qualification() -> InvocationOutcome {
+    use cli_run::cgroup_memory as cgroup;
     use cli_run::floor_memory_supervisor as sup;
 
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
@@ -3993,7 +3992,7 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
     let measured_roots = floor_memory_qualification_source_roots();
     let measured_lane = floor_memory_qualification_lane();
 
-    let cgroup = match sup::resolve_measurement_cgroup() {
+    let cgroup = match cgroup::resolve_measurement_cgroup() {
         Ok(dir) => dir,
         Err(refusal) => {
             return InvocationOutcome {
@@ -4005,13 +4004,13 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
 
     // BOTH GUARDS RUN BEFORE THE WORKLOAD, not after: a 35-minute run that turns out to be
     // unattributable is a wasted run, and worse, a tempting one to publish anyway.
-    match sup::children_of_cgroup(&cgroup) {
+    match cgroup::children_of_cgroup(&cgroup) {
         Ok(children) if !children.is_empty() => {
             return InvocationOutcome {
                 termination: Termination::Refused,
                 message: format!(
                     "floor-memory-qualification: refused: {}",
-                    sup::QualificationRefusal::MeasurementCgroupHasChildren {
+                    cgroup::QualificationRefusal::MeasurementCgroupHasChildren {
                         dir: cgroup.to_string_lossy().to_string(),
                         children,
                     }
@@ -4028,13 +4027,13 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
         }
     }
 
-    match sup::strangers_in_cgroup(&cgroup) {
+    match cgroup::strangers_in_cgroup(&cgroup) {
         Ok(strangers) if !strangers.is_empty() => {
             return InvocationOutcome {
                 termination: Termination::Refused,
                 message: format!(
                     "floor-memory-qualification: refused: {}",
-                    sup::QualificationRefusal::MeasurementCgroupShared {
+                    cgroup::QualificationRefusal::MeasurementCgroupShared {
                         dir: cgroup.to_string_lossy().to_string(),
                         strangers,
                     }
@@ -4051,7 +4050,7 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
         }
     }
 
-    let baseline_peak = match sup::reset_or_baseline_peak(&cgroup) {
+    let baseline_peak = match cgroup::reset_or_baseline_peak(&cgroup) {
         Ok(b) => b,
         Err(refusal) => {
             return InvocationOutcome {
@@ -4095,7 +4094,7 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
             }
         };
 
-    let read = match sup::read_cgroup_memory(&cgroup) {
+    let read = match cgroup::read_cgroup_memory(&cgroup) {
         Ok(r) => r,
         Err(refusal) => {
             return InvocationOutcome {
@@ -4114,7 +4113,7 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
             termination: Termination::Refused,
             message: format!(
                 "floor-memory-qualification: refused: {}",
-                sup::QualificationRefusal::PeakDominatedByPriorHistory {
+                cgroup::QualificationRefusal::PeakDominatedByPriorHistory {
                     dir: read.dir.clone(),
                     before: baseline_peak,
                     after: read.peak,
