@@ -15,7 +15,8 @@ import v2.cli.population_verbs {
   population_parse_accepted,
   population_parse_begin,
   population_parse_refused,
-  population_parse_report
+  population_parse_report,
+  parse_verdict_receipt_line_prefix
 }
 import std.algebra { fold_list, length, list_head }
 import v2.std.collection { empty_map }
@@ -52,7 +53,22 @@ data fixture_classes: List<RefusalClass> = [
 
 type Judgment
   = JudgedRefused { key: String, cause: String }
-  | JudgedParses { key: String }
+  | JudgedParses { key: String, source_digest: String }
+
+data fixture_source_digest: String = "fixture-source-digest"
+
+fn held_parse_report_text(parsed: String, declared: String) -> String {
+  concat(
+    "population parses: ",
+    parsed,
+    " module(s); ",
+    declared,
+    " refusal(s) declared by gunbc.parse_population_refusals, each met\n",
+    parse_verdict_receipt_line_prefix,
+    fixture_source_digest,
+    "\tAccepted"
+  )
+}
 
 // The begun declaration as a fixture tally. A duplicated declaration is carried as a tally whose
 // located lines are the duplicated keys, so the clean-start control below refuses it.
@@ -68,7 +84,8 @@ fn begun(classes: List<RefusalClass>) -> PopulationParse {
         declared: 0,
         roster: DeclaredRoster { ordered: no_declared, causes: no_causes },
         judged: no_judged,
-        refusals: keys
+        refusals: keys,
+        accepted_receipts: []
       }
     }
   }
@@ -77,7 +94,7 @@ fn begun(classes: List<RefusalClass>) -> PopulationParse {
 fn judge(tally: PopulationParse, judgment: Judgment) -> PopulationParse {
   match judgment {
     JudgedRefused { key: key, cause: cause } => population_parse_refused(tally: tally, key: key, cause: cause)
-    JudgedParses { key: key } => population_parse_accepted(tally: tally, key: key)
+    JudgedParses { key: key, source_digest: digest } => population_parse_accepted(tally: tally, key: key, source_digest: digest)
   }
 }
 
@@ -95,7 +112,7 @@ data every_declared_met: List<Judgment> = [
   JudgedRefused { key: "dag:a/one.dag", cause: "parse_g0_tokens_remain" },
   JudgedRefused { key: "dag:a/two.dag", cause: "parse_g0_tokens_remain" },
   JudgedRefused { key: "v2:b/three.dag", cause: "parse_declaration_marker_not_test" },
-  JudgedParses { key: "dag:a/four.dag" }
+  JudgedParses { key: "dag:a/four.dag", source_digest: fixture_source_digest }
 ]
 
 fn first_refusal(tally: PopulationParse) -> String {
@@ -110,7 +127,7 @@ fn first_refusal(tally: PopulationParse) -> String {
 test fn a_walk_meeting_every_declared_refusal_and_parsing_something_holds() -> Bool {
   let report = verdict(classes: fixture_classes, judgments: every_declared_met)
   report.held
-    && report.text == "population parses: 1 module(s); 3 refusal(s) declared by gunbc.parse_population_refusals, each met"
+    && report.text == held_parse_report_text(parsed: "1", declared: "3")
 }
 
 test fn a_declaration_begins_with_nothing_judged() -> Bool {
@@ -145,12 +162,12 @@ test fn a_member_is_declared_under_its_own_class_cause_only() -> Bool {
 }
 
 test fn an_unlisted_module_that_parses_is_counted_parsed() -> Bool {
-  let tally = population_parse_accepted(tally: begun(classes: fixture_classes), key: "dag:a/four.dag")
+  let tally = population_parse_accepted(tally: begun(classes: fixture_classes), key: "dag:a/four.dag", source_digest: fixture_source_digest)
   (tally.parsed == 1) && (tally.declared == 0) && (length(xs: tally.refusals) == 0)
 }
 
 test fn a_listed_module_that_parses_is_reported_and_not_counted() -> Bool {
-  let tally = population_parse_accepted(tally: begun(classes: fixture_classes), key: "dag:a/two.dag")
+  let tally = population_parse_accepted(tally: begun(classes: fixture_classes), key: "dag:a/two.dag", source_digest: fixture_source_digest)
   (tally.parsed == 0) && (length(xs: tally.refusals) == 1) && first_refusal(tally: tally).starts_with(prefix: "dag:a/two.dag: parses, but gunbc.parse_population_refusals declares it refused for parse_g0_tokens_remain")
 }
 
@@ -163,7 +180,7 @@ test fn a_walk_with_an_undeclared_refusal_does_not_hold() -> Bool {
       JudgedRefused { key: "dag:a/one.dag", cause: "parse_g0_tokens_remain" },
       JudgedRefused { key: "dag:a/two.dag", cause: "parse_g0_tokens_remain" },
       JudgedRefused { key: "v2:b/three.dag", cause: "parse_declaration_marker_not_test" },
-      JudgedParses { key: "dag:a/four.dag" },
+      JudgedParses { key: "dag:a/four.dag", source_digest: fixture_source_digest },
       JudgedRefused { key: "dag:a/five.dag", cause: "parse_g0_tokens_remain" }
     ]
   )
@@ -176,9 +193,9 @@ test fn a_walk_in_which_a_declared_module_now_parses_does_not_hold() -> Bool {
     classes: fixture_classes,
     judgments: [
       JudgedRefused { key: "dag:a/one.dag", cause: "parse_g0_tokens_remain" },
-      JudgedParses { key: "dag:a/two.dag" },
+      JudgedParses { key: "dag:a/two.dag", source_digest: fixture_source_digest },
       JudgedRefused { key: "v2:b/three.dag", cause: "parse_declaration_marker_not_test" },
-      JudgedParses { key: "dag:a/four.dag" }
+      JudgedParses { key: "dag:a/four.dag", source_digest: fixture_source_digest }
     ]
   )
   !report.held && report.text.starts_with(prefix: "dag:a/two.dag: parses, but")
@@ -192,7 +209,7 @@ test fn a_walk_that_never_met_a_declared_refusal_does_not_hold() -> Bool {
     judgments: [
       JudgedRefused { key: "dag:a/one.dag", cause: "parse_g0_tokens_remain" },
       JudgedRefused { key: "v2:b/three.dag", cause: "parse_declaration_marker_not_test" },
-      JudgedParses { key: "dag:a/four.dag" }
+      JudgedParses { key: "dag:a/four.dag", source_digest: fixture_source_digest }
     ]
   )
   !report.held
@@ -202,7 +219,7 @@ test fn a_walk_that_never_met_a_declared_refusal_does_not_hold() -> Bool {
 // A walk that skipped the declared modules altogether cannot pass by skipping them: every declared
 // refusal is its own located line, in declaration order.
 test fn a_walk_that_met_no_declared_refusal_reports_each_on_its_own_line() -> Bool {
-  let report = verdict(classes: fixture_classes, judgments: [JudgedParses { key: "dag:a/four.dag" }])
+  let report = verdict(classes: fixture_classes, judgments: [JudgedParses { key: "dag:a/four.dag", source_digest: fixture_source_digest }])
   !report.held
     && report.text.starts_with(prefix: "dag:a/one.dag: gunbc.parse_population_refusals declares it refused for parse_g0_tokens_remain, but")
     && report.text.ends_with(suffix: "so remove it from its class")
@@ -212,8 +229,8 @@ test fn a_walk_that_met_no_declared_refusal_reports_each_on_its_own_line() -> Bo
 // The same walk with the declaration removed holds: the red above is the declaration's, not the walk's.
 test fn the_same_walk_holds_when_nothing_is_declared() -> Bool {
   let none_declared: List<RefusalClass> = []
-  let report = verdict(classes: none_declared, judgments: [JudgedParses { key: "dag:a/four.dag" }])
-  report.held && report.text == "population parses: 1 module(s); 0 refusal(s) declared by gunbc.parse_population_refusals, each met"
+  let report = verdict(classes: none_declared, judgments: [JudgedParses { key: "dag:a/four.dag", source_digest: fixture_source_digest }])
+  report.held && report.text == held_parse_report_text(parsed: "1", declared: "0")
 }
 
 // A module with one parse result is declared in one class: declared in two, the first would hide the
@@ -223,13 +240,13 @@ test fn a_module_declared_in_two_classes_refuses_the_report() -> Bool {
     RefusalClass { drop: "fixture_drop_a", cause: "parse_g0_tokens_remain", keys: ["dag:a/one.dag"] },
     RefusalClass { drop: "fixture_drop_b", cause: "parse_declaration_marker_not_test", keys: ["dag:a/one.dag"] }
   ]
-  let report = verdict(classes: doubled, judgments: [JudgedParses { key: "dag:a/four.dag" }])
+  let report = verdict(classes: doubled, judgments: [JudgedParses { key: "dag:a/four.dag", source_digest: fixture_source_digest }])
   !report.held && report.text == "dag:a/one.dag: gunbc.parse_population_refusals declares it more than once"
 }
 
 test fn a_module_declared_twice_in_one_class_refuses_the_report() -> Bool {
   let doubled: List<RefusalClass> = [RefusalClass { drop: "fixture_drop_a", cause: "parse_g0_tokens_remain", keys: ["dag:a/one.dag", "dag:a/one.dag"] }]
-  let report = verdict(classes: doubled, judgments: [JudgedParses { key: "dag:a/four.dag" }])
+  let report = verdict(classes: doubled, judgments: [JudgedParses { key: "dag:a/four.dag", source_digest: fixture_source_digest }])
   !report.held && report.text == "dag:a/one.dag: gunbc.parse_population_refusals declares it more than once"
 }
 

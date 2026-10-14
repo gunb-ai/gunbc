@@ -49,6 +49,7 @@ import v2.compiler.source_authority {
 import v2.compiler.module_header { ModuleHeaderReader, module_header_read }
 import v2.std.collection { empty_map, map_contains_key, map_insert, map_lookup }
 import v2.std.text { String }
+import std.content_hash { content_hash_atom }
 
 // THE WHOLE-POPULATION VERBS. Compiling an entry reads the modules that entry requests and nothing
 // else (v2.compiler.module_acquisition); a job whose subject IS the population -- is every governed
@@ -193,16 +194,20 @@ type DeclaredRoster {
 
 // What a streaming parse keeps: how many parsed outright, how many members refused exactly as
 // declared, the roster and the keys the walk has judged (a declared refusal is REMAINING until its key
-// is judged, and what remains when the walk ends is a located refusal), and one located line per module
-// the population parse must report (newest first). No tree, no content and no module list survives the
-// member that produced it.
+// is judged, and what remains when the walk ends is a located refusal), one located line per module
+// the population parse must report (newest first), and the Accepted request-key receipts (source
+// digest only — not the tree, not the bytes). No content and no module list survives the member
+// that produced it.
 type PopulationParse {
   parsed: Int
   declared: Int
   roster: DeclaredRoster
   judged: Map<String, Bool>
   refusals: List<String>
+  accepted_receipts: List<String>
 }
+
+data parse_verdict_receipt_line_prefix: String = "parse-verdict\t"
 
 type RosterBuild {
   ordered_reversed: List<DeclaredRefusal>
@@ -250,7 +255,8 @@ fn population_parse_begin(classes: List<RefusalClass>) -> PopulationBegin {
         declared: 0,
         roster: DeclaredRoster { ordered: list_reverse(xs: built.ordered_reversed), causes: built.causes },
         judged: no_judged,
-        refusals: []
+        refusals: [],
+        accepted_receipts: []
       }
     }
   } else {
@@ -288,7 +294,8 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
           declared: tally.declared + 1,
           roster: tally.roster,
           judged: population_parse_judged(tally: tally, key: key),
-          refusals: tally.refusals
+          refusals: tally.refusals,
+          accepted_receipts: tally.accepted_receipts
         }
       } else {
         PopulationParse {
@@ -299,7 +306,8 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
           refusals: Cons {
             head: concat(key, ": ", cause, "; gunbc.parse_population_refusals declares it refused for ", declared_cause),
             tail: tally.refusals
-          }
+          },
+          accepted_receipts: tally.accepted_receipts
         }
       }
     Absent =>
@@ -308,7 +316,8 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
         declared: tally.declared,
         roster: tally.roster,
         judged: tally.judged,
-        refusals: Cons { head: concat(key, ": ", cause), tail: tally.refusals }
+        refusals: Cons { head: concat(key, ": ", cause), tail: tally.refusals },
+        accepted_receipts: tally.accepted_receipts
       }
   }
 }
@@ -316,7 +325,7 @@ fn population_parse_refused(tally: PopulationParse, key: String, cause: String) 
 // THE OTHER DIRECTION OF THE SAME EXACTNESS: a module the declared classes name that parses is not an
 // unchanged state, so the list can only shrink -- a class is retired by the capability, never carried
 // past it.
-fn population_parse_accepted(tally: PopulationParse, key: String) -> PopulationParse {
+fn population_parse_accepted(tally: PopulationParse, key: String, source_digest: String) -> PopulationParse {
   match roster_cause(roster: tally.roster, key: key) {
     Present { value: declared_cause } =>
       PopulationParse {
@@ -327,7 +336,8 @@ fn population_parse_accepted(tally: PopulationParse, key: String) -> PopulationP
         refusals: Cons {
           head: concat(key, ": parses, but gunbc.parse_population_refusals declares it refused for ", declared_cause, "; remove it from its class"),
           tail: tally.refusals
-        }
+        },
+        accepted_receipts: tally.accepted_receipts
       }
     Absent =>
       PopulationParse {
@@ -335,7 +345,11 @@ fn population_parse_accepted(tally: PopulationParse, key: String) -> PopulationP
         declared: tally.declared,
         roster: tally.roster,
         judged: tally.judged,
-        refusals: tally.refusals
+        refusals: tally.refusals,
+        accepted_receipts: Cons {
+          head: concat(parse_verdict_receipt_line_prefix, source_digest, "\tAccepted"),
+          tail: tally.accepted_receipts
+        }
       }
   }
 }
@@ -348,11 +362,16 @@ fn population_parse_member(env: AcquisitionEnv, name: String, tally: PopulationP
         declared: tally.declared,
         roster: tally.roster,
         judged: tally.judged,
-        refusals: Cons { head: concat(name, ": ", cause), tail: tally.refusals }
+        refusals: Cons { head: concat(name, ": ", cause), tail: tally.refusals },
+        accepted_receipts: tally.accepted_receipts
       }
     PopulationMemberRead { member: member } =>
       match acquisition_parse(env: env, file: member.file, content: member.content) {
-        MemberParses => population_parse_accepted(tally: tally, key: module_file_key(file: member.file))
+        MemberParses => population_parse_accepted(
+          tally: tally,
+          key: module_file_key(file: member.file),
+          source_digest: content_hash_atom(value: member.content).digest as String
+        )
         MemberParseRefused { cause: cause } => population_parse_refused(tally: tally, key: module_file_key(file: member.file), cause: cause)
       }
   }
@@ -412,13 +431,27 @@ fn population_parse_report(tally: PopulationParse) -> PopulationReport {
     }
   } else {
     PopulationReport {
-      text: concat(
-        "population parses: ",
-        int_to_decimal_string(value: tally.parsed),
-        " module(s); ",
-        int_to_decimal_string(value: tally.declared),
-        " refusal(s) declared by gunbc.parse_population_refusals, each met"
-      ),
+      text: if is_empty(xs: tally.accepted_receipts) {
+        concat(
+          "population parses: ",
+          int_to_decimal_string(value: tally.parsed),
+          " module(s); ",
+          int_to_decimal_string(value: tally.declared),
+          " refusal(s) declared by gunbc.parse_population_refusals, each met"
+        )
+      } else {
+        concat(
+          concat(
+            "population parses: ",
+            int_to_decimal_string(value: tally.parsed),
+            " module(s); ",
+            int_to_decimal_string(value: tally.declared),
+            " refusal(s) declared by gunbc.parse_population_refusals, each met"
+          ),
+          "\n",
+          join(list_reverse(xs: tally.accepted_receipts), "\n")
+        )
+      },
       held: true,
       detail: "every enumerated module parsed or is refused exactly as declared, and every declared refusal was met"
     }

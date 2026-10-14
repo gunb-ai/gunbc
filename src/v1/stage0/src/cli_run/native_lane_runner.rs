@@ -3441,6 +3441,13 @@ fn keep_generation_one_executable(prepared: &EmittedPreparation) -> Result<PathB
         prepared.closure_identity,
         prepared.seed_identity
     );
+    let identity_path = PathBuf::from(format!("{}.closure_identity", kept.display()));
+    std::fs::write(&identity_path, prepared.closure_identity.as_bytes()).map_err(|e| {
+        format!(
+            "V2-NATIVE REFUSAL cause=GenOneExecutableNotKept — write {}: {e}",
+            identity_path.display()
+        )
+    })?;
     Ok(kept)
 }
 
