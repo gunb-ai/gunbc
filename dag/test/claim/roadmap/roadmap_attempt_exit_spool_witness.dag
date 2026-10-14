@@ -88,6 +88,31 @@ test fn a_vendor_pane_signal_record_decodes_as_killed() -> Bool {
   }
 }
 
+test fn a_vendor_pane_exit_name_decodes_from_status() -> Bool {
+  let zero_ok = match attempt_exit_entry_decode(entry_name: "n+k+worker+vendorpane+success+exited+0") {
+    AttemptExitEntryDecoded { record } =>
+      (match record.result { ServiceResultSuccess => true _ => false })
+        && (match record.end { AttemptProcessExitedWith { status } => status == 0 AttemptProcessSignaled { signal: _ } => false })
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+  let nine_ok = match attempt_exit_entry_decode(entry_name: "n+k+worker+vendorpane+exit-code+exited+9") {
+    AttemptExitEntryDecoded { record } =>
+      (match record.result { ServiceResultExitCode => true _ => false })
+        && (match record.end { AttemptProcessExitedWith { status } => status == 9 AttemptProcessSignaled { signal: _ } => false })
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+  zero_ok && nine_ok
+}
+
+test fn a_vendor_pane_signal_name_decodes_as_killed() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "n+k+worker+vendorpane+signal+killed+KILL") {
+    AttemptExitEntryDecoded { record } =>
+      (match record.result { ServiceResultSignal => true  _ => false })
+        && (match record.end { AttemptProcessSignaled { signal } => linux_standard_signal_number(signal: signal) == 9  AttemptProcessExitedWith { status: _ } => false })
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
 test fn a_name_that_is_not_seven_parts_or_whose_status_contradicts_its_code_is_malformed() -> Bool {
   let short = match attempt_exit_entry_decode(entry_name: "n+k+worker+inv+success+exited") { AttemptExitEntryMalformed { entry_name: _, reason: _ } => true AttemptExitEntryDecoded { record: _ } => false }
   let contradiction = match attempt_exit_entry_decode(entry_name: "n+k+worker+inv+success+exited+TERM") { AttemptExitEntryMalformed { entry_name: _, reason: _ } => true AttemptExitEntryDecoded { record: _ } => false }
