@@ -43,5 +43,3 @@ data belt_tick_cadence: Second = second(count: 60)
 // the 2026-09-21 measured seed-bridge cost, far below the hours a wedge needs to be noticed by a
 // human, and any honest growth beyond it must move this row with a reason, not the wedge.
 data belt_tick_run_bound: Second = second(count: 2700)
-
-data belt_credential_recovery_backstop: Second = second(count: 900)
