@@ -1,0 +1,25 @@
+module test.claim.zz_probe_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn src() -> String {
+  "module map_key_witness.nested_generic\nimport v2.std.collection { Map, map_lookup }\nimport std.optional { Optional }\ntype Wrapper<K> {\n  subject: K\n}\nfn nested_probe<K, V>(m: Map<Wrapper<K>, V>, key: Wrapper<K>) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\n"
+}
+
+test fn p_defined() -> Bool {
+  compile_dag_rust_emit_check(src(), "src/map_key_witness_nested_generic.rs", ["pub fn nested_probe<"], [])
+}
+test fn p_hash() -> Bool {
+  compile_dag_rust_emit_check(src(), "src/map_key_witness_nested_generic.rs", ["std::hash::Hash"], [])
+}
+test fn p_clone_only() -> Bool {
+  compile_dag_rust_emit_check(src(), "src/map_key_witness_nested_generic.rs", ["pub fn nested_probe<K: Clone,"], [])
+}
+test fn p_bare() -> Bool {
+  compile_dag_rust_emit_check(src(), "src/map_key_witness_nested_generic.rs", ["pub fn nested_probe<K,"], [])
+}
+test fn p_eq() -> Bool {
+  compile_dag_rust_emit_check(src(), "src/map_key_witness_nested_generic.rs", ["pub fn nested_probe<K: std::cmp::Eq"], [])
+}
