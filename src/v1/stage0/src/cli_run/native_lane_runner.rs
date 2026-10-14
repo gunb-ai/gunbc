@@ -3488,6 +3488,27 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
     })
 }
 
+/// ONE `emit --entry <module>` RUN OF THE NATIVE v2 CLI PER MODULE, over a CLI prepared once. The
+/// caller reads each module's own refusal out of the JSON; this carries status and both streams
+/// unjudged (`gunbc.cardinality_realization_seed_growth`).
+pub fn run_v2_native_cli_emit(
+    source_roots: &[String],
+    entries: &[String],
+) -> Result<Vec<(String, Option<i32>, String, String)>, String> {
+    let prepared = prepare_emitted_compiler_for_entry(source_roots, V2_NATIVE_CLI_ENTRY)?;
+    let mut runs = Vec::new();
+    for entry in entries {
+        let mut args = vec!["emit".to_string(), "--entry".to_string(), entry.clone()];
+        for root in source_roots {
+            args.push("--source-root".to_string());
+            args.push(root.clone());
+        }
+        let run = run_cli_door(&prepared.binary_path, &args)?;
+        runs.push((entry.clone(), run.status, run.stdout, run.stderr));
+    }
+    Ok(runs)
+}
+
 /// ONE RUN OF A `std.compiler_entry` `NativeClaimDriver` PROGRAM, as the observation the reader
 /// needs and nothing it decides. `gunbc.native_claim_program` `native_claim_program_standing` reads
 /// `stdout` and `status` and answers held / not held / no observation; this struct carries them

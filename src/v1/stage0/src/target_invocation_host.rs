@@ -314,6 +314,7 @@ pub enum TargetProducer {
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
+    CardinalityRealization,
     RegenRoundCost,
     /// `NativeClaimProgramProducer { entry, deadline }`: the entry is carried so a second program
     /// of the same shape is a registry row, never another variant. The Millisecond deadline is
@@ -537,6 +538,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("shared-type-leaf-collision-census"),
             TargetProducer::SharedTypeLeafCollisionCensus,
+        ),
+        (
+            instrument_label("cardinality-realization"),
+            TargetProducer::CardinalityRealization,
         ),
         (
             instrument_label("regen-round-cost"),
@@ -978,6 +983,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::SharedTypeLeafCollisionCensus => {
             run_shared_type_leaf_collision_census(&self_host_source_roots())
         }
+        TargetProducer::CardinalityRealization => run_cardinality_realization(),
         TargetProducer::RegenRoundCost => run_regen_round_cost_instrument(),
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
             "self-host-behavioral-equivalence",
@@ -1884,6 +1890,185 @@ fn native_claim_child_deadline_from_binding(
         other => Err(ungrounded(format!(
             "native_claim_child_deadline_count expected a positive Int, got {other:?}"
         ))),
+    }
+}
+
+/// THE CARDINALITY REALIZATION INSTRUMENT (`gunbc.cardinality_realization_seed_growth`). The plan,
+/// the join to the coverage rows and the exit are `v2.test.claim.cardinality_realization_coverage`
+/// (`instrument_plan`, `cardinality_realization_standing`); this host only runs what the plan names
+/// and reports each outcome as a typed record: `realized` (the program printed `tag=<n>`), `refused`
+/// (the seed emit or the native entry module refused, with its cause), `red` (the emitted program
+/// failed to build or run), `unreached` (no observation could be taken). Emission is never read as
+/// execution: a native module that emitted is `emitted`.
+fn run_cardinality_realization() -> InvocationOutcome {
+    use crate::v1_interpreter::{list_value, str_value, Value};
+    let label_name = "cardinality-realization";
+    const READER: &str = "src/v2/test/claim/cardinality_realization_coverage.dag";
+    let unreached = |message: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("{label_name}: {message}"),
+    };
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    let roots = v2_native_cli_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => return unreached(format!("resolve failed for {READER}: {cause}")),
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let plan_value =
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, "instrument_plan", &[], true) {
+            Ok(value) => value,
+            Err(cause) => return unreached(format!("instrument_plan failed: {cause}")),
+        };
+    let Value::List(plan) = &plan_value else {
+        return unreached(format!(
+            "instrument_plan returned {plan_value:?}, not a list"
+        ));
+    };
+    // (mode, entry, target key, specimen key)
+    let mut lines: Vec<[String; 4]> = Vec::new();
+    for item in plan.iter() {
+        let Value::Str(line) = item else {
+            return unreached(format!("instrument_plan row {item:?} is not text"));
+        };
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() != 4 {
+            return unreached(format!(
+                "instrument_plan row `{line}` is not mode|entry|target|specimen"
+            ));
+        }
+        lines.push([
+            parts[0].into(),
+            parts[1].into(),
+            parts[2].into(),
+            parts[3].into(),
+        ]);
+    }
+    let deadline = std::time::Duration::from_secs(1800);
+    let mut records: Vec<[String; 4]> = Vec::new(); // target, specimen, kind, detail
+    for [mode, entry, target, specimen] in lines.iter().filter(|l| l[0] == "seed") {
+        let _ = mode;
+        let (kind, detail) = match cli_run::run_native_claim_program(&roots, entry, deadline) {
+            Ok(cli_run::NativeClaimProgramAttempt::Completed(run)) => {
+                let tag = run
+                    .stdout
+                    .lines()
+                    .find_map(|l| l.strip_prefix("tag="))
+                    .map(str::to_string);
+                match (run.status, tag) {
+                    (Some(0), Some(tag)) => ("realized", tag),
+                    (status, _) => ("red", format!("exit {status:?}: {}", run.stderr.trim_end())),
+                }
+            }
+            Ok(cli_run::NativeClaimProgramAttempt::DeadlineExceeded { .. }) => {
+                ("unreached", format!("{entry} exceeded its deadline"))
+            }
+            Err(cause) if cause.contains("cause=EmissionRefused") => ("refused", cause),
+            Err(cause) if cause.contains("cause=EmittedCompilerBuildFailed") => ("red", cause),
+            Err(cause) => ("unreached", cause),
+        };
+        records.push([target.clone(), specimen.clone(), kind.into(), detail]);
+    }
+    let native: Vec<&[String; 4]> = lines.iter().filter(|l| l[0] == "native").collect();
+    let mut modules: Vec<String> = native.iter().map(|l| l[1].clone()).collect();
+    modules.sort();
+    modules.dedup();
+    let emitted = cli_run::run_v2_native_cli_emit(&roots, &modules);
+    for [_, entry, target, specimen] in native {
+        let (kind, detail) = match &emitted {
+            Err(cause) => ("unreached", cause.clone()),
+            Ok(runs) => match runs.iter().find(|r| &r.0 == entry) {
+                None => ("unreached", format!("no native emit run for {entry}")),
+                Some((_, status, stdout, stderr)) => {
+                    let own = serde_json::from_str::<serde_json::Value>(stdout)
+                        .ok()
+                        .and_then(|doc| {
+                            doc.get("modules")?.as_array()?.iter().find_map(|m| {
+                                (m.get("module")?.as_str()? == entry.as_str()).then(|| {
+                                    m.get("refused")
+                                        .and_then(|r| r.as_str())
+                                        .map(str::to_string)
+                                })
+                            })
+                        });
+                    match (own, status) {
+                        (Some(Some(cause)), _) => ("refused", cause),
+                        (Some(None), Some(0)) => ("emitted", String::new()),
+                        _ => (
+                            "unreached",
+                            format!(
+                                "native emit of {entry}: status {status:?} {}",
+                                stderr.lines().next().unwrap_or("")
+                            ),
+                        ),
+                    }
+                }
+            },
+        };
+        records.push([target.clone(), specimen.clone(), kind.into(), detail]);
+    }
+    let rendered: Vec<String> = records
+        .iter()
+        .map(|r| {
+            format!(
+                "{} | {} | {} | {}",
+                r[0],
+                r[1],
+                r[2],
+                r[3].lines().next().unwrap_or("")
+            )
+        })
+        .collect();
+    let observations = list_value(
+        records
+            .iter()
+            .map(|r| Value::Record {
+                type_name: ctx.sym("ObservationRecord"),
+                fields: std::rc::Rc::new(vec![
+                    (ctx.sym("target"), str_value(&r[0])),
+                    (ctx.sym("specimen"), str_value(&r[1])),
+                    (ctx.sym("kind"), str_value(&r[2])),
+                    (ctx.sym("detail"), str_value(&r[3])),
+                ]),
+            })
+            .collect::<Vec<_>>(),
+    );
+    let standing = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "cardinality_realization_standing",
+        &[(Some("observations".to_string()), observations)],
+        true,
+    ) {
+        Ok(value) => cli_run::classify_exit(&value, &ctx),
+        Err(cause) => return unreached(format!("the standing failed: {cause}")),
+    };
+    let (termination, verdict) = match standing {
+        cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+        cli_run::ExitClass::Failure { code: 1, reason } => (
+            Termination::ObservationDidNotHold,
+            reason.unwrap_or_else(|| "not held".to_string()),
+        ),
+        cli_run::ExitClass::Failure { reason, .. } => (
+            Termination::SubjectUnreached,
+            reason.unwrap_or_else(|| "no observation".to_string()),
+        ),
+        cli_run::ExitClass::NotProcessExit { type_name } => (
+            Termination::Refused,
+            format!("the standing returned `{type_name}`, not a ProcessExit"),
+        ),
+    };
+    InvocationOutcome {
+        termination,
+        message: format!("{}\n{label_name}: {verdict}", rendered.join("\n")),
     }
 }
 
