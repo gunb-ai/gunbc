@@ -4,21 +4,16 @@ module gunbc.ci.ci_compile_shape_receipt
 // wall on v2-bootstrap is ~4 min on srv1 in every sampled window and ~15 min on srv3/srv4 when
 // those hosts are busy (GitHub step timestamps, session witty-crane-693). Cache Cargo restore is
 // 6-9s on every host, so the split is not the GHA cache. This step prints the compile SHAPE cargo
-// actually inherited -- nproc, CARGO_BUILD_JOBS, MAKEFLAGS (jobserver auth present or absent),
-// the FIFO path and declared token count when readable, RUSTC_WRAPPER, the job cgroup's cpu.max /
-// cpu.weight / cpu.stat -- so one srv1 run and one loaded srv3 run settle shared-fifo vs unbounded
-// -j128. It does not consume fifo tokens.
+// actually inherited so one srv1 run and one loaded srv3/srv4 run settle shared-fifo vs unbounded
+// -j128. It does not consume fifo tokens and it does not tune the build.
 //
-// IT DOES NOT TUNE THE BUILD. Fleet-converge isolates MAKEFLAGS and writes CARGO_BUILD_JOBS;
-// Isolate toolchain homes does not. CPUQuota is SlotCpuQuotaUnbounded. Slot CPU shape belongs to
-// the runner-slot-desired lane; this step only records what a job saw.
-//
-// COMPOSITION IS THE PIPELINE, not a fold of shell lines (review 79739). Leaves are command rows
-// in the same shape as v2.workflow.ci_workflow_run_emit ci_isolate_* / ci_pin_rustup_*, emitted
-// through orch_emit_pipeline. The dissolve-on names the bash-emit / host_effect_apply climb
-// (v2.std.orchestration orchestration_to_effect_plan_dissolve_on), not the slot-tuning lane.
+// AXES ARE TYPED ROWS. Each axis names its key, the ordered sources a reader consults, and the
+// spelling used when a source does not answer. Each source is one echo (the isolate/pin shape).
+// Fallback order is the source list; the script does not collapse sources in shell, so a host
+// that cannot read /etc/default/ctrl-jobserver still prints tokens_created from the unit.
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Bool, List }
+import std.algebra { list_map, list_flat_map }
 import std.optional { Present }
 import std.dissolution {
   DissolutionCondition, unbound_dissolution, dissolution_description,
@@ -26,33 +21,262 @@ import std.dissolution {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.github.actions { Step, RunStep }
-import v2.std.orchestration { Pipeline, FailFast }
+import v2.std.orchestration { Pipeline, PipelineStep, FailFast }
 import v2.workflow.ci_workflow_run_emit {
   ci_workflow_do, ci_workflow_run_emit_pipeline,
+}
+import gunbc.host.host_converge {
+  gunbc_runner_jobserver_env_file,
+  gunbc_runner_jobserver_env_key,
+  gunbc_runner_jobserver_service,
+  gunbc_runner_jobserver_default_fifo,
 }
 
 data compile_shape_receipt_prefix: String = "GUNBC_COMPILE_SHAPE"
 
 data compile_shape_receipt_step_name: String = "Record compile shape"
 
-data compile_shape_receipt_echo_identity_command: String = "echo \"$GUNBC_COMPILE_SHAPE_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=$\{RUNNER_NAME:-unset}\""
+data compile_shape_receipt_unavailable: String = "unavailable"
 
-data compile_shape_receipt_echo_jobs_command: String = "echo \"$GUNBC_COMPILE_SHAPE_PREFIX nproc=$(nproc 2>/dev/null || echo unavailable) cargo_build_jobs=$\{CARGO_BUILD_JOBS:-unset} rustc_wrapper=$\{RUSTC_WRAPPER:-unset}\""
+type CompileShapeSource {
+  id: String
+  command: String
+}
 
-data compile_shape_receipt_echo_makeflags_command: String = "echo \"$GUNBC_COMPILE_SHAPE_PREFIX makeflags=$\{MAKEFLAGS:-unset}\""
+type CompileShapeAxis {
+  axis: String
+  absent: String
+  sources: List<CompileShapeSource>
+}
 
-data compile_shape_receipt_jobserver_command: String = "GUNBC_COMPILE_SHAPE_JOBSERVER_AUTH=absent; case \"$\{MAKEFLAGS:-}\" in *jobserver*) GUNBC_COMPILE_SHAPE_JOBSERVER_AUTH=present ;; esac; GUNBC_COMPILE_SHAPE_FIFO=$\{CTRL_JOBSERVER_FIFO:-}; if [ -z \"$GUNBC_COMPILE_SHAPE_FIFO\" ]; then GUNBC_COMPILE_SHAPE_FIFO=$(printf '%s\\n' \"$\{MAKEFLAGS:-}\" | sed -n 's/.*jobserver-auth=fifo:\\([^ ]*\\).*/\\1/p' | head -n 1); fi; if [ -z \"$GUNBC_COMPILE_SHAPE_FIFO\" ]; then GUNBC_COMPILE_SHAPE_FIFO=unset; fi; GUNBC_COMPILE_SHAPE_TOKENS=$\{CTRL_JOBSERVER_TOKENS:-unset}; if [ \"$GUNBC_COMPILE_SHAPE_TOKENS\" = unset ] && [ -r /etc/default/ctrl-jobserver ]; then GUNBC_COMPILE_SHAPE_TOKENS=$(sed -n 's/^CTRL_JOBSERVER_TOKENS=//p' /etc/default/ctrl-jobserver 2>/dev/null | head -n 1); if [ -z \"$GUNBC_COMPILE_SHAPE_TOKENS\" ]; then GUNBC_COMPILE_SHAPE_TOKENS=unset; fi; fi; if [ \"$GUNBC_COMPILE_SHAPE_FIFO\" != unset ] && [ -e \"$GUNBC_COMPILE_SHAPE_FIFO\" ]; then GUNBC_COMPILE_SHAPE_FIFO_EXISTS=yes; else GUNBC_COMPILE_SHAPE_FIFO_EXISTS=no; fi; echo \"$GUNBC_COMPILE_SHAPE_PREFIX jobserver_auth=$GUNBC_COMPILE_SHAPE_JOBSERVER_AUTH fifo=$GUNBC_COMPILE_SHAPE_FIFO fifo_exists=$GUNBC_COMPILE_SHAPE_FIFO_EXISTS tokens=$GUNBC_COMPILE_SHAPE_TOKENS\""
+fn compile_shape_echo(axis: String, value: String) -> String {
+  concat(
+    "echo \"",
+    concat(compile_shape_receipt_prefix, concat(" ", concat(axis, concat("=", concat(value, "\"")))))
+  )
+}
 
-data compile_shape_receipt_echo_loadavg_command: String = "echo \"$GUNBC_COMPILE_SHAPE_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)\""
+fn compile_shape_env_value(name: String, absent: String) -> String {
+  concat("$\{", concat(name, concat(":-", concat(absent, "}"))))
+}
 
-data compile_shape_receipt_cgroup_command: String = "GUNBC_COMPILE_SHAPE_CG=$(sed -n 's/^0:://p' /proc/self/cgroup 2>/dev/null | tail -n 1); if [ -z \"$GUNBC_COMPILE_SHAPE_CG\" ]; then GUNBC_COMPILE_SHAPE_CG=unavailable; fi; echo \"$GUNBC_COMPILE_SHAPE_PREFIX cgroup=$GUNBC_COMPILE_SHAPE_CG\"; GUNBC_COMPILE_SHAPE_CGDIR=/sys/fs/cgroup$GUNBC_COMPILE_SHAPE_CG; if [ -d \"$GUNBC_COMPILE_SHAPE_CGDIR\" ]; then echo \"$GUNBC_COMPILE_SHAPE_PREFIX cpu.max=$(tr '\\n' ' ' < \"$GUNBC_COMPILE_SHAPE_CGDIR/cpu.max\" 2>/dev/null || echo unavailable) cpu.weight=$(tr '\\n' ' ' < \"$GUNBC_COMPILE_SHAPE_CGDIR/cpu.weight\" 2>/dev/null || echo unavailable) cpu.stat=$(tr '\\n' ' ' < \"$GUNBC_COMPILE_SHAPE_CGDIR/cpu.stat\" 2>/dev/null || echo unavailable)\"; else echo \"$GUNBC_COMPILE_SHAPE_PREFIX cpu.max=unavailable cpu.weight=unavailable cpu.stat=unavailable\"; fi"
+fn compile_shape_cmd_value(cmd: String, absent: String) -> String {
+  concat("$(", concat(cmd, concat(" 2>/dev/null || echo ", concat(absent, ")"))))
+}
 
-fn compile_shape_receipt_prefix_assign_command() -> String {
-  concat("GUNBC_COMPILE_SHAPE_PREFIX='", concat(compile_shape_receipt_prefix, "'"))
+fn compile_shape_env_source(axis: String, id: String, env_name: String, absent: String) -> CompileShapeSource {
+  CompileShapeSource {
+    id: id,
+    command: compile_shape_echo(axis: axis, value: compile_shape_env_value(name: env_name, absent: absent))
+  }
+}
+
+fn compile_shape_cmd_source(axis: String, id: String, cmd: String, absent: String) -> CompileShapeSource {
+  CompileShapeSource {
+    id: id,
+    command: compile_shape_echo(axis: axis, value: compile_shape_cmd_value(cmd: cmd, absent: absent))
+  }
+}
+
+fn compile_shape_axis(axis: String, absent: String, sources: List<CompileShapeSource>) -> CompileShapeAxis {
+  CompileShapeAxis { axis: axis, absent: absent, sources: sources }
+}
+
+fn compile_shape_job_cgroup_file_cmd(filename: String) -> String {
+  concat(
+    "cat /sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup)/",
+    filename
+  )
+}
+
+data compile_shape_receipt_axes: List<CompileShapeAxis> = [
+  compile_shape_axis(
+    axis: "time_utc",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_cmd_source(
+      axis: "time_utc",
+      id: "date_utc",
+      cmd: "date -u +%Y-%m-%dT%H:%M:%SZ",
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "host",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_cmd_source(
+      axis: "host",
+      id: "hostname",
+      cmd: "hostname",
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "runner",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_env_source(
+      axis: "runner",
+      id: "runner_name_env",
+      env_name: "RUNNER_NAME",
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "nproc",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_cmd_source(
+      axis: "nproc",
+      id: "nproc",
+      cmd: "nproc",
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "cargo_build_jobs",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_env_source(
+      axis: "cargo_build_jobs",
+      id: "cargo_build_jobs_env",
+      env_name: "CARGO_BUILD_JOBS",
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "rustc_wrapper",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_env_source(
+      axis: "rustc_wrapper",
+      id: "rustc_wrapper_env",
+      env_name: "RUSTC_WRAPPER",
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "makeflags",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_env_source(
+      axis: "makeflags",
+      id: "makeflags_env",
+      env_name: "MAKEFLAGS",
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "fifo_env",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_env_source(
+      axis: "fifo_env",
+      id: "ctrl_jobserver_fifo_env",
+      env_name: "CTRL_JOBSERVER_FIFO",
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "fifo_default",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_cmd_source(
+      axis: "fifo_default",
+      id: "default_fifo_ls",
+      cmd: concat("ls ", gunbc_runner_jobserver_default_fifo),
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "tokens_env",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_env_source(
+      axis: "tokens_env",
+      id: "ctrl_jobserver_tokens_env",
+      env_name: gunbc_runner_jobserver_env_key,
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "tokens_file",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_cmd_source(
+      axis: "tokens_file",
+      id: "ctrl_jobserver_env_file",
+      cmd: concat(
+        concat("sed -n 's/^", concat(gunbc_runner_jobserver_env_key, "=//p' ")),
+        gunbc_runner_jobserver_env_file
+      ),
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "tokens_created",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_cmd_source(
+      axis: "tokens_created",
+      id: "ctrl_jobserver_unit_environment",
+      cmd: concat("systemctl show ", concat(gunbc_runner_jobserver_service, " -p Environment --value")),
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "loadavg",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_cmd_source(
+      axis: "loadavg",
+      id: "proc_loadavg",
+      cmd: "tr ' ' ',' < /proc/loadavg",
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "cgroup",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_cmd_source(
+      axis: "cgroup",
+      id: "proc_self_cgroup_unified",
+      cmd: "sed -n 's/^0:://p' /proc/self/cgroup",
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "cpu.max",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_cmd_source(
+      axis: "cpu.max",
+      id: "job_cgroup_cpu_max",
+      cmd: compile_shape_job_cgroup_file_cmd(filename: "cpu.max"),
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "cpu.weight",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_cmd_source(
+      axis: "cpu.weight",
+      id: "job_cgroup_cpu_weight",
+      cmd: compile_shape_job_cgroup_file_cmd(filename: "cpu.weight"),
+      absent: compile_shape_receipt_unavailable
+    )]
+  ),
+  compile_shape_axis(
+    axis: "cpu.stat",
+    absent: compile_shape_receipt_unavailable,
+    sources: [compile_shape_cmd_source(
+      axis: "cpu.stat",
+      id: "job_cgroup_cpu_stat",
+      cmd: compile_shape_job_cgroup_file_cmd(filename: "cpu.stat"),
+      absent: compile_shape_receipt_unavailable
+    )]
+  )
+]
+
+fn compile_shape_source_is_single_command(command: String) -> Bool {
+  !string_contains(s: command, pattern: ";")
+    && !string_contains(s: command, pattern: "if ")
+    && !string_contains(s: command, pattern: "case ")
+}
+
+fn compile_shape_axis_steps(a: CompileShapeAxis) -> List<PipelineStep> {
+  list_map(xs: a.sources, f: fn(src) { ci_workflow_do(command: src.command) })
 }
 
 data compile_shape_receipt_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: compile_shape_receipt -- orch-emitted foreign-executor observe step printing the compile shape cargo inherited on the required job; leaf echo/nproc/cgroup command rows remain until typed host observation lands on host_effect_apply (v2.std.orchestration orchestration_to_effect_plan_dissolve_on, shell-to-intent). Slot CPUQuota / CARGO_BUILD_JOBS isolation is a different unit and does not dissolve this carrier." as NonEmptyStr
+  description: "dissolve-on: compile_shape_receipt -- orch-emitted foreign-executor observe step printing the compile shape cargo inherited on the required job; leaf echo command rows remain until typed host observation lands on host_effect_apply (v2.std.orchestration orchestration_to_effect_plan_dissolve_on, shell-to-intent). Slot CPUQuota / CARGO_BUILD_JOBS isolation is a different unit and does not dissolve this carrier." as NonEmptyStr
 )
 
 data compile_shape_receipt_shell_emit_scaffold: Disposition = Scaffold {
@@ -66,15 +290,7 @@ data compile_shape_receipt_shell_emit_scaffold: Disposition = Scaffold {
 
 fn compile_shape_receipt_intent() -> Pipeline {
   Pipeline {
-    steps: [
-      ci_workflow_do(command: compile_shape_receipt_prefix_assign_command()),
-      ci_workflow_do(command: compile_shape_receipt_echo_identity_command),
-      ci_workflow_do(command: compile_shape_receipt_echo_jobs_command),
-      ci_workflow_do(command: compile_shape_receipt_echo_makeflags_command),
-      ci_workflow_do(command: compile_shape_receipt_jobserver_command),
-      ci_workflow_do(command: compile_shape_receipt_echo_loadavg_command),
-      ci_workflow_do(command: compile_shape_receipt_cgroup_command)
-    ],
+    steps: list_flat_map(xs: compile_shape_receipt_axes, f: fn(a) { compile_shape_axis_steps(a: a) }),
     on_failure: FailFast
   }
 }
@@ -87,14 +303,17 @@ fn compile_shape_receipt_script() -> String {
 }
 
 fn compile_shape_receipt_observes_axes(script: String) -> Bool {
-  string_contains(s: script, pattern: compile_shape_receipt_prefix)
-    && string_contains(s: script, pattern: "nproc=")
-    && string_contains(s: script, pattern: "cargo_build_jobs=")
-    && string_contains(s: script, pattern: "makeflags=")
-    && string_contains(s: script, pattern: "jobserver_auth=")
-    && string_contains(s: script, pattern: "tokens=")
-    && string_contains(s: script, pattern: "cpu.max=")
-    && string_contains(s: script, pattern: "cpu.stat=")
+  fold(compile_shape_receipt_axes, init: true, f: fn(acc, a) {
+    acc && string_contains(s: script, pattern: concat(" ", concat(a.axis, "=")))
+  })
+}
+
+fn compile_shape_receipt_leaves_are_single_commands() -> Bool {
+  fold(compile_shape_receipt_axes, init: true, f: fn(acc, a) {
+    acc && fold(a.sources, init: true, f: fn(inner, src) {
+      inner && compile_shape_source_is_single_command(command: src.command)
+    })
+  })
 }
 
 fn compile_shape_receipt_step() -> Step {
