@@ -57,7 +57,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.node { Node }
-import v2.std.provenance { SpanIndex, span_index_empty, span_index_merge }
+import v2.std.provenance { SpanIndex, span_index_empty, span_index_in_scope, span_index_merge }
 import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial }
 import v2.std.text { String }
 
@@ -273,12 +273,16 @@ fn program_assembly_phase_normalize_seeded(
     Accepted { value: artifact, diagnostics: od } =>
       match normalize_scoped(parse_tree: artifact.tree, allocator: scoped_occurrence_allocator(alloc: seed, scope: scope)) {
         Rejected { diagnostics: d } =>
-          ProgramAssemblyNormalizedPhase { outcome: bind_outcome_accepted(od: od, inner: Rejected { diagnostics: d }), alloc: seed, spans: artifact.span_index }
+          ProgramAssemblyNormalizedPhase {
+            outcome: bind_outcome_accepted(od: od, inner: Rejected { diagnostics: d }),
+            alloc: seed,
+            spans: span_index_in_scope(index: artifact.span_index, scope: scope)
+          }
         Accepted { value: scoped, diagnostics: nd } =>
           ProgramAssemblyNormalizedPhase {
             outcome: bind_outcome_accepted(od: od, inner: Accepted { value: scoped.tree, diagnostics: nd }),
             alloc: scoped.allocator.alloc,
-            spans: artifact.span_index
+            spans: span_index_in_scope(index: artifact.span_index, scope: scope)
           }
       }
   }
@@ -372,13 +376,13 @@ fn program_assembly_read_to_normalized_root_seeded(
         Rejected { diagnostics: d } =>
           ProgramAssemblySeededReadResult {
             alloc: artifact.alloc,
-            spans: artifact.span_index,
+            spans: span_index_in_scope(index: artifact.span_index, scope: scope),
             produced: bind_outcome_accepted(od: od, inner: Rejected { diagnostics: d })
           }
         Accepted { value: scoped, diagnostics: nd } =>
           ProgramAssemblySeededReadResult {
             alloc: scoped.allocator.alloc,
-            spans: artifact.span_index,
+            spans: span_index_in_scope(index: artifact.span_index, scope: scope),
             produced: bind_outcome_accepted(od: od, inner: Accepted { value: scoped.tree, diagnostics: nd })
           }
       }
