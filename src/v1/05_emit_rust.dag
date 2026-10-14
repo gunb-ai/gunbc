@@ -3429,7 +3429,8 @@ fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolutio
       TypeDeclKernelSpellingUndecided { leaf: und } =>
         shared_layer_of_undecided_kernel_spelling(shared_types: shared_types, leaf: und, type_decl_items: type_decl_items)
       TypeDeclNotDeclared =>
-        if leaf == "" || leaf == "fn" || is_kernel_type(name: leaf) {
+        if leaf == "" || leaf == "fn" || is_kernel_type(name: leaf)
+          || (string_length(s: leaf) == 1 && rust_is_uppercase_letter(c: leaf)) {
           SharedLayerAtValue
         } else {
           SharedLayerRefuse { leaf: leaf, cause: "TypeDeclNotDeclared" }
@@ -8499,7 +8500,7 @@ fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Se
     return ty
   }
   let layer = shared_layer_of_type_expr(shared_types: shared_types, type_expr: rt_field, type_decl_items: type_decl_items, source_indices: source_indices)
-  if match layer { SharedLayerRefuse { leaf: _, cause: _ } => true  _ => false } {
+  if match layer { SharedLayerRefuse { leaf: l, cause: _ } => !type_var_in_fn_generic_scope(id: l, generic_param_names: generic_param_names)  _ => false } {
     return shared_layer_refuse_expr(leaf: match layer { SharedLayerRefuse { leaf: l, cause: _ } => l  _ => "" }, cause: match layer { SharedLayerRefuse { leaf: _, cause: c } => c  _ => "" })
   }
   let native_scalar = realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: rt_field, dag_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: rt_field), env: env, source_indices: source_indices))

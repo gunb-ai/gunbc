@@ -6538,6 +6538,7 @@ pub fn shared_layer_of_resolution(
                 if leaf.clone() == "".to_string()
                     || leaf.clone() == "fn".to_string()
                     || crate::std_types::is_kernel_type(leaf.clone())
+                    || ((leaf.clone().len() as i64) == 1 && rust_is_uppercase_letter(leaf.clone()))
                 {
                     SharedLayerAnswer::SharedLayerAtValue
                 } else {
@@ -17739,7 +17740,9 @@ pub fn rust_field_carrier_final_type(
             source_indices.clone(),
         ) {
             SharedLayerAnswer::SharedLayerRefuse { leaf, cause } => {
-                return shared_layer_refuse_expr(leaf, cause);
+                if !type_var_in_fn_generic_scope(leaf.clone(), generic_param_names.clone()) {
+                    return shared_layer_refuse_expr(leaf, cause);
+                }
             }
             _ => {}
         }
