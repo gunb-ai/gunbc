@@ -20,15 +20,16 @@ import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_
 // one declared path. A consumer that asks for that durability cannot be handed /tmp, and the arm
 // has no unconstrained path operand (DESIGN section 4b, structurally impossible).
 //
-// JobWorkspaceScoped is the leaf `materialization-store` under a caller-supplied scope root. The
-// arm has no String, but the scope root is an arbitrary instance_root, so the store is
-// EphemeralToFrame -- macbook, srv2-deploy, isolated labs, and their witness copies collapse here
-// as workspace-scoped, not as durable-across-runs. A per-run CI job workspace is
-// EphemeralJobWorkspace, same leaf rule, same durability.
+// JobWorkspaceScoped is the leaf `materialization-store` under a caller-supplied scope root
+// (macbook, srv2-deploy, isolated labs, hermetic fleet job, witness copies). The arm has no
+// String. The scope root is an arbitrary instance_root, so durability is EphemeralToFrame.
+// A second fieldless arm with the same leaf and durability is a nickname and is not admitted.
 //
 // WitnessScratchRoot is the only arm that takes a path; it admits only /tmp/gunbc_* scratch.
 //
-// scope_root is a path-resolution operand, not a store identity. DurableHostVolume ignores it.
+// scope_root is a path-resolution operand at realization, not a store identity. It is
+// HostDashboardInstance.instance_root. Putting it on this arm would duplicate that field.
+// DurableHostVolume ignores it.
 //
 // DECLARED FRONTIER: this module grants the guest-side PATH. Attaching a gunbc-owned host volume
 // as a Firecracker drive is the runner lane's act. Until that attachment lands, a DurableHostVolume
@@ -40,7 +41,6 @@ import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_
 type MaterializationStoreRoot
   = DurableHostVolume
   | JobWorkspaceScoped
-  | EphemeralJobWorkspace
   | WitnessScratchRoot { root: String }
 
 type MaterializationStoreDurability
@@ -60,7 +60,6 @@ fn materialization_store_root_path(root: MaterializationStoreRoot, scope_root: S
   match root {
     DurableHostVolume => materialization_store_host_volume_path
     JobWorkspaceScoped => join([scope_root, "/", materialization_store_workspace_leaf], "")
-    EphemeralJobWorkspace => join([scope_root, "/", materialization_store_workspace_leaf], "")
     WitnessScratchRoot { root: r } => r
   }
 }
@@ -73,7 +72,6 @@ fn materialization_store_durability(root: MaterializationStoreRoot) -> Materiali
   match root {
     DurableHostVolume => DurableAcrossRuns
     JobWorkspaceScoped => EphemeralToFrame
-    EphemeralJobWorkspace => EphemeralToFrame
     WitnessScratchRoot { root: _ } => EphemeralToFrame
   }
 }
@@ -103,9 +101,6 @@ fn materialization_store_envelope(root: MaterializationStoreRoot, scope_root: St
   match root {
     DurableHostVolume => materialization_store_host_volume_envelope(path: materialization_store_host_volume_path)
     JobWorkspaceScoped => materialization_store_host_volume_envelope(
-      path: materialization_store_root_path(root: root, scope_root: scope_root)
-    )
-    EphemeralJobWorkspace => materialization_store_host_volume_envelope(
       path: materialization_store_root_path(root: root, scope_root: scope_root)
     )
     WitnessScratchRoot { root: r } =>

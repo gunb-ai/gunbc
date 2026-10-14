@@ -28,7 +28,7 @@ import std.materialization_provider {
   output_native_compiler_executable, output_native_compiler_build_diagnostics,
 }
 import std.materialization_store_grant {
-  WitnessScratchRoot, DurableHostVolume, JobWorkspaceScoped, EphemeralJobWorkspace,
+  WitnessScratchRoot, DurableHostVolume, JobWorkspaceScoped,
   materialization_store_root_path, materialization_store_durability, materialization_store_host_volume_path,
   DurableAcrossRuns, EphemeralToFrame,
 }
@@ -837,16 +837,11 @@ test fn durable_volume_and_job_workspace_paths_are_constructed() -> Bool {
   let scope = "/job-workspace"
   (materialization_store_root_path(root: DurableHostVolume, scope_root: "/tmp/x") == materialization_store_host_volume_path)
     && (materialization_store_root_path(root: JobWorkspaceScoped, scope_root: scope) == "/job-workspace/materialization-store")
-    && (materialization_store_root_path(root: EphemeralJobWorkspace, scope_root: scope) == "/job-workspace/materialization-store")
     && match materialization_store_durability(root: DurableHostVolume) {
       DurableAcrossRuns => true
       EphemeralToFrame => false
     }
     && match materialization_store_durability(root: JobWorkspaceScoped) {
-      EphemeralToFrame => true
-      DurableAcrossRuns => false
-    }
-    && match materialization_store_durability(root: EphemeralJobWorkspace) {
       EphemeralToFrame => true
       DurableAcrossRuns => false
     }

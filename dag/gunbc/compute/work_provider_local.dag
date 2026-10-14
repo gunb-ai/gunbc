@@ -1652,8 +1652,8 @@ fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostR
 
 // THE STORE A COMPUTE REQUEST USES: a root and the budgets it is opened under. The budgets are policy
 // (gunbc.materialization_store_budgets), handed to the transport as a parameter; production uses
-// compute_store(instance), whose root IS the instance field (DurableHostVolume, JobWorkspaceScoped
-// or EphemeralJobWorkspace — never rewritten), and a witness supplies a scratch root with fixture rows.
+// compute_store(instance), whose root IS the instance field (DurableHostVolume or JobWorkspaceScoped
+// — never rewritten), and a witness supplies a scratch root with fixture rows.
 type ComputeStore {
   root: MaterializationStoreRoot
   scope_root: String

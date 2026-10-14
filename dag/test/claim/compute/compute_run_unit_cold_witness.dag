@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_provider_local { compute_store, compute_staging_dir }
 import std.materialization_store_grant {
-  DurableHostVolume, JobWorkspaceScoped, EphemeralJobWorkspace, WitnessScratchRoot,
+  DurableHostVolume, JobWorkspaceScoped, WitnessScratchRoot,
   materialization_store_root_path, materialization_store_durability, materialization_store_host_volume_path,
   DurableAcrossRuns, EphemeralToFrame,
 }
@@ -74,15 +74,13 @@ test fn the_hermetic_store_root_is_the_instance_field_and_not_srv1_live() -> Boo
     && (compute_staging_dir(instance: h) == join([hermetic_path, "-staging"], ""))
     && (compute_staging_dir(instance: live) == join([live_path, "-staging"], ""))
     && match hermetic_root {
-      EphemeralJobWorkspace => true
+      JobWorkspaceScoped => true
       DurableHostVolume => false
-      JobWorkspaceScoped => false
       WitnessScratchRoot { root: _ } => false
     }
     && match live_root {
       DurableHostVolume => live_path == materialization_store_host_volume_path
       JobWorkspaceScoped => false
-      EphemeralJobWorkspace => false
       WitnessScratchRoot { root: _ } => false
     }
     && match materialization_store_durability(root: hermetic_root) {
