@@ -1,0 +1,213 @@
+module v2.test.claim.cardinality_realization_specimens
+
+import extdeps.languages.json.parse {
+  FieldAbsent,
+  FieldMalformed,
+  FieldRead,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  JsonMemberMissing,
+  JsonMemberNull,
+  JsonMemberPresence,
+  JsonMemberUnreadable,
+  JsonMemberValue,
+  json_field_string,
+  json_member_presence,
+  parse_json_document
+}
+
+import std.algebra { FreeMonoid, fold_list, length }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present }
+import v2.std.integer { Int }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE NINE CONTROLLED SPECIMENS of roadmap node cardinality-realization-conformance, each reduced
+// to ONE Int tag by an elimination that keeps every distinction the specimen exists to test, so two
+// specimens that a realization conflates read as one tag and the pairwise claim reds. This module
+// covers the EVALUATOR PATH as claims executing the tag functions (not eval_test_claim_subject itself). The other paths are declared per (target, specimen) in
+// v2.test.claim.cardinality_realization_coverage, which also holds the rung: the seed Rust emit
+// realizes 1-6 and 7 and does NOT realize the List spelling of specimen 6 or specimens 8 and 9 (each
+// enrolled ExpectedRed with its owners), and the native v2 CLI refuses the whole closure before any
+// shape is reached. Those two paths are observed locally and recorded in the PR, not gated: no
+// `gunbc test <label>` re-derives them. Trigger: a wet instrument row that runs both over these
+// specimens and compares the outcome with the coverage rows. Until then the class rung is the
+// minimum across paths, which is mitigation.
+//   (specimen 6 is declared again over List in v2.test.claim.cardinality_realization_list_specimen, its own
+//   module because the seed Rust emit of it does not compile and would take every specimen here with it)
+//   1 Absent                      2 Present(Absent)              3 Present(Present(7))
+//   4 absent collection           5 present empty collection     6 present collection of absent entries
+//   7 foreign member missing      8 foreign member present with null   9 foreign member present, invalid value
+
+fn specimen_absent() -> Optional<Int> { Absent }
+
+fn specimen_present_absent() -> Optional<Optional<Int>> { Present { value: Absent } }
+
+fn specimen_present_present() -> Optional<Optional<Int>> { Present { value: Present { value: 7 } } }
+
+fn specimen_absent_collection() -> Optional<FreeMonoid<Int>> { Absent }
+
+fn specimen_present_empty_collection() -> Optional<FreeMonoid<Int>> { Present { value: [] } }
+
+fn specimen_present_absent_entries() -> Optional<FreeMonoid<Optional<Int>>> { Present { value: [Absent] } }
+
+// THE THREE FOREIGN FIXTURES AS DECLARATIONS, so each has an identity a support row can cite.
+data specimen_foreign_member_missing_text: String = "{}"
+
+data specimen_foreign_member_null_text: String = "{\"a\":null}"
+
+data specimen_foreign_member_invalid_text: String = "{\"a\":5}"
+
+fn tag_flat(x: Optional<Int>) -> Int {
+  match x {
+    Absent => 1
+    Present { value: _ } => 3
+  }
+}
+
+fn tag_nested(x: Optional<Optional<Int>>) -> Int {
+  match x {
+    Absent => 10
+    Present { value: inner } =>
+      match inner {
+        Absent => 20
+        Present { value: v } => 30 + v
+      }
+  }
+}
+
+fn tag_collection(x: Optional<FreeMonoid<Int>>) -> Int {
+  match x {
+    Absent => 40
+    Present { value: xs } => 50 + length(xs: xs)
+  }
+}
+
+fn entry_tag(e: Optional<Int>) -> Int {
+  match e {
+    Absent => 1
+    Present { value: v } => 10 + v
+  }
+}
+
+fn entries_sum(xs: FreeMonoid<Optional<Int>>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, e) { acc + entry_tag(e: e) })
+}
+
+// THE ENTRY READER ELIMINATES EACH ELEMENT, so an absent entry, a present one and its payload all
+// move the tag; a length-only reader could not see the element erasure a target can introduce.
+fn tag_entries(x: Optional<FreeMonoid<Optional<Int>>>) -> Int {
+  match x {
+    Absent => 60
+    Present { value: xs } => 70 + entries_sum(xs: xs)
+  }
+}
+
+fn specimen_present_present_entry() -> Optional<FreeMonoid<Optional<Int>>> {
+  Present { value: [Present { value: 5 }] }
+}
+
+fn specimen_present_mixed_entries() -> Optional<FreeMonoid<Optional<Int>>> {
+  Present { value: [Absent, Present { value: 5 }] }
+}
+
+fn tag_presence(p: JsonMemberPresence) -> Int {
+  match p {
+    JsonMemberMissing => 80
+    JsonMemberNull => 81
+    JsonMemberValue { value: _ } => 82
+    JsonMemberUnreadable { cause: _ } => 83
+  }
+}
+
+// A fixture that does not parse is its own tag, never a JsonNull stand-in: -1 equals no expected
+// tag, so an unparsable fixture fails every claim that reads it.
+fn unreadable_tag() -> Int { 0 - 1 }
+
+fn tag_presence_text(text: String) -> Int {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } => tag_presence(p: json_member_presence(obj: v, key: "a"))
+    JsonDocumentUnreadable { gap: _ } => unreadable_tag()
+  }
+}
+
+// 92 only for the specific cause "a is a number where a string was expected"; any other malformed
+// cause is 93, and a document that did not parse is -1.
+fn tag_field_text(text: String) -> Int {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } =>
+      match json_field_string(obj: v, key: "a") {
+        FieldAbsent => 90
+        FieldRead { value: _ } => 91
+        FieldMalformed { cause: c } =>
+          if c == "a is a number where a string was expected" { 92 } else { 93 }
+      }
+    JsonDocumentUnreadable { gap: _ } => unreadable_tag()
+  }
+}
+
+// The accepted control: the string payload itself, "" when the member is not a readable string.
+fn field_string_payload(text: String) -> String {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } =>
+      match json_field_string(obj: v, key: "a") {
+        FieldRead { value: s } => s
+        _ => ""
+      }
+    JsonDocumentUnreadable { gap: _ } => ""
+  }
+}
+
+fn specimen_tags() -> FreeMonoid<Int> {
+  [
+    tag_flat(x: specimen_absent()),
+    tag_nested(x: specimen_present_absent()),
+    tag_nested(x: specimen_present_present()),
+    tag_collection(x: specimen_absent_collection()),
+    tag_collection(x: specimen_present_empty_collection()),
+    tag_entries(x: specimen_present_absent_entries()),
+    tag_presence_text(text: specimen_foreign_member_missing_text),
+    tag_presence_text(text: specimen_foreign_member_null_text),
+    tag_field_text(text: specimen_foreign_member_invalid_text)
+  ]
+}
+
+test fn nested_absence_keeps_its_depth() -> Bool {
+  tag_nested(x: specimen_present_absent()) == 20
+    && tag_nested(x: specimen_present_present()) == 37
+    && tag_flat(x: specimen_absent()) == 1
+}
+
+test fn absent_collection_is_not_empty_collection() -> Bool {
+  tag_collection(x: specimen_absent_collection()) == 40
+    && tag_collection(x: specimen_present_empty_collection()) == 50
+}
+
+// ELEMENT ABSENCE, not length: [Absent] and [Present 5] have one entry each and must read apart, and
+// the payload 5 must be read back from the mixed list.
+test fn entries_keep_element_absence_and_payload() -> Bool {
+  tag_entries(x: specimen_present_absent_entries()) == 71
+    && tag_entries(x: specimen_present_present_entry()) == 85
+    && tag_entries(x: specimen_present_mixed_entries()) == 86
+}
+
+test fn foreign_missing_null_and_invalid_stay_three_answers() -> Bool {
+  specimen_tags() == [1, 20, 37, 40, 50, 71, 80, 81, 92]
+}
+
+// THE DISCRIMINATING CONTROL: a realization that flattened Present(Absent) to Absent, or read an
+// absent collection as an empty one, or a JSON null as a missing member, would give the neighbouring
+// specimen's tag. json_field_string's null reading is the DECLARED collapse (its own policy), so it
+// is asserted as such, beside, and is not a loss.
+test fn a_valid_foreign_string_retains_its_payload() -> Bool {
+  field_string_payload(text: "{\"a\":\"kept\"}") == "kept"
+}
+
+test fn the_collapsing_readings_differ_from_the_specimens() -> Bool {
+  tag_nested(x: Absent) != tag_nested(x: specimen_present_absent())
+    && tag_collection(x: Absent) != tag_collection(x: specimen_present_empty_collection())
+    && tag_presence(p: JsonMemberMissing) != tag_presence(p: JsonMemberNull)
+    && tag_field_text(text: "{\"a\":null}") == 90
+}

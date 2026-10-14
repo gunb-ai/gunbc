@@ -24,17 +24,16 @@ import v2.std.orchestration {
   PipelineStep,
   Retry,
   EscalationLevel,
-  EnvSet,
-  EnvUnset,
   LogMatches,
   Pipeline,
   Do,
   Run,
   FailFast,
   DiscardAll,
-  TeeTo
+  TeeTo,
 }
-import std.algebra { FreeMonoid, list_head, HeadFound, HeadAbsent }
+import std.env_binding { EnvSet, EnvUnset }
+import std.algebra { FreeMonoid, list_head }
 import v2.std.collection {
   Map
 }
@@ -135,8 +134,8 @@ fn orch_retry_perturbed_level2() -> EscalationLevel {
 
 fn orch_retry_level1_from(e: FreeMonoid<EscalationLevel>) -> EscalationLevel {
   match list_head(xs: e) {
-    HeadFound { value: l } => l
-    HeadAbsent => orch_retry_perturbed_level2()
+    Present { value: l } => l
+    Absent => orch_retry_perturbed_level2()
   }
 }
 

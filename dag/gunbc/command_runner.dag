@@ -1,4 +1,6 @@
 module gunbc.command_runner
+import std.optional { Absent, Optional, Present }
+
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -109,7 +111,7 @@ fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -
 //
 // THE EMPTY-ARGV REFUSAL IS GONE BECAUSE THE STATE IS GONE, which is a climb and not a relaxation
 // (DESIGN section 4b: structurally impossible beats mechanically preventable). Both run sites used
-// to match list_head on the argv and refuse HeadAbsent with "empty argv: a command with no words
+// to match list_head on the argv and refuse Absent with "empty argv: a command with no words
 // names no program to execute". extdeps.exec.command ArgvCommand now carries `program: NonEmptyStr`
 // beside `arguments`, so a command with no program has no representation to arrive here in -- the
 // arm was not deleted for convenience, it became unreachable and an unreachable refusal arm is

@@ -1,4 +1,6 @@
 module test.claim.long.g2_data_reference_under_selection_witness
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { List }
 // Expected-red control for G2 under-selection through data declarations
@@ -29,11 +31,7 @@ import v2.lens.live_read_classification {
   live_read_selection_manifest_live,
   classification_has_runtime_read
 }
-import std.algebra {
-  list_head,
-  HeadFound,
-  HeadAbsent
-}
+import std.algebra { list_head }
 import v2.std.live_read {
   LiveReadSelectionProjection,
   LiveReadSelectionClassified,
@@ -92,8 +90,8 @@ fn specimen_projection() -> LiveReadSelectionProjection {
       exclude_substrings: []
     )
   ) {
-    HeadFound { value: row } => row.projection
-    HeadAbsent =>
+    Present { value: row } => row.projection
+    Absent =>
       LiveReadSelectionRefused {
         cause: "manifest produced no rows for the specimen request"
       }

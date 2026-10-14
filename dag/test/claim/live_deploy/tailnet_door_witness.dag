@@ -8,10 +8,13 @@ import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spe
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
   live_deploy_tailnet_door_unit_file, live_deploy_protocol,
+  LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed,
+  LiveDeployTailnetDoorUnitOidcReadbackRefused,
 }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.spec {
   DeploymentSpec, DeploymentStep, ArtifactStep, Dependency, TailnetDoorServeUnit, TailscaleServeMapping,
+  ComposeOwned, UpsertOwned,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_path, deployment_tailnet_door_steps,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_tailnet_door_socket }
@@ -38,8 +41,9 @@ fn door_socket() -> String {
 
 fn unit_text(spec: DeploymentSpec) -> String {
   match live_deploy_tailnet_door_unit_file(spec: spec, revision: door_revision(), now_epoch: claim_oidc_now()) {
-    Absent => ""
-    Present { value: unit } => serialize_systemd_unit_file(file: unit)
+    LiveDeployTailnetDoorUnitNotDeployed => ""
+    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: _ } => ""
+    LiveDeployTailnetDoorUnitEmitted { file } => serialize_systemd_unit_file(file: file)
   }
 }
 
@@ -78,7 +82,7 @@ test fn the_door_unit_differs_from_the_loopback_unit_only_in_entry_and_listener(
 
 fn step_is(step: DeploymentStep, door: Bool) -> Bool {
   match step {
-    ArtifactStep { step: art } => if door { art.kind == TailnetDoorServeUnit } else { art.kind == TailscaleServeMapping }
+    ArtifactStep { step: art } => if door { art.kind == ComposeOwned { kind: TailnetDoorServeUnit } } else { art.kind == UpsertOwned { kind: TailscaleServeMapping } }
     Dependency { step: _ } => false
   }
 }

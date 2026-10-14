@@ -23,6 +23,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_subshell_from_stmts,
   bash_build_with_redir,
   bash_build_with_redir_to_file,
+  bash_build_with_redir_from_file,
   bash_build_word_var
 }
 import v2.extdeps.languages.bash_command_fold {
@@ -110,9 +111,11 @@ data bash_fold_raw_quoted_golden: String = "'q'"
 data bash_fold_raw_xeq_golden: String = "x=y"
 data bash_fold_redir_both_golden: String = "'true' >/dev/null 2>&1"
 data bash_fold_redir_file_golden: String = "'true' > \"$PROBE_BIN\""
+data bash_fold_redir_from_file_golden: String = "'exec' < \"$0\""
 data bash_fold_redir_pipe_golden: String = "'echo' 'hi' | 'wc' '-c' 2>/dev/null"
 data bash_fold_redir_stderr_golden: String = "'true' 2>/dev/null"
 data bash_fold_redir_stdout_stderr_golden: String = "'true' >&2"
+data bash_fold_redir_stderr_stdout_golden: String = "'true' 2>&1"
 data bash_fold_subshell_golden: String = "('true')"
 data bash_fold_subshell_multi_golden: String = "('true'; 'false')"
 data bash_fold_subshell_nested_golden: String = "('true' && 'false')"
@@ -604,6 +607,18 @@ test fn bash_fold_with_redir_stdout_to_stderr_holds() -> Bool {
   )
 }
 
+test fn bash_fold_with_redir_stderr_to_stdout_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_with_redir_stmt(
+      node: bash_build_with_redir(
+        inner: bash_fold_cmd_true_emitted,
+        redir: ^bash_production_fold_redir_stderr_to_stdout
+      )
+    ),
+    golden: bash_fold_redir_stderr_stdout_golden
+  )
+}
+
 test fn bash_fold_with_redir_redir_to_file_var_holds() -> Bool {
   bash_emit_matches_golden(
     stmt: bash_fold_with_redir_stmt(
@@ -613,6 +628,18 @@ test fn bash_fold_with_redir_redir_to_file_var_holds() -> Bool {
       )
     ),
     golden: bash_fold_redir_file_golden
+  )
+}
+
+test fn bash_fold_with_redir_from_file_var_holds() -> Bool {
+  bash_emit_matches_golden(
+    stmt: bash_fold_with_redir_stmt(
+      node: bash_build_with_redir_from_file(
+        inner: bash_build_command_from_lits(lits: ["exec"]),
+        path: bash_build_word_var(name: "0")
+      )
+    ),
+    golden: bash_fold_redir_from_file_golden
   )
 }
 

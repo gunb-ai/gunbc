@@ -51,6 +51,7 @@ import v2.std.type_binder {
   OpaqueTypeDecl,
   TypeAlias,
   GenericTypeDecl,
+  NotATypeDecl,
   PlainTypeDecl,
   type_alias_wrapper,
   type_binder_labels_conform,
@@ -583,6 +584,7 @@ fn tpb_generic_member(o: Outcome<ResolvedTree>) -> List<Node> {
                 GenericTypeDecl { binders: _, member: member } => [member]
                 TypeAlias { binders: _, aliased: _ } => acc
                 OpaqueTypeDecl { binders: _ } => acc
+                NotATypeDecl => acc
                 PlainTypeDecl { member: _ } => acc
               }
             } else {
@@ -718,6 +720,7 @@ fn tpb_generic_view_tags(o: Outcome<ResolvedTree>) -> List<Symbol> {
                 GenericTypeDecl { binders: _, member: _ } => concat(acc, [^view_generic_member])
                 TypeAlias { binders: _, aliased: _ } => concat(acc, [^view_generic_alias])
                 OpaqueTypeDecl { binders: _ } => concat(acc, [^view_generic_opaque])
+                NotATypeDecl => acc
                 PlainTypeDecl { member: _ } => acc
               }
             } else {

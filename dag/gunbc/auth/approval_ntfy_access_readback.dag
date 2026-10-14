@@ -1,5 +1,6 @@
 module gunbc.auth.approval_ntfy_access_readback
 
+import std.optional { Absent, Present }
 import std.types { NonEmptyStr, String, List, Bool, Int, EpochSecs }
 import std.measure { Hertz, hertz, hertz_count }
 import std.algebra { trim }

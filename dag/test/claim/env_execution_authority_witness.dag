@@ -2,7 +2,7 @@ module test.claim.env_execution_authority_witness
 
 import std.types { String, List, list_length }
 import std.logic { Bool }
-import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset }
+import std.env_binding { EnvBinding, EnvSet, EnvUnset }
 import extdeps.tools.env {
   env_absolute_program,
   env_path_resolved_program,

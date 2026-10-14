@@ -2,6 +2,7 @@ module extdeps.cloud.vast_ai
 
 import std.resources { Network }
 import std.types { Int, Bool, NonEmptyStr, String, Secret, List }
+import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.decimal { ExactDecimal }
 import std.measure {
@@ -35,15 +36,32 @@ import extdeps.uri { Uri, Https }
 // inet_up_cost and inet_down_cost arrive as JSON numbers. min_bid and dph_total convert with
 // std.measure exact_decimal_to_money_per_hour_ceil (round up). storage_cost ($/GB-month) and
 // inet_up_cost / inet_down_cost ($/GB) stay ExactDecimal: a MoneyAmountMicro wrapper would drop
-// the quantity axis. No M0 fold reads those tariffs; conversion waits on a per-quantity carrier
-// the reader names. gpu_ram / gpu_mem_bw remain unmodeled: nothing reads them. num_gpus is an Int
-// and IS a request axis: an offer is a machine with that many GPUs, rented whole.
+// the quantity axis. gpu_ram is an Int of megabytes on the REST wire (docs.vast.ai: CLI GB,
+// REST MB). search-offers driver_version is a host NVIDIA driver string (e.g. "580.65.06");
+// ingest is vast_ai_driver_version_from_search_offers_text. num_gpus is an Int and
+// IS a request axis: an offer is a machine with that many GPUs, rented whole.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/search/search-offers" }
 }
 
 data vast_ai_create_instance_page: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/instances/create-instance" }
+}
+
+data vast_ai_show_instances_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/instances/show-instances" }
+}
+
+data vast_ai_show_charges_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/billing/show-charges" }
+}
+
+data vast_ai_destroy_instance_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/instances/destroy-instance" }
+}
+
+data vast_ai_change_bid_page: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/instances/change-bid" }
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
@@ -55,10 +73,19 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [vast_ai_create_instance_page]
+  further_citations: [
+    vast_ai_create_instance_page,
+    vast_ai_show_instances_page,
+    vast_ai_show_charges_page,
+    vast_ai_destroy_instance_page,
+    vast_ai_change_bid_page,
+  ]
 }
 
 data vast_ai_api_base: NonEmptyStr = "https://console.vast.ai/api/v0"
+
+// show instances is documented at GET /api/v1/instances, not under the v0 base SearchOffers uses.
+data vast_ai_api_v1_base: NonEmptyStr = "https://console.vast.ai/api/v1"
 
 type VastAiApiError {
   success: Bool
@@ -84,13 +111,61 @@ type VastAiOffer {
   storage_cost: ExactDecimal
   inet_up_cost: ExactDecimal
   inet_down_cost: ExactDecimal
+  gpu_ram: Int
+  driver_version: String?
+}
+
+// search-offers JSON driver_version is a string or null. Unread is JSON null/omitted.
+// Malformed is a present string that is not dotted decimal with a non-negative major.
+// Parse at vast_ai_ingest_search_offer_driver; the Search consumer must call that ingest.
+type VastAiDriverVersion {
+  major: Nat
+}
+
+type VastAiDriverVersionStanding
+  = VastAiDriverVersionRead { version: VastAiDriverVersion }
+  | VastAiDriverVersionUnread
+  | VastAiDriverVersionMalformed { raw: String }
+
+fn vast_ai_driver_version_read(major: Nat) -> VastAiDriverVersionStanding {
+  VastAiDriverVersionRead { version: VastAiDriverVersion { major: major } }
+}
+
+fn vast_ai_ingest_search_offer_driver(offer: VastAiOffer) -> VastAiDriverVersionStanding {
+  vast_ai_driver_version_from_search_offers_text(raw: offer.driver_version)
+}
+
+fn vast_ai_driver_version_from_search_offers_text(raw: String?) -> VastAiDriverVersionStanding {
+  match raw {
+    Absent => VastAiDriverVersionUnread
+    Present { value: text } =>
+      if trim(s: text) == "" {
+        VastAiDriverVersionMalformed { raw: text }
+      } else {
+        match split(s: trim(s: text), delimiter: ".").first() {
+          Absent => VastAiDriverVersionMalformed { raw: text }
+          Present { value: head } =>
+            match parse_int(s: head) {
+              Absent => VastAiDriverVersionMalformed { raw: text }
+              Present { value: major } =>
+                if (major < 0) {
+                  VastAiDriverVersionMalformed { raw: text }
+                } else {
+                  vast_ai_driver_version_read(major: major)
+                }
+            }
+        }
+      }
+  }
 }
 
 data vast_ai_quote_currency: CurrencyCode = Usd
 
-// DECLARED FRONTIER (DESIGN §3c): production consumer is the FlexBidAttempt adapter named on
-// product.fabric.flex_policy. Until that lands, the executing consumer is
-// test.claim.fabric.flex_bid_admission_witness.
+// Adapter product.fabric.flex_vast_shadow flex_shadow_bid calls this wrapper. DECLARED FRONTIER
+// (DESIGN §3c): a non-test executing route that remains if the witness is deleted. TRIGGER: an
+// instrument or wet readonly Search that calls flex_shadow_bid. Until then the executing consumer
+// is test.claim.fabric.flex_vast_shadow_witness (and the inhabitance arm of
+// vast_min_bid_rounds_up_a_seventh_fraction_digit).
 fn vast_ai_min_bid_money_per_hour(offer: VastAiOffer) -> DecimalMoneyPerHourConversion {
   exact_decimal_to_money_per_hour_ceil(d: offer.min_bid, currency: vast_ai_quote_currency)
 }
@@ -117,6 +192,8 @@ service vast_ai.SearchOffers {
     requires Network
     input {
       api_key: Secret
+      search_type: String
+      limit: Int
     }
     output {
       offers: List<VastAiOffer> from "offers"
@@ -124,11 +201,276 @@ service vast_ai.SearchOffers {
     readonly
     transport rest {
       method: POST,
-      path: "/bundles/"
+      path: "/bundles/",
+      body: { type: search_type, limit: limit }
     }
     response {
       200 => VastAiOffers
       401 => VastAiApiError
+      429 => VastAiApiError
+      5xx => VastAiApiError
+    }
+  }
+}
+
+// search-offers `type` is ondemand | bid | reserved (docs.vast.ai search-offers). Flex interruptible
+// screening asks for bid. The string is the vendor's token, not a closed enum: the document gives
+// examples rather than a finite set.
+data vast_ai_search_type_bid: String = "bid"
+data vast_ai_search_type_ondemand: String = "ondemand"
+data vast_ai_search_limit_default: Int = 100
+
+// ONE INSTANCE from GET /api/v1/instances. id is the contract (create-instance returns it as
+// new_contract). machine_id is the host the offer named. gpu_ram is MB. min_bid / dph_total are
+// ExactDecimal for the same reason offers are. actual_status is optional: the document types it
+// string | null. No create or destroy operation is declared in this module.
+type VastAiInstance {
+  id: Int
+  machine_id: Int
+  actual_status: String?
+  gpu_name: String
+  gpu_ram: Int
+  num_gpus: Int
+  image_uuid: String
+  is_bid: Bool?
+  min_bid: ExactDecimal
+  dph_total: ExactDecimal
+  label: String?
+}
+
+fn vast_ai_instance_dph_total_money_per_hour(instance: VastAiInstance) -> DecimalMoneyPerHourConversion {
+  exact_decimal_to_money_per_hour_ceil(d: instance.dph_total, currency: vast_ai_quote_currency)
+}
+
+type VastAiInstances {
+  success: Bool
+  instances_found: Int
+  total_instances: Int
+  next_token: String?
+  instances: List<VastAiInstance>
+}
+
+data vast_ai_keyset_page_limit: Int = 25
+
+service vast_ai.Instances {
+  config {
+    endpoint: vast_ai_api_v1_base
+    auth: Bearer
+    auth_input: api_key
+  }
+
+  operation Show {
+    requires Network
+    input {
+      api_key: Secret
+      select_filters: String
+      limit: Int
+      after_token: String?
+    }
+    output {
+      instances: List<VastAiInstance> from "instances"
+      next_token: String? from "next_token"
+      total_instances: Int from "total_instances"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/instances",
+      query: { select_filters: select_filters, limit: limit, after_token: after_token }
+    }
+    response {
+      200 => VastAiInstances
+      400 => VastAiApiError
+      401 => VastAiApiError
+      429 => VastAiApiError
+    }
+  }
+}
+
+// ONE CONTRACT CHARGE from GET /api/v0/charges. amount is ExactDecimal (the document's float).
+// select_filters is the documented JSON string; day.gte and day.lte are required by the vendor.
+type VastAiChargeItem {
+  start: Int
+  end: Int
+  type: String
+  amount: ExactDecimal
+  description: String
+}
+
+type VastAiCharge {
+  start: Int
+  end: Int
+  type: String
+  source: String
+  description: String
+  amount: ExactDecimal
+  items: List<VastAiChargeItem>
+}
+
+type VastAiCharges {
+  success: Bool
+  count: Int
+  total: Int
+  next_token: String?
+  results: List<VastAiCharge>
+}
+
+service vast_ai.Charges {
+  config {
+    endpoint: vast_ai_api_base
+    auth: Bearer
+    auth_input: api_key
+  }
+
+  operation Show {
+    requires Network
+    input {
+      api_key: Secret
+      select_filters: String
+      limit: Int
+      after_token: String?
+    }
+    output {
+      results: List<VastAiCharge> from "results"
+      next_token: String? from "next_token"
+      total: Int from "total"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/charges",
+      query: { select_filters: select_filters, limit: limit, after_token: after_token }
+    }
+    response {
+      200 => VastAiCharges
+      400 => VastAiApiError
+      401 => VastAiApiError
+      403 => VastAiApiError
+      404 => VastAiApiError
+      429 => VastAiApiError
+    }
+  }
+}
+
+// WRITE SHAPES. Transport binding and execution belong to the wet consumer
+// (product.fabric.flex_market frontiers / bright-moth-475). label is REQUIRED on
+// this model's Create so an unlabelled rent is unwritable; Vast's OpenAPI lists
+// label as optional.
+
+type VastAiCreateAskRequest {
+  price: ExactDecimal
+  disk: Int
+  template_hash_id: NonEmptyStr
+  label: NonEmptyStr
+}
+
+type VastAiCreateAskResult {
+  success: Bool
+  new_contract: Int
+}
+
+type VastAiDestroyResult {
+  success: Bool
+  msg: String
+}
+
+type VastAiChangeBidRequest {
+  price: ExactDecimal
+}
+
+type VastAiChangeBidResult {
+  success: Bool
+}
+
+service vast_ai.Asks {
+  config {
+    endpoint: vast_ai_api_base
+    auth: Bearer
+    auth_input: api_key
+  }
+
+  operation Create {
+    requires Network
+    input {
+      api_key: Secret
+      offer_id: Int
+      price: ExactDecimal
+      disk: Int
+      template_hash_id: NonEmptyStr
+      label: NonEmptyStr
+    }
+    output {
+      success: Bool from "success"
+      new_contract: Int from "new_contract"
+    }
+    transport rest {
+      method: PUT,
+      path: "/asks/\{offer_id\}/",
+      body: { price: price, disk: disk, template_hash_id: template_hash_id, label: label }
+    }
+    response {
+      200 => VastAiCreateAskResult
+      400 => VastAiApiError
+      401 => VastAiApiError
+      403 => VastAiApiError
+      404 => VastAiApiError
+      410 => VastAiApiError
+      429 => VastAiApiError
+      5xx => VastAiApiError
+    }
+  }
+}
+
+service vast_ai.InstanceLifecycle {
+  config {
+    endpoint: vast_ai_api_base
+    auth: Bearer
+    auth_input: api_key
+  }
+
+  operation Destroy {
+    requires Network
+    input {
+      api_key: Secret
+      instance_id: Int
+    }
+    output {
+      success: Bool from "success"
+    }
+    transport rest {
+      method: DELETE,
+      path: "/instances/\{instance_id\}/"
+    }
+    response {
+      200 => VastAiDestroyResult
+      400 => VastAiApiError
+      404 => VastAiApiError
+      429 => VastAiApiError
+      5xx => VastAiApiError
+    }
+  }
+
+  operation ChangeBid {
+    requires Network
+    input {
+      api_key: Secret
+      instance_id: Int
+      price: ExactDecimal
+    }
+    output {
+      success: Bool from "success"
+    }
+    idempotent
+    transport rest {
+      method: PUT,
+      path: "/instances/bid_price/\{instance_id\}/",
+      body: { price: price }
+    }
+    response {
+      200 => VastAiChangeBidResult
+      400 => VastAiApiError
+      401 => VastAiApiError
+      404 => VastAiApiError
       429 => VastAiApiError
       5xx => VastAiApiError
     }

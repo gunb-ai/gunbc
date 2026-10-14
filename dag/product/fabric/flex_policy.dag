@@ -13,7 +13,7 @@ import std.measure {
   exact_decimal_to_money_per_hour_ceil,
 }
 import extdeps.currency.currency { CurrencyCode }
-import product.fabric.identity { fabric_identity_eq }
+import product.fabric.identity { fabric_identity_eq, OfferKey }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply {
   EqualCostOfferTieBreak, PlacementAffinityKey, GrantDuration, ExactGrantDuration,
@@ -24,6 +24,11 @@ import product.fabric.budget {
   MoneyAccount, MoneyReservationRequest, AccountAdvanced, MoneyRefused,
   MoneyRefusal, reserve_money,
 }
+import product.fabric.flex_market {
+  FlexMarketQuote, FlexOwnerLabel,
+  FlexQuotedBid, FlexBidPriced, FlexBidMarketUnobserved, FlexBidQuoteCurrencyMismatch,
+  flex_quoted_bid,
+}
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
   AvailabilityObservation, AvailableRevocable, AvailableForInterval, AvailableIndefinitely,
@@ -33,14 +38,14 @@ import product.fabric.selection {
   OfferLiabilityOverBuyOrder, OfferRevocationNotAdmitted, selection_liability,
 }
 
-// Fleet interruptible-bid policy. In this change the executing consumer of flex_bid_admission is
-// the witness. DECLARED FRONTIER (DESIGN §3c): the production consumer is the fold that maps a
-// Vast SearchOffers row through vast_ai_min_bid_money_per_hour into FlexBidAttempt (quote_currency
-// = vast_ai_quote_currency) and calls flex_bid_admission. TRIGGER: that adapter exists as a
-// production module (not a test) and deleting the witness still leaves an execution of the real
-// path. Until then this slice is M0 model-only: no effects, no search, no bid PUT.
-
-data flex_floor_buffer: NonzeroNatFraction = NonzeroNatFraction { num: 1, denom_predecessor: 9 }
+// Fleet interruptible-bid policy. The bid is product.fabric.flex_market flex_quoted_bid
+// (class median × level, never below the machine floor). On-demand_fraction remains a hard
+// horizon ceiling, not a second bid formula. Adapter: product.fabric.flex_vast_shadow
+// flex_shadow_bid maps a VastAiOffer through vast_ai_min_bid_money_per_hour, binds a market
+// quote, and calls flex_bid_admission. DECLARED FRONTIER (DESIGN §3c): a non-test executing
+// route that remains if the witness is deleted. TRIGGER: an instrument or wet readonly Search
+// that calls flex_shadow_bid. Until then the executing consumer is
+// test.claim.fabric.flex_vast_shadow_witness. No create or destroy.
 
 type PhysicalMachineObservationIdentity = NonEmptyStr where brand("PhysicalMachineObservationIdentity")
 
@@ -56,15 +61,15 @@ fn flex_machine_key_eq(left: FlexMachineKey, right: FlexMachineKey) -> Bool {
   left.provider == right.provider && left.account == right.account && left.machine == right.machine
 }
 
-// Standing rates that count against fleet_rate_cap. The cap is an aggregate: every
-// Active, Pending, AutoResumable and UnknownOutcome rate plus the proposed bid.
-// A machine-keyed retained ceiling is deleted: it made a previously owned card
-// special and paid more for an equivalent replacement.
+// Standing rates that count against fleet_rate_cap. The cap is an aggregate of
+// our label only (FlexPolicy.owner, policy data gunbc-flex): Active, Pending,
+// AutoResumable and UnknownOutcome plus the proposed bid. ctrl-bidder and
+// ctrl-pool on the same account are never summed and never touched.
 type FlexAcquisitionStanding
-  = AcquisitionActive { rate: MoneyPerHour }
-  | AcquisitionPending { rate: MoneyPerHour }
-  | AcquisitionAutoResumable { rate: MoneyPerHour }
-  | AcquisitionUnknownOutcome { rate: MoneyPerHour }
+  = AcquisitionActive { owner: FlexOwnerLabel, rate: MoneyPerHour }
+  | AcquisitionPending { owner: FlexOwnerLabel, rate: MoneyPerHour }
+  | AcquisitionAutoResumable { owner: FlexOwnerLabel, rate: MoneyPerHour }
+  | AcquisitionUnknownOutcome { owner: FlexOwnerLabel, rate: MoneyPerHour }
 
 type FlexFleetOccupancy {
   standing: List<FlexAcquisitionStanding>
@@ -74,13 +79,22 @@ type FlexBidSubject
   = FlexNewAcquisition
   | FlexExistingAcquisition { current_bid: MoneyPerHour }
 
+type FlexActuationMode
+  = FlexActuationDry
+  | FlexActuationWet
+
 type FlexPolicy {
   fleet_rate_cap: MoneyPerHour
-  floor_buffer: NonzeroNatFraction
   // Fraction of comparable on-demand horizon cost (setup and transfer included).
-  // Not a mix of on-demand vs interruptible headcount.
+  // Hard ceiling, not a second bid formula.
   on_demand_fraction: NonzeroNatFraction
   acquisition_horizon: Second
+  // Load-bearing isolation from ctrl on the same Vast account: no second account.
+  // Cap occupancy, reconcile, cleanup and release select this label exactly.
+  owner: FlexOwnerLabel
+  // Write loop. FlexActuationDry is observe/plan/record; Wet is the write loop.
+  // Trial and every current constructor are Dry.
+  actuation: FlexActuationMode
 }
 
 type FlexAcquisitionWindow {
@@ -119,6 +133,7 @@ type FlexBidAttempt<P> {
   delay_valuation: MoneyPerSecond
   tie: EqualCostOfferTieBreak
   affinity: PlacementAffinityKey
+  market: FlexMarketQuote
 }
 
 type FlexBidRefusal
@@ -137,6 +152,9 @@ type FlexBidRefusal
   | FlexSupplyNotSelected { selection: SupplySelection<NonEmptyStr> }
   | FlexCandidateMachineMismatch { named: FlexMachineKey, observed: FlexMachineKey }
   | FlexMoneyRefused { refusal: MoneyRefusal }
+  | FlexMarketPriceUnobserved
+  | FlexMarketQuoteCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
+  | FlexCandidateConsequencesUnestablished { offer_key: OfferKey, missing: List<NonEmptyStr> }
 
 type FlexCandidateJoin<P>
   = FlexCandidatesJoined { candidates: List<CandidateOffer<P>> }
@@ -174,24 +192,21 @@ fn flex_horizon_duration(policy: FlexPolicy) -> GrantDuration {
   ExactGrantDuration { seconds: policy.acquisition_horizon }
 }
 
-fn flex_buffered_min(min_bid: MoneyPerHour, buffer: NonzeroNatFraction) -> MoneyPerHour {
-  let frac = nonzero_nat_fraction_field(r: buffer)
-  MoneyPerHour {
-    amount: measure_scale_fraction_ceil(
-      m: min_bid.amount,
-      num: frac.denom + frac.num,
-      den: frac.denom,
-    ),
-    currency: min_bid.currency,
+fn standing_rate(row: FlexAcquisitionStanding) -> MoneyPerHour {
+  match row {
+    AcquisitionActive { owner: _, rate: r } => r
+    AcquisitionPending { owner: _, rate: r } => r
+    AcquisitionAutoResumable { owner: _, rate: r } => r
+    AcquisitionUnknownOutcome { owner: _, rate: r } => r
   }
 }
 
-fn standing_rate(row: FlexAcquisitionStanding) -> MoneyPerHour {
+fn standing_owner(row: FlexAcquisitionStanding) -> FlexOwnerLabel {
   match row {
-    AcquisitionActive { rate: r } => r
-    AcquisitionPending { rate: r } => r
-    AcquisitionAutoResumable { rate: r } => r
-    AcquisitionUnknownOutcome { rate: r } => r
+    AcquisitionActive { owner: o, rate: _ } => o
+    AcquisitionPending { owner: o, rate: _ } => o
+    AcquisitionAutoResumable { owner: o, rate: _ } => o
+    AcquisitionUnknownOutcome { owner: o, rate: _ } => o
   }
 }
 
@@ -199,7 +214,7 @@ type FlexOccupancySum
   = FlexOccupancySummed { rate: MoneyPerHour }
   | FlexOccupancyCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
 
-fn occupancy_sum(occupancy: FlexFleetOccupancy, currency: CurrencyCode) -> FlexOccupancySum {
+fn occupancy_sum(occupancy: FlexFleetOccupancy, currency: CurrencyCode, ours: FlexOwnerLabel) -> FlexOccupancySum {
   fold(
     occupancy.standing,
     init: FlexOccupancySummed {
@@ -209,42 +224,29 @@ fn occupancy_sum(occupancy: FlexFleetOccupancy, currency: CurrencyCode) -> FlexO
       match acc {
         FlexOccupancyCurrencyMismatch { left: l, right: r } =>
           FlexOccupancyCurrencyMismatch { left: l, right: r }
-        FlexOccupancySummed { rate: summed } => {
-          let rate = standing_rate(row: row)
-          if rate.currency != summed.currency {
-            FlexOccupancyCurrencyMismatch { left: summed.currency, right: rate.currency }
+        FlexOccupancySummed { rate: summed } =>
+          if standing_owner(row: row) != ours {
+            FlexOccupancySummed { rate: summed }
           } else {
-            FlexOccupancySummed {
-              rate: MoneyPerHour {
-                amount: measure_add(a: summed.amount, b: rate.amount),
-                currency: summed.currency,
-              },
+            let rate = standing_rate(row: row)
+            if rate.currency != summed.currency {
+              FlexOccupancyCurrencyMismatch { left: summed.currency, right: rate.currency }
+            } else {
+              FlexOccupancySummed {
+                rate: MoneyPerHour {
+                  amount: measure_add(a: summed.amount, b: rate.amount),
+                  currency: summed.currency,
+                },
+              }
             }
           }
-        }
       },
   )
 }
 
-fn occupy_pending(occupancy: FlexFleetOccupancy, bid: MoneyPerHour) -> FlexFleetOccupancy {
+fn occupy_pending(occupancy: FlexFleetOccupancy, bid: MoneyPerHour, owner: FlexOwnerLabel) -> FlexFleetOccupancy {
   FlexFleetOccupancy {
-    standing: concat([AcquisitionPending { rate: bid }], occupancy.standing),
-  }
-}
-
-type FlexReservationCeiling
-  = FlexReservationCeilingChosen { rate: MoneyPerHour }
-  | FlexReservationCeilingCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
-
-fn policy_reservation_ceiling(policy: FlexPolicy, min_bid: MoneyPerHour) -> FlexReservationCeiling {
-  let buffered = flex_buffered_min(min_bid: min_bid, buffer: policy.floor_buffer)
-  match money_per_hour_compare(left: buffered, right: policy.fleet_rate_cap) {
-    MoneyPerHourCurrencyMismatch { left: cap_left, right: cap_right } =>
-      FlexReservationCeilingCurrencyMismatch { left: cap_left, right: cap_right }
-    MoneyPerHourCompared { left_le_right: buffered_under_cap } =>
-      FlexReservationCeilingChosen {
-        rate: if buffered_under_cap { buffered } else { policy.fleet_rate_cap },
-      }
+    standing: concat([AcquisitionPending { owner: owner, rate: bid }], occupancy.standing),
   }
 }
 
@@ -441,34 +443,36 @@ fn flex_bid_after_min(
           cause: FlexRateCapBelowMin { cap: policy.fleet_rate_cap, min_bid: min_rate },
         }
       } else {
-        match policy_reservation_ceiling(policy: policy, min_bid: min_rate) {
-          FlexReservationCeilingCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
-            refuse_currency(left: mismatch_left, right: mismatch_right)
-          FlexReservationCeilingChosen { rate: ceiling } =>
-            match attempt.subject {
-              FlexExistingAcquisition { current_bid: current } =>
-                match money_per_hour_compare(left: min_rate, right: current) {
-                  MoneyPerHourCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
-                    refuse_currency(left: mismatch_left, right: mismatch_right)
-                  MoneyPerHourCompared { left_le_right: min_under_current } =>
-                    if !min_under_current {
-                      FlexBidRefused {
-                        cause: FlexExistingBidWouldRise { current: current, min_bid: min_rate },
-                      }
-                    } else {
-                      flex_existing_unchanged(
-                        policy: policy,
-                        occupancy: occupancy,
-                        window: window,
-                        account: account,
-                        current: current,
-                      )
-                    }
-                }
-              FlexNewAcquisition =>
-                if window.remaining == 0 {
-                  FlexBidRefused { cause: FlexNoAcquisitionRemaining }
+        match attempt.subject {
+          FlexExistingAcquisition { current_bid: current } =>
+            match money_per_hour_compare(left: min_rate, right: current) {
+              MoneyPerHourCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
+                refuse_currency(left: mismatch_left, right: mismatch_right)
+              MoneyPerHourCompared { left_le_right: min_under_current } =>
+                if !min_under_current {
+                  FlexBidRefused {
+                    cause: FlexExistingBidWouldRise { current: current, min_bid: min_rate },
+                  }
                 } else {
+                  flex_existing_unchanged(
+                    policy: policy,
+                    occupancy: occupancy,
+                    window: window,
+                    account: account,
+                    current: current,
+                  )
+                }
+            }
+          FlexNewAcquisition =>
+            if window.remaining == 0 {
+              FlexBidRefused { cause: FlexNoAcquisitionRemaining }
+            } else {
+              match flex_quoted_bid(quote: attempt.market, floor: min_rate) {
+                FlexBidMarketUnobserved =>
+                  FlexBidRefused { cause: FlexMarketPriceUnobserved }
+                FlexBidQuoteCurrencyMismatch { left: ql, right: qr } =>
+                  FlexBidRefused { cause: FlexMarketQuoteCurrencyMismatch { left: ql, right: qr } }
+                FlexBidPriced { rate: priced } =>
                   flex_admit_new(
                     policy: policy,
                     occupancy: occupancy,
@@ -476,10 +480,10 @@ fn flex_bid_after_min(
                     account: account,
                     attempt: attempt,
                     min_rate: min_rate,
-                    bid: ceiling,
+                    bid: priced,
                     joined: joined,
                   )
-                }
+              }
             }
         }
       }
@@ -502,7 +506,7 @@ fn flex_existing_unchanged(
           cause: FlexRateCapBelowMin { cap: policy.fleet_rate_cap, min_bid: current },
         }
       } else {
-        match occupancy_sum(occupancy: occupancy, currency: policy.fleet_rate_cap.currency) {
+        match occupancy_sum(occupancy: occupancy, currency: policy.fleet_rate_cap.currency, ours: policy.owner) {
           FlexOccupancyCurrencyMismatch { left: occupied_left, right: occupied_right } =>
             refuse_currency(left: occupied_left, right: occupied_right)
           FlexOccupancySummed { rate: occupied } =>
@@ -537,7 +541,7 @@ fn flex_admit_new(
   bid: MoneyPerHour,
   joined: List<CandidateOffer<NonEmptyStr>>,
 ) -> FlexBidAdmission {
-  match occupancy_sum(occupancy: occupancy, currency: policy.fleet_rate_cap.currency) {
+  match occupancy_sum(occupancy: occupancy, currency: policy.fleet_rate_cap.currency, ours: policy.owner) {
     FlexOccupancyCurrencyMismatch { left: l, right: r } => refuse_currency(left: l, right: r)
     FlexOccupancySummed { rate: occupied } => {
       if bid.currency != occupied.currency {
@@ -728,7 +732,7 @@ fn flex_admit_revocable_target(
                                   selection: selection,
                                   account: next,
                                   occupancy: if append_standing {
-                                    occupy_pending(occupancy: occupancy, bid: bid)
+                                    occupy_pending(occupancy: occupancy, bid: bid, owner: policy.owner)
                                   } else {
                                     occupancy
                                   },
