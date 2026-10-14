@@ -12,7 +12,11 @@ import gunbc.witness.compiler_gate_workflow {
   compiler_gate_emit_build_capability_closure_holds,
   compiler_gate_emit_build_notice_step,
   compiler_gate_emit_build_notice_lines,
-  compiler_gate_emit_build_step
+  compiler_gate_emit_build_step,
+  compiler_gate_build_step_name
+}
+import gunbc.ci.ci_compile_shape_receipt {
+  compile_shape_receipt_step_name, compile_shape_receipt_script, compile_shape_receipt_prefix,
 }
 import gunbc.required_ci_contract_epoch {
   required_ci_context_name,
@@ -156,6 +160,41 @@ test fn the_job_binds_one_step_per_subject() -> Bool {
 // THE CARGO CONSUMER HAS A PROVIDER ORDERED BEFORE IT.
 test fn the_job_capability_closure_holds() -> Bool {
   compiler_gate_emit_build_capability_closure_holds()
+}
+
+// THE COMPILE-SHAPE RECEIPT RUNS IMMEDIATELY BEFORE THE SEED BUILD, so a reader of the
+// `Build the compiler` step timing has the nproc / MAKEFLAGS / cpu.max line from the same
+// job in the log above it. A receipt after the build, or only on a failure notice, would
+// miss the slow runs that are the subject.
+test fn the_compile_shape_receipt_precedes_the_seed_build() -> Bool {
+  string_contains(
+    s: join(compiler_gate_emit_build_bound_steps() |> map(b => b.step_name), "\n"),
+    pattern: concat(compile_shape_receipt_step_name, concat("\n", compiler_gate_build_step_name))
+  )
+}
+
+test fn the_compile_shape_receipt_names_the_shape_axes() -> Bool {
+  let s = compile_shape_receipt_script()
+  string_contains(s: s, pattern: compile_shape_receipt_prefix)
+    && string_contains(s: s, pattern: "nproc=")
+    && string_contains(s: s, pattern: "cargo_build_jobs=")
+    && string_contains(s: s, pattern: "makeflags=")
+    && string_contains(s: s, pattern: "cpu.max=")
+    && string_contains(s: s, pattern: "cpu.stat=")
+}
+
+test fn w_RED_a_script_without_cpu_max_is_not_the_receipt() -> Bool {
+  let planted = concat(compile_shape_receipt_prefix, " nproc=8 cargo_build_jobs=unset")
+  !string_contains(s: planted, pattern: "cpu.max=")
+    && string_contains(s: compile_shape_receipt_script(), pattern: "cpu.max=")
+}
+
+// THE COMMITTED WORKFLOW CARRIES THE RECEIPT (pairing obligation): a generator change that
+// dropped the step while this file still compiled would be specification-without-execution.
+test fn the_committed_workflow_carries_the_compile_shape_receipt() -> Bool {
+  let yml = Filesystem.Read(path: ".github/workflows/witnesses.yml", expect: ExpectSuccess).content
+  string_contains(s: yml, pattern: compile_shape_receipt_step_name)
+    && string_contains(s: yml, pattern: compile_shape_receipt_prefix)
 }
 
 // ═══ FRESH PRODUCTS, NO STORE (operator ruling 2026-10-09, second correction) ═══

@@ -94,6 +94,9 @@ import gunbc.witness.witness_floor_workflow {
 }
 import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.fleet.fleet_workflow_steps { ci_cache_cargo_step_under }
+import gunbc.ci.ci_compile_shape_receipt {
+  compile_shape_receipt_step, compile_shape_receipt_step_name,
+}
 import gunbc.ci.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 // The fork clause is heal's authorship; the required job inherited the work it guarded.
 import gunbc.heal_workflow { heal_same_repository_clause }
@@ -417,6 +420,11 @@ fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep>
       step: ci_cache_cargo_step_under(condition: none),
       role: capability_neutral,
       step_name: "Cache Cargo",
+    },
+    CompilerGateBoundStep {
+      step: compile_shape_receipt_step(),
+      role: capability_neutral,
+      step_name: compile_shape_receipt_step_name,
     },
     CompilerGateBoundStep {
       step: witness_floor_build_step(
