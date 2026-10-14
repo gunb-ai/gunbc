@@ -40,7 +40,7 @@ import gunbc.target_binding {
   SharedTypeLeafCollisionCensusProducer,
   CardinalityRealizationProducer,
   RegenRoundCostProducer,
-  ComputeRunUnitColdProducer,
+  NativeClaimProgramProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -97,6 +97,8 @@ import gunbc.instrument_targets {
   cardinality_realization_label,
   regen_round_cost_label,
   compute_run_unit_cold_label,
+  compute_run_unit_cold_entry,
+  compute_run_unit_cold_child_deadline,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
   instrument_targets, instrument_bindings,
@@ -1079,7 +1081,7 @@ test fn the_compute_run_unit_cold_operand_routes_to_its_own_producer() -> Bool {
   match invoke_target(operand: "//gunbc/instruments:compute-run-unit-cold") {
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: compute_run_unit_cold_label())
-        && (b.producer == ComputeRunUnitColdProducer {})
+        && (b.producer == NativeClaimProgramProducer { entry: compute_run_unit_cold_entry() deadline: compute_run_unit_cold_child_deadline() })
         && !(b.producer == RegenRoundCostProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }

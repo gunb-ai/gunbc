@@ -1331,14 +1331,13 @@ fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
 // this row names a compute layout, it does not grant dispatch. Not a public_builtin: a
 // workspace-relative root is not a host lookup subject.
 data fleet_compute_hermetic_dashboard_id: NonEmptyStr = "fleet-compute-hermetic" as NonEmptyStr
-data fleet_compute_hermetic_workspace_child: String = ".gunbc-compute-hermetic"
 data fleet_compute_hermetic_directory_owner: PosixOwnerNames = PosixOwnerNames {
   user: "ghrunner" as NonEmptyStr,
   group: "ghrunner" as NonEmptyStr,
 }
 
 fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath) -> HostDashboardInstance {
-  let instance_root = dashboard_instance_child(root: workspace, child: fleet_compute_hermetic_workspace_child)
+  let instance_root = workspace
   HostDashboardInstance {
     deployment: fleet_compute_hermetic_deployment,
     instance_id: fleet_compute_hermetic_dashboard_id,
