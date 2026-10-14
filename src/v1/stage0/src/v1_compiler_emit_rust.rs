@@ -18925,6 +18925,57 @@ pub fn rust_map_key_bound_traits() -> Rc<Vec<String>> {
     ])
 }
 
+pub fn v1_type_expr_all_names(
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        v1_rt::concat(
+            Rc::new(vec![crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                type_expr.clone(),
+            )]),
+            Rc::new({
+                let mut __result = Vec::new();
+                for ch in type_expr.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*v1_type_expr_all_names(
+                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        )
+    })
+}
+
+pub fn v1_map_key_nested_names_in_type_expr(
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for key in crate::v1_compiler_trait_derive_emit::v1_map_key_head_type_exprs(
+            type_expr.clone(),
+            source_indices.clone(),
+        )
+        .iter()
+        .cloned()
+        {
+            __result.extend(
+                (*v1_type_expr_all_names(key.clone(), source_indices.clone()))
+                    .iter()
+                    .cloned(),
+            );
+        }
+        __result
+    })
+}
+
 pub fn v1_fn_signature_map_key_param_names(
     value_params: Rc<Vec<Rc<Node>>>,
     ret: Rc<Node>,
@@ -18936,7 +18987,7 @@ pub fn v1_fn_signature_map_key_param_names(
             let mut __result = Vec::new();
             for p in value_params.iter().cloned() {
                 __result.extend(
-                    (*crate::v1_compiler_trait_derive_emit::v1_map_key_head_names_in_type_expr(
+                    (*v1_map_key_nested_names_in_type_expr(
                         crate::v1_std_core::param_node_type_expr(p.clone()),
                         source_indices.clone(),
                     ))
@@ -18946,10 +18997,7 @@ pub fn v1_fn_signature_map_key_param_names(
             }
             __result
         });
-        let from_ret = crate::v1_compiler_trait_derive_emit::v1_map_key_head_names_in_type_expr(
-            ret.clone(),
-            source_indices.clone(),
-        );
+        let from_ret = v1_map_key_nested_names_in_type_expr(ret.clone(), source_indices.clone());
         crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
             let mut __result = Vec::new();
             for n in v1_rt::concat(from_params.clone(), from_ret.clone())
@@ -18971,6 +19019,114 @@ pub fn v1_fn_signature_map_key_param_names(
             }
             __result
         }))
+    }
+}
+
+pub fn v1_call_forwarding_map_key_bound_param_names(
+    generic_param_names: Rc<Vec<String>>,
+    body: Rc<Node>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if ((generic_param_names.clone().len() as i64) == 0) {
+            return Rc::new(vec![]);
+        }
+        let here = match (*body.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => v1_call_site_map_key_forwarded_param_names(
+                body.clone(),
+                generic_param_names.clone(),
+                fn_decl_items.clone(),
+                source_indices.clone(),
+                visited.clone(),
+            ),
+            _ => Rc::new(vec![]),
+        };
+        body.children.clone().iter().cloned().fold(
+            here.clone(),
+            |acc: Rc<Vec<String>>, child: Rc<Node>| {
+                crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                    acc,
+                    v1_call_forwarding_map_key_bound_param_names(
+                        generic_param_names.clone(),
+                        child.clone(),
+                        fn_decl_items.clone(),
+                        source_indices.clone(),
+                        visited.clone(),
+                    ),
+                )
+            },
+        )
+    })
+}
+
+pub fn v1_call_site_map_key_forwarded_param_names(
+    call: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    {
+        let si = source_indices.clone();
+        let callee_name = crate::v1_std_core::expr_call_func_at(call.clone(), si.clone());
+        if {
+            let mut __found = false;
+            for v in visited.iter().cloned() {
+                if (v.clone() == callee_name.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
+            return Rc::new(vec![]);
+        }
+        match v1_rt::map_get(&fn_decl_items, callee_name.clone()) {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(callee_item) => match callee_item.body.clone() {
+                std::option::Option::None => Rc::new(vec![]),
+                Some(callee_body) => {
+                    let callee_params = callee_item.params.clone();
+                    let callee_value_params = function_value_params(callee_params.clone());
+                    let callee_generic_param_names = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in function_type_params(callee_params.clone()).iter().cloned() {
+                            __result.push(crate::v1_std_core::generic_param_name_at(
+                                p.clone(),
+                                si.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    let callee_bound_param_names =
+                        crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                            v1_fn_signature_map_key_param_names(
+                                callee_value_params.clone(),
+                                crate::v1_compiler_infer_types::resolved_type(callee_item.clone()),
+                                callee_generic_param_names.clone(),
+                                si.clone(),
+                            ),
+                            v1_call_forwarding_map_key_bound_param_names(
+                                callee_generic_param_names.clone(),
+                                callee_body.clone(),
+                                fn_decl_items.clone(),
+                                si.clone(),
+                                v1_rt::concat(visited.clone(), Rc::new(vec![callee_name.clone()])),
+                            ),
+                        );
+                    v1_call_forwarding_forwarded_param_names(
+                        call.clone(),
+                        callee_value_params.clone(),
+                        callee_generic_param_names.clone(),
+                        callee_bound_param_names.clone(),
+                        generic_param_names.clone(),
+                        si.clone(),
+                    )
+                }
+            },
+        }
     }
 }
 
@@ -19928,12 +20084,22 @@ pub fn emit_fn_def(
             self_eq_param_names.clone(),
             call_forwarding_eq_param_names.clone(),
         );
-        let map_key_param_names = v1_fn_signature_map_key_param_names(
-            value_params.clone(),
-            inferred.clone(),
-            generic_param_names.clone(),
-            si.clone(),
-        );
+        let map_key_param_names =
+            crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                v1_fn_signature_map_key_param_names(
+                    value_params.clone(),
+                    inferred.clone(),
+                    generic_param_names.clone(),
+                    si.clone(),
+                ),
+                v1_call_forwarding_map_key_bound_param_names(
+                    generic_param_names.clone(),
+                    body.clone(),
+                    emit_info.fn_decl_items.clone(),
+                    si.clone(),
+                    Rc::new(vec![name.clone()]),
+                ),
+            );
         let set_element_param_names =
             crate::v1_compiler_trait_derive_emit::v1_fn_signature_set_element_param_names(
                 v1_rt::rc_list_push(
