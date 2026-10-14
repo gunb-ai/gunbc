@@ -89,6 +89,18 @@ test fn tak_kinded_parameter_is_readable_as_a_value_in_the_body() -> Bool {
   tak_accepts(o: tak_body_reads_kinded_parameter())
 }
 
+test fn tak_probe_body_read_refuses_in_value_position() -> Bool {
+  tak_refuses_with(o: tak_body_reads_kinded_parameter(), reason: ^resolve_reason_type_parameter_in_value_position)
+}
+
+test fn tak_probe_body_read_refuses_unbound() -> Bool {
+  tak_refuses_with(o: tak_body_reads_kinded_parameter(), reason: ^resolve_reason_unbound_symbol)
+}
+
+test fn tak_plain_type_parameter_read_as_a_value_refuses() -> Bool {
+  tak_refuses_with(o: tak_assemble(src: concat(tak_prelude(), "fn plain_of<t>() -> Int {\n  t\n}\n")), reason: ^resolve_reason_type_parameter_in_value_position)
+}
+
 test fn tak_kinded_parameter_accepts_a_variant_of_its_kind() -> Bool {
   tak_accepts(o: tak_kind_conforms())
 }
