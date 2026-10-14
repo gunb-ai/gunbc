@@ -58,7 +58,7 @@ pub use crate::v1_compiler_emit_core_support::EmitResult;
 pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;
 pub use crate::v1_compiler_emit_rust::emit_rust_selected;
-pub use crate::v1_compiler_infer::{reconcile, reconcile_with_census_extra};
+pub use crate::v1_compiler_infer::reconcile;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::algebra_field_kind_name;
 pub use crate::v1_compiler_normalize::normalize_graph;
@@ -395,7 +395,6 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
-    pub census_only_sources: Rc<Vec<Rc<SourceFile>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -968,7 +967,6 @@ pub fn test_reference_diagnostics(
 pub fn default_compile_pipeline_options() -> Rc<CompilePipelineOptions> {
     Rc::new(CompilePipelineOptions {
         analyze_complexity: false,
-        census_only_sources: Rc::new(vec![]),
     })
 }
 
@@ -3766,22 +3764,10 @@ pub fn compile_to_resolved_with_options(
                 );
                 let _ = v1_rt::trace_mark("compile.normalize.done".to_string());
                 let norm_diags = norm.diagnostics.clone();
-                let fill = parse_census_fill_sources_with_retention(
-                    options.census_only_sources.clone(),
-                    CensusModuleRetention::RetainDeclarationHeads,
-                );
-                let census_si = fill.newline_indices.clone().iter().cloned().fold(
-                    source_indices.clone(),
-                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
-                        v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
-                    },
-                );
-                let typed = crate::v1_compiler_infer::reconcile_with_census_extra(
+                let typed = crate::v1_compiler_infer::reconcile(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
-                    fill.modules.clone(),
-                    census_si.clone(),
                 );
                 let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());
                 let typed_diags = typed.diagnostics.clone();

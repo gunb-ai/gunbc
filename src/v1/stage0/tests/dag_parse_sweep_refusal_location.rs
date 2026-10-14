@@ -101,17 +101,6 @@ fn out_of_closure_malformed_body_is_owned_by_the_parse_sweep() {
     let entry = "module probe_root.entry\n\ndata ok: Bool = true\n";
     let outsider = "module probe_root.outsider\n\nfn body_probe(x: Int) -> Int { let = = = 9 }\n";
 
-    let options = {
-        let mut opts = (*default_compile_pipeline_options()).clone();
-        opts.census_only_sources = Rc::new(
-            vec![Rc::new(SourceFile {
-                path: "outsider.dag".to_string(),
-                content: outsider.to_string(),
-            })]
-            .into(),
-        );
-        Rc::new(opts)
-    };
     let resolved = compile_to_resolved_with_options(
         Rc::new(
             vec![Rc::new(SourceFile {
@@ -120,7 +109,7 @@ fn out_of_closure_malformed_body_is_owned_by_the_parse_sweep() {
             })]
             .into(),
         ),
-        options,
+        default_compile_pipeline_options(),
     );
     let hard = resolved
         .diagnostics

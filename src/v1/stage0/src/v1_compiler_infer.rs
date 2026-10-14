@@ -31953,20 +31953,6 @@ pub struct RealizeState {
     pub diags_by_name: Rc<HashMap<String, Rc<Vec<Rc<ErrorNode>>>>>,
 }
 
-pub fn typecheck(
-    graph: Rc<ModuleGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-) -> Rc<TypedGraph> {
-    typecheck_with_census_extra(
-        graph.clone(),
-        source_indices.clone(),
-        intern_table.clone(),
-        Rc::new(vec![]),
-        source_indices.clone(),
-    )
-}
-
 pub fn effect_incompleteness_diagnostics(
     causes: Rc<Vec<Rc<EffectIncompleteness>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
@@ -31992,12 +31978,10 @@ pub fn effect_incompleteness_diagnostics(
     })
 }
 
-pub fn typecheck_with_census_extra(
+pub fn typecheck(
     graph: Rc<ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
-    census_fill_modules: Rc<Vec<Rc<Node>>>,
-    census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypedGraph> {
     {
         let intern_table = seed_kernel_intern_table(intern_table.clone());
@@ -32011,10 +31995,7 @@ pub fn typecheck_with_census_extra(
                 )
             },
         );
-        let symbol_index = symbol_index_with_qualified_fill(
-            build_symbol_index_census(graph.modules.clone(), census_si.clone()),
-            build_symbol_index_qualified_fill(census_fill_modules.clone(), census_si.clone()),
-        );
+        let symbol_index = build_symbol_index_census(graph.modules.clone(), source_indices.clone());
         let global_variant_base = build_global_bare_variant_locals(
             symbol_index.global_bare.clone(),
             source_indices.clone(),
@@ -32561,29 +32542,11 @@ pub fn reconcile(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
-    reconcile_with_census_extra(
-        graph.clone(),
-        source_indices.clone(),
-        intern_table.clone(),
-        Rc::new(vec![]),
-        source_indices.clone(),
-    )
-}
-
-pub fn reconcile_with_census_extra(
-    graph: Rc<ModuleGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-    census_fill_modules: Rc<Vec<Rc<Node>>>,
-    census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ResolvedGraph> {
     {
-        let typed = typecheck_with_census_extra(
+        let typed = typecheck(
             graph.clone(),
             source_indices.clone(),
             intern_table.clone(),
-            census_fill_modules.clone(),
-            census_si.clone(),
         );
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
