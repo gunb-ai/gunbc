@@ -77,6 +77,8 @@ data ce_duplicate_b_source: String = "module v2.test.ce_duplicate\n\nimport std.
 
 data ce_unparseable_source: String = "module v2.test.ce_unparseable\nfn ce_broken( -> Int { x }\n"
 
+data ce_headerless_unparseable_source: String = "fn lost( -> Bool { x }\n"
+
 data ce_broken_importee_source: String = "module v2.test.ce_broken\nfn lost( -> Bool { x }\n"
 
 data ce_relies_source: String = "module v2.test.ce_relies\n\nimport v2.std.logic { Bool }\nimport v2.test.ce_broken { lost }\n\nfn reads_refused(p: Bool) -> Bool { lost(p: p) }\n"
@@ -120,6 +122,16 @@ fn ce_emission_clean() -> ClosureEmissionLocated {
       ce_read(source: ce_member_source, id: ^ce_member_read, path: "src/v2/test/ce_member.dag")
     ],
     entry: "v2.test.ce_entry"
+  )
+}
+
+fn ce_emission_headerless_unparseable_file() -> ClosureEmissionLocated {
+  ce_emit(
+    ingest: [
+      ce_logic_read(),
+      ce_read(source: ce_headerless_unparseable_source, id: ^ce_headerless_read, path: "src/v2/test/ce_headerless.dag")
+    ],
+    entry: "v2.std.logic"
   )
 }
 
@@ -270,6 +282,28 @@ test fn a_file_in_the_closure_that_does_not_parse_is_not_a_member_holds() -> Boo
           Empty => false
         })
         && closure_emission_refused_count(emission: e) >= 1
+  }
+}
+
+// Review 80071: a parse refusal with no `module ` line used to vanish (module: Absent was dropped
+// and nothing imported it). It must still sit on the emission and its diagnostics must be readable.
+test fn a_headerless_unparseable_file_is_still_a_file_refusal_RED() -> Bool {
+  let located = ce_emission_headerless_unparseable_file()
+  match located.outcome {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: e, diagnostics: _ } =>
+      ce_members_are(e: e, expected: ["v2.std.logic"])
+        && (match e.refusals {
+          Cons { head: r, tail: Empty } =>
+            r.path == ^ce_headerless_read
+              && (match r.module { Absent => true Present { value: _ } => false })
+          Cons { head: _, tail: _ } => false
+          Empty => false
+        })
+        && (match closure_emission_first_refusal(emission: e) {
+          Absent => false
+          Present { value: d } => true
+        })
   }
 }
 
