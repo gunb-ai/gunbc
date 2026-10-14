@@ -2,6 +2,7 @@ module test.claim.roadmap.dispatch_worker_confinement_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, attempt_state_prepare_argv_for_instance, dispatch_attempt_verification_dir_for_instance, attempt_unit_substate_has_exited, dispatch_review_unit_properties }
+import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
@@ -23,6 +24,8 @@ test fn the_worker_unit_confines_writes_to_the_instance_root() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
   let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "mkdir -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr)
   has_property(props: props, needle: "ProtectSystem=strict")
+    && has_property(props: props, needle: join(["Slice=", user_work_slice_unit_name as String], ""))
+    && has_property(props: props, needle: "MemorySwapMax=0")
     && has_property(props: props, needle: "ProtectHome=read-only")
     && has_property(props: props, needle: "PrivateTmp=yes")
     && has_property(props: props, needle: join(["ReadWritePaths=", inst.instance_root as String], ""))

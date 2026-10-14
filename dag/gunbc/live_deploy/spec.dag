@@ -28,6 +28,7 @@ import extdeps.tailscale.serve {
   tailscale_serve_route_member_path,
 }
 import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
+import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
 import gunbc.fleet.fleet_intent_network {
   srv1_tailscale_endpoint,
   fleet_intent_network,
@@ -440,6 +441,13 @@ data gunbc_repository_convergence_slice_unit_name: NonEmptyStr = "gunbc-reposito
 
 fn gunbc_repository_convergence_slice_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", gunbc_repository_convergence_slice_unit_name as String], "") as NonEmptyStr
+}
+
+// USER-MANAGER SLICE FILE. --user transients look up Slice= in the user manager; a system
+// unit of the same name is a different object. /etc/systemd/user/ is the system-wide user
+// unit directory (systemd.unit(5)).
+fn gunbc_user_work_slice_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/user/", user_work_slice_unit_name as String], "") as NonEmptyStr
 }
 
 // THE ROLE-FOLLOWING SINGLETONS A SPEC HOLDS -- the approval broker unit and front door, the fabric

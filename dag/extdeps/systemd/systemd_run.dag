@@ -310,6 +310,13 @@ fn systemd_run_system_scope_command(properties: List<SystemdRunProperty>, comman
   systemd_run_command_of(options: list_append(left: [RunScope], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
 }
 
+// USER-MANAGER SCOPE: `systemd-run --user --scope --property=... -- CMD`. The floor-demand
+// measurement recipe used this shape without a Slice=; gunbc.compute.unit_bounds
+// gunbc_user_work_scope_command is the production wrap that always binds the declared slice.
+fn systemd_run_user_scope_command(properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_command_of(options: list_append(left: [RunUserManager, RunScope], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
+}
+
 // The full invocation, and the authority the materialized operation argv is checked against. It
 // COMPOSES the option words through the one projection rather than re-deriving them. The
 // transport template carries no words of its own beyond the program head, so this fold's order IS

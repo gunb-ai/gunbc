@@ -32,6 +32,11 @@ import gunbc.session_reservation_policy {
 }
 import gunbc.ci.ci_fleet { fleet_intent_offers }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import gunbc.live_deploy.spec { gunbc_service_uid }
+import gunbc.live_deploy.slice_bounds {
+  user_work_slice_memory_max_of, user_slice_backstop_memory_max_of, user_slice_backstop_memory_swap_max,
+}
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_pressure_limit, gunbc_oomd_sessions_slice, pressure_is_kill }
 import extdeps.systemd {
@@ -804,13 +809,41 @@ fn sessions_membership_probe(session_knobs: List<ConvergeKnob>) -> SessionsMembe
   }
 }
 
+fn user_manager_instance_unit() -> String {
+  join(["user@", to_string(gunbc_service_uid), ".service"], "")
+}
+
+fn user_manager_backstop_knobs() -> List<ConvergeKnob> {
+  let work_max = user_work_slice_memory_max_of(slots: user_work_pool_slots())
+  let backstop = user_slice_backstop_memory_max_of(work_slice_max: work_max)
+  [
+    slice_numeric_knob(
+      slice: GunbcSlice,
+      name: "user_manager_memory_max_bytes",
+      unit: user_manager_instance_unit(),
+      property: systemd_memory_max_property,
+      value: byte_size_count(b: backstop)
+    ),
+    slice_numeric_knob(
+      slice: GunbcSlice,
+      name: "user_manager_memory_swap_max_bytes",
+      unit: user_manager_instance_unit(),
+      property: systemd_memory_swap_max_property,
+      value: byte_size_count(b: user_slice_backstop_memory_swap_max())
+    ),
+  ]
+}
+
 fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) -> HostConverge {
   HostConverge {
     identity: h.identity,
     knobs: concat(
       concat(
-        concat(gunbc_pinned_tree_knobs(host: h.identity), runner_host_knobs(h: h)),
-        session_knobs,
+        concat(
+          concat(gunbc_pinned_tree_knobs(host: h.identity), runner_host_knobs(h: h)),
+          session_knobs,
+        ),
+        user_manager_backstop_knobs(),
       ),
       codex_runtime_bundle_knobs(host: h.identity),
     ),

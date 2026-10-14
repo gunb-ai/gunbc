@@ -1,6 +1,9 @@
 module gunbc.live_deploy.slice_bounds
 
-import std.measure { ByteSize, byte_size }
+import std.types { NonEmptyStr }
+import std.nat { Nat, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 
 // ── THE CGROUP BOUNDS THIS DEPLOYMENT'S SERVED PROCESSES RUN UNDER ──────────────────────────
 // THEY LIVE IN A LEAF MODULE BECAUSE TWO LAYERS NEED THEM AND ONE OF THEM IS UPSTREAM OF THE
@@ -245,3 +248,47 @@ data repository_convergence_slice_memory_high: ByteSize = byte_size(21474836480)
 // with no cause, which is what run 36204703858 recorded. With no swap, an overrun is a kill at
 // MemoryMax, a located failure the restart step's diagnosis arm prints.
 data repository_convergence_slice_memory_swap_max: ByteSize = byte_size(0)
+
+// ── USER-MANAGER WORK (--user transients: gunbc test/run scopes, gunbc-attempt-*, gunbc-compute-*) ─
+// THESE UNITS LEAVE EVERY SYSTEM SLICE. systemd-run --user starts them under
+// user@1000.service/app.slice, which is not sessions.slice and not gunbc-roadmap.slice. A pid
+// cannot be moved across that delegation boundary. So this work needs its OWN declared slice,
+// swap 0, charged with the other deployment allowances.
+//
+// THE NAME SHARES NO systemd HIERARCHY PREFIX with a serving slice (a dash is a parent edge).
+data user_work_slice_unit_name: NonEmptyStr = "gunbc-user-work.slice"
+
+// SWAP ZERO is the same kernel fact as the served slices: an overrun must kill at MemoryMax,
+// not page. The user-work population is the one that was holding ~175 GB uncharged on srv1.
+data user_work_slice_memory_swap_max: ByteSize = byte_size(0)
+
+// ONE GiB BETWEEN HIGH AND MAX, the same gap the runner slot authors (MemoryHigh = max - 1 GiB).
+data user_work_slice_high_gap: ByteSize = byte_size(1073741824)
+
+// USER-MANAGER REMAINDER is a declared parameter until the operator conservation ruling on
+// how 502 GiB usable splits among runners, sessions, leaves and this work. It covers dbus and
+// the user manager itself, not the work slice's members.
+data user_manager_remainder: ByteSize = byte_size(4294967296)
+
+// MemoryMax IS THE POOL APPROPRIATION, not a transcribed GiB. per-slot bytes are
+// gunbc_runner_slot_desired().memory_max (the same ceiling dispatch_worker_memory_max names).
+// Slot count is gunbc.live_deploy.user_work_pool_slots -- kept out of this leaf so unit_bounds
+// can import the name here without closing a cycle through roadmap_belt.
+fn user_work_slice_memory_max_of(slots: Nat) -> ByteSize {
+  byte_size(byte_size_count(b: gunbc_runner_slot_desired().memory_max) * slots)
+}
+
+fn user_work_slice_memory_high_of(memory_max: ByteSize) -> ByteSize {
+  match nat_sub(a: byte_size_count(b: memory_max), b: byte_size_count(b: user_work_slice_high_gap)) {
+    NatSubtrahendExceedsMinuend => byte_size(0)
+    NatDifference { value: n } => byte_size(n)
+  }
+}
+
+fn user_slice_backstop_memory_max_of(work_slice_max: ByteSize) -> ByteSize {
+  byte_size(byte_size_count(b: work_slice_max) + byte_size_count(b: user_manager_remainder))
+}
+
+fn user_slice_backstop_memory_swap_max() -> ByteSize {
+  user_work_slice_memory_swap_max
+}

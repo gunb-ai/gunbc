@@ -1,0 +1,96 @@
+module test.claim.live_deploy.user_work_slice_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.nat { nat_add }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { byte_size_count, kibibyte }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd { systemd_unit_property_wire }
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_user_scope_command,
+}
+import gunbc.live_deploy.slice_bounds {
+  user_work_slice_unit_name, user_work_slice_memory_swap_max,
+  user_work_slice_memory_max_of, user_work_slice_memory_high_of,
+  user_slice_backstop_memory_max_of, user_manager_remainder,
+}
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.compute.host_capacity { compute_pool_slots }
+import gunbc.compute.unit_bounds {
+  compute_grant_unit_properties, gunbc_user_work_scope_command,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_properties }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
+import gunbc.host.host_converge { user_manager_backstop_knobs, user_manager_instance_unit }
+
+fn property_words(props: List<SystemdRunProperty>) -> List<String> {
+  props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
+}
+
+fn has_property(props: List<SystemdRunProperty>, needle: String) -> Bool {
+  any(property_words(props: props), p => string_contains(s: p, pattern: needle))
+}
+
+test fn user_work_slice_max_is_pool_slots_times_the_runner_ceiling() -> Bool {
+  byte_size_count(b: user_work_slice_memory_max_of(slots: user_work_pool_slots()))
+    == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * user_work_pool_slots()
+}
+
+test fn user_work_pool_slots_are_compute_plus_belt() -> Bool {
+  match checked_int_to_nat(n: 3) {
+    Absent => false
+    Present { value: belt } => user_work_pool_slots() == nat_add(a: compute_pool_slots, b: belt)
+  }
+}
+
+test fn user_work_slice_high_is_one_gib_under_max() -> Bool {
+  let max = user_work_slice_memory_max_of(slots: user_work_pool_slots())
+  byte_size_count(b: user_work_slice_memory_high_of(memory_max: max)) + 1073741824 == byte_size_count(b: max)
+}
+
+test fn user_manager_backstop_is_work_slice_plus_remainder() -> Bool {
+  let work = user_work_slice_memory_max_of(slots: user_work_pool_slots())
+  byte_size_count(b: user_slice_backstop_memory_max_of(work_slice_max: work))
+    == byte_size_count(b: work) + byte_size_count(b: user_manager_remainder)
+}
+
+test fn the_grant_fold_binds_the_declared_slice_and_forbids_swap() -> Bool {
+  let props = compute_grant_unit_properties(granted: kibibyte(count: 1024), working_directory: "/wt", process_bounds: none)
+  has_property(props: props, needle: join(["Slice=", user_work_slice_unit_name as String], ""))
+    && has_property(props: props, needle: join(["MemorySwapMax=", to_string(value: byte_size_count(b: user_work_slice_memory_swap_max))], ""))
+    && has_property(props: props, needle: "MemoryMax=1048576")
+}
+
+test fn the_reviewer_unit_binds_the_declared_slice() -> Bool {
+  let inst = srv2_deploy_dashboard_instance()
+  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: none)
+  has_property(props: props, needle: join(["Slice=", user_work_slice_unit_name as String], ""))
+    && has_property(props: props, needle: "MemorySwapMax=0")
+}
+
+test fn the_ad_hoc_scope_wrap_injects_the_slice_the_raw_builder_omits() -> Bool {
+  let raw_ok = match systemd_run_user_scope_command(properties: [], command_argv: ["true"]) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command } =>
+      !any(argv_words(command: command), w => string_contains(s: w, pattern: "Slice="))
+  }
+  match gunbc_user_work_scope_command(properties: [], command_argv: ["gunbc", "test", "//x"]) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command } =>
+      raw_ok
+        && any(argv_words(command: command), w => string_contains(s: w, pattern: join(["Slice=", user_work_slice_unit_name as String], "")))
+        && any(argv_words(command: command), w => string_contains(s: w, pattern: "MemorySwapMax=0"))
+        && any(argv_words(command: command), w => w == "--user")
+        && any(argv_words(command: command), w => w == "--scope")
+  }
+}
+
+test fn host_converge_backstop_knobs_name_user_at_service_uid() -> Bool {
+  let knobs = user_manager_backstop_knobs()
+  knobs.length() == 2
+    && string_contains(s: user_manager_instance_unit(), pattern: "user@1000.service")
+    && any(knobs, k => k.name == "user_manager_memory_max_bytes")
+    && any(knobs, k => k.name == "user_manager_memory_swap_max_bytes")
+}

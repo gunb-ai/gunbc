@@ -148,7 +148,10 @@ import gunbc.live_deploy.slice_bounds {
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
   repository_convergence_slice_memory_max, repository_convergence_slice_memory_high,
   repository_convergence_slice_memory_swap_max,
+  user_work_slice_unit_name, user_work_slice_memory_swap_max,
+  user_work_slice_memory_max_of, user_work_slice_memory_high_of,
 }
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots }
 import gunbc.auth.approval_broker_placement { approval_broker_base_url_of_holder }
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name }
 import gunbc.owned_directory {
@@ -165,6 +168,7 @@ import gunbc.live_deploy.spec {
   deployment_owns_the_host_approval_broker,
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
   gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
+  gunbc_user_work_slice_unit_path,
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
@@ -1519,6 +1523,38 @@ fn repository_convergence_slice_unit_file() -> SystemdUnitFile {
 
 fn emit_repository_convergence_slice_unit_doc() -> Doc {
   doc_text(text: serialize_systemd_unit_file(file: repository_convergence_slice_unit_file()))
+}
+
+fn user_work_slice_unit_file() -> SystemdUnitFile {
+  SliceUnitFile {
+    unit: [
+      Description { text: "gunbc user-manager cgroup bound for --user transients (attempts, compute, gunbc test/run scopes)" as NonEmptyStr },
+    ],
+    slice: [
+      slice_memory_max(bytes: user_work_slice_memory_max_of(slots: user_work_pool_slots())),
+      slice_memory_high(bytes: user_work_slice_memory_high_of(memory_max: user_work_slice_memory_max_of(slots: user_work_pool_slots()))),
+      slice_memory_swap_max(bytes: user_work_slice_memory_swap_max),
+    ],
+    install: NotInstallable,
+  }
+}
+
+fn emit_user_work_slice_unit_doc() -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: user_work_slice_unit_file()))
+}
+
+fn apply_user_work_slice_install_steps() -> List<PipelineStep> {
+  [
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: user_work_slice_unit_name as String,
+      content: render(doc: emit_user_work_slice_unit_doc(), proto: live_deploy_protocol),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: user_work_slice_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: gunbc_user_work_slice_unit_path() as String,
+    )),
+  ]
 }
 
 fn apply_repository_convergence_slice_install_steps() -> List<PipelineStep> {
@@ -3248,7 +3284,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
         spec: spec,
         path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
       )),
-    ], concat(apply_repository_convergence_slice_install_steps(), [
+    ], concat(apply_user_work_slice_install_steps(), concat(apply_repository_convergence_slice_install_steps(), [
       apply_repository_convergence_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: spec.names.tree_sync_unit_name as String,
@@ -3258,7 +3294,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
-    ])) }
+    ]))) }
     Executable => if !plan_installs_executable(plan: plan) { [] } else { [
       deploy_raw(command: digest_shell_verify_line(digest: plan.target.executable, file_path: release_executable_install_source as NonEmptyStr)),
       deploy_raw(command: install_directory_command(
@@ -3364,7 +3400,7 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         spec: spec,
         path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
       )),
-    ], concat(apply_repository_convergence_slice_install_steps(), [
+    ], concat(apply_user_work_slice_install_steps(), concat(apply_repository_convergence_slice_install_steps(), [
       apply_repository_convergence_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: spec.names.tree_sync_unit_name as String,
@@ -3374,7 +3410,7 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
-    ]))
+    ])))
     PublicationHelperPathUnit => concat(
       concat(
         apply_publication_spool_steps(spec: spec),

@@ -1,0 +1,22 @@
+module gunbc.live_deploy.user_work_pool_slots
+
+import std.nat { Nat, nat_add }
+import std.checked_arithmetic { checked_int_to_nat }
+import gunbc.compute.host_capacity { compute_pool_slots }
+import gunbc.roadmap.roadmap_belt { roadmap_belt_default_capacity }
+
+// THE SLOT COUNT A USER-WORK SLICE MUST HOLD is the sum of the two pools whose units
+// systemd-run --user actually starts: compute (gunbc-compute-*) and belt attempts
+// (gunbc-attempt-*). Each pool already appropriates one dispatch_worker_memory_max per
+// slot; the slice MemoryMax is that count times the same ceiling (gunbc.live_deploy.slice_bounds
+// user_work_slice_memory_max_of). A literal here would drift from those pools.
+//
+// THIS MODULE DOES NOT IMPORT slice_bounds: unit_bounds binds Slice= from that leaf, and
+// roadmap_belt imports the dispatch actuator which imports unit_bounds. Putting the count
+// fold here keeps that cycle unwritten.
+fn user_work_pool_slots() -> Nat {
+  match checked_int_to_nat(n: roadmap_belt_default_capacity.max_concurrent) {
+    Absent => compute_pool_slots
+    Present { value: belt } => nat_add(a: compute_pool_slots, b: belt)
+  }
+}

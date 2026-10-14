@@ -70,7 +70,7 @@ import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_user_transient_command, systemd_run_command_argument_words,
 }
-import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
+import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties, user_work_run_properties }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -1786,7 +1786,7 @@ fn dispatch_review_unit_properties(
   review_dir: String,
   exit_hook: NonEmptyStr?,
 ) -> List<SystemdRunProperty> {
-  concat([
+  user_work_run_properties(rest: concat([
     SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
@@ -1798,7 +1798,7 @@ fn dispatch_review_unit_properties(
   ], match exit_hook {
     Present { value: hook } => [SystemdRunProperty { property: ExecStopPostProperty, value: hook }]
     Absent => [SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr }]
-  })
+  }))
 }
 
 data gunbc_harness_reviewer_function: String = "harness_reviewer_cli"

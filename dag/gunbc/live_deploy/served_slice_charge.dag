@@ -15,7 +15,9 @@ import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max,
   approval_broker_slice_memory_max,
   repository_convergence_slice_memory_max,
+  user_work_slice_memory_max_of,
 }
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots }
 
 data served_slice_charge_authority: Disposition = Terminal {
   reason: "Single authority for what the deployment's SLICES cost a host's memory budget: the roadmap deployment slice and the approval broker slice its served processes run under, and the repository convergence slice its tree-converging oneshot runs under. It owns the per-host claim gunbc.fleet.fleet_host_budget charges and nothing else -- not the units, not their lifecycle, not what the processes do. It is host-parametric for the reason gunbc.fabric.fabric_control_plane_charge is: a hardcoded host is how a placement gets decided by which machine was named first."
@@ -130,6 +132,7 @@ fn served_deployment_slice_allowance() -> ByteSize {
     byte_size_count(b: live_deploy_slice_memory_max)
       + byte_size_count(b: approval_broker_slice_memory_max)
       + byte_size_count(b: repository_convergence_slice_memory_max)
+      + byte_size_count(b: user_work_slice_memory_max_of(slots: user_work_pool_slots()))
   )
 }
 
