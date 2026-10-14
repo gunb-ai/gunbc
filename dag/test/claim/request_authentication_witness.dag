@@ -659,20 +659,20 @@ test fn belt_actuation_refuses_absent_auth_and_cross_site_and_admits_same_origin
       match belt_actuation_admission(
         route_path: "/dispatch/demo" as NonEmptyStr, action: ServeActionDispatchNode, request: unauth,
         authorization_policy: open_write_policy(), deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
-        observed_at: "2026-09-25T00:05:00Z",
+        observed_at: fn() { "2026-09-25T00:05:00Z" },
       ) {
         Deny { refusal: _ } =>
           match belt_actuation_admission(
             route_path: "/dispatch/demo" as NonEmptyStr, action: ServeActionDispatchNode, request: cross,
             authorization_policy: open_write_policy(), deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
-            observed_at: "2026-09-25T00:05:00Z",
+            observed_at: fn() { "2026-09-25T00:05:00Z" },
           ) {
             Deny { refusal: r } =>
               string_contains(s: access_refusal_reason(refusal: r), pattern: "cross-site")
                 && belt_actuation_admission(
                   route_path: "/dispatch/demo" as NonEmptyStr, action: ServeActionDispatchNode, request: same,
                   authorization_policy: open_write_policy(), deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
-                  observed_at: "2026-09-25T00:05:00Z",
+                  observed_at: fn() { "2026-09-25T00:05:00Z" },
                 ) == Permit
             Permit => false
           }

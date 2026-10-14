@@ -653,7 +653,7 @@ fn serve_dispatch_handler_response_over(
     request: request,
     authorization_policy: tracker_write_authorization_policy,
     deployment_policy: roadmap_deployment_access_policy,
-    observed_at: human_write_observed_at(security: request.security),
+    observed_at: fn() { human_write_observed_at(security: request.security) },
   ) {
     Deny { refusal } =>
       serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
@@ -720,7 +720,7 @@ fn serve_publish_handler_response_for_instance(
     request: request,
     authorization_policy: tracker_write_authorization_policy,
     deployment_policy: roadmap_deployment_access_policy,
-    observed_at: human_write_observed_at(security: request.security),
+    observed_at: fn() { human_write_observed_at(security: request.security) },
   ) {
     Deny { refusal } =>
       serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
@@ -1584,7 +1584,7 @@ fn serve_stop_handler_response_for_instance(
     request: request,
     authorization_policy: tracker_write_authorization_policy,
     deployment_policy: roadmap_deployment_access_policy,
-    observed_at: human_write_observed_at(security: request.security),
+    observed_at: fn() { human_write_observed_at(security: request.security) },
   ) {
     Deny { refusal } =>
       serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))

@@ -27,6 +27,8 @@ import gunbc.roadmap.roadmap_serve {
   ApprovalBrokerCutoverHandler,
   roadmap_serve_selection_response,
   roadmap_serve_invoke,
+  roadmap_serve_invoke_over,
+  serve_dispatch_with_follow_ups,
   roadmap_serve_respond,
   roadmap_serve_respond_for_instance,
   roadmap_serve_respond_over,
@@ -44,8 +46,11 @@ import gunbc.roadmap.roadmap_serve {
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
   belt_dispatch_result_exemplars,
+  belt_dispatch_node_for_instance_over,
   BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
 }
+import gunbc.roadmap.roadmap_attempt_request_binding { LaunchAutonomous }
+import gunbc.roadmap.roadmap_dispatch_actuator { ExecutorDefault }
 import gunbc.roadmap.roadmap_launch_admission {
   LaunchRefusal, launch_identity_exemplar,
   LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionNotLanded,
@@ -234,18 +239,37 @@ test fn witness_dispatch_status_total() -> Bool {
 }
 
 test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
-  let r = roadmap_serve_respond_for_instance(
+  let unauth = roadmap_serve_invoke_over(
     instance: srv2_preview_dashboard_instance(),
-    method_label: "POST",
-    path: "/dispatch/ts-dispatch-provider-events",
-    body: "",
-    tailscale_identity: "",
+    plan: fn() { caller_supplied_plan_fixture() },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    handler: BeltDispatchHandler,
+    params: [PathParamBinding { name: "node_id", value: "ts-dispatch-provider-events" }],
+    request: ServeHttpRequest {
+      method: POST,
+      path: "/dispatch/ts-dispatch-provider-events",
+      body: "",
+      headers: [ServeRequestHeader { name: "sec-fetch-site", value: "same-origin" }],
+      security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent },
+    },
     release_revision: deploy_witness_release_revision,
   )
-  r.status == 403
-    && string_contains(s: r.body, pattern: "\"status\": \"disabled\"")
-    && string_contains(s: r.body, pattern: "srv2-preview-codex-feedback-v0")
-    && string_contains(s: r.body, pattern: "before observation, provider preflight, or worktree creation")
+  let disabled = serve_dispatch_with_follow_ups(
+    instance: srv2_preview_dashboard_instance(),
+    r: belt_dispatch_node_for_instance_over(
+      instance: srv2_preview_dashboard_instance(),
+      plan: caller_supplied_plan_fixture(),
+      node_id: "ts-dispatch-provider-events",
+      request: LaunchAutonomous,
+      executor: ExecutorDefault,
+    ),
+  )
+  unauth.status == 403
+    && string_contains(s: unauth.body, pattern: "no authenticated session")
+    && disabled.status == 403
+    && string_contains(s: disabled.body, pattern: "\"status\": \"disabled\"")
+    && string_contains(s: disabled.body, pattern: "srv2-preview-codex-feedback-v0")
+    && string_contains(s: disabled.body, pattern: "before observation, provider preflight, or worktree creation")
 }
 
 test fn witness_instance_route_names_posture_and_paths() -> Bool {
@@ -1221,7 +1245,7 @@ test fn a_same_origin_authenticated_dispatch_is_admitted() -> Bool {
     ),
     authorization_policy: tracker_write_authorization_policy,
     deployment_policy: roadmap_deployment_access_policy,
-    observed_at: "2026-09-27T01:00:00Z",
+    observed_at: fn() { "2026-09-27T01:00:00Z" },
   ) == Permit
     && belt_actuation_admission(
       route_path: "/cleanup/some-node" as NonEmptyStr,
@@ -1238,7 +1262,7 @@ test fn a_same_origin_authenticated_dispatch_is_admitted() -> Bool {
       },
       authorization_policy: tracker_write_authorization_policy,
       deployment_policy: roadmap_deployment_access_policy,
-      observed_at: "2026-09-27T01:00:00Z",
+      observed_at: fn() { "2026-09-27T01:00:00Z" },
     ) == Permit
     && belt_actuation_admission(
       route_path: "/publish/some-node" as NonEmptyStr,
@@ -1255,7 +1279,7 @@ test fn a_same_origin_authenticated_dispatch_is_admitted() -> Bool {
       },
       authorization_policy: tracker_write_authorization_policy,
       deployment_policy: roadmap_deployment_access_policy,
-      observed_at: "2026-09-27T01:00:00Z",
+      observed_at: fn() { "2026-09-27T01:00:00Z" },
     ) == Permit
 }
 

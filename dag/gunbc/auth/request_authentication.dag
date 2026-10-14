@@ -632,24 +632,29 @@ fn principal_in_approve_roster(principal: PrincipalRef, roster: List<PrincipalRe
 // same-origin), with Origin matching Host only when Fetch-Site is absent — not a second CSRF
 // token, because /auth/session deliberately does not carry csrf and the dashboard actuator is
 // fetch() rather than a form. Tailnet transport is still not a principal (2026-09-25).
+//
+// SAME-ORIGIN IS DECIDED FROM HEADERS ALONE. Session expiry is the only arm that reads
+// observed_at, so the clock is a thunk forced after Sec-Fetch-Site / Origin admits. A
+// decision_meet of all four would evaluate Clock.Now on a cross-site POST that never needs it.
 fn belt_actuation_admission(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   authorization_policy: ServeWriteAuthorizationPolicy,
   deployment_policy: DeploymentAccessPolicy,
-  observed_at: Timestamp,
+  observed_at: fn() -> Timestamp,
 ) -> AccessDecision {
-  decision_meet(
-    human_authentication_decision(route_path: route_path, action: action, security: request.security, observed_at: observed_at),
-    decision_meet(
-      human_action_authorization_decision(route_path: route_path, action: action, security: request.security, policy: authorization_policy),
+  match same_origin_submission_decision(route_path: route_path, action: action, security: request.security, headers: request.headers) {
+    Deny { refusal } => Deny { refusal }
+    Permit =>
       decision_meet(
-        same_origin_submission_decision(route_path: route_path, action: action, security: request.security, headers: request.headers),
-        deployment_path_decision(route_path: route_path, action: action, security: request.security, policy: deployment_policy),
-      ),
-    ),
-  )
+        human_authentication_decision(route_path: route_path, action: action, security: request.security, observed_at: observed_at()),
+        decision_meet(
+          human_action_authorization_decision(route_path: route_path, action: action, security: request.security, policy: authorization_policy),
+          deployment_path_decision(route_path: route_path, action: action, security: request.security, policy: deployment_policy),
+        ),
+      )
+  }
 }
 
 fn same_origin_submission_decision(
