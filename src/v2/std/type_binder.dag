@@ -12,6 +12,8 @@ import v2.extdeps.languages.dag_surface_item_standing {
   dag_surface_item_standing
 }
 import v2.std.node {
+  Disj,
+  Occupancy,
   MatchArmScopeExitEdge,
   arrow_named_edge_is_non_binder,
   arrow_first_positional_target,

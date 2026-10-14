@@ -35,7 +35,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Atom, Disj, Conj, Node, Symbol, TypeNode }
+import v2.std.node { Arrow, Occupancy, Instantiation, ComputationNode, Atom, Disj, Conj, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import std.algebra { Empty, contains }

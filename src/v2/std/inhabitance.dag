@@ -20,6 +20,8 @@ import v2.std.find_witness {
   find_witness
 }
 import v2.std.node {
+  Disj,
+  Arrow,
   Atom,
   Instantiation,
   Occupancy,
