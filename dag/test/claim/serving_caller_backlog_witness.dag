@@ -617,6 +617,15 @@ test fn w_completion_time_is_observed_not_copied_from_acquisition() -> Bool {
     && fence_refused(s: fence_commit(current: current, presented: live_holder, at: Present { value: 70 }))
 }
 
+// A seat the authority has already released, settled or lapsed is not a current grant, so a completion
+// presenting it has no fence to be admitted by: seat-1 was released at position 2, seat-2 lapses after.
+test fn w_a_released_or_lapsed_grant_is_not_current() -> Bool {
+  let lapsed_chain = list_append(seat_chain, [seat_event(id: "evt-l", at: 20, payload: PoolLapsed)])
+  (match harness_current_grant_in(oldest_first: seat_chain, reference: "seat-1" as NonEmptyStr) { Present { value: _ } => false  Absent => true })
+    && (match harness_current_grant_in(oldest_first: seat_chain, reference: "seat-2" as NonEmptyStr) { Present { value: _ } => true  Absent => false })
+    && (match harness_current_grant_in(oldest_first: lapsed_chain, reference: "seat-2" as NonEmptyStr) { Present { value: _ } => false  Absent => true })
+}
+
 test fn w_harness_caller_turn_refuses_empty_node_root_and_negative_ordinal() -> Bool {
   (match harness_caller_turn(dispatch_node: "node://n", turn_ordinal: 2, state_root: "/r") { Present { value: _ } => true  Absent => false })
     && (match harness_caller_turn(dispatch_node: "", turn_ordinal: 2, state_root: "/r") { Present { value: _ } => false  Absent => true })

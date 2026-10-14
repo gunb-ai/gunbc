@@ -1382,30 +1382,27 @@ fn harness_settle_caller_turn(hold: HarnessCallerHold, placed: PlacementRound, o
 // presenting itself: the partition chain is walked for the acquisition of the record's CURRENT
 // reservation (the reference the last rebind installed), and the grant is rebuilt from that event --
 // admitting event id, position in the chain as the generation, recorded_at as granted_at, the event's own
-// term as the duration. The binding supplies only the HOLDER fence it presents. An old holder therefore
+// term as the duration. A later settle or release of that reference, or a lapse, retires the grant, so
+// a seat the authority has already taken back is unread, never current. The binding supplies only the HOLDER fence it presents. An old holder therefore
 // meets a newer grant and is refused: its fence names an earlier admission.
 fn harness_current_grant_in(oldest_first: List<ChainEnvelope<PoolEvent>>, reference: NonEmptyStr) -> LeaseGrant? {
   fold(oldest_first, init: HarnessGrantScan { seen: Zero, found: none }, f: (acc, env) => {
     let position = Succ { prev: acc.seen }
-    match acc.found {
-      Present { value: _ } => HarnessGrantScan { seen: position, found: acc.found }
-      Absent =>
-        match env.event.payload {
-          PoolAcquired { reference: r, amount: _, term_seconds: term } =>
-            if (r as String) == (reference as String) {
-              HarnessGrantScan {
-                seen: position,
-                found: Present { value: lease_grant(reference: r, fence: lease_fence_of(admitting_event: env.id, generation: position), granted_at: env.event.recorded_at, policy: LeasePolicy { maximum_duration_seconds: term, release_law: QuiescenceRequired }) },
-              }
-            } else {
-              HarnessGrantScan { seen: position, found: none }
-            }
-          PoolSettled { reference: _, actual: _ } => HarnessGrantScan { seen: position, found: none }
-          PoolReleased { reference: _, reason: _ } => HarnessGrantScan { seen: position, found: none }
-          PoolLapsed => HarnessGrantScan { seen: position, found: none }
-          PoolUpstreamObserved { remaining: _, term_seconds: _ } => HarnessGrantScan { seen: position, found: none }
-          PoolResetObserved { reset_at: _ } => HarnessGrantScan { seen: position, found: none }
-        }
+    HarnessGrantScan {
+      seen: position,
+      found: match env.event.payload {
+        PoolAcquired { reference: r, amount: _, term_seconds: term } =>
+          if (r as String) == (reference as String) {
+            Present { value: lease_grant(reference: r, fence: lease_fence_of(admitting_event: env.id, generation: position), granted_at: env.event.recorded_at, policy: LeasePolicy { maximum_duration_seconds: term, release_law: QuiescenceRequired }) }
+          } else {
+            acc.found
+          }
+        PoolSettled { reference: r, actual: _ } => if (r as String) == (reference as String) { none } else { acc.found }
+        PoolReleased { reference: r, reason: _ } => if (r as String) == (reference as String) { none } else { acc.found }
+        PoolLapsed => none
+        PoolUpstreamObserved { remaining: _, term_seconds: _ } => acc.found
+        PoolResetObserved { reset_at: _ } => acc.found
+      },
     }
   }).found
 }
