@@ -773,7 +773,11 @@ fn flex_release_admit(
       if running_count <= 1 {
         FlexReleaseHoldLast
       } else {
-        FlexReleaseNow { because_over_cap: true, because_no_room: no_room, replacement_serving: replacement_serving }
+        if no_room || replacement_serving {
+          FlexReleaseNow { because_over_cap: false, because_no_room: no_room, replacement_serving: replacement_serving }
+        } else {
+          FlexReleaseHoldUntilReplacement
+        }
       }
     FlexCapUnder { occupied: _, cap: _ } =>
       if running_count <= 1 {
@@ -838,10 +842,14 @@ fn flex_vram_hour_worse(left: FlexOwnedCard, right: FlexOwnedCard) -> Bool {
   let left_rate = flex_held_effective_rate(rate: left.rate, held: left.held && (left.running || left.loading))
   let right_rate = flex_held_effective_rate(rate: right.rate, held: right.held && (right.running || right.loading))
   match flex_dollars_per_vram(rate: left_rate, vram: left.vram) {
-    FlexVramHourlyZeroCapacity => false
+    FlexVramHourlyZeroCapacity =>
+      match flex_dollars_per_vram(rate: right_rate, vram: right.vram) {
+        FlexVramHourlyZeroCapacity => false
+        FlexVramHourlyQuoted { rate: _ } => true
+      }
     FlexVramHourlyQuoted { rate: lv } =>
       match flex_dollars_per_vram(rate: right_rate, vram: right.vram) {
-        FlexVramHourlyZeroCapacity => true
+        FlexVramHourlyZeroCapacity => false
         FlexVramHourlyQuoted { rate: rv } =>
           money_amount_micro_count(m: lv.amount) > money_amount_micro_count(m: rv.amount)
       }

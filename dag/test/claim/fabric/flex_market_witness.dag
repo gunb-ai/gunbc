@@ -25,7 +25,7 @@ import product.fabric.flex_market {
   FlexReleaseHoldCapUnreadable, FlexReleaseHoldCapUnobserved, FlexReleaseHoldCapPartial,
   FlexReleaseHoldRateUnconverted, FlexReleaseHoldCurrencyMismatch,
   FlexReleasePlan, flex_release_pass,
-  FlexCapAssessment, FlexCapOver, FlexCapUnder, FlexCapUnreadable,
+  FlexCapAssessment, FlexCapOver, FlexCapUnder, FlexCapAtLimit, FlexCapUnreadable,
   flex_quoted_bid, flex_class_market_median, flex_choose_bid_level,
   flex_vram_class, flex_ownership, flex_ours_only,
   flex_owner_label_gunbc_flex, flex_card_dead, flex_cleanup_dead,
@@ -354,6 +354,50 @@ test fn a_release_pass_destroys_at_most_one_running_card() -> Bool {
     replacement_serving: false,
   )
   (plan.actions |> length) == 1
+}
+
+test fn at_limit_without_no_room_or_replacement_releases_nothing() -> Bool {
+  let plan = flex_release_pass(
+    cards: [
+      owned(id: "a", vram: gib(n: 48), rate: 670000, held: false, running: true, loading: false, outbid: false, age: 0),
+      owned(id: "b", vram: gib(n: 48), rate: 670000, held: false, running: true, loading: false, outbid: false, age: 0),
+    ],
+    ours: flex_owner_label_gunbc_flex,
+    cap: FlexCapAtLimit { occupied: usd_hour(n: 1340000), cap: usd_hour(n: 1340000) },
+    no_room: false,
+    replacement_serving: false,
+  )
+  match plan.admit {
+    FlexReleaseHoldUntilReplacement => (plan.actions |> length) == 0
+    _ => false
+  }
+}
+
+test fn a_zero_vram_card_is_released_before_a_usable_card() -> Bool {
+  let plan = flex_release_pass(
+    cards: [
+      owned(id: "usable", vram: gib(n: 48), rate: 900000, held: false, running: true, loading: false, outbid: false, age: 0),
+      owned(id: "zero", vram: byte_size(count: 0), rate: 100000, held: false, running: true, loading: false, outbid: false, age: 0),
+    ],
+    ours: flex_owner_label_gunbc_flex,
+    cap: cap_over(),
+    no_room: false,
+    replacement_serving: false,
+  )
+  match plan.actions.first() {
+    Absent => false
+    Present { value: a } =>
+      match a {
+        FlexKeep { id: _ } => false
+        FlexDestroy { id: i, why: w } =>
+          (i == "zero") && match w {
+            FlexCleanupReleasedForValue => true
+            FlexCleanupOutbid => false
+            FlexCleanupStaleLoading => false
+            FlexCleanupNotRunningDropped => false
+          }
+      }
+  }
 }
 
 test fn a_held_card_is_ranked_at_the_switch_premium() -> Bool {

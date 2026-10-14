@@ -830,6 +830,36 @@ test fn instance_pages_exhaust_before_cap_or_reconcile() -> Bool {
       FlexChargesUnreadable => true
       _ => false
     })
+    && (match flex_fold_instance_pages(pages: [
+      FlexInstancesPageTurn {
+        after_token: none,
+        page: VastAiInstances {
+          success: false,
+          instances_found: 0,
+          total_instances: 0,
+          next_token: none,
+          instances: [],
+        },
+      },
+    ]) {
+      FlexInstancesUnreadable => true
+      _ => false
+    })
+    && (match flex_fold_charge_pages(pages: [
+      FlexChargesPageTurn {
+        after_token: none,
+        page: VastAiCharges {
+          success: false,
+          count: 0,
+          total: 0,
+          next_token: none,
+          results: [],
+        },
+      },
+    ]) {
+      FlexChargesUnreadable => true
+      _ => false
+    })
     && (match flex_write_decision(policy: live_policy(), roster: FlexInstancesUnobserved) {
       FlexWriteBlockedUnobserved => true
       _ => false
