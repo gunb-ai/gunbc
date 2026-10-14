@@ -338,9 +338,9 @@ test fn keyed_roster_build_on_both_keys_duplicate_refuses_on_b() -> Bool {
   }
 }
 
-// (3) Authored order is kept: a successful build appends each incoming row to the accumulator with
-// concat, so the emitted roster preserves the input (authored) order exactly. Pinned on BOTH
-// directions so a reorder (e.g. sorting, or a right-to-left fold) cannot pass silently.
+// (3) Authored order is kept: a successful build emits its roster in the input (authored) order --
+// the output order equals the input order. Pinned on BOTH directions so a reorder (e.g. sorting, or
+// an order that reverses the input) cannot pass silently.
 test fn keyed_roster_build_keeps_authored_order_of_rows() -> Bool {
   let forward = fixture_rows_unique() // [a, b]
   let swapped = [

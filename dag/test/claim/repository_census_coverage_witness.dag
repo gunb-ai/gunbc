@@ -1333,8 +1333,11 @@ test fn witness_the_denominator_subject_count_is_a_projection() -> Bool {
 // K2 freeze (index-keyed-roster brief): the census needs ALL duplicated subjects, not just the first.
 // On a roster of [a, b, b, a] BOTH a and b repeat, so census_duplicated_subject_keys must report both
 // -- one entry per duplicated SUBJECT (a key repeated to a third copy adds no second entry), while
-// census_distinct_subject_keys keeps the authored order [a, b]. Pinned against the same authored
-// order as the keyed_roster witness so the census and the roster agree on which subjects repeat.
+// census_distinct_subject_keys sees both subjects. Both projections are pinned to their exact
+// SEQUENCE (not just which keys are present), so the pin goes red if a reindex reorders them:
+//   distinct  = [a, b]  -- the subjects in the authored order they are first seen.
+//   duplicated = [b, a] -- the subjects in the order each is found to repeat (b's second copy is
+//                           encountered before a's on [a, b, b, a], so b comes first).
 fn census_witness_abab_keys() -> List<CensusSubjectKey> {
   [
     coverage_witness_key(name: "a"),
@@ -1347,15 +1350,11 @@ fn census_witness_abab_keys() -> List<CensusSubjectKey> {
 test fn census_needs_all_duplicated_subjects_on_a_b_b_a() -> Bool {
   let duplicated = census_duplicated_subject_keys(keys: census_witness_abab_keys())
   let distinct = census_distinct_subject_keys(keys: census_witness_abab_keys())
-  // BOTH subjects that repeat are reported -- the census needs all duplicated subjects, not only the
-  // first one a linear first-hit scan would return.
-  count(duplicated) == 2
-    && any(duplicated, k => (k as String) == "a")
-    && any(duplicated, k => (k as String) == "b")
-    // ... and they are the same two subjects the distinct projection sees, in authored order.
-    && count(distinct) == 2
-    && any(distinct, k => (k as String) == "a")
-    && any(distinct, k => (k as String) == "b")
+  // BOTH subjects that repeat are reported (the census needs all duplicated subjects), in the exact
+  // order main emits them -- b is found repeating before a, so the sequence is [b, a], not [a, b].
+  map(duplicated, k => k as String) == ["b", "a"]
+    // ... and the distinct projection sees both subjects in the authored first-seen order [a, b].
+    && map(distinct, k => k as String) == ["a", "b"]
 }
 
 // The "needs ALL" is per-SUBJECT, not per-event: a third copy of a repeated key must not grow the
