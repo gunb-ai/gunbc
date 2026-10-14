@@ -37,7 +37,7 @@ import gunbc.live_deploy.spec { gunbc_service_uid }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_memory_max_of, user_slice_backstop_memory_max_of, user_slice_backstop_memory_swap_max,
 }
-import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, BeltMaxConcurrentNotNatural }
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, BeltMaxConcurrentNotNatural, ReviewRosterCountNotNatural }
 import gunbc.live_deploy.served_slice_charge {
   host_served_deployment_claim, ServedDeploymentClaimResolved, ServedDeploymentNotPlaced,
   ServedDeploymentClaimUnmeasured,
@@ -856,6 +856,10 @@ fn user_manager_backstop_for(host: HostIdentity) -> UserManagerBackstop {
         BeltMaxConcurrentNotNatural { authored: n } =>
           UserManagerBackstopRefused {
             cause: join(["belt max_concurrent ", to_string(n), " is not a natural number, so the user@ backstop cannot be derived"], ""),
+          }
+        ReviewRosterCountNotNatural { authored: n } =>
+          UserManagerBackstopRefused {
+            cause: join(["review roster count ", to_string(n), " is not a natural number, so the user@ backstop cannot be derived"], ""),
           }
         UserWorkPoolSlotsDerived { slots } =>
           UserManagerBackstopDerived { knobs: user_manager_backstop_knobs_from_slots(slots: slots) }

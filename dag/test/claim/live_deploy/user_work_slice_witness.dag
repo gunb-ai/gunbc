@@ -2,7 +2,7 @@ module test.claim.live_deploy.user_work_slice_witness
 
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.optional { Present, Absent }
-import std.nat { nat_add }
+import std.nat { nat_add, nat_mul }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { byte_size_count, kibibyte, byte_size }
 import extdeps.exec.command { argv_words }
@@ -17,12 +17,13 @@ import gunbc.live_deploy.slice_bounds {
   user_slice_backstop_memory_max_of, user_manager_remainder,
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
 }
-import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, BeltMaxConcurrentNotNatural }
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, BeltMaxConcurrentNotNatural, ReviewRosterCountNotNatural }
 import gunbc.live_deploy.served_slice_charge {
   user_work_slice_budget_appropriation, user_work_charged_in_served_allowance,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.compute.host_capacity { compute_pool_slots }
+import gunbc.roadmap.roadmap_review_criteria { review_criteria }
 import gunbc.compute.unit_bounds {
   compute_grant_unit_properties, gunbc_user_work_scope_command,
   gunbc_user_work_wait_command, gunbc_user_work_transient_command,
@@ -54,6 +55,7 @@ fn slice_hits(words: List<String>) -> Int {
 test fn user_work_slice_max_is_pool_slots_times_the_runner_ceiling() -> Bool {
   match user_work_pool_slots() {
     BeltMaxConcurrentNotNatural { authored: _ } => false
+    ReviewRosterCountNotNatural { authored: _ } => false
     UserWorkPoolSlotsDerived { slots } =>
       byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
         == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * slots
@@ -65,13 +67,37 @@ test fn user_work_slice_max_is_pool_slots_times_the_runner_ceiling() -> Bool {
   }
 }
 
-test fn user_work_pool_slots_are_compute_plus_belt() -> Bool {
+test fn user_work_pool_slots_are_compute_plus_belt_attempt_members() -> Bool {
+  match checked_int_to_nat(n: 3) {
+    Absent => false
+    Present { value: belt } =>
+      match checked_int_to_nat(n: count(review_criteria)) {
+        Absent => false
+        Present { value: criteria } =>
+          match user_work_pool_slots() {
+            BeltMaxConcurrentNotNatural { authored: _ } => false
+            ReviewRosterCountNotNatural { authored: _ } => false
+            UserWorkPoolSlotsDerived { slots } =>
+              slots == nat_add(
+                a: compute_pool_slots,
+                b: nat_mul(
+                  a: belt,
+                  b: nat_add(a: criteria, b: Succ { prev: Succ { prev: Succ { prev: Zero } } }),
+                ),
+              )
+          }
+      }
+  }
+}
+
+test fn user_work_pool_slots_RED_omitting_review_sidecars_undercounts() -> Bool {
   match checked_int_to_nat(n: 3) {
     Absent => false
     Present { value: belt } =>
       match user_work_pool_slots() {
         BeltMaxConcurrentNotNatural { authored: _ } => false
-        UserWorkPoolSlotsDerived { slots } => slots == nat_add(a: compute_pool_slots, b: belt)
+        ReviewRosterCountNotNatural { authored: _ } => false
+        UserWorkPoolSlotsDerived { slots } => slots != nat_add(a: compute_pool_slots, b: belt)
       }
   }
 }
@@ -79,6 +105,7 @@ test fn user_work_pool_slots_are_compute_plus_belt() -> Bool {
 test fn user_work_slice_high_is_one_gib_under_max() -> Bool {
   match user_work_pool_slots() {
     BeltMaxConcurrentNotNatural { authored: _ } => false
+    ReviewRosterCountNotNatural { authored: _ } => false
     UserWorkPoolSlotsDerived { slots } => {
       let max = user_work_slice_memory_max_of(slots: slots)
       match user_work_slice_memory_high_of(memory_max: max) {
@@ -100,6 +127,7 @@ test fn a_max_below_the_high_gap_refuses_rather_than_writing_zero() -> Bool {
 test fn user_manager_backstop_is_work_slice_plus_remainder() -> Bool {
   match user_work_pool_slots() {
     BeltMaxConcurrentNotNatural { authored: _ } => false
+    ReviewRosterCountNotNatural { authored: _ } => false
     UserWorkPoolSlotsDerived { slots } => {
       let work = user_work_slice_memory_max_of(slots: slots)
       byte_size_count(b: user_slice_backstop_memory_max_of(work_slice_max: work))

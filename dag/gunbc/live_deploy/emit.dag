@@ -154,7 +154,7 @@ import gunbc.live_deploy.slice_bounds {
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
 }
 import gunbc.live_deploy.user_work_pool_slots {
-  user_work_pool_slots, UserWorkPoolSlotsDerived, BeltMaxConcurrentNotNatural,
+  user_work_pool_slots, UserWorkPoolSlotsDerived, BeltMaxConcurrentNotNatural, ReviewRosterCountNotNatural,
 }
 import gunbc.auth.approval_broker_placement { approval_broker_base_url_of_holder }
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name }
@@ -1540,6 +1540,10 @@ fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
       UserWorkSliceUnitFileRefused {
         cause: join(["belt max_concurrent ", to_string(value: n), " is not a natural number, so the user-work slice has no slot count"], ""),
       }
+    ReviewRosterCountNotNatural { authored: n } =>
+      UserWorkSliceUnitFileRefused {
+        cause: join(["review roster count ", to_string(value: n), " is not a natural number, so the user-work slice has no slot count"], ""),
+      }
     UserWorkPoolSlotsDerived { slots } => {
       let max = user_work_slice_memory_max_of(slots: slots)
       match user_work_slice_memory_high_of(memory_max: max) {
@@ -1551,7 +1555,7 @@ fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
           UserWorkSliceUnitFileReady {
             file: SliceUnitFile {
               unit: [
-                Description { text: "gunbc user-manager cgroup bound for --user transients (attempts, compute, gunbc test/run scopes)" as NonEmptyStr },
+                Description { text: "gunbc user-manager cgroup bound for --user transients (attempts, reviews, audit, supervisor, compute, gunbc test/run scopes)" as NonEmptyStr },
               ],
               slice: [
                 slice_memory_max(bytes: max),

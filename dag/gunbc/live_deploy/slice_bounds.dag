@@ -249,11 +249,13 @@ data repository_convergence_slice_memory_high: ByteSize = byte_size(21474836480)
 // MemoryMax, a located failure the restart step's diagnosis arm prints.
 data repository_convergence_slice_memory_swap_max: ByteSize = byte_size(0)
 
-// ── USER-MANAGER WORK (--user transients: gunbc test/run scopes, gunbc-attempt-*, gunbc-compute-*) ─
+// ── USER-MANAGER WORK (--user transients: gunbc test/run scopes, gunbc-attempt-*, gunbc-compute-*,
+// gunbc-review-*, gunbc-audit-*, gunbc-supervisor-*) ─
 // THESE UNITS LEAVE EVERY SYSTEM SLICE. systemd-run --user starts them under
 // user@1000.service/app.slice, which is not sessions.slice and not gunbc-roadmap.slice. A pid
 // cannot be moved across that delegation boundary. So this work needs its OWN declared slice,
-// swap 0. The slice MemoryMax is the pool appropriation; charging that appropriation into the
+// swap 0. The slice MemoryMax is the pool appropriation (compute slots plus every concurrent
+// belt worker/reviewer/auditor/supervisor); charging that appropriation into the
 // runner envelope waits on the operator conservation ruling
 // (gunbc.rung_drop.user_work_slice_uncharged_in_runner_envelope).
 //

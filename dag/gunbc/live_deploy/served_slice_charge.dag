@@ -18,7 +18,7 @@ import gunbc.live_deploy.slice_bounds {
   user_work_slice_memory_max_of,
 }
 import std.optional { Present, Absent }
-import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, BeltMaxConcurrentNotNatural }
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, BeltMaxConcurrentNotNatural, ReviewRosterCountNotNatural }
 
 data served_slice_charge_authority: Disposition = Terminal {
   reason: "Single authority for what the deployment's SLICES cost a host's memory budget: the roadmap deployment slice and the approval broker slice its served processes run under, and the repository convergence slice its tree-converging oneshot runs under. It owns the per-host claim gunbc.fleet.fleet_host_budget charges and nothing else -- not the units, not their lifecycle, not what the processes do. It is host-parametric for the reason gunbc.fabric.fabric_control_plane_charge is: a hardcoded host is how a placement gets decided by which machine was named first."
@@ -140,6 +140,7 @@ fn served_deployment_placement() -> ServedDeploymentPlacement {
 fn user_work_slice_budget_appropriation() -> ByteSize? {
   match user_work_pool_slots() {
     BeltMaxConcurrentNotNatural { authored: _ } => none
+    ReviewRosterCountNotNatural { authored: _ } => none
     UserWorkPoolSlotsDerived { slots } => Present { value: user_work_slice_memory_max_of(slots: slots) }
   }
 }
