@@ -1,7 +1,7 @@
 module gunbc.spark.first_party_serving
 
 import std.types { NonEmptyStr, List, String }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, Optional }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.content_hash { as_content_hash_structural, content_hash_atom }
 import product.placement_supply { SiteIdentity }
@@ -28,7 +28,7 @@ import extdeps.vllm.usage_stats {
   vllm_usage_stats_reporting, vllm_usage_stats_assignment_disables,
 }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
-import std.algebra { list_tail, TailFound, TailAbsent }
+import std.algebra { list_tail }
 import gunbc.fleet.fleet_physical_inventory { operator_site }
 import gunbc.fleet.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 
@@ -688,8 +688,8 @@ data spark_serving_usage_stats_destination_override_obligation: NonEmptyStr = "g
 // A segment with no '=' is not an assignment and classifies nothing.
 fn spark_env_assignment_value(assignment: String) -> String? {
   match list_tail(xs: split(s: assignment, delimiter: "=")) {
-    TailAbsent => none
-    TailFound { tail: rest } => Present { value: join(rest, "=") }
+    Absent => none
+    Present { value: rest } => Present { value: join(rest, "=") }
   }
 }
 

@@ -14,6 +14,10 @@ import gunbc.witness.compiler_gate_workflow {
   compiler_gate_emit_build_notice_lines,
   compiler_gate_emit_build_step
 }
+import gunbc.required_ci_contract_epoch {
+  required_ci_context_name,
+  required_ci_emitted_subject_obligations,
+}
 import gunbc.emitted_subject_build_gate {
   NativeEmitBuildStanding, EmitBuildExpectedGreen, EmitBuildExpectedRed, EmittedBuildSignature,
   emit_build_standing_notice_for,
@@ -22,7 +26,7 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_build_command,
   emitted_subject_build_step_name,
   native_fault_experiment_env_name, native_fault_experiment_skip_value,
-  native_product_reuse_env_name, native_product_reuse_fresh_value,
+  native_product_reuse_env_name, native_product_reuse_env_value, native_product_reuse_fresh_value,
   native_step_memory_bind_env_name, native_step_memory_trip_text, native_step_memory_trip,
   native_step_memory_envelope_env_name, native_step_memory_envelope_slot_value,
   NativeStepMemoryInput, native_step_memory_inputs,
@@ -39,7 +43,7 @@ import extdeps.filesystem.filesystem_io
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 
 // WHAT THIS FILE DISCRIMINATES, after the operator ruling of 2026-10-09 collapsed the emit-build
-// lane and the aggregate that read it into ONE required job named `witnesses`: that the workflow
+// lane and the aggregate that read it into ONE required job (now `v2-bootstrap`): that the workflow
 // runs exactly that job and nothing beside it; that the job's steps invoke the two declared
 // instrument labels rather than a spelling of them, one step per subject; that every subject step
 // asks for a FRESH product and the job binds no native product store, so a restored final product
@@ -88,7 +92,7 @@ fn step_env_has(step: Step, key: String, value: String) -> Bool {
 // job (an aggregate regrown, a lane returned) reds this, and so does a workflow that lost the job.
 test fn the_workflow_runs_exactly_the_required_job() -> Bool {
   let ids = compiler_gate_workflow.jobs |> map(j => j.id)
-  compiler_gate_required_job_id == "witnesses"
+  compiler_gate_required_job_id == (required_ci_context_name as String)
     && any(ids, id => id == compiler_gate_required_job_id)
     && all(ids, id => id == compiler_gate_required_job_id)
 }
@@ -104,7 +108,7 @@ test fn w_RED_the_withdrawn_lanes_are_not_jobs() -> Bool {
 }
 
 // THE JOB IS FLEET-GUARDED: fork code does not run on the fleet, so a fork pull request produces no
-// `witnesses` check (unobserved, never excused). The guard is the one authority
+// required check (unobserved, never excused). The guard is the one authority
 // (compiler_gate_fleet_job_condition) rather than a second spelling of it.
 test fn the_required_job_is_fleet_guarded() -> Bool {
   match compiler_gate_required_job().if_condition {
@@ -161,16 +165,16 @@ test fn the_job_capability_closure_holds() -> Bool {
 // step's green means THIS run emitted and built the product. A step lacking the input, or carrying
 // a different value, would let a restored hit satisfy the step.
 test fn every_subject_step_requires_a_fresh_product() -> Bool {
-  all(emitted_subject_build_rows(), row =>
-    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_product_reuse_env_name, value: native_product_reuse_fresh_value))
+  all(required_ci_emitted_subject_obligations(), subject =>
+    step_env_has(step: compiler_gate_emit_build_step(subject: subject), key: native_product_reuse_env_name, value: native_product_reuse_env_value(contract: subject.execution)))
 }
 
 // EVERY SUBJECT STEP REQUIRES THE SLOT'S ENVELOPE, BY VALUE, WHATEVER THE DROP'S STANDING: the
 // input gunbc test reads as "refuse unless a cgroup memory.max binds this step, and refuse an OOM
 // kill or swap inside it". A step without it would run unreceipted inside the slot.
 test fn every_subject_step_requires_the_slot_envelope() -> Bool {
-  all(emitted_subject_build_rows(), row =>
-    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value))
+  all(required_ci_emitted_subject_obligations(), subject =>
+    step_env_has(step: compiler_gate_emit_build_step(subject: subject), key: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value))
 }
 
 fn inputs_carry(inputs: List<NativeStepMemoryInput>, name: String, value: String) -> Bool {
@@ -207,10 +211,10 @@ fn step_env_has_key(step: Step, key: String) -> Bool {
 // would refuse on the fleet just the same; the day the fact flips, every step carries it at the
 // trip.
 test fn the_live_steps_carry_the_bind_iff_a_job_owns_a_bounded_cgroup() -> Bool {
-  let carries = all(emitted_subject_build_rows(), row =>
-    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_bind_env_name, value: native_step_memory_trip_text()))
-  let withholds = all(emitted_subject_build_rows(), row =>
-    step_env_has_key(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_bind_env_name) == false)
+  let carries = all(required_ci_emitted_subject_obligations(), subject =>
+    step_env_has(step: compiler_gate_emit_build_step(subject: subject), key: native_step_memory_bind_env_name, value: native_step_memory_trip_text()))
+  let withholds = all(required_ci_emitted_subject_obligations(), subject =>
+    step_env_has_key(step: compiler_gate_emit_build_step(subject: subject), key: native_step_memory_bind_env_name) == false)
   match gunbc_runner_slot_job_cgroup_ownership {
     JobOwnsNoBoundedCgroup { why: _ } => withholds
     JobOwnsBoundedCgroup { staged_by: _ } => carries
@@ -269,7 +273,7 @@ test fn w_RED_the_job_binds_no_native_product_store() -> Bool {
 // native_fault_experiment_off_pull_requests): each step passes the env var, whose expression skips
 // on pull_request and runs otherwise. A step lacking it would run the fault experiment on PRs.
 test fn every_subject_step_passes_the_fault_experiment_input() -> Bool {
-  all(emitted_subject_build_rows(), row => match compiler_gate_emit_build_step(row: row) {
+  all(required_ci_emitted_subject_obligations(), subject => match compiler_gate_emit_build_step(subject: subject) {
     RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       match e {
         Present { value: kvs } => any(kvs, k => k.key == native_fault_experiment_env_name)
@@ -288,12 +292,14 @@ test fn every_subject_step_passes_the_fault_experiment_input() -> Bool {
 fn advisory_red_probe_notice() -> String {
   join(emit_build_standing_notice_for(standing: EmitBuildExpectedRed {
     known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
-  }, lane_blocks: false), "\n")
+  }, lane_blocks: false, required_context: required_ci_context_name as String), "\n")
 }
 
 test fn the_live_notice_is_green_and_blocking() -> Bool {
   let text = join(compiler_gate_emit_build_notice_lines(), "\n")
   string_contains(s: text, pattern: "BLOCKS your merge")
+    && string_contains(s: text, pattern: join(["`", required_ci_context_name as String, "`"], ""))
+    && (string_contains(s: text, pattern: "`witnesses`") == false)
     && (string_contains(s: text, pattern: "does NOT block") == false)
     && string_contains(s: text, pattern: "REAL FINDING")
     && (string_contains(s: text, pattern: "E0573") == false)
@@ -331,7 +337,7 @@ test fn the_notice_says_the_cause_line_does_not_discriminate() -> Bool {
 // THE REASSURANCE IS UNPRINTABLE ONCE THE STANDING FLIPS, rendered over a SUPPLIED standing because
 // in production the Green arm is reachable only by editing the data row.
 test fn w_RED_the_green_standing_cannot_print_the_expected_red_reassurance() -> Bool {
-  let green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen, lane_blocks: false), "\n")
+  let green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen, lane_blocks: false, required_context: required_ci_context_name as String), "\n")
   let red = advisory_red_probe_notice()
   (string_contains(s: green, pattern: "CURRENTLY EXPECTED") == false)
     && (string_contains(s: green, pattern: "E9999") == false)
@@ -356,9 +362,9 @@ test fn w_RED_a_blocking_rendering_never_prints_the_non_blocking_reassurance() -
   let probe = EmitBuildExpectedRed {
     known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
   }
-  let blocking_red = join(emit_build_standing_notice_for(standing: probe, lane_blocks: true), "\n")
-  let blocking_green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen, lane_blocks: true), "\n")
-  let advisory_red = join(emit_build_standing_notice_for(standing: probe, lane_blocks: false), "\n")
+  let blocking_red = join(emit_build_standing_notice_for(standing: probe, lane_blocks: true, required_context: required_ci_context_name as String), "\n")
+  let blocking_green = join(emit_build_standing_notice_for(standing: EmitBuildExpectedGreen, lane_blocks: true, required_context: required_ci_context_name as String), "\n")
+  let advisory_red = join(emit_build_standing_notice_for(standing: probe, lane_blocks: false, required_context: required_ci_context_name as String), "\n")
   (string_contains(s: blocking_red, pattern: "does NOT block") == false)
     && (string_contains(s: blocking_green, pattern: "does NOT block") == false)
     && string_contains(s: blocking_green, pattern: "BLOCKS your merge")
