@@ -54,7 +54,7 @@ pub fn rust_source_type_binding_rows() -> Rc<Vec<Rc<SourceTypeTargetBinding<Rust
     CACHED.with(|c: &Rc<Vec<Rc<SourceTypeTargetBinding<RustRepresentation>>>>| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BoolArmValue {
     pub variant: NonEmptyStr,
     pub value: Rc<RepresentationValue<RustRepresentation>>,
@@ -179,7 +179,7 @@ pub fn checkpoint_row_migration_rows() -> Rc<Vec<Rc<CheckpointRowMigration>>> {
 })])
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SymbolCaptureDeclarer {
     pub declarer: Rc<DeclarationRef>,
     pub symbol_position: NonEmptyStr,

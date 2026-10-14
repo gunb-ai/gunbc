@@ -27,13 +27,13 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperandDeclaration {
     pub declaration: Rc<DeclarationRef>,
     pub provenance: Rc<TypeDeclarationProvenance>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OperandRealization {
     HostNumericOperand,
@@ -43,16 +43,7 @@ pub enum OperandRealization {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum HostRealizationReason {
@@ -81,7 +72,7 @@ pub fn provenance_label(p: Rc<TypeDeclarationProvenance>) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperandShapeFacts {
     pub authored_name: String,
     pub connective: String,
@@ -90,14 +81,14 @@ pub struct OperandShapeFacts {
     pub provenance: Rc<TypeDeclarationProvenance>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructuralOrderingBinding {
     pub carrier: Rc<DeclarationRef>,
     pub compare: Rc<DeclarationRef>,
     pub ordering: Rc<DeclarationRef>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum StructuralOrderingLookup {
     StructuralOrderingFound { row: Rc<StructuralOrderingBinding> },
@@ -141,7 +132,7 @@ pub fn structural_ordering_for(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OrderingTest {
     OrderingIs { variant: NonEmptyStr },
@@ -202,7 +193,7 @@ pub fn binop_label(op: BinOp) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OperandDemand {
     DemandsBothOperands,
@@ -242,7 +233,7 @@ pub fn operand_demand(op: BinOp) -> Rc<OperandDemand> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OperatorRealizationRefusal {
     NoStructuralOperationDeclared {
@@ -259,7 +250,7 @@ pub enum OperatorRealizationRefusal {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OperatorRealization {
     HostOperator,

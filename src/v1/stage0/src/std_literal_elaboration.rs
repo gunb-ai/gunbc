@@ -24,16 +24,7 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum LiteralSourceKind {
@@ -71,7 +62,7 @@ pub fn literal_source_kind_eq(a: LiteralSourceKind, b: LiteralSourceKind) -> boo
     (literal_source_kind_label(a.clone()) == literal_source_kind_label(b.clone()))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum LiteralUnfolding {
     PeanoUnfold {
@@ -106,7 +97,7 @@ impl LiteralUnfolding {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LiteralHomomorphism {
     pub source_kind: LiteralSourceKind,
     pub destination: Rc<DeclarationRef>,
@@ -130,7 +121,7 @@ pub fn homomorphism_element_eq(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum LiteralHomomorphismLookup {
     LiteralHomomorphismFound { row: Rc<LiteralHomomorphism> },
@@ -182,7 +173,7 @@ pub fn literal_homomorphism_for(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum LiteralElaborationRefusal {
     HomomorphismDuplicated {
@@ -221,7 +212,7 @@ pub fn literal_elaboration_refusal_message(cause: Rc<LiteralElaborationRefusal>)
 }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum LiteralElaborationOutcome {
     DirectLiteral,
@@ -272,7 +263,7 @@ pub fn elaborate_literal_at(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KernelGrounding {
     pub source_kind: LiteralSourceKind,
     pub carrier: Rc<DeclarationRef>,
@@ -284,7 +275,7 @@ pub fn kernel_grounding_admits(row: Rc<KernelGrounding>, value: i64) -> bool {
     crate::std_types::range(value.clone(), row.min.clone(), row.max.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KernelGroundingLookup {
     KernelGroundingFound { row: Rc<KernelGrounding> },
@@ -331,20 +322,20 @@ pub fn kernel_grounding_for(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LiteralElaboration {
     pub source_kind: LiteralSourceKind,
     pub destination: Rc<DeclarationRef>,
     pub homomorphism: Rc<LiteralHomomorphism>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KernelMintDeclaration {
     pub minted_name: NonEmptyStr,
     pub declaration: Rc<DeclarationRef>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KernelMintDeclarationLookup {
     KernelMintDeclarationFound { declaration: Rc<DeclarationRef> },
@@ -390,7 +381,7 @@ pub fn kernel_mint_declaration_for(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KernelMintOwnership {
     DeclarationOwnsTheMint,
@@ -437,7 +428,7 @@ pub fn kernel_mint_ownership(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KernelNamedImportStanding {
     KernelNamedImportAdmitted,

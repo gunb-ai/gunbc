@@ -31,7 +31,7 @@ pub fn keyed_occurrence_count<K: Clone, V: Clone>(
         })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KeyedRosterDuplicateEvidence<K: Clone, V: Clone> {
     pub key: K,
     pub value: V,
@@ -50,7 +50,7 @@ pub fn path_occurrence_count(paths: Rc<Vec<String>>, target: String) -> i64 {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KeyedRosterSecondRowScan<K: Clone, V: Clone> {
     KeyedRosterSecondRowScanAbsent,
@@ -173,7 +173,7 @@ pub fn keyed_roster_locate_duplicate<K: Clone, V: Clone>(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KeyedRosterInsert<K: Clone, V: Clone> {
     KeyedRosterInserted {
@@ -240,7 +240,7 @@ pub fn keyed_roster_insert_into_unique<K: Clone, V: Clone>(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KeyedRosterBuild<K: Clone, V: Clone> {
     KeyedRosterBuilt {

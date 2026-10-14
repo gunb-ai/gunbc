@@ -57,16 +57,7 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum Quantity {
@@ -108,16 +99,7 @@ pub enum Quantity {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum Scale {
@@ -283,7 +265,7 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Measure<Q, S, M: Clone> {
     pub count: M,
     pub _phantom: std::marker::PhantomData<(Q, S, M)>,
@@ -679,9 +661,7 @@ pub enum PositiveMeasureCountBuild {
     },
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PositiveMeasureCountNonPositive {
     pub observed: i64,
 }
@@ -1118,29 +1098,19 @@ pub fn usd_whole_dollars_count(m: UsdWholeDollars) -> Nat {
     measure_count(m.clone())
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PerSecond(pub std::marker::PhantomData<()>);
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PerMinute(pub std::marker::PhantomData<()>);
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PerHour(pub std::marker::PhantomData<()>);
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PerMonth(pub std::marker::PhantomData<()>);
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Once(pub std::marker::PhantomData<()>);
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1179,14 +1149,10 @@ pub type MoneyPerMonth = Rc<MoneyRate<PerMonth>>;
 
 pub type MoneyOnce = Rc<MoneyRate<Once>>;
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PerKilowattHour(pub std::marker::PhantomData<()>);
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PerSquareFootYear(pub std::marker::PhantomData<()>);
 
 pub type MoneyPerKilowattHour = Rc<MoneyRate<PerKilowattHour>>;
@@ -1394,7 +1360,7 @@ pub fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
     money_rate_micros(q.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AccountCredit {
     pub issuer: Rc<DeclarationRef>,
 }
@@ -2084,16 +2050,7 @@ pub fn amortization_months_count(m: AmortizationMonths) -> Nat {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum ClockBasis {
@@ -2226,7 +2183,7 @@ pub fn basis_point_dissolve_on() -> Rc<DissolutionCondition> {
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ClockDomain {
     ProcessMonotonic { process: NonEmptyStr },
@@ -2253,7 +2210,7 @@ pub struct ObservationInstant {
     pub since_origin: Nanosecond,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum InstantOrder {
     InstantBefore,

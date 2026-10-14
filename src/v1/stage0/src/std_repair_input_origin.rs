@@ -14,7 +14,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CandidateSpelling {
     BareCandidate {
@@ -27,16 +27,7 @@ pub enum CandidateSpelling {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum SourceCarrierOrigin {
@@ -47,12 +38,10 @@ pub enum SourceCarrierOrigin {
     VariantPayloadSurfaceOrigin,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RenderedTypeSurfaceOrigin;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum RepairInputDeclarationProvenance {
     RepairInputDeclared { declaring: Rc<DeclarationRef> },
@@ -61,28 +50,28 @@ pub enum RepairInputDeclarationProvenance {
     RepairInputIdentityAbsent,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceDeclarationCarrierIdentity {
     pub reference_position: String,
     pub authored_spelling: String,
     pub provenance: Rc<RepairInputDeclarationProvenance>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceCarrierCandidateIdentity {
     pub emitting_module: String,
     pub candidate_spelling: Rc<CandidateSpelling>,
     pub producer_origin: SourceCarrierOrigin,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RenderedTargetVocabularyIdentity {
     pub emitting_module: String,
     pub rendered_identifier: String,
     pub producer_origin: RenderedTypeSurfaceOrigin,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum RepairInputOriginCandidate {
     SourceCarrierCandidate {

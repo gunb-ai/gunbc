@@ -267,13 +267,13 @@ pub fn is_witness_type_name(name: String) -> bool {
     ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeLookupResult {
     pub status: Rc<NodeLookupStatus>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum NodeLookupStatus {
     LookupResolved { node: Rc<Node> },
@@ -288,7 +288,7 @@ impl NodeLookupStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PatternSubject {
     PatternResolved { node: Rc<Node> },
@@ -874,7 +874,7 @@ pub fn find_variant_child_keyed(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ConstructorRoster {
     ConstructorsClosed { names: Rc<Vec<String>> },
@@ -889,13 +889,13 @@ impl ConstructorRoster {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConstructorField {
     pub name: String,
     pub type_node: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PatternWitnessRow {
     pub cells: Rc<Vec<String>>,
 }

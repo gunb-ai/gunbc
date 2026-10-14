@@ -17,7 +17,6 @@ use crate::extdeps_ietf_http_semantics::HttpMethod::{
 pub use crate::extdeps_uri_path::PathTemplate;
 pub use crate::extdeps_uri_path::{has_path_params, last_path_param};
 pub use crate::std_optional::Optional;
-pub use crate::std_realization_schedule::string_list_eq;
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -93,25 +92,6 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
     }
 }
 
-pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
-    match (*left.clone()).clone() {
-        KeySource::PathParam { param: pa, .. } => match (*right.clone()).clone() {
-            KeySource::PathParam { param: pb, .. } => (pa.clone() == pb.clone()),
-            _ => false,
-        },
-        KeySource::InputField { field: fa, .. } => match (*right.clone()).clone() {
-            KeySource::InputField { field: fb, .. } => (fa.clone() == fb.clone()),
-            _ => false,
-        },
-        KeySource::CompositeKey { fields: fa, .. } => match (*right.clone()).clone() {
-            KeySource::CompositeKey { fields: fb, .. } => {
-                crate::std_realization_schedule::string_list_eq(fa.clone(), fb.clone())
-            }
-            _ => false,
-        },
-    }
-}
-
 pub fn create_effect_is_dedupable(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
     match (*shape.clone()).clone() {
         EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
@@ -146,7 +126,7 @@ pub fn create_double_init_collapsible(
                 EffectShape::CreateEffect { cause: cause_b, .. } => {
                     match (*cause_b.clone()).clone() {
                         CreateCause::CreateIfAbsent { key_source: kb, .. } => {
-                            key_source_eq(ka.clone(), kb.clone())
+                            (ka.clone() == kb.clone())
                         }
                         CreateCause::PostAlways => false,
                         CreateCause::KeylessFallback { method: method, .. } => false,
@@ -209,7 +189,7 @@ impl CompositionVerdict {
 pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionVerdict> {
     effects.iter().cloned().fold(
         Rc::new(CompositionVerdict::IdempotentComposition),
-        |acc: Rc<CompositionVerdict>, e: Rc<OperationEffect>| match (*acc.clone()).clone() {
+        |acc: Rc<CompositionVerdict>, e: _| match (*acc.clone()).clone() {
             CompositionVerdict::BrokenBy {
                 first_breaker: breaker,
                 ..

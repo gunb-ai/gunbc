@@ -191,13 +191,13 @@ pub type OciOtherDigestAlgorithm = String;
 
 pub type OciOtherDigestEncoded = String;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OciOtherDigestBody {
     pub algorithm: OciOtherDigestAlgorithm,
     pub encoded: OciOtherDigestEncoded,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OciContentDigest {
     OciSha256Digest(Rc<Sha256Digest>),
@@ -231,7 +231,7 @@ pub fn render_oci_content_digest_wire(d: Rc<OciContentDigest>) -> String {
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OciWireDigestParts {
     pub algorithm: String,
     pub encoded: String,

@@ -32,16 +32,7 @@ pub fn rust_representation_external_authority() -> Rc<ExternalAuthority> {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum RustRepresentation {
@@ -74,7 +65,7 @@ pub fn rust_representation_eq(a: RustRepresentation, b: RustRepresentation) -> b
     (rust_representation_slug(a.clone()) == rust_representation_slug(b.clone()))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustRepresentationRealization {
     pub spelling: Rc<RepresentationSpelling<RustRepresentation>>,
     pub default_expr: Option<String>,

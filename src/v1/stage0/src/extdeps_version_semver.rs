@@ -41,7 +41,7 @@ pub type SemVerIdentity = NonEmptyStr;
 
 pub type SemVerConstraint = NonEmptyStr;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct SemVerNumericField {
     digits: Rc<Vec<i64>>,
 }
@@ -84,14 +84,14 @@ pub fn semver_numeric_field(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerNumericField>>
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(tag = "_variant")]
 pub enum SemVerIdentifier {
     SemVerNumericIdentifier { digits: Rc<SemVerNumericField> },
     SemVerAlphanumericIdentifier { label: NonEmptyStr },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct SemVerVersion {
     pub major: Rc<SemVerNumericField>,
     pub minor: Rc<SemVerNumericField>,
@@ -639,16 +639,18 @@ pub fn semver_identifier_list_parse(
     segments: Rc<Vec<Rc<Vec<i64>>>>,
     strict_numeric: bool,
 ) -> Option<Rc<Vec<Rc<SemVerIdentifier>>>> {
-    segments.iter().cloned().fold(
-        Some(Rc::new(vec![])),
-        |st: Option<Present<_>>, seg: Rc<Vec<i64>>| match st.clone() {
-            std::option::Option::None => std::option::Option::None,
-            Some(acc) => match semver_identifier_parse(seg.clone(), strict_numeric.clone()) {
+    segments
+        .iter()
+        .cloned()
+        .fold(Some(Rc::new(vec![])), |st: _, seg: Rc<Vec<i64>>| {
+            match st.clone() {
                 std::option::Option::None => std::option::Option::None,
-                Some(id) => Some(v1_rt::concat(acc.clone(), Rc::new(vec![id.clone()]))),
-            },
-        },
-    )
+                Some(acc) => match semver_identifier_parse(seg.clone(), strict_numeric.clone()) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(id) => Some(v1_rt::concat(acc.clone(), Rc::new(vec![id.clone()]))),
+                },
+            }
+        })
 }
 
 pub fn semver_pre_release_parse(cps: Rc<Vec<i64>>) -> Option<Rc<Vec<Rc<SemVerIdentifier>>>> {
