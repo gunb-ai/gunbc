@@ -41,7 +41,7 @@ data resolver_cost_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.languages.rust.emit", decl_name: "rust_simple_method_specs"),
-    reason: "v2's Rust emission realizes the Cons-tail `skip` of a self-tail-recursive list walk as v1_rt::list_skip, which moves the remaining elements once per element, so the walk is quadratic in its list length; only the seed emitter (v1.compiler.emit_rust tco_cursor_plan) realizes the tail as a cursor into the unchanged base list (gunbc#13883)",
+    reason: "v2's Rust emission realizes the Cons-tail `skip` of a self-tail-recursive list walk as v1_rt::list_skip, which pays an O(log n) structural skip plus an allocation once per element, so the walk is O(n log n) where a cursor is O(n); only the seed emitter (v1.compiler.emit_rust tco_cursor_plan) realizes the tail as a cursor into the unchanged base list (gunbc#13883)",
     dissolution: unbound_dissolution(description: "v2's own emission decides the cursor realization from the same eligibility conditions as tco_cursor_plan (one spine depth per tail binder, no rebinding of the walked name, advance only inside an arm that proved the length) and an executing emit-build-run witness compares its output with the skip realization on a walk the cursor covers and on one it refuses, with the refusal keeping skip"),
   ),
 ]
