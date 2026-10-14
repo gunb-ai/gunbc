@@ -182,6 +182,27 @@ data native_first_complete_cuts: DesignRuling = DesignRuling {
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Native-first complete cuts, with eventual repository-wide retirement. Complete native consumer cohorts are prioritized; each migrated cohort uses one semantic authority across its participating layers and has no legacy fallback. The remainder is explicit, identity-based and shrink-only; counts are observations, not acceptance oracles. Whole-corpus naming cleanup and unrelated target completion do not gate the typed native closure. The parent roadmap node `cardinality-absence` cannot close until the retained paths are covered and the obsolete production authorities and migration allowances are gone.",
 }
 
+data machine_mode_names_drop_the_unit: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "machine_mode_names_drop_the_unit"),
+  decided: "2026-10-14",
+  section: "3",
+  provenance: "Operator, to session merry-fox-82, approving the managed-host untangle cut-7 names: 'yeah those names sound fine to me, just record it. Please retire that yml if it's hand written'. Approved: the eight mtcollins1_* fleet-converge modes drop the unit from their names and take the subject as a workflow input, with no board-family prefix, in one atomic transition with no aliases (the 2026-10-03 rulings stand, live GCP IAM names byte-identical). The proposed managed_host_* spellings are HELD by the operator's later adoption of one_physical_machine_boot_transaction: the boot modes are named after that transaction once the old roots are deleted, and the executor-side census QEMU modes as executor_host_census_qemu_host_observe and executor_host_census_qemu_toolchain_converge. The hand-authored mtcollins-canary.yml is retired.",
+}
+
+data one_physical_machine_boot_transaction: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_physical_machine_boot_transaction"),
+  decided: "2026-10-14",
+  section: "3",
+  provenance: "Operator, to session merry-fox-82: 'i needed all the srvN boot/convergence aligned with mtcollins ... i just want a unified boot workflow in the end' and 'no matter the machine', then adopting the side-chat design review of 2026-10-14 ('could we make sure to clean up all the machine stuff'). Every physical machine is booted through one transaction surface. A modeled request identifies the exact physical subject, desired target, revision and terminal requirement; observed control and delivery capabilities select the strategy; no workflow branches on the machine's label, board name or fleet participation. Boot is reusable by arrival qualification, OS provisioning, reset and recovery and does not own those lifecycles. Executor, serving and management are roles a machine holds, not machine kinds. gunbc.managed_host is not the universal machine population: BMC, provider, PXE, local-target and future control mechanisms are adapters behind physical-machine control standings. The mtcollins1 boot run, gunbc.srv3 boot-once and gunbc.host_reset_return controller actuation are replacement-migration roots that migrate to this transaction and are deleted.",
+}
+
+data physical_and_guest_control_remain_distinct: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "physical_and_guest_control_remain_distinct"),
+  decided: "2026-10-14",
+  section: "3",
+  provenance: "Operator, adopting the side-chat design review of 2026-10-14 given to session merry-fox-82. Physical machines and microVM guests do not share inventory, controller, media or power interfaces. They may share runtime identity, OS and configuration convergence, workload assignment, attempt and incarnation vocabulary, and independent-readback transaction semantics after the physical boot or guest start boundary.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     job_roster_closed_to_growth,
@@ -205,6 +226,9 @@ fn design_rulings() -> List<DesignRuling> {
     optional_sugar_is_declaration_bound,
     nonemptiness_is_constructed_or_proved,
     native_first_complete_cuts,
+    machine_mode_names_drop_the_unit,
+    one_physical_machine_boot_transaction,
+    physical_and_guest_control_remain_distinct,
     production_is_main_only_lab_admits_integration,
   ]
 }

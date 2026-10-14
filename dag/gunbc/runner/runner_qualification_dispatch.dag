@@ -1,5 +1,7 @@
 module gunbc.runner.runner_qualification_dispatch
 
+import std.optional { Absent, Present }
+import std.algebra { length }
 import std.types { Bool, Bytes, CommitSha, Int, List, NonEmptyStr, String }
 import std.resources { Network }
 import std.roster_frontier { FrontierRow, frontier_row_decl }

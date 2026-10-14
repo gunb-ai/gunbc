@@ -7,16 +7,19 @@ import v2.std.member_declaration_kind { MemberKindChannel, no_member_declaration
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_fill_module_roots }
 import v2.compiler.normalized_tree {
   NormalizedTree,
+  normalized_tree_import_bindings,
   normalized_tree_record_declarations,
   normalized_tree_resource_declarations,
   normalized_tree_roots_to_binding_sources
 }
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
+import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.body_lowering_fold { TypeDeclarationModifierChannel }
 import v2.compiler.resolve {
   Namespace,
   namespace_bindings_augment_from_module_atoms,
+  namespace_with_unavailable_providers,
   ObservationIncomplete,
   ResolveNodeWalk,
   ResolveWalkRefused,
@@ -27,7 +30,8 @@ import v2.compiler.resolve {
   resolve_walk_prefix_pending,
   resolve_walk_with_namespace_policy,
   ResolveWalkAccepted,
-  type_declaration_modifier_channel_of_trees
+  type_declaration_modifier_channel_of_trees,
+  unavailable_providers_except_subject
 }
 import v2.compiler.lexical_scope { DeclaredBinding, module_binding_edge_is_namespace_body, try_edge_declared_binding }
 import v2.std.resolution_policy {
@@ -64,8 +68,14 @@ import v2.std.diagnostic {
 }
 
 import v2.std.grammar { parse_production_emitted_identity_optional }
-import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.node {
+  Disj,
+  Arrow,
+  Occupancy,
+  Instantiation,
+  ComputationNode,
+  Atom,
   Conj,
   Edge,
   Node,
@@ -94,7 +104,6 @@ import v2.std.cross_tree.resolution {
   cross_tree_edge_decision,
   source_root_index_empty
 }
-import v2.std.qualified_name { QualifiedName }
 
 type ImportVisibility
   = ImportVisible
@@ -615,8 +624,10 @@ fn admit_import_visible_entry(
   )
 }
 
-fn admit_import_entry(
-  roots: FreeMonoid<NormalizedTree>,
+// THE ONE CROSS-TREE GATE. ImportScoped then merges named exports (admit_import_entry);
+// NamespaceOnlyY records listed-name origins from captured rows (admit_captured_import_rows)
+// without a second cross_tree_edge_decision.
+fn admit_import_cross_tree_gate(
   import_edge: Import,
   state: AdmissionState,
   subject_qn: QualifiedName,
@@ -639,10 +650,8 @@ fn admit_import_entry(
             to_qn: import_edge.target,
             active_roots: active_roots
           ) {
-            EdgeNormalResolution =>
-              admit_import_visible_entry(roots: roots, import_edge: import_edge, state: state)
-            EdgeCrossAdmitted =>
-              admit_import_visible_entry(roots: roots, import_edge: import_edge, state: state)
+            EdgeNormalResolution => state
+            EdgeCrossAdmitted => state
             EdgeCrossDenied =>
               AdmissionRejected {
                 diagnostics: resolve_diagnostics(reason: ^resolve_cross_tree_import_denied)
@@ -653,6 +662,28 @@ fn admit_import_entry(
               }
           }
       }
+  }
+}
+
+fn admit_import_entry(
+  roots: FreeMonoid<NormalizedTree>,
+  import_edge: Import,
+  state: AdmissionState,
+  subject_qn: QualifiedName,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>
+) -> AdmissionState {
+  match admit_import_cross_tree_gate(
+    import_edge: import_edge,
+    state: state,
+    subject_qn: subject_qn,
+    index: index,
+    active_roots: active_roots
+  ) {
+    AdmissionRejected { diagnostics: d } =>
+      AdmissionRejected { diagnostics: d }
+    AdmissionAccepted { bindings: _, origins: _ } =>
+      admit_import_visible_entry(roots: roots, import_edge: import_edge, state: state)
   }
 }
 
@@ -688,8 +719,46 @@ fn admission_namespace_base(canonical_symbols: PointwisePower<Symbol>) -> Namesp
     module_qn: Empty,
     test_code: test_code_index_empty(),
     declared_in: Empty,
-    imported_origins: empty_map()
+    imported_origins: empty_map(),
+    unavailable_providers: []
   }
+}
+
+fn import_edge_from_binding_row(row: AliasBindingRow) -> Import {
+  Import {
+    target: qualified_name_init(qn: row.target),
+    visibility: ImportVisible
+  }
+}
+
+fn admit_captured_import_rows(
+  rows: FreeMonoid<AliasBindingRow>,
+  state: AdmissionState,
+  subject_qn: QualifiedName,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>
+) -> AdmissionState {
+  fold_list(
+    xs: rows,
+    empty: state,
+    cons: fn(acc, row) {
+      match admit_import_cross_tree_gate(
+        import_edge: import_edge_from_binding_row(row: row),
+        state: acc,
+        subject_qn: subject_qn,
+        index: index,
+        active_roots: active_roots
+      ) {
+        AdmissionRejected { diagnostics: d } =>
+          AdmissionRejected { diagnostics: d }
+        AdmissionAccepted { bindings: b, origins: o } =>
+          AdmissionAccepted {
+            bindings: b,
+            origins: map_insert(m: o, key: row.binding, value: qualified_name_init(qn: row.target))
+          }
+      }
+    }
+  )
 }
 
 // The shared context consumes only the map emitted by successful validation. General
@@ -754,7 +823,8 @@ fn admitted_subject_from_bindings(
       module_qn: module_qn,
       test_code: test_code,
       declared_in: module_qn,
-      imported_origins: origins
+      imported_origins: origins,
+      unavailable_providers: []
     },
     subject_root: subject_module_root
   }
@@ -867,18 +937,31 @@ fn namespace_for_subject_root(
             Rejected {
               diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
             }
-          AdmissionAccepted { bindings: b, origins: o } =>
-            Accepted {
-              value: admitted_subject_from_bindings(
-                bindings: b,
-                base: base,
-                subject_module_root: subject_module_root,
-                symbol_index: shared.symbol_index,
-                module_qn: admission.subject.name,
-                origins: o,
-                test_code: shared.roots.test_code
-              ),
-              diagnostics: validate_diag
+          AdmissionAccepted { bindings: _, origins: _ } =>
+            match admit_captured_import_rows(
+              rows: normalized_tree_import_bindings(tree: subject_module_root),
+              state: initial,
+              subject_qn: admission.subject.name,
+              index: index,
+              active_roots: active_roots
+            ) {
+              AdmissionRejected { diagnostics: denied } =>
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: validate_diag, rejected: denied)
+                }
+              AdmissionAccepted { bindings: b, origins: o } =>
+                Accepted {
+                  value: admitted_subject_from_bindings(
+                    bindings: b,
+                    base: base,
+                    subject_module_root: subject_module_root,
+                    symbol_index: shared.symbol_index,
+                    module_qn: admission.subject.name,
+                    origins: o,
+                    test_code: shared.roots.test_code
+                  ),
+                  diagnostics: validate_diag
+                }
             }
         }
       ImportScoped =>
@@ -949,26 +1032,39 @@ type ContextWalk {
 
 // The admitted namespace is built over the context's own index, so that index is the one this
 // resolution consulted. A refused context resolved nothing.
+// Member lookup during the walk is kind-aware: v2.compiler.resolve
+// lookup_symbol_index_atom_identity filters the lexical population with
+// std.occurrence_binding_resolve occurrence_category_binding_verdict before
+// symbol_index_lexical_selection (none/one/many). This door only admits the
+// subject; it does not pick among same-spelling kinds.
 fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission) -> ContextResolved {
-  let walked = resolve_walk_in_context(context: context, admission: admission)
-  match walked.context {
-    Rejected { diagnostics: r } => ContextResolved { resolved: Rejected { diagnostics: r }, context: walked.context }
+  match context {
+    Rejected { diagnostics: r } =>
+      ContextResolved { resolved: Rejected { diagnostics: r }, context: context }
     Accepted { value: shared, diagnostics: d } =>
       let closure = closure_declarations_demand(shared: shared)
-      ContextResolved {
-        resolved: match subject_member_kind_channel(roots: shared.roots, name: admission.subject.name) {
-          Rejected { diagnostics: r } => Rejected { diagnostics: r }
-          Accepted { value: channel, diagnostics: _ } =>
-            resolved_tree_outcome(
-              w: walked.walk,
-              symbol_index: shared.symbol_index,
-              closure_declarations: closure.declarations,
-              unavailable_providers: closure.refused,
-              member_kinds: channel,
-              type_declaration_modifiers: shared.type_declaration_modifiers
-            )
-        },
-        context: Accepted { value: closure.context, diagnostics: d }
+      let walked = resolve_walk_in_context(
+        context: Accepted { value: closure.context, diagnostics: d },
+        admission: admission
+      )
+      match walked.context {
+        Rejected { diagnostics: r } => ContextResolved { resolved: Rejected { diagnostics: r }, context: walked.context }
+        Accepted { value: after, diagnostics: d2 } =>
+          ContextResolved {
+            resolved: match subject_member_kind_channel(roots: after.roots, name: admission.subject.name) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: channel, diagnostics: _ } =>
+                resolved_tree_outcome(
+                  w: walked.walk,
+                  symbol_index: after.symbol_index,
+                  closure_declarations: closure.declarations,
+                  unavailable_providers: closure.refused,
+                  member_kinds: channel,
+                  type_declaration_modifiers: after.type_declaration_modifiers
+                )
+            },
+            context: Accepted { value: after, diagnostics: d2 }
+          }
       }
   }
 }
@@ -1097,12 +1193,17 @@ fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admis
       let threaded = Accepted { value: demand.context, diagnostics: validate_diag }
       match demand.admitted {
         Accepted { value: admitted, diagnostics: namespace_diag } =>
+          let refused = match demand.context.closure_declarations {
+            Present { value: closure } =>
+              unavailable_providers_except_subject(providers: closure.refused, subject: admission.subject.name)
+            Absent => []
+          }
           ContextWalk {
             walk: resolve_walk_prefix_pending(
               pending: namespace_diag,
               w: resolve_walk_with_namespace_policy(
                 tree: admitted.subject_root,
-                namespace: admitted.namespace,
+                namespace: namespace_with_unavailable_providers(namespace: admitted.namespace, providers: refused),
                 lm: shared.lm,
                 policy: shared.policy
               )

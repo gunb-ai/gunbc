@@ -11,7 +11,11 @@ import gunbc.roster_registry {
   DeclaredFrontier,
   RosterRegistration,
   roster_registry,
-  roster_decl
+  roster_decl,
+  single_roster,
+  SingleRoster,
+  DistributedRoster,
+  distributed_roster_data_name_is_declared
 }
 import v2.lens.roster_registry {
   roster_registry_nonstandard_count,
@@ -40,7 +44,7 @@ fn synthetic_empty_condition(text: String) -> DissolutionCondition {
 
 fn synthetic_registration(membership: GroupMembership) -> RosterRegistration {
   RosterRegistration {
-    roster: roster_decl(module_path: "v2.test.synthetic", decl_name: "synthetic_roster"),
+    roster: single_roster(module_path: "v2.test.synthetic", decl_name: "synthetic_roster"),
     unit_kind: "synthetic unit",
     membership: membership
   }
@@ -109,4 +113,35 @@ test fn roster_registry_green_control_standard_forms_pass() -> Bool {
       )
     ]
   ) == 0
+}
+
+test fn roster_registry_red_control_undeclared_distributed_data_name_reds() -> Bool {
+  !distributed_roster_data_name_is_declared(
+    data_name: "no_module_declares_this_distributed_list",
+    declared_data_names: ["non_fold_residue_frontier"]
+  )
+}
+
+test fn roster_registry_green_control_distributed_data_name_declared() -> Bool {
+  distributed_roster_data_name_is_declared(
+    data_name: "non_fold_residue_frontier",
+    declared_data_names: ["non_fold_residue_frontier"]
+  )
+}
+
+test fn roster_registry_distributed_nfr_row_data_name_is_declared() -> Bool {
+  fold(
+    roster_registry,
+    init: false,
+    f: fn(acc, r) {
+      acc || match r.roster {
+        SingleRoster { decl: _ } => false
+        DistributedRoster { data_name: n, element_type: _ } =>
+          distributed_roster_data_name_is_declared(
+            data_name: n,
+            declared_data_names: ["non_fold_residue_frontier"]
+          )
+      }
+    }
+  )
 }

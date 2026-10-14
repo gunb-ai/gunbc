@@ -110,7 +110,7 @@ import v2.std.orchestration {
   Exit,
 }
 import std.env_binding { EnvBinding }
-import std.algebra { FreeMonoid, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty, length }
+import std.algebra { FreeMonoid, list_head, list_tail, is_empty, length }
 import extdeps.posix.shell_command_language { posix_name_ok }
 import std.types { List }
 import v2.std.collection {
@@ -142,6 +142,8 @@ import v2.std.diagnostic {
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node, TypeNode, Conj, Atom, Symbol }
 import v2.std.text { String, string_all_chars_in, string_any_char_in }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 fn orch_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
   optional_absent()
@@ -359,14 +361,14 @@ fn orch_emit_run_core(
   prepared: OrchEmitPrepared
 ) -> Outcome<OrchEmitCarried> {
   match list_head(xs: r.env) {
-    HeadAbsent =>
+    Absent =>
       orch_emit_from_prepared(
         prepared: prepared,
         medium: medium,
         construct_tag: orch_construct_run_rawline,
         target: medium.realize_run_rawline(r.command)
       )
-    HeadFound { value: _ } =>
+    Present { value: _ } =>
       orch_emit_run_from_plan(plan: medium.run_env_plan(r), medium: medium, prepared: prepared)
   }
 }
@@ -736,7 +738,7 @@ fn orch_pipeline_needs_block_body(then_: Pipeline, else_: Optional<Pipeline>) ->
   }
 }
 
-// A Pipeline arm with zero steps emits "" (orch_emit_pipeline's HeadAbsent case); threaded raw into
+// A Pipeline arm with zero steps emits "" (orch_emit_pipeline's Absent case); threaded raw into
 // the if-body token slot that produces invalid bash ("if COND; then ; fi" -- then requires >=1
 // command before the closing separator). orch_if_arm_body_or_noop substitutes the bash no-op ":"
 // for an empty arm's body, uniformly across the inline and block dispatch and regardless of whether
@@ -985,18 +987,18 @@ fn orch_retry_step_run(s: PipelineStep) -> Outcome<Run> {
 
 fn orch_retry_body_command(body: Pipeline) -> Outcome<Run> {
   match list_head(xs: body.steps) {
-    HeadAbsent =>
+    Absent =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
-    HeadFound { value: s } =>
+    Present { value: s } =>
       match list_tail(xs: body.steps) {
-        TailFound { tail: rest } =>
+        Present { value: rest } =>
           match is_empty(rest) {
             false =>
               outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_multi_step))
             true =>
               orch_retry_step_run(s: s)
           }
-        TailAbsent =>
+        Absent =>
           orch_retry_step_run(s: s)
       }
   }
@@ -1261,11 +1263,11 @@ fn orch_emit_retry_dispatch(
   prepared: OrchEmitPrepared
 ) -> Outcome<OrchEmitCarried> {
   match list_head(xs: escalations) {
-    HeadAbsent =>
+    Absent =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
-    HeadFound { value: l1 } =>
+    Present { value: l1 } =>
       match list_tail(xs: escalations) {
-        TailAbsent =>
+        Absent =>
           orch_emit_retry_1level(
             command: command,
             redirect: redirect,
@@ -1275,7 +1277,7 @@ fn orch_emit_retry_dispatch(
             medium: medium,
             prepared: prepared
           )
-        TailFound { tail: rest } =>
+        Present { value: rest } =>
           match is_empty(rest) {
             true =>
               orch_emit_retry_1level(
@@ -1289,9 +1291,9 @@ fn orch_emit_retry_dispatch(
               )
             false =>
               match list_head(xs: rest) {
-                HeadFound { value: l2 } =>
+                Present { value: l2 } =>
                   match list_tail(xs: rest) {
-                    TailFound { tail: more } =>
+                    Present { value: more } =>
                       match is_empty(more) {
                         true =>
                           orch_emit_retry_levels(
@@ -1316,10 +1318,10 @@ fn orch_emit_retry_dispatch(
                             prepared: prepared
                           )
                       }
-                    TailAbsent =>
+                    Absent =>
                       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
                   }
-                HeadAbsent =>
+                Absent =>
                   outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
               }
           }
@@ -1377,8 +1379,8 @@ fn orch_emit_steps_from_prepared(
   medium: OrchestrationEmitMedium
 ) -> Outcome<OrchEmitCarried> {
   match list_head(xs: rest) {
-    HeadAbsent => outcome_accepted(head)
-    HeadFound { value: next } =>
+    Absent => outcome_accepted(head)
+    Present { value: next } =>
       bind_outcome(
         o: orch_emit_step_prepared(s: next, medium: medium, prepared: head.prepared),
         f: fn(next_carried) {
@@ -1391,9 +1393,9 @@ fn orch_emit_steps_from_prepared(
             ),
             f: fn(joined) {
               match list_tail(xs: rest) {
-                TailFound { tail: t } =>
+                Present { value: t } =>
                   orch_emit_steps_from_prepared(head: joined, rest: t, medium: medium)
-                TailAbsent => outcome_accepted(joined)
+                Absent => outcome_accepted(joined)
               }
             }
           )
@@ -1408,19 +1410,19 @@ fn orch_emit_pipeline_prepared(
   prepared: OrchEmitPrepared
 ) -> Outcome<OrchEmitCarried> {
   match list_head(xs: p.steps) {
-    HeadAbsent => outcome_accepted(OrchEmitCarried { text: "", prepared: prepared })
-    HeadFound { value: first } =>
+    Absent => outcome_accepted(OrchEmitCarried { text: "", prepared: prepared })
+    Present { value: first } =>
       bind_outcome(
         o: orch_emit_step_prepared(s: first, medium: medium, prepared: prepared),
         f: fn(first_carried) {
           match list_tail(xs: p.steps) {
-            TailFound { tail: t } =>
+            Present { value: t } =>
               orch_emit_steps_from_prepared(
                 head: first_carried,
                 rest: t,
                 medium: medium
               )
-            TailAbsent => outcome_accepted(first_carried)
+            Absent => outcome_accepted(first_carried)
           }
         }
       )
@@ -1436,3 +1438,15 @@ fn orch_emit_pipeline(
     f: fn(c) { outcome_accepted(lossless_source(text: c.text)) }
   )
 }
+
+data nfr_reason_orch_emit: String = "one-special-variant dispatch (ExprCmdSubst to cmdsubst_assign; every other Expr through the uniform spelling path) — enumerating all Expr variants would clone the general arm; landed with the shell-to-dag P2b/P4 slices (#6573), surfaced on the 2026-07-14 nightly cold sweep (masking receipt 9)"
+
+data nfr_dissolve_orch_emit: DissolutionCondition = unbound_dissolution(description: "emit becomes the backward grammar-row fold (DESIGN §4) and the special case dissolves with the orchestration-emit fold migration")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "orch_emit_let_step" },
+      reason: nfr_reason_orch_emit,
+      dissolution: nfr_dissolve_orch_emit,
+    },
+]

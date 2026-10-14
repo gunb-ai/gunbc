@@ -1,5 +1,6 @@
 module v2.std.qualified_name
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b, nfr_reason_landed_after_typed_census }
 import std.types { List }
 import v2.std.diagnostic {
   Accepted,
@@ -12,7 +13,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, HeadAbsent, HeadFound, fold_list, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.optional {
@@ -23,8 +24,10 @@ import std.optional {
   optional_present
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, EdgeLabel, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, LexicalReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, Authored, core_edge_label, StructuralLabel, ComputationNode, fold_list_node }
+import v2.std.node { Disj, Arrow, Occupancy, Instantiation, Atom, Conj, Edge, EdgeLabel, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, LexicalReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, Authored, core_edge_label, StructuralLabel, ComputationNode, fold_list_node }
 import v2.std.text { String }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type QualifiedName = FreeMonoid<Symbol>
 
@@ -113,8 +116,8 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                   match child_qn {
                     Cons { head: sym, tail: child_tail } =>
                       match list_head(xs: child_tail) {
-                        HeadAbsent => QnFoldHeadSeen { sym: sym }
-                        HeadFound { value: _ } => QnFoldError { diag: Diagnostic {
+                        Absent => QnFoldHeadSeen { sym: sym }
+                        Present { value: _ } => QnFoldError { diag: Diagnostic {
                           reason: ^qualified_name_structure_invalid,
                           at: node_locus(node: edge.target),
                           correction: Unavailable { reason: ExternalContractUnknown }
@@ -215,8 +218,8 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                   match child_qn {
                     Cons { head: sym, tail: child_tail } =>
                       match list_head(xs: child_tail) {
-                        HeadAbsent => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
-                        HeadFound { value: _ } => QnFoldError { diag: Diagnostic {
+                        Absent => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
+                        Present { value: _ } => QnFoldError { diag: Diagnostic {
                           reason: ^qualified_name_structure_invalid,
                           at: node_locus(node: edge.target),
                           correction: Unavailable { reason: ExternalContractUnknown }
@@ -625,3 +628,8 @@ fn qualified_name_owning_module(
     }
   )
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "qn_fold_step" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "lexical_reference_label_optional" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+]

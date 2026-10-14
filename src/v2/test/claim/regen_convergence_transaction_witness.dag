@@ -737,6 +737,8 @@ test fn compiler_tests_aggregate_has_one_declared_product_owner() -> Bool {
   count(regen_generated_product_owner_paths() |> filter(path => path == "compiler_tests.rs")) == 1
     && regen_generated_product_source_modules(product: "compiler_tests.rs")
       == ["v1.compiler.compiler_tests_rust"]
+    && regen_generated_product_generation_role_labels(product: "compiler_tests.rs")
+      == ["GenerationSubject"]
 }
 
 // The generated CLI carrier is a seed-embedded generation subject synthesized by
@@ -787,10 +789,38 @@ test fn gunbc_cli_dispatch_generation_subject_obeys_all_three_stage_boundaries()
 
 // Seed-manifest absence is not itself an OutsideSeed fact. The generated-product authority
 // explicitly classifies publishable aggregates, while the seed crate root remains an input.
+test fn compiler_tests_generation_subject_obeys_all_three_stage_boundaries() -> Bool {
+  let carrier = fixture_surface(
+    module: "v1.compiler.compiler_tests_rust",
+    path: "compiler_tests.rs",
+    role: GenerationSubject,
+    seed: SeedEmbedded
+  )
+  let promote = fixture_plan(kind: PromoteGenerationInputs, rows: [carrier])
+  let install = fixture_plan(kind: InstallSeedCompatibilityCut, rows: [carrier])
+  let publish = fixture_plan(kind: PublishNonSeedOutputs, rows: [carrier])
+  match promote {
+    RegenStagePlanningRefused { refusal: SurfaceInIncompatibleStageRoles { surfaces: held } } =>
+      count(held) == 1 && match install {
+        RegenStagePlanned { stage: stage } =>
+          count(stage.planned_surfaces) == 1
+            && stage.planned_surfaces |> all(row =>
+              row.identity.declaring_module == "v1.compiler.compiler_tests_rust"
+                && row.identity.projected_path == "compiler_tests.rs"
+            )
+            && match publish {
+              RegenStagePlanningRefused { refusal: SurfaceInIncompatibleStageRoles { surfaces: publish_held } } =>
+                count(publish_held) == 1
+              _ => false
+            }
+        _ => false
+      }
+    _ => false
+  }
+}
+
 test fn aggregate_product_roles_make_non_seed_publication_reachable() -> Bool {
-  regen_generated_product_generation_role_labels(product: "compiler_tests.rs")
-      == ["NonSeedGeneratedOutput"]
-    && regen_generated_product_generation_role_labels(product: "emitted_population.rs")
+  regen_generated_product_generation_role_labels(product: "emitted_population.rs")
       == ["NonSeedGeneratedOutput"]
     && regen_generated_product_generation_role_labels(product: "main.rs")
       == ["NonSeedGeneratedOutput"]

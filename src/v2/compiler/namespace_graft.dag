@@ -18,6 +18,10 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.node {
+  Disj,
+  Arrow,
+  Instantiation,
+  ComputationNode,
   close_lowered_image,
   Atom,
   Occupancy,

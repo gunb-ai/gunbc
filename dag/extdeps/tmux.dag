@@ -249,10 +249,14 @@ fn classify_tmux_session_list(
   }
 }
 
+type TmuxAttemptPaneStanding
+  = TmuxAttemptPaneAlive
+  | TmuxAttemptPaneExited { status: Int }
+  | TmuxAttemptPaneSignaled { signal: Int }
+
 type TmuxAttemptPaneEntry {
   session_name: String
-  dead: Bool
-  exit_code: Int?
+  standing: TmuxAttemptPaneStanding
   command: String
 }
 
@@ -273,7 +277,14 @@ type TmuxAttemptPanesFold {
   refused_reason: String
 }
 
-// The attempt observer uses tmux_attempt_panes_format: four tab-delimited fields (session_name, pane_dead, pane_dead_status, pane_current_command). Parsing is total and fail-closed. A live pane must report dead=0; a retained pane must report dead=1 plus an integer exit status. The first malformed non-empty row refuses the whole observation with its 1-based line and raw evidence.
+// The attempt observer uses tmux_attempt_panes_format: five tab-delimited fields
+// (session_name, pane_dead, pane_dead_status, pane_dead_signal, pane_current_command).
+// tmux(1) FORMATS: pane_dead_status is the exit status of a process that exited; pane_dead_signal
+// is the signal that killed it. pane_dead_signal is in tmux 3.3 (CHANGES) and therefore on 3.4
+// (srv1/srv2). On 3.4 a signal-killed pane reports an empty status and a numeric signal. Parsing is
+// total and fail-closed. Live: dead=0 and both status and signal empty. Dead: dead=1 and EXACTLY
+// ONE of status or signal is an integer. The first malformed non-empty row refuses the whole
+// observation with its 1-based line and raw evidence.
 fn tmux_attempt_pane_field(parts: List<String>, n: Int) -> String {
   match parts.skip(n: n).first() {
     Present { value } => value
@@ -288,26 +299,42 @@ fn parse_tmux_attempt_pane_line(
   let name = tmux_attempt_pane_field(parts: parts, n: 0)
   let dead = tmux_attempt_pane_field(parts: parts, n: 1)
   let status = tmux_attempt_pane_field(parts: parts, n: 2)
-  let command = tmux_attempt_pane_field(parts: parts, n: 3)
-  if count(parts) != 4 || name == "" {
+  let signal = tmux_attempt_pane_field(parts: parts, n: 3)
+  let command = tmux_attempt_pane_field(parts: parts, n: 4)
+  if count(parts) != 5 || name == "" {
     none
-  } else if dead == "0" && status == "" {
+  } else if dead == "0" && status == "" && signal == "" {
     Present { value: TmuxAttemptPaneEntry {
       session_name: name,
-      dead: false,
-      exit_code: none,
+      standing: TmuxAttemptPaneAlive,
       command: command,
     } }
   } else if dead == "1" {
     match parse_int(status) {
       Present { value: code } =>
-        Present { value: TmuxAttemptPaneEntry {
-          session_name: name,
-          dead: true,
-          exit_code: Present { value: code },
-          command: command,
-        } }
-      Absent => none
+        if signal == "" {
+          Present { value: TmuxAttemptPaneEntry {
+            session_name: name,
+            standing: TmuxAttemptPaneExited { status: code },
+            command: command,
+          } }
+        } else {
+          none
+        }
+      Absent =>
+        match parse_int(signal) {
+          Present { value: sig } =>
+            if status == "" {
+              Present { value: TmuxAttemptPaneEntry {
+                session_name: name,
+                standing: TmuxAttemptPaneSignaled { signal: sig },
+                command: command,
+              } }
+            } else {
+              none
+            }
+          Absent => none
+        }
     }
   } else {
     none
@@ -356,7 +383,7 @@ fn parse_tmux_attempt_panes_output(
               refused: true,
               refused_line_number: acc.next_line_number,
               refused_raw: line,
-              refused_reason: "expected four tab-delimited tmux attempt-pane fields with a valid dead/status pair",
+              refused_reason: "expected five tab-delimited tmux attempt-pane fields with a valid dead/status/signal triple",
             }
         }
       }
@@ -604,7 +631,7 @@ fn shape_tmux_list_panes_argv() -> List<String> {
   shape_tmux_list_panes_argv_for(scope: DefaultTmuxServer)
 }
 
-data tmux_attempt_panes_format: String = "#\{session_name\}\t#\{pane_dead\}\t#\{pane_dead_status\}\t#\{pane_current_command\}"
+data tmux_attempt_panes_format: String = "#\{session_name\}\t#\{pane_dead\}\t#\{pane_dead_status\}\t#\{pane_dead_signal\}\t#\{pane_current_command\}"
 
 fn shape_tmux_attempt_panes_argv_for(scope: TmuxServerScope) -> List<String> {
   concat(
