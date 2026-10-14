@@ -2727,6 +2727,28 @@ fn harness_resume_after_acceptance_wait(config: HarnessTurnConfig, handin: Strin
   }
 }
 
+fn harness_outcome_steps_taken(outcome: HarnessTurnOutcome) -> Int {
+  match outcome {
+    TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: n, input_tokens: _, output_tokens: _ } => n
+    TurnCompletedByArtifact { path: _, steps_taken: n } => n
+    TurnStepBudgetExhausted { steps_taken: n } => n
+    TurnTransportRefused { detail: _ } => 0
+    TurnResponseUnreadable { cause: _ } => 0
+    TurnRequestUnwritable { path: _, detail: _ } => 0
+    TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: n } => n
+    TurnTruncatedMidToolCall { output_tokens: _, ceiling: _, steps_taken: n } => n
+    TurnThinkingFormatInvalid { cause: _, steps_taken: n } => n
+    TurnUsageUnavailable { cause: _, steps_taken: n } => n
+    TurnSubmissionUndecodable { reason: _, steps_taken: n } => n
+    TurnStoppedBySupervision { verdict: _, detail: _, steps_taken: n } => n
+    TurnSupervisionUnavailable { cause: _, steps_taken: n } => n
+    TurnAcceptanceUnavailable { cause: _, steps_taken: n } => n
+    TurnHostedQuotaFull { wire: _, steps_taken: n } => n
+    TurnHostedQuotaUnleasable { detail: _, steps_taken: n } => n
+    TurnHostedFailure { failure: _, steps_taken: n } => n
+  }
+}
+
 fn harness_release_capacity_if_held(config: HarnessTurnConfig, outcome: HarnessTurnOutcome) -> HarnessTurnOutcome {
   match config.acceptance_capacity {
     KeepBindingAlive => outcome
@@ -2734,9 +2756,17 @@ fn harness_release_capacity_if_held(config: HarnessTurnConfig, outcome: HarnessT
     FleetSeatHeld { binding } =>
       match harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr) {
         HarnessSeatReleased { partition: _ } => outcome
-        HarnessHostedCredentialRemoved => outcome
         HarnessSeatReleaseNotApplicable { why: _ } => outcome
-        HarnessSeatReleaseRefused { detail: _ } => outcome
+        HarnessHostedCredentialRemoved =>
+          TurnAcceptanceUnavailable {
+            cause: "the rebound fleet seat release answered as a hosted credential removal; the seat may still be held",
+            steps_taken: harness_outcome_steps_taken(outcome: outcome),
+          }
+        HarnessSeatReleaseRefused { detail } =>
+          TurnAcceptanceUnavailable {
+            cause: join(["the rebound fleet seat could not be released after revision: ", detail], ""),
+            steps_taken: harness_outcome_steps_taken(outcome: outcome),
+          }
       }
   }
 }
@@ -2805,7 +2835,7 @@ fn harness_turn_execute_hand_in(
           harness_turn_hand_in(
             config: config,
             route: route,
-            messages: concat(messages, [harness_assistant_message_json(unit: config.serving_unit, shape: config.wire_shape, blocks: blocks)]),
+            messages: messages,
             events: stepped,
             steps_taken: steps_taken + 1,
             text: text,
