@@ -3102,22 +3102,26 @@ fn match_arm_body_is_present_payload_binding(arm: ArmInferResult, scope: InferSc
   }
 }
 
-fn type_is_declaration_at(t: Node, owner: Node?) -> Bool {
+// IDENTITY IS THE RESOLVED DECLARATION, NEVER A POSITION. A corpus declaration is identified by the
+// DeclarationRef its reference carries (Node.declaration, minted once by infer_resolve
+// reference_with_declaration); two nodes without it are not joined. The kernel Optional has no
+// DeclarationRef (a kernel spelling names no corpus declaration), so its identity is the kernel
+// scope's own binding, the node kernel_optional_owner_declaring hands out.
+fn type_is_kernel_optional_declaration(t: Node, owner: Node?) -> Bool {
   match owner {
-    Present { value: o } => t.connective == Disj && t.ident_span == o.ident_span && t.span == o.span
+    Present { value: o } => t.connective == Disj && t == o
     Absent => false
   }
 }
 
 // A BARE DECLARATION ARM IS DROPPED FROM THE JOIN WHEN A SIBLING ARM INHABITS THE SAME DECLARATION.
-// Identity is the declaring site (ident_span and span), never the spelling. A sibling inhabits the
-// declaration when it is the same declaration read at a different application (the node differs), or
-// when it is `T?` and the declaration is the kernel Optional owner: that cardinality IS that
+// A sibling inhabits a corpus declaration when it carries the same DeclarationRef at a different
+// application (the node differs), and the kernel Optional when it is `T?`: that cardinality IS that
 // declaration, so the inhabitance is established by the owner's identity.
 fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, optional_owner: Node?) -> Bool {
   t.connective == Disj && (siblings |> any(s =>
-    (s != t && s.ident_span == t.ident_span && s.span == t.span)
-      || (s.return_cardinality == CardOptional && type_is_declaration_at(t: t, owner: optional_owner))
+    (s != t && t.declaration != none && s.declaration == t.declaration)
+      || (s.return_cardinality == CardOptional && type_is_kernel_optional_declaration(t: t, owner: optional_owner))
   ))
 }
 

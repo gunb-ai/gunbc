@@ -4301,13 +4301,9 @@ pub fn match_arm_body_is_present_payload_binding(
     }
 }
 
-pub fn type_is_declaration_at(t: Rc<Node>, owner: Option<Rc<Node>>) -> bool {
+pub fn type_is_kernel_optional_declaration(t: Rc<Node>, owner: Option<Rc<Node>>) -> bool {
     match owner.clone() {
-        Some(o) => {
-            (((t.connective.clone() == Connective::Disj)
-                && (t.ident_span.clone() == o.ident_span.clone()))
-                && (t.span.clone() == o.span.clone()))
-        }
+        Some(o) => ((t.connective.clone() == Connective::Disj) && (t.clone() == o.clone())),
         std::option::Option::None => false,
     }
 }
@@ -4320,10 +4316,11 @@ pub fn arm_is_bare_declaration_of_sibling(
     ((t.connective.clone() == Connective::Disj) && {
         let mut __found = false;
         for s in siblings.iter().cloned() {
-            if ((((s.clone() != t.clone()) && (s.ident_span.clone() == t.ident_span.clone()))
-                && (s.span.clone() == t.span.clone()))
+            if ((((s.clone() != t.clone())
+                && (t.declaration.clone() != std::option::Option::None))
+                && (s.declaration.clone() == t.declaration.clone()))
                 || ((s.return_cardinality.clone() == Cardinality::CardOptional)
-                    && type_is_declaration_at(t.clone(), optional_owner.clone())))
+                    && type_is_kernel_optional_declaration(t.clone(), optional_owner.clone())))
             {
                 __found = true;
                 break;
