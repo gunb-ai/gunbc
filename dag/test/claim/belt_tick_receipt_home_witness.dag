@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.roadmap_belt_actuate { belt_tick_receipt_path_for_instance }
 import gunbc.live_deploy.emit {
-  emit_artifact_upsert,
+  composed_artifact_upsert,
   install_d_owned_for_user,
 }
 import gunbc.live_deploy.release_locus {
@@ -21,6 +21,7 @@ import gunbc.live_deploy.release_locus {
 }
 import gunbc.live_deploy.spec {
   DeploymentArtifactStep,
+  UpsertArtifactKind,
   gunbc_service_user,
   BeltEventPathUnit,
   deployment_belt_exit_path_unit_path,
@@ -110,7 +111,12 @@ test fn the_receipts_directory_derives_from_its_instance_root() -> Bool {
 
 fn step_commands(steps: List<PipelineStep>) -> List<String> {
   fold(steps, init: [], f: (acc, s) => match s {
-    Do { run: r } => concat(acc, [r.command])
+    Do { run: r } =>
+      if string_contains(s: r.command, pattern: "__GUNBC_HOST_SCRIPT_STEP__") {
+        acc
+      } else {
+        concat(acc, [r.command])
+      }
     _ => acc
   })
 }
@@ -121,18 +127,16 @@ fn has_command(cmds: List<String>, want: String) -> Bool {
 
 fn belt_upsert_commands() -> List<String> {
   let spec = deployment_spec_srv1()
-  let art = DeploymentArtifactStep {
+  step_commands(steps: composed_artifact_upsert(
+    principal: fleet_posix_ci_runner_principal(),
     kind: BeltEventPathUnit,
     path: deployment_belt_exit_path_unit_path(
       names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
     ) as String as NonEmptyStr,
-  }
-  step_commands(steps: emit_artifact_upsert(principal: fleet_posix_ci_runner_principal(), 
-    art: art,
     spec: spec,
     revision: RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha },
     oidc_now: Absent,
-  ))
+  ).steps)
 }
 
 // The bootstrap is emitted, it targets THIS instance's receipts directory, and it carries the

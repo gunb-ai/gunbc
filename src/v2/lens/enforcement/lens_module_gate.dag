@@ -1,4 +1,6 @@
 module v2.lens.enforcement.lens_module_gate
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -28,7 +30,7 @@ import v2.lens.registry.completeness {
   lens_registry_completeness_unenrolled_count_from_facts
 }
 import std.disposition { RealizationDispatch }
-import std.algebra { list_snoc_item, contains, count_where, fold_list, list_head, HeadFound, HeadAbsent }
+import std.algebra { list_snoc_item, contains, count_where, fold_list, list_head }
 import v2.std.integer { Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String, string_eq }
@@ -678,12 +680,12 @@ fn lens_module_gate_redundant_blocking_step(
       }
     )
     match list_head(xs: prior) {
-      HeadFound { value: _ } =>
+      Present { value: _ } =>
         RedundantBlockingAcc {
           redundant: acc.redundant + 1,
           seen: list_snoc_item(xs: acc.seen, item: surface)
         }
-      HeadAbsent =>
+      Absent =>
         RedundantBlockingAcc {
           redundant: acc.redundant,
           seen: list_snoc_item(xs: acc.seen, item: surface)

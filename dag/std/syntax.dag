@@ -132,4 +132,5 @@ type SyntaxSpec {
 type ParseEnvironment {
   syntax_spec: SyntaxSpec
   non_name_keywords: Map<String, Bool>
+  non_pattern_binder_keywords: Map<String, Bool>
 }

@@ -68,11 +68,13 @@
 use crate::v1_interpreter::{self, str_value, InterpContext, Value};
 use std::rc::Rc;
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// The published artifact, and the name a refused run leaves instead.
 ///
 /// Two names, never one written twice: a refusal must not overwrite a ledger a previous run
 /// published, and a reader must not have to open a file to learn which kind it is holding.
 pub const TERMINAL_LEDGER_PATH: &str = "target/required_floor_terminal_ledger.tsv";
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 pub const TERMINAL_LEDGER_DIAGNOSIS_PATH: &str =
     "target/required_floor_terminal_ledger.partial.tsv";
 
@@ -87,6 +89,7 @@ pub struct SeedLedgerRow {
     pub seed_disposition_wire: &'static str,
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 pub enum LedgerPublication {
     Published {
         path: String,
@@ -99,10 +102,12 @@ pub enum LedgerPublication {
     },
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// The module whose `render_terminal_ledger` renders the ledger. The floor evaluates it in a frame
 /// of its prepared subject (it is a runtime authority seed of that subject).
 pub const TERMINAL_LEDGER_WIRE_MODULE: &str = "v2.workflow.floor_terminal_ledger_wire";
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 fn row_values(ctx: &InterpContext, rows: &[SeedLedgerRow]) -> Vec<Value> {
     rows.iter()
         .map(|row| Value::Record {
@@ -124,6 +129,7 @@ fn row_values(ctx: &InterpContext, rows: &[SeedLedgerRow]) -> Vec<Value> {
         .collect()
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Write through a temporary and rename, so a reader never observes a half-written ledger.
 ///
 /// `rename` within one filesystem is atomic, so the published name either does not exist or names
@@ -148,6 +154,7 @@ fn publish_atomically(path: &str, text: &str) -> Result<usize, String> {
     Ok(text.len())
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Render through the `.dag` authority and publish, or refuse with the diagnosis it produced.
 ///
 /// EVERY ARM EITHER PUBLISHES OR REFUSES. There is no arm that returns Ok having written nothing:
@@ -223,6 +230,7 @@ pub fn publish_terminal_ledger(
     Ok(published)
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 enum Render {
     Text(String),
     Refused {
@@ -232,6 +240,7 @@ enum Render {
     },
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 fn variant_field(
     fields: &[(crate::v1_interpreter::Symbol, Value)],
     ctx: &InterpContext,
@@ -249,6 +258,7 @@ fn variant_field(
     })
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Every shape this cannot read is a REFUSAL, never a default. A render whose shape the seed does
 /// not recognise means the two sides disagree about the grammar's own result type, and publishing
 /// anything at that point would be publishing a guess.
