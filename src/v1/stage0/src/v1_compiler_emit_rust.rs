@@ -35643,42 +35643,6 @@ pub fn emit_rust_demanded_host_bin_op(
     }
 }
 
-pub fn rust_operand_alias_or_refinement_continue(
-    rt: Rc<Node>,
-    scope: Rc<InferScope>,
-    fuel: i64,
-) -> Option<Rc<Node>> {
-    if (fuel.clone() <= 0) {
-        std::option::Option::None
-    } else if crate::v1_compiler_infer::is_where_refinement_type(rt.clone()) {
-        match rt.children.clone().first().cloned() {
-            Some(base) => Some(
-                match crate::v1_compiler_infer_env::lookup_type_for(
-                    scope.type_env.clone(),
-                    base.clone(),
-                ) {
-                    Some(r) => r.clone(),
-                    std::option::Option::None => base.clone(),
-                },
-            ),
-            std::option::Option::None => std::option::Option::None,
-        }
-    } else {
-        let decl = match rt.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
-            _ => rt.clone(),
-        };
-        if crate::v1_compiler_emit_core_support::is_type_alias_item(
-            decl.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        ) {
-            Some(crate::v1_compiler_infer_types::resolved_type(decl.clone()))
-        } else {
-            std::option::Option::None
-        }
-    }
-}
-
 pub fn rust_operand_realization(
     operand: Rc<Node>,
     scope: Rc<InferScope>,
@@ -35803,7 +35767,7 @@ __tco_loop_rt = __tco_0;
 __tco_loop_scope = __tco_1;
 __tco_loop_fuel = __tco_2;
 continue;
-},
+} },
     std::option::Option::None => { break Rc::new(OperandRealization::StructuralOperand {
     declaration: d.clone(),
 }); },
