@@ -1,0 +1,149 @@
+module v2.test.claim.compiler.fse_bisect_probe
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_has_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Instantiation, Node, Positional, Edge, Symbol, TypeNode, node_synthetic }
+import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { Absent, Present }
+import v2.std.text { String }
+import std.algebra { Empty, FreeMonoid }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
+  RcfInferAccepted,
+  RcfInferRefused,
+  RcfResolveRefused,
+  rcf_read,
+  rcf_refuses_with,
+  rcf_verdict
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+
+data fb_own_source: String = "module v2.test.fb_own\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\nfn fb_make() -> FsList<Int> { FsEmpty }\n"
+
+data fb_param_source: String = "module v2.test.fb_param\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fb_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fb_via_param(ys: FsList<Int>) -> Int { fb_take(xs: ys) }\n"
+
+data fb_ingest: SourceRootIngest = [
+  rcf_read(source: fb_own_source, id: ^fb_own_read, unit: ^fb_own_cu, path: "src/v2/test/fixture/fb/own.dag"),
+  rcf_read(source: fb_param_source, id: ^fb_param_read, unit: ^fb_param_cu, path: "src/v2/test/fixture/fb/param.dag")
+]
+
+fn fb_resolve(subject: String) -> Outcome<ResolvedTree> {
+  match module_roots_from_source_root_ingest(ingest: fb_ingest, lm: dag_language_model()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+test fn fb_own_accepted_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_own")) {
+    RcfInferAccepted { diagnostics: _ } => true
+    _ => false
+  }
+}
+test fn fb_own_resolve_refused_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_own")) {
+    RcfResolveRefused => true
+    _ => false
+  }
+}
+test fn fb_param_accepted_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_param")) {
+    RcfInferAccepted { diagnostics: _ } => true
+    _ => false
+  }
+}
+test fn fb_param_resolve_refused_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_param")) {
+    RcfResolveRefused => true
+    _ => false
+  }
+}
+test fn fb_own_r0_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_own"), reason: ^application_argument_does_not_inhabit)
+}
+test fn fb_param_r0_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_param"), reason: ^application_argument_does_not_inhabit)
+}
+test fn fb_own_r1_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_own"), reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+test fn fb_param_r1_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_param"), reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+test fn fb_own_r2_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_own"), reason: ^homomorphism_rule_exact_structural_equality)
+}
+test fn fb_param_r2_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_param"), reason: ^homomorphism_rule_exact_structural_equality)
+}
+test fn fb_own_r3_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_own"), reason: ^preservation_rule_exact_structural_equality_zip_fold)
+}
+test fn fb_param_r3_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_param"), reason: ^preservation_rule_exact_structural_equality_zip_fold)
+}
+test fn fb_own_r4_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_own"), reason: ^inhabitance_undecidable_argument_type_not_derived)
+}
+test fn fb_param_r4_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_param"), reason: ^inhabitance_undecidable_argument_type_not_derived)
+}
+test fn fb_own_r5_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_own"), reason: ^inhabitance_undecidable_generic_formal)
+}
+test fn fb_param_r5_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_param"), reason: ^inhabitance_undecidable_generic_formal)
+}
+test fn fb_own_r6_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_own"), reason: ^inhabitance_undecidable_formal_unresolved)
+}
+test fn fb_param_r6_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_param"), reason: ^inhabitance_undecidable_formal_unresolved)
+}
+test fn fb_own_r7_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_own"), reason: ^inhabitance_undecidable_optional_carrier)
+}
+test fn fb_param_r7_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_param"), reason: ^inhabitance_undecidable_optional_carrier)
+}
+test fn fb_own_r8_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_own"), reason: ^find_witness_reason_no_candidate)
+}
+test fn fb_param_r8_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_param"), reason: ^find_witness_reason_no_candidate)
+}
+test fn fb_own_r9_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_own"), reason: ^inhabitance_produced_type)
+}
+test fn fb_param_r9_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_param"), reason: ^inhabitance_produced_type)
+}
+test fn fb_own_r10_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_own"), reason: ^record_field_value_does_not_inhabit)
+}
+test fn fb_param_r10_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_param"), reason: ^record_field_value_does_not_inhabit)
+}
+test fn fb_own_r11_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_own"), reason: ^infer_reason_bound_value_does_not_inhabit_annotation)
+}
+test fn fb_param_r11_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_param"), reason: ^infer_reason_bound_value_does_not_inhabit_annotation)
+}
