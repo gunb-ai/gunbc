@@ -10,8 +10,10 @@ import std.keyed_roster {
   KeyedRosterInvalidRoster,
   keyed_roster_build,
   keyed_roster_insert,
+  keyed_roster_locate_duplicate,
   keyed_roster_union,
 }
+import std.optional { Absent, Present }
 import std.roster_frontier { FrontierRow, PathSubject, decl_field_ref, decl_ref, frontier_row_decl, frontier_rows_keyed_roster_build, frontier_rows_well_formed }
 import std.dissolution { unbound_dissolution }
 import std.types { Bool, String, List }
@@ -292,4 +294,117 @@ test fn keyed_roster_insert_locates_preexisting_duplicate_roster() -> Bool {
     KeyedRosterInserted { rows: _ } => false
     KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
   }
+}
+
+// K2 freeze (index-keyed-roster brief): on a roster that already duplicates BOTH its keys in the
+// authored order [a, b, b, a], the whole-roster locator and the ordered builder disagree on WHICH
+// duplicate they report -- the locator names the first key whose total count exceeds one (a, by
+// first occurrence), while the builder, folding row by row, refuses at the first ordered collision
+// it reaches (b). These tests pin that the two are DISTINCT and that each pins the exact rows.
+// Authored order is what they key on, so the fixture must be exactly a, b, b, a.
+fn fixture_rows_both_keys_duplicate() -> List<KeyedRow<String, FixtureGrant>> {
+  [
+    fixture_row(path: "dag/gunbc/a.dag", audience: "first"),
+    fixture_row(path: "dag/gunbc/b.dag", audience: "first"),
+    fixture_row(path: "dag/gunbc/b.dag", audience: "second"),
+    fixture_row(path: "dag/gunbc/a.dag", audience: "second"),
+  ]
+}
+
+// (1) On [a, b, b, a] the locator reports key a -- the first key whose count exceeds one, located
+// as its first-authored row (a:first) and its duplicate as the later-authored a row (a:second).
+test fn keyed_roster_locate_duplicate_on_both_keys_duplicate_reports_first_key_a() -> Bool {
+  match keyed_roster_locate_duplicate(
+    rows: fixture_rows_both_keys_duplicate(),
+    key_eq: fixture_key_eq,
+  ) {
+    Present { value: evidence } =>
+      evidence.key == "dag/gunbc/a.dag"
+        && evidence.first.value.audience == "first"
+        && evidence.duplicate.value.audience == "second"
+    Absent => false
+  }
+}
+
+// (2) On the same [a, b, b, a] the builder refuses on key b -- the first collision the ordered fold
+// reaches (row b:second against already-had b:first) -- NOT a (a's second copy comes after b's).
+test fn keyed_roster_build_on_both_keys_duplicate_refuses_on_b() -> Bool {
+  match keyed_roster_build(incomings: fixture_rows_both_keys_duplicate(), key_eq: fixture_key_eq) {
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+      k == "dag/gunbc/b.dag"
+        && f.value.audience == "first"
+        && d.value.audience == "second"
+    KeyedRosterBuilt { rows: _ } => false
+  }
+}
+
+// (3) Authored order is kept: a successful build appends each incoming row to the accumulator with
+// concat, so the emitted roster preserves the input (authored) order exactly. Pinned on BOTH
+// directions so a reorder (e.g. sorting, or a right-to-left fold) cannot pass silently.
+test fn keyed_roster_build_keeps_authored_order_of_rows() -> Bool {
+  let forward = fixture_rows_unique() // [a, b]
+  let swapped = [
+    fixture_row(path: "dag/gunbc/b.dag", audience: "repo"),
+    fixture_row(path: "dag/gunbc/a.dag", audience: "repo"),
+  ] // [b, a]
+  match keyed_roster_build(incomings: forward, key_eq: fixture_key_eq) {
+    KeyedRosterBuilt { rows: rows } =>
+      map(rows, r => r.row_key) == ["dag/gunbc/a.dag", "dag/gunbc/b.dag"]
+        && match keyed_roster_build(incomings: swapped, key_eq: fixture_key_eq) {
+          KeyedRosterBuilt { rows: rows2 } =>
+            map(rows2, r => r.row_key) == ["dag/gunbc/b.dag", "dag/gunbc/a.dag"]
+          KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+        }
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+// (4) A duplicate key is refused even when the colliding VALUES are equal: the guard is keyed on
+// key equality alone and never inspects the value. The two b rows here are byte-for-byte identical
+// (same key AND same value) yet the builder still refuses on b; the a pair has DIFFERENT values and
+// is not the one reported, showing value identity plays no part in the refusal.
+test fn keyed_roster_build_refuses_duplicate_key_even_when_values_equal() -> Bool {
+  let rows = [
+    fixture_row(path: "dag/gunbc/a.dag", audience: "first"),
+    fixture_row(path: "dag/gunbc/b.dag", audience: "same"),
+    fixture_row(path: "dag/gunbc/b.dag", audience: "same"),
+    fixture_row(path: "dag/gunbc/a.dag", audience: "second"),
+  ]
+  match keyed_roster_build(incomings: rows, key_eq: fixture_key_eq) {
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+      k == "dag/gunbc/b.dag"
+        // both b rows carry the identical value -- the refusal is on the key, not a value mismatch
+        && f.value.audience == "same"
+        && d.value.audience == "same"
+    KeyedRosterBuilt { rows: _ } => false
+  }
+}
+
+// (5) An already-invalid roster is refused BEFORE the incoming insert is handled: the
+// invalid-roster pre-check (keyed_roster_locate_duplicate) runs ahead of the incoming-key lookup.
+// Inserting a brand-new key into [a, b, b, a] is refused as InvalidRoster (not Inserted, and the
+// incoming is never appended); inserting a key that ALSO collides with an existing key is STILL
+// refused as InvalidRoster (not DuplicateKey), which is what proves the pre-check precedes the
+// incoming-dup check rather than the other way round.
+test fn keyed_roster_insert_into_already_invalid_roster_refused_before_insert() -> Bool {
+  let new_key = fixture_row(path: "dag/gunbc/c.dag", audience: "repo")
+  let colliding = fixture_row(path: "dag/gunbc/a.dag", audience: "incoming")
+  match keyed_roster_insert(
+    rows: fixture_rows_both_keys_duplicate(),
+    incoming: new_key,
+    key_eq: fixture_key_eq,
+  ) {
+    KeyedRosterInvalidRoster { key: k, first: _, duplicate: _ } => k == "dag/gunbc/a.dag"
+    KeyedRosterInserted { rows: _ } => false
+    KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
+  }
+    && match keyed_roster_insert(
+      rows: fixture_rows_both_keys_duplicate(),
+      incoming: colliding,
+      key_eq: fixture_key_eq,
+    ) {
+      KeyedRosterInvalidRoster { key: k, first: _, duplicate: _ } => k == "dag/gunbc/a.dag"
+      KeyedRosterInserted { rows: _ } => false
+      KeyedRosterDuplicateKey { key: _, existing: _, incoming: _ } => false
+    }
 }

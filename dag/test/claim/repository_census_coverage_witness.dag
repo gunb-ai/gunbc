@@ -75,6 +75,7 @@ import gunbc.repository_census_coverage {
   census_coverage_is_refused,
   census_reconciliation_operations,
   census_distinct_subject_keys,
+  census_duplicated_subject_keys,
   census_method_capability_receipt,
   census_capability_receipt_conformance_established,
   census_coverage_classification_run_identity,
@@ -1327,4 +1328,48 @@ test fn witness_the_denominator_subject_count_is_a_projection() -> Bool {
   census_denominator_subject_count(
     denominator: coverage_witness_denominator(subjects: coverage_witness_ab_subjects),
   ) == 2
+}
+
+// K2 freeze (index-keyed-roster brief): the census needs ALL duplicated subjects, not just the first.
+// On a roster of [a, b, b, a] BOTH a and b repeat, so census_duplicated_subject_keys must report both
+// -- one entry per duplicated SUBJECT (a key repeated to a third copy adds no second entry), while
+// census_distinct_subject_keys keeps the authored order [a, b]. Pinned against the same authored
+// order as the keyed_roster witness so the census and the roster agree on which subjects repeat.
+fn census_witness_abab_keys() -> List<CensusSubjectKey> {
+  [
+    coverage_witness_key(name: "a"),
+    coverage_witness_key(name: "b"),
+    coverage_witness_key(name: "b"),
+    coverage_witness_key(name: "a"),
+  ]
+}
+
+test fn census_needs_all_duplicated_subjects_on_a_b_b_a() -> Bool {
+  let duplicated = census_duplicated_subject_keys(keys: census_witness_abab_keys())
+  let distinct = census_distinct_subject_keys(keys: census_witness_abab_keys())
+  // BOTH subjects that repeat are reported -- the census needs all duplicated subjects, not only the
+  // first one a linear first-hit scan would return.
+  count(duplicated) == 2
+    && any(duplicated, k => (k as String) == "a")
+    && any(duplicated, k => (k as String) == "b")
+    // ... and they are the same two subjects the distinct projection sees, in authored order.
+    && count(distinct) == 2
+    && any(distinct, k => (k as String) == "a")
+    && any(distinct, k => (k as String) == "b")
+}
+
+// The "needs ALL" is per-SUBJECT, not per-event: a third copy of a repeated key must not grow the
+// duplicated list to three. [a, b, b, a, a] still reports exactly the two duplicated subjects {a, b}.
+test fn census_duplicated_subjects_are_per_subject_not_per_event() -> Bool {
+  let triple = [
+    coverage_witness_key(name: "a"),
+    coverage_witness_key(name: "b"),
+    coverage_witness_key(name: "b"),
+    coverage_witness_key(name: "a"),
+    coverage_witness_key(name: "a"),
+  ]
+  let duplicated = census_duplicated_subject_keys(keys: triple)
+  count(duplicated) == 2
+    && any(duplicated, k => (k as String) == "a")
+    && any(duplicated, k => (k as String) == "b")
 }
