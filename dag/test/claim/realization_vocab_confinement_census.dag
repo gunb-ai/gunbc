@@ -19,7 +19,6 @@ import gunbc.repository_census_coverage {
   DenominatorProcedureNotDistinct,
   MethodConformanceUnobserved,
   census_denominator_subject_count,
-  census_distinct_subject_keys,
   census_independence_is_established,
   census_capability_receipt_conformance_established,
   census_ceiling_is_floor_only,
@@ -62,8 +61,25 @@ import v2.lens.realization_vocabulary_containment {
 }
 import gunbc.guarantee_measurement { MeasurementRevision }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.keyed_row { KeyedRow }
+import std.key_relation { SubjectKey }
+import std.keyed_roster {
+  KeyedRosterIndex,
+  keyed_roster_index,
+  keyed_roster_distinct,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// K5 (2026-10-14): the census module no longer exports a distinct-subject projection — the census
+// reconciliation reads the K4 index directly. This witness needs the same distinct count to prove
+// the declared rosters are distinct, so it projects them off the K4 index here.
+fn confinement_witness_distinct_subject_keys(
+  keys: List<CensusSubjectKey>,
+) -> List<CensusSubjectKey> {
+  let rows = map(keys, key => KeyedRow { row_key: SubjectKey { subject: key }, value: key })
+  map(keyed_roster_distinct(index: keyed_roster_index(rows: rows)), subject_key => subject_key.subject)
+}
 
 // THE SUBJECT ROSTERS ARE READ FROM THE REAL LENS MODULE, not restated here. Every expected key in
 // this file is taken from v2.lens.realization_vocabulary_containment's own declared data, so a
@@ -96,7 +112,7 @@ test fn witness_the_confinement_census_classifies_every_enumerated_key() -> Bool
 
 test fn witness_the_declared_confinement_keys_are_distinct() -> Bool {
   let keys = confinement_surface_declared_keys()
-  count(census_distinct_subject_keys(keys: keys)) == count(keys)
+  count(confinement_witness_distinct_subject_keys(keys: keys)) == count(keys)
 }
 
 fn confinement_witness_coverage_established() -> Bool {

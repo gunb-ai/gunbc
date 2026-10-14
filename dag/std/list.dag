@@ -62,9 +62,9 @@ fn first_duplicate_by_key<T>(xs: List<T>, key: fn(T) -> String) -> T? {
 // one fold over a keyed map, prepending and reversing at the end, because the shape they replace - an
 // accumulator grown by concat(acc, [x]) with membership tested by count(filter(acc, ..)) - is quadratic
 // in both writes and reads, and DESIGN section 6 fixes that shape regardless of the realized n.
-// gunbc.repository_census_coverage census_subject_index is the same kernel specialized to its key type
-// and carrying lookup counters for its own cost claims; consuming this from there is a rewire of that
-// module, named here so the two are a declared divergence rather than silent second authorities.
+// gunbc.repository_census_coverage no longer keeps a parallel copy of this kernel: K4 regrounded
+// std.keyed_roster on the SubjectKey identity projection (keyed_roster_index), and the census
+// reconciliation consumes that index directly for distinct/duplicated/membership.
 type KeyedScan<T> {
   seen: Map<String, Int>
   kept_reversed: List<T>

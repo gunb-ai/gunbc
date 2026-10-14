@@ -74,8 +74,6 @@ import gunbc.repository_census_coverage {
   census_conformance_receipt_of,
   census_coverage_is_refused,
   census_reconciliation_operations,
-  census_distinct_subject_keys,
-  census_duplicated_subject_keys,
   census_method_capability_receipt,
   census_capability_receipt_conformance_established,
   census_coverage_classification_run_identity,
@@ -88,6 +86,15 @@ import gunbc.repository_census_coverage {
 }
 import gunbc.guarantee_measurement { MeasurementRevision, GitRevision }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.keyed_row { KeyedRow }
+import std.key_relation { SubjectKey }
+import std.keyed_roster {
+  KeyedRosterIndex,
+  keyed_roster_index,
+  keyed_roster_contains,
+  keyed_roster_distinct,
+  keyed_roster_duplicated,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -161,6 +168,25 @@ data coverage_witness_other_population: RepositoryPopulation = RepositoryPopulat
 
 fn coverage_witness_key(name: String) -> CensusSubjectKey {
   name as CensusSubjectKey
+}
+
+// K5 (2026-10-14): the distinct/duplicated projections this witness once read off the census module's
+// own index now go through the K4 index — the same one the census reconciliation is built on. The census
+// no longer exports those projections, so the witness carries them here off keyed_roster_index.
+fn coverage_witness_keyed_rows(keys: List<CensusSubjectKey>) -> List<KeyedRow<SubjectKey<CensusSubjectKey>, CensusSubjectKey>> {
+  map(keys, key => KeyedRow { row_key: SubjectKey { subject: key }, value: key })
+}
+
+fn coverage_witness_keyed_index(keys: List<CensusSubjectKey>) -> KeyedRosterIndex<CensusSubjectKey, CensusSubjectKey> {
+  keyed_roster_index(rows: coverage_witness_keyed_rows(keys: keys))
+}
+
+fn coverage_witness_distinct_subject_keys(keys: List<CensusSubjectKey>) -> List<CensusSubjectKey> {
+  map(keyed_roster_distinct(index: coverage_witness_keyed_index(keys: keys)), subject_key => subject_key.subject)
+}
+
+fn coverage_witness_duplicated_subject_keys(keys: List<CensusSubjectKey>) -> List<CensusSubjectKey> {
+  map(keyed_roster_duplicated(index: coverage_witness_keyed_index(keys: keys)), subject_key => subject_key.subject)
 }
 
 fn coverage_witness_row(name: String) -> CensusObservedRow {
@@ -874,7 +900,7 @@ test fn witness_the_cost_fixture_builds_the_two_declared_populations() -> Bool {
 }
 
 test fn witness_the_cost_fixture_subjects_are_distinct() -> Bool {
-  count(census_distinct_subject_keys(keys: coverage_cost_subjects(n: 240))) == 240
+  count(coverage_witness_distinct_subject_keys(keys: coverage_cost_subjects(n: 240))) == 240
 }
 
 test fn witness_reconciliation_operations_grow_about_tenfold_for_ten_times_the_subjects() -> Bool {
@@ -1331,13 +1357,18 @@ test fn witness_the_denominator_subject_count_is_a_projection() -> Bool {
 }
 
 // K2 freeze (index-keyed-roster brief): the census needs ALL duplicated subjects, not just the first.
-// On a roster of [a, b, b, a] BOTH a and b repeat, so census_duplicated_subject_keys must report both
+// On a roster of [a, b, b, a] BOTH a and b repeat, so the duplicated projection must report both
 // -- one entry per duplicated SUBJECT (a key repeated to a third copy adds no second entry), while
-// census_distinct_subject_keys sees both subjects. Both projections are pinned to their exact
+// the distinct projection sees both subjects. Both projections are pinned to their exact
 // SEQUENCE (not just which keys are present), so the pin goes red if a reindex reorders them:
 //   distinct  = [a, b]  -- the subjects in the authored order they are first seen.
 //   duplicated = [b, a] -- the subjects in the order each is found to repeat (b's second copy is
 //                           encountered before a's on [a, b, b, a], so b comes first).
+// K5 (2026-10-14) re-pointed these pins to the K4 index: the census module no longer exports the
+// distinct/duplicated projections, so the pins read them off keyed_roster_index via the
+// coverage_witness_* helpers above. Expected values are unchanged — on [a, b, b, a] the distinct
+// projection is [a, b] and the duplicated projection is [b, a]; on [a, b, b, a, a] exactly two
+// subjects repeat.
 fn census_witness_abab_keys() -> List<CensusSubjectKey> {
   [
     coverage_witness_key(name: "a"),
@@ -1348,10 +1379,10 @@ fn census_witness_abab_keys() -> List<CensusSubjectKey> {
 }
 
 test fn census_needs_all_duplicated_subjects_on_a_b_b_a() -> Bool {
-  let duplicated = census_duplicated_subject_keys(keys: census_witness_abab_keys())
-  let distinct = census_distinct_subject_keys(keys: census_witness_abab_keys())
+  let duplicated = coverage_witness_duplicated_subject_keys(keys: census_witness_abab_keys())
+  let distinct = coverage_witness_distinct_subject_keys(keys: census_witness_abab_keys())
   // BOTH subjects that repeat are reported (the census needs all duplicated subjects), in the exact
-  // order main emits them -- b is found repeating before a, so the sequence is [b, a], not [a, b].
+  // order the K4 index emits them -- b is found repeating before a, so the sequence is [b, a], not [a, b].
   map(duplicated, k => k as String) == ["b", "a"]
     // ... and the distinct projection sees both subjects in the authored first-seen order [a, b].
     && map(distinct, k => k as String) == ["a", "b"]
@@ -1367,7 +1398,7 @@ test fn census_duplicated_subjects_are_per_subject_not_per_event() -> Bool {
     coverage_witness_key(name: "a"),
     coverage_witness_key(name: "a"),
   ]
-  let duplicated = census_duplicated_subject_keys(keys: triple)
+  let duplicated = coverage_witness_duplicated_subject_keys(keys: triple)
   count(duplicated) == 2
     && any(duplicated, k => (k as String) == "a")
     && any(duplicated, k => (k as String) == "b")

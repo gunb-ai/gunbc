@@ -1,7 +1,15 @@
 module gunbc.repository_census_coverage
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-
+import std.keyed_row { KeyedRow }
+import std.key_relation { SubjectKey }
+import std.keyed_roster {
+  KeyedRosterIndex,
+  keyed_roster_index,
+  keyed_roster_index_operations,
+  keyed_roster_contains,
+  keyed_roster_distinct,
+  keyed_roster_duplicated,
+}
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.decl_ref { DeclarationRef }
 import std.content_hash {
@@ -63,158 +71,51 @@ fn census_subject_key_identity(key: CensusSubjectKey) -> Fnv1a64Structural {
 // 24-subject consumer in this tree does not expose it, which is exactly why it survived review —
 // the population is too small for the shape to show — and DESIGN section 6 rules that a proven
 // cost-shape defect is fixed regardless of the realized n, because n is small here is not a
-// time-stable fact. Membership and duplicate detection now go through a Map keyed on the subject
-// spelling, which the substrate primitive contracts price at work 1 per lookup and insert against
-// the list scan's n. AUTHORED ORDER IS PRESERVED IN A LIST BESIDE THE MAP rather than recovered
-// from it: map traversal order is host-unspecified, so every list this module returns — the
-// distinct keys, the duplicates, the missing and the unexpected — is accumulated in the order the
-// caller supplied, and the map is consulted ONLY for membership. That is the pattern the
-// determinism thread prescribes and the reason no map_keys or map_values call appears here.
+// time-stable fact. K4 (2026-10-14) regrounded std.keyed_roster on the SubjectKey identity
+// projection, so membership, duplicate detection and order all go through the K4 index: a Map keyed on the
+// subject's identity beside an authored-order list. AUTHORED ORDER IS PRESERVED IN A LIST BESIDE THE
+// MAP rather than recovered from it: map traversal order is host-unspecified, so every list this
+// module returns — the distinct keys, the duplicates, the missing and the unexpected — is accumulated in
+// the order the caller supplied. That is the pattern the determinism thread prescribes and the
+// reason no map_keys or map_values call appears here.
 
-data repository_census_keyed_roster_dissolution_note: String = "WHY THIS DOES NOT CALL std.keyed_roster, AND THE TRIGGER THAT DELETES THIS NOTE. keyed_roster_build is the repository's keyed-set construction authority and the obvious thing to reuse here, and it CANNOT deliver the property this module needs: it folds keyed_roster_insert_into_unique, which performs one linear keyed_row_find plus one growing concat per element, so it is itself quadratic — its own module note says so. The cause is its SIGNATURE, not its body: key_eq is an arbitrary caller-supplied fn K K to Bool, and an arbitrary predicate cannot be indexed, because a map keys on substrate identity and there is no way to consult key_eq without visiting every existing row. Measured on that function rather than modelled, at 256, 512 and 1024 synthetic distinct keys: 85ms, 318ms, 1273ms, so 3.74x then 4.00x per doubling against quadratic 4.00 and linear 2.00. So this module consumes the OTHER existing std pattern that already fits — std.occurrence_binding_candidates builds duplicate-refusing keyed indexes with map_get and map_insert and typed duplicate evidence carrying the first and conflicting values — rather than minting a set authority of its own."
-
-data repository_census_keyed_roster_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: std.keyed_roster is regrounded on a key-to-identity projection instead of an equality bundle, at which point keyed_roster_build becomes linear and this module consumes it directly and this note deletes. That regrounding is its own work item and deliberately not a rider here: it changes a std interface with six production consumers — std.roster_frontier, gunbc.instruments.dag_compile_clean_shard_roster, gunbc.doc_graph_roots, gunbc.commit_workflow, gunbc.non_fold_residue and v1.trait_derive_emit — all of which pay this same quadratic today.")
-
-// THE OPERATION COUNTS ARE INCREMENTED BY THE REAL FOLD, WHICH IS WHY THEY CANNOT DRIFT FROM IT. A
-// cost claim measured by a second function that mirrors this one would be a claim about the mirror:
-// it stays green while the real path regresses, the same way a hand-built Node fixture describes a
-// module it has stopped resembling. So the counters live on the accumulator the production fold
-// already threads, every increment sits on the branch that performs the operation it counts, and a
-// witness reads them back from an ordinary index build. Removing an operation without decrementing
-// its counter is not possible, because there is one site each.
-//
-// WHAT THESE COUNT, EXACTLY, so nobody reads more into them. map_lookups is one map_get per input
-// key. map_inserts is one map_insert per newly seen key plus one per key at the moment it first
-// repeats. key_prepends is one constant-work cons per key appended to either order list.
-// order_reversals is the number of single linear passes taken at the end, which is two, one per
-// order list. WHAT THEY DO NOT COUNT is the interpreter's internal copy volume inside concat or
-// reverse: that is the substrate's per-operation cost, priced in the std.primitives contracts, and
-// this module counts the OPERATIONS it issues rather than re-deriving what each costs. The claim
-// the counters support is therefore about SHAPE — that the operation count grows in proportion to
-// the subject count rather than to its square — which is the claim the recut was about.
-
-type CensusSubjectIndex {
-  seen: Map<String, Int>
-  distinct: List<CensusSubjectKey>
-  duplicated: List<CensusSubjectKey>
-  map_lookups: Int
-  map_inserts: Int
-  key_prepends: Int
-  order_reversals: Int
+// K5 (2026-10-14): the census consumes std.keyed_roster directly now that K4 regrounded keyed_roster on the
+// SubjectKey identity projection — the parallel index this module kept is deleted, and the counters it
+// explained are keyed_roster_index_operations on the K4 index: one map lookup and one map insert per key,
+// plus one map insert at the moment a key is first found to repeat, plus the two list reversals that emit
+// distinct and duplicated. The note that once explained why this module did NOT call std.keyed_roster and the
+// dissolve-on row that named its trigger are deleted with it (see git history for the 85/318/1273ms measurement).
+fn census_subject_keyed_rows(keys: List<CensusSubjectKey>) -> List<KeyedRow<SubjectKey<CensusSubjectKey>, CensusSubjectKey>> {
+  map(keys, key => KeyedRow { row_key: SubjectKey { subject: key }, value: key })
 }
 
-// THE ORDER LISTS ARE BUILT BY PREPEND-THEN-REVERSE, NOT BY APPEND (operator ruling 2026-08-05).
-// The first recut removed the quadratic LOOKUP and left a quadratic WRITE: append(acc, [key])
-// inside a fold copies the whole accumulated prefix on every step, so building n distinct keys
-// copied 1 + 2 + ... + n items even though every lookup was already O(1). That is the same cost
-// shape one axis over, and it is exactly the class the recut was supposed to leave — a fix that
-// halves a defect and keeps its shape is not a fix. Prepending is a constant-work cons and the
-// single reverse at the end is one linear pass, so total items copied is linear in n rather than
-// quadratic. This is the accumulate-reversed-then-reverse idiom std.change, std.realization and
-// std.occurrence_identity already use, so it is the corpus construction rather than a local
-// invention. AUTHORED ORDER IS STILL EXACTLY PRESERVED: reverse of a reversed accumulation is the
-// input order, which is what the determinism reading requires of these lists.
-
-type CensusSubjectIndexBuild {
-  seen: Map<String, Int>
-  distinct_reversed: List<CensusSubjectKey>
-  duplicated_reversed: List<CensusSubjectKey>
-  map_lookups: Int
-  map_inserts: Int
-  key_prepends: Int
+fn census_subject_keyed_index(keys: List<CensusSubjectKey>) -> KeyedRosterIndex<CensusSubjectKey, CensusSubjectKey> {
+  keyed_roster_index(rows: census_subject_keyed_rows(keys: keys))
 }
 
-fn census_subject_index_step(
-  build: CensusSubjectIndexBuild,
-  key: CensusSubjectKey,
-) -> CensusSubjectIndexBuild {
-  match map_get(build.seen, key as String) {
-    Present { value: prior } =>
-      if prior == 1 {
-        CensusSubjectIndexBuild {
-          seen: map_insert(build.seen, key as String, 2),
-          distinct_reversed: build.distinct_reversed,
-          duplicated_reversed: concat([key], build.duplicated_reversed),
-          map_lookups: build.map_lookups + 1,
-          map_inserts: build.map_inserts + 1,
-          key_prepends: build.key_prepends + 1,
-        }
-      } else {
-        CensusSubjectIndexBuild {
-          seen: build.seen,
-          distinct_reversed: build.distinct_reversed,
-          duplicated_reversed: build.duplicated_reversed,
-          map_lookups: build.map_lookups + 1,
-          map_inserts: build.map_inserts,
-          key_prepends: build.key_prepends,
-        }
-      }
-    Absent =>
-      CensusSubjectIndexBuild {
-        seen: map_insert(build.seen, key as String, 1),
-        distinct_reversed: concat([key], build.distinct_reversed),
-        duplicated_reversed: build.duplicated_reversed,
-        map_lookups: build.map_lookups + 1,
-        map_inserts: build.map_inserts + 1,
-        key_prepends: build.key_prepends + 1,
-      }
-  }
-}
-
-fn census_subject_index(keys: List<CensusSubjectKey>) -> CensusSubjectIndex {
-  let build = fold(
-    keys,
-    init: CensusSubjectIndexBuild {
-      seen: empty_map(),
-      distinct_reversed: [],
-      duplicated_reversed: [],
-      map_lookups: 0,
-      map_inserts: 0,
-      key_prepends: 0,
-    },
-    f: census_subject_index_step,
-  )
-  CensusSubjectIndex {
-    seen: build.seen,
-    distinct: reverse(build.distinct_reversed),
-    duplicated: reverse(build.duplicated_reversed),
-    map_lookups: build.map_lookups,
-    map_inserts: build.map_inserts,
-    key_prepends: build.key_prepends,
-    order_reversals: 2,
-  }
-}
-
-fn census_subject_index_operations(index: CensusSubjectIndex) -> Int {
-  let probes = index.map_lookups + index.map_inserts
-  probes + index.key_prepends + index.order_reversals
+fn census_subject_keys_of_subject_keys(subject_keys: List<SubjectKey<CensusSubjectKey>>) -> List<CensusSubjectKey> {
+  map(subject_keys, subject_key => subject_key.subject)
 }
 
 fn census_reconciliation_operations(
   denominator_subjects: List<CensusSubjectKey>,
   observed_subjects: List<CensusSubjectKey>,
 ) -> Int {
-  let denominator_index = census_subject_index(keys: denominator_subjects)
-  let observation_index = census_subject_index(keys: observed_subjects)
-  let membership_probes = count(denominator_index.distinct) + count(observation_index.distinct)
-  let denominator_ops = census_subject_index_operations(index: denominator_index)
-  let observation_ops = census_subject_index_operations(index: observation_index)
+  let denominator_index = census_subject_keyed_index(keys: denominator_subjects)
+  let observation_index = census_subject_keyed_index(keys: observed_subjects)
+  let denominator_ops = keyed_roster_index_operations(index: denominator_index)
+  let observation_ops = keyed_roster_index_operations(index: observation_index)
+  // The reconciliation membership probes: one probe per distinct key on each side.
+  let membership_probes = count(keyed_roster_distinct(index: denominator_index))
+    + count(keyed_roster_distinct(index: observation_index))
   denominator_ops + observation_ops + membership_probes
 }
 
-fn census_subject_key_in_index(index: CensusSubjectIndex, key: CensusSubjectKey) -> Bool {
-  match map_get(index.seen, key as String) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn census_distinct_subject_keys(keys: List<CensusSubjectKey>) -> List<CensusSubjectKey> {
-  census_subject_index(keys: keys).distinct
-}
-
-fn census_duplicated_subject_keys(keys: List<CensusSubjectKey>) -> List<CensusSubjectKey> {
-  census_subject_index(keys: keys).duplicated
+fn census_subject_key_in_index(
+  index: KeyedRosterIndex<CensusSubjectKey, CensusSubjectKey>,
+  key: CensusSubjectKey,
+) -> Bool {
+  keyed_roster_contains(index: index, key: SubjectKey { subject: key })
 }
 
 fn pair_with(left: Fnv1a64Structural, right: Fnv1a64Structural) -> Fnv1a64Structural {
@@ -379,17 +280,21 @@ fn census_resolve_duplicate_subjects(
   observed_subjects: List<CensusSubjectKey>,
 ) -> CoverageDuplicateResolution {
   census_resolve_duplicates_from_indexes(
-    denominator_index: census_subject_index(keys: denominator_subjects),
-    observation_index: census_subject_index(keys: observed_subjects),
+    denominator_index: census_subject_keyed_index(keys: denominator_subjects),
+    observation_index: census_subject_keyed_index(keys: observed_subjects),
   )
 }
 
 fn census_resolve_duplicates_from_indexes(
-  denominator_index: CensusSubjectIndex,
-  observation_index: CensusSubjectIndex,
+  denominator_index: KeyedRosterIndex<CensusSubjectKey, CensusSubjectKey>,
+  observation_index: KeyedRosterIndex<CensusSubjectKey, CensusSubjectKey>,
 ) -> CoverageDuplicateResolution {
-  let denominator_duplicated = denominator_index.duplicated
-  let observation_duplicated = observation_index.duplicated
+  let denominator_duplicated = census_subject_keys_of_subject_keys(
+    subject_keys: keyed_roster_duplicated(index: denominator_index),
+  )
+  let observation_duplicated = census_subject_keys_of_subject_keys(
+    subject_keys: keyed_roster_duplicated(index: observation_index),
+  )
   let denominator_clean = count(denominator_duplicated) == 0
   let observation_clean = count(observation_duplicated) == 0
   if denominator_clean && observation_clean {
@@ -475,12 +380,20 @@ fn census_reconcile_aligned_subjects(
   population_identity: Fnv1a64Structural,
   revision_identity: Fnv1a64Structural,
 ) -> CensusCoverageReconciliation {
-  let denominator_index = census_subject_index(keys: denominator_subjects)
-  let observation_index = census_subject_index(keys: observed_subjects)
-  let missing = denominator_index.distinct
-    |> filter(key => !census_subject_key_in_index(index: observation_index, key: key))
-  let unexpected = observation_index.distinct
-    |> filter(key => !census_subject_key_in_index(index: denominator_index, key: key))
+  let denominator_index = census_subject_keyed_index(keys: denominator_subjects)
+  let observation_index = census_subject_keyed_index(keys: observed_subjects)
+  let missing = census_subject_keys_of_subject_keys(
+    subject_keys: filter(
+      keyed_roster_distinct(index: denominator_index),
+      subject_key => !census_subject_key_in_index(index: observation_index, key: subject_key.subject),
+    ),
+  )
+  let unexpected = census_subject_keys_of_subject_keys(
+    subject_keys: filter(
+      keyed_roster_distinct(index: observation_index),
+      subject_key => !census_subject_key_in_index(index: denominator_index, key: subject_key.subject),
+    ),
+  )
   let duplicates = census_resolve_duplicates_from_indexes(
     denominator_index: denominator_index,
     observation_index: observation_index,
