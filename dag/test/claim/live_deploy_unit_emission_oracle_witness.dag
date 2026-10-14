@@ -23,7 +23,7 @@ import gunbc.live_deploy.slice_bounds {
 // only thing that would have caught it is the resolve this import makes possible.
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now }
-import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, belt_credential_recovery_backstop }
 import gunbc.live_deploy.emit {
   emit_slice_unit_doc,
   live_deploy_protocol,
@@ -33,6 +33,7 @@ import gunbc.live_deploy.emit {
   live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file,
   live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file,
   live_deploy_belt_credential_recovery_unit_file,
+  live_deploy_belt_credential_recovery_timer_unit_file,
   live_deploy_serve_unit_emission,
   LiveDeployServeUnitEmitted,
   LiveDeployServeUnitOidcReadbackRefused,
@@ -59,6 +60,7 @@ import gunbc.live_deploy.spec {
   deployment_belt_service_unit_name,
   deployment_belt_exit_drain_service_unit_name, deployment_belt_exit_drain_service_unit_path, deployment_belt_unit_install_target, deployment_belt_discovery_service_unit_name,
   deployment_belt_credential_recovery_unit_name,
+  deployment_belt_credential_recovery_timer_unit_name,
   gunbc_approval_broker_slice_unit_name,
   gunbc_repository_convergence_slice_unit_name,
   gunbc_approval_broker_unit_name,
@@ -631,6 +633,16 @@ test fn the_belt_oneshot_starts_credential_recovery_on_success_or_failure() -> B
     && any(belt, l => l == join(["OnFailure=", recovery], ""))
     && any(recover, l => string_contains(s: l, pattern: "--function belt_credential_recovery_cli"))
     && !any(recover, l => starts_with(s: l, prefix: "WantedBy="))
+}
+
+test fn the_recovery_backstop_timer_starts_the_recovery_unit() -> Bool {
+  let spec = live_spec()
+  let recovery = deployment_belt_credential_recovery_unit_name(names: spec.names) as String
+  let timer = systemd_unit_file_lines(file: live_deploy_belt_credential_recovery_timer_unit_file(spec: spec))
+  any(timer, l => l == join(["Unit=", recovery], ""))
+    && any(timer, l => l == join(["OnUnitInactiveSec=", systemd_time_span_of_seconds(d: belt_credential_recovery_backstop) as String], ""))
+    && any(timer, l => l == join(["OnBootSec=", systemd_time_span_of_seconds(d: belt_credential_recovery_backstop) as String], ""))
+    && any(timer, l => l == "WantedBy=timers.target")
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
