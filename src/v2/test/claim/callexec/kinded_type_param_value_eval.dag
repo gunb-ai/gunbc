@@ -85,3 +85,34 @@ test fn kpq_h_ctor_box8() -> Bool { kpp_ok(src: "module p\n\ntype Resolution\n  
 test fn kpq_i_ctor_boxp() -> Bool { kpp_ok(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn mkp() -> Box<Pointer> {\n  Box { v: 0 }\n}\n") }
 test fn kpq_j_ctor_unannotated() -> Bool { kpp_ok(src: "module p\n\ntype Plain {\n  v: Int\n}\n\nfn mk() -> Plain {\n  Plain { v: 0 }\n}\n") }
 test fn kpq_k_param_only() -> Bool { kpp_ok(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn take(x: Box<8>) -> Int {\n  1\n}\n") }
+
+fn kpr_src() -> String {
+  concat(kpe_prelude(), "fn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  width_of(x: mk8())\n}\n")
+}
+
+test fn kpp_infers() -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: kpr_src())) { Present { value: _ } => true
+    Absent => false }
+}
+
+test fn kpp_call_found() -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: kpr_src())) {
+    Absent => false
+    Present { value: inferred } => match cref_the_call_to(root: inferred.root, name: ^width_of) { Present { value: _ } => true
+      Absent => false }
+  }
+}
+
+fn kpr_reason() -> Optional<Symbol> {
+  match cref_eval_of_call_to(o: cref_assemble(src: kpr_src()), name: ^width_of) {
+    Present { value: Rejected { diagnostics: d } } => Present { value: diagnostics_fatal_reason(d: d) }
+    _ => Absent
+  }
+}
+
+test fn kpp_is_absent_eval_not_run() -> Bool { kpr_reason() == Absent }
+test fn kpp_is_instance_absent() -> Bool { kpr_reason() == Present { value: ^eval_rejected_type_argument_instance_absent } }
+test fn kpp_is_not_value() -> Bool { kpr_reason() == Present { value: ^eval_rejected_type_argument_read_as_value } }
+test fn kpp_is_unbound_param() -> Bool { kpr_reason() == Present { value: ^eval_rejected_parameter_reference_unbound } }
+test fn kpp_is_grounding() -> Bool { kpr_reason() == Present { value: ^eval_rejected_grounding_not_derived } }
+test fn kpp_is_lookup_miss() -> Bool { kpr_reason() == Present { value: ^eval_rejected_runtime_binding_lookup_miss } }
