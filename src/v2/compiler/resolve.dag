@@ -1,4 +1,5 @@
 module v2.compiler.resolve
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b, nfr_reason_landed_after_typed_census }
 import v2.std.language_model { LanguageModel }
 
 import v2.compiler.normalized_tree { normalized_tree_record_declarations, MemberDeclarationsNotRead, MemberDeclarationsRead, NormalizedTree, normalized_tree_resource_declarations }
@@ -113,6 +114,7 @@ import v2.std.diagnostic {
   Unavailable,
   Accepted,
   None,
+  Some,
   diagnostics_merge,
   diagnostics_fatal_reason,
   diagnostics_singleton,
@@ -178,7 +180,8 @@ import v2.std.symbol_index {
   type_decl_member_child_walk,
   TypeDeclChildrenInherited,
   TypeDeclChildrenTypeOccurrence,
-  TypeDeclChildWalk
+  TypeDeclChildWalk,
+  symbol_index_owning_module_of
 }
 import v2.std.node {
   BinderTypeEdge,
@@ -282,6 +285,8 @@ import v2.std.map_introduction {
   map_introduction_expected_head_is_map
 }
 import std.types { List }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
 // stage that needs a reference's declaration asks the SAME authority resolution asked
@@ -328,30 +333,42 @@ type ClosureProviderRefusal {
   refusal: NonEmptyDiagnostics
 }
 
-// THE ONE READ every closure-index miss consults: the refused provider whose module path is a prefix of
-// the missed declaration's path, if any. A miss with no refused provider over it stays the bare miss.
-fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  fold(tree.unavailable_providers, init: optional_absent(), f: fn(acc, p) {
+// THE ONE READ every closure-index miss consults: the refused provider whose module IS the
+// declaration's fill-time owning module (`v2.std.symbol_index` `symbol_index_owning_module_of`),
+// if any. A proper-prefix join would attribute v2.p.child.R to refused parent v2.p. A miss
+// with no refused owning module stays the bare miss.
+fn unavailable_provider_for_path(
+  index: SymbolIndex,
+  providers: List<ClosureProviderRefusal>,
+  path: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  match symbol_index_owning_module_of(index: index, path: path) {
+    Present { value: owner } => unavailable_provider_for_module(providers: providers, module: owner)
+    Absent => optional_absent()
+  }
+}
+
+fn unavailable_provider_for_module(providers: List<ClosureProviderRefusal>, module: QualifiedName) -> Optional<ClosureProviderRefusal> {
+  fold(providers, init: optional_absent(), f: fn(acc, p) {
     match acc {
       Present { value: _ } => acc
-      Absent => if qualified_name_is_proper_prefix(prefix: p.module, path: path) { optional_present(value: p) } else { acc }
+      Absent => if p.module == module { optional_present(value: p) } else { acc }
     }
   })
 }
 
-fn qualified_name_is_proper_prefix(prefix: QualifiedName, path: QualifiedName) -> Bool {
-  match prefix {
-    Empty =>
-      match path {
-        Empty => false
-        Cons { head: _, tail: _ } => true
-      }
-    Cons { head: ph, tail: pt } =>
-      match path {
-        Empty => false
-        Cons { head: h, tail: t } => ph == h && qualified_name_is_proper_prefix(prefix: pt, path: t)
-      }
-  }
+fn unavailable_providers_except_subject(providers: List<ClosureProviderRefusal>, subject: QualifiedName) -> List<ClosureProviderRefusal> {
+  fold_list(xs: providers, empty: [], cons: fn(acc, p) {
+    if p.module == subject {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: p)
+    }
+  })
+}
+
+fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
+  unavailable_provider_for_path(index: tree.symbol_index, providers: tree.unavailable_providers, path: path)
 }
 
 // The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
@@ -526,6 +543,24 @@ type Namespace {
   test_code: TestCodeIndex
   declared_in: QualifiedName
   imported_origins: Map<Symbol, QualifiedName>
+  // THE CLOSURE'S REFUSED PROVIDERS, OVERLAID FOR THIS SUBJECT WALK. Empty until
+  // closure_declarations_demand has run; never the subject's own row (that walk is how
+  // the row was recorded). An imported name whose declaring module is here refuses with
+  // that chain, not as unbound (resolve_reason_declarer_refused).
+  unavailable_providers: List<ClosureProviderRefusal>
+}
+
+fn namespace_with_unavailable_providers(namespace: Namespace, providers: List<ClosureProviderRefusal>) -> Namespace {
+  Namespace {
+    bindings: namespace.bindings,
+    canonical_symbols: namespace.canonical_symbols,
+    symbol_index: namespace.symbol_index,
+    module_qn: namespace.module_qn,
+    test_code: namespace.test_code,
+    declared_in: namespace.declared_in,
+    imported_origins: namespace.imported_origins,
+    unavailable_providers: providers
+  }
 }
 
 type Scope
@@ -640,7 +675,8 @@ fn empty_namespace() -> Namespace {
     module_qn: Empty,
     test_code: test_code_index_empty(),
     declared_in: Empty,
-    imported_origins: empty_map()
+    imported_origins: empty_map(),
+    unavailable_providers: []
   }
 }
 
@@ -950,7 +986,8 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
       channel: tree.test_markers
     ),
     declared_in: declared_in,
-    imported_origins: empty_map()
+    imported_origins: empty_map(),
+    unavailable_providers: []
   }
 }
 
@@ -1251,6 +1288,7 @@ type ResolveRefusalReason
   | ResolveKernelTypeSpellingNamesAForeignDeclaration
   | ResolveObservationIncomplete
   | ResolveTypeParameterShadowsVisibleName
+  | ResolveDeclarerRefused
 
 // The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
 fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
@@ -1265,6 +1303,7 @@ fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
     ResolveKernelTypeSpellingNamesAForeignDeclaration => ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration
     ResolveObservationIncomplete => ^resolve_reason_observation_incomplete
     ResolveTypeParameterShadowsVisibleName => ^resolve_reason_type_parameter_shadows_visible_name
+    ResolveDeclarerRefused => ^resolve_reason_declarer_refused
   }
 }
 
@@ -1282,6 +1321,21 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
     at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
+}
+
+fn declarer_refused_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_declarer_refused,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn declarer_refused_diagnostics(n: Node, provider: ClosureProviderRefusal) -> NonEmptyDiagnostics {
+  rejected_with_pending(
+    pending: Some { diagnostics: provider.refusal },
+    rejected: diagnostics_singleton(d: declarer_refused_diagnostic(n: n))
+  )
 }
 
 // A `_` IN VALUE POSITION NAMES NOTHING, AND THE REFUSAL SAYS WHY. An anonymous parameter slot is
@@ -1868,15 +1922,39 @@ fn resolve_declared_path_reading(
     required: ctx.reference_category,
     candidates: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path)
   ) {
-    Empty =>
+    Empty => resolve_reference_path_miss(ctx: ctx, n: n, path: path, pending: pending)
+    Cons { head: candidate, tail: rest } =>
+      resolve_declared_path_candidates(ctx: ctx, n: n, candidate: candidate, rest: rest, pending: pending)
+  }
+}
+
+// A QUALIFIED PATH THAT NAMES NO INDEXED CANDIDATE. If the path's fill-time owning module
+// (`symbol_index_owning_module_of`) is in the refused-provider roster, that chain is the cause.
+// Otherwise the path refuses unbound at its own locus — never a last-segment reread (that would
+// accept foo.bar.Int as canonical Int, and would attribute declarer-refused from an unrelated
+// imported leaf) and never a proper-prefix of the path (that would attribute v2.p.child.R to
+// refused parent v2.p).
+fn resolve_reference_path_miss(
+  ctx: ResolveContext,
+  n: Node,
+  path: QualifiedName,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.unavailable_providers, path: path) {
+    Present { value: provider } =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: declarer_refused_diagnostics(n: n, provider: provider)
+        )
+      }
+    Absent =>
       Rejected {
         diagnostics: rejected_with_pending(
           pending: pending,
           rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
         )
       }
-    Cons { head: candidate, tail: rest } =>
-      resolve_declared_path_candidates(ctx: ctx, n: n, candidate: candidate, rest: rest, pending: pending)
   }
 }
 
@@ -1941,6 +2019,15 @@ fn resolve_atom_bound(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.unavailable_providers, path: path) {
+    Present { value: provider } =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: declarer_refused_diagnostics(n: n, provider: provider)
+        )
+      }
+    Absent =>
   match test_code_reach(index: ctx.namespace.test_code, path: path) {
     ReachesNoTestCode =>
       Accepted {
@@ -1957,6 +2044,7 @@ fn resolve_atom_bound(
           rejected: diagnostics_singleton(d: test_code_referenced_diagnostic(reason: ^resolve_reason_test_code_referenced, n: n))
         )
       }
+  }
   }
 }
 
@@ -2089,6 +2177,23 @@ fn resolve_kernel_type_atom_optional(n: Node, identity: Symbol) -> Optional<Node
 }
 
 fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
+  match map_lookup(m: ctx.namespace.imported_origins, key: identity) {
+    Present { value: origin } =>
+      match unavailable_provider_for_module(providers: ctx.namespace.unavailable_providers, module: origin) {
+        Present { value: provider } =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: pending,
+              rejected: declarer_refused_diagnostics(n: n, provider: provider)
+            )
+          }
+        Absent => resolve_atom_unbound_after_declarer(ctx: ctx, n: n, identity: identity, pending: pending)
+      }
+    Absent => resolve_atom_unbound_after_declarer(ctx: ctx, n: n, identity: identity, pending: pending)
+  }
+}
+
+fn resolve_atom_unbound_after_declarer(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
   if namespace_has_canonical_symbol(
     namespace: ctx.namespace,
     name: identity
@@ -2667,7 +2772,6 @@ fn resolve_transform_children(
     )
   }))
 }
-
 
 // A MATCH ARM'S BINDERS ARE A LEXICAL FRAME, LIKE PARAMETERS AND `let`. Normalize lowers a pat
 // over a fielded variant to the construct shape (v2.std.node_query construct_node): a tag edge that
@@ -3260,7 +3364,6 @@ fn resolve_elided_construct_is_map_literal(n: Node) -> Bool {
   }
 }
 
-
 fn resolve_map_literal_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
   let type_args = node_positional_child_targets(node: x.expected)
   match list_at_optional(xs: type_args, index: 1) {
@@ -3569,6 +3672,7 @@ fn resolve_construct_tag_walk(ctx: ResolveContext, reference: Node) -> ResolveNo
 fn resolve_construct_tag_from_payload_lookup(
   ctx: ResolveContext,
   reference: Node,
+  identity: Symbol,
   lookup: LexicalLookup
 ) -> Outcome<Node> {
   match lookup {
@@ -3580,7 +3684,7 @@ fn resolve_construct_tag_from_payload_lookup(
           class: AmbiguousOnLexicalChain { candidates: candidates }
         )
       }
-    LexicalUnbound => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
+    LexicalUnbound => resolve_atom_unbound(ctx: ctx, n: reference, identity: identity, pending: None)
   }
 }
 
@@ -3590,6 +3694,7 @@ fn resolve_construct_tag_reference(ctx: ResolveContext, reference: Node, path: Q
       resolve_construct_tag_from_payload_lookup(
         ctx: ctx,
         reference: reference,
+        identity: only,
         lookup: symbol_index_lexical_lookup_for_declared_payload(
           index: ctx.namespace.symbol_index,
           position: symbol_index_lookup_position(ctx: ctx),
@@ -3674,13 +3779,7 @@ fn resolve_construct_tag_declared_payload_path(
     index: ctx.namespace.symbol_index,
     candidates: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path)
   ) {
-    Empty =>
-      Rejected {
-        diagnostics: rejected_with_pending(
-          pending: pending,
-          rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference))
-        )
-      }
+    Empty => resolve_reference_path_miss(ctx: ctx, n: reference, path: path, pending: pending)
     Cons { head: candidate, tail: rest } =>
       resolve_declared_path_candidates(ctx: ctx, n: reference, candidate: candidate, rest: rest, pending: pending)
   }
@@ -4291,7 +4390,6 @@ fn resolve_preserve_module_root_named_edge(e: Edge) -> Bool {
     || labeled_named_is(x: e, label_of: edge_label_of, wanted: ^grammar_production_identity_node_projection)
 }
 
-
 // ONE EDGE'S TARGET, OBSERVED. A preserved metadata edge is accepted as its own target unchanged,
 // so the caller rebuilding Edge { label, target } reproduces the edge exactly.
 fn resolve_child_edge(
@@ -4511,7 +4609,6 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
     n: n
   )
 }
-
 
 // THE BODY OF AN ARROW IS WALKED UNDER ITS DECLARED RETURN, as authored: a `data x: T = e` lowers to
 // Arrow(<empty domain>, T, T, body: e) and a `fn f(..) -> T { e }` to the same shape, so this one
@@ -4929,3 +5026,25 @@ fn resolve_walk_with_namespace_policy(
     )))
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "arrow_domain_has_named_bindings" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_arrow_domain_walk" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_arrow_resource_requirements" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_bind_binder_target" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_construct_tag_names_constructor" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_declaring_entering" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_elided_construct_walk" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_expected_head_node_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_expected_head_path_as_written" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_expected_rename_chain" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_loop_node" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_map_key_type_is_string_literal_type" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_realized_declaration" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_record_field_type_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_transform_operator_child" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "arrow_domain_frame_binders" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "bind_frame_binders" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_loop_carrier_binder" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_where_predicate_operator" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+]

@@ -379,7 +379,7 @@ pub fn is_witness_type_name(name: String) -> bool {
     ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemContribution {
     pub resolved_item: Rc<Node>,
     pub resolve_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -389,7 +389,7 @@ pub struct ItemContribution {
     pub item_info: Rc<ItemInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleContext {
     pub resolved_items: Rc<Vec<Rc<Node>>>,
     pub func_env: Rc<ResolvedFuncEnv>,
@@ -400,19 +400,19 @@ pub struct ModuleContext {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantFoldState {
     pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantExportSurface {
     pub arm_owners: Rc<HashMap<String, Rc<Node>>>,
     pub enum_items: Rc<HashMap<String, Rc<Node>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferScope {
     pub type_env: Rc<TypeEnv>,
     pub func_env: Rc<ResolvedFuncEnv>,
@@ -428,13 +428,13 @@ pub struct InferScope {
     pub enclosing_declared_type_param_names: Rc<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferResult {
     pub typed: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockInferState {
     pub scope: Rc<InferScope>,
     pub diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
@@ -510,45 +510,45 @@ pub fn infer_block_stmts(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedItemResult {
     pub item: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArmInferResult {
     pub typed_arm: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub body_type: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PatternScopeResult {
     pub scope: Rc<InferScope>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringPartInferResult {
     pub typed_part: Rc<StringPart>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArgInferResult {
     pub typed_arg: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldInferResult {
     pub typed_field: Rc<Node>,
     pub infer_result: Rc<InferResult>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BuildTypeEnvResult {
     pub env: Rc<TypeEnv>,
     pub cache: Rc<TypeEnvCache>,
@@ -562,19 +562,19 @@ pub struct ParentModulesResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CycleDetectState {
     pub recursive_names: Rc<HashMap<String, bool>>,
     pub global_visited: Rc<HashMap<String, bool>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferScopeComponents {
     pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     pub svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LocalContributionState {
     pub resolved_items: Rc<Vec<Rc<Node>>>,
     pub func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
@@ -685,7 +685,7 @@ pub fn nominal_type_binding(name: String) -> Rc<TypeBinding> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldRecursionResult {
     pub shape: RecursionShape,
     pub element_type: String,
@@ -2971,7 +2971,7 @@ match exp.children.clone().get((pair.0.clone()) as usize).cloned() {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KernelListTyDiag {
     pub ty: Rc<Node>,
     pub miss_diags: Rc<Vec<Rc<ErrorNode>>>,
@@ -3956,16 +3956,7 @@ pub fn where_refinement_brand_declaration_site(
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum BrandNominalVerdict {
@@ -4741,7 +4732,7 @@ pub fn equality_admission_wall_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EqualityAdmissionRefusal {
     pub type_name: String,
     pub member: String,
@@ -5911,16 +5902,7 @@ pub fn foreign_concrete_coproduct_where_parent_required(
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum DeclaredTypePosition {
@@ -5939,7 +5921,7 @@ pub enum DeclaredTypePosition {
     PositionCondition,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredTypeObligation {
     pub position: DeclaredTypePosition,
     pub subject: String,
@@ -5949,16 +5931,7 @@ pub struct DeclaredTypeObligation {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum InhabitanceUndecidableReason {
@@ -5971,16 +5944,7 @@ pub enum InhabitanceUndecidableReason {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum InhabitanceRefusalReason {
@@ -5994,7 +5958,7 @@ pub enum InhabitanceRefusalReason {
     RefusedProductAtScalar,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum InhabitanceVerdict {
     Inhabits,
@@ -6132,16 +6096,7 @@ pub fn refinement_chain_names(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<Stri
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum RefinementInhabitance {
@@ -7869,7 +7824,7 @@ pub fn direct_call_structured_record_literal_resolved_type_mismatch(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallArgumentFormalSelection {
     CallArgumentFormalSelected { formal_index: i64, formal: Rc<Node> },
@@ -9188,7 +9143,7 @@ pub fn param_binds_positionally(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallArgBoundParamAccum {
     pub bound: Option<String>,
     pub pos: i64,
@@ -9232,7 +9187,7 @@ pub fn call_arg_bound_param_at(
     .clone()
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallShapeArityScan {
     pub positional_slot: i64,
     pub required_count: i64,
@@ -9796,7 +9751,7 @@ v1_rt::concat(unjudged.clone(), if crate::v1_compiler_infer_env::text_representa
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Tier2bBt {
     pub bt: Rc<Node>,
     pub kernel_diags: Rc<Vec<Rc<ErrorNode>>>,
@@ -10242,7 +10197,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MethodPipeFallback {
     pub result_ty: Rc<Node>,
     pub kernel_diags: Rc<Vec<Rc<ErrorNode>>>,
@@ -10443,7 +10398,7 @@ pub fn where_refinement_receiver_peel_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UnresolvedMethodFrontierRow {
     pub module_name: String,
     pub method: String,
@@ -10837,7 +10792,7 @@ pub fn resolve_pattern_subject(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PatternParentReading {
     pub parent_enum: Option<String>,
     pub identity: Rc<VariantParentIdentity>,
@@ -11099,7 +11054,7 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RestOperationResultType {
     pub resolved_result: Option<Rc<Node>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -12398,7 +12353,7 @@ pub fn service_spine_projection(texpr: Rc<Node>, scope: Rc<InferScope>) -> Optio
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum LiteralBoundary {
     LiteralBoundaryPlain,
@@ -12654,7 +12609,7 @@ pub fn unfold_literal_image(
 }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BinopOperands {
     pub left: Rc<InferResult>,
     pub right: Rc<InferResult>,
@@ -14622,7 +14577,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 Some(first_type) => Rc::new(v1_rt::list_skip(&arm_body_types.clone(), 1))
                     .iter()
                     .cloned()
-                    .fold(first_type.clone(), |acc: Rc<Node>, t: Rc<Node>| {
+                    .fold(first_type.clone(), |acc: _, t: Rc<Node>| {
                         crate::v1_compiler_infer_types::prefer_specific_type(
                             acc,
                             t.clone(),
@@ -18168,7 +18123,7 @@ Rc::new(FieldInferResult {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DescentSizeExpr {
     ParamSize { param: String },
@@ -18183,7 +18138,7 @@ impl DescentSizeExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescentContext {
     pub fn_name: String,
     pub param_names: Rc<HashMap<String, String>>,
@@ -18490,7 +18445,7 @@ Rc::new(SubValueRelation::StrictSubValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockAnnotateAcc {
     pub ctx: Rc<DescentContext>,
     pub children: Rc<Vec<Rc<Node>>>,
@@ -21739,7 +21694,7 @@ classify_body_provenance(crate::v1_std_core::arm_body(arm.clone()), param_names.
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockProvFoldState {
     pub prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
     pub last: Rc<HashMap<String, Rc<SubValueRelation>>>,
@@ -22003,7 +21958,7 @@ pub fn classify_terminal_per_field(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BodyTerminal {
     pub expr: Rc<Node>,
     pub let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
@@ -23020,13 +22975,13 @@ pub fn annotate_descent_evidence(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferPropertiesResult {
     pub props: Rc<Vec<Rc<Node>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferTransportResult {
     pub transport: Option<Rc<Node>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -23096,13 +23051,13 @@ pub fn infer_property_values(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PropertyInferenceResult {
     pub prop: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ServiceConfigFieldJudgment {
     FieldJudged,
@@ -23656,7 +23611,7 @@ pub fn is_type_variable_name(name: String) -> bool {
         || (name.clone() == "FoldAccumulator".to_string()))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArgGenericFoldState {
     pub results: Rc<Vec<Rc<ArgInferResult>>>,
     pub subst: Rc<HashMap<String, Rc<Node>>>,
@@ -23679,7 +23634,7 @@ pub fn type_node_label(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SigParamSplit {
     pub value_params: Rc<Vec<Rc<Node>>>,
     pub generic_names: Rc<Vec<String>>,
@@ -24455,7 +24410,7 @@ pub fn type_env_cache_from_bindings(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParentCacheRow {
     pub import_path: String,
     pub cache: Rc<TypeEnvCache>,
@@ -26885,7 +26840,7 @@ pub fn overlay_direct_import_exports(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AncestryPrecedence {
     pub cache: Rc<TypeEnvCache>,
     pub ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
@@ -29034,7 +28989,7 @@ pub fn func_env_views_for_import(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FuncEnvViewMerge {
     pub by_owner: Rc<HashMap<String, Rc<ResolvedFuncEnv>>>,
     pub owner_order: Rc<Vec<String>>,
@@ -29332,7 +29287,7 @@ pub struct TypecheckModuleResult {
     pub binding_forks: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GroundedView {
     pub carrier: Rc<DeclarationRef>,
     pub carrier_name: String,
@@ -29342,7 +29297,7 @@ pub struct GroundedView {
     pub operand: Rc<OperandDeclaration>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum GroundedCarrierState {
     GroundedViewReadable {
@@ -29355,37 +29310,28 @@ pub enum GroundedCarrierState {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GroundCtx {
     pub env: Rc<TypeEnv>,
     pub module_name: String,
     pub views: Rc<Vec<Rc<GroundedView>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GroundOut {
     pub node: Rc<Node>,
     pub changed: bool,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GroundedItems {
     pub items: Rc<Vec<Rc<Node>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum CarrierMatch {
@@ -29394,7 +29340,7 @@ pub enum CarrierMatch {
     GroundedCarrierUnidentified,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PeanoPatternReading {
     PeanoExact { k: i64 },
@@ -29411,7 +29357,7 @@ impl PeanoPatternReading {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GroundedPattern {
     pub pattern: Rc<MatchPattern>,
     pub changed: bool,
@@ -30161,7 +30107,7 @@ pub fn grounded_arm_body(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GroundedArm {
     pub arm: Rc<Node>,
     pub reading: Rc<PeanoPatternReading>,
@@ -31272,19 +31218,19 @@ pub fn typecheck_module_isolated(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EnvResolveResult {
     pub env: Rc<TypeEnv>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingResult {
     pub binding: Rc<TypeBinding>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingsAccum {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
@@ -31672,7 +31618,7 @@ pub fn variant_has_positional_payload_shape(
         })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EnumVariantShapeSets {
     pub fielded: Rc<BTreeSet<String>>,
     pub positional_payload: Rc<BTreeSet<String>>,
@@ -31947,6 +31893,7 @@ pub fn build_emit_graph_info(
             data_variant_wire_spellings: v1_rt::rc_empty_map::<String, Rc<DataVariantWireSpelling>>(
             ),
             fn_decl_items: built.fn_decl_items.clone(),
+            fn_map_key_bounds: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: variant_shapes.fielded.clone(),
             positional_payload_variants: variant_shapes.positional_payload.clone(),
@@ -31958,12 +31905,14 @@ pub fn build_emit_graph_info(
             read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             read_only_params: v1_rt::rc_empty_set::<String>(),
             clone_bounded_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
-            eq_hash_capable_type_names: v1_rt::rc_empty_set::<String>(),
+            map_key_required_type_names: v1_rt::rc_empty_set::<String>(),
             clone_impl_required_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             fn_generic_param_names: Rc::new(vec![]),
             fn_type_env: crate::v1_compiler_infer_env::empty_type_env(),
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
+            tco_cursor_param: "".to_string(),
+            tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
         })
     }
 }
@@ -32012,47 +31961,6 @@ pub fn typecheck(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<TypedGraph> {
-    typecheck_with_census_extra(
-        graph.clone(),
-        source_indices.clone(),
-        intern_table.clone(),
-        Rc::new(vec![]),
-        source_indices.clone(),
-    )
-}
-
-pub fn effect_incompleteness_diagnostics(
-    causes: Rc<Vec<Rc<EffectIncompleteness>>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for reason in causes.iter().cloned() {
-            __result.push(match (*reason.clone()).clone() {
-    EffectIncompleteness::UnresolvedCalleeEdge { item_identity, spelling, call_site, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: call to '".to_string(), spelling.clone()), "' in ".to_string()), crate::v1_std_core::callable_identity(item_identity.clone())), " has no established callee identity, so its effects cannot be joined".to_string()), call_site.clone(), item_identity.owner_module_path.clone()),
-    EffectIncompleteness::ExpansionBudgetExhausted { remaining_delta: _, .. } => inference_error("effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point".to_string(), crate::v1_std_core::no_span(), "".to_string()),
-    EffectIncompleteness::ResolvedCalleeRegistryRowAbsent { caller, callee, call_site, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), crate::v1_std_core::callable_identity(caller.clone())), " calls ".to_string()), crate::v1_std_core::callable_identity(callee.clone())), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does".to_string()), call_site.clone(), caller.owner_module_path.clone()),
-    EffectIncompleteness::FunctionValueEffectsUnresolved { caller, call_site, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue {
-    caller: crate::v1_std_core::callable_identity(caller.clone()),
-    span: call_site.clone(),
-}), caller.owner_module_path.clone()),
-    EffectIncompleteness::LocalBindingEffectsUnresolved { caller, name, call_site, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding {
-    caller: crate::v1_std_core::callable_identity(caller.clone()),
-    name: name.clone(),
-    span: call_site.clone(),
-}), caller.owner_module_path.clone()),
-});
-        }
-        __result
-    })
-}
-
-pub fn typecheck_with_census_extra(
-    graph: Rc<ModuleGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-    census_fill_modules: Rc<Vec<Rc<Node>>>,
-    census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<TypedGraph> {
     {
         let intern_table = seed_kernel_intern_table(intern_table.clone());
         let resolved_by_name = graph.modules.clone().iter().cloned().fold(
@@ -32065,10 +31973,7 @@ pub fn typecheck_with_census_extra(
                 )
             },
         );
-        let symbol_index = symbol_index_with_qualified_fill(
-            build_symbol_index_census(graph.modules.clone(), census_si.clone()),
-            build_symbol_index_qualified_fill(census_fill_modules.clone(), census_si.clone()),
-        );
+        let symbol_index = build_symbol_index_census(graph.modules.clone(), source_indices.clone());
         let global_variant_base = build_global_bare_variant_locals(
             symbol_index.global_bare.clone(),
             source_indices.clone(),
@@ -32161,6 +32066,31 @@ pub fn typecheck_with_census_extra(
             ),
         })
     }
+}
+
+pub fn effect_incompleteness_diagnostics(
+    causes: Rc<Vec<Rc<EffectIncompleteness>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for reason in causes.iter().cloned() {
+            __result.push(match (*reason.clone()).clone() {
+    EffectIncompleteness::UnresolvedCalleeEdge { item_identity, spelling, call_site, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: call to '".to_string(), spelling.clone()), "' in ".to_string()), crate::v1_std_core::callable_identity(item_identity.clone())), " has no established callee identity, so its effects cannot be joined".to_string()), call_site.clone(), item_identity.owner_module_path.clone()),
+    EffectIncompleteness::ExpansionBudgetExhausted { remaining_delta: _, .. } => inference_error("effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point".to_string(), crate::v1_std_core::no_span(), "".to_string()),
+    EffectIncompleteness::ResolvedCalleeRegistryRowAbsent { caller, callee, call_site, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), crate::v1_std_core::callable_identity(caller.clone())), " calls ".to_string()), crate::v1_std_core::callable_identity(callee.clone())), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does".to_string()), call_site.clone(), caller.owner_module_path.clone()),
+    EffectIncompleteness::FunctionValueEffectsUnresolved { caller, call_site, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue {
+    caller: crate::v1_std_core::callable_identity(caller.clone()),
+    span: call_site.clone(),
+}), caller.owner_module_path.clone()),
+    EffectIncompleteness::LocalBindingEffectsUnresolved { caller, name, call_site, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding {
+    caller: crate::v1_std_core::callable_identity(caller.clone()),
+    name: name.clone(),
+    span: call_site.clone(),
+}), caller.owner_module_path.clone()),
+});
+        }
+        __result
+    })
 }
 
 pub fn realize_module(
@@ -32615,30 +32545,8 @@ pub fn reconcile(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
-    reconcile_with_census_extra(
-        graph.clone(),
-        source_indices.clone(),
-        intern_table.clone(),
-        Rc::new(vec![]),
-        source_indices.clone(),
-    )
-}
-
-pub fn reconcile_with_census_extra(
-    graph: Rc<ModuleGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-    census_fill_modules: Rc<Vec<Rc<Node>>>,
-    census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ResolvedGraph> {
     {
-        let typed = typecheck_with_census_extra(
-            graph.clone(),
-            source_indices.clone(),
-            intern_table.clone(),
-            census_fill_modules.clone(),
-            census_si.clone(),
-        );
+        let typed = typecheck(graph.clone(), source_indices.clone(), intern_table.clone());
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
         Rc::new(ResolvedGraph {

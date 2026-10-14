@@ -1,0 +1,420 @@
+module gunbc.host.host_memory_envelope_observe
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count, kibibyte, kibibyte_to_byte_size }
+import std.algebra { list_snoc_item }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.optional { Present }
+import product.host_identity { HostIdentity }
+import gunbc.host.host_memory_observation { HostMemAvailableObservation }
+import gunbc.host.host_converge { runner_instance_glob }
+import gunbc.systemctl_list_units { systemctl_list_units_active_services, systemctl_list_units_active_of_type }
+import gunbc.systemctl_show_read {
+  systemctl_show_property_read,
+  SystemdPropertyCaptured,
+  SystemdPropertyBlank,
+  SystemdPropertyCaptureRefused,
+}
+import gunbc.host.host_effect { LocalShell }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.actions_run_binding {
+  actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
+}
+import extdeps.linux.procfs
+import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo, ProcMeminfo }
+import extdeps.systemd {
+  MemoryMax, MemoryHigh, MemoryCurrent, MemorySwapMax, SystemdUnitProperty,
+  SystemdCgroupMemoryLimit, MemoryLimitBytes, MemoryLimitUnbounded, MemoryLimitAbsent,
+  parse_systemd_memory_limit_show,
+  systemd_slice_cgroup_path, SliceCgroupPath, SliceNameNotASlice,
+  systemd_slice_ancestor_names, systemd_slice_suffix, systemd_root_slice_name,
+}
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+
+// READ-ONLY HOST MEMORY ENVELOPE. Modeled on gunbc.host.host_memory_observation
+// HostMemAvailableObservation (host, totals, available) and extended with Swap, the active
+// actions-runner@* count, and MemoryCurrent/High/Max/SwapMax for each top-level slice plus
+// system-actions-runner.slice. No apply. DESIGN §3d: this is
+// independent readback, not a converge verdict.
+
+data host_memory_envelope_receipt_path: String = "target/host-memory-envelope-observe.txt"
+
+type SliceMemoryReading {
+  slice_unit: NonEmptyStr
+  memory_current: ByteSize
+  memory_high: SystemdCgroupMemoryLimit
+  memory_max: SystemdCgroupMemoryLimit
+  memory_swap_max: SystemdCgroupMemoryLimit
+}
+
+type HostMemoryEnvelopeObservation {
+  host: HostIdentity
+  probed_at: NonEmptyStr
+  mem_total: ByteSize
+  mem_available: ByteSize
+  swap_total: ByteSize
+  swap_free: ByteSize
+  active_runner_unit_count: Int
+  slice_readings: List<SliceMemoryReading>
+  standing: CitedFigureStanding
+}
+
+type HostMemoryEnvelopeObserveResult
+  = HostMemoryEnvelopeObserved { observation: HostMemoryEnvelopeObservation }
+  | HostMemoryEnvelopeRefused { host: HostIdentity, reason: String }
+
+fn host_mem_available_projection(obs: HostMemoryEnvelopeObservation) -> HostMemAvailableObservation {
+  HostMemAvailableObservation {
+    host: obs.host,
+    run_id: obs.probed_at,
+    runner_unit: "host" as NonEmptyStr,
+    host_total: obs.mem_total,
+    mem_available: obs.mem_available,
+  }
+}
+
+fn host_memory_envelope_from_meminfo(
+  host: HostIdentity,
+  probed_at: NonEmptyStr,
+  meminfo: ProcMeminfo,
+  active_runner_unit_count: Int,
+  slice_readings: List<SliceMemoryReading>,
+  standing: CitedFigureStanding,
+) -> HostMemoryEnvelopeObservation {
+  HostMemoryEnvelopeObservation {
+    host: host,
+    probed_at: probed_at,
+    mem_total: kibibyte_to_byte_size(k: meminfo.mem_total),
+    mem_available: kibibyte_to_byte_size(k: meminfo.mem_available),
+    swap_total: kibibyte_to_byte_size(k: meminfo.swap_total),
+    swap_free: kibibyte_to_byte_size(k: meminfo.swap_free),
+    active_runner_unit_count: active_runner_unit_count,
+    slice_readings: slice_readings,
+    standing: standing,
+  }
+}
+
+fn host_memory_envelope_from_meminfo_text(
+  host: HostIdentity,
+  probed_at: NonEmptyStr,
+  meminfo_text: String,
+  active_runner_unit_count: Int,
+  slice_readings: List<SliceMemoryReading>,
+  standing: CitedFigureStanding,
+) -> HostMemoryEnvelopeObserveResult {
+  match parse_proc_meminfo(text: meminfo_text) {
+    MeminfoFieldAbsent { field: f } =>
+      HostMemoryEnvelopeRefused {
+        host: host,
+        reason: concat("host_memory_envelope_observe: /proc/meminfo field absent: ", f as String),
+      }
+    MeminfoParsed { meminfo: m } =>
+      HostMemoryEnvelopeObserved {
+        observation: host_memory_envelope_from_meminfo(
+          host: host,
+          probed_at: probed_at,
+          meminfo: m,
+          active_runner_unit_count: active_runner_unit_count,
+          slice_readings: slice_readings,
+          standing: standing,
+        ),
+      }
+  }
+}
+
+data runner_parent_slice_unit: NonEmptyStr = "system-actions-runner.slice" as NonEmptyStr
+
+fn slice_hierarchy_depth(unit: NonEmptyStr) -> Nat? {
+  match systemd_slice_cgroup_path(mount_point: "/" as NonEmptyStr, slice: unit) {
+    SliceNameNotASlice { spelling: _ } => none
+    SliceCgroupPath { path: _ } =>
+      if (unit as String) == systemd_root_slice_name {
+        let empty: List<String> = []
+        Present { value: length(empty) }
+      } else {
+        let name = unit as String
+        let stem = substring(s: name, start: 0, end: length(name) - length(systemd_slice_suffix))
+        Present { value: length(systemd_slice_ancestor_names(stem: stem)) }
+      }
+  }
+}
+
+fn is_top_level_slice_unit(unit: NonEmptyStr) -> Bool {
+  match slice_hierarchy_depth(unit: unit) {
+    Absent => false
+    Present { value: depth } =>
+      let one: List<String> = ["."]
+      depth == length(one)
+  }
+}
+
+fn host_memory_envelope_includes_slice(unit: NonEmptyStr) -> Bool {
+  is_top_level_slice_unit(unit: unit) || (unit as String) == (runner_parent_slice_unit as String)
+}
+
+fn slice_property_raw(unit: NonEmptyStr, property: SystemdUnitProperty) -> String? {
+  match systemctl_show_property_read(transport: LocalShell, unit: unit, property: property) {
+    SystemdPropertyCaptured { value: raw } => Present { value: raw }
+    SystemdPropertyBlank => Present { value: "" }
+    SystemdPropertyCaptureRefused { reason: _ } => none
+  }
+}
+
+fn slice_limit_bytes(n: Int) -> SystemdCgroupMemoryLimit {
+  MemoryLimitBytes { bytes: byte_size(count: n) }
+}
+
+fn slice_current_bytes(n: Int) -> ByteSize {
+  byte_size(count: n)
+}
+
+fn slice_limit_from_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> SystemdCgroupMemoryLimit? {
+  match slice_property_raw(unit: unit, property: property) {
+    Absent => none
+    Present { value: raw } => Present { value: parse_systemd_memory_limit_show(raw: raw) }
+  }
+}
+
+fn slice_memory_reading(
+  slice_unit: NonEmptyStr,
+  memory_current: ByteSize,
+  memory_high: SystemdCgroupMemoryLimit,
+  memory_max: SystemdCgroupMemoryLimit,
+  memory_swap_max: SystemdCgroupMemoryLimit,
+) -> SliceMemoryReading {
+  SliceMemoryReading {
+    slice_unit: slice_unit,
+    memory_current: memory_current,
+    memory_high: memory_high,
+    memory_max: memory_max,
+    memory_swap_max: memory_swap_max,
+  }
+}
+
+fn slice_current_bytes_from_unit(unit: NonEmptyStr) -> ByteSize? {
+  match slice_limit_from_property(unit: unit, property: MemoryCurrent) {
+    Absent => none
+    Present { value: current } =>
+      match current {
+        MemoryLimitBytes { bytes: b } => Present { value: b }
+        MemoryLimitUnbounded => none
+        MemoryLimitAbsent => none
+      }
+  }
+}
+
+fn slice_memory_reading_from_unit(unit: NonEmptyStr) -> SliceMemoryReading? {
+  match slice_current_bytes_from_unit(unit: unit) {
+    Absent => none
+    Present { value: current } =>
+      match slice_limit_from_property(unit: unit, property: MemoryHigh) {
+        Absent => none
+        Present { value: high } =>
+          match slice_limit_from_property(unit: unit, property: MemoryMax) {
+            Absent => none
+            Present { value: max } =>
+              match slice_limit_from_property(unit: unit, property: MemorySwapMax) {
+                Absent => none
+                Present { value: swap } =>
+                  Present {
+                    value: slice_memory_reading(
+                      slice_unit: unit,
+                      memory_current: current,
+                      memory_high: high,
+                      memory_max: max,
+                      memory_swap_max: swap,
+                    )
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn observed_slice_readings_accumulate(
+  acc: List<SliceMemoryReading>?,
+  unit: NonEmptyStr,
+) -> List<SliceMemoryReading>? {
+  match acc {
+    Absent => none
+    Present { value: so_far } =>
+      if !host_memory_envelope_includes_slice(unit: unit) {
+        Present { value: so_far }
+      } else {
+        match slice_memory_reading_from_unit(unit: unit) {
+          Absent => none
+          Present { value: row } => Present { value: list_snoc_item(xs: so_far, item: row) }
+        }
+      }
+  }
+}
+
+fn host_memory_envelope_observed_slice_readings() -> List<SliceMemoryReading>? {
+  match systemctl_list_units_active_of_type(instance_glob: "*.slice" as NonEmptyStr, unit_type: "slice") {
+    Absent => none
+    Present { value: units } =>
+      let empty: List<SliceMemoryReading> = []
+      fold(units, init: Present { value: empty }, f: fn(acc, unit) {
+        observed_slice_readings_accumulate(acc: acc, unit: unit)
+      })
+  }
+}
+
+fn host_memory_envelope_active_runner_count(host: HostIdentity) -> Int? {
+  match systemctl_list_units_active_services(instance_glob: runner_instance_glob(host: host) as NonEmptyStr) {
+    Absent => none
+    Present { value: units } => Present { value: length(units) }
+  }
+}
+
+fn host_memory_envelope_observe_local(host: HostIdentity) -> HostMemoryEnvelopeObserveResult {
+  let read = linux.Procfs.ReadMeminfo()
+  if !read.success {
+    HostMemoryEnvelopeRefused { host: host, reason: "host_memory_envelope_observe: /proc/meminfo could not be read on this host" }
+  } else {
+    match host_memory_envelope_active_runner_count(host: host) {
+      Absent =>
+        HostMemoryEnvelopeRefused {
+          host: host,
+          reason: "host_memory_envelope_observe: actions-runner@* unit enumeration absent; fail-closed",
+        }
+      Present { value: n } =>
+        match host_memory_envelope_observed_slice_readings() {
+          Absent =>
+            HostMemoryEnvelopeRefused {
+              host: host,
+              reason: "host_memory_envelope_observe: slice MemoryCurrent/High/Max/SwapMax read absent; fail-closed",
+            }
+          Present { value: slices } =>
+            let probed = probed_at_word(reading: clock_now_probed_at())
+            host_memory_envelope_from_meminfo_text(
+              host: host,
+              probed_at: probed,
+              meminfo_text: read.value,
+              active_runner_unit_count: n,
+              slice_readings: slices,
+              standing: TranscribedUncited {
+                read_obligation: concat(
+                  "host_memory_envelope_observe_local on this kernel at probed_at=",
+                  probed as String,
+                ) as NonEmptyStr,
+              },
+            )
+        }
+    }
+  }
+}
+
+fn host_memory_envelope_receipt_text(obs: HostMemoryEnvelopeObservation) -> String {
+  join([
+    "host-memory-envelope host=",
+    obs.host as String,
+    " probed_at=",
+    obs.probed_at as String,
+    " mem_total=",
+    to_string(byte_size_count(b: obs.mem_total)),
+    " mem_available=",
+    to_string(byte_size_count(b: obs.mem_available)),
+    " swap_total=",
+    to_string(byte_size_count(b: obs.swap_total)),
+    " swap_free=",
+    to_string(byte_size_count(b: obs.swap_free)),
+    " active_runner_units=",
+    to_string(obs.active_runner_unit_count),
+    " slice_readings=",
+    to_string(length(obs.slice_readings)),
+    "\n",
+  ], "")
+}
+
+fn local_kernel_hostname() -> String {
+  match hostname_short_read(transport: LocalShell) {
+    HostnameShortCaptured { value: v } => v
+    HostnameShortCaptureRefused { reason: _ } => ""
+  }
+}
+
+fn host_memory_envelope_observe_ci_wet() -> ProcessExit
+{
+  let dispatched = match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  if dispatched == "" {
+    exit_failure(reason: concat(
+      "host_memory_envelope_observe: ",
+      fleet_converge_expected_host_env_name,
+      " is unset; one host per run, named by the dispatch",
+    ))
+  } else {
+    let kernel = local_kernel_hostname()
+    if kernel != dispatched {
+      exit_failure(reason: join([
+        "host_memory_envelope_observe: dispatch host ",
+        dispatched,
+        " is not this kernel hostname ",
+        kernel,
+      ], ""))
+    } else {
+      match host_memory_envelope_observe_local(host: dispatched as HostIdentity) {
+        HostMemoryEnvelopeRefused { host: _, reason: why } => exit_failure(reason: why)
+        HostMemoryEnvelopeObserved { observation: obs } => {
+          let text = host_memory_envelope_receipt_text(obs: obs)
+          let w = Filesystem.Write(path: host_memory_envelope_receipt_path, content: text)
+          if w.success == false {
+            exit_failure(reason: join(["host_memory_envelope_observe: receipt write failed: ", w.error, "\n", text], ""))
+          } else {
+            ExitSuccess
+          }
+        }
+      }
+    }
+  }
+}
+
+data gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at: NonEmptyStr = "2026-10-14T00:10:39Z" as NonEmptyStr
+
+data gunbc_srv1_sleek_owl_397_first_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "sleek-owl-397 sanctioned read-only /proc/meminfo and systemctl show MemoryCurrent/MemoryHigh/MemoryMax on srv1 at 2026-10-14T00:10:39Z" as NonEmptyStr
+}
+
+data gunbc_srv1_memory_envelope_sleek_owl_397_first: HostMemoryEnvelopeObservation = HostMemoryEnvelopeObservation {
+  host: operator_host_srv1,
+  probed_at: gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at,
+  mem_total: kibibyte_to_byte_size(k: kibibyte(count: 526641732)),
+  mem_available: kibibyte_to_byte_size(k: kibibyte(count: 168249292)),
+  swap_total: kibibyte_to_byte_size(k: kibibyte(count: 260046840)),
+  swap_free: kibibyte_to_byte_size(k: kibibyte(count: 248930848)),
+  active_runner_unit_count: 11,
+  slice_readings: [
+    slice_memory_reading(slice_unit: "gunbc.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 87153995776), memory_high: MemoryLimitAbsent, memory_max: MemoryLimitAbsent, memory_swap_max: MemoryLimitAbsent),
+    slice_memory_reading(slice_unit: "sessions.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 29314482176), memory_high: slice_limit_bytes(n: 120259084288), memory_max: slice_limit_bytes(n: 137438953472), memory_swap_max: MemoryLimitAbsent),
+    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 175093350400), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: MemoryLimitAbsent),
+    slice_memory_reading(slice_unit: "system-actions-runner.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 129190301696), memory_high: MemoryLimitAbsent, memory_max: MemoryLimitAbsent, memory_swap_max: MemoryLimitAbsent),
+  ],
+  standing: gunbc_srv1_sleek_owl_397_first_standing,
+}
+
+fn hermetic_envelope_standing() -> CitedFigureStanding {
+  TranscribedUncited { read_obligation: "hermetic host_memory_envelope_observe control" as NonEmptyStr }
+}
+
+fn slice_limit_is_bytes(lim: SystemdCgroupMemoryLimit, n: Int) -> Bool {
+  match lim {
+    MemoryLimitBytes { bytes: b } => byte_size_count(b: b) == n
+    MemoryLimitUnbounded => false
+    MemoryLimitAbsent => false
+  }
+}
+
+fn slice_limit_is_unbounded(lim: SystemdCgroupMemoryLimit) -> Bool {
+  match lim {
+    MemoryLimitUnbounded => true
+    MemoryLimitBytes { bytes: _ } => false
+    MemoryLimitAbsent => false
+  }
+}

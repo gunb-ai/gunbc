@@ -21,10 +21,12 @@ import extdeps.github.action.upload_artifact { upload_artifact_manifest_readings
 import extdeps.github.action.download_artifact { download_artifact_manifest_readings, download_artifact_v7_0_0 }
 import extdeps.github.action.checkout { checkout_manifest_readings, checkout_v5_1_0 }
 import extdeps.github.action.cache { cache_manifest_readings, cache_v5_1_0 }
-import extdeps.github.action.github_script { github_script_manifest_readings, github_script_v8_0_0 }
+import extdeps.github.action.github_script { github_script_manifest_readings }
 import extdeps.github.action.google_auth { google_auth_manifest_readings, google_auth_v3_0_0 }
 import extdeps.github.action.setup_rust_toolchain { setup_rust_toolchain_manifest_readings, setup_rust_toolchain_v1_16_0 }
 import extdeps.github.action.rust_cache { rust_cache_manifest_readings }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // NO PROVIDER-SUBSTITUTED ACTION RUNTIMES.
 //
@@ -76,7 +78,6 @@ data cache_action: ActionRelease = cache_v5_1_0
 data google_auth_action: ActionRelease = google_auth_v3_0_0
 data upload_artifact_action: ActionRelease = upload_artifact_v6_0_0
 data download_artifact_action: ActionRelease = download_artifact_v7_0_0
-data github_script_action: ActionRelease = github_script_v8_0_0
 
 // THE SELECTIONS AS ONE ROSTER, so the realized-file census can require every `uses:` in
 // .github/workflows to BE a selected release, not merely an admitted one. Without that, a
@@ -88,7 +89,6 @@ data repository_action_selections: List<ActionRelease> = [
   google_auth_action,
   upload_artifact_action,
   download_artifact_action,
-  github_script_action,
 ]
 
 data repository_action_selection_texts: Map<String, Bool> = fold(repository_action_selections, init: empty_map(), f: fn(m, r) {
@@ -683,3 +683,10 @@ fn admit_realized_action_use(u: RealizedActionUse) -> ActionUseAdmission {
       }
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "checkout_context_names_a_commit" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "checkout_ref_value_refusals" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "checkout_with_ref_refusals" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "step_checkout_ref_refusals" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

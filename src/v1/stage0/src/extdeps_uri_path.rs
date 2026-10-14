@@ -29,14 +29,14 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum UrlPathToken {
     LiteralToken { text: String },
     ParamToken { name: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PathTemplate {
     pub tokens: Rc<Vec<Rc<UrlPathToken>>>,
 }
@@ -81,7 +81,7 @@ pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PathParamBinding {
     pub name: String,
     pub value: String,
@@ -119,14 +119,14 @@ pub fn render_path_template(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PathSegmentTokensResult {
     ParsedSegmentTokens { tokens: Rc<Vec<Rc<UrlPathToken>>> },
     MalformedPathSegment { segment: String, reason: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PathTemplateParseResult {
     ParsedPathTemplate {
@@ -260,7 +260,7 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PathTemplateMatch {
     PathMatched {
@@ -490,6 +490,65 @@ pub fn uri_query_string(path: String) -> String {
     {
         Some(q) => q.clone(),
         std::option::Option::None => "".to_string(),
+    }
+}
+
+pub fn parse_query_template(raw: String) -> Rc<PathTemplateParseResult> {
+    {
+        let q = uri_query_string(raw.clone());
+        if (q.clone() == "".to_string()) {
+            Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                template: Rc::new(PathTemplate {
+                    tokens: Rc::new(vec![]),
+                }),
+            })
+        } else {
+            Rc::new(
+                q.clone()
+                    .split(&"&".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                    template: Rc::new(PathTemplate {
+                        tokens: Rc::new(vec![]),
+                    }),
+                }),
+                |acc: Rc<PathTemplateParseResult>, pair: String| match (*acc.clone()).clone() {
+                    PathTemplateParseResult::MalformedPathTemplate { .. } => acc.clone(),
+                    PathTemplateParseResult::ParsedPathTemplate { template: t, .. } => {
+                        if (pair.clone() == "".to_string()) {
+                            Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                                template: t.clone(),
+                            })
+                        } else {
+                            match (*parse_segment_tokens(pair.clone())).clone() {
+                                PathSegmentTokensResult::MalformedPathSegment {
+                                    segment: s,
+                                    reason: r,
+                                    ..
+                                } => Rc::new(PathTemplateParseResult::MalformedPathTemplate {
+                                    raw: raw.clone(),
+                                    segment: s.clone(),
+                                    reason: r.clone(),
+                                }),
+                                PathSegmentTokensResult::ParsedSegmentTokens {
+                                    tokens: toks,
+                                    ..
+                                } => Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                                    template: Rc::new(PathTemplate {
+                                        tokens: v1_rt::concat(t.tokens.clone(), toks.clone()),
+                                    }),
+                                }),
+                            }
+                        }
+                    }
+                },
+            )
+        }
     }
 }
 

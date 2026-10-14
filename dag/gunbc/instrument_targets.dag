@@ -50,6 +50,7 @@ import gunbc.target_binding {
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
+  CardinalityRealizationProducer,
   RegenRoundCostProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
@@ -554,6 +555,15 @@ fn shared_type_leaf_collision_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "shared-type-leaf-collision-census" } }
 }
 
+// THE CARDINALITY REALIZATION STANDING (v2.test.claim.cardinality_realization_coverage). The host runs
+// the seed Rust emit over each specimen entry and the native v2 CLI over each specimen module, hands
+// typed outcome records to cardinality_realization_standing, and prints what it returns. Run by label
+// locally; no job runs it, so the class rung stays mitigation.
+// `gunbc test //gunbc/instruments:cardinality-realization`.
+fn cardinality_realization_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "cardinality-realization" } }
+}
+
 // ONE STAGE0 REGEN ROUND, PRICED BY PHASE ON TWO CLOCKS (gunbc.regen_round_cost), followed by the
 // one-mirror discriminator: the same producer over the same corpus with exactly one mirror
 // selected, so compile.emit's cost can be attributed to per-module rendering or to closure-wide
@@ -660,6 +670,10 @@ fn interpolation_hole_census_binding() -> TargetBinding {
 
 fn shared_type_leaf_collision_census_binding() -> TargetBinding {
   TargetBinding { target: shared_type_leaf_collision_census_label() producer: SharedTypeLeafCollisionCensusProducer {} }
+}
+
+fn cardinality_realization_binding() -> TargetBinding {
+  TargetBinding { target: cardinality_realization_label() producer: CardinalityRealizationProducer {} }
 }
 
 fn regen_round_cost_binding() -> TargetBinding {
@@ -888,6 +902,7 @@ fn instrument_targets() -> List<Label> {
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
     self_host_behavioral_equivalence_label(), dependency_demand_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
+    cardinality_realization_label(),
     regen_round_cost_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
@@ -907,6 +922,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
     self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
+    cardinality_realization_binding(),
     regen_round_cost_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),

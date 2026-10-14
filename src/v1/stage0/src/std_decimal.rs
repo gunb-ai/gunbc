@@ -3,11 +3,13 @@
 
 use self::ExactDecimalAdmission::*;
 use self::ExactDecimalDifference::*;
+pub use crate::std_algebra::string_concat_join;
 use crate::std_checked_arithmetic::CheckedInt::{CheckedIntOverflow, CheckedIntReady};
 pub use crate::std_checked_arithmetic::{checked_int_multiply, checked_int_subtract};
 pub use crate::std_checked_arithmetic::{CheckedInt, IntegerOverflow};
 pub use crate::std_error_primitives::pure_dag_seam_unreachable;
 pub use crate::std_render_repeat_string_bootstrap::repeat_string;
+pub use crate::std_types::range;
 pub use crate::std_types::Bool;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -41,14 +43,16 @@ pub fn zero_pad_left(digits: String, width: i64) -> String {
         if (have.clone() >= width.clone()) {
             digits.clone()
         } else {
-            Rc::new(vec![
-                crate::std_render_repeat_string_bootstrap::repeat_string(
-                    "0".to_string(),
-                    v1_rt::int_sub(width.clone(), have.clone()),
-                ),
-                digits.clone(),
-            ])
-            .join(&"".to_string())
+            crate::std_algebra::string_concat_join(
+                Rc::new(vec![
+                    crate::std_render_repeat_string_bootstrap::repeat_string(
+                        "0".to_string(),
+                        v1_rt::int_sub(width.clone(), have.clone()),
+                    ),
+                    digits.clone(),
+                ]),
+                "".to_string(),
+            )
         }
     }
 }
@@ -61,12 +65,14 @@ pub fn fixed_point_wire(value: i64, decimals: i64) -> String {
         if (frac.clone() == 0) {
             (whole.clone()).to_string()
         } else {
-            Rc::new(vec![
-                (whole.clone()).to_string(),
-                ".".to_string(),
-                zero_pad_left((frac.clone()).to_string(), decimals.clone()),
-            ])
-            .join(&"".to_string())
+            crate::std_algebra::string_concat_join(
+                Rc::new(vec![
+                    (whole.clone()).to_string(),
+                    ".".to_string(),
+                    zero_pad_left((frac.clone()).to_string(), decimals.clone()),
+                ]),
+                "".to_string(),
+            )
         }
     }
 }
@@ -75,15 +81,13 @@ pub fn fixed_point_domain_ok(value: i64, decimals: i64) -> bool {
     ((value.clone() >= 0) && (decimals.clone() >= 0))
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExactDecimal {
     pub units: i64,
     pub fraction_digits: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ExactDecimalAdmission {
     ExactDecimalAdmitted { canonical: ExactDecimal },
@@ -151,7 +155,7 @@ pub fn exact_decimal_equal(a: ExactDecimal, b: ExactDecimal) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ExactDecimalDifference {
     ExactDifference { value: ExactDecimal },
@@ -264,14 +268,16 @@ pub fn exact_decimal_wire(d: ExactDecimal) -> String {
     {
         let c = canonical_exact_decimal(d.clone());
         if (c.units.clone() < 0) {
-            Rc::new(vec![
-                "-".to_string(),
-                fixed_point_wire(
-                    v1_rt::int_sub(0, c.units.clone()),
-                    c.fraction_digits.clone(),
-                ),
-            ])
-            .join(&"".to_string())
+            crate::std_algebra::string_concat_join(
+                Rc::new(vec![
+                    "-".to_string(),
+                    fixed_point_wire(
+                        v1_rt::int_sub(0, c.units.clone()),
+                        c.fraction_digits.clone(),
+                    ),
+                ]),
+                "".to_string(),
+            )
         } else {
             fixed_point_wire(c.units.clone(), c.fraction_digits.clone())
         }

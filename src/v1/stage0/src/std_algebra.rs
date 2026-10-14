@@ -64,7 +64,7 @@ pub struct AbelianGroup<T> {
     pub _phantom: std::marker::PhantomData<T>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GroupCompletion<M: Clone> {
     pub pos: M,
     pub neg: M,
@@ -133,7 +133,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldOfFractions<R: Clone> {
     pub num: R,
     pub denom: R,
@@ -310,7 +310,7 @@ pub struct FinitelySupportedFunction<K, V> {
     pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MapIntroductionEntry<K: Clone, V: Clone> {
     pub key: K,
     pub value: V,
@@ -341,16 +341,7 @@ pub struct TotalPolicy<K, Context, RowTemplate> {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum Ordering {
@@ -359,7 +350,7 @@ pub enum Ordering {
     Greater,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OrderingFold<R: Clone> {
     pub less: R,
     pub equal: R,
@@ -388,16 +379,7 @@ pub fn ordering_is_less(o: Ordering) -> bool {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum AlgebraProfile {
@@ -413,7 +395,7 @@ pub enum AlgebraProfile {
     FinitelySupportedFunctionProfile,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ContainerSource {
     SameAsReceiver,
@@ -428,7 +410,7 @@ impl ContainerSource {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum AlgebraTypeTemplate {
     ReceiverSelf,
@@ -462,16 +444,7 @@ pub enum AlgebraTypeTemplate {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum CollectionSizeEffect {
@@ -481,16 +454,7 @@ pub enum CollectionSizeEffect {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum CostShape {
@@ -500,7 +464,7 @@ pub enum CostShape {
     ShapeSortBody,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldTemplate {
     pub name: String,
     pub param_types: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
@@ -697,9 +661,7 @@ pub fn collection_sort_by_shape() -> Rc<AlgebraFieldTemplate> {
     })
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StepPositionScan {
     pub next: i64,
     pub found: Option<i64>,
@@ -814,7 +776,7 @@ pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64>
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CarrierRowMembership {
     RowPresent,
@@ -829,7 +791,7 @@ impl CarrierRowMembership {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CarrierSpelling {
     pub text: String,
     pub method_surface: Rc<CarrierRowMembership>,
@@ -839,7 +801,7 @@ pub struct CarrierSpelling {
     pub container_arity_row: Rc<CarrierRowMembership>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraCarrier {
     pub name: String,
     pub profile: AlgebraProfile,
@@ -1189,16 +1151,7 @@ pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum AlgebraSupportAxis {
@@ -2405,28 +2358,30 @@ pub fn fold_list<T: Clone, A: Clone>(
     mut __tco_loop_empty: A,
     mut __tco_loop_cons: impl Fn(A, T) -> A + Clone,
 ) -> A {
-    loop {
-        #[allow(unused_mut)]
-        let mut xs = __tco_loop_xs;
-        #[allow(unused_mut)]
-        let mut empty = __tco_loop_empty;
-        #[allow(unused_mut)]
-        let mut cons = __tco_loop_cons;
-        {
-            let __fm = xs.clone();
-            if __fm.is_empty() {
-                break empty.clone();
-            } else {
-                let h = (*__fm)[0].clone();
-                let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                {
-                    let __tco_0 = t.clone();
-                    let __tco_1 = cons(empty, h.clone());
-                    let __tco_2 = cons;
-                    __tco_loop_xs = __tco_0;
-                    __tco_loop_empty = __tco_1;
-                    __tco_loop_cons = __tco_2;
-                    continue;
+    {
+        let mut __tco_cursor: usize = 0;
+        loop {
+            #[allow(unused_mut)]
+            let mut empty = __tco_loop_empty;
+            #[allow(unused_mut)]
+            let mut cons = __tco_loop_cons;
+            #[allow(unused_mut)]
+            let mut xs = __tco_loop_xs.clone();
+            {
+                let __fm = xs.clone();
+                if (__fm.len() - __tco_cursor) == 0 {
+                    break empty.clone();
+                } else {
+                    let h = (*__fm)[__tco_cursor + 0].clone();
+                    {
+                        let __tco_0 = cons(empty, h.clone());
+                        let __tco_1 = cons;
+                        let __tco_2 = __tco_cursor + 1;
+                        __tco_loop_empty = __tco_0;
+                        __tco_loop_cons = __tco_1;
+                        __tco_cursor = __tco_2;
+                        continue;
+                    }
                 }
             }
         }
@@ -2439,6 +2394,35 @@ pub fn fold_non_empty<T: Clone>(
     cons: impl Fn(T, T) -> T + Clone,
 ) -> T {
     fold_list(tail.clone(), head.clone(), cons.clone())
+}
+
+pub fn join_separated<T: Clone>(
+    fields: Rc<FreeMonoid<T>>,
+    separator: T,
+    combine: impl Fn(T, T) -> T + Clone,
+    empty: T,
+) -> T {
+    {
+        let __fm = fields.clone();
+        if __fm.is_empty() {
+            empty
+        } else {
+            let first = (*__fm)[0].clone();
+            let rest: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+            fold_list(rest.clone(), first.clone(), |acc, field| {
+                combine(combine(acc.clone(), separator.clone()), field.clone())
+            })
+        }
+    }
+}
+
+pub fn string_concat_join(fields: Rc<Vec<String>>, separator: String) -> String {
+    join_separated(
+        fields.clone(),
+        separator.clone(),
+        |acc, field| v1_rt::concat(acc.clone(), field.clone()),
+        "".to_string(),
+    )
 }
 
 pub fn fold_list_right<T: Clone, A: Clone>(
@@ -2652,27 +2636,29 @@ pub fn list_find_first<T: Clone>(
     mut __tco_loop_xs: Rc<FreeMonoid<T>>,
     mut __tco_loop_predicate: impl Fn(T) -> bool + Clone,
 ) -> Option<T> {
-    loop {
-        #[allow(unused_mut)]
-        let mut xs = __tco_loop_xs;
-        #[allow(unused_mut)]
-        let mut predicate = __tco_loop_predicate;
-        {
-            let __fm = xs.clone();
-            if __fm.is_empty() {
-                break crate::std_optional::optional_absent();
-            } else {
-                let h = (*__fm)[0].clone();
-                let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                if predicate(h.clone()) {
-                    break crate::std_optional::optional_present(h.clone());
+    {
+        let mut __tco_cursor: usize = 0;
+        loop {
+            #[allow(unused_mut)]
+            let mut predicate = __tco_loop_predicate;
+            #[allow(unused_mut)]
+            let mut xs = __tco_loop_xs.clone();
+            {
+                let __fm = xs.clone();
+                if (__fm.len() - __tco_cursor) == 0 {
+                    break crate::std_optional::optional_absent();
                 } else {
-                    {
-                        let __tco_0 = t.clone();
-                        let __tco_1 = predicate;
-                        __tco_loop_xs = __tco_0;
-                        __tco_loop_predicate = __tco_1;
-                        continue;
+                    let h = (*__fm)[__tco_cursor + 0].clone();
+                    if predicate(h.clone()) {
+                        break crate::std_optional::optional_present(h.clone());
+                    } else {
+                        {
+                            let __tco_0 = predicate;
+                            let __tco_1 = __tco_cursor + 1;
+                            __tco_loop_predicate = __tco_0;
+                            __tco_cursor = __tco_1;
+                            continue;
+                        }
                     }
                 }
             }

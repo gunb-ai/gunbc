@@ -1,5 +1,6 @@
 module v2.std.compilers.target_model
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
 
 import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
@@ -208,6 +209,7 @@ import extdeps.uri {
   uri_scheme_inhabitants
 }
 import std.types { brand }
+import std.roster_frontier { FrontierRow, PathSubject }
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
 // The compiler asks a target for a produced declaration and receives a bodied-arrow
@@ -8232,7 +8234,6 @@ fn target_value_expr_is_source_bool_literal_atom(
     ComputationNode { behavior: _ } => false
   }
 }
-
 
 fn target_value_expression_match_to_concrete_tokens(
   expr: TargetValueExpression,
@@ -16460,3 +16461,11 @@ fn target_project_arrow_body_by_kind_otherwise(body: Node) -> Outcome<TargetValu
 }
 
 data target_value_expr_int_bool_octet_channel_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the modeled octet-to-bool codec authority is inhabited over the \{0,1} domain (NOT general nonzero), at which point the remaining infer_match_int_scrutinee_bool_literal_scaffold diagnostic grounds on it and deletes (emit match-seam production already uprooted)")
+
+data nfr_reason_typed_census_undetermined_node_kind: String = "the v1 checker leaves this match's scrutinee untyped -- a .kind read on a v2.std.node Node -- so the typed census reported it undetermined; read by hand the scrutinee is NodeKind = TypeNode | ComputationNode, a closed coproduct, and the wildcard arm answers for the constructors and connectives the match does not name, which is non-fold residue. Rostered on that reading: a bet the re-census confirms once the checker types the field"
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "target_value_expr_record_construct_type_name_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "target_value_semantics_carrier_snoc" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "target_project_bind_tail" }, reason: nfr_reason_typed_census_undetermined_node_kind, dissolution: nfr_dissolve_owning_fold },
+]

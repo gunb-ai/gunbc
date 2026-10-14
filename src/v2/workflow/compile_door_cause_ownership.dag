@@ -221,6 +221,11 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (2059 v2.test.* members across 417 modules, dominantly the parse frontier's import cascade: the member's own file parses while a file in its import closure refuses, so the imported names resolve to nothing — zeroing rides the parse-frontier rows beside resolve's own binding gaps)"
   },
   CauseOwnership {
+    cause: ^resolve_reason_declarer_refused,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "an imported name whose declaring module is in the closure's refused-provider set (ClosureProviderRefusal); the mention previously reported unbound_symbol. Flips when those declarers resolve. The dag→v2 importers that populate the set are the cross-tree migration's, not this row's to edit"
+  },
+  CauseOwnership {
     cause: ^resolve_reason_ambiguous_symbol,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the v2.workflow.v2_native_route census over the lane's source roots dag + src/v2 (29 v2.test.* members across 6 modules)"

@@ -72,7 +72,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TypeRepr {
     StructRepr,
@@ -89,7 +89,7 @@ impl TypeRepr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeSummary {
     pub name: String,
     pub key: String,
@@ -102,13 +102,13 @@ pub struct TypeSummary {
     pub has_fn_fields: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeSummaryIndex {
     pub by_key: Rc<HashMap<String, Rc<TypeSummary>>>,
     pub keys_by_leaf: Rc<HashMap<String, Rc<Vec<String>>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TypeSummaryLookup {
     TypeSummaryFound { summary: Rc<TypeSummary> },
@@ -269,13 +269,13 @@ pub fn type_summary_values(index: Rc<TypeSummaryIndex>) -> Rc<Vec<Rc<TypeSummary
     Rc::new(v1_rt::map_values(&index.by_key.clone()))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldTypeMapBuild {
     pub field_types: Rc<HashMap<String, String>>,
     pub import_surface_names: Rc<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UniqueStringAccum {
     pub seen: Rc<HashMap<String, bool>>,
     pub result: Rc<Vec<String>>,
@@ -308,7 +308,7 @@ pub fn dedupe_nonempty_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeSurfaceOccurrence {
     pub name: String,
     pub applied_argument: bool,
@@ -396,7 +396,7 @@ pub fn collect_type_node_import_surface_names(
     }))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DataVariantWireSpelling {
     DataVariantInternalTagged { tag_field: String, tag: String },
@@ -405,7 +405,7 @@ pub enum DataVariantWireSpelling {
     DataVariantSpellingRefused { reason: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeDeclIndex {
     pub by_identity: Rc<HashMap<String, Rc<Node>>>,
     pub identity_by_declaring_span: Rc<HashMap<String, String>>,
@@ -414,7 +414,7 @@ pub struct TypeDeclIndex {
     pub qualified_names: Rc<SymbolIndex>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TypeDeclOccurrenceBinding {
     OccurrenceDeclaredHere { identity: String },
@@ -439,7 +439,7 @@ impl TypeDeclOccurrenceBinding {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TypeDeclResolution {
     TypeDeclResolved { identity: String, decl: Rc<Node> },
@@ -600,16 +600,7 @@ pub fn resolve_type_decl_leaf(index: Rc<TypeDeclIndex>, leaf: String) -> Rc<Type
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum TypeDeclReferenceRoute {
@@ -623,7 +614,7 @@ pub enum TypeDeclReferenceRoute {
     RouteLeafSpelling,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeDeclRoutedResolution {
     pub route: TypeDeclReferenceRoute,
     pub resolution: Rc<TypeDeclResolution>,
@@ -939,12 +930,13 @@ pub fn type_decl_routed_resolution_label(routed: Rc<TypeDeclRoutedResolution>) -
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitGraphInfo {
     pub type_summaries: Rc<TypeSummaryIndex>,
     pub type_decl_items: Rc<TypeDeclIndex>,
     pub data_variant_wire_spellings: Rc<HashMap<String, Rc<DataVariantWireSpelling>>>,
     pub fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    pub fn_map_key_bounds: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub recursive_type_set: Rc<BTreeSet<String>>,
     pub fielded_variants: Rc<BTreeSet<String>>,
     pub positional_payload_variants: Rc<BTreeSet<String>>,
@@ -956,16 +948,18 @@ pub struct EmitGraphInfo {
     pub read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     pub read_only_params: Rc<BTreeSet<String>>,
     pub clone_bounded_type_params: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    pub eq_hash_capable_type_names: Rc<BTreeSet<String>>,
+    pub map_key_required_type_names: Rc<BTreeSet<String>>,
     pub clone_impl_required_type_params: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     pub fn_generic_param_names: Rc<Vec<String>>,
     pub fn_type_env: Rc<TypeEnv>,
     pub fn_return_type: Option<Rc<Node>>,
     pub expected_type: Option<Rc<Node>>,
+    pub tco_cursor_param: String,
+    pub tco_cursor_tails: Rc<HashMap<String, i64>>,
     pub item_leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitInfoBuildState {
     pub type_summaries: Rc<TypeSummaryIndex>,
     pub type_decl_items: Rc<TypeDeclIndex>,
@@ -981,6 +975,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         type_decl_items: empty_type_decl_index(),
         data_variant_wire_spellings: v1_rt::rc_empty_map::<String, Rc<DataVariantWireSpelling>>(),
         fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        fn_map_key_bounds: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
         recursive_type_set: v1_rt::rc_empty_set::<String>(),
         fielded_variants: v1_rt::rc_empty_set::<String>(),
         positional_payload_variants: v1_rt::rc_empty_set::<String>(),
@@ -992,12 +987,14 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         read_only_params: v1_rt::rc_empty_set::<String>(),
         clone_bounded_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
-        eq_hash_capable_type_names: v1_rt::rc_empty_set::<String>(),
+        map_key_required_type_names: v1_rt::rc_empty_set::<String>(),
         clone_impl_required_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         fn_generic_param_names: Rc::new(vec![]),
         fn_type_env: crate::v1_compiler_infer_env::empty_type_env(),
         fn_return_type: std::option::Option::None,
         expected_type: std::option::Option::None,
+        tco_cursor_param: "".to_string(),
+        tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
     })
 }
 
@@ -1012,6 +1009,7 @@ pub fn emit_info_with_fn_type_context(
         type_decl_items: emit_info.type_decl_items.clone(),
         data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
         fn_decl_items: emit_info.fn_decl_items.clone(),
+        fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
         recursive_type_set: emit_info.recursive_type_set.clone(),
         fielded_variants: emit_info.fielded_variants.clone(),
         positional_payload_variants: emit_info.positional_payload_variants.clone(),
@@ -1023,12 +1021,14 @@ pub fn emit_info_with_fn_type_context(
         read_only_params_index: emit_info.read_only_params_index.clone(),
         read_only_params: emit_info.read_only_params.clone(),
         clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
-        eq_hash_capable_type_names: emit_info.eq_hash_capable_type_names.clone(),
+        map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
         clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
         fn_generic_param_names: generic_param_names.clone(),
         fn_type_env: env.clone(),
         fn_return_type: emit_info.fn_return_type.clone(),
         expected_type: emit_info.expected_type.clone(),
+        tco_cursor_param: emit_info.tco_cursor_param.clone(),
+        tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
     })
 }
 
@@ -1042,6 +1042,7 @@ pub fn emit_info_with_fn_return(
         type_decl_items: emit_info.type_decl_items.clone(),
         data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
         fn_decl_items: emit_info.fn_decl_items.clone(),
+        fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
         recursive_type_set: emit_info.recursive_type_set.clone(),
         fielded_variants: emit_info.fielded_variants.clone(),
         positional_payload_variants: emit_info.positional_payload_variants.clone(),
@@ -1053,12 +1054,14 @@ pub fn emit_info_with_fn_return(
         read_only_params_index: emit_info.read_only_params_index.clone(),
         read_only_params: emit_info.read_only_params.clone(),
         clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
-        eq_hash_capable_type_names: emit_info.eq_hash_capable_type_names.clone(),
+        map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
         clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
         fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
         fn_type_env: emit_info.fn_type_env.clone(),
         fn_return_type: fn_return_type.clone(),
         expected_type: fn_return_type.clone(),
+        tco_cursor_param: emit_info.tco_cursor_param.clone(),
+        tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
     })
 }
 
@@ -1072,6 +1075,7 @@ pub fn emit_info_with_expected_type(
         type_decl_items: emit_info.type_decl_items.clone(),
         data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
         fn_decl_items: emit_info.fn_decl_items.clone(),
+        fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
         recursive_type_set: emit_info.recursive_type_set.clone(),
         fielded_variants: emit_info.fielded_variants.clone(),
         positional_payload_variants: emit_info.positional_payload_variants.clone(),
@@ -1083,12 +1087,14 @@ pub fn emit_info_with_expected_type(
         read_only_params_index: emit_info.read_only_params_index.clone(),
         read_only_params: emit_info.read_only_params.clone(),
         clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
-        eq_hash_capable_type_names: emit_info.eq_hash_capable_type_names.clone(),
+        map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
         clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
         fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
         fn_type_env: emit_info.fn_type_env.clone(),
         fn_return_type: emit_info.fn_return_type.clone(),
         expected_type: expected_type.clone(),
+        tco_cursor_param: emit_info.tco_cursor_param.clone(),
+        tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
     })
 }
 
@@ -1120,7 +1126,7 @@ pub fn lookup_emit_type_summary(
     type_summary_decided(emit_info.type_summaries.clone(), type_name.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TypeSummaryQuestion {
     QuestionDecided { value: bool },
@@ -1775,7 +1781,7 @@ pub fn enum_variant_payload_has_fn(variants: Rc<Vec<Rc<Node>>>) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FnReachRound {
     pub reached: Rc<BTreeSet<String>>,
     pub grew: bool,
