@@ -1360,7 +1360,7 @@ fn fold_step_body_node(step: Node) -> Optional<Node> {
   match arrow_body_target_lookup(children: step.children) {
     Found { target: body } => optional_present(value: body)
     Ambiguous => optional_absent()
-    Absent => optional_absent()
+    NotFound => optional_absent()
   }
 }
 
