@@ -110,10 +110,7 @@ type CensusModuleObligations {
 
 type CensusRunCompletion
   = CensusRunComplete
-  | CensusRunIncomplete { reason: CensusRunIncompleteReason }
-
-type CensusRunIncompleteReason
-  = CensusRunTerminalUnobserved
+  | CensusRunIncomplete
 
 type CensusRunRecord {
   subject: String
@@ -523,7 +520,7 @@ fn census_occurrence_eq(left: Optional<OccurrenceId>, right: Optional<Occurrence
 fn census_diff_absent_member_findings(member: String, after: CensusRunRecord) -> List<CensusRunDiffFinding> {
   let removed = [CensusDiffMemberRemoved { member: member }]
   match after.completion {
-    CensusRunIncomplete { reason: _ } =>
+    CensusRunIncomplete =>
       list_append(removed, [CensusDiffIncompleteEvidence { member: optional_present(value: member) }])
     CensusRunComplete =>
       match after.scope {
@@ -750,10 +747,10 @@ fn census_run_diff(before: CensusRunRecord, after: CensusRunRecord) -> CensusRun
       }
     })
     let incomplete = match before.completion {
-      CensusRunIncomplete { reason: _ } => [CensusDiffIncompleteEvidence { member: optional_absent() }]
+      CensusRunIncomplete => [CensusDiffIncompleteEvidence { member: optional_absent() }]
       CensusRunComplete =>
         match after.completion {
-          CensusRunIncomplete { reason: _ } => [CensusDiffIncompleteEvidence { member: optional_absent() }]
+          CensusRunIncomplete => [CensusDiffIncompleteEvidence { member: optional_absent() }]
           CensusRunComplete => Empty
         }
     }

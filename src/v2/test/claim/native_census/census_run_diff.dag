@@ -32,7 +32,6 @@ import v2.compiler.census_run_record {
   CensusRunDiffSubjectRefused,
   CensusRunIncomplete,
   CensusRunRecord,
-  CensusRunTerminalUnobserved,
   census_obligation_rows_from_infer,
   census_obligation_rows_from_member_block,
   census_run_diff,
@@ -378,7 +377,7 @@ test fn census_diff_stopped_run_is_incomplete_evidence() -> Bool {
     population: ["a"],
     obligations: passed_module(module: "a"),
     revision: rev_a(),
-    completion: CensusRunIncomplete { reason: CensusRunTerminalUnobserved },
+    completion: CensusRunIncomplete,
     scope: NativeCensusScopeClosed { subject: census_diff_subject, members: 1 }
   )
   let findings = findings_of(result: census_run_diff(before: before, after: after))
