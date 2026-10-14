@@ -16,7 +16,9 @@ import v2.compiler.infer {
   inferred_facts_resolved_type
 }
 import std.algebra { Cons, Empty, list_snoc_item, fold_list, length }
-import v2.std.type_binder { edge_is_cast_target }
+import v2.std.type_binder { edge_is_cast_target, edge_is_type_params, type_param_kind_optional }
+import v2.std.inhabitance { type_variable_instance_lookup }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.arrow_signature {
   ApplicationBindingRefused,
   ApplicationBound,
@@ -1474,6 +1476,61 @@ fn eval_bind_arrow_params(
   )
 }
 
+// A KINDED TYPE PARAMETER IS A VALUE OF ITS FN'S BODY (A0-1), BOUND FROM THE INSTANCE INFER SOLVED FOR
+// THIS CALL. Each kinded binder of the callee is bound at the key a value parameter takes
+// (eval_formal_binding_key: declaring path + binder name, so a body let of the same spelling cannot
+// capture it) to the literal its instance denotes. The instance is read from the call node's own
+// InferredFacts.type_instances -- eval neither re-solves nor re-reads types. A binder the facts do not
+// hold, or whose instance is not a literal (a type argument where a value is read), refuses typed and
+// located at the application; nothing evaluates with a made-up value. An unkinded binder binds nothing.
+fn eval_bind_kinded_type_params(
+  arrow: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  node: Node,
+  callee_path: Optional<QualifiedName>
+) -> Outcome<EvaluationEnvironment> {
+  fold(arrow.children, init: Accepted { value: environment, diagnostics: None }, f: fn(acc, e) {
+    if edge_is_type_params(e: e) {
+      fold(e.target.children, init: acc, f: fn(inner, b) {
+        match node_atom_identity_optional(node: b.target) {
+          Absent => inner
+          Present { value: name } =>
+            match type_param_kind_optional(binder: b.target) {
+              Absent => inner
+              Present { value: _ } =>
+                bind_outcome(o: inner, f: fn(env) {
+                  bind_outcome(
+                    o: inferred_facts_for_eval(tree: tree, node: node),
+                    f: fn(facts) {
+                      match type_variable_instance_lookup(instances: facts.type_instances, binder: name) {
+                        Absent =>
+                          outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_argument_instance_absent, node: node))
+                        Present { value: instance } =>
+                          if v2_eval_is_literal_shaped_node(node: instance) {
+                            bind_outcome(
+                              o: interpretation.value.allocate_literal(instance, env),
+                              f: fn(value) {
+                                interpretation.bind.bind_value(eval_formal_binding_key(callee_path: callee_path, label: name), value, env)
+                              }
+                            )
+                          } else {
+                            outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_argument_read_as_value, node: node))
+                          }
+                      }
+                    }
+                  )
+                })
+            }
+        }
+      })
+    } else {
+      acc
+    }
+  })
+}
+
 fn eval_domain_has_named_binder(domain: Node) -> Bool {
   fold(domain.children, init: false, f: fn(acc, e) {
     match e.label {
@@ -1930,7 +1987,17 @@ fn eval_transform_node(
                       node: node,
                       callee_path: declaration_reference_path_optional(node: callee_edge.target)
                     ),
-                    f: fn(call_environment) {
+                    f: fn(params_environment) {
+                     bind_outcome(
+                      o: eval_bind_kinded_type_params(
+                        arrow: callee_target,
+                        tree: tree,
+                        interpretation: interpretation,
+                        environment: params_environment,
+                        node: node,
+                        callee_path: declaration_reference_path_optional(node: callee_edge.target)
+                      ),
+                      f: fn(call_environment) {
                       match body_form {
                         DirectAtomBody =>
                           eval_type_node_atom(
@@ -2002,6 +2069,8 @@ fn eval_transform_node(
                             effect_io: effect_io
                           )
                       }
+                      }
+                     )
                     }
                   )
                 } else {

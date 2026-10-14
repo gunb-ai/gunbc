@@ -1,0 +1,75 @@
+module v2.test.claim.callexec.kinded_type_param_value_eval
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.test.claim.callexec.declaration_reference_eval {
+  cref_assemble,
+  cref_eval_of_call_to,
+  cref_inferred_of,
+  cref_the_call_to,
+  cref_value_int_optional
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import std.optional { Absent, Optional, Present }
+import std.algebra { Empty }
+import v2.std.runtime { RuntimeValue }
+import v2.std.integer { Int }
+
+// A KINDED TYPE PARAMETER IS A VALUE OF ITS FN'S BODY, EVALUATED (A0-1a). Real path: assemble, resolve,
+// infer, eval of one call. The instance eval binds is the one infer solved for that call
+// (InferredFacts.type_instances), keyed by the binder's declaring path, so each row below discriminates
+// a different way the binding could be wrong: a made-up default, a type argument read as a value, a body
+// let capturing the binder.
+fn kpe_prelude() -> String {
+  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\ndata b8: Box<8> = Box { v: 0 }\n\ndata bp: Box<Pointer> = Box { v: 0 }\n\n"
+}
+
+fn kpe_eval(body: String, name: Symbol) -> Optional<Outcome<RuntimeValue>> {
+  cref_eval_of_call_to(o: cref_assemble(src: concat(kpe_prelude(), body)), name: name)
+}
+
+fn kpe_int_of(r: Optional<Outcome<RuntimeValue>>) -> Optional<Int> {
+  match r {
+    Present { value: Accepted { value: v, diagnostics: _ } } => cref_value_int_optional(v: v)
+    _ => Absent
+  }
+}
+
+fn kpe_refused_with(r: Optional<Outcome<RuntimeValue>>, reason: Symbol) -> Bool {
+  match r {
+    Present { value: Rejected { diagnostics: d } } => diagnostics_fatal_reason(d: d) == reason
+    _ => false
+  }
+}
+
+// POSITIVE: the value the body reads is the literal the application's type argument carried.
+test fn kpe_kinded_parameter_value_is_the_applied_literal() -> Bool {
+  kpe_int_of(r: kpe_eval(body: "fn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  width_of(x: b8)\n}\n", name: ^width_of)) == Present { value: 8 }
+}
+
+// RED: a type argument where a value is read refuses at the application, typed and located; eval never
+// binds a made-up value.
+test fn kpe_type_argument_read_as_a_value_refuses_at_the_application() -> Bool {
+  kpe_refused_with(r: kpe_eval(body: "fn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  width_of(x: bp)\n}\n", name: ^width_of), reason: ^eval_rejected_type_argument_read_as_value)
+}
+
+// CONTROL: a body let of the binder's spelling is its own binding; the kinded N is not captured by it.
+test fn kpe_body_let_of_the_same_spelling_is_not_the_kinded_parameter() -> Bool {
+  kpe_int_of(r: kpe_eval(body: "fn shadowed<bits: Resolution>(x: Box<bits>) -> Int {\n  let bits = 5\n  bits\n}\n\nfn consumer() -> Int {\n  shadowed(x: b8)\n}\n", name: ^shadowed)) == Present { value: 5 }
+}
+
+// CONTROL: a non-generic call carries the EMPTY instance list (never a missing read).
+test fn kpe_non_generic_call_carries_no_instances() -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: "module p\n\nfn callee(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer() -> Int {\n  callee(only_arg: 3)\n}\n")) {
+    Absent => false
+    Present { value: inferred } =>
+      match cref_the_call_to(root: inferred.root, name: ^callee) {
+        Absent => false
+        Present { value: call } =>
+          match inferred.facts.lookup(call) {
+            Absent => false
+            Present { value: facts } => facts.type_instances == Empty
+          }
+      }
+  }
+}

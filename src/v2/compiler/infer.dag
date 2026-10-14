@@ -587,7 +587,8 @@ fn inferred_facts_construction(
       value: InferredFacts {
         grounding: DerivedGrounding { grounding: grounding },
         descent: descent,
-        denotation: optional_absent()
+        denotation: optional_absent(),
+        type_instances: []
       },
       diagnostics: None
     }
@@ -613,7 +614,8 @@ fn inferred_facts_not_derived(
     value: InferredFacts {
       grounding: GroundingNotDerived { node: node },
       descent: descent,
-      denotation: optional_absent()
+      denotation: optional_absent(),
+      type_instances: []
     },
     diagnostics: Some {
       diagnostics: diagnostics_singleton(
@@ -1755,6 +1757,23 @@ fn infer_reference_value_type(callable: Node) -> Node {
 //
 // ONLY A GROUNDED REFERENCE CARRIES ONE. An underived arm keeps its Absent denotation, so a consumer
 // cannot reach an executable body for a reference whose contract was refused.
+// The facts of a generic application keep the instantiation that typed them (InferredFacts.type_instances).
+fn infer_facts_instantiated(o: Outcome<InferredFacts>, instances: List<TypeVariableInstance>) -> Outcome<InferredFacts> {
+  bind_outcome(
+    o: o,
+    f: fn(facts) {
+      outcome_accepted(
+        value: InferredFacts {
+          grounding: facts.grounding,
+          descent: facts.descent,
+          denotation: facts.denotation,
+          type_instances: instances
+        }
+      )
+    }
+  )
+}
+
 fn infer_facts_denoting(o: Outcome<InferredFacts>, declaration: Node) -> Outcome<InferredFacts> {
   bind_outcome(
     o: o,
@@ -1763,7 +1782,8 @@ fn infer_facts_denoting(o: Outcome<InferredFacts>, declaration: Node) -> Outcome
         value: InferredFacts {
           grounding: facts.grounding,
           descent: facts.descent,
-          denotation: optional_present(value: declaration)
+          denotation: optional_present(value: declaration),
+          type_instances: facts.type_instances
         }
       )
     }
@@ -5806,10 +5826,13 @@ fn infer_transform_application_optional(
                   value: match infer_descent_witness_for_node(n: node) {
                     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
                     Holds { value: descent_proof } =>
-                      inferred_facts_from_derived_type(
-                        node: node,
-                        derived_type: return_type,
-                        descent: Holds { value: descent_proof }
+                      infer_facts_instantiated(
+                        o: inferred_facts_from_derived_type(
+                          node: node,
+                          derived_type: return_type,
+                          descent: Holds { value: descent_proof }
+                        ),
+                        instances: instances
                       )
                   }
                 )
@@ -7076,7 +7099,8 @@ fn infer_entry_instantiate(entry: InferredFactsEntry, instances: List<TypeVariab
                   facts: InferredFacts {
                     grounding: next.grounding,
                     descent: next.descent,
-                    denotation: entry.facts.denotation
+                    denotation: entry.facts.denotation,
+                    type_instances: entry.facts.type_instances
                   }
                 },
                 diagnostics: d

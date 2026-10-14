@@ -10,6 +10,7 @@ import v2.std.constraints { CanonicalGrounding }
 import v2.std.node { Node }
 import std.optional { Optional, optional_absent }
 import v2.std.witness { Witness }
+import v2.std.inhabitance { TypeVariableInstance }
 
 // InferredFacts/InferredTree/InferredFactsEntry are the SHAPE infer's pass
 // produces and consumers hold -- not the pass itself. They lived inside
@@ -48,10 +49,17 @@ type NodeGrounding
 //
 // Absent is the ordinary case: only a node that denotes a declaration carries one, and a node that
 // denotes nothing is not thereby defective.
+//
+// TYPE_INSTANCES IS THE INSTANTIATION INFER SOLVED FOR THIS CALL, kept so eval consumes it rather than
+// re-solving (A0-1): the same TypeVariableInstance list infer_type_instantiated substituted into the
+// result type, binder by name. A node that is not a generic application carries the EMPTY list --
+// never a missing read; eval binds each kinded binder of the callee from it and refuses a binder it
+// does not hold or whose instance is not a literal.
 type InferredFacts {
   grounding: NodeGrounding
   descent: Witness<TerminationProof>
   denotation: Optional<Node>
+  type_instances: List<TypeVariableInstance>
 }
 
 type InferredTree {
