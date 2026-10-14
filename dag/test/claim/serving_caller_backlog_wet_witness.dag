@@ -39,10 +39,10 @@ import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageL
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import gunbc.fabric.fabric_event_log { SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused, fabric_seat_acquire, fabric_seat_release, seat_release_wire }
 import gunbc.harness.harness_seat {
-  harness_settle_caller_turn, PlacementRound, HarnessSeatBinding, HarnessSeatBound, HarnessSeatRefused, HarnessSeatReference, HarnessCallerHold, HarnessCallerTurn, harness_complete_with_grant, HarnessCallerTurnCompleted, HarnessCallerCompletionRefused, harness_now_epoch, harness_unplaced_reservation, harness_seat_pool_root, harness_claim_seat, HarnessSeatClaimed, HarnessSeatClaimRefused,
+  harness_settle_caller_turn, PlacementRound, HarnessSeatBinding, HarnessSeatBound, HarnessSeatRefused, HarnessSeatReference, HarnessCallerHold, HarnessCallerTurn, harness_complete_with_grant, HarnessCallerTurnCompleted, HarnessCallerCompletionRefused, harness_now_epoch, harness_seat_pool_root, harness_claim_seat, HarnessSeatClaimed, HarnessSeatClaimRefused,
 }
 import gunbc.serving.caller_backlog {
-  SeatRef, caller_unplaced_partition, DurableCancelled, rebind_reservation_durable, DurableReservationRebound, DurableRebindPredecessorMismatch, DurableRebindRefusedTerminal,
+  SeatRef, DurableCancelled,
   DurableRebindUnknownWork, DurableRebindStoreRefused, DurableRebindKeyNotSlotAddressable,
 }
 import std.algebra { length }
@@ -71,7 +71,7 @@ test fn persist_then_resume_reads_the_slot_not_memory_by_real_execution() -> Boo
     root: persist_root,
     snapshot: empty_caller_backlog,
     work: work,
-    reservation: reservation_written,
+    seat: seat_of(reservation: reservation_written),
     generation: 2,
   )
   let persist_record = match persisted {
@@ -87,7 +87,7 @@ test fn persist_then_resume_reads_the_slot_not_memory_by_real_execution() -> Boo
   }
   let disk_record = waiting_record(
     work: work,
-    reservation: "grant-work-b" as ReservationRef,
+    seat: seat_of(reservation: "grant-work-b" as ReservationRef),
     generation: 9,
   )
   let disk_payload = match encode_waiting(record: disk_record) {
@@ -110,9 +110,9 @@ test fn persist_then_resume_reads_the_slot_not_memory_by_real_execution() -> Boo
         Absent => false
         Present { value: expected } =>
           (r.work as String) == (expected.work as String)
-            && (r.reservation as String) == (expected.reservation as String)
+            && res_text(seat: r.seat) == res_text(seat: expected.seat)
             && r.generation == expected.generation
-            && (r.reservation as String) != (reservation_written as String)
+            && res_text(seat: r.seat) != (reservation_written as String)
             && r.generation != 2
       }
     DurableResumedTerminal { phase: _ } => false
@@ -126,7 +126,7 @@ test fn persist_then_resume_reads_the_slot_not_memory_by_real_execution() -> Boo
     Present { value: in_memory } =>
       match resumed {
         DurableResumedWaiting { record: r } =>
-          (r.reservation as String) != (in_memory.reservation as String)
+          res_text(seat: r.seat) != res_text(seat: in_memory.seat)
             && r.generation != in_memory.generation
         DurableResumedTerminal { phase: _ } => false
         DurableResumeUnknownWork => false
@@ -154,14 +154,14 @@ test fn persist_cancel_and_commit_resume_as_terminal_by_real_execution() -> Bool
     root: root,
     snapshot: empty_caller_backlog,
     work: cancel_work,
-    reservation: reservation,
+    seat: seat_of(reservation: reservation),
     generation: 2,
   )
   let commit_persist = persist_waiting_durable(
     root: root,
     snapshot: empty_caller_backlog,
     work: commit_work,
-    reservation: reservation,
+    seat: seat_of(reservation: reservation),
     generation: 2,
   )
   let cancel_snap = match cancel_persist {
@@ -285,7 +285,7 @@ test fn persist_recovery_history_survives_resume_by_real_execution() -> Bool {
     root: root,
     snapshot: empty_caller_backlog,
     work: work,
-    reservation: reservation,
+    seat: seat_of(reservation: reservation),
     generation: 2,
   )
   let snap0 = match persisted {
@@ -414,7 +414,7 @@ test fn persist_idempotent_observes_the_slot_by_real_execution() -> Bool {
     root: root,
     snapshot: empty_caller_backlog,
     work: work,
-    reservation: reservation,
+    seat: seat_of(reservation: reservation),
     generation: 2,
   )
   let snap = match first {
@@ -431,7 +431,7 @@ test fn persist_idempotent_observes_the_slot_by_real_execution() -> Bool {
   let confirmed = match snap {
     Absent => false
     Present { value: s } =>
-      match persist_waiting_durable(root: root, snapshot: s, work: work, reservation: reservation, generation: 2) {
+      match persist_waiting_durable(root: root, snapshot: s, work: work, seat: seat_of(reservation: reservation), generation: 2) {
         DurablePersistIdempotent { record: r } => (r.work as String) == (work as String)
         DurableWaitingPersisted { record: _ } => false
         DurablePhasePersisted { record: _ } => false
@@ -448,7 +448,7 @@ test fn persist_idempotent_observes_the_slot_by_real_execution() -> Bool {
   let rewritten = match snap {
     Absent => false
     Present { value: s } =>
-      match persist_waiting_durable(root: root, snapshot: s, work: work, reservation: reservation, generation: 2) {
+      match persist_waiting_durable(root: root, snapshot: s, work: work, seat: seat_of(reservation: reservation), generation: 2) {
         DurableWaitingPersisted { record: r } => (r.work as String) == (work as String)
         DurablePersistIdempotent { record: _ } => false
         DurablePhasePersisted { record: _ } => false
@@ -491,7 +491,7 @@ test fn stale_waiting_snapshot_cannot_commit_over_cancel_by_real_execution() -> 
     root: root,
     snapshot: empty_caller_backlog,
     work: work,
-    reservation: reservation,
+    seat: seat_of(reservation: reservation),
     generation: 2,
   )
   let waiting = match first {
@@ -576,7 +576,7 @@ test fn stale_recovery_cannot_truncate_or_revive_terminal_by_real_execution() ->
     root: root,
     snapshot: empty_caller_backlog,
     work: hist_work,
-    reservation: reservation,
+    seat: seat_of(reservation: reservation),
     generation: 2,
   )
   let hist_waiting = match hist_persist {
@@ -644,7 +644,7 @@ test fn stale_recovery_cannot_truncate_or_revive_terminal_by_real_execution() ->
     root: root,
     snapshot: empty_caller_backlog,
     work: term_work,
-    reservation: reservation,
+    seat: seat_of(reservation: reservation),
     generation: 2,
   )
   let term_waiting = match term_persist {
@@ -745,7 +745,7 @@ test fn slash_bearing_dispatch_node_derives_a_persistable_resumable_work_id_by_r
           root: root,
           snapshot: empty_caller_backlog,
           work: work,
-          reservation: "grant-slash" as ReservationRef,
+          seat: seat_of(reservation: "grant-slash" as ReservationRef),
           generation: 1,
         ) {
           DurableWaitingPersisted { record: _ } => true
@@ -769,27 +769,6 @@ test fn slash_bearing_dispatch_node_derives_a_persistable_resumable_work_id_by_r
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
   ok && removed.success
-}
-
-// A REAL DURABLE-CAS REBIND RACE (review 5516084074): two retries both read the placeholder reservation and
-// both try to take the record. The store's compare-and-set on the slot generation admits one; the other
-// finds the first one's reservation and is refused with it. If the rebind did not name its predecessor
-// (or did not go through the CAS), both would be told they were rebound and both would run.
-test fn two_retries_rebinding_one_waiting_record_admit_exactly_one_by_real_execution() -> Bool {
-  let root_path = fresh_root()
-  let root = root_path as NonEmptyStr
-  let work = "logical-work-race" as LogicalWorkId
-  let placeholder = harness_unplaced_reservation(work: work)
-  let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, reservation: placeholder, generation: 1)
-  let first = rebind_reservation_durable(root: root, work: work, expected: SeatRef { partition: caller_unplaced_partition, reservation: placeholder }, next: SeatRef { partition: "card-a" as PartitionId, reservation: "seat-retry-a" as ReservationRef })
-  let second = rebind_reservation_durable(root: root, work: work, expected: SeatRef { partition: caller_unplaced_partition, reservation: placeholder }, next: SeatRef { partition: "card-a" as PartitionId, reservation: "seat-retry-b" as ReservationRef })
-  let after = resume_waiting_durable(root: root, work: work)
-  let cleaned = shell.Remove.RecursiveForce(path: root_path)
-  (match persisted { DurableWaitingPersisted { record: _ } => true  other => false })
-    && (match first { DurableReservationRebound { record: _ } => true  other => false })
-    && (match second { DurableRebindPredecessorMismatch { held: h } => (h.reservation as String) == "seat-retry-a" && (h.partition as String) == "card-a"  other => false })
-    && (match after { DurableResumedWaiting { record: r } => (r.reservation as String) == "seat-retry-a"  other => false })
-    && cleaned.success
 }
 
 fn claim_pool() -> Pool<Count, One> {
@@ -834,7 +813,7 @@ test fn only_one_of_two_retries_claims_the_seat_by_real_execution() -> Bool {
       let store = FabricStorageLocalFiles { root: fabric }
       let partition = "claim-partition" as PartitionId
       let hold = HarnessCallerHold { work: work, root: root }
-      let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, reservation: harness_unplaced_reservation(work: work), generation: 1)
+      let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, seat: none, generation: 1)
       match claim_acquire(store: store, partition: partition, reference: "seat-a", at: 100) {
         Absent => false
         Present { value: ga } => match claim_acquire(store: store, partition: partition, reference: "seat-b", at: 101) {
@@ -874,7 +853,7 @@ fn completion_fixture(ordinal: Nat, acquired_at_offset: Int, release_before: Boo
           let store = FabricStorageLocalFiles { root: fabric }
           let partition = "claim-partition" as PartitionId
           let hold = HarnessCallerHold { work: work, root: state_root }
-          let persisted = persist_waiting_durable(root: state_root, snapshot: empty_caller_backlog, work: work, reservation: harness_unplaced_reservation(work: work), generation: 1)
+          let persisted = persist_waiting_durable(root: state_root, snapshot: empty_caller_backlog, work: work, seat: none, generation: 1)
           match claim_acquire(store: store, partition: partition, reference: "seat-completion", at: now + acquired_at_offset) {
             Absent => "setup: acquire"
             Present { value: g } => match harness_claim_seat(hold: hold, grant: g, store: store, partition: partition) {
@@ -933,7 +912,7 @@ fn failover_fixture(scenario: Int) -> String {
       let card_a = "card-a" as PartitionId
       let card_b = "card-b" as PartitionId
       let hold = HarnessCallerHold { work: work, root: root }
-      let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, reservation: harness_unplaced_reservation(work: work), generation: 1)
+      let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, seat: none, generation: 1)
       match claim_acquire(store: store, partition: card_a, reference: "seat-a", at: 100) {
         Absent => "setup: acquire a"
         Present { value: ga } => match harness_claim_seat(hold: hold, grant: ga, store: store, partition: card_a) {
@@ -950,7 +929,7 @@ fn failover_fixture(scenario: Int) -> String {
                   let first = harness_claim_seat(hold: hold, grant: gb1, store: store, partition: card_b)
                   let second = harness_claim_seat(hold: hold, grant: gb2, store: store, partition: card_b)
                   let after = resume_waiting_durable(root: root, work: work)
-                  if claim_taken(c: first) && claim_refused(c: second) && (match after { DurableResumedWaiting { record: r } => (r.partition as String) == "card-b" && (r.reservation as String) == "seat-b1"  other => false }) { "exactly one retry claimed b" } else { "wrong claim outcome" }
+                  if claim_taken(c: first) && claim_refused(c: second) && (match after { DurableResumedWaiting { record: r } => part_text(seat: r.seat) == "card-b" && res_text(seat: r.seat) == "seat-b1"  other => false }) { "exactly one retry claimed b" } else { "wrong claim outcome" }
                 } else {
                   let cancelled = cancel_work_durable(root: root, snapshot: empty_caller_backlog, work: work)
                   let released = fabric_seat_release(store: store, partition: card_a, root: claim_pool(), reference: "seat-a" as NonEmptyStr, reason: "done" as NonEmptyStr, at: 103, attempts: 3, budget: 4096)
@@ -1010,7 +989,7 @@ test fn only_one_of_two_acquired_seats_for_one_hold_leaves_settle_bound_by_real_
       let store = FabricStorageLocalFiles { root: fabric }
       let partition = "claim-partition" as PartitionId
       let hold = HarnessCallerHold { work: work, root: root }
-      let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, reservation: harness_unplaced_reservation(work: work), generation: 1)
+      let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, seat: none, generation: 1)
       let placed = PlacementRound { done: none, excluded: [] as List<String>, notes: [] as List<String>, retryable: false, ready: 2, recovery: [] as List<RecoveryEvent> }
       match claim_acquire(store: store, partition: partition, reference: "seat-s1", at: 100) {
         Absent => false
@@ -1029,4 +1008,14 @@ test fn only_one_of_two_acquired_seats_for_one_hold_leaves_settle_bound_by_real_
   } }
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   ok && cleaned.success
+}
+
+fn seat_of(reservation: ReservationRef) -> SeatRef? { Present { value: SeatRef { partition: "part-w" as PartitionId, reservation: reservation } } }
+
+fn res_text(seat: SeatRef?) -> String {
+  match seat { Absent => "<none>"  Present { value: held } => held.reservation as String }
+}
+
+fn part_text(seat: SeatRef?) -> String {
+  match seat { Absent => "<none>"  Present { value: held } => held.partition as String }
 }

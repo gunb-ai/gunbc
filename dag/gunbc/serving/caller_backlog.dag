@@ -97,12 +97,21 @@ type SeatRef {
   reservation: ReservationRef
 }
 
-data caller_unplaced_partition: PartitionId = "unplaced" as PartitionId
+// A work with no seat yet holds NO seat: the record's `seat` is absent, never a placeholder reservation, so
+// "unplaced" is a presence fact the type carries (§3b cardinality/absence) rather than a string convention.
+fn seat_refs_agree(held: SeatRef?, expected: SeatRef?) -> Bool {
+  match held {
+    Absent => match expected { Absent => true  Present { value: _ } => false }
+    Present { value: h } => match expected {
+      Absent => false
+      Present { value: e } => (h.reservation as String) == (e.reservation as String) && (h.partition as String) == (e.partition as String)
+    }
+  }
+}
 
 type CallerWorkRecord {
   work: LogicalWorkId
-  reservation: ReservationRef
-  partition: PartitionId
+  seat: SeatRef?
   generation: Int
   phase: CallerWorkPhase
   recovery: List<RecoveryEvent>
@@ -150,11 +159,10 @@ fn replace_record(snapshot: CallerBacklogSnapshot, next: CallerWorkRecord) -> Ca
   }
 }
 
-fn waiting_record(work: LogicalWorkId, reservation: ReservationRef, generation: Int) -> CallerWorkRecord {
+fn waiting_record(work: LogicalWorkId, seat: SeatRef?, generation: Int) -> CallerWorkRecord {
   CallerWorkRecord {
     work: work,
-    reservation: reservation,
-    partition: caller_unplaced_partition,
+    seat: seat,
     generation: generation,
     phase: WorkWaiting,
     recovery: [] as List<RecoveryEvent>,
@@ -173,11 +181,11 @@ type PersistStanding
 fn persist_waiting(
   snapshot: CallerBacklogSnapshot,
   work: LogicalWorkId,
-  reservation: ReservationRef,
+  seat: SeatRef?,
   generation: Int,
 ) -> PersistStanding {
   match lookup_record(snapshot: snapshot, work: work) {
-    CallerRecordAbsent => WaitingPersisted { record: waiting_record(work: work, reservation: reservation, generation: generation) }
+    CallerRecordAbsent => WaitingPersisted { record: waiting_record(work: work, seat: seat, generation: generation) }
     CallerRecordDuplicated => PersistRefusedDuplicate
     CallerRecordFound { record: head } =>
       match head.phase {
@@ -285,15 +293,25 @@ fn encode_recovery_event(event: RecoveryEvent) -> JsonValue {
   ])
 }
 
+// A held seat is written as its two members; an absent seat writes neither, so absence stays absence on the wire.
+fn encode_seat_members(seat: SeatRef?) -> List<JsonKeyValue> {
+  match seat {
+    Absent => [] as List<JsonKeyValue>
+    Present { value: held } => [
+      json_kv(key: "reservation", value: json_string(s: held.reservation as String)),
+      json_kv(key: "partition", value: json_string(s: held.partition as String)),
+    ]
+  }
+}
+
 fn encode_waiting_value(record: CallerWorkRecord) -> JsonValue {
-  json_object(members: [
+  json_object(members: concat(concat([
     json_kv(key: "work", value: json_string(s: record.work as String)),
-    json_kv(key: "reservation", value: json_string(s: record.reservation as String)),
-    json_kv(key: "partition", value: json_string(s: record.partition as String)),
+  ], encode_seat_members(seat: record.seat)), [
     json_kv(key: "generation", value: json_int(n: record.generation)),
     json_kv(key: "phase", value: encode_phase(phase: record.phase)),
     json_kv(key: "recovery", value: json_array(elements: fold(record.recovery, init: [] as List<JsonValue>, f: (acc, e) => concat(acc, [encode_recovery_event(event: e)])))),
-  ])
+  ]))
 }
 
 type WaitingWire
@@ -302,11 +320,14 @@ type WaitingWire
 
 fn encode_waiting(record: CallerWorkRecord) -> WaitingWire {
   let work_s = record.work as String
-  let reservation_s = record.reservation as String
+  let seat_empty = match record.seat {
+    Absent => false
+    Present { value: held } => (held.reservation as String) == "" || (held.partition as String) == ""
+  }
   if work_s == "" {
     WaitingWireUnencodable { reason: "logical work id is empty" as NonEmptyStr }
-  } else if reservation_s == "" {
-    WaitingWireUnencodable { reason: "reservation ref is empty" as NonEmptyStr }
+  } else if seat_empty {
+    WaitingWireUnencodable { reason: "seat reservation or partition is empty" as NonEmptyStr }
   } else {
     let text = serialize_json(v: encode_waiting_value(record: record))
     if text == "" {
@@ -443,17 +464,42 @@ fn decode_recovery_events(obj: JsonValue) -> List<RecoveryEvent>? {
   }
 }
 
+type SeatDecoded
+  = SeatDecodedAbsent
+  | SeatDecodedPresent { seat: SeatRef }
+  | SeatDecodedMalformed
+
+fn decode_seat(obj: JsonValue) -> SeatDecoded {
+  match json_field_string(obj: obj, key: "reservation") {
+    FieldAbsent => match json_field_string(obj: obj, key: "partition") {
+      FieldAbsent => SeatDecodedAbsent
+      FieldRead { value: _ } => SeatDecodedMalformed
+      FieldMalformed { cause: _ } => SeatDecodedMalformed
+    }
+    FieldMalformed { cause: _ } => SeatDecodedMalformed
+    FieldRead { value: r } => match required_json_string(obj: obj, key: "partition") {
+      Absent => SeatDecodedMalformed
+      Present { value: part } => if r == "" { SeatDecodedMalformed } else {
+        SeatDecodedPresent { seat: SeatRef { partition: part as PartitionId, reservation: r as ReservationRef } }
+      }
+    }
+  }
+}
+
 fn decode_waiting_value(obj: JsonValue) -> CallerWorkRecord? {
   match required_json_string(obj: obj, key: "work") {
     Absent => none
     Present { value: work_s } =>
-      match required_json_string(obj: obj, key: "reservation") {
-        Absent => none
-        Present { value: reservation_s } =>
-         match required_json_string(obj: obj, key: "partition") {
-          Absent => none
-          Present { value: partition_s } =>
-          match required_json_int(obj: obj, key: "generation") {
+      match decode_seat(obj: obj) {
+        SeatDecodedMalformed => none
+        SeatDecodedAbsent => decode_waiting_rest(obj: obj, work_s: work_s, seat: none)
+        SeatDecodedPresent { seat: held } => decode_waiting_rest(obj: obj, work_s: work_s, seat: Present { value: held })
+      }
+  }
+}
+
+fn decode_waiting_rest(obj: JsonValue, work_s: String, seat: SeatRef?) -> CallerWorkRecord? {
+  match required_json_int(obj: obj, key: "generation") {
             Absent => none
             Present { value: generation } =>
               match required_json_object(obj: obj, key: "phase") {
@@ -468,8 +514,7 @@ fn decode_waiting_value(obj: JsonValue) -> CallerWorkRecord? {
                           Present {
                             value: CallerWorkRecord {
                               work: work_s as LogicalWorkId,
-                              reservation: reservation_s as ReservationRef,
-                              partition: partition_s as PartitionId,
+                              seat: seat,
                               generation: generation,
                               phase: phase,
                               recovery: recovery,
@@ -478,9 +523,6 @@ fn decode_waiting_value(obj: JsonValue) -> CallerWorkRecord? {
                       }
                   }
               }
-          }
-         }
-      }
   }
 }
 
@@ -656,10 +698,10 @@ fn persist_waiting_durable(
   root: NonEmptyStr,
   snapshot: CallerBacklogSnapshot,
   work: LogicalWorkId,
-  reservation: ReservationRef,
+  seat: SeatRef?,
   generation: Int,
 ) -> DurablePersistStanding {
-  match persist_waiting(snapshot: snapshot, work: work, reservation: reservation, generation: generation) {
+  match persist_waiting(snapshot: snapshot, work: work, seat: seat, generation: generation) {
     WaitingPersisted { record: r } => persist_waiting_on_store(root: root, record: r)
     PersistIdempotent { record: r } => persist_waiting_idempotent_on_store(root: root, record: r)
     PersistRefusedTerminal { phase: p } => DurablePersistRefusedTerminal { phase: p }
@@ -836,14 +878,16 @@ fn commit_attempt(
     CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting =>
-          if !attempt_fence_admits(fence: fence, reservation: head.reservation) {
+          if !(match head.seat {
+            Absent => false
+            Present { value: held } => attempt_fence_admits(fence: fence, reservation: held.reservation)
+          }) {
             AttemptFenceRefused
           } else {
             AttemptCommitted {
               record: CallerWorkRecord {
                 work: head.work,
-                reservation: head.reservation,
-                partition: head.partition,
+                seat: head.seat,
                 generation: attempt_fence_generation(fence: fence),
                 phase: WorkCompleted,
                 recovery: head.recovery,
@@ -883,8 +927,7 @@ fn cancel_work(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> CancelSt
           CancelledWaiting {
             record: CallerWorkRecord {
               work: head.work,
-              reservation: head.reservation,
-              partition: head.partition,
+              seat: head.seat,
               generation: head.generation,
               phase: WorkCancelled,
               recovery: head.recovery,
@@ -963,7 +1006,7 @@ fn cancel_work_durable(
 type RebindStanding
   = ReservationRebound { record: CallerWorkRecord }
   | RebindRefusedTerminal { phase: CallerWorkPhase }
-  | RebindPredecessorMismatch { held: SeatRef }
+  | RebindPredecessorMismatch { held: SeatRef? }
   | RebindUnknownWork
   | RebindDuplicate
 
@@ -972,26 +1015,25 @@ type RebindStanding
 // the same predecessor: the second meets the first's reservation and refuses. Whether a bound
 // predecessor's grant is retired is the seat authority's fact, read by the caller before it names that
 // predecessor as expected; the record only guarantees that the claim is taken once per predecessor.
-fn rebind_reservation(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, expected: SeatRef, next: SeatRef) -> RebindStanding {
+fn rebind_reservation(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, expected: SeatRef?, next: SeatRef) -> RebindStanding {
   match lookup_record(snapshot: snapshot, work: work) {
     CallerRecordAbsent => RebindUnknownWork
     CallerRecordDuplicated => RebindDuplicate
     CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting =>
-          if (head.reservation as String) == (expected.reservation as String) && (head.partition as String) == (expected.partition as String) {
+          if seat_refs_agree(held: head.seat, expected: expected) {
             ReservationRebound {
               record: CallerWorkRecord {
                 work: head.work,
-                reservation: next.reservation,
-                partition: next.partition,
+                seat: Present { value: next },
                 generation: head.generation,
                 phase: WorkWaiting,
                 recovery: head.recovery,
               },
             }
           } else {
-            RebindPredecessorMismatch { held: SeatRef { partition: head.partition, reservation: head.reservation } }
+            RebindPredecessorMismatch { held: head.seat }
           }
         WorkCompleted => RebindRefusedTerminal { phase: head.phase }
         WorkCancelled => RebindRefusedTerminal { phase: head.phase }
@@ -1003,7 +1045,7 @@ fn rebind_reservation(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, expe
 type DurableRebindStanding
   = DurableReservationRebound { record: CallerWorkRecord }
   | DurableRebindRefusedTerminal { phase: CallerWorkPhase }
-  | DurableRebindPredecessorMismatch { held: SeatRef }
+  | DurableRebindPredecessorMismatch { held: SeatRef? }
   | DurableRebindUnknownWork
   | DurableRebindStoreRefused { detail: NonEmptyStr }
   | DurableRebindKeyNotSlotAddressable { work: LogicalWorkId }
@@ -1011,9 +1053,13 @@ type DurableRebindStanding
 fn rebind_reservation_durable(
   root: NonEmptyStr,
   work: LogicalWorkId,
-  expected: SeatRef,
+  expected: SeatRef?,
   next: SeatRef,
-) -> DurableRebindStanding {
+) -> DurableRebindStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.harness.harness_seat", decl_name: "harness_claim_seat"),
+  ]
+{
   match observe_durable_record(root: root, work: work) {
     DurableSlotAbsent => DurableRebindUnknownWork
     DurableSlotUnreadable { detail: d } => DurableRebindStoreRefused { detail: d }
@@ -1156,8 +1202,7 @@ fn note_recovery(
           }
           let next = CallerWorkRecord {
             work: head.work,
-            reservation: head.reservation,
-            partition: head.partition,
+            seat: head.seat,
             generation: head.generation,
             phase: next_phase,
             recovery: next_events,
@@ -1241,6 +1286,10 @@ data idempotent_retry_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.s
 data no_expiry_on_long_wait_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "apply_ready_supply_law")
 data durable_cancellation_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "cancel_work_durable")
 data no_double_execution_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.serving.caller_backlog", decl_name: "commit_attempt_durable")
+// No double execution is the COMPOSITION of two folds, neither of which alone refuses a second attempt: the claim
+// (rebind_reservation_durable, sealed to harness_claim_seat, which refuses while the predecessor seat is not retired
+// in the seat authority) admits one attempt, and commit_attempt_durable admits one completion under the fenced grant.
+data no_double_execution_claim_basis_ref: DeclarationRef = decl_ref(module_path: "gunbc.harness.harness_seat", decl_name: "harness_claim_seat")
 
 data persist_before_offer_basis: NonEmptyStr = declaration_ref_display_key(ref: persist_before_offer_basis_ref) as NonEmptyStr
 data retriable_refusal_basis: NonEmptyStr = declaration_ref_display_key(ref: retriable_refusal_basis_ref) as NonEmptyStr
@@ -1248,7 +1297,7 @@ data stable_turn_identity_basis: NonEmptyStr = declaration_ref_display_key(ref: 
 data idempotent_retry_basis: NonEmptyStr = declaration_ref_display_key(ref: idempotent_retry_basis_ref) as NonEmptyStr
 data no_expiry_on_long_wait_basis: NonEmptyStr = declaration_ref_display_key(ref: no_expiry_on_long_wait_basis_ref) as NonEmptyStr
 data durable_cancellation_basis: NonEmptyStr = declaration_ref_display_key(ref: durable_cancellation_basis_ref) as NonEmptyStr
-data no_double_execution_basis: NonEmptyStr = declaration_ref_display_key(ref: no_double_execution_basis_ref) as NonEmptyStr
+data no_double_execution_basis: NonEmptyStr = join([declaration_ref_display_key(ref: no_double_execution_claim_basis_ref), " + ", declaration_ref_display_key(ref: no_double_execution_basis_ref)], "") as NonEmptyStr
 
 data caller_backlog_basis_refs: List<DeclarationRef> = [
   persist_before_offer_basis_ref,
@@ -1257,5 +1306,6 @@ data caller_backlog_basis_refs: List<DeclarationRef> = [
   idempotent_retry_basis_ref,
   no_expiry_on_long_wait_basis_ref,
   durable_cancellation_basis_ref,
+  no_double_execution_claim_basis_ref,
   no_double_execution_basis_ref,
 ]

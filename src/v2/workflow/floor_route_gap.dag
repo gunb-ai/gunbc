@@ -1224,8 +1224,6 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.serving_caller_backlog_wet_witness.stale_recovery_cannot_truncate_or_revive_terminal_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.serving_caller_backlog_wet_witness.two_retries_rebinding_one_waiting_record_admit_exactly_one_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.serving_caller_backlog_wet_witness.only_one_of_two_retries_claims_the_seat_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.serving_caller_backlog_wet_witness.completion_admits_a_current_grant_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1250,7 +1248,6 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.filesystem_link_create_new_wet_witness.a_link_across_filesystems_refuses_as_cross_device_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
-    }
     }
     }
     }

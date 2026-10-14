@@ -1252,10 +1252,13 @@ fn harness_caller_terminal_wire(phase: CallerWorkPhase) -> String {
 }
 
 // A reservation is per attempt and the work is not (caller_backlog rebind_reservation). Before any seat
-// is granted the record names this placeholder, which no LeaseGrant reference can equal, so a commit
-// against an unplaced record refuses at the fence.
-fn harness_unplaced_reservation(work: LogicalWorkId) -> ReservationRef {
-  join(["unplaced:", work as String], "") as ReservationRef
+// is granted the record holds NO seat (its `seat` is absent), so a commit against an unplaced record
+// refuses at the fence and no placeholder string stands where a reservation belongs.
+fn harness_seat_ref_wire(seat: SeatRef?) -> String {
+  match seat {
+    Absent => "no seat"
+    Present { value: held } => join(["reservation ", held.reservation as String, " in partition ", held.partition as String], "")
+  }
 }
 
 // PERSIST BEFORE OFFER, RESUME BEFORE PERSIST. A waiting record is reloaded, never re-persisted (the
@@ -1273,7 +1276,7 @@ fn harness_caller_admit(turn: HarnessCallerTurn) -> HarnessCallerAdmission {
         DurableResumePayloadUndecodable => HarnessCallerRefused { detail: "the caller backlog slot does not decode" }
         DurableResumeWorkMismatch => HarnessCallerRefused { detail: "the caller backlog slot names different work" }
         DurableResumeUnknownWork =>
-          match persist_waiting_durable(root: turn.state_root, snapshot: empty_caller_backlog, work: w, reservation: harness_unplaced_reservation(work: w), generation: 0) {
+          match persist_waiting_durable(root: turn.state_root, snapshot: empty_caller_backlog, work: w, seat: none, generation: 0) {
             DurableWaitingPersisted { record: _ } => HarnessCallerHeld { hold: hold }
             DurablePersistIdempotent { record: _ } => HarnessCallerHeld { hold: hold }
             DurablePhasePersisted { record: _ } => HarnessCallerRefused { detail: "persisting a waiting record answered a phase transition" }
@@ -1358,7 +1361,7 @@ fn harness_pending_keeps_waiting(hold: HarnessCallerHold, ready: Nat, detail: St
 // current, or one it does not show at all, is a turn that may be running, and a second retry refuses
 // rather than executing it again.
 type HarnessPredecessor
-  = HarnessPredecessorClaimable { expected: SeatRef }
+  = HarnessPredecessorClaimable { expected: SeatRef? }
   | HarnessPredecessorLive { detail: String }
 
 fn harness_grant_retired_in(oldest_first: List<ChainEnvelope<PoolEvent>>, reference: NonEmptyStr) -> Bool {
@@ -1378,23 +1381,23 @@ fn harness_grant_retired_in(oldest_first: List<ChainEnvelope<PoolEvent>>, refere
 fn harness_predecessor_of(hold: HarnessCallerHold, store: FabricStorageBinding) -> HarnessPredecessor {
   match resume_waiting_durable(root: hold.root, work: hold.work) {
     DurableResumedWaiting { record: r } =>
-      if (r.reservation as String) == (harness_unplaced_reservation(work: hold.work) as String) {
-        HarnessPredecessorClaimable { expected: SeatRef { partition: r.partition, reservation: r.reservation } }
-      } else {
-        match event_log_read_partition(store: store, partition: r.partition, budget: 4096) {
-          PartitionReadRefused { cause: c } => HarnessPredecessorLive { detail: join(["the prior seat could not be read, so it is not retired: ", event_log_refusal_wire(cause: c)], "") }
-          PartitionReadOk { head: _, walk: walk } =>
-            match walk {
-              ChainIncomplete { missing: m, newest_first_so_far: _ } => HarnessPredecessorLive { detail: join(["the partition chain is missing event ", m as String], "") }
-              ChainBudgetExhausted { at: a } => HarnessPredecessorLive { detail: join(["the partition chain exceeded the read budget at ", a as String], "") }
-              ChainWalked { oldest_first: xs } =>
-                if harness_grant_retired_in(oldest_first: xs, reference: r.reservation as NonEmptyStr) {
-                  HarnessPredecessorClaimable { expected: SeatRef { partition: r.partition, reservation: r.reservation } }
-                } else {
-                  HarnessPredecessorLive { detail: join(["the work is already running under seat ", r.reservation as String, ", which partition ", r.partition as String, " of the seat authority has not retired"], "") }
-                }
-            }
-        }
+      match r.seat {
+        Absent => HarnessPredecessorClaimable { expected: none }
+        Present { value: held } =>
+          match event_log_read_partition(store: store, partition: held.partition, budget: 4096) {
+            PartitionReadRefused { cause: c } => HarnessPredecessorLive { detail: join(["the prior seat could not be read, so it is not retired: ", event_log_refusal_wire(cause: c)], "") }
+            PartitionReadOk { head: _, walk: walk } =>
+              match walk {
+                ChainIncomplete { missing: m, newest_first_so_far: _ } => HarnessPredecessorLive { detail: join(["the partition chain is missing event ", m as String], "") }
+                ChainBudgetExhausted { at: a } => HarnessPredecessorLive { detail: join(["the partition chain exceeded the read budget at ", a as String], "") }
+                ChainWalked { oldest_first: xs } =>
+                  if harness_grant_retired_in(oldest_first: xs, reference: held.reservation as NonEmptyStr) {
+                    HarnessPredecessorClaimable { expected: Present { value: held } }
+                  } else {
+                    HarnessPredecessorLive { detail: join(["the work is already running under seat ", held.reservation as String, ", which partition ", held.partition as String, " of the seat authority has not retired"], "") }
+                  }
+              }
+          }
       }
     DurableResumedTerminal { phase: p } => HarnessPredecessorLive { detail: harness_caller_terminal_wire(phase: p) }
     DurableResumeUnknownWork => HarnessPredecessorLive { detail: "the waiting record is absent" }
@@ -1417,7 +1420,7 @@ fn harness_claim_seat(hold: HarnessCallerHold, grant: LeaseGrant, store: FabricS
     HarnessPredecessorClaimable { expected: e } =>
       match rebind_reservation_durable(root: hold.root, work: hold.work, expected: e, next: SeatRef { partition: partition, reservation: grant.reference as ReservationRef }) {
         DurableReservationRebound { record: _ } => HarnessSeatClaimed
-        DurableRebindPredecessorMismatch { held: h } => HarnessSeatClaimRefused { detail: join(["another attempt already claimed this work under ", h.reservation as String, " in partition ", h.partition as String], "") }
+        DurableRebindPredecessorMismatch { held: h } => HarnessSeatClaimRefused { detail: join(["another attempt already claimed this work: the record holds ", harness_seat_ref_wire(seat: h)], "") }
         DurableRebindRefusedTerminal { phase: p } => HarnessSeatClaimRefused { detail: harness_caller_terminal_wire(phase: p) }
         DurableRebindUnknownWork => HarnessSeatClaimRefused { detail: "the waiting record is absent" }
         DurableRebindStoreRefused { detail: d } => HarnessSeatClaimRefused { detail: d as String }
@@ -1518,13 +1521,13 @@ fn harness_commit_standing_wire(standing: DurableAttemptStanding) -> HarnessCall
   }
 }
 
-fn harness_commit_on_walk(hold: HarnessCallerHold, record: CallerWorkRecord, presented: LeaseGrant, walk: ChainWalk<PoolEvent>) -> HarnessCallerCompletion {
+fn harness_commit_on_walk(hold: HarnessCallerHold, record: CallerWorkRecord, held: SeatRef, presented: LeaseGrant, walk: ChainWalk<PoolEvent>) -> HarnessCallerCompletion {
   match walk {
     ChainIncomplete { missing: m, newest_first_so_far: _ } => HarnessCallerCompletionRefused { detail: join(["the partition chain is missing event ", m as String], "") }
     ChainBudgetExhausted { at: a } => HarnessCallerCompletionRefused { detail: join(["the partition chain exceeded the read budget at ", a as String], "") }
     ChainWalked { oldest_first: xs } =>
-      match harness_commit_fence(current: harness_current_grant_in(oldest_first: xs, reference: record.reservation as NonEmptyStr), presented: presented.fence, at: now_epoch_seconds()) {
-        HarnessCommitGrantUnread => HarnessCallerCompletionRefused { detail: join(["no acquisition of the record's reservation ", record.reservation as String, " appears in the seat partition"], "") }
+      match harness_commit_fence(current: harness_current_grant_in(oldest_first: xs, reference: held.reservation as NonEmptyStr), presented: presented.fence, at: now_epoch_seconds()) {
+        HarnessCommitGrantUnread => HarnessCallerCompletionRefused { detail: join(["no acquisition of the record's reservation ", held.reservation as String, " appears in the seat partition"], "") }
         HarnessCommitClockUnread => HarnessCallerCompletionRefused { detail: "the clock could not be read as epoch seconds, so completion is not authorized" }
         HarnessCommitFenceReady { fence: f } =>
           harness_commit_standing_wire(standing: commit_attempt_durable(root: hold.root, snapshot: CallerBacklogSnapshot { records: [record] }, fence: f, work: hold.work))
@@ -1553,9 +1556,13 @@ fn harness_complete_with_grant(turn: HarnessCallerTurn, presented: LeaseGrant, s
     WorkIdDerived { work: w } =>
       match resume_waiting_durable(root: turn.state_root, work: w) {
         DurableResumedWaiting { record: r } =>
-          match event_log_read_partition(store: store, partition: r.partition, budget: 4096) {
-            PartitionReadRefused { cause: c } => HarnessCallerCompletionRefused { detail: event_log_refusal_wire(cause: c) }
-            PartitionReadOk { head: _, walk: walk } => harness_commit_on_walk(hold: HarnessCallerHold { work: w, root: turn.state_root }, record: r, presented: presented, walk: walk)
+          match r.seat {
+            Absent => HarnessCallerCompletionRefused { detail: "the record holds no seat, so there is no grant a completion could be fenced against" }
+            Present { value: held } =>
+              match event_log_read_partition(store: store, partition: held.partition, budget: 4096) {
+                PartitionReadRefused { cause: c } => HarnessCallerCompletionRefused { detail: event_log_refusal_wire(cause: c) }
+                PartitionReadOk { head: _, walk: walk } => harness_commit_on_walk(hold: HarnessCallerHold { work: w, root: turn.state_root }, record: r, held: held, presented: presented, walk: walk)
+              }
           }
         DurableResumedTerminal { phase: ph } => HarnessCallerCompletionRefused { detail: harness_caller_terminal_wire(phase: ph) }
         DurableResumeUnknownWork => HarnessCallerCompletionRefused { detail: "the waiting record is absent" }

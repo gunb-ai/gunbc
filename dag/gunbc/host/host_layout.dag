@@ -316,13 +316,6 @@ fn instance_receipts_dir(instance_root: String) -> String {
   join([instance_root, "/receipts"], "")
 }
 
-// THE CALLER'S DURABLE BACKLOG ROOT (gunbc.serving.caller_backlog), derived from the instance root for
-// instance_receipts_dir's reason. The belt passes it to the worker it spawns, because the harness has no
-// executor root of its own; one logical turn then finds the same CAS slot on every retry of its worker.
-fn caller_backlog_state_root(instance_root: String) -> String {
-  join([instance_root, "/caller-backlog"], "")
-}
-
 // THE ATTEMPT-EXIT SPOOL, homed here for the publication spool's reason: it has consumers on both
 // sides of a process boundary that share no code path. The worker unit's stop hook
 // (gunbc.roadmap.roadmap_dispatch_actuator) creates an entry, the deployment's path unit

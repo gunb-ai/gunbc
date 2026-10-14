@@ -34,7 +34,7 @@ import gunbc.serving.caller_backlog {
   no_expiry_on_long_wait_basis, durable_cancellation_basis, no_double_execution_basis,
   caller_backlog_basis_refs,
   AttemptCommit, rebind_reservation, ReservationRebound, RebindRefusedTerminal, RebindUnknownWork, RebindDuplicate, RebindPredecessorMismatch,
-  SeatRef, caller_unplaced_partition,
+  SeatRef, seat_refs_agree,
 }
 import product.capacity.event_chain { PartitionId, EventId, ChainEvent, ChainEnvelope }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased }
@@ -45,7 +45,7 @@ import gunbc.harness.harness_seat {
   harness_grant_retired_in, HarnessSeatRefused,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.harness.harness_cli { harness_worker_cli, harness_bind_belt_seat }
+import gunbc.harness.harness_cli { harness_durable_worker_cli, harness_bind_belt_seat }
 import std.decl_ref { DeclarationRef }
 import v2.std.decl_index { decl_facts_at }
 import std.optional { Present, Absent }
@@ -63,6 +63,8 @@ import gunbc.serving.router_realization {
 data work_a: LogicalWorkId = "logical-work-a" as LogicalWorkId
 data reservation_a: ReservationRef = "grant-work-a" as ReservationRef
 
+data seat_a: SeatRef? = Present { value: SeatRef { partition: "part-a" as PartitionId, reservation: reservation_a } }
+
 fn fenced_account(generation: Int) -> MoneyAccount {
   MoneyAccount {
     account: "caller-backlog",
@@ -76,7 +78,7 @@ fn fenced_account(generation: Int) -> MoneyAccount {
 }
 
 fn persisted_waiting() -> CallerBacklogSnapshot {
-  match persist_waiting(snapshot: empty_caller_backlog, work: work_a, reservation: reservation_a, generation: 2) {
+  match persist_waiting(snapshot: empty_caller_backlog, work: work_a, seat: seat_a, generation: 2) {
     WaitingPersisted { record: r } => snapshot_after_persist(snapshot: empty_caller_backlog, standing: WaitingPersisted { record: r })
     PersistIdempotent { record: r } => snapshot_after_persist(snapshot: empty_caller_backlog, standing: PersistIdempotent { record: r })
     PersistRefusedTerminal { phase: _ } => empty_caller_backlog
@@ -102,7 +104,7 @@ fn is_waiting(s: CallerBacklogSnapshot) -> Bool {
 // identity is offered. A second persist of waiting work is idempotent, not a second record.
 test fn w_persist_before_offer_and_duplicate_persist_is_one_waiting_record() -> Bool {
   (match offer_persisted(snapshot: empty_caller_backlog, work: work_a) { OfferRefusedUnpersisted => true  OfferedAfterPersist { record: _ } => false  OfferRefusedPhase { phase: _ } => false  OfferRefusedDuplicate => false })
-    && (match persist_waiting(snapshot: empty_caller_backlog, work: work_a, reservation: reservation_a, generation: 2) {
+    && (match persist_waiting(snapshot: empty_caller_backlog, work: work_a, seat: seat_a, generation: 2) {
       WaitingPersisted { record: r } =>
         match offer_persisted(snapshot: snapshot_after_persist(snapshot: empty_caller_backlog, standing: WaitingPersisted { record: r }), work: work_a) {
           OfferedAfterPersist { record: offered } => (offered.work as String) == (work_a as String)
@@ -114,7 +116,7 @@ test fn w_persist_before_offer_and_duplicate_persist_is_one_waiting_record() -> 
       PersistRefusedTerminal { phase: _ } => false
       PersistRefusedDuplicate => false
     })
-    && (match persist_waiting(snapshot: persisted_waiting(), work: work_a, reservation: reservation_a, generation: 2) {
+    && (match persist_waiting(snapshot: persisted_waiting(), work: work_a, seat: seat_a, generation: 2) {
       PersistIdempotent { record: r } => (r.work as String) == (work_a as String) && is_waiting(s: persisted_waiting())
       WaitingPersisted { record: _ } => false
       PersistRefusedTerminal { phase: _ } => false
@@ -234,7 +236,7 @@ test fn w_cancellation_is_terminal() -> Bool {
       ResumeUnknownWork => false
       ResumeDuplicateWork => false
     })
-    && (match persist_waiting(snapshot: cancelled, work: work_a, reservation: reservation_a, generation: 2) {
+    && (match persist_waiting(snapshot: cancelled, work: work_a, seat: seat_a, generation: 2) {
       PersistRefusedTerminal { phase: p } => match p { WorkCancelled => true  WorkWaiting => false  WorkCompleted => false  WorkRecoveryBoundExceeded { deficit: _ } => false }
       WaitingPersisted { record: _ } => false
       PersistIdempotent { record: _ } => false
@@ -301,8 +303,7 @@ test fn w_caller_backlog_bases_name_live_declarations() -> Bool {
 test fn w_encoded_waiting_roundtrips_recovery_history() -> Bool {
   let recorded = CallerWorkRecord {
     work: work_a,
-    reservation: reservation_a,
-    partition: caller_unplaced_partition,
+    seat: seat_a,
     generation: 2,
     phase: WorkWaiting,
     recovery: [
@@ -334,8 +335,7 @@ test fn w_bound_deficit_decode_refuses_a_negative_count() -> Bool {
   let negative_requests = "{\"work\":\"logical-work-a\",\"reservation\":\"grant-work-a\",\"generation\":2,\"phase\":{\"kind\":\"recovery_bound_exceeded\",\"probes_succeeded\":1,\"requests_failed\":-2},\"recovery\":[]}" as NonEmptyStr
   let zero = CallerWorkRecord {
     work: work_a,
-    reservation: reservation_a,
-    partition: caller_unplaced_partition,
+    seat: seat_a,
     generation: 2,
     phase: WorkRecoveryBoundExceeded { deficit: recovery_bound_deficit(events: [] as List<RecoveryEvent>) },
     recovery: [] as List<RecoveryEvent>,
@@ -361,8 +361,7 @@ test fn w_bound_deficit_decode_refuses_a_negative_count() -> Bool {
 test fn w_tab_in_work_id_roundtrips_through_json() -> Bool {
   let recorded = CallerWorkRecord {
     work: "logical\twork" as LogicalWorkId,
-    reservation: reservation_a,
-    partition: caller_unplaced_partition,
+    seat: seat_a,
     generation: 2,
     phase: WorkWaiting,
     recovery: [] as List<RecoveryEvent>,
@@ -380,8 +379,7 @@ test fn w_tab_in_work_id_roundtrips_through_json() -> Bool {
 test fn w_tab_in_reservation_roundtrips_through_json() -> Bool {
   let recorded = CallerWorkRecord {
     work: work_a,
-    reservation: "grant\twork" as ReservationRef,
-    partition: caller_unplaced_partition,
+    seat: Present { value: SeatRef { partition: "part-a" as PartitionId, reservation: "grant\twork" as ReservationRef } },
     generation: 2,
     phase: WorkWaiting,
     recovery: [] as List<RecoveryEvent>,
@@ -391,7 +389,7 @@ test fn w_tab_in_reservation_roundtrips_through_json() -> Bool {
     WaitingWireEncoded { payload: payload } =>
       match decode_waiting(payload: payload) {
         Absent => false
-        Present { value: back } => (back.reservation as String) == "grant\twork"
+        Present { value: back } => seat_reservation_text(seat: back.seat) == "grant\twork"
       }
   }
 }
@@ -417,7 +415,7 @@ test fn w_duplicate_records_refuse_persist_and_do_not_revive() -> Bool {
     standing: cancel_work(snapshot: persisted_waiting(), work: work_a),
   )
   let dup = CallerBacklogSnapshot { records: concat(cancelled.records, cancelled.records) }
-  (match persist_waiting(snapshot: dup, work: work_a, reservation: reservation_a, generation: 9) {
+  (match persist_waiting(snapshot: dup, work: work_a, seat: seat_a, generation: 9) {
     PersistRefusedDuplicate => true
     WaitingPersisted { record: _ } => false
     PersistIdempotent { record: _ } => false
@@ -430,7 +428,7 @@ test fn w_duplicate_records_refuse_persist_and_do_not_revive() -> Bool {
     })
     && (match snapshot_after_persist(
       snapshot: dup,
-      standing: persist_waiting(snapshot: dup, work: work_a, reservation: reservation_a, generation: 9),
+      standing: persist_waiting(snapshot: dup, work: work_a, seat: seat_a, generation: 9),
     ) {
       CallerBacklogSnapshot { records: rs } => length(rs) == 2
     })
@@ -443,6 +441,31 @@ data waiting_store_bypass_source: String = "module test.probe.caller_backlog_wai
 data waiting_idempotent_bypass_source: String = "module test.probe.caller_backlog_waiting_idempotent_bypass\nimport std.types { NonEmptyStr }\nimport gunbc.serving.caller_backlog { CallerWorkRecord, DurablePersistStanding, persist_waiting_idempotent_on_store }\nfn forge(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding {\n  persist_waiting_idempotent_on_store(root: root, record: record)\n}\n"
 
 data admitted_waiting_persist_source: String = "module test.probe.caller_backlog_admitted_waiting_persist\nimport std.types { NonEmptyStr, Int }\nimport product.fabric.execution { ReservationRef }\nimport gunbc.serving.caller_backlog { LogicalWorkId, CallerBacklogSnapshot, DurablePersistStanding, persist_waiting_durable }\nfn go(root: NonEmptyStr, snap: CallerBacklogSnapshot, work: LogicalWorkId, reservation: ReservationRef, generation: Int) -> DurablePersistStanding {\n  persist_waiting_durable(root: root, snapshot: snap, work: work, reservation: reservation, generation: generation)\n}\n"
+
+data rebind_bypass_source: String = "module test.probe.caller_backlog_rebind_bypass\nimport std.types { NonEmptyStr }\nimport gunbc.serving.caller_backlog { LogicalWorkId, SeatRef, DurableRebindStanding, rebind_reservation_durable }\nfn forge(root: NonEmptyStr, work: LogicalWorkId, next: SeatRef) -> DurableRebindStanding {\n  rebind_reservation_durable(root: root, work: work, expected: none, next: next)\n}\n"
+
+data rebind_pure_control_source: String = "module test.probe.caller_backlog_rebind_pure_control\nimport gunbc.serving.caller_backlog { LogicalWorkId, SeatRef, CallerBacklogSnapshot, RebindStanding, rebind_reservation }\nfn pure(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, next: SeatRef) -> RebindStanding {\n  rebind_reservation(snapshot: snapshot, work: work, expected: none, next: next)\n}\n"
+
+// THE REBIND IS SEALED TO THE CLAIM (review 5519204231): rebind_reservation_durable names its predecessor by a value
+// the caller supplies, so an arbitrary caller could rebind a live seat. Only harness_claim_seat, which reads the
+// predecessor's retirement from the seat authority first, is admitted.
+test fn w_an_arbitrary_module_cannot_rebind_a_live_predecessor() -> Bool {
+  blocking_subject_count_for(
+    source: rebind_bypass_source,
+    wanted_class: "ConstructorCallAdmissionRefused",
+    wanted_subject: "rebind_reservation_durable",
+  ) == 1
+    && blocking_subject_count_for(
+      source: rebind_pure_control_source,
+      wanted_class: "ConstructorCallAdmissionRefused",
+      wanted_subject: "rebind_reservation",
+    ) == 0
+    && blocking_subject_count_for(
+      source: derived_phase_bypass_source,
+      wanted_class: "ConstructorCallAdmissionRefused",
+      wanted_subject: "persist_derived_phase",
+    ) == 1
+}
 
 test fn w_foreign_module_cannot_publish_a_derived_phase() -> Bool {
   blocking_subject_count_for(
@@ -555,7 +578,7 @@ test fn w_commit_under_the_previous_reservation_after_a_rebind_refuses() -> Bool
     ReservationRebound { record: r } => {
       let rebound = snapshot_after_persist(snapshot: empty_caller_backlog, standing: WaitingPersisted { record: r })
       let previous = commit_attempt(snapshot: rebound, fence: SeatLeaseFence { grant: seat_grant_gen2, holder: seat_holder(generation: 2, grant: "evt-1"), at: 10 }, work: work_a)
-      (r.reservation as String) == "grant-work-a-2"
+      seat_reservation_text(seat: r.seat) == "grant-work-a-2"
         && (match previous { AttemptFenceRefused => true  AttemptCommitted { record: _ } => false  AttemptNotWaiting { phase: _ } => false  AttemptUnknownWork => false  AttemptDuplicate => false })
     }
     RebindRefusedTerminal { phase: _ } => false
@@ -579,7 +602,15 @@ data seat_chain: List<ChainEnvelope<PoolEvent>> = [
   seat_event(id: "evt-b", at: 10, payload: PoolAcquired { reference: "seat-2" as NonEmptyStr, amount: 1, term_seconds: 60 }),
 ]
 
-fn unplaced_seat() -> SeatRef { SeatRef { partition: caller_unplaced_partition, reservation: reservation_a } }
+fn unplaced_seat() -> SeatRef? { seat_a }
+
+fn seat_reservation_text(seat: SeatRef?) -> String {
+  match seat { Absent => "<none>"  Present { value: held } => held.reservation as String }
+}
+
+fn seat_partition_text(seat: SeatRef?) -> String {
+  match seat { Absent => "<none>"  Present { value: held } => held.partition as String }
+}
 
 fn seat_rebound_to(reference: String) -> CallerBacklogSnapshot {
   match rebind_reservation(snapshot: persisted_waiting(), work: work_a, expected: unplaced_seat(), next: SeatRef { partition: "part-a" as PartitionId, reservation: reference as ReservationRef }) {
@@ -650,7 +681,7 @@ test fn w_harness_caller_turn_refuses_empty_node_root_and_negative_ordinal() -> 
 // one's reservation and is refused with it, rather than binding a second seat over the same waiting work.
 test fn w_a_rebind_naming_a_stale_predecessor_refuses_with_the_held_reservation() -> Bool {
   match rebind_reservation(snapshot: seat_rebound_to(reference: "seat-1"), work: work_a, expected: unplaced_seat(), next: SeatRef { partition: "part-a" as PartitionId, reservation: "seat-2" as ReservationRef }) {
-    RebindPredecessorMismatch { held: h } => (h.reservation as String) == "seat-1" && (h.partition as String) == "part-a"
+    RebindPredecessorMismatch { held: h } => seat_reservation_text(seat: h) == "seat-1" && seat_partition_text(seat: h) == "part-a"
     ReservationRebound { record: _ } => false
     RebindRefusedTerminal { phase: _ } => false
     RebindUnknownWork => false
@@ -668,7 +699,7 @@ test fn w_a_seat_is_retired_only_once_acquired_and_no_longer_current() -> Bool {
 // crossed at the real worker entry, so a worker that fell back to the non-durable path would reach placement
 // (and fail or succeed elsewhere) instead of refusing here with exit 2.
 fn worker_with_turn(dispatch_node: String, turn_ordinal: Int, state_root: String) -> ProcessExit {
-  harness_worker_cli(
+  harness_durable_worker_cli(
     worktree: "/nonexistent/worktree", brief: "b", timeout_program: "timeout", request_scratch_path: "/nonexistent/req",
     events_path: "/nonexistent/events", repo_root: "/nonexistent/repo", gunbc_program: "gunbc", attempt_identity: "a",
     alignment_chain_fingerprint: "f", dispatch_node: dispatch_node, turn_ordinal: turn_ordinal, state_root: state_root,
@@ -708,10 +739,10 @@ test fn w_a_rebind_naming_the_right_reservation_in_the_wrong_partition_refuses()
   match rebind_reservation(
     snapshot: seat_rebound_to(reference: "seat-1"),
     work: work_a,
-    expected: SeatRef { partition: "part-b" as PartitionId, reservation: "seat-1" as ReservationRef },
+    expected: Present { value: SeatRef { partition: "part-b" as PartitionId, reservation: "seat-1" as ReservationRef } },
     next: SeatRef { partition: "part-b" as PartitionId, reservation: "seat-2" as ReservationRef },
   ) {
-    RebindPredecessorMismatch { held: h } => (h.partition as String) == "part-a"
+    RebindPredecessorMismatch { held: h } => seat_partition_text(seat: h) == "part-a"
     ReservationRebound { record: _ } => false
     RebindRefusedTerminal { phase: _ } => false
     RebindUnknownWork => false
@@ -720,13 +751,53 @@ test fn w_a_rebind_naming_the_right_reservation_in_the_wrong_partition_refuses()
     && (match rebind_reservation(
       snapshot: seat_rebound_to(reference: "seat-1"),
       work: work_a,
-      expected: SeatRef { partition: "part-a" as PartitionId, reservation: "seat-1" as ReservationRef },
+      expected: Present { value: SeatRef { partition: "part-a" as PartitionId, reservation: "seat-1" as ReservationRef } },
       next: SeatRef { partition: "part-b" as PartitionId, reservation: "seat-2" as ReservationRef },
     ) {
-      ReservationRebound { record: r } => (r.partition as String) == "part-b" && (r.reservation as String) == "seat-2"
+      ReservationRebound { record: r } => seat_partition_text(seat: r.seat) == "part-b" && seat_reservation_text(seat: r.seat) == "seat-2"
       RebindPredecessorMismatch { held: _ } => false
       RebindRefusedTerminal { phase: _ } => false
       RebindUnknownWork => false
       RebindDuplicate => false
     })
+}
+
+// PRESENCE IS NOT A STRING (review 79968): a work with no seat holds no seat, and the claim must name that. A record
+// with no seat is claimed only by a rebind that expects none; a record that holds a seat refuses a rebind that
+// expects none; a record with no seat refuses one that expects a seat it never held.
+test fn w_an_unplaced_record_is_claimed_only_by_a_rebind_expecting_no_seat() -> Bool {
+  let unplaced = CallerBacklogSnapshot { records: [CallerWorkRecord { work: work_a, seat: none, generation: 0, phase: WorkWaiting, recovery: [] as List<RecoveryEvent> }] }
+  let next = SeatRef { partition: "part-a" as PartitionId, reservation: "seat-1" as ReservationRef }
+  (match rebind_reservation(snapshot: unplaced, work: work_a, expected: none, next: next) {
+    ReservationRebound { record: r } => seat_reservation_text(seat: r.seat) == "seat-1"
+    RebindPredecessorMismatch { held: _ } => false
+    RebindRefusedTerminal { phase: _ } => false
+    RebindUnknownWork => false
+    RebindDuplicate => false
+  })
+    && (match rebind_reservation(snapshot: unplaced, work: work_a, expected: seat_a, next: next) {
+      RebindPredecessorMismatch { held: h } => seat_reservation_text(seat: h) == "<none>"
+      ReservationRebound { record: _ } => false
+      RebindRefusedTerminal { phase: _ } => false
+      RebindUnknownWork => false
+      RebindDuplicate => false
+    })
+    && (match rebind_reservation(snapshot: persisted_waiting(), work: work_a, expected: none, next: next) {
+      RebindPredecessorMismatch { held: h } => seat_reservation_text(seat: h) == "grant-work-a"
+      ReservationRebound { record: _ } => false
+      RebindRefusedTerminal { phase: _ } => false
+      RebindUnknownWork => false
+      RebindDuplicate => false
+    })
+}
+
+test fn w_a_commit_against_an_unplaced_record_refuses_at_the_fence() -> Bool {
+  let unplaced = CallerBacklogSnapshot { records: [CallerWorkRecord { work: work_a, seat: none, generation: 0, phase: WorkWaiting, recovery: [] as List<RecoveryEvent> }] }
+  match commit_attempt(snapshot: unplaced, fence: ComputeCellFence { account: fenced_account(generation: 2), presented: 2 }, work: work_a) {
+    AttemptFenceRefused => true
+    AttemptCommitted { record: _ } => false
+    AttemptNotWaiting { phase: _ } => false
+    AttemptUnknownWork => false
+    AttemptDuplicate => false
+  }
 }
