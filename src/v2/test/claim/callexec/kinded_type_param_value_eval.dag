@@ -116,3 +116,17 @@ test fn kpp_is_not_value() -> Bool { kpr_reason() == Present { value: ^eval_reje
 test fn kpp_is_unbound_param() -> Bool { kpr_reason() == Present { value: ^eval_rejected_parameter_reference_unbound } }
 test fn kpp_is_grounding() -> Bool { kpr_reason() == Present { value: ^eval_rejected_grounding_not_derived } }
 test fn kpp_is_lookup_miss() -> Bool { kpr_reason() == Present { value: ^eval_rejected_runtime_binding_lookup_miss } }
+
+test fn kps_type_node() -> Bool { kpr_reason() == Present { value: ^eval_rejected_type_node } }
+test fn kps_unsupported_callee() -> Bool { kpr_reason() == Present { value: ^eval_rejected_unsupported_callee } }
+test fn kps_unrepresentable() -> Bool { kpr_reason() == Present { value: ^eval_rejected_runtime_value_node_unrepresentable } }
+test fn kps_arg_bind_absent() -> Bool { kpr_reason() == Present { value: ^eval_rejected_argument_bind_absent } }
+test fn kps_bind_value_absent() -> Bool { kpr_reason() == Present { value: ^eval_rejected_bind_value_absent } }
+test fn kps_invalid_node() -> Bool { kpr_reason() == Present { value: ^eval_rejected_invalid_node } }
+test fn kps_callee_absent() -> Bool { kpr_reason() == Present { value: ^eval_rejected_callee_absent } }
+test fn kps_canonical_mismatch() -> Bool { kpr_reason() == Present { value: ^eval_rejected_canonical_mismatch } }
+test fn kps_node_mismatch() -> Bool { kpr_reason() == Present { value: ^eval_rejected_grounding_node_mismatch } }
+test fn kps_mk8_executes() -> Bool {
+  match cref_eval_of_call_to(o: cref_assemble(src: kpr_src()), name: ^mk8) { Present { value: Accepted { value: _, diagnostics: _ } } => true
+    _ => false }
+}
