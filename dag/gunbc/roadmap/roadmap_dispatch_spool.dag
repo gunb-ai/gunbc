@@ -150,7 +150,7 @@ fn dispatch_request_enqueue(
         DispatchRequestNotEnqueued {
           detail: join([
             "the dispatch request was staged and could not be renamed into the pending set: ",
-            staging, " -> ", path, " (", moved.error, ")",
+            staging, " -> ", path,
           ], ""),
         }
       }
@@ -342,7 +342,11 @@ fn dispatch_spool_retire_request(
   } else {
     DispatchSpoolRequestNotQuarantined {
       entry: entry,
-      detail: join(["the refused request could not leave the pending set: ", moved.error], ""),
+      detail: join([
+        "the refused request could not leave the pending set: ",
+        dispatch_request_dir(instance_root: instance_root), "/", entry,
+        " -> ", dispatch_refused_dir(instance_root: instance_root), "/", entry,
+      ], ""),
     }
   }
 }
