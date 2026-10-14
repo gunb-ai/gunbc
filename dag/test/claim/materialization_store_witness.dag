@@ -515,7 +515,7 @@ test fn a_store_opens_only_on_its_own_marker() -> Bool {
     LocalStorePreOpenRefused { root_path: _, cause: c } => match c { LocalStoreNotInitialized { marker_path: _ } => true, _ => false }
     LocalStorePreOpened { pre: _, durability: _ } => false
   }
-  let foreign = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: store_marker_content(root: DurableHostVolumeRoot, instance_label: "witness", budgets: two) }, budgets: two) {
+  let foreign = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: store_marker_content(root: DurableHostVolumeRoot { root: "/m" }, instance_label: "witness", budgets: two) }, budgets: two) {
     LocalStorePreOpenRefused { root_path: _, cause: c } => match c { LocalStoreMarkerUnrecognized { marker_path: _ } => true, _ => false }
     LocalStorePreOpened { pre: _, durability: _ } => false
   }

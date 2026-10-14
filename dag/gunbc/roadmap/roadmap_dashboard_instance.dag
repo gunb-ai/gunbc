@@ -231,6 +231,7 @@ type HostDashboardInstance {
   toolchain: DashboardToolchain
   dispatch_worker_memory_max: ByteSize
   directory_owner: PosixOwnerNames
+  materialization_store_root: FilePath
 }
 
 // THE TOOLCHAIN IS CARRIED, NOT ONLY CONSUMED, because provisioning needs it too and provisioning
@@ -953,6 +954,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     toolchain: macbook_local_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: macbook_local_directory_owner,
+    materialization_store_root: dashboard_instance_child(root: macbook_local_instance_root, child: "materialization-store"),
   }
 }
 
@@ -1054,6 +1056,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
+    materialization_store_root: "/var/lib/gunbc/materialization-store" as FilePath,
   }
 }
 
@@ -1150,6 +1153,7 @@ fn isolated_dashboard_instance(
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
+    materialization_store_root: dashboard_instance_child(root: root, child: "materialization-store"),
   }
 }
 
@@ -1288,6 +1292,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
+    materialization_store_root: dashboard_instance_child(root: srv2_deploy_instance_root, child: "materialization-store"),
   }
 }
 
@@ -1376,6 +1381,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath) -> HostDash
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: fleet_compute_hermetic_directory_owner,
+    materialization_store_root: dashboard_instance_child(root: instance_root, child: "materialization-store"),
   }
 }
 
