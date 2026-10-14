@@ -2805,6 +2805,7 @@ pub fn render_rust_decl_type(
                                     if ((((n.connective.clone() == Connective::NoConnective)
                                         && ((n.children.clone().len() as i64) == 0))
                                         && (applied_prop.clone() == std::option::Option::None))
+                                        && crate::std_types::is_container_type(name.clone())
                                         && v1_rt::set_contains(&shared_types, name.clone()))
                                     {
                                         {
@@ -3597,7 +3598,8 @@ pub fn render_rust_alias_rhs_type(
                     };
                     match closed_alias_peel_verdict(scope.type_env.clone(), n.clone()) {
                         ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => {
-                            if (v1_rt::set_contains(&shared_types, leaf.clone())
+                            if (crate::std_types::is_container_type(leaf.clone())
+                                && v1_rt::set_contains(&shared_types, leaf.clone())
                                 && !rust_type_is_rc_wrapped(base.clone()))
                             {
                                 break crate::v1_compiler_languages::wrap_shared_type(
@@ -3618,7 +3620,8 @@ pub fn render_rust_alias_rhs_type(
                                 scope.type_env.clone(),
                             ) {
                                 AliasDeclArityVerdict::AliasDeclArityZeroParam => {
-                                    if (v1_rt::set_contains(&shared_types, leaf.clone())
+                                    if (crate::std_types::is_container_type(leaf.clone())
+                                        && v1_rt::set_contains(&shared_types, leaf.clone())
                                         && !rust_type_is_rc_wrapped(base.clone()))
                                     {
                                         break crate::v1_compiler_languages::wrap_shared_type(
@@ -3685,7 +3688,8 @@ pub fn render_rust_alias_rhs_type(
                                         arg_list.clone(),
                                         source_indices.clone(),
                                     );
-                                    if (v1_rt::set_contains(&shared_types, leaf.clone())
+                                    if (crate::std_types::is_container_type(leaf.clone())
+                                        && v1_rt::set_contains(&shared_types, leaf.clone())
                                         && !rust_type_is_rc_wrapped(applied_ty.clone()))
                                     {
                                         break crate::v1_compiler_languages::wrap_shared_type(
@@ -3757,7 +3761,8 @@ pub fn render_rust_alias_rhs_type(
                                 arg_list.clone(),
                                 source_indices.clone(),
                             );
-                            if (v1_rt::set_contains(&shared_types, leaf.clone())
+                            if (crate::std_types::is_container_type(leaf.clone())
+                                && v1_rt::set_contains(&shared_types, leaf.clone())
                                 && !rust_type_is_rc_wrapped(applied_ty.clone()))
                             {
                                 break crate::v1_compiler_languages::wrap_shared_type(
@@ -6722,27 +6727,6 @@ pub fn shared_layer_of_leaf(
         .clone(),
         type_decl_items,
     )
-}
-
-pub fn shared_type_identity_of_reference(
-    type_expr: Rc<Node>,
-    type_decl_items: Rc<TypeDeclIndex>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
-        type_decl_items.clone(),
-        type_expr.clone(),
-        source_indices.clone(),
-    )
-    .resolution
-    .clone())
-    .clone()
-    {
-        TypeDeclResolution::TypeDeclResolved { identity, .. } => identity,
-        TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _ } => "".to_string(),
-        TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _ } => "".to_string(),
-        TypeDeclResolution::TypeDeclNotDeclared => "".to_string(),
-    }
 }
 
 pub fn shared_types_contains_identity(

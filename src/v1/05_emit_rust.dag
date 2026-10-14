@@ -3418,15 +3418,6 @@ fn shared_layer_refuse_expr(leaf: String, cause: String) -> String {
   emit_rust_compile_error_expr(message: concat("shared layer refused for '", leaf, "': ", cause, " — wrap/deref/Copy of a user type requires one declaration identity"))
 }
 
-fn shared_type_identity_of_reference(type_expr: Node, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>) -> String {
-  match resolve_type_decl_routed(index: type_decl_items, type_expr: type_expr, source_indices: source_indices).resolution {
-    TypeDeclResolved { identity: identity, decl: _ } => identity
-    TypeDeclLeafAmbiguous { leaf: _ } => ""
-    TypeDeclKernelSpellingUndecided { leaf: _ } => ""
-    TypeDeclNotDeclared => ""
-  }
-}
-
 fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolution: TypeDeclResolution, type_decl_items: TypeDeclIndex) -> SharedLayerAnswer {
   if is_container_type(name: leaf) {
     if set_contains(shared_types, leaf) { SharedLayerAtShared } else { SharedLayerAtValue }
