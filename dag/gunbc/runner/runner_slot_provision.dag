@@ -490,10 +490,6 @@ fn runner_slot_member_key(m: RunnerSlotMember) -> NonEmptyStr {
   m.instance_name
 }
 
-fn runner_slot_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  a as String == b as String
-}
-
 fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> Bool {
   a.slot_dir as String == b.slot_dir as String
 }
@@ -529,7 +525,6 @@ fn runner_slot_membership_reconcile(
       desired: desired,
       observed: observed,
       key_of: runner_slot_member_key,
-      key_eq: runner_slot_member_key_eq,
       value_eq: runner_slot_member_value_eq,
       ownership_of: runner_slot_member_ownership,
     ),

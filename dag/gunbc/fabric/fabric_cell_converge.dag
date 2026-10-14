@@ -169,10 +169,6 @@ fn fabric_cell_member_key(member: FabricCellMember) -> String {
   ], "")
 }
 
-fn fabric_cell_member_key_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
 fn fabric_cell_member_value_eq(a: FabricCellMember, b: FabricCellMember) -> Bool {
   a.state_digest == b.state_digest
 }

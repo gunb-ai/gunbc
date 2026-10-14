@@ -267,10 +267,6 @@ fn host_phase_cell_key(c: HostPhaseCellStatus) -> String {
   join([c.cell.host as String, "|", c.cell.phase_label], "")
 }
 
-fn host_phase_cell_key_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
 fn host_phase_status_eq(a: HostPhaseCellStatus, b: HostPhaseCellStatus) -> Bool {
   let modeled_agrees = host_phase_cell_is_modeled(c: a) == host_phase_cell_is_modeled(c: b)
   let verdict_agrees = observation_verdict_eq(
@@ -356,7 +352,6 @@ fn host_phase_reconcile(
       desired: desired,
       observed: observed,
       key_of: host_phase_cell_key,
-      key_eq: host_phase_cell_key_eq,
       value_eq: host_phase_cell_status_eq,
       ownership_of: host_phase_cell_ownership,
     ),

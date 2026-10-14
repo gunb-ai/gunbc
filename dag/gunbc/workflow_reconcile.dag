@@ -393,7 +393,6 @@ fn workflow_fact_reconcile(
       desired: workflow_fact_forest_members(forest: desired),
       observed: workflow_fact_forest_members(forest: observed),
       key_of: workflow_fact_member_key,
-      key_eq: workflow_fact_key_equal,
       value_eq: workflow_fact_member_value_equal,
       ownership_of: workflow_fact_member_ownership,
     )

@@ -70,7 +70,6 @@ import gunbc.fabric.fabric_cell_converge {
   AddressContradicted,
   AddressUnreadable,
   fabric_cell_address_ref_wire,
-  fabric_cell_member_key_eq,
   fabric_cell_member_value_eq,
   fabric_cell_member_ownership,
   FabricCellObservationRefusal,
@@ -784,10 +783,6 @@ fn timer_member_key(m: TimerRetirementMember) -> NonEmptyStr {
   m.unit_name
 }
 
-fn timer_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  a as String == b as String
-}
-
 fn timer_member_value_eq(a: TimerRetirementMember, b: TimerRetirementMember) -> Bool {
   a.unit_name as String == b.unit_name as String
 }
@@ -802,7 +797,6 @@ fn timer_retirement_plan(observed: List<TimerRetirementMember>) -> MembershipPla
       desired: timer_retirement_desired(),
       observed: observed,
       key_of: timer_member_key,
-      key_eq: timer_member_key_eq,
       value_eq: timer_member_value_eq,
       ownership_of: timer_member_ownership,
     ),
@@ -1046,7 +1040,6 @@ fn fleet_converge_fabric_cell_family(
           desired: fabric_cell_desired_members(host: host as HostIdentity),
           observed: observed,
           key_of: fabric_cell_member_key,
-          key_eq: fabric_cell_member_key_eq,
           value_eq: fabric_cell_member_value_eq,
           ownership_of: fabric_cell_member_ownership,
         )

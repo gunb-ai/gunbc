@@ -80,7 +80,7 @@ type MembershipReconcileScopedOutcome<M, Relation, Scope, K>
 // member identity: Added -> add, Modified -> change, Removed -> remove (owned-only) or refuse,
 // Unchanged -> noop (absence of a hunk). Add and change are DISTINCT arms and are NOT collapsed
 // into one 'upsert'. Only REMOVAL consults ownership (gunbc.ownership Ensured constrains teardown
-// only). Generic over member type M and key K — consumers pass (key_of, key_eq, value_eq,
+// only). Generic over member type M and key K — consumers pass (key_of, value_eq,
 // ownership_of) to membership_reconcile, they NEVER copy-adapt this fn. MemberAction carries `at` =
 // the reconcile key so effect realization does not re-derive identity from mutable value.
 // FUNCTIONAL-KEY ADMISSION: each population is built through keyed_roster_build BEFORE diffing —
@@ -104,8 +104,9 @@ fn subject_key_row_plain<M, K>(row: KeyedRow<SubjectKey<K>, M>) -> KeyedRow<K, M
   KeyedRow { row_key: row.row_key.subject, value: row.value }
 }
 
-// The roster index keys on the projected identity's own structural equality, so key_eq no longer
-// builds the roster; it is still the diff's predicate (std.change, wave 4).
+// The roster index keys on the projected identity's own structural equality, and the diff compares
+// keys the same way: membership_reconcile takes no key_eq, so the roster and the diff cannot hold two
+// definitions of key equality (K1 audit: every caller's key_eq was already structural).
 fn membership_roster_build_over<M, K>(rows: List<KeyedRow<K, M>>) -> KeyedRosterBuild<K, M> {
   keyed_roster_build(incomings: map(rows, r => subject_key_row(row: r)))
 }
@@ -163,15 +164,14 @@ fn plain_hunk_to_action<M, K>(
 fn membership_reconcile_built<M, K>(
   desired_rows: List<KeyedRow<K, M>>,
   observed_rows: List<KeyedRow<K, M>>,
-  key_eq: fn(K, K) -> Bool,
   value_eq: fn(M, M) -> Bool,
   ownership_of: fn(M) -> Ownership?,
 ) -> MembershipPlan<M, K> {
   let patch = keyed_two_way_diff(
     left: observed_rows,
     right: desired_rows,
-    key_eq: key_eq,
-    value_eq: fn(a, b) { keyed_resource_subject_value_equal(resource: resource, left: a, right: b) },
+    key_eq: fn(a, b) { a == b },
+    value_eq: value_eq,
   )
   MembershipPlan {
     actions: map(patch.hunks, h => plain_hunk_to_action(hunk: h, ownership_of: ownership_of))
@@ -182,7 +182,6 @@ fn membership_reconcile<M, K>(
   desired: List<M>,
   observed: List<M>,
   key_of: fn(M) -> K,
-  key_eq: fn(K, K) -> Bool,
   value_eq: fn(M, M) -> Bool,
   ownership_of: fn(M) -> Ownership?,
 ) -> MembershipReconcileOutcome<M, K> {
@@ -208,7 +207,6 @@ fn membership_reconcile<M, K>(
             plan: membership_reconcile_built(
               desired_rows: map(desired_keyed, r => subject_key_row_plain(row: r)),
               observed_rows: map(observed_keyed, r => subject_key_row_plain(row: r)),
-              key_eq: key_eq,
               value_eq: value_eq,
               ownership_of: ownership_of,
             )
@@ -271,6 +269,7 @@ fn membership_reconcile_scoped_built<M, Relation, Scope, K, State>(
   resource: KeyedResourceRelation<Relation, M, Scope, K, State>,
   ownership_of: fn(M) -> Ownership?,
 ) -> MembershipPlan<M, ScopedKey<Relation, Scope, K>> {
+  let value_eq = keyed_resource_subject_value_eq(resource: resource)
   let patch = keyed_two_way_diff(
     left: observed_rows,
     right: desired_rows,

@@ -52,7 +52,6 @@ fn tm_unknown(mid: String, ver: String) -> TMember {
 }
 
 fn t_key(m: TMember) -> String { m.mid }
-fn t_key_eq(a: String, b: String) -> Bool { a == b }
 fn t_val_eq(a: TMember, b: TMember) -> Bool { a.ver == b.ver }
 fn t_own(m: TMember) -> Ownership? { m.own }
 
@@ -62,7 +61,6 @@ fn t_reconcile(desired: List<TMember>, observed: List<TMember>) -> MembershipPla
       desired: desired,
       observed: observed,
       key_of: t_key,
-      key_eq: t_key_eq,
       value_eq: t_val_eq,
       ownership_of: t_own,
     ),
@@ -334,7 +332,6 @@ test fn w_duplicate_plain_key_refuses_with_roster_cause() -> Bool {
       desired: [tm_owned(mid: "dup", ver: "1"), tm_owned(mid: "dup", ver: "2")],
       observed: [],
       key_of: t_key,
-      key_eq: t_key_eq,
       value_eq: t_val_eq,
       ownership_of: t_own,
     ),

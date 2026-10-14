@@ -34,10 +34,6 @@ fn authorized_key_identity(k: SshPublicKey) -> NonEmptyStr {
   k.material
 }
 
-fn authorized_key_identity_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  a == b
-}
-
 fn ssh_algorithm_eq(a: SshKeyAlgorithm, b: SshKeyAlgorithm) -> Bool {
   ssh_key_algorithm_token(a: a) == ssh_key_algorithm_token(a: b)
 }
@@ -99,7 +95,6 @@ fn host_authorized_keys_reconcile_with_ownership(
       desired: fleet_authorized_keys,
       observed: observed,
       key_of: authorized_key_identity,
-      key_eq: authorized_key_identity_eq,
       value_eq: authorized_key_value_eq,
       ownership_of: ownership_of,
     )

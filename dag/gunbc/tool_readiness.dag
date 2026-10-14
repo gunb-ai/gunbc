@@ -105,7 +105,6 @@ fn tool_pin_reconcile(
       desired: desired,
       observed: observed,
       key_of: cli_tool_pin_key_of,
-      key_eq: (a, b) => a == b,
       value_eq: pin_value_eq,
       ownership_of: tool_pin_ownership,
     )

@@ -105,7 +105,6 @@ fn desired_repo_local_git_config_bindings() -> List<RepoLocalGitConfigBinding> {
 }
 
 fn binding_key(b: RepoLocalGitConfigBinding) -> String { b.key }
-fn binding_key_eq(a: String, b: String) -> Bool { a == b }
 fn binding_value_eq(a: RepoLocalGitConfigBinding, b: RepoLocalGitConfigBinding) -> Bool {
   a.value == b.value
 }
@@ -122,7 +121,6 @@ fn repo_local_git_config_reconcile(
       desired: desired,
       observed: observed,
       key_of: binding_key,
-      key_eq: binding_key_eq,
       value_eq: binding_value_eq,
       ownership_of: binding_ownership,
     ),

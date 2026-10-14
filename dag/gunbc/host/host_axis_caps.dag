@@ -83,10 +83,6 @@ fn cap_member_key(m: CapMember) -> NonEmptyStr {
   m.dropin_path
 }
 
-fn cap_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  a as String == b as String
-}
-
 fn cap_member_value_eq(a: CapMember, b: CapMember) -> Bool {
   a.content == b.content
 }
@@ -155,7 +151,6 @@ fn caps_reconcile(desired: List<CapMember>, observed: List<CapMember>) -> Member
       desired: desired,
       observed: observed,
       key_of: cap_member_key,
-      key_eq: cap_member_key_eq,
       value_eq: cap_member_value_eq,
       ownership_of: cap_member_ownership,
     ),
@@ -208,10 +203,6 @@ fn control_shadow_unit(unit: NonEmptyStr) -> ControlShadowUnit {
 
 fn control_shadow_unit_key(u: ControlShadowUnit) -> NonEmptyStr {
   u.unit
-}
-
-fn control_shadow_unit_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  a as String == b as String
 }
 
 fn control_shadow_unit_value_eq(a: ControlShadowUnit, b: ControlShadowUnit) -> Bool {
@@ -772,7 +763,6 @@ fn control_shadow_reconcile(
       desired: desired,
       observed: observed,
       key_of: control_shadow_unit_key,
-      key_eq: control_shadow_unit_key_eq,
       value_eq: control_shadow_unit_value_eq,
       ownership_of: control_shadow_unit_ownership,
     ),

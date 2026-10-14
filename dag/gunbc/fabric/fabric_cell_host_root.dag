@@ -56,10 +56,6 @@ fn fabric_cell_host_member_key(member: FabricCellHostMember) -> NonEmptyStr {
   member.host as String as NonEmptyStr
 }
 
-fn fabric_cell_host_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  a as String == b as String
-}
-
 fn fabric_cell_host_member_value_eq(a: FabricCellHostMember, b: FabricCellHostMember) -> Bool {
   a.state_digest as String == b.state_digest as String
 }
@@ -98,7 +94,6 @@ fn fabric_cell_host_reconcile(
       desired: desired,
       observed: observed,
       key_of: fabric_cell_host_member_key,
-      key_eq: fabric_cell_host_member_key_eq,
       value_eq: fabric_cell_host_member_value_eq,
       ownership_of: fabric_cell_host_member_ownership,
     ),
