@@ -10,7 +10,7 @@ import v2.std.node {
   TypeNode, ComputationNode, Atom, Conj, Disj, Arrow, Occupancy, Instantiation,
   Transform, Value, Branch, Loop, Bind, Match
 }
-import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view, type_param_names }
+import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view, type_param_names }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
 import std.optional { Optional, Present, Absent }
 import v2.std.grammar { node_atom_identity_optional }
@@ -129,6 +129,7 @@ fn tdc_base_read(form: TypeDeclForm, member: Node) -> TdcBaseRead {
         TypeAlias { binders: _, aliased: a } => TdcBaseRead { base: type_ref_text(n: a), predicates: Empty }
         GenericTypeDecl { binders: _, member: _ } => tdc_no_base()
         OpaqueTypeDecl { binders: _ } => tdc_no_base()
+        NotATypeDecl => tdc_no_base()
         PlainTypeDecl { member: _ } => tdc_no_base()
       }
     RefinementForm =>
@@ -196,6 +197,7 @@ fn tdc_generic_form(name: Symbol, target: Node, kinds: FreeMonoid<DeclaredTypeKi
       }
     TypeAlias { binders: _, aliased: _ } => FormUndecided
     OpaqueTypeDecl { binders: _ } => FormUndecided
+    NotATypeDecl => FormUndecided
     PlainTypeDecl { member: _ } => FormUndecided
   }
 }
@@ -205,6 +207,7 @@ fn tdc_generic_member(target: Node) -> Node {
     GenericTypeDecl { binders: _, member: m } => m
     TypeAlias { binders: _, aliased: _ } => target
     OpaqueTypeDecl { binders: _ } => target
+    NotATypeDecl => target
     PlainTypeDecl { member: m } => m
   }
 }
