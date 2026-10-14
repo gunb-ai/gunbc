@@ -3986,6 +3986,70 @@ pub fn type_leaf_is_unbound_in_closure_scope(
     }
 }
 
+pub fn type_node_is_nominal(n: Rc<Node>) -> bool {
+    match n.connective.clone() {
+        Connective::Disj => true,
+        Connective::Conj => true,
+        _ => false,
+    }
+}
+
+pub fn type_node_has_applied_binding(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match crate::v1_std_core::find_property(
+        n.properties.clone(),
+        "__applied_type_args".to_string(),
+        source_indices.clone(),
+    ) {
+        Some(_) => true,
+        std::option::Option::None => false,
+    }
+}
+
+pub fn type_node_spelled_atoms_unbound(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match crate::v1_std_core::find_property(
+        n.properties.clone(),
+        "__applied_type_args".to_string(),
+        source_indices.clone(),
+    ) {
+        Some(applied) => {
+            let mut __found = false;
+            for c in applied.children.clone().iter().cloned() {
+                if type_node_has_closure_unbound_generic_atom(
+                    c.clone(),
+                    generic_param_names.clone(),
+                    env.clone(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+        std::option::Option::None => {
+            let mut __found = false;
+            for p in n.params.clone().iter().cloned() {
+                if !type_var_in_fn_generic_scope(
+                    crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone()),
+                    generic_param_names.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
 pub fn type_node_has_closure_unbound_generic_atom(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -3994,10 +4058,7 @@ pub fn type_node_has_closure_unbound_generic_atom(
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let leaf_name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-        if ((((n.children.clone().len() as i64) == 0) && (leaf_name.clone() != "".to_string()))
-            && !((n.inferred.clone() == std::option::Option::None)
-                && crate::v1_compiler_infer_env::node_is_kernel_mint(n.clone())))
-        {
+        if (((n.children.clone().len() as i64) == 0) && (leaf_name.clone() != "".to_string())) {
             if type_leaf_is_unbound_in_closure_scope(
                 leaf_name.clone(),
                 generic_param_names.clone(),
@@ -4014,17 +4075,38 @@ pub fn type_node_has_closure_unbound_generic_atom(
                     }
                 }
                 InferredNode::Resolved { node: rt, .. } => {
-                    if type_node_has_closure_unbound_generic_atom(
-                        rt.clone(),
-                        generic_param_names.clone(),
-                        env.clone(),
-                        source_indices.clone(),
-                    ) {
-                        return true;
+                    if type_node_is_nominal(rt.clone()) {
+                        if (!type_node_has_applied_binding(n.clone(), source_indices.clone())
+                            && type_node_spelled_atoms_unbound(
+                                rt.clone(),
+                                generic_param_names.clone(),
+                                env.clone(),
+                                source_indices.clone(),
+                            ))
+                        {
+                            return true;
+                        }
+                    } else {
+                        if type_node_has_closure_unbound_generic_atom(
+                            rt.clone(),
+                            generic_param_names.clone(),
+                            env.clone(),
+                            source_indices.clone(),
+                        ) {
+                            return true;
+                        }
                     }
                 }
                 _ => (),
             }
+        }
+        if type_node_is_nominal(n.clone()) {
+            return type_node_spelled_atoms_unbound(
+                n.clone(),
+                generic_param_names.clone(),
+                env.clone(),
+                source_indices.clone(),
+            );
         }
         if {
             let mut __found = false;
@@ -4043,43 +4125,12 @@ pub fn type_node_has_closure_unbound_generic_atom(
         } {
             true
         } else {
-            match crate::v1_std_core::find_property(
-                n.properties.clone(),
-                "__applied_type_args".to_string(),
+            type_node_spelled_atoms_unbound(
+                n.clone(),
+                generic_param_names.clone(),
+                env.clone(),
                 source_indices.clone(),
-            ) {
-                Some(applied) => {
-                    let mut __found = false;
-                    for c in applied.children.clone().iter().cloned() {
-                        if type_node_has_closure_unbound_generic_atom(
-                            c.clone(),
-                            generic_param_names.clone(),
-                            env.clone(),
-                            source_indices.clone(),
-                        ) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }
-                std::option::Option::None => {
-                    let mut __found = false;
-                    for p in n.params.clone().iter().cloned() {
-                        if !type_var_in_fn_generic_scope(
-                            crate::v1_std_core::generic_param_name_at(
-                                p.clone(),
-                                source_indices.clone(),
-                            ),
-                            generic_param_names.clone(),
-                        ) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }
-            }
+            )
         }
     })
 }
