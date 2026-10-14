@@ -8870,9 +8870,26 @@ pub fn collect_item_type_surface_names(
             }
             _ => Rc::new(vec![]),
         };
+        let from_uses = Rc::new({
+            let mut __result = Vec::new();
+            for u in item.uses.clone().iter().cloned() {
+                __result.extend(
+                    (*crate::v1_compiler_infer_emit_info::collect_type_node_import_surface_names(
+                        crate::v1_std_core::resource_use_resource(u.clone()),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
         v1_rt::concat(
             from_ann.clone(),
-            v1_rt::concat(from_params.clone(), from_inferred.clone()),
+            v1_rt::concat(
+                from_params.clone(),
+                v1_rt::concat(from_inferred.clone(), from_uses.clone()),
+            ),
         )
     }
 }
@@ -8928,11 +8945,21 @@ pub fn collect_item_type_surface_occurrences(
             } else {
                 Rc::new(vec![])
             };
+        let from_uses = Rc::new({
+            let mut __result = Vec::new();
+            for u in item.uses.clone().iter().cloned() {
+                __result.extend((*crate::v1_compiler_infer_emit_info::collect_type_node_import_surface_occurrences(crate::v1_std_core::resource_use_resource(u.clone()), false, source_indices.clone())).iter().cloned());
+            }
+            __result
+        });
         v1_rt::concat(
             from_ann.clone(),
             v1_rt::concat(
                 from_params.clone(),
-                v1_rt::concat(from_inferred.clone(), from_decl_children.clone()),
+                v1_rt::concat(
+                    from_inferred.clone(),
+                    v1_rt::concat(from_uses.clone(), from_decl_children.clone()),
+                ),
             ),
         )
     })
