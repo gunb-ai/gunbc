@@ -619,11 +619,21 @@ pub fn func_decl_binding_for_call(
             match (*borrowed_census_decl(type_env.clone(), name.clone())).clone() {
                 BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
                     declaration: bd, ..
-                } => constructor_declaration_for_admission(
-                    type_env.clone(),
-                    bd.owner_module_path.clone(),
-                    name.clone(),
-                ),
+                } => {
+                    let located = constructor_declaration_for_admission(
+                        type_env.clone(),
+                        bd.owner_module_path.clone(),
+                        name.clone(),
+                    );
+                    match (*located).clone() {
+                        ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable {
+                            ..
+                        } => Rc::new(
+                            ConstructorDeclarationLookup::NotAdmissionBearingReference {},
+                        ),
+                        other => Rc::new(other),
+                    }
+                }
                 BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous { candidates: _, .. } => {
                     Rc::new(ConstructorDeclarationLookup::NotAdmissionBearingReference {})
                 }
