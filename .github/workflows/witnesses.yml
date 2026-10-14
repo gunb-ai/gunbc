@@ -67,18 +67,6 @@ jobs:
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
-      - name: Record compile shape
-        run: |-
-          # dissolve-on: compile_shape_receipt -- delete this required-job step when the required job isolates MAKEFLAGS and CARGO_BUILD_JOBS from the runner unit the way gunbc.fleet.fleet_workflow_steps ci_fleet_build_tuning_steps already does for fleet-converge, AND gunbc.runner.runner_slot_desired cpu_quota is a resolved thread count the live unit emits as CPUQuota, so a job's compile width is the slot's declared shape rather than host nproc plus a shared jobserver. Identifying contention on the shared slot is not a substitute.
-          GUNBC_COMPILE_SHAPE_PREFIX='GUNBC_COMPILE_SHAPE'
-          echo "$GUNBC_COMPILE_SHAPE_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
-          echo "$GUNBC_COMPILE_SHAPE_PREFIX nproc=$(nproc 2>/dev/null || echo unavailable) cargo_build_jobs=${CARGO_BUILD_JOBS:-unset} makeflags=${MAKEFLAGS:-unset} rustc_wrapper=${RUSTC_WRAPPER:-unset}"
-          echo "$GUNBC_COMPILE_SHAPE_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
-          GUNBC_COMPILE_SHAPE_CG=$(sed -n 's/^0:://p' /proc/self/cgroup 2>/dev/null | tail -n 1)
-          if [ -z "$GUNBC_COMPILE_SHAPE_CG" ]; then GUNBC_COMPILE_SHAPE_CG=unavailable; fi
-          echo "$GUNBC_COMPILE_SHAPE_PREFIX cgroup=$GUNBC_COMPILE_SHAPE_CG"
-          GUNBC_COMPILE_SHAPE_CGDIR=/sys/fs/cgroup$GUNBC_COMPILE_SHAPE_CG
-          if [ -d "$GUNBC_COMPILE_SHAPE_CGDIR" ]; then echo "$GUNBC_COMPILE_SHAPE_PREFIX cpu.max=$(tr '\n' ' ' < "$GUNBC_COMPILE_SHAPE_CGDIR/cpu.max" 2>/dev/null || echo unavailable) cpu.weight=$(tr '\n' ' ' < "$GUNBC_COMPILE_SHAPE_CGDIR/cpu.weight" 2>/dev/null || echo unavailable) cpu.stat=$(tr '\n' ' ' < "$GUNBC_COMPILE_SHAPE_CGDIR/cpu.stat" 2>/dev/null || echo unavailable)"; else echo "$GUNBC_COMPILE_SHAPE_PREFIX cpu.max=unavailable cpu.weight=unavailable cpu.stat=unavailable"; fi
       - name: Build the compiler
         id: build_witness_fold
         run: |+

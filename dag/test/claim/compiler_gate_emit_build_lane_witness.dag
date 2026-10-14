@@ -179,6 +179,8 @@ test fn the_compile_shape_receipt_names_the_shape_axes() -> Bool {
     && string_contains(s: s, pattern: "nproc=")
     && string_contains(s: s, pattern: "cargo_build_jobs=")
     && string_contains(s: s, pattern: "makeflags=")
+    && string_contains(s: s, pattern: "jobserver_auth=")
+    && string_contains(s: s, pattern: "tokens=")
     && string_contains(s: s, pattern: "cpu.max=")
     && string_contains(s: s, pattern: "cpu.stat=")
 }

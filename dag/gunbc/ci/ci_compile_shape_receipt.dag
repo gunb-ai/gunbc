@@ -3,10 +3,12 @@ module gunbc.ci.ci_compile_shape_receipt
 // THE PRODUCER FOR PER-RUNNER BUILD VARIANCE ON THE REQUIRED JOB. Seed `cargo build --release`
 // wall on v2-bootstrap is ~4 min on srv1 in every sampled window and ~15 min on srv3/srv4 when
 // those hosts are busy (GitHub step timestamps, session witty-crane-693). Cache Cargo restore is
-// 6-9s on every host, so the split is not the GHA cache. This step prints the compile SHAPE the
-// seed build actually inherited -- nproc, CARGO_BUILD_JOBS, MAKEFLAGS, RUSTC_WRAPPER, the job
-// cgroup's cpu.max / cpu.weight / cpu.stat -- so a later grouping instrument can attribute wall
-// without a one-off `gh` fold (DESIGN section 6: name the instrument).
+// 6-9s on every host, so the split is not the GHA cache. This step prints the compile SHAPE cargo
+// actually inherited -- nproc, CARGO_BUILD_JOBS, MAKEFLAGS (jobserver auth present or absent),
+// the FIFO path and declared token count when readable, RUSTC_WRAPPER, the job cgroup's cpu.max /
+// cpu.weight / cpu.stat -- so one srv1 run and one loaded srv3 run settle shared-fifo vs unbounded
+// -j128. It does not consume fifo tokens. A later grouping instrument can attribute wall without a
+// one-off `gh` fold (DESIGN section 6: name the instrument).
 //
 // IT DOES NOT TUNE THE BUILD. Fleet-converge isolates MAKEFLAGS and writes CARGO_BUILD_JOBS from
 // ci_compile_jobs (gunbc.fleet.fleet_workflow_steps ci_fleet_build_tuning_steps). The required job
@@ -40,7 +42,17 @@ fn compile_shape_receipt_lines() -> List<String> {
     concat("# ", dissolution_description(condition: compile_shape_receipt_dissolution)),
     concat("GUNBC_COMPILE_SHAPE_PREFIX='", concat(compile_shape_receipt_prefix, "'")),
     "echo \"$GUNBC_COMPILE_SHAPE_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}\"",
-    "echo \"$GUNBC_COMPILE_SHAPE_PREFIX nproc=$(nproc 2>/dev/null || echo unavailable) cargo_build_jobs=${CARGO_BUILD_JOBS:-unset} makeflags=${MAKEFLAGS:-unset} rustc_wrapper=${RUSTC_WRAPPER:-unset}\"",
+    "echo \"$GUNBC_COMPILE_SHAPE_PREFIX nproc=$(nproc 2>/dev/null || echo unavailable) cargo_build_jobs=${CARGO_BUILD_JOBS:-unset} rustc_wrapper=${RUSTC_WRAPPER:-unset}\"",
+    "echo \"$GUNBC_COMPILE_SHAPE_PREFIX makeflags=${MAKEFLAGS:-unset}\"",
+    "GUNBC_COMPILE_SHAPE_JOBSERVER_AUTH=absent",
+    "case \"${MAKEFLAGS:-}\" in *jobserver*) GUNBC_COMPILE_SHAPE_JOBSERVER_AUTH=present ;; esac",
+    "GUNBC_COMPILE_SHAPE_FIFO=${CTRL_JOBSERVER_FIFO:-}",
+    "if [ -z \"$GUNBC_COMPILE_SHAPE_FIFO\" ]; then GUNBC_COMPILE_SHAPE_FIFO=$(printf '%s\\n' \"${MAKEFLAGS:-}\" | sed -n 's/.*jobserver-auth=fifo:\\([^ ]*\\).*/\\1/p' | head -n 1); fi",
+    "if [ -z \"$GUNBC_COMPILE_SHAPE_FIFO\" ]; then GUNBC_COMPILE_SHAPE_FIFO=unset; fi",
+    "GUNBC_COMPILE_SHAPE_TOKENS=${CTRL_JOBSERVER_TOKENS:-unset}",
+    "if [ \"$GUNBC_COMPILE_SHAPE_TOKENS\" = unset ] && [ -r /etc/default/ctrl-jobserver ]; then GUNBC_COMPILE_SHAPE_TOKENS=$(sed -n 's/^CTRL_JOBSERVER_TOKENS=//p' /etc/default/ctrl-jobserver 2>/dev/null | head -n 1); if [ -z \"$GUNBC_COMPILE_SHAPE_TOKENS\" ]; then GUNBC_COMPILE_SHAPE_TOKENS=unset; fi; fi",
+    "if [ \"$GUNBC_COMPILE_SHAPE_FIFO\" != unset ] && [ -e \"$GUNBC_COMPILE_SHAPE_FIFO\" ]; then GUNBC_COMPILE_SHAPE_FIFO_EXISTS=yes; else GUNBC_COMPILE_SHAPE_FIFO_EXISTS=no; fi",
+    "echo \"$GUNBC_COMPILE_SHAPE_PREFIX jobserver_auth=$GUNBC_COMPILE_SHAPE_JOBSERVER_AUTH fifo=$GUNBC_COMPILE_SHAPE_FIFO fifo_exists=$GUNBC_COMPILE_SHAPE_FIFO_EXISTS tokens=$GUNBC_COMPILE_SHAPE_TOKENS\"",
     "echo \"$GUNBC_COMPILE_SHAPE_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)\"",
     "GUNBC_COMPILE_SHAPE_CG=$(sed -n 's/^0:://p' /proc/self/cgroup 2>/dev/null | tail -n 1)",
     "if [ -z \"$GUNBC_COMPILE_SHAPE_CG\" ]; then GUNBC_COMPILE_SHAPE_CG=unavailable; fi",
