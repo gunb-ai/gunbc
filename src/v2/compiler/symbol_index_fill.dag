@@ -20,6 +20,7 @@ import std.optional {
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node {
   Arrow,
+  ComputationNode,
   Conj,
   Disj,
   Edge,
@@ -61,7 +62,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.compiler.primitive_authority { primitive_authority_row_is_contract_declaration }
-import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view, type_param_names }
+import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view, type_decl_conj_carries_an_arrow_member, type_param_names }
 import std.types { List }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
@@ -111,8 +112,31 @@ fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
     GenericTypeDecl { binders: b, member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), binders: optional_present(value: b) }
     TypeAlias { binders: b, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent(), binders: optional_present(value: b) }
     OpaqueTypeDecl { binders: b } => SymbolIndexDeclared { bound: target, members: optional_absent(), binders: optional_present(value: b) }
-    NotATypeDecl => SymbolIndexDeclared { bound: target, members: optional_absent(), binders: optional_absent() }
+    NotATypeDecl =>
+      SymbolIndexDeclared {
+        bound: target,
+        members: symbol_index_callable_members(target: target),
+        binders: optional_absent()
+      }
     PlainTypeDecl { member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), binders: optional_absent() }
+  }
+}
+
+// A CALLABLE IS NOT A TYPE DECLARATION, BUT IT STILL HAS VALUE MEMBERS TO INDEX. type_decl_view
+// NotATypeDecl (an Arrow, or a Conj that carries one) correctly refuses type-member kind; fill still
+// descends so the Arrow arm can mint parameter paths. An import residual is also NotATypeDecl and
+// has no Arrow, so members stay Absent — the descent that treated those Conjs as records.
+fn symbol_index_callable_members(target: Node) -> Optional<Node> {
+  match target.kind {
+    TypeNode { connective: Arrow } => optional_present(value: target)
+    TypeNode { connective: Conj } =>
+      if type_decl_conj_carries_an_arrow_member(n: target) {
+        optional_present(value: target)
+      } else {
+        optional_absent()
+      }
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
