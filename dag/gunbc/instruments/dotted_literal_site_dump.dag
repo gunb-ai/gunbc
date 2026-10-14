@@ -1,0 +1,116 @@
+module gunbc.instruments.dotted_literal_site_dump
+
+import std.process { ProcessExit, exit_failure }
+import std.types { List, String }
+import std.integer { int_to_decimal_string }
+import std.algebra { fold_list, length }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.cli.repository_layout { repository_storage_layout }
+import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_env_over, acquisition_front_end }
+import v2.compiler.parse { prepare_grammar }
+import v2.compiler.reference_site_collector { collect_module_reference_sites }
+import v2.compiler.source_authority { ModuleFileRef }
+import v2.compiler.tokenize { prepare_lex_rules }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dump_list_path: String = "/tmp/dotted_files.txt"
+data dump_out_path: String = "/tmp/v2_sites.txt"
+
+data dotted_literal_fixture: String = "module v2.test.subject\n\nfn subject() -> String {\n  \"v2.std.logic\"\n}\n\nfn uses() -> Bool {\n  v2.std.logic.and(a: true, b: true)\n}\n"
+
+fn dump_fixture() -> ProcessExit {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => exit_failure(reason: "grammar-unprepared")
+    Accepted { value: prepared, diagnostics: _ } => {
+      let env = acquisition_env_over(
+        layout: repository_storage_layout(),
+        bindings: [],
+        lex: prepare_lex_rules(rules: dag_language_model().lex),
+        grammar: prepared
+      )
+      match acquisition_front_end(
+        env: env,
+        file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+        content: dotted_literal_fixture
+      ) {
+        Rejected { diagnostics: _ } => exit_failure(reason: "front-end-refused")
+        Accepted { value: front, diagnostics: _ } => {
+          let body = fold_list(
+            xs: collect_module_reference_sites(root: front.tree.root).sites,
+            empty: "",
+            cons: fn(acc, site) {
+              concat(acc, concat(qualified_name_to_dotted_string(qn: site.spelling), "\n"))
+            }
+          )
+          let written = Filesystem.Write(path: "/tmp/fixture_sites.txt", content: body)
+          if !written.success {
+            exit_failure(reason: "write-failed")
+          } else {
+            exit_failure(reason: concat("FIXTURE_DUMP_OK bytes=", int_to_decimal_string(value: length(xs: body))))
+          }
+        }
+      }
+    }
+  }
+}
+
+fn dump() -> ProcessExit {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => exit_failure(reason: "grammar-unprepared")
+    Accepted { value: prepared, diagnostics: _ } => {
+      let env = acquisition_env_over(
+        layout: repository_storage_layout(),
+        bindings: [],
+        lex: prepare_lex_rules(rules: dag_language_model().lex),
+        grammar: prepared
+      )
+      let list_read = Filesystem.Read(path: dump_list_path)
+      if !list_read.success {
+        exit_failure(reason: concat("list-unreadable:", dump_list_path))
+      } else {
+        let paths = list_read.content.split(delimiter: "\n") |> filter(p => p != "")
+        let body = fold_list(
+          xs: paths,
+          empty: "",
+          cons: fn(acc, path) {
+            let read = Filesystem.Read(path: path)
+            if !read.success {
+              concat(acc, concat("READ_FAIL|", concat(path, "\n")))
+            } else {
+              match acquisition_front_end(
+                env: env,
+                file: ModuleFileRef { tree: V2Tree {}, relative_path: path },
+                content: read.content
+              ) {
+                Rejected { diagnostics: _ } =>
+                  concat(acc, concat("FRONT_REFUSED|", concat(path, "\n")))
+                Accepted { value: front, diagnostics: _ } =>
+                  fold_list(
+                    xs: collect_module_reference_sites(root: front.tree.root).sites,
+                    empty: concat(acc, concat("FILE|", concat(path, "\n"))),
+                    cons: fn(inner, site) {
+                      concat(inner, concat(path, concat("|", concat(qualified_name_to_dotted_string(qn: site.spelling), "\n"))))
+                    }
+                  )
+              }
+            }
+          }
+        )
+        let written = Filesystem.Write(path: dump_out_path, content: body)
+        if !written.success {
+          exit_failure(reason: concat("write-failed:", dump_out_path))
+        } else {
+          exit_failure(
+            reason: concat("SITE_DUMP_OK files=", concat(int_to_decimal_string(value: length(xs: paths)), concat(" bytes=", int_to_decimal_string(value: length(xs: body)))))
+          )
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,76 @@
+module gunbc.instruments.dotted_literal_red_main
+
+import std.optional { Absent, Present }
+import std.process { ProcessExit, exit_failure }
+import std.types { List }
+import std.algebra { list_head, list_map }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.cli.repository_layout { repository_storage_layout }
+import v2.compiler.module_acquisition { AcquisitionEnv, acquisition_env_over, acquisition_front_end }
+import v2.compiler.parse { PreparedGrammar, prepare_grammar }
+import v2.compiler.reference_site_collector {
+  HeadBindingUndecided,
+  HeadBoundAtRootValue,
+  HeadBoundInFrame,
+  HeadLexicallyUnbound,
+  SiteHeadBinding,
+  collect_scoped_module_reference_sites
+}
+import v2.compiler.source_authority { ModuleFileRef }
+import v2.compiler.tokenize { prepare_lex_rules }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn scope_env(prepared: PreparedGrammar) -> AcquisitionEnv {
+  acquisition_env_over(
+    layout: repository_storage_layout(),
+    bindings: [],
+    lex: prepare_lex_rules(rules: dag_language_model().lex),
+    grammar: prepared
+  )
+}
+
+fn head_text(head: SiteHeadBinding) -> String {
+  match head {
+    HeadBoundInFrame => "frame"
+    HeadBoundAtRootValue => "root"
+    HeadBindingUndecided => "undecided"
+    HeadLexicallyUnbound => "unbound"
+  }
+}
+
+fn head_of_site(content: String, spelling: String) -> String {
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match acquisition_front_end(
+        env: scope_env(prepared: prepared),
+        file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+        content: content
+      ) {
+        Rejected { diagnostics: _ } => "front-end-refused"
+        Accepted { value: front, diagnostics: _ } =>
+          match list_head(xs: collect_scoped_module_reference_sites(root: front.tree.root, imported: list_map(xs: front.tree.import_bindings, f: fn(row) { row.binding })).sites |> filter(fn(s) { qualified_name_to_dotted_string(qn: s.site.spelling) == spelling })) {
+            Absent => "no-site"
+            Present { value: found } => head_text(head: found.head)
+          }
+      }
+  }
+}
+
+fn red() -> ProcessExit {
+  let head = head_of_site(
+    content: "module v2.test.subject\n\nfn subject() -> String {\n  \"v2.std.logic\"\n}\n\nfn uses() -> Bool {\n  v2.std.logic.and(a: true, b: true)\n}\n",
+    spelling: "v2.std.logic"
+  )
+  if head == "no-site" {
+    exit_failure(reason: "RED_PASS")
+  } else {
+    exit_failure(reason: concat("RED_FAIL head=", head))
+  }
+}

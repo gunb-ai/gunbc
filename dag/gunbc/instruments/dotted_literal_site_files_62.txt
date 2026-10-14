@@ -1,0 +1,13 @@
+src/v2/workflow/floor_pure_producer_share.dag
+src/v2/workflow/floor_route_gap.dag
+src/v2/workflow/legacy_binding_observation.dag
+src/v2/workflow/legacy_binding_projection.dag
+src/v2/workflow/legacy_repair_observation.dag
+src/v2/workflow/legacy_repair_tap.dag
+src/v2/workflow/local_repo_wet_terminal.dag
+src/v2/workflow/namespace_xl2_rehearsal_native.dag
+src/v2/workflow/orchestration_while_emit.dag
+src/v2/workflow/required_floor.dag
+src/v2/workflow/rust_crate_partition.dag
+src/v2/workflow/source_reference_repoint.dag
+src/v2/workflow/witness_admission.dag
