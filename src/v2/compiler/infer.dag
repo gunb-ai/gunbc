@@ -4143,6 +4143,23 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
   }
 }
 
+// A NULLARY GENERIC ARM IS OPEN UNTIL THE USE SITE SOLVES IT. The authority emits
+// Instantiation of the coproduct at its declared binders (infer_coproduct_type_applied_open).
+// Matching those binders against the position's declared type (never inhabitance
+// type_variables, never UndecidableGenericFormal) is the solve: FsEmpty at FsList<Int>
+// becomes FsList<Int>. A concrete produced type is left as written, so FsList<Bool> at
+// FsList<Int> still refuses.
+fn infer_solve_open_generic_coproduct_type(produced: Node, expected: Node, declarations: SymbolIndex) -> Node {
+  match infer_open_coproduct_binders(t: produced, declarations: declarations) {
+    Absent => produced
+    Present { value: binders } =>
+      match infer_match_generic_formal(formal: produced, produced: expected, type_params: binders, instances: Empty, declarations: declarations) {
+        InferFormalShapeMismatch => produced
+        InferFormalMatched { instances: matched } => infer_type_instantiated(t: produced, instances: matched)
+      }
+  }
+}
+
 // A TRANSPARENT ALIAS IS ITS RIGHT-HAND SIDE. `type List<T> = std.algebra.FreeMonoid<T>` is one type under two
 // spellings. The head that names a transparent alias unfolds one step -- its declaration read from the index the
 // obligation's producer holds (a TypeAlias wrapper, v2.std.type_binder type_decl_view), its binders
