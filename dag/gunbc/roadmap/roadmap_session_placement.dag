@@ -14,7 +14,7 @@ import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
-  attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_state_wire,
+  attempt_open, attempt_begin_launch, attempt_terminate, attempt_record_with_state, attempt_transition_wire, attempt_state_wire,
   compute_pre_launch_ceiling_seconds,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
   unit_lifecycle_wire,
@@ -298,7 +298,7 @@ fn session_refused_after_open(stores: SessionPlacementStores, record: AttemptRec
   SessionPlacementRefused {
     detail: join([
       refusal, "; session slot ",
-      attempt_transition_wire(t: attempt_terminate(root: stores.slots_root, record: record, expected: generation, verdict: AttemptRecovered, detail: join(["reservation refused: ", refusal], ""))),
+      attempt_transition_wire(t: attempt_terminate(root: stores.slots_root, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join(["reservation refused: ", refusal], ""))),
     ], ""),
   }
 }
@@ -311,12 +311,12 @@ type SessionLaunchGate
   | SessionLaunchRefused { detail: String }
 
 fn session_placement_begin_launch(stores: SessionPlacementStores, grant: SessionPlacementGrant) -> SessionLaunchGate {
-  match attempt_begin_launch(root: stores.slots_root, record: grant.slot, expected: grant.slot_generation) {
+  match attempt_begin_launch(root: stores.slots_root, reference: grant.slot.reference as NonEmptyStr, expected: grant.slot_generation) {
     AttemptAdvanced { state: s, generation: g } =>
       SessionLaunchAdmitted { grant: SessionPlacementGrant {
         node_id: grant.node_id, attempt_key: grant.attempt_key, unit: grant.unit, lease: grant.lease, partition: grant.partition,
         amount: grant.amount, class_grant: grant.class_grant, store: grant.store,
-        slot: AttemptRecord { identity: grant.slot.identity, reference: grant.slot.reference, unit: grant.slot.unit, granted: grant.slot.granted, opened_at: grant.slot.opened_at, launch_deadline: grant.slot.launch_deadline, state: s },
+        slot: attempt_record_with_state(r: grant.slot, state: s),
         slot_generation: g,
       } }
     AttemptLostRace { expected: e, observed: o } => SessionLaunchRefused { detail: join(["the session slot moved before launch (expected ", e, ", found ", o, "); settlement ended this attempt, so its unit is not started"], "") }
@@ -360,7 +360,7 @@ fn session_abandon_kept(why: String) -> SessionAbandonment {
 }
 
 fn session_abandon_terminate_then_release(stores: SessionPlacementStores, grant: SessionPlacementGrant, record: AttemptRecord, generation: CasGeneration, reason: NonEmptyStr, why: String) -> SessionAbandonment {
-  match attempt_terminate(root: stores.slots_root, record: record, expected: generation, verdict: AttemptRecovered, detail: join([reason as String, "; ", why], "")) {
+  match attempt_terminate(root: stores.slots_root, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join([reason as String, "; ", why], "")) {
     AttemptAdvanced { state: s, generation: _ } => session_abandon_release(stores: stores, grant: grant, reason: reason, closed: join(["closed (", attempt_state_wire(s: s), ") after re-reading: ", why], ""))
     AttemptLostRace { expected: e, observed: o } => session_abandon_kept(why: join(["the slot moved again (expected ", e, ", found ", o, "); the settlement pass decides it from the store"], ""))
     AttemptTransitionRefused { detail: d } => session_abandon_kept(why: join(["the slot would not take the terminal generation: ", d], ""))
@@ -368,7 +368,7 @@ fn session_abandon_terminate_then_release(stores: SessionPlacementStores, grant:
 }
 
 fn session_placement_abandon_at(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr, lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle) -> SessionAbandonment {
-  match attempt_terminate(root: stores.slots_root, record: grant.slot, expected: grant.slot_generation, verdict: AttemptRecovered, detail: reason as String) {
+  match attempt_terminate(root: stores.slots_root, reference: grant.slot.reference as NonEmptyStr, expected: grant.slot_generation, verdict: AttemptRecovered, detail: reason as String) {
     AttemptAdvanced { state: s, generation: _ } => session_abandon_release(stores: stores, grant: grant, reason: reason, closed: join(["closed (", attempt_state_wire(s: s), ")"], ""))
     AttemptTransitionRefused { detail: d } => session_abandon_kept(why: join(["the slot would not take the terminal generation (", d, "); the settlement pass decides it from the store"], ""))
     AttemptLostRace { expected: _, observed: _ } =>
@@ -1058,7 +1058,7 @@ fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmpt
     SettleReleaseOnly { record: _, attempt, reason } =>
       session_settle_release(stores: stores, host: host, unit: key, attempt: attempt, reason: reason)
     SettleTerminateAndRelease { record, generation, attempt, reason } =>
-      match attempt_terminate(root: stores.slots_root, record: record, expected: generation, verdict: AttemptRecovered, detail: join([reason, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
+      match attempt_terminate(root: stores.slots_root, reference: record.reference as NonEmptyStr, expected: generation, verdict: AttemptRecovered, detail: join([reason, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
         AttemptLostRace { expected: e, observed: o } =>
           SessionSettlementRefused { unit: key as String, detail: join(["the slot moved while settlement was deciding (expected ", e, ", found ", o, "); the observation is stale, so nothing is released"], "") }
         AttemptTransitionRefused { detail: d } => SessionSettlementRefused { unit: key as String, detail: join(["the slot would not take the terminal generation: ", d], "") }
