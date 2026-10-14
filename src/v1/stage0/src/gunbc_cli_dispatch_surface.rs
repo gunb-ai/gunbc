@@ -27,16 +27,7 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum CliDispatchGuaranteePosition {
@@ -44,7 +35,7 @@ pub enum CliDispatchGuaranteePosition {
     CliDispatchOutsideGuaranteeLadder,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CliDispatchRungClass {
     pub identity: String,
     pub position: CliDispatchGuaranteePosition,
@@ -76,16 +67,7 @@ pub fn cli_dispatch_rung_classes() -> Rc<Vec<Rc<CliDispatchRungClass>>> {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum CliOptionArity {
@@ -110,16 +92,7 @@ pub enum CliOptionValue {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum CliSurfaceEmission {
@@ -127,7 +100,7 @@ pub enum CliSurfaceEmission {
     AbsentFromShippedDispatch,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CliVersionIdentity {
     CliCleanSourceCommit { commit: CommitSha },
@@ -142,7 +115,7 @@ impl CliVersionIdentity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CliArmRealization {
     CliDelegatesToHostFn {
@@ -162,16 +135,7 @@ pub enum CliArmRealization {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum CliBootstrapExecutionClass {
@@ -179,16 +143,7 @@ pub enum CliBootstrapExecutionClass {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum AdmittedBootstrapOperationIdentity {
@@ -209,25 +164,25 @@ pub fn admitted_bootstrap_operation_declaration(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CliBootstrapOperandBinding {
     pub parameter: String,
     pub operand_field: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CliBootstrapOptionBinding {
     pub parameter: String,
     pub option_field: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CliBootstrapReceiptChannel {
     pub parameter: String,
     pub path: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CliBootstrapDagOperationBinding {
     pub operation: AdmittedBootstrapOperationIdentity,
     pub entry_path: String,
@@ -239,16 +194,7 @@ pub struct CliBootstrapDagOperationBinding {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum CliOperandValue {
@@ -259,23 +205,14 @@ pub enum CliOperandValue {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum CliOperandArity {
     CliExactlyOneOperand,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CliOperandRow {
     pub field: String,
     pub placeholder: String,

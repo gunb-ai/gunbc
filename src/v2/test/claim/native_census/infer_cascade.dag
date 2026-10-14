@@ -1,26 +1,27 @@
 module v2.test.claim.native_census.infer_cascade
 
-import v2.compiler.source_root_eval {
+import v2.compiler.native_test_vocabulary { FileRefusalAtUnresolvedNode }
+import v2.compiler.compile {
   NativeCensusCascadeMemberOf,
   NativeCensusCascadeNone,
   NativeCensusCascadeUnattributed,
   NativeCensusCascadeRoot,
   NativeCensusCauseFrontEnd,
   NativeCensusCauseInfer,
+  NativeCensusCauseMember,
   NativeCensusCauseResolve,
+  NativeCensusCauseStage,
   NativeCensusClosureFanOutAtLeast,
   NativeCensusClosureFanOutCounted,
   NativeCensusClosureFanOutUnavailable,
   NativeCensusClosureIndexRead,
   NativeCensusInSubjectClosure,
-  NativeCensusOutsideSubjectClosure,
-  NativeCensusSubjectMembershipUnavailable,
-  NativeImportTargetsAdmitted,
-  NativeCensusCauseMember,
-  NativeCensusCauseStage,
   NativeCensusModule,
+  NativeCensusOutsideSubjectClosure,
   NativeCensusSubjectMembership,
+  NativeCensusSubjectMembershipUnavailable,
   NativeImportTargetAttribution,
+  NativeImportTargetsAdmitted,
   native_census_infer_cascade_of,
   native_census_cause_group_rows,
   native_census_cause_groups_add_infer_module,
@@ -292,6 +293,7 @@ fn sv_member(module: String) -> NativeCensusCauseMember {
     path: ^sv_root,
     module: optional_present(value: qualified_name_from_dotted_string(dotted: module)),
     head_reason: ^sv_head,
+    at: FileRefusalAtUnresolvedNode,
     cascade: NativeCensusCascadeNone
   }
 }

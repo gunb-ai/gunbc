@@ -1265,7 +1265,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 }
 
 /// THE NATIVE FRONTIER PRODUCER: did one complete native run keep the debt
-/// `v2.workflow.native_frontier_roster` records. The verdict is `v2.workflow.native_frontier_ratchet`'s, decided
+/// `gunbc.native_frontier_roster` records. The verdict is `gunbc.native_frontier_ratchet`'s, decided
 /// inside the emitted binary; this arm only maps its word to a termination, and that map is closed:
 /// an unknown word is a harness defect, never a pass.
 ///
@@ -1292,7 +1292,7 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
                         termination: Termination::SubjectUnreached,
                         message: format!(
                             "v2-native-frontier: the emitted binary reported an unknown frontier word {other:?}; \
-                             v2.workflow.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
+                             gunbc.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
                         ),
                     }
                 }
@@ -2362,7 +2362,7 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
     }
 }
 
-/// `v2.workflow.v2_native_route` `native_route_default_pattern`, READ from the file rendered from
+/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, READ from the file rendered from
 /// it: the native test route's whole universe. An operand CONTAINED in it belongs to that route.
 ///
 /// THIS SEED HAS NO SPELLING OF THAT UNIVERSE. `NATIVE_ROUTE_DEFAULT_PATTERN` is a constant of
@@ -2395,7 +2395,7 @@ fn native_route_default_pattern() -> Result<TargetPattern, TargetPatternRefusal>
 /// `gunbc.recurring_failure_mode` `route_scoped_qualification_read_as_one_members_verdict`.
 ///
 /// The route now folds the population it actually emitted through
-/// `v2.workflow.native_route_member_termination` `native_route_member_termination`, mirrored in the runner, so this
+/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored in the runner, so this
 /// caller receives a MEMBER-SCOPED standing and reads it directly. The lane's qualification is
 /// still carried and still reported, because a route-integrity refusal is something an operator
 /// needs to see -- but it no longer decides this verb's exit status.
@@ -2453,7 +2453,7 @@ fn native_member_outcome(
         }
         cli_run::NativeMemberTermination::SubjectUnreached => Termination::SubjectUnreached,
     };
-    // `v2.workflow.native_route_member_termination` `native_route_termination_under_qualification`, mirrored: the
+    // `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored: the
     // lane's qualification GATES a positive answer and nothing else. Several of its clauses are
     // what establish the verdict surface is trustworthy at all -- the false and true controls, and
     // MalformedSpecimenAccepted, whose own note says that when they fail every verdict in the
@@ -3526,7 +3526,7 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
                 message: format!(
                     "gunbc test: the native route's boundary, {:?}, is not an admitted target pattern; \
                      src/v1/stage0/src/native_route_seed_boundary_generated.rs is rendered from \
-                     v2.workflow.v2_native_route native_route_default_pattern by \
+                     gunbc.witness.v2_native_route native_route_default_pattern by \
                      gunbc.native_route_seed_boundary_emit, so regenerate it rather than route without a boundary\n  cause: {}",
                     crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN,
                     target_pattern_refusal_text(&cause)
@@ -4376,7 +4376,7 @@ mod native_route_termination_tests {
         assert!(!within("//gunbc/instruments:self-host"));
     }
 
-    /// `v2.workflow.native_route_member_termination` `native_route_termination_under_qualification`, mirrored here and
+    /// `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored here and
     /// given its own red. The `.dag` witness pins the fold; this pins that THIS host applies it.
     ///
     /// A REFUSED QUALIFICATION CANNOT YIELD A PASS (review 70107). Several qualification clauses

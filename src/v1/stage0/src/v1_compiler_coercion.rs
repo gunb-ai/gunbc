@@ -540,7 +540,7 @@ pub fn apply_inhabitant_template2(template: String, first: String, second: Strin
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CoercionAssertion {
     CheckpointAssertion {
@@ -565,7 +565,7 @@ pub enum CoercionAssertion {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CoercionTestEntry {
     pub test_name: String,
     pub assertions: Rc<Vec<Rc<CoercionAssertion>>>,

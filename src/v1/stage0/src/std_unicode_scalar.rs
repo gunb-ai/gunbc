@@ -18,7 +18,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum NotUnicodeScalar {
     SurrogateCodePoint { code_point: i64 },
@@ -78,7 +78,7 @@ pub fn from_code_point(cp: i64) -> Rc<Result<String, Rc<NotUnicodeScalar>>> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AsciiLetterPair {
     pub upper: String,
     pub lower: String,

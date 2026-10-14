@@ -22,30 +22,21 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TargetCapabilityShapeRow<K: Clone> {
     pub shape: ReprGroundingDeriveElemShape,
     pub capabilities: Rc<Vec<K>>,
     pub _phantom: std::marker::PhantomData<K>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TargetCapabilityShapeTable<K: Clone> {
     pub rows: Rc<Vec<Rc<TargetCapabilityShapeRow<K>>>>,
     pub _phantom: std::marker::PhantomData<K>,
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum ReprGroundingDeriveElemShape {
@@ -103,16 +94,7 @@ pub fn repr_grounding_derive_completeness_predicate<K: Clone + PartialEq>(
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum PairCompletionOperand {
@@ -121,16 +103,7 @@ pub enum PairCompletionOperand {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum PairCompletionComponent {
@@ -138,23 +111,23 @@ pub enum PairCompletionComponent {
     PairCompletionNeg,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PairCompletionFactor {
     pub operand: PairCompletionOperand,
     pub component: PairCompletionComponent,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PairCompletionTerm {
     pub factors: Rc<Vec<Rc<PairCompletionFactor>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PairCompletionArm {
     pub terms: Rc<Vec<Rc<PairCompletionTerm>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PairCompletionBody {
     PairCompletionSumOfProducts {
@@ -182,16 +155,7 @@ impl PairCompletionBody {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum PairCompletionOp {
@@ -202,7 +166,7 @@ pub enum PairCompletionOp {
     PairCompletionOpDiv,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PairCompletionOpRow {
     pub op: PairCompletionOp,
     pub body: Rc<PairCompletionBody>,

@@ -19,7 +19,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PackageIdentRefusalCause {
     PackageNameNotIdentSafe {
@@ -39,14 +39,14 @@ pub enum PackageIdentRefusalCause {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PackageIdentOutcome {
     PackageIdentOk { ident: String },
     PackageIdentRefused { cause: Rc<PackageIdentRefusalCause> },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PackageIdentSetOutcome {
     PackageIdentSetOk {
@@ -190,13 +190,13 @@ pub fn emit_rust_second_ident_projection_dissolve_on() -> Rc<DissolutionConditio
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PackageIdentBinding {
     pub package_name: String,
     pub ident: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PackageIdentFold {
     pub bindings: Rc<Vec<Rc<PackageIdentBinding>>>,
     pub refusal: Option<Rc<PackageIdentRefusalCause>>,
@@ -275,9 +275,7 @@ pub fn rust_crate_package_idents(package_names: Rc<Vec<String>>) -> Rc<PackageId
                 bindings: Rc::new(vec![]),
                 refusal: std::option::Option::None,
             }),
-            |acc: Rc<PackageIdentFold>, package_name: String| {
-                package_ident_step(acc, package_name.clone())
-            },
+            |acc: _, package_name: String| package_ident_step(acc, package_name.clone()),
         );
         match folded.refusal.clone() {
             Some(cause) => Rc::new(PackageIdentSetOutcome::PackageIdentSetRefused {
@@ -296,9 +294,7 @@ pub fn package_ident_bound(
 ) -> Option<String> {
     bindings.iter().cloned().fold(
         std::option::Option::None,
-        |found: Option<String>, binding: Rc<PackageIdentBinding>| match (binding
-            .package_name
-            .clone()
+        |found: _, binding: Rc<PackageIdentBinding>| match (binding.package_name.clone()
             == package_name.clone())
         {
             true => Some(binding.ident.clone()),

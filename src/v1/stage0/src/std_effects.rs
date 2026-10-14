@@ -17,7 +17,6 @@ use crate::extdeps_ietf_http_semantics::HttpMethod::{
 pub use crate::extdeps_uri_path::PathTemplate;
 pub use crate::extdeps_uri_path::{has_path_params, last_path_param};
 pub use crate::std_optional::Optional;
-pub use crate::std_realization_schedule::string_list_eq;
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -26,7 +25,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EffectShape<K> {
     ReadEffect,
@@ -37,7 +36,7 @@ pub enum EffectShape<K> {
     ExecuteEffect,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CreateCause<K> {
     PostAlways,
@@ -45,7 +44,7 @@ pub enum CreateCause<K> {
     KeylessFallback { method: HttpMethod },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KeySource {
     PathParam { param: String },
@@ -53,7 +52,7 @@ pub enum KeySource {
     CompositeKey { fields: Rc<Vec<String>> },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum IdempotencyEvidence {
     LatticeEffect {
@@ -93,25 +92,6 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
     }
 }
 
-pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
-    match (*left.clone()).clone() {
-        KeySource::PathParam { param: pa, .. } => match (*right.clone()).clone() {
-            KeySource::PathParam { param: pb, .. } => (pa.clone() == pb.clone()),
-            _ => false,
-        },
-        KeySource::InputField { field: fa, .. } => match (*right.clone()).clone() {
-            KeySource::InputField { field: fb, .. } => (fa.clone() == fb.clone()),
-            _ => false,
-        },
-        KeySource::CompositeKey { fields: fa, .. } => match (*right.clone()).clone() {
-            KeySource::CompositeKey { fields: fb, .. } => {
-                crate::std_realization_schedule::string_list_eq(fa.clone(), fb.clone())
-            }
-            _ => false,
-        },
-    }
-}
-
 pub fn create_effect_is_dedupable(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
     match (*shape.clone()).clone() {
         EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
@@ -146,7 +126,7 @@ pub fn create_double_init_collapsible(
                 EffectShape::CreateEffect { cause: cause_b, .. } => {
                     match (*cause_b.clone()).clone() {
                         CreateCause::CreateIfAbsent { key_source: kb, .. } => {
-                            key_source_eq(ka.clone(), kb.clone())
+                            (ka.clone() == kb.clone())
                         }
                         CreateCause::PostAlways => false,
                         CreateCause::KeylessFallback { method: method, .. } => false,
@@ -181,14 +161,14 @@ pub fn create_double_init_collapsible(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperationEffect {
     pub operation_name: String,
     pub shape: Rc<EffectShape<Rc<KeySource>>>,
     pub evidence: Rc<IdempotencyEvidence>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CompositionVerdict {
     IdempotentComposition,
@@ -209,7 +189,7 @@ impl CompositionVerdict {
 pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionVerdict> {
     effects.iter().cloned().fold(
         Rc::new(CompositionVerdict::IdempotentComposition),
-        |acc: Rc<CompositionVerdict>, e: Rc<OperationEffect>| match (*acc.clone()).clone() {
+        |acc: Rc<CompositionVerdict>, e: _| match (*acc.clone()).clone() {
             CompositionVerdict::BrokenBy {
                 first_breaker: breaker,
                 ..
@@ -231,7 +211,7 @@ pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionV
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DerivedOpEffect {
     pub operation_name: String,
     pub method: HttpMethod,
@@ -239,7 +219,7 @@ pub struct DerivedOpEffect {
     pub shape: Rc<EffectShape<Rc<KeySource>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DeriveOpEffectResult {
     DerivedEffect {
@@ -258,7 +238,7 @@ pub enum DeriveOpEffectResult {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum MethodEffectShape {
     MethodShaped {
@@ -366,16 +346,7 @@ pub fn derive_op_effect(
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum EffectClaim {
@@ -383,7 +354,7 @@ pub enum EffectClaim {
     IdempotentClaim,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ModifierAgreement {
     Agrees,
@@ -400,7 +371,7 @@ impl ModifierAgreement {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModifierCheck {
     pub operation_name: String,
     pub declared_idempotent: bool,
@@ -513,7 +484,7 @@ pub fn check_modifier_vs_derivation(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IdempotencyTestObligation {
     pub operation_name: String,
     pub effect_shape: Rc<EffectShape<Rc<KeySource>>>,
@@ -549,7 +520,7 @@ pub fn generate_idempotency_obligations(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowEffectConcern {
     pub workflow_name: String,
     pub create_op: String,

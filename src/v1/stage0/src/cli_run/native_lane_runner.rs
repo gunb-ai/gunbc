@@ -1,4 +1,4 @@
-//! The v2-native ROUTE's host harness (route authority: `v2.workflow.v2_native_route`),
+//! The v2-native ROUTE's host harness (route authority: `gunbc.witness.v2_native_route`),
 //! reached as `claim_executor --v2-native-route`.
 //!
 //! IT IS NOT A REQUIRED LANE, and the prefixes below say so. The required-v2-native CI job was
@@ -67,7 +67,7 @@ const PRODUCT_REUSE_FRESH_VALUE: &str = "fresh";
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
 /// authority is now inside that closure, the binary judges its own receipt.
-const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/source_root_eval.dag";
+const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/compile.dag";
 
 /// THE V2-EXCLUSIVE CLI'S ENTRY, AND WHY IT IS A SECOND CONSTANT RATHER THAN A SECOND ROUTE.
 ///
@@ -254,7 +254,7 @@ struct EmittedPreparation {
 }
 
 /// The emitted compiler's build as the receipt records it — mirror of
-/// `v2.workflow.v2_native_route` `NativeRouteEmittedBuild`. Every field is read from the
+/// `gunbc.witness.v2_native_route` `NativeRouteEmittedBuild`. Every field is read from the
 /// spawn that ran or the toolchain that answered, never composed from what was intended.
 struct EmittedBuildObserved {
     cargo_argv: Vec<String>,
@@ -1109,7 +1109,7 @@ struct NativeTerminalMarker {
     advised_files: u64,
     admitted: bool,
     summary: String,
-    /// `v2.workflow.native_frontier_ratchet` `native_frontier_verdict_word`, read verbatim. Empty on a
+    /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word`, read verbatim. Empty on a
     /// census marker, which carries no population to judge; nothing reads it there.
     frontier: String,
 }
@@ -1127,7 +1127,7 @@ enum NativeMemberVerdict {
     Refused,
 }
 
-/// `v2.workflow.native_route_member_termination` `native_route_member_termination`'s result, mirrored.
+/// `gunbc.instrument_targets` `native_route_member_termination`'s result, mirrored.
 ///
 /// Three arms rather than four: `InvocationRefused` is not reachable from a population fold, so an
 /// arm for it here would be a constructor nothing can build -- the decoration DESIGN section 4b
@@ -1139,7 +1139,7 @@ pub enum NativeMemberTermination {
     SubjectUnreached,
 }
 
-/// `v2.workflow.native_route_member_termination` `native_route_member_termination`, mirrored arm for arm INCLUDING the
+/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored arm for arm INCLUDING the
 /// precedence, which is the one decision in that fold that could have gone the other way.
 ///
 /// A definite failure outranks an unobserved sibling; an unobserved member outranks the passes
@@ -1381,7 +1381,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             continue;
         }
         // A CAUSE GROUP IS RECOGNIZED AND NOT CONSUMED HERE. `census` now prints the same file
-        // refusals grouped by fatal reason (v2.compiler.source_root_eval native_census_cause_group_rows);
+        // refusals grouped by fatal reason (v2.compiler.compile native_census_cause_group_rows);
         // the malformed control reads the per-file row above and owes nothing to the grouping,
         // whose consumer is the census instrument (`//gunbc/instruments:v2-native-census`). A
         // `census_root` row is the same members ranked by closure fan-out
@@ -1678,7 +1678,7 @@ fn write_host_facts(
         ),
     ];
     // THE EMITTED BUILD CROSSES AS ROWS TOO: the six facts of NativeRouteEmittedBuild
-    // (v2.workflow.v2_native_route) are the host's own spawn observations, so they are host
+    // (gunbc.witness.v2_native_route) are the host's own spawn observations, so they are host
     // facts by the same rule as the identities above. The argv is one row per word under a
     // length row, because a word is opaque bytes and the TSV grammar has one value per key --
     // no separator is smuggled into a value.
@@ -1741,7 +1741,7 @@ fn write_host_facts(
 /// module also behave as the seed does on a discriminating corpus, and that half
 /// (`--behavioral-receipt-*`) is a declared drop that no required run performs. Nor is it the
 /// second generation: the built binary emitting the same closure is the v2 -> v2 boundary, and it
-/// refuses today because `v2.compiler.source_root_eval` declares `SourceRootEvalDriver`, whose rendered main
+/// refuses today because `v2.compiler.compile` declares `SourceRootEvalDriver`, whose rendered main
 /// answers `census` and `adjudicate` and has no compile mode at all. That refusal is the honest next
 /// position and belongs in this step when a driver exists that can reach it.
 /// What the self-host generation observed, as the fields a caller renders. Returned rather than
@@ -1962,7 +1962,7 @@ pub struct V2NativeCliHeld {
 /// THE V2-EXCLUSIVE CLI, EMITTED AND BUILT. This is the door the self-host step stops in front of.
 ///
 /// `//gunbc/instruments:self-host` establishes that the seed can emit and build
-/// `v2.compiler.source_root_eval`; what it explicitly does NOT establish is the second generation, because
+/// `v2.compiler.compile`; what it explicitly does NOT establish is the second generation, because
 /// that entry declares `SourceRootEvalDriver`, whose rendered main answers `census` and `adjudicate`
 /// and has no compile mode. `v2.cli.compile_cli` is the entry that does have one, and this producer
 /// is the question "does that door exist as a built binary today" asked the same way its sibling
@@ -3920,7 +3920,7 @@ fn native_serve_start(
 /// of a decision this function already holds, free to disagree with it.
 ///
 /// THE ARMS ARE NAMED FOR WHAT THE BIT ACTUALLY DECIDES, AND THE NAMING IS THE WHOLE POINT. It is
-/// `v2.workflow.v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
+/// `gunbc.witness.v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
 /// -- a conjunction over roughly twenty clauses including `JobNameMismatch`,
 /// `PreparationSeedUnrecorded`, `EmittedBuildNotClean`, `MalformedControlAcceptedByRoute`,
 /// `PositivePopulationEmpty` and `RequiredNativePassRegressed`. It is NOT "the targets the operator
@@ -3974,7 +3974,7 @@ pub fn run_required_v2_native(
     }
 }
 
-/// THE FRONTIER RATCHET'S ANSWER FOR ONE WHOLE-UNIVERSE RUN, as `v2.workflow.native_frontier_ratchet`
+/// THE FRONTIER RATCHET'S ANSWER FOR ONE WHOLE-UNIVERSE RUN, as `gunbc.native_frontier_ratchet`
 /// `native_frontier_verdict_word` rendered it inside the emitted binary. The host decides nothing
 /// here: it carries the word, and the lane's own qualification summary beside it for the reader.
 /// Which words pass is the instrument's single match, `target_invocation_host`
@@ -4672,7 +4672,7 @@ fn run_required_v2_native_inner(
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
     // THE TESTED TREE IS OBSERVED OR THE RUN REFUSES (review 64210). This defaulted to the literal
-    // "local", and `tested_tree` is not telemetry: `v2.workflow.v2_native_route`
+    // "local", and `tested_tree` is not telemetry: `gunbc.witness.v2_native_route`
     // `native_route_tested_tree_recorded` admits on `tested_tree != ""`, so the default SATISFIED
     // its own admission clause and the receipt then asserted it described a tree named `local`.
     // That is the defect the rendered main fixes for its sibling field in this same change, and
@@ -4759,7 +4759,7 @@ fn run_required_v2_native_inner(
     // possible. `gunbc test <operand>` passes the operand's own pattern, already admitted by
     // `extdeps.bazel.target_pattern` and rendered by its own renderer; the lane and the frontier
     // pass none, and the emitted binary adjudicates by its own default,
-    // `v2.workflow.v2_native_route` `native_route_default_pattern` (the whole native universe), read
+    // `gunbc.witness.v2_native_route` `native_route_default_pattern` (the whole native universe), read
     // inside the compiler where it is declared. The seed therefore carries no spelling of that default
     // to hand over. This runner does not parse, default or widen the pattern it is given: a pattern
     // that reached here was decided by the authority, and substituting one here would let the run
@@ -5602,7 +5602,7 @@ mod tests {
     }
 
     /// AN ADJUDICATE MARKER WITHOUT THE FRONTIER WORD REFUSES. The emitted main always prints
-    /// `v2.workflow.native_frontier_ratchet` `native_frontier_verdict_word` on it, so its absence means
+    /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word` on it, so its absence means
     /// the binary is not the one this host was built against; defaulting it would be the
     /// absorbing arm.
     #[test]

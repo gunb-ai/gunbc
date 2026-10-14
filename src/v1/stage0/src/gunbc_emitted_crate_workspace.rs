@@ -62,7 +62,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EmittedWorkspaceRefusal {
     EmittedWorkspaceEdgeMergeRefused {
@@ -77,7 +77,7 @@ pub enum EmittedWorkspaceRefusal {
     EmittedWorkspaceNoDiscriminatingEdge,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmittedWorkspaceRedDrop {
     pub package: String,
     pub dropped_package: String,
@@ -85,7 +85,7 @@ pub struct EmittedWorkspaceRedDrop {
     pub to_module: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmittedWorkspacePlan {
     pub rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
     pub red: Option<Rc<EmittedWorkspaceRedDrop>>,
@@ -94,7 +94,7 @@ pub struct EmittedWorkspacePlan {
     pub facade_is_whole_closure: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EmittedWorkspaceRedOutcome {
     EmittedWorkspaceRedPlanned {
@@ -122,7 +122,7 @@ pub fn emitted_workspace_red_over(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EmittedWorkspaceOutcome {
     EmittedWorkspacePlanned { plan: Rc<EmittedWorkspacePlan> },
@@ -138,7 +138,7 @@ pub fn emitted_workspace_runtime_package() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmittedModuleGraph {
     pub modules: Rc<Vec<ModuleId>>,
     pub edges: Rc<Vec<Rc<ModuleDagEdge>>>,
@@ -262,7 +262,7 @@ pub fn emitted_workspace_runtime_row() -> Rc<GeneratedPartitionCrateRow> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DerivedRowsBuild {
     DerivedRowsOk {
@@ -384,7 +384,7 @@ pub fn emitted_workspace_red(
 ) -> Option<Rc<EmittedWorkspaceRedDrop>> {
     edges.iter().cloned().fold(
         std::option::Option::None,
-        |acc: Option<Rc<EmittedWorkspaceRedDrop>>, edge: Rc<EmittedEdge>| match acc.clone() {
+        |acc: _, edge: Rc<EmittedEdge>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => match edge.provenance.clone() {
                 EmittedEdgeProvenance::SemanticSourceReference => {
@@ -536,7 +536,7 @@ pub fn emitted_workspace_plan_from_emission(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmittedWorkspaceBuild {
     pub layout: Rc<EmittedWorkspacePlan>,
     pub rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
@@ -545,7 +545,7 @@ pub struct EmittedWorkspaceBuild {
     pub bin_source_path: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EmittedWorkspaceBuildOutcome {
     EmittedWorkspaceBuildPlanned { build: Rc<EmittedWorkspaceBuild> },
