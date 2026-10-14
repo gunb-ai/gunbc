@@ -19,8 +19,44 @@ import std.optional {
   optional_present
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Node, Symbol }
-import v2.std.type_binder { AliasRenaming, NotARenaming, PureRenamingOf, binder_conj_names, type_alias_renaming }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Disj,
+  Instantiation,
+  Node,
+  Occupancy,
+  Symbol,
+  TypeNode
+}
+import v2.std.type_binder {
+  AliasRenaming,
+  GenericTypeDecl,
+  NotARenaming,
+  NotATypeDecl,
+  OpaqueTypeDecl,
+  PlainTypeDecl,
+  PureRenamingOf,
+  TypeAlias,
+  binder_conj_names,
+  type_alias_renaming,
+  type_decl_view
+}
+import std.occurrence_identity {
+  CallableOccurrence,
+  ConstructorOccurrence,
+  LexicalValueOccurrence,
+  NamespaceSegmentOccurrence,
+  OccurrenceCategory,
+  TypeOccurrence
+}
+import std.occurrence_binding_resolve {
+  OccurrenceCategoryBindingAdmissible,
+  OccurrenceCategoryBindingInadmissible,
+  occurrence_category_binding_verdict
+}
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_init,
@@ -702,6 +738,170 @@ fn symbol_index_lexical_lookup(
       position: position,
       name: name,
       acc: Empty
+    )
+  )
+}
+
+// ONE CLASSIFICATION OF A TYPE-DECL VIEW, TWO PROJECTIONS. Lookup kind and "are this node's
+// children type positions" were two arm tables over the same type_decl_view + member.kind.
+// They disagreed on Atom: TypeOccurrence as a declaration (a module-level `type T = Name`)
+// vs not a type-child walk (the same Atom shape is a construct field). A PlainTypeDecl Conj
+// is a record only when the declaring path is RecordTypePayload — an import residual is also
+// a Conj. Those are two projections of one shape, not two facts.
+type TypeDeclMemberShape
+  = TypeDeclShapeRecordOrCoproduct
+  | TypeDeclShapeAliasAtom
+  | TypeDeclShapeCallable
+  | TypeDeclShapeValue
+  | TypeDeclShapeBinderWrapper
+
+type TypeDeclChildWalk
+  = TypeDeclChildrenTypeOccurrence
+  | TypeDeclChildrenInherited
+
+fn type_decl_member_shape(index: SymbolIndex, path: QualifiedName, node: Node) -> TypeDeclMemberShape {
+  match type_decl_view(target: node) {
+    GenericTypeDecl { binders: _, member: _ } => TypeDeclShapeBinderWrapper
+    TypeAlias { binders: _, aliased: _ } => TypeDeclShapeBinderWrapper
+    OpaqueTypeDecl { binders: _ } => TypeDeclShapeBinderWrapper
+    NotATypeDecl => TypeDeclShapeValue
+    PlainTypeDecl { member: member } =>
+      match member.kind {
+        TypeNode { connective: Conj } =>
+          match symbol_index_declared_payload_at(index: index, qualified_path: path) {
+            Present { value: RecordTypePayload } => TypeDeclShapeRecordOrCoproduct
+            Present { value: VariantArmPayload } => TypeDeclShapeValue
+            Absent => TypeDeclShapeValue
+          }
+        TypeNode { connective: Disj } => TypeDeclShapeRecordOrCoproduct
+        TypeNode { connective: Instantiation } => TypeDeclShapeRecordOrCoproduct
+        TypeNode { connective: Occupancy } => TypeDeclShapeRecordOrCoproduct
+        TypeNode { connective: Atom { identity: _ } } => TypeDeclShapeAliasAtom
+        TypeNode { connective: Arrow } => TypeDeclShapeCallable
+        ComputationNode { behavior: _ } => TypeDeclShapeValue
+      }
+  }
+}
+
+fn type_decl_member_occurrence_category(shape: TypeDeclMemberShape) -> OccurrenceCategory {
+  match shape {
+    TypeDeclShapeRecordOrCoproduct => TypeOccurrence
+    TypeDeclShapeAliasAtom => TypeOccurrence
+    TypeDeclShapeBinderWrapper => TypeOccurrence
+    TypeDeclShapeCallable => CallableOccurrence
+    TypeDeclShapeValue => LexicalValueOccurrence
+  }
+}
+
+fn type_decl_member_child_walk(shape: TypeDeclMemberShape) -> TypeDeclChildWalk {
+  match shape {
+    TypeDeclShapeRecordOrCoproduct => TypeDeclChildrenTypeOccurrence
+    TypeDeclShapeBinderWrapper => TypeDeclChildrenTypeOccurrence
+    TypeDeclShapeAliasAtom => TypeDeclChildrenInherited
+    TypeDeclShapeCallable => TypeDeclChildrenInherited
+    TypeDeclShapeValue => TypeDeclChildrenInherited
+  }
+}
+
+// KIND ELIGIBILITY BEFORE NONE/ONE/MANY. The candidate already carries its declaration node
+// (LexicalBindingCandidate.node); classify that node, never re-lookup the path. Re-asking
+// symbol_index_entry_at could miss and then mint a kind (DESIGN section 5). Payload, resource
+// and namespace-body facts are stored beside the node because the node cannot answer them.
+fn symbol_index_candidate_category(index: SymbolIndex, candidate: LexicalBindingCandidate) -> OccurrenceCategory {
+  match symbol_index_declared_payload_at(index: index, qualified_path: candidate.path) {
+    Present { value: VariantArmPayload } => ConstructorOccurrence
+    Present { value: RecordTypePayload } => TypeOccurrence
+    Absent =>
+      if symbol_index_binds_namespace_body_at(index: index, qualified_path: candidate.path) {
+        NamespaceSegmentOccurrence
+      } else if symbol_index_declares_resource_at(index: index, qualified_path: candidate.path) {
+        TypeOccurrence
+      } else {
+        type_decl_member_occurrence_category(shape: type_decl_member_shape(index: index, path: candidate.path, node: candidate.node))
+      }
+  }
+}
+
+// Inadmissible kind is excluded, then none/one/many. An excluded-only set is Unbound, not a
+// distinct wrong-kind refusal (std.occurrence_binding_resolve Inadmissible arm, refusal: none;
+// occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds). WrongOccurrenceRole
+// is the wrong *role* (declaration vs reference), not the wrong occurrence category.
+fn symbol_index_lexical_eligible(
+  index: SymbolIndex,
+  required: OccurrenceCategory,
+  candidates: FreeMonoid<LexicalBindingCandidate>
+) -> FreeMonoid<LexicalBindingCandidate> {
+  fold_list(
+    xs: candidates,
+    empty: Empty,
+    cons: fn(acc, candidate) {
+      match occurrence_category_binding_verdict(
+        reference: required,
+        declaration: symbol_index_candidate_category(index: index, candidate: candidate)
+      ) {
+        OccurrenceCategoryBindingAdmissible => list_snoc_item(xs: acc, item: candidate)
+        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } => acc
+      }
+    }
+  )
+}
+
+// CONSTRUCT TAGS NAME DECLARED PAYLOADS, not an OccurrenceCategory. RecordTypePayload stays
+// TypeOccurrence so type-position Rec binds; VariantArmPayload is ConstructorOccurrence. The
+// kernel cannot admit both under one required kind without a second verdict. This door is the
+// payload map (the same DeclaredPayloadKind resolve_path_is_declared_payload reads), kind-blind
+// collect then Present payload, then none/one/many.
+fn symbol_index_lexical_eligible_declared_payload(
+  index: SymbolIndex,
+  candidates: FreeMonoid<LexicalBindingCandidate>
+) -> FreeMonoid<LexicalBindingCandidate> {
+  fold_list(
+    xs: candidates,
+    empty: Empty,
+    cons: fn(acc, candidate) {
+      match symbol_index_declared_payload_at(index: index, qualified_path: candidate.path) {
+        Present { value: RecordTypePayload } => list_snoc_item(xs: acc, item: candidate)
+        Present { value: VariantArmPayload } => list_snoc_item(xs: acc, item: candidate)
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn symbol_index_lexical_lookup_for(
+  index: SymbolIndex,
+  position: QualifiedName,
+  name: Symbol,
+  required: OccurrenceCategory
+) -> LexicalLookup {
+  symbol_index_lexical_selection(
+    candidates: symbol_index_lexical_eligible(
+      index: index,
+      required: required,
+      candidates: symbol_index_lexical_collect(
+        index: index,
+        position: position,
+        name: name,
+        acc: Empty
+      )
+    )
+  )
+}
+
+fn symbol_index_lexical_lookup_for_declared_payload(
+  index: SymbolIndex,
+  position: QualifiedName,
+  name: Symbol
+) -> LexicalLookup {
+  symbol_index_lexical_selection(
+    candidates: symbol_index_lexical_eligible_declared_payload(
+      index: index,
+      candidates: symbol_index_lexical_collect(
+        index: index,
+        position: position,
+        name: name,
+        acc: Empty
+      )
     )
   )
 }

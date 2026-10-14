@@ -99,6 +99,7 @@ fn vast_offer_arch(gpus: Int, arch: String?) -> VastAiOffer {
     inet_up_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     gpu_ram: 98304,
+    driver_version: Present { value: "580.65.06" },
   }
 }
 
@@ -117,6 +118,7 @@ fn vast_offer_bid(bid: Bool?) -> VastAiOffer {
     inet_up_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 2 },
     gpu_ram: 98304,
+    driver_version: Present { value: "580.65.06" },
   }
 }
 
