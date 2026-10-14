@@ -12,7 +12,7 @@ data manual_required_floor_runner_deleted: RungDropAmendment = RungDropAmendment
 
   amended: "2026-10-14",
 
-  later_event: "the claim_executor --required-floor, --required-ci and --required-lane modes and cli_run run_required_floor were deleted, with no production caller; the live claim-evaluation kernel moved to cli_run claim_execution and the cgroup readers to cli_run cgroup_memory" as NonEmptyStr,
+  later_event: "the claim_executor --required-floor, --required-ci and --required-lane modes and cli_run run_required_floor were deleted. The instrument floor-memory-qualification, whose only subject was that manual required-floor route, was root-deleted in the same change; after that no surviving production caller remained. The live claim-evaluation kernel moved to cli_run claim_execution and the cgroup readers to cli_run cgroup_memory" as NonEmptyStr,
 
   bearing: "the manual required-floor runner is not an accepted restoration route and no longer exists at head. Restoration of the withdrawn population still means native required-path judgment by a binary built from the seed's emission, never recreating the v1 floor. The restoration trigger is unchanged" as NonEmptyStr,
 }

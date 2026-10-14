@@ -1,10 +1,7 @@
-//! Generic cgroup v2 memory readers: the memory interface files, swap, the measurement cgroup
-//! and its refusals. Split from floor_memory_supervisor.rs (pure code motion; no semantic change)
-//! because the consumers of these readers are the live `gunbc test` memory-envelope seam, not the
-//! required-floor supervision the old file was named for.
+//! Generic cgroup v2 memory readers: the memory interface files, swap and their refusals. The
+//! consumers are the live `gunbc test` memory-envelope seam.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
 
 /// One cgroup's memory interface, read as text so an unparseable body stays distinguishable from
 /// an absent file. Authority for the file names: `extdeps.linux.cgroup_v2_memory`
@@ -32,114 +29,19 @@ pub struct CgroupMemoryRead {
 /// carried arms nothing could construct while every refusal this file actually emits was unmodeled.
 #[derive(Debug, Clone)]
 pub enum QualificationRefusal {
-    NoCgroupWithMemoryPeak {
-        searched_from: String,
-    },
-    CgroupFileUnreadable {
-        path: String,
-        detail: String,
-    },
-    CgroupValueUnparseable {
-        file: String,
-        body: String,
-    },
-    ChildNotSpawned {
-        detail: String,
-    },
-    ChildNotWaited {
-        detail: String,
-    },
-    MeasurementCgroupShared {
-        dir: String,
-        strangers: Vec<i32>,
-    },
-    MeasurementCgroupHasChildren {
-        dir: String,
-        children: Vec<String>,
-    },
-    PeakDominatedByPriorHistory {
-        dir: String,
-        before: u64,
-        after: u64,
-    },
+    CgroupFileUnreadable { path: String, detail: String },
+    CgroupValueUnparseable { file: String, body: String },
 }
 
 impl QualificationRefusal {
     pub fn render(&self) -> String {
         match self {
-            QualificationRefusal::NoCgroupWithMemoryPeak { searched_from } => format!(
-                "NoCgroupWithMemoryPeak — no cgroup from {searched_from} up to the root carries a \
-                 readable memory.peak, so this invocation has no enforceable limit to measure \
-                 against. Wrap it: systemd-run --user --scope -p MemoryMax=<bytes> \
-                 -p MemoryHigh=infinity -- <command>. \
-                 Note that MemoryHigh=max is the CGROUP spelling and systemd rejects it; the \
-                 systemd spelling is infinity, and a dropped property yields a CONSTRAINED run \
-                 reported as uncensored."
-            ),
             QualificationRefusal::CgroupFileUnreadable { path, detail } => {
                 format!("CgroupFileUnreadable — {path}: {detail}")
             }
             QualificationRefusal::CgroupValueUnparseable { file, body } => {
                 format!("CgroupValueUnparseable — {file} held {body:?}")
             }
-            QualificationRefusal::ChildNotSpawned { detail } => {
-                format!("ChildNotSpawned — the measured process never started: {detail}")
-            }
-            QualificationRefusal::ChildNotWaited { detail } => format!(
-                "ChildNotWaited — the measured process started and its termination was not \
-                 observed, so no reading may be published: {detail}"
-            ),
-            QualificationRefusal::MeasurementCgroupShared { dir, strangers } => format!(
-                "MeasurementCgroupShared — {dir} already holds {} process(es) that are not this \
-                 supervisor ({strangers:?}). memory.peak is a property of the CGROUP, not of a \
-                 process, so a neighbour's allocation would be reported as the floor's demand. \
-                 Give the measurement a cgroup of its own: systemd-run --user --scope \
-                 -p MemoryMax=<bytes> -p MemoryHigh=infinity -- <command>",
-                strangers.len()
-            ),
-            QualificationRefusal::MeasurementCgroupHasChildren { dir, children } => format!(
-                "MeasurementCgroupHasChildren — {dir} has {} child cgroup(s) ({}). memory.peak \
-                 aggregates the WHOLE SUBTREE, so a descendant's allocation would be reported as \
-                 the floor's demand even when this cgroup's own cgroup.procs is empty — and a new \
-                 descendant can appear after the check. Measured on srv1: user-1000.slice carried \
-                 0 direct processes, 242 child cgroups and a memory.peak of 392042180608. The \
-                 measurement cgroup must be a LEAF that holds only this supervisor.",
-                children.len(),
-                children.join(", ")
-            ),
-            QualificationRefusal::PeakDominatedByPriorHistory { dir, before, after } => format!(
-                "PeakDominatedByPriorHistory — {dir} already stood at memory.peak {before} before \
-                 the measured run and reads {after} after it, and this kernel refused to reset \
-                 the counter. memory.peak is the cgroup's LIFETIME maximum, so that figure \
-                 belongs to something that ran earlier and nothing here can attribute it to this \
-                 run. A fresh scope per measurement makes this unreachable."
-            ),
-        }
-    }
-}
-
-/// The leaf cgroup of THIS process, from `/proc/self/cgroup`.
-fn leaf_cgroup_dir() -> Option<PathBuf> {
-    let content = std::fs::read_to_string("/proc/self/cgroup").ok()?;
-    let rel = content
-        .lines()
-        .find_map(|l| l.strip_prefix("0::"))
-        .map(|p| p.trim().trim_start_matches('/').to_string())?;
-    Some(Path::new("/sys/fs/cgroup").join(rel))
-}
-
-/// LEAF FIRST, THEN ANCESTORS. The nearest cgroup that actually carries `memory.peak` is the one
-/// whose counter describes this process most closely; an ancestor on a shared host aggregates
-/// every co-tenant, which is how a charge reading can exceed a scope peak by gigabytes. Measured
-/// on srv1: scope peak 26.97 GiB against `user-1000.slice` 249.52 GiB at the same instant.
-fn nearest_cgroup_with_peak(leaf: &Path) -> Option<PathBuf> {
-    let mut dir = leaf.to_path_buf();
-    loop {
-        if dir.join("memory.peak").is_file() {
-            return Some(dir);
-        }
-        if dir == Path::new("/sys/fs/cgroup") || !dir.pop() {
-            return None;
         }
     }
 }

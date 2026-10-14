@@ -1,37 +1,5 @@
-//! Supervised memory qualification for a required-floor run.
-//!
-//! WHY A SUPERVISOR AND NOT AN IN-PROCESS OBSERVER. A `Drop` guard, an exit hook or a final log
-//! line covers ordinary returns and unwinding panics and nothing else. None of them runs on
-//! `panic = abort`, `process::abort`, `process::exit` or SIGKILL, and Rust's allocation-error
-//! handler normally ABORTS rather than unwinds. So allocation failure and the OOM kill — the two
-//! terminations a memory instrument most exists to report — are exactly the ones an in-process
-//! observer cannot report on. The kernel maintains `memory.peak` and `memory.events` regardless,
-//! so a supervisor that OUTLIVED the child can still read them.
-//!
-//! WHY THE CHILD SHARES THE SUPERVISOR'S CGROUP RATHER THAN GETTING ITS OWN. Two arms were
-//! measured on srv1 (2026-09-19) and both fail:
-//!   * a systemd-managed unit REAPS its cgroup when the process exits, so `memory.peak` is gone
-//!     before it can be read — even with `RemainAfterExit=yes`;
-//!   * a self-created cgroup cannot be JOINED by an existing process across a delegation
-//!     boundary — writing a pid from a session scope into a cgroup under `user@1000.service` is
-//!     EPERM.
-//! Running the child inside the cgroup the supervisor is ALREADY in avoids both: nothing has to
-//! be moved, and nothing reaps the cgroup because the supervisor is still living in it. The
-//! operator supplies the cgroup by wrapping the invocation in `systemd-run --scope`.
-//!
-//! THE SUPERVISOR'S OWN FOOTPRINT IS INSIDE THE READING, and that is stated rather than netted
-//! out. It is a few MiB against a workload measured in tens of GiB; subtracting an estimate would
-//! replace a measured number with an adjusted one.
-//!
-//! WHAT THIS REFUSES TO DO. Invoked where no ancestor cgroup carries a readable `memory.peak`,
-//! it REFUSES rather than reporting a figure. A run that was never bounded and a run that fit
-//! produce identical output from the workload itself, so the absence of a limit must be reported
-//! by the harness or it is not reported at all.
-
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
-use super::cgroup_memory::QualificationRefusal;
+//! Host transcription of the floor's heartbeat beat lines into primitives for
+//! `gunbc.floor.floor_demand`; the reading is the fold's, not this module's.
 
 /// ONE HEARTBEAT BEAT AS PRIMITIVES, the host half of `gunbc.floor.floor_demand` `FloorBeatReading`.
 /// Transcription only: what a token is, what the held set is and where a phase begins are the
