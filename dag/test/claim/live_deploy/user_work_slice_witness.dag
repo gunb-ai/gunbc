@@ -1,10 +1,10 @@
 module test.claim.live_deploy.user_work_slice_witness
 
-import std.types { Bool, String, List, NonEmptyStr }
+import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.optional { Present, Absent }
 import std.nat { nat_add }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.measure { byte_size_count, kibibyte }
+import std.measure { byte_size_count, kibibyte, byte_size }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run {
@@ -15,8 +15,9 @@ import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name,
   user_work_slice_memory_max_of, user_work_slice_memory_high_of,
   user_slice_backstop_memory_max_of, user_manager_remainder,
+  UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
 }
-import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots }
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, BeltMaxConcurrentNotNatural }
 import gunbc.live_deploy.served_slice_charge {
   user_work_slice_budget_appropriation, user_work_charged_in_served_allowance,
 }
@@ -48,29 +49,60 @@ fn slice_hits(words: List<String>) -> Int {
 }
 
 test fn user_work_slice_max_is_pool_slots_times_the_runner_ceiling() -> Bool {
-  byte_size_count(b: user_work_slice_memory_max_of(slots: user_work_pool_slots()))
-    == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * user_work_pool_slots()
-    && byte_size_count(b: user_work_slice_budget_appropriation())
-      == byte_size_count(b: user_work_slice_memory_max_of(slots: user_work_pool_slots()))
-    && byte_size_count(b: user_work_charged_in_served_allowance) == 0
+  match user_work_pool_slots() {
+    BeltMaxConcurrentNotNatural { authored: _ } => false
+    UserWorkPoolSlotsDerived { slots } =>
+      byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
+        == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * slots
+        && match user_work_slice_budget_appropriation() {
+          Absent => false
+          Present { value: a } => byte_size_count(b: a) == byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
+        }
+        && byte_size_count(b: user_work_charged_in_served_allowance) == 0
+  }
 }
 
 test fn user_work_pool_slots_are_compute_plus_belt() -> Bool {
   match checked_int_to_nat(n: 3) {
     Absent => false
-    Present { value: belt } => user_work_pool_slots() == nat_add(a: compute_pool_slots, b: belt)
+    Present { value: belt } =>
+      match user_work_pool_slots() {
+        BeltMaxConcurrentNotNatural { authored: _ } => false
+        UserWorkPoolSlotsDerived { slots } => slots == nat_add(a: compute_pool_slots, b: belt)
+      }
   }
 }
 
 test fn user_work_slice_high_is_one_gib_under_max() -> Bool {
-  let max = user_work_slice_memory_max_of(slots: user_work_pool_slots())
-  byte_size_count(b: user_work_slice_memory_high_of(memory_max: max)) + 1073741824 == byte_size_count(b: max)
+  match user_work_pool_slots() {
+    BeltMaxConcurrentNotNatural { authored: _ } => false
+    UserWorkPoolSlotsDerived { slots } => {
+      let max = user_work_slice_memory_max_of(slots: slots)
+      match user_work_slice_memory_high_of(memory_max: max) {
+        UserWorkSliceHighGapExceedsMax => false
+        UserWorkSliceHighDerived { bytes: high } =>
+          byte_size_count(b: high) + 1073741824 == byte_size_count(b: max)
+      }
+    }
+  }
+}
+
+test fn a_max_below_the_high_gap_refuses_rather_than_writing_zero() -> Bool {
+  match user_work_slice_memory_high_of(memory_max: byte_size(0)) {
+    UserWorkSliceHighGapExceedsMax => true
+    UserWorkSliceHighDerived { bytes: _ } => false
+  }
 }
 
 test fn user_manager_backstop_is_work_slice_plus_remainder() -> Bool {
-  let work = user_work_slice_memory_max_of(slots: user_work_pool_slots())
-  byte_size_count(b: user_slice_backstop_memory_max_of(work_slice_max: work))
-    == byte_size_count(b: work) + byte_size_count(b: user_manager_remainder)
+  match user_work_pool_slots() {
+    BeltMaxConcurrentNotNatural { authored: _ } => false
+    UserWorkPoolSlotsDerived { slots } => {
+      let work = user_work_slice_memory_max_of(slots: slots)
+      byte_size_count(b: user_slice_backstop_memory_max_of(work_slice_max: work))
+        == byte_size_count(b: work) + byte_size_count(b: user_manager_remainder)
+    }
+  }
 }
 
 test fn the_grant_launch_binds_the_declared_slice_once() -> Bool {

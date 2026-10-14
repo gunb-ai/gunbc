@@ -253,7 +253,9 @@ data repository_convergence_slice_memory_swap_max: ByteSize = byte_size(0)
 // THESE UNITS LEAVE EVERY SYSTEM SLICE. systemd-run --user starts them under
 // user@1000.service/app.slice, which is not sessions.slice and not gunbc-roadmap.slice. A pid
 // cannot be moved across that delegation boundary. So this work needs its OWN declared slice,
-// swap 0, charged with the other deployment allowances.
+// swap 0. The slice MemoryMax is the pool appropriation; charging that appropriation into the
+// runner envelope waits on the operator conservation ruling
+// (gunbc.rung_drop.user_work_slice_uncharged_in_runner_envelope).
 //
 // THE NAME SHARES NO systemd HIERARCHY PREFIX with a serving slice (a dash is a parent edge).
 data user_work_slice_unit_name: NonEmptyStr = "gunbc-user-work.slice"
@@ -278,10 +280,14 @@ fn user_work_slice_memory_max_of(slots: Nat) -> ByteSize {
   byte_size(byte_size_count(b: gunbc_runner_slot_desired().memory_max) * slots)
 }
 
-fn user_work_slice_memory_high_of(memory_max: ByteSize) -> ByteSize {
+type UserWorkSliceHigh
+  = UserWorkSliceHighDerived { bytes: ByteSize }
+  | UserWorkSliceHighGapExceedsMax
+
+fn user_work_slice_memory_high_of(memory_max: ByteSize) -> UserWorkSliceHigh {
   match nat_sub(a: byte_size_count(b: memory_max), b: byte_size_count(b: user_work_slice_high_gap)) {
-    NatSubtrahendExceedsMinuend => byte_size(0)
-    NatDifference { value: n } => byte_size(n)
+    NatSubtrahendExceedsMinuend => UserWorkSliceHighGapExceedsMax
+    NatDifference { value: n } => UserWorkSliceHighDerived { bytes: byte_size(n) }
   }
 }
 

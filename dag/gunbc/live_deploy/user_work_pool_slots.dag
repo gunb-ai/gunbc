@@ -1,5 +1,6 @@
 module gunbc.live_deploy.user_work_pool_slots
 
+import std.types { Int }
 import std.nat { Nat, nat_add }
 import std.checked_arithmetic { checked_int_to_nat }
 import gunbc.compute.host_capacity { compute_pool_slots }
@@ -14,9 +15,17 @@ import gunbc.roadmap.roadmap_belt { roadmap_belt_default_capacity }
 // THIS MODULE DOES NOT IMPORT slice_bounds: unit_bounds binds Slice= from that leaf, and
 // roadmap_belt imports the dispatch actuator which imports unit_bounds. Putting the count
 // fold here keeps that cycle unwritten.
-fn user_work_pool_slots() -> Nat {
+//
+// A FAILED NAT CONVERSION IS A REFUSAL, NOT A SMALLER SLICE. Dropping the belt term would
+// size MemoryMax and the user@ backstop below the attempt pool and OOM-kill them with no
+// cause (review 79922).
+type UserWorkPoolSlots
+  = UserWorkPoolSlotsDerived { slots: Nat }
+  | BeltMaxConcurrentNotNatural { authored: Int }
+
+fn user_work_pool_slots() -> UserWorkPoolSlots {
   match checked_int_to_nat(n: roadmap_belt_default_capacity.max_concurrent) {
-    Absent => compute_pool_slots
-    Present { value: belt } => nat_add(a: compute_pool_slots, b: belt)
+    Absent => BeltMaxConcurrentNotNatural { authored: roadmap_belt_default_capacity.max_concurrent }
+    Present { value: belt } => UserWorkPoolSlotsDerived { slots: nat_add(a: compute_pool_slots, b: belt) }
   }
 }

@@ -150,8 +150,11 @@ import gunbc.live_deploy.slice_bounds {
   repository_convergence_slice_memory_swap_max,
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
   user_work_slice_memory_max_of, user_work_slice_memory_high_of,
+  UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
 }
-import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots }
+import gunbc.live_deploy.user_work_pool_slots {
+  user_work_pool_slots, UserWorkPoolSlotsDerived, BeltMaxConcurrentNotNatural,
+}
 import gunbc.auth.approval_broker_placement { approval_broker_base_url_of_holder }
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name }
 import gunbc.owned_directory {
@@ -1525,36 +1528,64 @@ fn emit_repository_convergence_slice_unit_doc() -> Doc {
   doc_text(text: serialize_systemd_unit_file(file: repository_convergence_slice_unit_file()))
 }
 
-fn user_work_slice_unit_file() -> SystemdUnitFile {
-  SliceUnitFile {
-    unit: [
-      Description { text: "gunbc user-manager cgroup bound for --user transients (attempts, compute, gunbc test/run scopes)" as NonEmptyStr },
-    ],
-    slice: [
-      slice_memory_max(bytes: user_work_slice_memory_max_of(slots: user_work_pool_slots())),
-      slice_memory_high(bytes: user_work_slice_memory_high_of(memory_max: user_work_slice_memory_max_of(slots: user_work_pool_slots()))),
-      slice_memory_swap_max(bytes: user_work_slice_memory_swap_max),
-    ],
-    install: NotInstallable,
+type UserWorkSliceUnitFile
+  = UserWorkSliceUnitFileReady { file: SystemdUnitFile }
+  | UserWorkSliceUnitFileRefused { cause: String }
+
+fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
+  match user_work_pool_slots() {
+    BeltMaxConcurrentNotNatural { authored: n } =>
+      UserWorkSliceUnitFileRefused {
+        cause: join(["belt max_concurrent ", to_string(value: n), " is not a natural number, so the user-work slice has no slot count"], ""),
+      }
+    UserWorkPoolSlotsDerived { slots } => {
+      let max = user_work_slice_memory_max_of(slots: slots)
+      match user_work_slice_memory_high_of(memory_max: max) {
+        UserWorkSliceHighGapExceedsMax =>
+          UserWorkSliceUnitFileRefused {
+            cause: "user-work MemoryMax is below the declared High gap, so MemoryHigh cannot be derived",
+          }
+        UserWorkSliceHighDerived { bytes: high } =>
+          UserWorkSliceUnitFileReady {
+            file: SliceUnitFile {
+              unit: [
+                Description { text: "gunbc user-manager cgroup bound for --user transients (attempts, compute, gunbc test/run scopes)" as NonEmptyStr },
+              ],
+              slice: [
+                slice_memory_max(bytes: max),
+                slice_memory_high(bytes: high),
+                slice_memory_swap_max(bytes: user_work_slice_memory_swap_max),
+              ],
+              install: NotInstallable,
+            },
+          }
+      }
+    }
   }
 }
 
-fn emit_user_work_slice_unit_doc() -> Doc {
-  doc_text(text: serialize_systemd_unit_file(file: user_work_slice_unit_file()))
+fn emit_user_work_slice_unit_doc() -> Doc? {
+  match user_work_slice_unit_file() {
+    UserWorkSliceUnitFileRefused { cause: _ } => none
+    UserWorkSliceUnitFileReady { file } => Present { value: doc_text(text: serialize_systemd_unit_file(file: file)) }
+  }
 }
 
 fn apply_user_work_slice_install_steps() -> List<PipelineStep> {
-  [
-    deploy_raw(command: deploy_stage_write_command(
-      stage_name: user_work_slice_unit_name as String,
-      content: render(doc: emit_user_work_slice_unit_doc(), proto: live_deploy_protocol),
-    )),
-    deploy_raw(command: deploy_stage_install_command(
-      stage_name: user_work_slice_unit_name as String,
-      mode: install_file_shared_mode,
-      dest: gunbc_user_work_slice_unit_path() as String,
-    )),
-  ]
+  match emit_user_work_slice_unit_doc() {
+    Absent => []
+    Present { value: doc } => [
+      deploy_raw(command: deploy_stage_write_command(
+        stage_name: user_work_slice_unit_name as String,
+        content: render(doc: doc, proto: live_deploy_protocol),
+      )),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: user_work_slice_unit_name as String,
+        mode: install_file_shared_mode,
+        dest: gunbc_user_work_slice_unit_path() as String,
+      )),
+    ]
+  }
 }
 
 fn apply_repository_convergence_slice_install_steps() -> List<PipelineStep> {
