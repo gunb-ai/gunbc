@@ -168,6 +168,7 @@ import gunbc.live_deploy.emit {
   deploy_apply_frame_steps,
   deploy_apply_frame_decide_steps,
   deploy_apply_frame_mutate_steps,
+  deploy_shell_merge_stderr_command,
   deploy_publication_principal_ensure_command,
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
@@ -1755,10 +1756,13 @@ test fn withheld_only_prod_apply_commands_are_the_report() -> Bool {
 }
 
 test fn apply_frame_merges_stderr_onto_stdout() -> Bool {
+  let line = deploy_shell_merge_stderr_command()
   string_contains(
     s: pipeline_steps_text(steps: deploy_apply_frame_decide_steps(spec: deployment_spec_srv1())),
-    pattern: "exec 2>&1",
+    pattern: line,
   )
+    && string_contains(s: line, pattern: "2>&1")
+    && !string_contains(s: line, pattern: "__GUNBC_BASH_EMIT_REFUSED__")
 }
 
 test fn apply_stage_dirs_exit_trap_is_the_grammar_serialized_line() -> Bool {

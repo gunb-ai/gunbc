@@ -284,6 +284,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_var,
   bash_build_command_with_words,
   bash_build_word_concat_from_nodes,
+  bash_build_with_redir,
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.node { Node }
@@ -345,12 +346,14 @@ data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_
 // producer, and keeps the two folds from drifting apart on the option set they set.
 data deploy_shell_strict_options_command: String = "set -euo pipefail"
 
-// 🟡 dissolve-on: v2.extdeps.languages.bash gains bash_redir_stderr_to_stdout_* sibling rows
-// (phrase "2>&1") and bash_command_fold lists ^bash_production_fold_redir_stderr_to_stdout in
-// bash_fold_with_redir_rhs_alternatives. Serialize already emits that binding as "2>&1"; the
-// source-literal and fold alternative are the missing grammar. Until then this byte is the
-// irreducible kernel. Do not use ^bash_production_fold_redir_stdout_to_stderr (`>&2`).
-data deploy_shell_merge_stderr_command: String = "exec 2>&1"
+fn deploy_shell_merge_stderr_command() -> String {
+  bash_intent_command_or_poison(
+    intent: bash_build_with_redir(
+      inner: bash_build_command_from_lits(lits: ["exec"]),
+      redir: ^bash_production_fold_redir_stderr_to_stdout,
+    )
+  )
+}
 
 fn deploy_raw(command: String) -> PipelineStep {
   Do {
@@ -3740,7 +3743,7 @@ fn deploy_apply_receipt_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 fn deploy_apply_frame_decide_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [
     deploy_raw(command: deploy_shell_strict_options_command),
-    deploy_raw(command: deploy_shell_merge_stderr_command),
+    deploy_raw(command: deploy_shell_merge_stderr_command()),
     Comment { text: concat("GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
     Comment { text: "Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal." },
     Comment { text: "Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service." },
