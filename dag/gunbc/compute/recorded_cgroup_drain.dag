@@ -43,13 +43,6 @@ fn recorded_cgroup_drain(path: RecordedCgroupPathStanding) -> RecordedCgroupDrai
   }
 }
 
-fn recorded_cgroup_may_seal(d: RecordedCgroupDrain) -> Bool {
-  match d {
-    RecordedCgroupMaySeal { detail: _ } => true
-    RecordedCgroupPreserve { detail: _ } => false
-  }
-}
-
 fn recorded_path_standing_from_events_error(error: String) -> RecordedCgroupPathStanding {
   if string_contains(s: error, pattern: "ENOENT") {
     RecordedPathAbsent

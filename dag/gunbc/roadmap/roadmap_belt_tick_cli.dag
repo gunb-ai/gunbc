@@ -4,6 +4,8 @@ import std.types { String, NonEmptyStr }
 import gunbc.dispatch.credential_acquisition {
   credential_acquisition_slots_root,
   credential_recover_root,
+  credential_root_recovery_report,
+  CredentialRootOk, CredentialRootFailed,
 }
 import gunbc.live_deploy.desired {
   desired_deployment_for_instance_id,
@@ -532,12 +534,19 @@ fn belt_credential_recovery_cli() -> ProcessExit {
             let receipt = serialize_json(v: json_object(members: [
               json_kv(key: "unit", value: json_string(s: unit as String)),
               json_kv(key: "slots_root", value: json_string(s: root as String)),
-              json_kv(key: "recovered", value: json_string(s: recovered)),
+              json_kv(key: "recovered", value: json_string(s: credential_root_recovery_report(r: recovered))),
             ]))
+            let receipt_path = join([instance.instance_root as String, "/credential-acquisition-recovery.json"], "")
             if string_length(s: receipt) == 0 {
               exit_failure(reason: "belt_credential_recovery_cli: receipt was empty")
+            } else if !Filesystem.Write(path: receipt_path, content: receipt).success {
+              exit_failure(reason: join(["belt_credential_recovery_cli: receipt write failed: ", receipt_path, "\n", receipt], ""))
             } else {
-              ExitSuccess
+              match recovered {
+                CredentialRootOk { report: _ } => ExitSuccess
+                CredentialRootFailed { report: _ } =>
+                  exit_failure(reason: join(["belt_credential_recovery_cli:\n", receipt], ""))
+              }
             }
           }
         }

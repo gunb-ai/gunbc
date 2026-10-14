@@ -11,13 +11,19 @@ import gunbc.compute.recorded_cgroup_drain {
   RecordedCgroupPreserve,
   RecordedCgroupMaySeal,
   recorded_cgroup_drain,
-  recorded_cgroup_may_seal,
   recorded_path_standing_from_events_error,
   recorded_path_standing_from_events_body,
 }
 
 fn drain(path: RecordedCgroupPathStanding) -> RecordedCgroupDrain {
   recorded_cgroup_drain(path: path)
+}
+
+fn drain_may_seal(path: RecordedCgroupPathStanding) -> Bool {
+  match drain(path: path) {
+    RecordedCgroupMaySeal { detail: _ } => true
+    RecordedCgroupPreserve { detail: _ } => false
+  }
 }
 
 test fn p_populated_while_a_probe_remains_preserves() -> Bool {
@@ -28,12 +34,11 @@ test fn p_populated_while_a_probe_remains_preserves() -> Bool {
 }
 
 test fn p_prime_drained_path_seals() -> Bool {
-  recorded_cgroup_may_seal(d: drain(path: RecordedPathEmpty))
-    && recorded_cgroup_may_seal(d: drain(path: RecordedPathAbsent))
+  drain_may_seal(path: RecordedPathEmpty) && drain_may_seal(path: RecordedPathAbsent)
 }
 
 test fn p_double_prime_and_triple_prime_and_pf_are_populated() -> Bool {
-  !recorded_cgroup_may_seal(d: drain(path: RecordedPathPopulated))
+  !drain_may_seal(path: RecordedPathPopulated)
 }
 
 test fn e_unreadable_events_preserve() -> Bool {
@@ -59,10 +64,10 @@ test fn enoent_error_text_is_absent_and_other_errors_are_not() -> Bool {
 }
 
 test fn drain_is_the_recorded_path_standing() -> Bool {
-  recorded_cgroup_may_seal(d: drain(path: RecordedPathEmpty))
-    && recorded_cgroup_may_seal(d: drain(path: RecordedPathAbsent))
-    && !recorded_cgroup_may_seal(d: drain(path: RecordedPathPopulated))
-    && !recorded_cgroup_may_seal(d: drain(path: RecordedPathUnreadable { detail: "EIO" }))
+  drain_may_seal(path: RecordedPathEmpty)
+    && drain_may_seal(path: RecordedPathAbsent)
+    && !drain_may_seal(path: RecordedPathPopulated)
+    && !drain_may_seal(path: RecordedPathUnreadable { detail: "EIO" })
 }
 
 test fn events_body_populated_zero_is_empty() -> Bool {
