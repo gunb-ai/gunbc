@@ -73,6 +73,7 @@ import extdeps.tailscale.serve {
 import extdeps.systemd.systemctl {
   systemctl_disable_now_argv,
   systemctl_show_load_state_argv,
+  systemctl_user_daemon_reload_argv,
 }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire, systemd_time_span_of_seconds }
 import gunbc.live_deploy.repository_convergence_placement {
@@ -149,6 +150,12 @@ import gunbc.live_deploy.slice_bounds {
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
   repository_convergence_slice_memory_max, repository_convergence_slice_memory_high,
   repository_convergence_slice_memory_swap_max,
+  user_work_slice_unit_name, user_work_slice_memory_swap_max,
+  user_work_slice_memory_max_of, user_work_slice_memory_high_of,
+  UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
+}
+import gunbc.live_deploy.user_work_pool_slots {
+  user_work_pool_slots, UserWorkPoolSlotsDerived,
 }
 import gunbc.auth.approval_broker_placement { approval_broker_base_url_of_holder }
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name }
@@ -166,6 +173,8 @@ import gunbc.live_deploy.spec {
   deployment_owns_the_host_approval_broker,
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
   gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
+  gunbc_user_work_slice_unit_path,
+  gunbc_service_uid,
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
@@ -224,6 +233,10 @@ import gunbc.host.host_layout {
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
 }
 import product.host_identity { HostIdentity }
+import gunbc.host.host_converge {
+  slice_control_caps_for,
+  SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
+}
 import gunbc.host.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
   CapAuthorizedForThisHost,
@@ -234,6 +247,8 @@ import gunbc.host.host_axis_caps {
   deploy_memory_cap_apply_script_from_authorization,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   host_axis_caps_author_before_revert_enforced,
+  slice_control_converge_stmts,
+  deploy_slice_control_converge_script,
 }
 import gunbc.ownership { Ownership }
 import std.algebra { list_tail }
@@ -246,7 +261,7 @@ import gunbc.membership_reconcile {
   membership_plan_admitting_outcome,
   membership_effects,
 }
-import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv }
+import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv, shell_command_text_of_stmts }
 import gunbc.live_deploy.operations {
   deploy_stage_dir_var,
   deploy_cap_stage_dir_var,
@@ -272,7 +287,7 @@ import gunbc.live_deploy.operations {
 import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
   Pipeline, PipelineStep,
-  Do, If, Run, Comment, Let, ExprCmdSubst,
+  Do, If, Run, Comment, Let, Exit, ExprCmdSubst,
   FailFast, ExitZero, Not, DiscardAll
 }
 import v2.std.collection { Absent, Present }
@@ -1549,6 +1564,61 @@ fn emit_repository_convergence_slice_unit_doc() -> Doc {
   doc_text(text: serialize_systemd_unit_file(file: repository_convergence_slice_unit_file()))
 }
 
+type UserWorkSliceUnitFile
+  = UserWorkSliceUnitFileReady { file: SystemdUnitFile }
+  | UserWorkSliceUnitFileRefused { cause: String }
+
+fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
+  match user_work_pool_slots() {
+    UserWorkPoolSlotsDerived { slots } => {
+      let max = user_work_slice_memory_max_of(slots: slots)
+      match user_work_slice_memory_high_of(memory_max: max) {
+        UserWorkSliceHighGapExceedsMax =>
+          UserWorkSliceUnitFileRefused {
+            cause: "user-work MemoryMax is below the declared High gap, so MemoryHigh cannot be derived",
+          }
+        UserWorkSliceHighDerived { bytes: high } =>
+          UserWorkSliceUnitFileReady {
+            file: SliceUnitFile {
+              unit: [
+                Description { text: "gunbc user-manager cgroup bound for --user transients (attempts, reviews, audit, supervisor, compute, gunbc test/run scopes)" as NonEmptyStr },
+              ],
+              slice: [
+                slice_memory_max(bytes: max),
+                slice_memory_high(bytes: high),
+                slice_memory_swap_max(bytes: user_work_slice_memory_swap_max),
+              ],
+              install: NotInstallable,
+            },
+          }
+      }
+    }
+  }
+}
+
+fn apply_user_work_slice_install_steps() -> List<PipelineStep> {
+  match user_work_slice_unit_file() {
+    UserWorkSliceUnitFileRefused { cause } => [
+      Comment { text: cause },
+      Exit { status: "1" },
+    ]
+    UserWorkSliceUnitFileReady { file } => [
+      deploy_raw(command: deploy_stage_write_command(
+        stage_name: user_work_slice_unit_name as String,
+        content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
+      )),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: user_work_slice_unit_name as String,
+        mode: install_file_shared_mode,
+        dest: gunbc_user_work_slice_unit_path() as String,
+      )),
+      deploy_raw(command: shell_privileged_command_text_of_argv(
+        argv: systemctl_user_daemon_reload_argv(uid: gunbc_service_uid),
+      )),
+    ]
+  }
+}
+
 fn apply_repository_convergence_slice_install_steps() -> List<PipelineStep> {
   [
     deploy_raw(command: deploy_stage_write_command(
@@ -2252,6 +2322,40 @@ fn deploy_memory_cap_apply_steps(
     Decide { member: _, standing: _, steps: s } => s
     Mutate { member: _, steps: s } => s
   })
+}
+
+fn slice_control_refused_command(host: HostIdentity, cause: String) -> String {
+  concat(
+    concat("__GUNBC_DEPLOY_REFUSED__ slice-control cannot be derived: ", cause),
+    concat(" host=", host as String),
+  )
+}
+
+fn apply_slice_control_converge_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  match slice_control_caps_for(host: spec.target.host.identity) {
+    SliceControlDerived { caps: _ } =>
+      [deploy_raw(command: deploy_slice_control_converge_script(host: spec.target.host.identity))]
+    SliceControlNotOwed => []
+    SliceControlRefused { cause: _ } => []
+  }
+}
+
+fn apply_slice_control_converge_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
+  let host = spec.target.host.identity
+  match slice_control_caps_for(host: host) {
+    SliceControlNotOwed => []
+    SliceControlDerived { caps: _ } =>
+      host_script_member_proceed(
+        member: "slice-control" as NonEmptyStr,
+        mutate_steps: apply_slice_control_converge_steps(spec: spec),
+      )
+    SliceControlRefused { cause } =>
+      host_script_member_refused(
+        member: "slice-control" as NonEmptyStr,
+        cause: cause,
+        command: slice_control_refused_command(host: host, cause: cause),
+      )
+  }
 }
 
 // GunbcSourceTree stages working bytes with rsync --delete while excluding .git, then the
@@ -3276,7 +3380,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
         spec: spec,
         path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
       )),
-    ], concat(apply_repository_convergence_slice_install_steps(), [
+    ], concat(apply_user_work_slice_install_steps(), concat(apply_repository_convergence_slice_install_steps(), [
       apply_repository_convergence_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: spec.names.tree_sync_unit_name as String,
@@ -3286,7 +3390,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
-    ])) }
+    ]))) }
     Executable => if !plan_installs_executable(plan: plan) { [] } else { [
       deploy_raw(command: digest_shell_verify_line(digest: plan.target.executable, file_path: release_executable_install_source as NonEmptyStr)),
       deploy_raw(command: install_directory_command(
@@ -3392,7 +3496,7 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         spec: spec,
         path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
       )),
-    ], concat(apply_repository_convergence_slice_install_steps(), [
+    ], concat(apply_user_work_slice_install_steps(), concat(apply_repository_convergence_slice_install_steps(), [
       apply_repository_convergence_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: spec.names.tree_sync_unit_name as String,
@@ -3402,7 +3506,7 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
-    ]))
+    ])))
     PublicationHelperPathUnit => concat(
       concat(
         apply_publication_spool_steps(spec: spec),
@@ -4178,7 +4282,10 @@ fn apply_intent_fragments(
       ],
       concat(
         owned_directory_fragments(spec: spec, plan: plan),
-        deploy_memory_cap_fragments(spec: spec, authorization: cap_authorization),
+        concat(
+          deploy_memory_cap_fragments(spec: spec, authorization: cap_authorization),
+          apply_slice_control_converge_fragments(spec: spec),
+        ),
       ),
     ),
     concat(
@@ -4475,13 +4582,19 @@ fn approval_broker_dark_install_body_fragments(
     approval_device_store_fragments(),
     concat(
       approval_broker_helper_grant_fragments(revision: revision, principal: principal),
-      [Mutate {
-        member: "dark-install" as NonEmptyStr,
-        steps: concat(
-          apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
-          concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
-        ),
-      }],
+      concat(
+        [Mutate {
+          member: "dark-install" as NonEmptyStr,
+          steps: concat(
+            apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
+            concat(
+              [deploy_effect(inv: systemctl_daemon_reload_effect())],
+              approval_broker_lifecycle_steps(spec: spec),
+            ),
+          ),
+        }],
+        apply_slice_control_converge_fragments(spec: spec),
+      ),
     ),
   )
 }
