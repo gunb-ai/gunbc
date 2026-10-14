@@ -4460,22 +4460,13 @@ mod compiler_tests {
 
     #[test]
     fn std_nat_emitted_operators_refuse_overflow_through_the_runtime_helpers() {
-        let clamp = |overhead_s: i64| {
-            std::rc::Rc::new(crate::std_realization_schedule::RunnableBatchClamp {
-                overhead: crate::std_measure::second(overhead_s),
-                per_unit: crate::std_measure::millisecond(5),
-                authority: crate::std_decl_ref::decl_ref("ct".to_string(), "clamp".to_string()),
-            })
-        };
         assert_eq!(
-            crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(2), 3),
-            2015,
-            "an in-range clamp is the integer it denotes"
+            crate::std_nat::nat_mul(2, 3),
+            6,
+            "an in-range product is the integer it denotes"
         );
-        let refusal = std::panic::catch_unwind(|| {
-            crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(i64::MAX / 10), 0)
-        })
-        .expect_err("a Nat product past i64 must refuse");
+        let refusal = std::panic::catch_unwind(|| crate::std_nat::nat_mul(i64::MAX / 10, 1000))
+            .expect_err("a Nat product past i64 must refuse");
         let text = refusal
             .downcast_ref::<String>()
             .cloned()
@@ -4483,6 +4474,20 @@ mod compiler_tests {
         assert!(
             text.starts_with("integer overflow:"),
             "the Nat product must refuse through v1_rt, got {text:?}"
+        );
+        let call_result_refusal = std::panic::catch_unwind(|| {
+            crate::std_measure::micrometer_to_nanometer(crate::std_measure::micrometer(
+                i64::MAX / 10,
+            ))
+        })
+        .expect_err("a Nat product of a call result past i64 must refuse");
+        let call_result_text = call_result_refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            call_result_text.starts_with("integer overflow:"),
+            "the call-result Nat product must refuse through v1_rt, got {call_result_text:?}"
         );
     }
 
@@ -5558,6 +5563,38 @@ mod compiler_tests {
         assert!(
             !emitted.contains("Option<") && !emitted.contains("compile_error!"),
             "no position of the collision coproduct may realize as the host Option:\n{emitted}"
+        );
+    }
+
+    // AN OPTIONAL CARRIER WHOSE PAYLOAD TYPE NODE IS ABSENT REFUSES; IT NEVER RENDERS `()`. The fixture is a
+    // hand-built childless carrier node reaching the Absent arm directly, so the red does not depend on
+    // what infer stamps for `Optional<List<Optional<Int>>>` (measured erased by merry-moth-118, node
+    // adhoc-c3c735c9-3af; the source specimen is the positive control of the producer-side stamping PR).
+    // THE CONTROL is the same carrier with an `Int` payload child, which renders `Option<i64>`.
+    #[test]
+    fn an_optional_carrier_with_an_absent_payload_node_refuses() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let render = |carrier: std::rc::Rc<crate::v1_std_core::Node>| -> String {
+            crate::v1_compiler_emit_rust::render_rust_optional_carrier_applied(
+                carrier,
+                std::rc::Rc::new(im::Vector::new()),
+                std::rc::Rc::new(im::OrdSet::new()),
+                source_indices.clone(),
+                std::rc::Rc::new(HashMap::new()),
+                crate::v1_compiler_infer_env::empty_type_env(),
+            )
+        };
+        let red = render(shaped_type_node("Optional", Vec::new()));
+        assert!(
+            red.contains("compile_error!")
+                && red.contains("optional carrier payload type node absent")
+                && !red.contains("()"),
+            "an absent payload must refuse and never render ():\n{red}"
+        );
+        let control = render(shaped_type_node("Optional", vec![named_type_node("Int")]));
+        assert_eq!(
+            control, "Option<i64>",
+            "a present payload node renders its payload"
         );
     }
 

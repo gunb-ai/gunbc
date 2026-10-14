@@ -14,6 +14,8 @@ import v2.compiler.dependency_demand_census {
   DemandCensusRow,
   DemandCensusVerdict,
   UnobservedAliasConflict,
+  UnobservedImporteeRefused,
+  UnobservedModuleResolveRefused,
   UnreadableAtParse,
   UnreadableAtTokenize,
   demand_census_conserved,
@@ -75,6 +77,12 @@ data ddc_valued_source: String = "module t.valued\n\nimport std.resources { Netw
 // tokenize, so its uses fn is read by nobody and the census population is incomplete.
 data ddc_broken_source: String = "module t.broken\n\nimport std.resources { Network }\n\nfn lost(p: Bool) -> Bool uses net: Network {\n  \"never terminates\n}\n"
 
+// A CONSUMER OF THE REFUSED FILE above, and a CONTROL whose name is genuinely missing. Both import and call a name
+// no index holds; only the first names a file the context refused, so only the first is a cascade member.
+data ddc_relies_source: String = "module t.relies\n\nimport std.resources { Network }\nimport std.types { Bool }\nimport t.broken { lost }\n\nfn reads_refused(p: Bool) -> Bool uses net: Network {\n  lost(p: p)\n}\n"
+
+data ddc_missing_source: String = "module t.missing_name\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn reads_missing(p: Bool) -> Bool uses net: Network {\n  never_declared(p: p)\n}\n"
+
 data ddc_alias_source: String = "module t.aliasing\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn member_collision(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.net()\n  p\n}\n\nfn let_shadows(p: Bool) -> Bool uses net: Network {\n  let net = p\n  net\n}\n\nfn duplicate_alias(p: Bool) -> Bool uses net: Network, net: Network {\n  p\n}\n"
 
 data ddc_alias_ref_source: String = "module t.alias_ref\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn alias_used(p: Bool) -> Bool uses net: Network {\n  net\n}\n"
@@ -95,7 +103,9 @@ data ddc_ingest: SourceRootIngest = [
   ddc_read(source: ddc_alias_source, id: ^ddc_alias_artifact, unit: ^ddc_alias_cu, path: "dag/t/aliasing.dag"),
   ddc_read(source: ddc_alias_ref_source, id: ^ddc_alias_ref_artifact, unit: ^ddc_alias_ref_cu, path: "dag/t/alias_ref.dag"),
   ddc_read(source: ddc_valued_source, id: ^ddc_valued_artifact, unit: ^ddc_valued_cu, path: "dag/t/valued.dag"),
-  ddc_read(source: ddc_broken_source, id: ^ddc_broken_artifact, unit: ^ddc_broken_cu, path: "dag/t/broken.dag")
+  ddc_read(source: ddc_broken_source, id: ^ddc_broken_artifact, unit: ^ddc_broken_cu, path: "dag/t/broken.dag"),
+  ddc_read(source: ddc_relies_source, id: ^ddc_relies_artifact, unit: ^ddc_relies_cu, path: "dag/t/relies.dag"),
+  ddc_read(source: ddc_missing_source, id: ^ddc_missing_artifact, unit: ^ddc_missing_cu, path: "dag/t/missing_name.dag")
 ]
 
 // Computed ONCE, enrolled WARM in v2.workflow.floor_pure_producer_share: every claim below reads the
@@ -133,7 +143,7 @@ test fn every_uses_fn_gets_exactly_one_census_row_holds() -> Bool {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } =>
-      (r.uses_functions == 13) && (length(xs: r.rows) == 13) && demand_census_conserved(r: r)
+      (r.uses_functions == 15) && (length(xs: r.rows) == 15) && demand_census_conserved(r: r)
   }
 }
 
@@ -364,3 +374,37 @@ test fn a_call_through_a_function_parameter_is_undecided_on_the_real_route_RED()
   }
 }
 
+
+// A CONSUMER OF A FILE-REFUSED MODULE IS TOLD THE IMPORTEE WAS REFUSED, not that its name is unbound: the refused
+// file's declarations never entered the index, so the unbound name is the symptom. The row files the import-target
+// cause, names the refused file, and carries no unbound locus.
+test fn a_consumer_of_a_file_refused_module_is_told_the_importee_was_refused_RED() -> Bool {
+  match ddc_verdict(function: "t.relies.reads_refused") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusUnobserved { reason: UnobservedImporteeRefused { importee_file: f, importee_cause: _ } } => f == ^ddc_broken_cu
+        CensusUnobserved { reason: _ } => false
+        CensusEqual => false
+        CensusMismatch { authored: _, derived: _ } => false
+        CensusUndecided { cause: _ } => false
+      }
+  }
+}
+
+// THE CONTROL: a name no module declares, with no refused importee, still reports unbound at its locus.
+test fn a_genuinely_missing_name_still_reports_unbound_holds() -> Bool {
+  match ddc_verdict(function: "t.missing_name.reads_missing") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusUnobserved { reason: UnobservedModuleResolveRefused { first_reason: r, first_unbound: u } } =>
+          (r == ^resolve_reason_unbound_symbol)
+            && match u { Present { value: _ } => true Absent => false }
+        CensusUnobserved { reason: _ } => false
+        CensusEqual => false
+        CensusMismatch { authored: _, derived: _ } => false
+        CensusUndecided { cause: _ } => false
+      }
+  }
+}

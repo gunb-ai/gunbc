@@ -837,6 +837,12 @@ test fn a_failure_kind_the_filesystem_authority_does_not_name_is_not_the_absent_
 // member, or accepted every member, is told apart.
 
 fn member_parse_text(content: String) -> String {
+  member_parse_at(file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content)
+}
+
+// THE VERDICT WITH ITS CAUSE, over a caller-chosen file, so a claim can hold the bytes fixed and vary
+// only the file key that acquisition_parsed interns into tokenization.
+fn member_parse_at(file: ModuleFileRef, content: String) -> String {
   match prepare_grammar(grammar: dag_language_model().grammar) {
     Rejected { diagnostics: _ } => "grammar-unprepared"
     Accepted { value: prepared, diagnostics: _ } =>
@@ -847,11 +853,11 @@ fn member_parse_text(content: String) -> String {
           lex: prepare_lex_rules(rules: dag_language_model().lex),
           grammar: prepared
         ),
-        file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" },
+        file: file,
         content: content
       ) {
         MemberParses => "parses"
-        MemberParseRefused { cause: _ } => "refused"
+        MemberParseRefused { cause: cause } => concat("refused:", cause)
       }
   }
 }
@@ -861,7 +867,29 @@ test fn a_well_formed_member_parses() -> Bool {
 }
 
 test fn a_member_with_an_unclosed_body_is_refused() -> Bool {
-  member_parse_text(content: "module v2.test.subject\nfn subject() -> Bool { true\n") == "refused"
+  let verdict = member_parse_text(content: "module v2.test.subject\nfn subject() -> Bool { true\n")
+  (verdict != "parses") && (verdict != "grammar-unprepared")
+}
+
+// PATH-INDEPENDENCE OF THE VERDICT (the key a parse-verdict receipt is served under is bytes plus parser
+// identity and carries no file key): the same bytes under two different file keys, in different trees,
+// give the same verdict AND the same cause. A well-formed and a malformed subject, so a verdict that
+// agrees only because it never reads the content is told apart.
+fn parse_at_two_paths_agree(content: String) -> Bool {
+  member_parse_at(file: ModuleFileRef { tree: V2Tree {}, relative_path: "test/subject.dag" }, content: content)
+    == member_parse_at(file: ModuleFileRef { tree: DagTree {}, relative_path: "other/deeper/place.dag" }, content: content)
+}
+
+test fn a_well_formed_member_parses_the_same_at_two_paths() -> Bool {
+  parse_at_two_paths_agree(content: "module v2.test.subject\nfn subject() -> Bool { true }\n")
+    && (member_parse_text(content: "module v2.test.subject\nfn subject() -> Bool { true }\n") == "parses")
+}
+
+test fn a_refused_member_is_refused_the_same_at_two_paths() -> Bool {
+  let malformed = "module v2.test.subject\nfn subject() -> Bool { true\n"
+  parse_at_two_paths_agree(content: malformed)
+    && (member_parse_text(content: malformed) != "parses")
+    && (member_parse_text(content: malformed) != "grammar-unprepared")
 }
 
 fn idle_acquisition_state(known: Map<String, Bool>) -> AcquisitionState {

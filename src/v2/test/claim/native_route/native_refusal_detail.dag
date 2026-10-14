@@ -74,9 +74,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // driver's adjudicate mode assembles and the same native_lane_module_resolution it calls per
 // universe module. Nothing here is a hand-built diagnostic or a hand-built row.
 //
-// FOUR SPECIMENS, EACH THE DISCRIMINATOR FOR ONE CLAUSE OF THE PACKAGE'S DONE LINE.
-// - shadow: a reference whose name is bound TWICE on its lexical chain (an ancestor namespace and
-//   a nearer ancestor both declare it; the referencing module declares neither). The resolver's
+// FIVE SPECIMENS (the fifth, ancestor, is the control that ancestor modules' binders are NOT on the chain), EACH THE DISCRIMINATOR FOR ONE CLAUSE OF THE PACKAGE'S DONE LINE.
+// - shadow: a reference whose name is bound TWICE in the referencing module's own scope (it
+//   imports twin_value from two modules, which a module sees only through its own imports -- there
+//   is no ancestor ascent). The resolver's
 //   lexical collector refuses this as ambiguous rather than picking the nearer binder, and it has
 //   both candidates' qualified paths in hand -- the case where competing declarations ARE
 //   available, so the row must name them.
@@ -93,7 +94,13 @@ data ndp_shadow_outer_source: String = "module v2.ndp.shadow\n\nimport std.types
 
 data ndp_shadow_inner_source: String = "module v2.ndp.shadow.inner\n\nimport std.types { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
 
-data ndp_shadow_leaf_source: String = "module v2.ndp.shadow.inner.leaf\n\nimport std.types { Bool }\n\nfn leaf_value(p: Bool) -> Bool { twin_value(p) }\n"
+data ndp_shadow_leaf_source: String = "module v2.ndp.shadow.inner.leaf\n\nimport std.types { Bool }\nimport v2.ndp.shadow { twin_value }\nimport v2.ndp.shadow.inner { twin_value }\n\nfn leaf_value(p: Bool) -> Bool { twin_value(p) }\n"
+
+// THE ANCESTOR SHAPE THE SHADOW SPECIMEN USED TO BE: the same bare reference with both binders in
+// ancestor modules and NO import. A module sees only its own declarations and its own imports
+// (v2.std.symbol_index ModuleRootDeclared, operator ruling 2026-10-04), so this is unbound, and it
+// is the RED for the no-ancestor-ascent rule.
+data ndp_ancestor_source: String = "module v2.ndp.shadow.inner.ancestor\n\nimport std.types { Bool }\n\nfn ancestor_value(p: Bool) -> Bool { twin_value(p) }\n"
 
 data ndp_collision_left_source: String = "module v2.ndq.left\n\nimport std.types { Bool }\n\nfn lone_value(p: Bool) -> Bool { p }\n"
 
@@ -118,6 +125,7 @@ data ndp_ingest: SourceRootIngest = [
   ndp_read(source: ndp_shadow_outer_source, id: ^ndp_shadow_outer_artifact, unit: ^ndp_shadow_outer_cu, path: "dag/ndp_shadow.dag"),
   ndp_read(source: ndp_shadow_inner_source, id: ^ndp_shadow_inner_artifact, unit: ^ndp_shadow_inner_cu, path: "dag/ndp_shadow_inner.dag"),
   ndp_read(source: ndp_shadow_leaf_source, id: ^ndp_shadow_leaf_artifact, unit: ^ndp_shadow_leaf_cu, path: "dag/ndp_shadow_leaf.dag"),
+  ndp_read(source: ndp_ancestor_source, id: ^ndp_ancestor_artifact, unit: ^ndp_ancestor_cu, path: "dag/ndp_ancestor.dag"),
   ndp_read(source: ndp_collision_left_source, id: ^ndp_collision_left_artifact, unit: ^ndp_collision_left_cu, path: "dag/ndp_left.dag"),
   ndp_read(source: ndp_collision_right_source, id: ^ndp_collision_right_artifact, unit: ^ndp_collision_right_cu, path: "dag/ndp_right.dag"),
   ndp_read(source: ndp_collision_user_source, id: ^ndp_collision_user_artifact, unit: ^ndp_collision_user_cu, path: "dag/ndp_user.dag"),
@@ -142,6 +150,7 @@ type NdpResolutions
       collision: NativeLaneModuleResolution
       unbound: NativeLaneModuleResolution
       clean: NativeLaneModuleResolution
+      ancestor: NativeLaneModuleResolution
     }
 
 fn ndp_resolutions() -> NdpResolutions {
@@ -169,6 +178,11 @@ fn ndp_resolutions() -> NdpResolutions {
           context: context,
           refusal_index: index,
           entry: ndp_universe_module(module: "v2.ndp.clean", path: ^ndp_clean_cu, declaration: "clean_value")
+        ).resolution,
+        ancestor: native_lane_module_resolution(
+          context: context,
+          refusal_index: index,
+          entry: ndp_universe_module(module: "v2.ndp.shadow.inner.ancestor", path: ^ndp_ancestor_cu, declaration: "ancestor_value")
         ).resolution
       }
     }
@@ -258,7 +272,7 @@ fn ndp_fatal_is_at_minted_occurrence(d: NonEmptyDiagnostics) -> Bool {
 fn ndp_shadow_refusal() -> Optional<NonEmptyDiagnostics> {
   match ndp_resolutions() {
     NdpContextRefused => optional_absent()
-    NdpResolutionsDecided { shadow: shadow, collision: _, unbound: _, clean: _ } =>
+    NdpResolutionsDecided { shadow: shadow, collision: _, unbound: _, clean: _, ancestor: _ } =>
       match ndp_prepare_row(resolution: shadow) {
         Absent => optional_absent()
         Present { value: row } => ndp_prepare_refusal(row: row)
@@ -269,7 +283,7 @@ fn ndp_shadow_refusal() -> Optional<NonEmptyDiagnostics> {
 fn ndp_collision_refusal() -> Optional<NonEmptyDiagnostics> {
   match ndp_resolutions() {
     NdpContextRefused => optional_absent()
-    NdpResolutionsDecided { shadow: _, collision: collision, unbound: _, clean: _ } =>
+    NdpResolutionsDecided { shadow: _, collision: collision, unbound: _, clean: _, ancestor: _ } =>
       match ndp_prepare_row(resolution: collision) {
         Absent => optional_absent()
         Present { value: row } => ndp_prepare_refusal(row: row)
@@ -280,7 +294,7 @@ fn ndp_collision_refusal() -> Optional<NonEmptyDiagnostics> {
 fn ndp_unbound_refusal() -> Optional<NonEmptyDiagnostics> {
   match ndp_resolutions() {
     NdpContextRefused => optional_absent()
-    NdpResolutionsDecided { shadow: _, collision: _, unbound: unbound, clean: _ } =>
+    NdpResolutionsDecided { shadow: _, collision: _, unbound: unbound, clean: _, ancestor: _ } =>
       match ndp_prepare_row(resolution: unbound) {
         Absent => optional_absent()
         Present { value: row } => ndp_prepare_refusal(row: row)
@@ -347,7 +361,7 @@ test fn a_bare_name_bound_on_no_chain_is_unbound_not_ambiguous_holds() -> Bool {
 test fn operator_line_names_subject_stage_cause_and_competing_declaration_holds() -> Bool {
   match ndp_resolutions() {
     NdpContextRefused => false
-    NdpResolutionsDecided { shadow: shadow, collision: _, unbound: _, clean: _ } =>
+    NdpResolutionsDecided { shadow: shadow, collision: _, unbound: _, clean: _, ancestor: _ } =>
       match ndp_prepare_row(resolution: shadow) {
         Absent => false
         Present { value: row } => {
@@ -388,7 +402,7 @@ test fn operator_line_names_the_refused_symbol_holds() -> Bool {
 test fn clean_module_resolves_holds() -> Bool {
   match ndp_resolutions() {
     NdpContextRefused => false
-    NdpResolutionsDecided { shadow: _, collision: _, unbound: _, clean: clean } =>
+    NdpResolutionsDecided { shadow: _, collision: _, unbound: _, clean: clean, ancestor: _ } =>
       match clean {
         NativeLaneModuleResolved { resolved: _ } => true
         NativeLaneModuleContextRowsDecided { rows: _ } => false
@@ -431,4 +445,28 @@ test fn a_composite_anchor_renders_unchanged_holds() -> Bool {
     at: node_locus(node: node_synthetic(kind: TypeNode { connective: Conj }, children: [])),
     correction: Unavailable { reason: ExternalContractUnknown }
   }) == "<synthetic node occurrence>"
+}
+
+fn ndp_ancestor_refusal() -> Optional<NonEmptyDiagnostics> {
+  match ndp_resolutions() {
+    NdpContextRefused => optional_absent()
+    NdpResolutionsDecided { shadow: _, collision: _, unbound: _, clean: _, ancestor: ancestor } =>
+      match ndp_prepare_row(resolution: ancestor) {
+        Absent => optional_absent()
+        Present { value: row } => ndp_prepare_refusal(row: row)
+      }
+  }
+}
+
+// A BARE NAME BOUND ONLY IN ANCESTOR MODULES IS UNBOUND. This is the shape the shadow specimen
+// had before its binders were moved into the module's own imports; it stays as the control that
+// no ancestor ascent has been reinstated (a module sees only its own declarations and imports).
+test fn a_bare_name_declared_only_in_ancestor_modules_is_unbound_holds() -> Bool {
+  match ndp_ancestor_refusal() {
+    Absent => false
+    Present { value: d } =>
+      diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+        && !ndp_chain_has_reason(d: d, reason: ^resolve_ambiguous_on_lexical_chain)
+        && ndp_competing_declaration_count(d: d) == 0
+  }
 }

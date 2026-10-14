@@ -231,6 +231,7 @@ import v2.extdeps.languages.fidelity {
   FidelityDisposition,
   Modeled
 }
+import v2.extdeps.languages.dag_surface_item_standing { dag_surface_item_standing }
 
 data dag_source_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 
@@ -7234,7 +7235,28 @@ fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_import_decl) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_alias_decl) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_data_decl) &&
-  grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_fn_decl)
+  grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_fn_decl) &&
+  dag_grammar_top_level_item_standing_join()
+}
+
+// Every top-level item production's emitted identity has a standing row
+// (`v2.extdeps.languages.dag_surface_item_standing` `dag_surface_item_standing`). A new item
+// production without a row is a join miss, never a silent PlainTypeDecl.
+fn dag_grammar_top_level_item_standing_join() -> Bool {
+  fold_list(
+    xs: dag_grammar_top_level_item_productions(),
+    empty: true,
+    cons: fn(acc, production) {
+      acc && match node_atom_identity_optional(node: production.emitted) {
+        Present { value: id } =>
+          match dag_surface_item_standing(id: id) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
+      }
+    }
+  )
 }
 
 fn dag_round_trip_trivia_fidelity_resolved() -> Bool {
