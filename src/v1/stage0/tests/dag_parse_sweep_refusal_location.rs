@@ -156,3 +156,22 @@ fn out_of_closure_malformed_body_is_owned_by_the_parse_sweep() {
         }
     }
 }
+
+#[test]
+fn ordinary_front_end_retains_an_authored_annotation() {
+    use std::rc::Rc;
+    use v1_compiler::v1_compiler_compile::{front_end_sources, SourceFile};
+
+    let source = "module probe_root.noted\n\n// authored note\ndata ok: Bool = true\n";
+    let result = front_end_sources(Rc::new(
+        vec![Rc::new(SourceFile {
+            path: "noted.dag".to_string(),
+            content: source.to_string(),
+        })]
+        .into(),
+    ));
+    assert!(
+        !result.annotations.rows.is_empty(),
+        "the ordinary front end must keep the bound annotation of an authored comment"
+    );
+}

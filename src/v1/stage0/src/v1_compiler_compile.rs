@@ -24,7 +24,9 @@ pub use crate::std_occurrence_identity::{
 pub use crate::std_occurrence_identity::{
     NodeOccurrenceIdentity, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
 };
-pub use crate::std_source_annotation::source_annotation_graph_empty;
+pub use crate::std_source_annotation::{
+    source_annotation_graph_concat, source_annotation_graph_empty,
+};
 pub use crate::std_source_annotation::{SourceAnnotationGraph, UnboundAnnotationCapture};
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
@@ -32,7 +34,6 @@ pub use crate::std_syntax::{BinOp, LiteralValue, ParseEnvironment};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
-pub use crate::std_types::NonEmptyStr;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_annotation_bind::bind_annotations;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
@@ -938,18 +939,26 @@ pub fn test_reference_diagnostics(
         );
         Rc::new({
             let mut __result = Vec::new();
-            for m in typed.modules.clone().iter().cloned() {
-                for o in (*module_test_references(
-                    m.clone(),
-                    modules_by_name.clone(),
-                    test_keys.clone(),
-                    source_indices.clone(),
-                ))
-                .iter()
-                .cloned()
-                {
-                    __result.push(test_reference_occurrence_diag(o.clone()));
+            for o in Rc::new({
+                let mut __result = Vec::new();
+                for m in typed.modules.clone().iter().cloned() {
+                    __result.extend(
+                        (*module_test_references(
+                            m.clone(),
+                            modules_by_name.clone(),
+                            test_keys.clone(),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
                 }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(test_reference_occurrence_diag(o.clone()));
             }
             __result
         })
@@ -3310,7 +3319,10 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                     ),
                     intern_table: parsed.intern_table.clone(),
                     occurrence_allocator: parsed.occurrence_allocator.clone(),
-                    annotations: acc.annotations.clone(),
+                    annotations: crate::std_source_annotation::source_annotation_graph_concat(
+                        acc.annotations.clone(),
+                        bound.clone(),
+                    ),
                 })
             },
         );
@@ -3895,14 +3907,6 @@ pub fn emit_resolved_for_target_selected(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CorpusKnown;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CorpusUnknown;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CorpusDebtRow;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct FixtureControlRow;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RetainParsedModules;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
