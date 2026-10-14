@@ -311,7 +311,7 @@ pub fn resolved_plain_call_target_for_outcome(
 pub fn census_fallback_skips_non_declaration_binding(name: String) -> bool {
     match bare_call_non_declaration_binding(name.clone()) {
         NonDeclarationBinding::EmptyCollectionConstructor => true,
-        NonDeclarationBinding::BuiltinFunction => true,
+        NonDeclarationBinding::BuiltinFunction => false,
         NonDeclarationBinding::KernelMethodOnly => false,
         NonDeclarationBinding::DeclarationOnly => false,
     }

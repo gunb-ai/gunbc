@@ -420,7 +420,7 @@ fn resolved_plain_call_target_for_outcome(outcome: CallTargetOutcome) -> CallTar
 fn census_fallback_skips_non_declaration_binding(name: String) -> Bool {
   match bare_call_non_declaration_binding(name: name) {
     EmptyCollectionConstructor => true
-    BuiltinFunction => true
+    BuiltinFunction => false
     KernelMethodOnly => false
     DeclarationOnly => false
   }
@@ -496,9 +496,9 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
 }
 
 // Direct-call target selection must not consult the whole-tree census before builtin /
-// empty-collection classification. `lookup_func_sig` / `callable_lookup_over_candidates`
-// skip the same census fallback for those names. This lookup is func-env / import-closure
-// declarations only.
+// empty-collection classification. Census fallback is skipped only for empty_map / empty_set
+// so a same-spelled declaration cannot bind them; builtins still take imported declarations.
+// This lookup is func-env / import-closure declarations only.
 fn func_env_declared_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> FuncSigLookup {
   if listed_import_required_bare_call_blocked(env: type_env, name: name) {
     FuncSigUnresolved
