@@ -13,7 +13,7 @@ import gunbc.workspace_ssh_access { WorkspaceSshAccess, WorkspaceSshFromHost, Wo
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path }
 import gunbc.auth.request_authentication { RequestAccessPath,
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
-  ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCreateIssue, ServeActionCommentIssue, ServeActionSaveOwnView, ServeActionApproveDecision, ServeRouteAction,
+  ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCreateIssue, ServeActionCommentIssue, ServeActionSaveOwnView, ServeActionApproveDecision, ServeActionDispatchNode, ServeActionStopNode, ServeActionPublishNode, ServeRouteAction,
   human_authentication_decision, csrf_write_decision, deployment_path_decision, write_refused,
 }
 
@@ -115,6 +115,9 @@ fn workspace_write_admission(
     ServeActionCommentIssue => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
     ServeActionSaveOwnView => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
     ServeActionApproveDecision => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
+    ServeActionDispatchNode => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
+    ServeActionStopNode => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
+    ServeActionPublishNode => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
   }
 }
 

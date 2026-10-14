@@ -1,7 +1,7 @@
 module test.claim.roadmap.roadmap_serve_witness
 import gunbc.site.document { site_styles }
 import std.access { Permit, Deny }
-import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView }
+import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView, ServeActionDispatchNode }
 import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath, IngressUnattested }
 
 import gunbc.roadmap.roadmap_serve {
@@ -174,6 +174,88 @@ fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest<Request
     body: "",
     security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent },
   }
+}
+
+fn fixture_dispatch_params() -> List<PathParamBinding> {
+  [PathParamBinding { name: "node_id", value: "some-node" }]
+}
+
+test fn unauthenticated_dispatch_refuses_before_actuation() -> Bool {
+  let r = roadmap_serve_invoke(
+    handler: BeltDispatchHandler,
+    params: fixture_dispatch_params(),
+    request: fixture_request(method: POST, path: "/dispatch/some-node"),
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 403 && string_contains(s: r.body, pattern: "google-oidc-session")
+}
+
+fn fixture_live_session() -> AuthenticatedSession {
+  AuthenticatedSession {
+    session_id: "session-live" as NonEmptyStr,
+    principal: PrincipalRef {
+      authority: "google-oidc" as NonEmptyStr,
+      namespace: "accounts" as NonEmptyStr,
+      subject: "sub-1" as NonEmptyStr,
+    },
+    authenticated_at: "2026-09-27T00:00:00Z",
+    expires_at: "2099-01-01T00:00:00Z",
+    auth_method: AuthMethodGoogleOidc,
+    client: SessionClientTrackerWeb,
+    csrf: CsrfToken { token: "csrf-1" as NonEmptyStr },
+    profile: SessionProfile {
+      picture: none,
+      name: Present { value: "Test Operator" },
+      email: Present { value: "operator@gunb.ai" as Email },
+    },
+  }
+}
+
+test fn dispatch_without_csrf_refuses_as_cross_site() -> Bool {
+  let r = roadmap_serve_invoke(
+    handler: BeltDispatchHandler,
+    params: fixture_dispatch_params(),
+    request: ServeHttpRequest {
+      method: POST,
+      path: "/dispatch/some-node",
+      body: "",
+      security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: fixture_live_session() } },
+    },
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 403 && string_contains(s: r.body, pattern: "CSRF token")
+}
+
+test fn authenticated_dispatch_with_csrf_passes_the_write_law() -> Bool {
+  match human_write_admission(
+    route_path: "/dispatch" as NonEmptyStr,
+    action: ServeActionDispatchNode,
+    security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: witness_auth_session() } },
+    authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy,
+    csrf_presented: "csrf-1",
+    observed_at: "2026-09-27T01:00:00Z",
+  ) {
+    Permit => true
+    Deny { refusal: _ } => false
+  }
+}
+
+test fn unauthenticated_cleanup_refuses_before_actuation() -> Bool {
+  let r = roadmap_serve_invoke(
+    handler: BeltStopHandler,
+    params: fixture_dispatch_params(),
+    request: fixture_request(method: POST, path: "/cleanup/some-node"),
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 403 && string_contains(s: r.body, pattern: "google-oidc-session")
+}
+
+test fn dispatch_client_posts_the_session_csrf_token() -> Bool {
+  let js = dispatch_client_js_source()
+  string_contains(s: js, pattern: "fetch('/auth/session'")
+    && string_contains(s: js, pattern: "csrf=")
+    && string_contains(s: js, pattern: "session && session.csrf")
 }
 
 test fn witness_unknown_path_folds_404_response() -> Bool {
@@ -926,6 +1008,8 @@ test fn the_session_route_renders_anonymous_and_authenticated_standings() -> Boo
     && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "\"authenticated\": true")
     && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "principal:google-oidc/accounts/sub-1")
     && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "2026-09-27T12:00:00Z")
+    && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "csrf-1")
+    && !string_contains(s: auth_session_body(evidence: AuthAbsent), pattern: "csrf")
 }
 
 // THE SESSION WIRE CARRIES THE PROFILE PROJECTION, OPTIONALLY (the never-blocks law on the

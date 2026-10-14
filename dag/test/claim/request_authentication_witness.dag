@@ -35,7 +35,7 @@ import gunbc.auth.request_authentication {
   SessionStandingInvalid,
   FabricServiceEvidenceSubmissionMac,
   DeploymentAccessPolicy,
-  ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision,
+  ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeActionDispatchNode,
   ServeWriteAuthorizationPolicy,
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, service_write_authentication_decision,
@@ -280,6 +280,15 @@ test fn the_write_law_admits_only_the_full_conjunction() -> Bool {
         csrf_presented: "csrf-1",
         observed_at: "2026-09-25T00:05:00Z",
       ) == Permit
+        && human_write_admission(
+          route_path: "/dispatch" as NonEmptyStr,
+          action: ServeActionDispatchNode,
+          security: session_security(session: s),
+          authorization_policy: open_write_policy(),
+          deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+          csrf_presented: "csrf-1",
+          observed_at: "2026-09-25T00:05:00Z",
+        ) == Permit
   }
 }
 
