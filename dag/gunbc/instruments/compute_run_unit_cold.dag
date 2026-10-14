@@ -10,7 +10,12 @@ import std.measure {
 import std.optional { Present, Absent }
 import std.env_binding { EnvSet, EnvBinding }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.roadmap.roadmap_dashboard_instance { fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance, IsolatedJobToolchainHomes,
+}
+import extdeps.shell
+import extdeps.rust.cargo { cargo_environment_variable_name, CargoHomeEnv }
+import extdeps.rust.rustup { rustup_home_env_name }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
@@ -106,6 +111,44 @@ fn hermetic_user_session_unit_setenv(runtime_dir: FilePath) -> List<SystemdSeten
   ]
 }
 
+fn observe_isolated_job_toolchain_homes() -> IsolatedJobToolchainHomes? {
+  match shell.Env.Get(name: cargo_environment_variable_name(variable: CargoHomeEnv)).value {
+    Absent => none
+    Present { value: cargo_home } =>
+      if trim(s: cargo_home) == "" {
+        none
+      } else {
+        match shell.Env.Get(name: rustup_home_env_name).value {
+          Absent => none
+          Present { value: rustup_home } =>
+            if trim(s: rustup_home) == "" {
+              none
+            } else {
+              Present {
+                value: IsolatedJobToolchainHomes {
+                  cargo_home: cargo_home as FilePath,
+                  rustup_home: rustup_home as FilePath,
+                },
+              }
+            }
+        }
+      }
+  }
+}
+
+fn hermetic_toolchain_unit_setenv(homes: IsolatedJobToolchainHomes) -> List<SystemdSetenvBinding> {
+  [
+    SystemdSetenvBinding {
+      name: cargo_environment_variable_name(variable: CargoHomeEnv),
+      value: homes.cargo_home as String as NonEmptyStr,
+    },
+    SystemdSetenvBinding {
+      name: rustup_home_env_name,
+      value: homes.rustup_home as String as NonEmptyStr,
+    },
+  ]
+}
+
 fn hermetic_user_session_launcher_env(runtime_dir: FilePath) -> List<EnvBinding> {
   [
     EnvSet { name: "XDG_RUNTIME_DIR", value: runtime_dir as String },
@@ -170,7 +213,14 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
         reason: "user session bus absent",
       )
     HermeticUserSessionRuntimeBound { runtime_dir } => {
-      let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath)
+      match observe_isolated_job_toolchain_homes() {
+        Absent =>
+          CliWirePrintable {
+            bytes: "compute-run-unit-cold: ToolchainHomesNotIsolated CARGO_HOME/RUSTUP_HOME unset or empty (job isolation did not run; refusing ambient PATH and developer-home cargo)",
+            exit: ExitFailure { code: 1, reason: "ToolchainHomesNotIsolated" },
+          }
+        Present { value: toolchain_homes } => {
+      let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, toolchain_homes: toolchain_homes)
       let workspace = observe_workspace(instance: probe)
       let identity = observe_run_identity()
       if workspace == "" {
@@ -190,7 +240,7 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
         }
       } else {
         let run_root = join([workspace, "/.gunbc-compute-hermetic/", identity], "")
-        let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: run_root as FilePath)
+        let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: run_root as FilePath, toolchain_homes: toolchain_homes)
         let layout = compute_layout(instance: instance, identity_hex: identity)
         let root = compute_root(instance: instance) as String
         if path_is_under_opt_gunbc(path: instance.instance_root as String) || path_is_under_opt_gunbc(path: root) {
@@ -233,7 +283,10 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
                     layout: layout,
                     identity_hex: identity,
                     argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency),
-                    env: concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
+                    env: concat(
+                      concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
+                      hermetic_toolchain_unit_setenv(homes: toolchain_homes),
+                    ),
                     launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
                     granted: compute_run_unit_cold_unit_grant(),
                   ) {
@@ -289,6 +342,8 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
           }
         }
       }
+        }
     }
   }
+}
 }
