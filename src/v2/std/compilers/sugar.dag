@@ -135,15 +135,19 @@ fn sugar_repeated_authored_name(edges: List<Edge>) -> Symbol? {
     edges,
     init: no_repeated_authored_name(),
     f: fn(acc, e) {
-      match e.label {
-        Authored { name: n } =>
-          if is_repeated_authored_name(name: n, edges: edges) {
-            optional_present(value: n)
-          } else {
-            acc
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match e.label {
+            Authored { name: n } =>
+              if is_repeated_authored_name(name: n, edges: edges) {
+                optional_present(value: n)
+              } else {
+                optional_absent()
+              }
+            Positional => optional_absent()
+            StructuralLabel { label: _ } => optional_absent()
           }
-        Positional => acc
-        StructuralLabel { label: _ } => acc
       }
     }
   )
