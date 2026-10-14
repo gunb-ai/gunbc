@@ -36,8 +36,6 @@ import gunbc.runner.runner_unit_live_read {
   runner_unit_live_read_typed,
 }
 
-data runner_memory_cap_verify_probe_unit_assumption: String = "DISCHARGED 2026-10-14: runner_memory_cap_verify_run enumerates every active actions-runner@* unit through systemctl_list_units_active_services (same producer as host_converge_slice1_enumerate_units) and judges each with per_slot_memory_cap_verdict_from_unit_read. The host verdict is VerdictConverged only when every enumerated slot is. Slot -01 remains the name runner_memory_cap_probe_unit derives for other consumers; it is no longer a proxy for the host. A discriminating RED (only a non-sampled slot differs) is witness_verify_nonsampled_slot_drift_is_not_host_converged."
-
 data runner_memory_cap_verify_scope_disposition: Disposition = Terminal {
   reason: "Path (b) verify-only close for runner memory caps (operator mandate 2026-07-21): read-back over EVERY active runner unit on the host's instance glob via fleet_show_effective_read transport + per_slot_memory_cap_verdict_from_unit_read. Emits a counted tally (converged/drifted/absent knob counts summed across slots, no apply claim). Does NOT call host_effect_apply, interpret_converge_knob, or SshShell ConvergePlan — the host_converge_realize lane stays untouched. Every live read on this path is a typed service operation: list-units through gunbc.systemctl_list_units, memory properties through gunbc.systemctl_show_read typed systemd.Systemctl.ShowProperty local reads, probed_at through gunbc.clock_read clock_now_probed_at. Any absent enumeration or unit read is a typed RunnerMemoryCapVerifyRefused (fail-closed, DESIGN section 5 — a failure arm refuses, never widens to a converged claim). Host Converged only if every enumerated slot is."
 }

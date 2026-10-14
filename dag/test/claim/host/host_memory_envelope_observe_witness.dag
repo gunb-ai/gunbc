@@ -8,8 +8,8 @@ data envelope_meminfo_without_available: String = "MemTotal:       16777216 kB\n
 
 fn hermetic_slice_pair() -> List<SliceMemoryReading> {
   [
-    slice_memory_reading(slice_unit: "system.slice" as NonEmptyStr, memory_current: slice_limit_bytes(n: 1), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0)),
-    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current: slice_limit_bytes(n: 2), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0)),
+    slice_memory_reading(slice_unit: "system.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 1), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0)),
+    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 2), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0)),
   ]
 }
 
@@ -103,20 +103,20 @@ test fn witness_sleek_owl_397_first_receipt_carries_the_sanctioned_srv1_values()
     && byte_size_count(b: obs.swap_free) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 248930848)))
     && obs.active_runner_unit_count == 11
     && length(obs.slice_readings) == 4
-    && any(obs.slice_readings, r => (r.slice_unit as String) == "gunbc.slice" && slice_limit_is_bytes(lim: r.memory_current, n: 87153995776))
+    && any(obs.slice_readings, r => (r.slice_unit as String) == "gunbc.slice" && byte_size_count(b: r.memory_current) == 87153995776)
     && any(obs.slice_readings, r =>
       (r.slice_unit as String) == "sessions.slice"
-        && slice_limit_is_bytes(lim: r.memory_current, n: 29314482176)
+        && byte_size_count(b: r.memory_current) == 29314482176
         && slice_limit_is_bytes(lim: r.memory_high, n: 120259084288)
         && slice_limit_is_bytes(lim: r.memory_max, n: 137438953472))
     && any(obs.slice_readings, r =>
       (r.slice_unit as String) == "user.slice"
-        && slice_limit_is_bytes(lim: r.memory_current, n: 175093350400)
+        && byte_size_count(b: r.memory_current) == 175093350400
         && slice_limit_is_unbounded(lim: r.memory_high)
         && slice_limit_is_unbounded(lim: r.memory_max))
     && any(obs.slice_readings, r =>
       (r.slice_unit as String) == "system-actions-runner.slice"
-        && slice_limit_is_bytes(lim: r.memory_current, n: 129190301696))
+        && byte_size_count(b: r.memory_current) == 129190301696)
     && standing_is_sleek_owl_first(s: obs.standing)
 }
 
@@ -127,19 +127,19 @@ test fn witness_sleek_owl_397_second_receipt_carries_the_sanctioned_gunbc_slice_
     && length(census.slice_readings) == 13
     && any(census.slice_readings, r =>
       (r.slice_unit as String) == "gunbc-roadmap.slice"
-        && slice_limit_is_bytes(lim: r.memory_current, n: 46256783360)
+        && byte_size_count(b: r.memory_current) == 46256783360
         && slice_limit_is_bytes(lim: r.memory_high, n: 52613349376)
         && slice_limit_is_bytes(lim: r.memory_max, n: 56908316672)
         && slice_limit_is_bytes(lim: r.memory_swap_max, n: 0))
     && any(census.slice_readings, r =>
       (r.slice_unit as String) == "gunbc.slice"
-        && slice_limit_is_bytes(lim: r.memory_current, n: 87612194816)
+        && byte_size_count(b: r.memory_current) == 87612194816
         && slice_limit_is_unbounded(lim: r.memory_high)
         && slice_limit_is_unbounded(lim: r.memory_max)
         && slice_limit_is_unbounded(lim: r.memory_swap_max))
     && any(census.slice_readings, r =>
       (r.slice_unit as String) == "gunbc-approval-broker.slice"
-        && slice_limit_is_bytes(lim: r.memory_current, n: 11381518336)
+        && byte_size_count(b: r.memory_current) == 11381518336
         && slice_limit_is_bytes(lim: r.memory_high, n: 19327352832)
         && slice_limit_is_bytes(lim: r.memory_max, n: 21474836480)
         && slice_limit_is_bytes(lim: r.memory_swap_max, n: 0))
