@@ -84,9 +84,8 @@ use crate::v1_std_core::{
 use serde::Serialize;
 
 /// Whether a row's `PathSubject.path` file prefix must equal the file that hosts the decl.
-/// Production discovery Requires it (the co-location invariant). Parser unit tests Skip so they
-/// can name synthetic paths. A base-tree read of the pre-cut central list also Skips, because
-/// those rows were not at home.
+/// Production HEAD discovery Requires it. Skip is only for a floor base tree written before
+/// this policy existed (the pre-cut central list on origin/main). Parser tests Require.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum NfrHomeCheck {
     Require,
@@ -106,33 +105,117 @@ pub(crate) fn nfr_identity_join_line(t: &NfrFrontierTriple) -> String {
 }
 
 const NFR_OBSERVING_LAYER_HOST: &str = "dag/gunbc/non_fold_residue.dag";
+const NFR_OBSERVING_PREFIXES_DATA_NAME: &str = "nfr_observing_layer_home_prefixes";
 
-fn nfr_dag_rel_to_source_module(dag_rel: &str) -> Option<String> {
-    let stem = dag_rel.strip_suffix(".dag")?;
-    let rest = stem
-        .strip_prefix("dag/")
-        .or_else(|| stem.strip_prefix("src/"))?;
-    Some(rest.replace('/', "."))
+fn nfr_prefix_covers(policy: &str, subject_file: &str) -> bool {
+    if policy.ends_with('/') {
+        subject_file.starts_with(policy)
+    } else {
+        subject_file == policy
+    }
 }
 
-fn nfr_dag_rel_has_stage0_mirror(dag_rel: &str) -> bool {
-    let Some(module) = nfr_dag_rel_to_source_module(dag_rel) else {
-        return false;
-    };
-    let basename = format!("{}.rs", module.replace('.', "_"));
-    process_workspace_root()
-        .join("src/v1/stage0/src")
-        .join(basename)
-        .is_file()
+fn nfr_string_list_data_from_parse(
+    module: &crate::v1_std_core::Node,
+    module_rel_path: &str,
+    data_name: &str,
+) -> Option<Vec<String>> {
+    use crate::v1_std_core::{ExprData, LiteralValue};
+    let mut found = None;
+    for item in module.children.iter() {
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue {
+            continue;
+        }
+        if item.name == data_name {
+            found = Some(item);
+        }
+    }
+    let item = found?;
+    let body = item.body.as_ref().unwrap_or_else(|| {
+        panic!("nfr frontier reader: `data {data_name}` in {module_rel_path} has no value body")
+    });
+    if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
+        panic!(
+            "nfr frontier reader: `data {data_name}` in {module_rel_path} is not a list literal"
+        );
+    }
+    let mut out = Vec::new();
+    for el in body.children.iter() {
+        match el.expr_data.as_ref() {
+            ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
+                LiteralValue::LitStr { value: s } => out.push(s.clone()),
+                _ => panic!(
+                    "nfr frontier reader: an element of `{data_name}` in {module_rel_path} \
+                     is not a string literal"
+                ),
+            },
+            _ => panic!(
+                "nfr frontier reader: an element of `{data_name}` in {module_rel_path} is \
+                 not a string literal"
+            ),
+        }
+    }
+    Some(out)
 }
 
-fn nfr_path_is_extdeps_subject(dag_rel: &str) -> bool {
-    dag_rel.starts_with("dag/extdeps/") || dag_rel.starts_with("src/v2/extdeps/")
+fn nfr_parse_module_from_source(
+    module_rel_path: &str,
+    content: &str,
+) -> (
+    std::rc::Rc<crate::v1_compiler_parse::ParseResult>,
+    std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
+) {
+    let filename = module_rel_path.to_string();
+    let tokens = crate::v1_compiler_tokenize::tokenize(
+        content.to_string(),
+        filename.clone(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
+    let source_index =
+        crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename.clone(), source_index);
+    let source_indices = std::rc::Rc::new(source_indices);
+    let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
+    if let Some(err) = result.error.as_ref() {
+        panic!(
+            "nfr frontier reader: parse error in {module_rel_path}: {}",
+            crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
+        );
+    }
+    (result, source_indices)
 }
 
-fn nfr_observing_layer_home_exception(host: &str, path_prefix: &str) -> bool {
-    host == NFR_OBSERVING_LAYER_HOST
-        && (nfr_path_is_extdeps_subject(path_prefix) || nfr_dag_rel_has_stage0_mirror(path_prefix))
+fn nfr_workspace_observing_prefixes() -> &'static [String] {
+    static PREFIXES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    PREFIXES.get_or_init(|| {
+        let rel = NFR_OBSERVING_LAYER_HOST;
+        let path = process_workspace_root().join(rel);
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("nfr frontier reader: cannot read policy {rel}: {e}"));
+        let (parsed, _) = nfr_parse_module_from_source(rel, &content);
+        let module = parsed
+            .module
+            .as_ref()
+            .unwrap_or_else(|| panic!("nfr frontier reader: {rel} parsed to no module"));
+        nfr_string_list_data_from_parse(module, rel, NFR_OBSERVING_PREFIXES_DATA_NAME)
+            .unwrap_or_else(|| {
+                panic!(
+                    "nfr frontier reader: {rel} has no `{NFR_OBSERVING_PREFIXES_DATA_NAME}` \
+                     (the home-exception policy)"
+                )
+            })
+    })
+}
+
+fn nfr_host_is_forbidden_upstream(host: &str, prefixes: &[String]) -> bool {
+    prefixes
+        .iter()
+        .any(|p| p.ends_with('/') && host.starts_with(p.as_str()))
+}
+
+fn nfr_observing_layer_home_exception(host: &str, path_prefix: &str, prefixes: &[String]) -> bool {
+    host == NFR_OBSERVING_LAYER_HOST && prefixes.iter().any(|p| nfr_prefix_covers(p, path_prefix))
 }
 
 fn nfr_join_site_key(module_rel_path: &str, authored_path: &str) -> String {
@@ -211,28 +294,12 @@ fn non_fold_residue_units_from_parse_source(
 ) -> Vec<NfrFrontierTriple> {
     use crate::v1_std_core::{ExprData, LiteralValue};
 
-    let filename = module_rel_path.to_string();
-    let tokens = crate::v1_compiler_tokenize::tokenize(
-        content.to_string(),
-        filename.clone(),
-        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-    );
-    let source_index =
-        crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
-    let mut source_indices = HashMap::new();
-    source_indices.insert(filename.clone(), source_index);
-    let source_indices = std::rc::Rc::new(source_indices);
-    let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
-    if let Some(err) = result.error.as_ref() {
-        panic!(
-            "nfr frontier reader: parse error in {module_rel_path}: {}",
-            crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
-        );
-    }
+    let (result, source_indices) = nfr_parse_module_from_source(module_rel_path, content);
     let module = result
         .module
         .as_ref()
         .unwrap_or_else(|| panic!("nfr frontier reader: {module_rel_path} parsed to no module"));
+    let prefixes = nfr_workspace_observing_prefixes();
     let data_name = NON_FOLD_RESIDUE_FRONTIER_DATA_NAME;
     let mut found = None;
     for item in module.children.iter() {
@@ -354,7 +421,9 @@ fn non_fold_residue_units_from_parse_source(
                      `subject` field"
             )
         });
-        if home == NfrHomeCheck::Require && nfr_path_is_extdeps_subject(module_rel_path) {
+        if home == NfrHomeCheck::Require
+            && nfr_host_is_forbidden_upstream(module_rel_path, prefixes)
+        {
             panic!(
                 "nfr frontier reader: `{data_name}` in {module_rel_path} stores repository \
                  coverage state in an upstream module; the observing layer is \
@@ -364,7 +433,7 @@ fn non_fold_residue_units_from_parse_source(
         if home == NfrHomeCheck::Require && authored_path.contains("::") {
             let prefix = authored_path.split("::").next().unwrap_or("");
             if prefix != module_rel_path
-                && !nfr_observing_layer_home_exception(module_rel_path, prefix)
+                && !nfr_observing_layer_home_exception(module_rel_path, prefix, prefixes)
             {
                 panic!(
                         "nfr frontier reader: row path {authored_path:?} in {module_rel_path} is not at \

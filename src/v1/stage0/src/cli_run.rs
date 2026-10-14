@@ -30293,27 +30293,27 @@ mod nfr_tests {
 
     #[test]
     fn nfr_frontier_reader_follows_synthetic_authority() {
-        let synthetic = "module gunbc.non_fold_residue\n\n\
+        let synthetic = "module a\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow {\n\
-                 subject: PathSubject { path: \"synthetic/a.dag::f\" },\n\
+                 subject: PathSubject { path: \"f\" },\n\
                  reason: shared_reason,\n\
                  dissolution: shared_dissolve\n\
                },\n\
                FrontierRow {\n\
-                 subject: PathSubject { path: \"synthetic/b.dag::g\" },\n\
+                 subject: PathSubject { path: \"g\" },\n\
                  reason: inline_reason,\n\
                  dissolution: unbound_dissolution(description: \"d\")\n\
                }\n\
              ]\n";
         let triples = super::non_fold_residue_triples_from_module_source_with(
-            "synthetic.dag",
+            "a.dag",
             synthetic,
-            super::NfrHomeCheck::Skip,
+            super::NfrHomeCheck::Require,
         );
         assert_eq!(
             triples.iter().map(|t| t.path.as_str()).collect::<Vec<_>>(),
-            vec!["synthetic/a.dag::f", "synthetic/b.dag::g"],
+            vec!["a.dag::f", "a.dag::g"],
             "the frontier reader must FOLLOW the authority, not a hardcoded copy"
         );
         assert_eq!(
@@ -30322,8 +30322,8 @@ mod nfr_tests {
                 .map(super::nfr_identity_join_line)
                 .collect::<Vec<_>>(),
             vec![
-                "synthetic/a.dag::f\tshared_reason\tshared_dissolve".to_string(),
-                "synthetic/b.dag::g\tinline_reason\tunbound_dissolution".to_string(),
+                "a.dag::f\tshared_reason\tshared_dissolve".to_string(),
+                "a.dag::g\tinline_reason\tunbound_dissolution".to_string(),
             ],
             "the reader must emit the (path, reason ident, dissolution ident) triples the identity join prints"
         );
@@ -30331,16 +30331,16 @@ mod nfr_tests {
 
     #[test]
     fn nfr_frontier_reader_refuses_duplicate_unit() {
-        let synthetic = "module gunbc.non_fold_residue\n\n\
+        let synthetic = "module a\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: r, dissolution: d },\n\
-               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: r2, dissolution: d2 }\n\
+               FrontierRow { subject: PathSubject { path: \"f\" }, reason: r, dissolution: d },\n\
+               FrontierRow { subject: PathSubject { path: \"f\" }, reason: r2, dissolution: d2 }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source_with(
-                "synthetic.dag",
+                "a.dag",
                 synthetic,
-                super::NfrHomeCheck::Skip,
+                super::NfrHomeCheck::Require,
             )
         }))
         .is_err();
@@ -30352,15 +30352,15 @@ mod nfr_tests {
 
     #[test]
     fn nfr_frontier_reader_refuses_missing_unit_field() {
-        let synthetic = "module gunbc.non_fold_residue\n\n\
+        let synthetic = "module a\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow { reason: r, dissolution: d }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source_with(
-                "synthetic.dag",
+                "a.dag",
                 synthetic,
-                super::NfrHomeCheck::Skip,
+                super::NfrHomeCheck::Require,
             )
         }))
         .is_err();
@@ -30372,15 +30372,15 @@ mod nfr_tests {
 
     #[test]
     fn nfr_frontier_reader_locates_path_subject_without_path() {
-        let synthetic = "module gunbc.non_fold_residue\n\n\
+        let synthetic = "module a\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow { subject: PathSubject { }, reason: r, dissolution: d }\n\
              ]\n";
         let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source_with(
-                "synthetic.dag",
+                "a.dag",
                 synthetic,
-                super::NfrHomeCheck::Skip,
+                super::NfrHomeCheck::Require,
             )
         }))
         .expect_err("a PathSubject carrying no `path` field must refuse loudly (fail-closed)");
@@ -30509,6 +30509,31 @@ mod nfr_tests {
                 .collect::<Vec<_>>(),
             vec!["dag/std/effects.dag::key_source_eq\tr\td".to_string()],
             "seed-mirrored subject paths may be hosted on gunbc.non_fold_residue"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_refuses_undeclared_prefix_on_observing_host() {
+        let synthetic = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"src/v2/compiler/infer.dag::f\" }, reason: r, dissolution: d }\n\
+             ]\n";
+        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::non_fold_residue_units_from_module_source_with(
+                "dag/gunbc/non_fold_residue.dag",
+                synthetic,
+                super::NfrHomeCheck::Require,
+            )
+        }))
+        .expect_err("a row whose prefix is not in nfr_observing_layer_home_prefixes must refuse");
+        let message = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default();
+        assert!(
+            message.contains("not at home") && message.contains("src/v2/compiler/infer.dag"),
+            "the refusal must LOCATE the undeclared prefix; got: {message}"
         );
     }
 
