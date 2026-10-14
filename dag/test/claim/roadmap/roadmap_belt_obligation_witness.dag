@@ -6,9 +6,9 @@ import gunbc.roadmap.roadmap_workflow_stage {
   SubmissionWorkflowSegment, VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
 }
-import gunbc.roadmap.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderCompleted, ProviderFailed }
+import gunbc.roadmap.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderAwaitingAcceptance }
 import gunbc.roadmap.roadmap_belt_obligation {
-  BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
+  BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, AcceptanceOutcomeObligation, PublishObligation,
   belt_attempt_outstanding, belt_attempt_next_after, belt_attempt_obligation_kind_key,
   belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name,
   ServedObservationObligation, LaunchObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_key,
@@ -57,7 +57,10 @@ test fn each_obligation_is_owed_only_on_its_predecessors_evidence() -> Bool {
   let verified = keys(kinds: belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments(submission: WorkflowSegmentComplete, verification: WorkflowSegmentComplete, review: WorkflowSegmentActive, audit: WorkflowSegmentPending, publication: WorkflowSegmentPending)))
   let reviewed = keys(kinds: belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments(submission: WorkflowSegmentComplete, verification: WorkflowSegmentComplete, review: WorkflowSegmentComplete, audit: WorkflowSegmentComplete, publication: WorkflowSegmentPending)))
   let settled = keys(kinds: belt_attempt_outstanding(provider: ProviderCompleted { activity: "done" }, segments: segments(submission: WorkflowSegmentComplete, verification: WorkflowSegmentComplete, review: WorkflowSegmentComplete, audit: WorkflowSegmentComplete, publication: WorkflowSegmentComplete)))
+  let last_verdict_handed = keys(kinds: belt_attempt_outstanding(provider: ProviderAwaitingAcceptance { handin: "eb1ec191e8f18aa5" }, segments: segments(submission: WorkflowSegmentComplete, verification: WorkflowSegmentComplete, review: WorkflowSegmentComplete, audit: WorkflowSegmentComplete, publication: WorkflowSegmentPending)))
+  let last_verdict_empty_id = keys(kinds: belt_attempt_outstanding(provider: ProviderAwaitingAcceptance { handin: "" }, segments: segments(submission: WorkflowSegmentComplete, verification: WorkflowSegmentComplete, review: WorkflowSegmentComplete, audit: WorkflowSegmentComplete, publication: WorkflowSegmentPending)))
   running == "" && exited == "capture" && captured == "verify" && verified == "review,audit" && reviewed == "publish" && settled == ""
+    && last_verdict_handed == "acceptance-outcome,publish" && last_verdict_empty_id == "publish"
 }
 
 // A FAILED STAGE STOPS THE LINE FOR ITS ATTEMPT: it is not owed again, so nothing retries it without
@@ -71,10 +74,11 @@ test fn a_failed_stage_is_not_owed_and_a_failed_worker_still_owes_capture() -> B
 // THE CHAIN NEVER LOOPS: after a kind runs, only what lies strictly downstream is next, so a capture
 // that left its submission unsettled is not run again by its own chain.
 test fn after_a_kind_runs_only_strictly_downstream_kinds_are_next() -> Bool {
-  let all = [CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation]
-  keys(kinds: belt_attempt_next_after(ran: CaptureObligation, outstanding: all)) == "verify,review,audit,publish"
-    && keys(kinds: belt_attempt_next_after(ran: ReviewObligation, outstanding: all)) == "publish"
-    && keys(kinds: belt_attempt_next_after(ran: AuditObligation, outstanding: [ReviewObligation, PublishObligation])) == "publish"
+  let all = [CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, AcceptanceOutcomeObligation, PublishObligation]
+  keys(kinds: belt_attempt_next_after(ran: CaptureObligation, outstanding: all)) == "verify,review,audit,acceptance-outcome,publish"
+    && keys(kinds: belt_attempt_next_after(ran: ReviewObligation, outstanding: all)) == "acceptance-outcome,publish"
+    && keys(kinds: belt_attempt_next_after(ran: AuditObligation, outstanding: [ReviewObligation, AcceptanceOutcomeObligation, PublishObligation])) == "acceptance-outcome,publish"
+    && keys(kinds: belt_attempt_next_after(ran: AcceptanceOutcomeObligation, outstanding: all)) == "publish"
     && keys(kinds: belt_attempt_next_after(ran: PublishObligation, outstanding: all)) == ""
 }
 

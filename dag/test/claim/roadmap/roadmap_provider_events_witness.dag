@@ -27,6 +27,7 @@ import gunbc.roadmap.roadmap_provider_events {
   ProviderRunning,
   ProviderStarting,
   ProviderAwaitingSeat,
+  ProviderAwaitingAcceptance,
   ProviderCompleted,
   ProviderFailed,
   ProviderBudgetSpent,
@@ -386,6 +387,22 @@ test fn a_placed_turn_leaves_the_wait_behind() -> Bool {
 // would deliver the wait with its reason stripped.
 test fn the_projector_keeps_the_wait_reason() -> Bool {
   string_contains(s: projection_filter_text(), pattern: "elif $type == \"turn.placement_waiting\" then {\"type\":$type,\"wait\":(.wait | num),\"wait_cap\":(.wait_cap | num),\"reason\":(.reason | bounded_text)}")
+}
+
+// THE HAND-IN ID SURVIVES THE PROJECTOR (lab 2026-10-14). The default arm emits only type, so the
+// fold answers AwaitingAcceptance with an empty id; capture still fires (the variant is enough)
+// and the outcome obligation does not (it requires the id). The envelope the waiter and the writer
+// share is the projected line, so this arm is the inhabitance of that id.
+test fn the_projector_keeps_the_hand_in_id() -> Bool {
+  string_contains(s: projection_filter_text(), pattern: "elif $type == \"session.handed_in\" then {\"type\":$type,\"handin\":(.handin | bounded_text)}")
+    && (match provider_execution_state(parsed: parse_codex_jsonl(text: "{\"type\":\"session.handed_in\",\"handin\":\"eb1ec191e8f18aa5\"}\n")) {
+      ProviderAwaitingAcceptance { handin } => handin == "eb1ec191e8f18aa5"
+      _ => false
+    })
+    && (match provider_execution_state(parsed: parse_codex_jsonl(text: "{\"type\":\"session.handed_in\"}\n")) {
+      ProviderAwaitingAcceptance { handin } => handin == ""
+      _ => false
+    })
 }
 
 // THE TOOL A ROUND DISPATCHED IS THE ACTIVITY THE READER REPORTS, real emitter into real reader.
