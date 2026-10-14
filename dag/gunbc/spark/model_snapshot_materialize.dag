@@ -702,13 +702,12 @@ data spark_transfer_retry_law: RetryLaw = RetryLaw {
   real_work_failure_bound: 1,
 }
 
-data spark_transfer_restart_delay_seconds: Nat = second_count(s: spark_transfer_retry_law.initial_delay)
 data spark_transfer_restart_burst: Nat = 30
 data spark_transfer_restart_interval_seconds: Nat = 21600
 
 data spark_transfer_restart_properties: List<String> = [
   "--property=Restart=on-failure",
-  join(["--property=RestartSec=", to_string(spark_transfer_restart_delay_seconds)], ""),
+  join(["--property=RestartSec=", to_string(second_count(s: spark_transfer_retry_law.initial_delay))], ""),
   join(["--property=StartLimitIntervalSec=", to_string(spark_transfer_restart_interval_seconds)], ""),
   join(["--property=StartLimitBurst=", to_string(spark_transfer_restart_burst)], ""),
 ]
