@@ -1,6 +1,7 @@
 module gunbc.compute.unit_bounds
 
 import std.types { String, List, NonEmptyStr, Bool }
+import std.algebra { trim, string_contains }
 import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count }
@@ -116,18 +117,35 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // UserSessionAbsent refuses: a host that owes the bound and has no user manager must not run
 // unbounded (review 80042). CiExempt / RunnerSlotExempt skip because those processes already sit
 // in a declared slot cgroup, not because the user manager is missing.
+// ExemptSystemUnit skips because a SYSTEM .service (read from /proc/self/cgroup, never from
+// User= or an env var) is already bounded by that unit and its declared slice; wrapping it
+// into --user gunbc-user-work.slice is a category error (receipt: gunbc-tree-sync.service
+// UserSessionAbsent on srv1 live_deploy of 4242613b). A path under /user.slice/ is session
+// work even if it names user@1000.service. Unreadable cgroup still refuses.
+//
+// THIS REFUSAL IS OUTSIDE DECIDE-BEFORE-MUTATE. compose_host_script drops Mutate only when a
+// Decide fragment is HostScriptRefused. slice-control is Mutate with HostScriptProceed; the
+// wrap fires later inside ExecStart of gunbc-tree-sync.service (a spec-step Mutate child),
+// after sessions and broker set-property have already run.
 data user_work_scope_ci_env_name: String = "GITHUB_ACTIONS"
 data user_work_scope_xdg_runtime_dir_env_name: String = "XDG_RUNTIME_DIR"
+data user_work_scope_user_slice_cgroup_needle: String = "/user.slice/"
+data user_work_scope_service_unit_suffix: String = ".service"
 
 type UserWorkScopeCgroupRead
   = CgroupText { text: String }
   | CgroupReadFailed
+
+type SystemServiceCgroup
+  = SystemServiceNamed { unit: String }
+  | NotSystemService
 
 type UserWorkScopeStanding
   = AlreadyInSlice
   | RunnerSlotExempt
   | CiExempt
   | UnitTestExempt
+  | ExemptSystemUnit { unit: String }
   | UserSessionAbsent
   | UserManagerOwed
   | CgroupUnreadable
@@ -137,6 +155,31 @@ type UserWorkScopeStandingEffect
   = WrapIntoUserWorkSlice
   | SkipUserWorkScope { standing: UserWorkScopeStanding }
   | RefuseUserWorkScope { standing: UserWorkScopeStanding }
+
+fn system_service_unit_from_cgroup(text: String) -> SystemServiceCgroup {
+  if string_contains(s: text, pattern: user_work_scope_user_slice_cgroup_needle) {
+    NotSystemService
+  } else {
+    let named = split(s: text.replace(from: "\n", to: "/"), delimiter: "/")
+      |> map(seg => trim(s: seg))
+      |> filter(seg => {
+        let parts = split(s: seg, delimiter: ".")
+        match reverse(parts).first() {
+          Absent => false
+          Present { value: last } => concat(".", last) == user_work_scope_service_unit_suffix && parts.length() >= 2
+        }
+      })
+    match reverse(named).first() {
+      Absent => NotSystemService
+      Present { value: unit } =>
+        if unit == "" {
+          NotSystemService
+        } else {
+          SystemServiceNamed { unit: unit }
+        }
+    }
+  }
+}
 
 fn user_work_scope_standing(
   unit_test: Bool,
@@ -157,12 +200,18 @@ fn user_work_scope_standing(
           AlreadyInSlice
         } else if string_contains(s: text, pattern: runner_unit_prefix) {
           RunnerSlotExempt
-        } else if user_manager_reachable {
-          UserManagerOwed
-        } else if xdg_runtime_dir {
-          UserManagerProbeFailed
         } else {
-          UserSessionAbsent
+          match system_service_unit_from_cgroup(text: text) {
+            SystemServiceNamed { unit } => ExemptSystemUnit { unit: unit }
+            NotSystemService =>
+              if user_manager_reachable {
+                UserManagerOwed
+              } else if xdg_runtime_dir {
+                UserManagerProbeFailed
+              } else {
+                UserSessionAbsent
+              }
+          }
         }
     }
   }
@@ -174,6 +223,7 @@ fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
     RunnerSlotExempt => "RunnerSlotExempt"
     CiExempt => "CiExempt"
     UnitTestExempt => "UnitTestExempt"
+    ExemptSystemUnit { unit } => join(["ExemptSystemUnit:", unit], "")
     UserSessionAbsent => "UserSessionAbsent"
     UserManagerOwed => "UserManagerOwed"
     CgroupUnreadable => "CgroupUnreadable"
@@ -188,6 +238,7 @@ fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeSta
     UnitTestExempt => SkipUserWorkScope { standing: UnitTestExempt }
     RunnerSlotExempt => SkipUserWorkScope { standing: RunnerSlotExempt }
     CiExempt => SkipUserWorkScope { standing: CiExempt }
+    ExemptSystemUnit { unit } => SkipUserWorkScope { standing: ExemptSystemUnit { unit: unit } }
     CgroupUnreadable => RefuseUserWorkScope { standing: CgroupUnreadable }
     UserManagerProbeFailed => RefuseUserWorkScope { standing: UserManagerProbeFailed }
     UserSessionAbsent => RefuseUserWorkScope { standing: UserSessionAbsent }

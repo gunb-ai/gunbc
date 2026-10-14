@@ -28,8 +28,11 @@ import gunbc.compute.unit_bounds {
   user_work_scope_wrap_prefix_argv,
   user_work_scope_standing, user_work_scope_standing_effect, user_work_scope_standing_wire,
   user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
+  user_work_scope_user_slice_cgroup_needle, user_work_scope_service_unit_suffix,
+  system_service_unit_from_cgroup,
   CgroupText, CgroupReadFailed,
-  AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, UserSessionAbsent,
+  SystemServiceNamed, NotSystemService,
+  AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, ExemptSystemUnit, UserSessionAbsent,
   UserManagerOwed, CgroupUnreadable, UserManagerProbeFailed,
   WrapIntoUserWorkSlice, SkipUserWorkScope, RefuseUserWorkScope,
 }
@@ -46,6 +49,9 @@ import gunbc.host.host_converge {
   SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.live_deploy.spec {
+  gunbc_tree_sync_unit_name, gunbc_repository_convergence_slice_unit_name,
+}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data seed_user_work_scope_path: String = "src/v1/stage0/src/cli_run/user_work_scope.rs"
@@ -185,16 +191,21 @@ test fn user_work_scope_standing_selects_from_supplied_observations() -> Bool {
                 AlreadyInSlice =>
                   match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: runner_unit_prefix }, user_manager_reachable: false, xdg_runtime_dir: false) {
                     RunnerSlotExempt =>
-                      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: true, xdg_runtime_dir: false) {
-                        UserManagerOwed =>
-                          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: true) {
-                            UserManagerProbeFailed =>
-                              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: false) {
-                                UserSessionAbsent => true
-                                _ => false
-                              }
-                            _ => false
-                          }
+                      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: join(["0::/system.slice/", gunbc_tree_sync_unit_name as String], "") }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                        ExemptSystemUnit { unit } =>
+                          unit == (gunbc_tree_sync_unit_name as String)
+                            && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: true, xdg_runtime_dir: false) {
+                              UserManagerOwed =>
+                                match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: true) {
+                                  UserManagerProbeFailed =>
+                                    match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                                      UserSessionAbsent => true
+                                      _ => false
+                                    }
+                                  _ => false
+                                }
+                              _ => false
+                            }
                         _ => false
                       }
                     _ => false
@@ -236,8 +247,76 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: RunnerSlotExempt))
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: CiExempt))
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: UserManagerOwed))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_user_slice_cgroup_needle`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_user_slice_cgroup_needle, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_service_unit_suffix`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_service_unit_suffix, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds system_service_unit_from_cgroup`")
+    && string_contains(s: seed, pattern: "ExemptSystemUnit")
     && string_contains(s: seed, pattern: "UserWorkScopeStanding::UserSessionAbsent =>")
     && string_contains(s: seed, pattern: "std::process::exit(2)")
+}
+
+test fn a_system_slice_named_service_cgroup_is_exempt() -> Bool {
+  let cg = join(["0::/system.slice/", gunbc_tree_sync_unit_name as String], "")
+  match system_service_unit_from_cgroup(text: cg) {
+    NotSystemService => false
+    SystemServiceNamed { unit } =>
+      unit == (gunbc_tree_sync_unit_name as String)
+        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
+          ExemptSystemUnit { unit: u } =>
+            u == unit
+              && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: u }) {
+                SkipUserWorkScope { standing: ExemptSystemUnit { unit: skipped } } => skipped == u
+                _ => false
+              }
+          _ => false
+        }
+  }
+}
+
+test fn tree_sync_under_its_declared_slice_is_exempt() -> Bool {
+  let cg = join([
+    "0::/",
+    gunbc_repository_convergence_slice_unit_name as String,
+    "/",
+    gunbc_tree_sync_unit_name as String,
+  ], "")
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
+    ExemptSystemUnit { unit } => unit == (gunbc_tree_sync_unit_name as String)
+    _ => false
+  }
+}
+
+test fn a_user_session_cgroup_still_owes_the_wrap() -> Bool {
+  let cg = join([
+    "0::",
+    user_work_scope_user_slice_cgroup_needle,
+    "user-1000.slice/user@1000.service/app.slice/run-u.scope",
+  ], "")
+  match system_service_unit_from_cgroup(text: cg) {
+    NotSystemService =>
+      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: true, xdg_runtime_dir: true) {
+        UserManagerOwed =>
+          match user_work_scope_standing_effect(s: UserManagerOwed) {
+            WrapIntoUserWorkSlice => true
+            _ => false
+          }
+        _ => false
+      }
+    SystemServiceNamed { unit: _ } => false
+  }
+}
+
+test fn unreadable_cgroup_still_refuses() -> Bool {
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+    CgroupUnreadable =>
+      match user_work_scope_standing_effect(s: CgroupUnreadable) {
+        RefuseUserWorkScope { standing: CgroupUnreadable } => true
+        _ => false
+      }
+    _ => false
+  }
 }
 
 test fn the_gunbc_test_user_work_scope_is_the_declared_wrap() -> Bool {

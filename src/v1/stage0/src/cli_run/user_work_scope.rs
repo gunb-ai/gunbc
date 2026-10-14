@@ -19,13 +19,17 @@ const USER_WORK_SCOPE_CI_ENV: &str = "GITHUB_ACTIONS";
 const RUNNER_SLOT_CGROUP_NEEDLE: &str = "actions-runner@";
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_xdg_runtime_dir_env_name`
 const USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV: &str = "XDG_RUNTIME_DIR";
+// SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_user_slice_cgroup_needle`
+const USER_SLICE_CGROUP_NEEDLE: &str = "/user.slice/";
+// SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_service_unit_suffix`
+const SERVICE_UNIT_SUFFIX: &str = ".service";
 
-#[derive(Clone, Copy)]
 enum UserWorkScopeStanding {
     AlreadyInSlice,
     RunnerSlotExempt,
     CiExempt,
     UnitTestExempt,
+    ExemptSystemUnit { unit: String },
     UserSessionAbsent,
     UserManagerOwed,
     CgroupUnreadable,
@@ -41,7 +45,7 @@ pub fn reexec_into_user_work_slice_if_owed() {
         | UserWorkScopeStanding::UserSessionAbsent => {
             eprintln!(
                 "error: cannot wrap into {USER_WORK_SLICE} ({})",
-                standing_wire(standing)
+                standing_wire(&standing)
             );
             std::process::exit(2);
         }
@@ -50,22 +54,25 @@ pub fn reexec_into_user_work_slice_if_owed() {
         standing => {
             eprintln!(
                 "user_work_scope: skip wrap into {USER_WORK_SLICE} ({})",
-                standing_wire(standing)
+                standing_wire(&standing)
             );
         }
     }
 }
 
-fn standing_wire(s: UserWorkScopeStanding) -> &'static str {
+fn standing_wire(s: &UserWorkScopeStanding) -> String {
     match s {
-        UserWorkScopeStanding::AlreadyInSlice => "AlreadyInSlice",
-        UserWorkScopeStanding::RunnerSlotExempt => "RunnerSlotExempt",
-        UserWorkScopeStanding::CiExempt => "CiExempt",
-        UserWorkScopeStanding::UnitTestExempt => "UnitTestExempt",
-        UserWorkScopeStanding::UserSessionAbsent => "UserSessionAbsent",
-        UserWorkScopeStanding::UserManagerOwed => "UserManagerOwed",
-        UserWorkScopeStanding::CgroupUnreadable => "CgroupUnreadable",
-        UserWorkScopeStanding::UserManagerProbeFailed => "UserManagerProbeFailed",
+        UserWorkScopeStanding::AlreadyInSlice => "AlreadyInSlice".to_string(),
+        UserWorkScopeStanding::RunnerSlotExempt => "RunnerSlotExempt".to_string(),
+        UserWorkScopeStanding::CiExempt => "CiExempt".to_string(),
+        UserWorkScopeStanding::UnitTestExempt => "UnitTestExempt".to_string(),
+        UserWorkScopeStanding::ExemptSystemUnit { unit } => {
+            format!("ExemptSystemUnit:{unit}")
+        }
+        UserWorkScopeStanding::UserSessionAbsent => "UserSessionAbsent".to_string(),
+        UserWorkScopeStanding::UserManagerOwed => "UserManagerOwed".to_string(),
+        UserWorkScopeStanding::CgroupUnreadable => "CgroupUnreadable".to_string(),
+        UserWorkScopeStanding::UserManagerProbeFailed => "UserManagerProbeFailed".to_string(),
     }
 }
 
@@ -92,6 +99,18 @@ fn wrap_now() {
     std::process::exit(1);
 }
 
+// SEED MIRROR of `gunbc.compute.unit_bounds system_service_unit_from_cgroup`
+fn system_service_unit_from_cgroup(text: &str) -> Option<String> {
+    if text.contains(USER_SLICE_CGROUP_NEEDLE) {
+        return None;
+    }
+    text.split(['/', '\n'])
+        .map(str::trim)
+        .filter(|seg| seg.ends_with(SERVICE_UNIT_SUFFIX) && !seg.is_empty())
+        .last()
+        .map(str::to_string)
+}
+
 fn user_work_scope_standing() -> UserWorkScopeStanding {
     if cfg!(test) {
         return UserWorkScopeStanding::UnitTestExempt;
@@ -108,6 +127,9 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
     }
     if cg.contains(RUNNER_SLOT_CGROUP_NEEDLE) {
         return UserWorkScopeStanding::RunnerSlotExempt;
+    }
+    if let Some(unit) = system_service_unit_from_cgroup(&cg) {
+        return UserWorkScopeStanding::ExemptSystemUnit { unit };
     }
     let probe_ok = Command::new("systemctl")
         .args(["--user", "show-environment"])
