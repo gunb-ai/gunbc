@@ -68,9 +68,9 @@ import extdeps.posix.signal { linux_standard_signal_number, linux_standard_signa
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
-  systemd_run_user_transient_command, systemd_run_command_argument_words,
+  systemd_run_command_argument_words,
 }
-import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
+import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties, gunbc_user_work_transient_command }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -1864,7 +1864,7 @@ fn dispatch_review_unit_command(
   criterion_key: String,
   exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
-  systemd_run_user_transient_command(
+  gunbc_user_work_transient_command(
     unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
     properties: dispatch_review_unit_properties(
       instance: instance,
@@ -1926,7 +1926,7 @@ fn dispatch_audit_unit_command(
   exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
   let dir = dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  systemd_run_user_transient_command(
+  gunbc_user_work_transient_command(
     unit: dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key),
     properties: dispatch_review_unit_properties(
       instance: instance,
@@ -1990,7 +1990,7 @@ fn dispatch_supervisor_unit_command(
   brief: String,
 ) -> SystemdRunCommandReading {
   let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  systemd_run_user_transient_command(
+  gunbc_user_work_transient_command(
     unit: dispatch_supervisor_unit_name(node_id: node_id as String, attempt_key: attempt_key, turn: turn),
     properties: dispatch_review_unit_properties(
       instance: instance,
@@ -3026,7 +3026,7 @@ fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, pla
 }
 
 fn dispatch_worker_unit_command(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> SystemdRunCommandReading {
-  systemd_run_user_transient_command(
+  gunbc_user_work_transient_command(
     unit: plan.unit,
     properties: dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: granted, process_bounds: process_bounds),
     setenv_bindings: [],

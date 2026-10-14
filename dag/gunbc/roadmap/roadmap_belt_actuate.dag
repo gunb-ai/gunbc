@@ -250,8 +250,9 @@ import gunbc.worker_lifecycle {
 }
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
 import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
-import extdeps.systemd.systemd_run { systemd_run_user_transient_command, SystemdRunProperty, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
+import extdeps.systemd.systemd_run { SystemdRunProperty, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
+import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
 import std.measure { byte_size_count }
 import gunbc.deploy_transition {
   ActuationAdmission,
@@ -14558,7 +14559,7 @@ fn belt_obligation_unit_command(
   stop_hook: NonEmptyStr?,
 ) -> SystemdRunCommandReading {
   let repo = instance.repo_root as String
-  systemd_run_user_transient_command(
+  gunbc_user_work_transient_command(
     unit: unit,
     properties: concat([
       SystemdRunProperty { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },

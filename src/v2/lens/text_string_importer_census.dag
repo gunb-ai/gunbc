@@ -24,7 +24,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact, import_resolution_facts_live, reference_derived_import_resolution_facts_live, module_declaration_facts_live }
 import v2.std.node { Node, Atom, TypeNode, symbol_lexeme }
-import v2.std.provenance { SpanIndex, span_index_empty, node_occurrence_id_optional, span_index_textual_locus_optional }
+import v2.std.provenance { SpanIndex, span_index_empty, node_authored_span_optional }
 import std.optional { Optional, Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, Textual, ByteRange, WholeFile }
 import v2.std.integer { Int }
@@ -975,17 +975,14 @@ type PositionedAtom {
 }
 
 fn atom_position(n: Node, spans: SpanIndex) -> Optional<Int> {
-  match node_occurrence_id_optional(node: n) {
+  match node_authored_span_optional(node: n, index: spans) {
     Absent => Absent
-    Present { value: id } => match span_index_textual_locus_optional(index: spans, id: id) {
-      Absent => Absent
-      Present { value: locus } => match locus {
-        Textual { file: _, extent: e } => match e {
-          ByteRange { start: s, end: _ } => Present { value: s }
-          WholeFile => Absent
-        }
-        _ => Absent
+    Present { value: locus } => match locus {
+      Textual { file: _, extent: e } => match e {
+        ByteRange { start: s, end: _ } => Present { value: s }
+        WholeFile => Absent
       }
+      _ => Absent
     }
   }
 }
