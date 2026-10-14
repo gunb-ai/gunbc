@@ -248,6 +248,9 @@ type FinitelySupportedFunction<K, V> {
 // `finitely_supported_function_templates`) folded over its own empty (the `empty_map` row), in
 // authored order. It lives HERE, below `std.types`, because `std.types`' own map literals elaborate
 // to it; a home that imports `std.types` (v2.std.collection) would close an import cycle.
+// Host reconcile therefore acquires collection by the qualified-reference fixpoint
+// (`v2.std.collection.empty_map` / `map_insert` below), not by import and not by ambient pool fill.
+// Gate one turns the bare channel off because this file already has import lines.
 //
 // The fold's last-write-wins is unobservable on every accepted program: the one writer that builds
 // this call (v2.compiler.resolve, the map arm) refuses a repeated key BEFORE it builds it
@@ -262,7 +265,7 @@ type MapIntroductionEntry<K, V> {
 }
 
 fn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> Map<K, V> {
-  entries |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.key, entry.value))
+  entries |> fold(init: v2.std.collection.empty_map(), f: (acc, entry) => v2.std.collection.map_insert(acc, entry.key, entry.value))
 }
 
 // MOVED HERE from `v2.std.collection` by the change that split `PartialFunction`. They are the
@@ -794,40 +797,40 @@ fn carrier_spelling_row_present(m: CarrierRowMembership) -> Bool {
 }
 
 fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  algebra_carriers() |> fold(init: v2.std.collection.empty_map(), f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.method_surface) {
-        map_insert(inner, spelling.text, carrier.profile)
+        v2.std.collection.map_insert(inner, spelling.text, carrier.profile)
       } else {
         inner
       }))
 }
 
 fn carrier_container_algebra_rows() -> Map<String, String> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  algebra_carriers() |> fold(init: v2.std.collection.empty_map(), f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_algebra_row) {
-        map_insert(inner, spelling.text, carrier.name)
+        v2.std.collection.map_insert(inner, spelling.text, carrier.name)
       } else {
         inner
       }))
 }
 
 fn carrier_container_alias_rows() -> Map<String, String> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  algebra_carriers() |> fold(init: v2.std.collection.empty_map(), f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_alias_row) {
-        map_insert(inner, spelling.text, carrier.name)
+        v2.std.collection.map_insert(inner, spelling.text, carrier.name)
       } else {
         inner
       }))
 }
 
 fn carrier_container_roster_map() -> Map<String, Bool> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  algebra_carriers() |> fold(init: v2.std.collection.empty_map(), f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_roster_name) {
-        map_insert(inner, spelling.text, true)
+        v2.std.collection.map_insert(inner, spelling.text, true)
       } else {
         inner
       }))
@@ -837,10 +840,10 @@ fn carrier_container_roster_map() -> Map<String, Bool> {
 // `FinitePowerSet` is unary because `algebra_type_param_names` says `["T"]`, so a carrier cannot
 // declare an arity that disagrees with its algebra.
 fn carrier_container_arity_rows() -> Map<String, Int> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  algebra_carriers() |> fold(init: v2.std.collection.empty_map(), f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_arity_row) {
-        map_insert(inner, spelling.text, algebra_type_param_names(profile: carrier.profile) |> fold(init: 0, f: (n, _) => n + 1))
+        v2.std.collection.map_insert(inner, spelling.text, algebra_type_param_names(profile: carrier.profile) |> fold(init: 0, f: (n, _) => n + 1))
       } else {
         inner
       }))
@@ -918,10 +921,10 @@ fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
 }
 
 fn carrier_container_equality_rows() -> Map<String, Bool> {
-  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+  algebra_carriers() |> fold(init: v2.std.collection.empty_map(), f: (acc, carrier) =>
     carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
       if carrier_spelling_row_present(m: spelling.container_algebra_row) {
-        map_insert(inner, spelling.text, algebra_profile_equality_extensional(profile: carrier.profile))
+        v2.std.collection.map_insert(inner, spelling.text, algebra_profile_equality_extensional(profile: carrier.profile))
       } else {
         inner
       }))
