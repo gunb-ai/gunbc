@@ -7485,7 +7485,7 @@ fn infer_loop_member_role(loop_node: Node) -> Optional<FoldMemberRole> {
   match loop_realized_declaration_target(children: loop_node.children) {
     Found { target: realized } => fold_realized_member_role(realized: realized)
     Ambiguous => Absent
-    Absent => Absent
+    NotFound => Absent
   }
 }
 
@@ -7537,7 +7537,7 @@ fn infer_fold_member_frame(loop_node: Node, frame: InferFrame, acc: InferGatherF
           }
       }
     Ambiguous => infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_member_domain_type_not_derived, at: loop_node)
-    Absent => infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_member_domain_type_not_derived, at: loop_node)
+    NotFound => infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_member_domain_type_not_derived, at: loop_node)
   }
 }
 
@@ -7635,7 +7635,7 @@ fn infer_node_is_function_literal(n: Node) -> Bool {
       match arrow_body_target_lookup(children: n.children) {
         Found { target: _ } => true
         Ambiguous => false
-        Absent => false
+        NotFound => false
       }
     TypeNode { connective: _ } => false
     ComputationNode { behavior: _ } => false
@@ -7911,7 +7911,7 @@ fn infer_callback_return_type(callback: Node, entries: List<InferredFactsEntry>)
                 }
             }
           Ambiguous => optional_absent()
-          Absent => optional_absent()
+          NotFound => optional_absent()
         }
       } else {
         optional_present(value: codomain)
@@ -8918,7 +8918,7 @@ fn infer_caller_admission_judged_diags(
           correction: Unavailable { reason: UserInputBoundary }
         }
       ])
-    Absent =>
+    NotFound =>
       match infer_caller_admission_roster_from_declarations(
         application: application,
         declarations: declarations
@@ -9005,7 +9005,7 @@ fn infer_caller_admission_roster_from_declarations(
                 Absent => RosterLookupUnreadable
                 Present { value: resolved_arrow } =>
                   match core_edge_target_lookup(children: resolved_arrow.children, marker: AdmitCallersEdge) {
-                    Absent => RosterLookupAbsent
+                    NotFound => RosterLookupAbsent
                     Ambiguous => RosterLookupAmbiguous
                     Found { target: roster } => RosterLookupFound { target: roster }
                   }
