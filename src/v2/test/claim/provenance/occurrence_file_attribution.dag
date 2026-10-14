@@ -54,6 +54,7 @@ import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceMinted,
+  OccurrencePending,
   OccurrenceProjected,
   OccurrenceSynthetic,
   ScopedOccurrenceRef
@@ -557,6 +558,94 @@ test fn a_same_graph_projected_cause_recovers_its_bytes_holds() -> Bool {
   match attribution_span_bytes(node: attribution_projected(scope: attribution_scope_a()), index: attribution_index_in_scope_a()) {
     Absent => false
     Present { value: start } => start == 10
+  }
+}
+
+// A WHERE-CLAUSE TYPE LOWERS AN IMAGE, so normalize allocates OccurrenceProjected members. The
+// ingest is the production assembly door (located_roots_and_spans_from_source_root_ingest), not a
+// hand-built SpanIndex. The index must carry the ingest source-ref digest as its scope, and a
+// projected member of that tree must recover authored bytes (review 80089 / parent REQUEST_CHANGES).
+data attribution_where_source: String = "module v2.test.fixture.attribution_where\n\ntype P = Int where non_empty\n"
+
+fn attribution_read_where() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: attribution_where_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: ^attribution_read_where,
+      file_path: "src/v2/test/fixture/attribution/attribution_where.dag"
+    },
+    compilation_unit: ^attribution_file_where,
+    source_root: DagTree
+  }
+}
+
+fn attribution_where_roots() -> Outcome<LocatedIngestRoots> {
+  located_roots_and_spans_from_source_root_ingest(
+    ingest: [attribution_read_where()],
+    lm: dag_language_model()
+  )
+}
+
+fn attribution_first_projected_in_node(n: Node) -> Optional<Node> {
+  match n.occurrence_id {
+    OccurrenceProjected { id: _, caused_by: _ } => optional_present(value: n)
+    OccurrenceMinted { id: _ } =>
+      fold_list(xs: n.children, empty: optional_absent(), cons: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => attribution_first_projected_in_node(n: e.target)
+        }
+      })
+    OccurrenceSynthetic =>
+      fold_list(xs: n.children, empty: optional_absent(), cons: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => attribution_first_projected_in_node(n: e.target)
+        }
+      })
+    OccurrencePending { caused_by: _ } =>
+      fold_list(xs: n.children, empty: optional_absent(), cons: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => attribution_first_projected_in_node(n: e.target)
+        }
+      })
+  }
+}
+
+fn attribution_located_first_projected(located: FreeMonoid<LocatedNormalizedTree>) -> Optional<Node> {
+  fold_list(xs: located, empty: optional_absent(), cons: fn(acc, item) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => attribution_first_projected_in_node(n: item.tree.root)
+    }
+  })
+}
+
+test fn a_projected_node_from_real_assembly_recovers_its_bytes_holds() -> Bool {
+  match attribution_where_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
+      match roots.spans.scope {
+        Absent => false
+        Present { value: scope } =>
+          match attribution_located_first_projected(located: roots.located) {
+            Absent => false
+            Present { value: node } =>
+              match node.occurrence_id {
+                OccurrenceProjected { id: _, caused_by: cause } =>
+                  (cause.scope == scope)
+                    && match attribution_span_bytes(node: node, index: roots.spans) {
+                      Absent => false
+                      Present { value: start } => start >= 0
+                    }
+                OccurrenceMinted { id: _ } => false
+                OccurrenceSynthetic => false
+                OccurrencePending { caused_by: _ } => false
+              }
+          }
+      }
   }
 }
 
