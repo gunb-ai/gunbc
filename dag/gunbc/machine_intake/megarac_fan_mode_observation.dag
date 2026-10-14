@@ -18,11 +18,10 @@ import extdeps.bmc.megarac_fan_policy {
 // Source of the path names: served UI bundle source.min.js (gzip sha256 prefix ee9b14cbf7141b78),
 // AMI copyright, kept off-tree. This module is an observing-layer receipt, not an upstream fact.
 //
-// manager_disabled 0 at this instant is AUTOMATIC Cooling Manager. The operator later disabled
-// the manager by hand ~22:00Z; that is out-of-band drift. This 21:50Z row is not overwritten.
-// The post-hand-set GET was not executed (live route skipped), so the manual PWM value is
-// declared unobserved rather than invented. Missing socket-1 fans (SDR FAN0-3 presence-absent,
-// UI fans 1-4 pwm 0) is a chassis fact joined through megarac_fan_slot_standing.
+// manager_disabled 0 at this instant is AUTOMATIC Cooling Manager. The 21:50Z row is not
+// overwritten. Post-hand-set GET 2026-10-14T22:09:18Z recorded manager_disabled 1 with the
+// same get_fan_info pwm echo (1-4 at 0, 5-6 at 20) and FAN4/FAN5 still near 5700 rpm.
+// Converge readback is that tach, not the pwm echo. Missing socket-1 fans remain a chassis fact.
 
 type MegaRacFanInfoRow {
   fan_number: Int
@@ -92,13 +91,60 @@ type MegaRacThermalSnapshot {
   system_inlet_suspect: Bool
 }
 
+data mtcollins1_megarac_fan_mode_observation_2026_10_14_220918: MegaRacFanModeObservation = MegaRacFanModeObservation {
+  host: operator_host_mtcollins1,
+  observed_at: "2026-10-14T22:09:18Z" as NonEmptyStr,
+  manager: CoolingManagerDisabledManual,
+  fans: [
+    MegaRacFanInfoRow { fan_number: 1, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 2, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 3, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 4, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 5, fan_pwm: percent(20) },
+    MegaRacFanInfoRow { fan_number: 6, fan_pwm: percent(20) },
+  ],
+  sdr_fans: [
+    MegaRacSdrFanRow { header: "FAN0_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN0_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN1_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN1_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN2_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN2_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN3_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN3_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow {
+      header: "FAN4_0",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5600), max_rpm: rpm(5600) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN4_1",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5700) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN5_0",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5700) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN5_1",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5700) },
+    },
+  ],
+}
+
 type MegaRacOperatorHandSetStanding
   = HandSetObserved { observation: MegaRacFanModeObservation }
   | HandSetDeclaredUnobserved { declared_at: NonEmptyStr, read_obligation: NonEmptyStr }
 
-data mtcollins1_megarac_operator_hand_set_2026_10_14_2200: MegaRacOperatorHandSetStanding = HandSetDeclaredUnobserved {
-  declared_at: "2026-10-14T22:00:00Z" as NonEmptyStr,
-  read_obligation: "GET /api/fan_control/get_manager_status and get_fan_info after the operator disabled the Cooling Manager ~22:00Z. The 21:50Z row is the pre-hand-set automatic read; live follow-up was skipped.",
+data mtcollins1_megarac_operator_hand_set_2026_10_14_2200: MegaRacOperatorHandSetStanding = HandSetObserved {
+  observation: mtcollins1_megarac_fan_mode_observation_2026_10_14_220918,
+}
+
+data mtcollins1_megarac_thermal_snapshot_2026_10_14_220918: MegaRacThermalSnapshot = MegaRacThermalSnapshot {
+  cpu0_soc: celsius(42),
+  outlet_min: celsius(38),
+  outlet_max: celsius(40),
+  system_inlet: celsius(2),
+  system_inlet_suspect: true,
 }
 
 data mtcollins1_megarac_thermal_snapshot_2026_10_14: MegaRacThermalSnapshot = MegaRacThermalSnapshot {

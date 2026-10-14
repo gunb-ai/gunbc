@@ -41,15 +41,17 @@ data openbmc_fan_converge_route: FanDutyConvergeRoute = ConvergeRouteBound {
 }
 
 // THE MEGARAC ROUTE IS BOUND TO THE SERVED-UI FAN_PWM_ALL WRITE. Session login is the transport
-// (cookie + CSRF); get_fan_info is the UI's own success-handler readback. Duty is the closed
-// 20..100 step-5 set; the write is a no-op while the Cooling Manager is enabled.
+// (cookie + CSRF). Duty readback is IPMI SDR tach, not get_fan_info: that REST field echoed pwm 20
+// under both automatic and manual while FAN4/FAN5 stayed near 5700 rpm. A write whose tach does
+// not move is not converged. Duty is the closed 20..100 step-5 set; the write is a no-op while
+// the Cooling Manager is enabled.
 data megarac_fan_converge_route: FanDutyConvergeRoute = ConvergeRouteBound {
   authority: FanPolicyAuthority {
     declaration: decl_ref("extdeps.bmc.megarac_fan_policy", "megarac_fan_mode_surface"),
   },
   write_operation: decl_ref("extdeps.bmc.megarac", "megarac_op_fan_set_fan_speed"),
   transport: decl_ref("extdeps.bmc.megarac", "megarac_op_session_login"),
-  readback: decl_ref("extdeps.bmc.megarac", "megarac_op_fan_get_fan_info"),
+  readback: decl_ref("extdeps.bmc.ipmi", "SdrList"),
 }
 
 fn fan_converge_route_for_family(family: BmcFirmwareFamily) -> FanDutyConvergeRoute {

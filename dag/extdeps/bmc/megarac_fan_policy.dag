@@ -187,3 +187,59 @@ fn megarac_fan_bound_transport(surface: MegaRacFanModeSurface) -> MegaRacFanCont
     MegaRacFanModeSurfaceBound { transport: t, contract_note: _ } => Present { value: t }
   }
 }
+
+// GET_FAN_INFO PWM IS AN ECHO, NOT CONVERGE READBACK. The 21:50Z automatic and 22:09Z manual
+// rows both showed fans 5-6 at pwm 20 while FAN4/FAN5 sat near 5700 rpm. A write whose tach
+// does not move is not converged, even when the REST pwm field matches the command.
+data megarac_duty_tach_move_floor_rpm: Int = 200
+
+type MegaRacDutyConvergeVerdict
+  = MegaRacDutyConvergedTachMoved
+  | MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: Bool }
+
+fn megarac_rpm_abs_delta(a: Int, b: Int) -> Int {
+  if a >= b {
+    a - b
+  } else {
+    b - a
+  }
+}
+
+fn megarac_tach_rpm_unmoved(before: List<Int>, after: List<Int>, floor: Int) -> Bool {
+  if before.length() != after.length() {
+    false
+  } else {
+    match before.first() {
+      Absent => true
+      Present { value: b } => match after.first() {
+        Absent => false
+        Present { value: a } =>
+          if megarac_rpm_abs_delta(a: b, b: a) >= floor {
+            false
+          } else {
+            megarac_tach_rpm_unmoved(
+              before: before.skip(n: 1),
+              after: after.skip(n: 1),
+              floor: floor,
+            )
+          }
+      }
+    }
+  }
+}
+
+fn megarac_duty_converge_verdict(
+  pwm_echo_matches_command: Bool,
+  tach_before_rpm: List<Int>,
+  tach_after_rpm: List<Int>,
+) -> MegaRacDutyConvergeVerdict {
+  if megarac_tach_rpm_unmoved(
+    before: tach_before_rpm,
+    after: tach_after_rpm,
+    floor: megarac_duty_tach_move_floor_rpm,
+  ) {
+    MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: pwm_echo_matches_command }
+  } else {
+    MegaRacDutyConvergedTachMoved
+  }
+}

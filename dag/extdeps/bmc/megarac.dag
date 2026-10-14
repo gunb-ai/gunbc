@@ -129,7 +129,7 @@ data megarac_op_fan_get_manager_status: MegaRacApiOperation = MegaRacApiOperatio
 data megarac_op_fan_get_fan_info: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "GET",
   path: "/api/fan_control/get_fan_info",
-  contract_note: "same UI bundle; JSON list of {id, fan_number, fan_speed, fan_pwm}; UI labels speed as PWM percentage; executed read-only 2026-10-14 ~21:50Z",
+  contract_note: "same UI bundle; JSON list of {id, fan_number, fan_speed, fan_pwm}; UI labels speed as PWM percentage; executed 21:50Z and 22:09:18Z. The pwm field is an echo, not converge readback: both reads showed fans 5-6 at 20 while SDR FAN4/FAN5 stayed near 5700 rpm",
 }
 
 data megarac_op_fan_set_manager_status: MegaRacApiOperation = MegaRacApiOperation {

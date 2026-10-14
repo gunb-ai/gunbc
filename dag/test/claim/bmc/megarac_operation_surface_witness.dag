@@ -6,8 +6,11 @@ import std.measure { celsius, percent, percent_count, rpm }
 import extdeps.bmc.megarac_fan_policy {
   CoolingManagerAutomatic,
   CoolingManagerDisabledManual,
+  MegaRacDutyNotConvergedTachUnmoved,
+  MegaRacDutyConvergedTachMoved,
   MegaRacFanPwmAllAdmitted,
   MegaRacFanPwmAllRefused,
+  megarac_duty_converge_verdict,
   MegaRacFanSlotDriven,
   MegaRacFanSlotJoinUnexplained,
   MegaRacFanSlotPhysicallyAbsent,
@@ -30,6 +33,7 @@ import gunbc.machine_intake.megarac_fan_mode_observation {
   HandSetDeclaredUnobserved,
   HandSetObserved,
   mtcollins1_megarac_fan_mode_observation_2026_10_14,
+  mtcollins1_megarac_fan_mode_observation_2026_10_14_220918,
   mtcollins1_megarac_operator_hand_set_2026_10_14_2200,
   mtcollins1_megarac_thermal_snapshot_2026_10_14,
 }
@@ -129,13 +133,36 @@ test fn mtcollins1_grounded_read_is_automatic_with_two_live_pairs() -> Bool {
                 MegaRacManagerDisabledAdmitted { standing: _ } => false
               }
               && match mtcollins1_megarac_operator_hand_set_2026_10_14_2200 {
-                HandSetDeclaredUnobserved { declared_at: t, read_obligation: _ } =>
-                  (t as String) == "2026-10-14T22:00:00Z"
-                HandSetObserved { observation: _ } => false
+                HandSetObserved { observation: o } =>
+                  o.manager == CoolingManagerDisabledManual
+                    && (o.observed_at as String) == "2026-10-14T22:09:18Z"
+                HandSetDeclaredUnobserved { declared_at: _, read_obligation: _ } => false
               }
           MegaRacManagerDisabledRefused { wire: _ } => false
         }
     CoolingManagerDisabledManual => false
+  }
+}
+
+test fn pwm_echo_without_tach_move_is_not_converged() -> Bool {
+  match megarac_duty_converge_verdict(
+    pwm_echo_matches_command: true,
+    tach_before_rpm: [5700, 5700, 5700, 5700],
+    tach_after_rpm: [5600, 5700, 5700, 5700],
+  ) {
+    MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: echo } =>
+      echo
+        && match megarac_duty_converge_verdict(
+          pwm_echo_matches_command: true,
+          tach_before_rpm: [5700, 5700, 5700, 5700],
+          tach_after_rpm: [4000, 4000, 4000, 4000],
+        ) {
+          MegaRacDutyConvergedTachMoved =>
+            mtcollins1_megarac_fan_mode_observation_2026_10_14_220918.fans
+              == mtcollins1_megarac_fan_mode_observation_2026_10_14.fans
+          MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
+        }
+    MegaRacDutyConvergedTachMoved => false
   }
 }
 
