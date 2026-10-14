@@ -36,7 +36,6 @@ import gunbc.fleet.fleet_host_budget {
   CompilePoolPlacement,
   CompilePoolSliceDeclared,
   CompilePoolInRunnerSlots,
-  compile_pool_bytes_for,
   gunbc_compile_pool_placement,
 }
 import gunbc.fabric.fabric_control_plane_charge {
@@ -687,6 +686,20 @@ fn host_standing_with_session_slice(
   }
 }
 
+// THE COMPILE POOL IS CHARGED INSIDE THE RUNNER SLOTS, SO ITS SEPARATE CHARGE IS ZERO -- AND ONLY THEN.
+// The separate compile-pool slice and its jobserver-token sizing are retired (ruling 2026-10-14,
+// deleted with extdeps.jobserver in A2), so this producer no longer sizes one: under
+// CompilePoolInRunnerSlots compiler children run inside each slot's own memory and CPU ceilings and
+// the host charge is zero; a flip to CompilePoolSliceDeclared refuses here rather than charging a
+// pool nothing sizes.
+fn runner_slot_compile_pool_charge(placement: CompilePoolPlacement) -> CompilePoolResolution {
+  match placement {
+    CompilePoolInRunnerSlots => CompilePoolDerived { bytes: byte_size(0) }
+    CompilePoolSliceDeclared { slice_unit: u } =>
+      CompilePoolUnresolved { reason: concat("a separate compile-pool slice is declared and nothing sizes it since the jobserver token derivation was retired: ", u) }
+  }
+}
+
 fn host_standing_at_width(
   offer: ComputeOffer,
   facts: HostWidthFacts,
@@ -702,12 +715,7 @@ fn host_standing_at_width(
     HostOverheadUnresolved { reason: orr } =>
       refuse_host(host: host_id, cause: FixedOverheadUnavailable { cause: orr })
     HostOverheadResolved { bytes: overhead } =>
-      match compile_pool_bytes_for(
-        placement: gunbc_compile_pool_placement,
-        nproc: cpu_facts_threads(cpu: cpu),
-        host: host_ram,
-        citation: jobserver_config
-      ) {
+      match runner_slot_compile_pool_charge(placement: gunbc_compile_pool_placement) {
         CompilePoolUnresolved { reason: r } =>
           refuse_host(host: host_id, cause: CompilePoolUnavailable { cause: concat("compile pool unresolved: ", r) })
         CompilePoolDerived { bytes: compile_pool } =>
