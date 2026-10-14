@@ -3,6 +3,7 @@ module extdeps.safetensors.format
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat, nat_max }
 import std.keyed_row { KeyedRow }
+import std.key_relation { SubjectKey }
 import std.keyed_roster {
   KeyedRosterBuild,
   KeyedRosterBuilt,
@@ -236,17 +237,16 @@ fn safetensors_entry_name_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
   (a as String) == (b as String)
 }
 
-fn safetensors_entry_keyed_rows(entries: List<SafetensorsEntry>) -> List<KeyedRow<NonEmptyStr, SafetensorsEntry>> {
-  map(entries, e => KeyedRow { row_key: e.name, value: e })
+fn safetensors_entry_keyed_rows(entries: List<SafetensorsEntry>) -> List<KeyedRow<SubjectKey<NonEmptyStr>, SafetensorsEntry>> {
+  map(entries, e => KeyedRow { row_key: SubjectKey { subject: e.name }, value: e })
 }
 
 fn safetensors_duplicate_defects(entries: List<SafetensorsEntry>) -> List<SafetensorsEntryDefect> {
   match keyed_roster_build(
     incomings: safetensors_entry_keyed_rows(entries: entries),
-    key_eq: safetensors_entry_name_eq,
   ) {
     KeyedRosterBuilt { rows: _ } => []
-    KeyedRosterBuildDuplicateKey { key: k, first: _, duplicate: _ } => [EntryNameDuplicated { name: k }]
+    KeyedRosterBuildDuplicateKey { key: k, first: _, duplicate: _ } => [EntryNameDuplicated { name: k.subject }]
   }
 }
 
@@ -345,17 +345,16 @@ fn safetensors_entry_for_name(entries: List<SafetensorsShardedEntry>, name: NonE
 }
 
 // THE INDEX SIDE CONSUMES THE SAME AUTHORITY. Two rosters, one duplicate-key concept, one home.
-fn safetensors_index_keyed_rows(members: List<SafetensorsIndexMember>) -> List<KeyedRow<NonEmptyStr, SafetensorsIndexMember>> {
-  map(members, m => KeyedRow { row_key: m.name, value: m })
+fn safetensors_index_keyed_rows(members: List<SafetensorsIndexMember>) -> List<KeyedRow<SubjectKey<NonEmptyStr>, SafetensorsIndexMember>> {
+  map(members, m => KeyedRow { row_key: SubjectKey { subject: m.name }, value: m })
 }
 
 fn safetensors_index_duplicate_defects(members: List<SafetensorsIndexMember>) -> List<SafetensorsMembershipDefect> {
   match keyed_roster_build(
     incomings: safetensors_index_keyed_rows(members: members),
-    key_eq: safetensors_entry_name_eq,
   ) {
     KeyedRosterBuilt { rows: _ } => []
-    KeyedRosterBuildDuplicateKey { key: k, first: _, duplicate: _ } => [MemberDuplicatedInIndex { name: k }]
+    KeyedRosterBuildDuplicateKey { key: k, first: _, duplicate: _ } => [MemberDuplicatedInIndex { name: k.subject }]
   }
 }
 

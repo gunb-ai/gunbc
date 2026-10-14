@@ -2,6 +2,7 @@ module gunbc.review_sheet_projection
 
 import std.types { NonEmptyStr, String, Int, List, Bool, Map }
 import std.keyed_row { KeyedRow }
+import std.key_relation { SubjectKey }
 import std.keyed_roster {
   keyed_roster_build,
   KeyedRosterBuilt,
@@ -389,33 +390,29 @@ fn cell_at(cells: List<String>, index: Int) -> String {
   }
 }
 
-fn review_sheet_key_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
-fn keyed_string_map<V>(rows: List<KeyedRow<String, V>>) -> Map<String, V> {
+fn keyed_string_map<V>(rows: List<KeyedRow<SubjectKey<String>, V>>) -> Map<String, V> {
   fold(rows, init: empty_map(), f: fn(acc, row) {
-    map_insert(acc, row.row_key, row.value)
+    map_insert(acc, row.row_key.subject, row.value)
   })
 }
 
-fn header_key_rows(headers: List<String>) -> List<KeyedRow<String, Int>> {
-  map(headers |> enumerate, pair => KeyedRow { row_key: pair.second, value: pair.first })
+fn header_key_rows(headers: List<String>) -> List<KeyedRow<SubjectKey<String>, Int>> {
+  map(headers |> enumerate, pair => KeyedRow { row_key: SubjectKey { subject: pair.second }, value: pair.first })
 }
 
-fn projection_key_rows(projection: ReviewSheetProjection) -> List<KeyedRow<String, ProjectionRow>> {
-  map(projection.rows, row => KeyedRow { row_key: row.listing_id as String, value: row })
+fn projection_key_rows(projection: ReviewSheetProjection) -> List<KeyedRow<SubjectKey<String>, ProjectionRow>> {
+  map(projection.rows, row => KeyedRow { row_key: SubjectKey { subject: row.listing_id as String }, value: row })
 }
 
-fn observed_identity_key_rows(sheet: ObservedSheet, identity_index: Int) -> List<KeyedRow<String, Bool>> {
+fn observed_identity_key_rows(sheet: ObservedSheet, identity_index: Int) -> List<KeyedRow<SubjectKey<String>, Bool>> {
   sheet.rows
     |> map(row => cell_at(cells: row.cells, index: identity_index))
     |> filter(raw => raw != "")
-    |> map(raw => KeyedRow { row_key: raw, value: true })
+    |> map(raw => KeyedRow { row_key: SubjectKey { subject: raw }, value: true })
 }
 
-fn erasure_key_rows(erasures: List<DerivedPayloadErasure>) -> List<KeyedRow<String, DerivedPayloadErasure>> {
-  map(erasures, e => KeyedRow { row_key: e.listing_id as String, value: e })
+fn erasure_key_rows(erasures: List<DerivedPayloadErasure>) -> List<KeyedRow<SubjectKey<String>, DerivedPayloadErasure>> {
+  map(erasures, e => KeyedRow { row_key: SubjectKey { subject: e.listing_id as String }, value: e })
 }
 
 fn listing_has_erasure(erasure_by_id: Map<String, DerivedPayloadErasure>, listing_id: NonEmptyStr) -> Bool {
@@ -688,8 +685,8 @@ type HeaderSchemaValidation
   = HeaderSchemaValidated { validated: ValidatedHeaderSchema }
   | HeaderSchemaRefused { refusal: HeaderSchemaRefusal, reason: NonEmptyStr }
 
-fn column_name_key_rows(schema: ReviewSheetSchema) -> List<KeyedRow<String, ReviewColumn>> {
-  map(schema.columns, c => KeyedRow { row_key: c.name as String, value: c })
+fn column_name_key_rows(schema: ReviewSheetSchema) -> List<KeyedRow<SubjectKey<String>, ReviewColumn>> {
+  map(schema.columns, c => KeyedRow { row_key: SubjectKey { subject: c.name as String }, value: c })
 }
 
 // The identity column looked up in the roster by NAME, through the module's own monomorphic
@@ -760,11 +757,11 @@ fn header_names_for(schema: ReviewSheetSchema, identity_in_columns: Bool) -> Lis
 // classify_review_sheet already uses on the OBSERVED headers, so the desired row and the observed
 // row are judged unique by one fold rather than by two spellings of uniqueness.
 fn validate_header_schema(schema: ReviewSheetSchema) -> HeaderSchemaValidation {
-  match keyed_roster_build(incomings: column_name_key_rows(schema: schema), key_eq: review_sheet_key_eq) {
+  match keyed_roster_build(incomings: column_name_key_rows(schema: schema)) {
     KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: dup } =>
       HeaderSchemaRefused {
         refusal: HeaderSchemaDuplicateColumn { name: dup.value.name },
-        reason: concat("review sheet schema declares two columns named ", d) as NonEmptyStr,
+        reason: concat("review sheet schema declares two columns named ", d.subject) as NonEmptyStr,
       }
     KeyedRosterBuilt { rows: _ } =>
       match identity_column_in_roster(schema: schema) {
@@ -1391,9 +1388,9 @@ fn append_listing_row(
   sheet_row: Int,
   plan: ReviewSheetWritePlan,
 ) -> ReviewSheetClassification {
-  match keyed_roster_build(incomings: header_key_rows(headers: headers), key_eq: review_sheet_key_eq) {
+  match keyed_roster_build(incomings: header_key_rows(headers: headers)) {
     KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
-      ReviewSheetUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
+      ReviewSheetUnreadable { reason: concat("duplicate header ", d.subject) as NonEmptyStr }
     KeyedRosterBuilt { rows: header_rows } =>
       match operator_overwrite_reason(
         observed: observed,
@@ -1438,9 +1435,9 @@ fn classify_review_sheet(
   match validate_header_schema(schema: projection.schema) {
     HeaderSchemaRefused { refusal: _, reason: r } => ReviewSheetUnreadable { reason: r }
     HeaderSchemaValidated { validated: validated } =>
-  match keyed_roster_build(incomings: header_key_rows(headers: observed.headers), key_eq: review_sheet_key_eq) {
+  match keyed_roster_build(incomings: header_key_rows(headers: observed.headers)) {
     KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
-      ReviewSheetUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
+      ReviewSheetUnreadable { reason: concat("duplicate header ", d.subject) as NonEmptyStr }
     KeyedRosterBuilt { rows: header_rows } => {
       let header_by_name = keyed_string_map(rows: header_rows)
       match missing_schema_header(validated: validated, header_by_name: header_by_name) {
@@ -1451,26 +1448,23 @@ fn classify_review_sheet(
         Absent => ReviewSheetUnreadable { reason: "missing identity column" as NonEmptyStr }
         Present { value: identity_index } =>
           match keyed_roster_build(
-            incomings: projection_key_rows(projection: projection),
-            key_eq: review_sheet_key_eq,
+            incomings: projection_key_rows(projection: projection)
           ) {
             KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
-              ReviewSheetUnreadable { reason: concat("duplicate projection listing ", d) as NonEmptyStr }
+              ReviewSheetUnreadable { reason: concat("duplicate projection listing ", d.subject) as NonEmptyStr }
             KeyedRosterBuilt { rows: proj_rows } =>
               match keyed_roster_build(
-                incomings: observed_identity_key_rows(sheet: observed, identity_index: identity_index),
-                key_eq: review_sheet_key_eq,
+                incomings: observed_identity_key_rows(sheet: observed, identity_index: identity_index)
               ) {
                 KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
-                  ReviewSheetUnreadable { reason: concat("duplicate sheet listing ", d) as NonEmptyStr }
+                  ReviewSheetUnreadable { reason: concat("duplicate sheet listing ", d.subject) as NonEmptyStr }
                 KeyedRosterBuilt { rows: obs_rows } =>
                   match keyed_roster_build(
-                    incomings: erasure_key_rows(erasures: erasures),
-                    key_eq: review_sheet_key_eq,
+                    incomings: erasure_key_rows(erasures: erasures)
                   ) {
                     KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
                       ReviewSheetUnreadable {
-                        reason: concat("duplicate derived payload erasure listing ", d) as NonEmptyStr
+                        reason: concat("duplicate derived payload erasure listing ", d.subject) as NonEmptyStr
                       }
                     KeyedRosterBuilt { rows: erasure_rows } => finish_classify(
                       observed: observed,
@@ -1612,9 +1606,9 @@ fn judgement_for_listing(
   judgement_column: NonEmptyStr,
   listing_id: NonEmptyStr,
 ) -> JudgementRead {
-  match keyed_roster_build(incomings: header_key_rows(headers: observed.headers), key_eq: review_sheet_key_eq) {
+  match keyed_roster_build(incomings: header_key_rows(headers: observed.headers)) {
     KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
-      JudgementUnreadable { reason: concat("duplicate header ", d) as NonEmptyStr }
+      JudgementUnreadable { reason: concat("duplicate header ", d.subject) as NonEmptyStr }
     KeyedRosterBuilt { rows: header_rows } => {
       let header_by_name = keyed_string_map(rows: header_rows)
       match header_by_name.lookup(identity_column as String) {
@@ -1632,14 +1626,13 @@ fn judgement_for_listing(
               match keyed_roster_build(
                 incomings: observed.rows
                   |> map(row => KeyedRow {
-                    row_key: cell_at(cells: row.cells, index: id_idx),
+                    row_key: SubjectKey { subject: cell_at(cells: row.cells, index: id_idx) },
                     value: row,
                   })
-                  |> filter(keyed => keyed.row_key != ""),
-                key_eq: review_sheet_key_eq,
+                  |> filter(keyed => keyed.row_key.subject != "")
               ) {
                 KeyedRosterBuildDuplicateKey { key: d, first: _, duplicate: _ } =>
-                  JudgementUnreadable { reason: concat("duplicate sheet listing ", d) as NonEmptyStr }
+                  JudgementUnreadable { reason: concat("duplicate sheet listing ", d.subject) as NonEmptyStr }
                 KeyedRosterBuilt { rows: listing_rows } =>
                   match keyed_string_map(rows: listing_rows).lookup(listing_id as String) {
                     Absent =>

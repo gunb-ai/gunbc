@@ -1,5 +1,6 @@
 module gunbc.instruments.dag_compile_clean_shard_roster
 
+import std.key_relation { SubjectKey }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
@@ -23,14 +24,11 @@ type CompileCleanModuleDeclFact {
   path: String
 }
 
-fn compile_clean_path_key_eq(a: String, b: String) -> Bool {
-  a == b
-}
 
 fn compile_clean_decl_facts_to_keyed_rows(
   decl_facts: List<CompileCleanModuleDeclFact>
-) -> List<KeyedRow<String, CompileCleanModuleDeclFact>> {
-  map(decl_facts, decl => KeyedRow { row_key: decl.path, value: decl })
+) -> List<KeyedRow<SubjectKey<String>, CompileCleanModuleDeclFact>> {
+  map(decl_facts, decl => KeyedRow { row_key: SubjectKey { subject: decl.path }, value: decl })
 }
 
 fn compile_clean_shard_roster_build_from(
@@ -38,7 +36,6 @@ fn compile_clean_shard_roster_build_from(
 ) -> KeyedRosterBuild<String, CompileCleanModuleDeclFact> {
   keyed_roster_build(
     incomings: compile_clean_decl_facts_to_keyed_rows(decl_facts: decl_facts),
-    key_eq: compile_clean_path_key_eq,
   )
 }
 
@@ -76,7 +73,7 @@ fn compile_clean_module_shard_roster_from(
       }
     KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       CompileCleanModuleShardRosterDuplicatePath {
-        path: k,
+        path: k.subject,
         first: f.value,
         duplicate: d.value,
       }
@@ -202,7 +199,7 @@ fn witness_roster_build_refuses_synthetic_duplicate_facts() -> Bool {
   ) {
     KeyedRosterBuilt { rows: _ } => false
     KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
-      k == "dag/fixture/alpha.dag"
+      k.subject == "dag/fixture/alpha.dag"
         && f.value.module == "fixture.alpha"
         && d.value.module == "fixture.alpha_reexport"
   }
