@@ -43,6 +43,7 @@ import gunbc.harness.harness_seat { harness_turn_request, harness_seat_pointer_o
   ServingModelRequirement, AnyAdmittedModel, harness_cli_admission,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, QuiescenceRequired, GrantIdentity }
+import product.fabric.demand { AdmissionTerms }
 import gunbc.serving.serving_front_door {
   ServingSeatPermit, SeatPermitMinted, SeatPermitNotMinted, serving_seat_permit_claims, mint_serving_seat_permit,
 }
@@ -690,10 +691,10 @@ fn harness_worker_config(
   }
 }
 
-fn harness_acceptance_capacity_of(binding: HarnessSeatBinding) -> HarnessAcceptanceCapacity {
+fn harness_acceptance_capacity_of(binding: HarnessSeatBinding, admission: AdmissionTerms) -> HarnessAcceptanceCapacity {
   match binding {
     HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } =>
-      FleetSeatHeld { binding: binding }
+      FleetSeatHeld { binding: binding, admission: admission }
     HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => KeepBindingAlive
     HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => KeepBindingAlive
     HarnessSeatPending { detail: _ } => KeepBindingAlive
@@ -829,7 +830,7 @@ fn harness_worker_cli(
                 check_directory: supervision_dir,
                 acceptance: HarnessAcceptanceRoute { inbox: handin_inbox, node_id: node_id, attempt_key: attempt_key },
               ),
-              acceptance_capacity: harness_acceptance_capacity_of(binding: binding),
+              acceptance_capacity: harness_acceptance_capacity_of(binding: binding, admission: harness_cli_admission()),
             ),
             prompt: brief,
             step_budget: harness_worker_step_budget,

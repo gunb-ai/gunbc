@@ -35,8 +35,9 @@ import gunbc.harness.harness_seat {
   harness_hosted_inflight_acquire, harness_hosted_inflight_release, hosted_inflight_carried,
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, HarnessOperatorBound,
   harness_release_seat, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseNotApplicable, HarnessSeatReleaseRefused,
-  harness_bind_seat, AnyAdmittedModel, harness_cli_admission,
+  harness_bind_seat, AnyAdmittedModel,
 }
+import product.fabric.demand { AdmissionTerms }
 import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import extdeps.tools.hostname
 import gunbc.fabric.fabric_quota { quota_window_start }
@@ -316,8 +317,8 @@ type HarnessTurnConfig {
 // itself needs, so a quiescent hand-in releases it and the process keeps polling the outcome file.
 type HarnessAcceptanceCapacity
   = KeepBindingAlive
-  | FleetSeatHeld { binding: HarnessSeatBinding }
-  | FleetSeatReleasedForAcceptance { binding: HarnessSeatBinding }
+  | FleetSeatHeld { binding: HarnessSeatBinding, admission: AdmissionTerms }
+  | FleetSeatReleasedForAcceptance { binding: HarnessSeatBinding, admission: AdmissionTerms }
 
 // THE WINDOW THE HARNESS WORKS IN AND THE WINDOW THE ENGINE ADMITS ARE ONE NUMBER, and this field
 // is how the second reaches the first. gunbc.spark.serving_desired declares the roster ceiling the
@@ -2631,11 +2632,11 @@ fn harness_turn_config_with_capacity(config: HarnessTurnConfig, acceptance_capac
 fn harness_release_fleet_seat_for_handin(config: HarnessTurnConfig) -> HarnessHandInSeat {
   match config.acceptance_capacity {
     KeepBindingAlive => HandInSeatReady { config: config }
-    FleetSeatReleasedForAcceptance { binding: _ } => HandInSeatReady { config: config }
-    FleetSeatHeld { binding } =>
+    FleetSeatReleasedForAcceptance { binding: _, admission: _ } => HandInSeatReady { config: config }
+    FleetSeatHeld { binding, admission } =>
       match harness_release_seat(binding: binding, reason: "awaiting acceptance" as NonEmptyStr) {
         HarnessSeatReleased { partition: _ } =>
-          HandInSeatReady { config: harness_turn_config_with_capacity(config: config, acceptance_capacity: FleetSeatReleasedForAcceptance { binding: binding }) }
+          HandInSeatReady { config: harness_turn_config_with_capacity(config: config, acceptance_capacity: FleetSeatReleasedForAcceptance { binding: binding, admission: admission }) }
         HarnessHostedCredentialRemoved =>
           HandInSeatReleaseRefused { detail: "a fleet seat release answered as a hosted credential removal; the seat may still be held" }
         HarnessSeatReleaseRefused { detail } => HandInSeatReleaseRefused { detail: detail }
@@ -2644,7 +2645,7 @@ fn harness_release_fleet_seat_for_handin(config: HarnessTurnConfig) -> HarnessHa
   }
 }
 
-fn harness_rebind_fleet_for_revision(config: HarnessTurnConfig, prior: HarnessSeatBinding, handin: String) -> HarnessHandInSeat {
+fn harness_rebind_fleet_for_revision(config: HarnessTurnConfig, prior: HarnessSeatBinding, admission: AdmissionTerms, handin: String) -> HarnessHandInSeat {
   match prior {
     HarnessSeatRefused { detail: d } => HandInSeatReleaseRefused { detail: d }
     HarnessSeatPending { detail: d } => HandInSeatReleaseRefused { detail: d }
@@ -2670,7 +2671,7 @@ fn harness_rebind_fleet_for_revision(config: HarnessTurnConfig, prior: HarnessSe
             release_law: QuiescenceRequired,
           },
           session: none,
-          admission: harness_cli_admission(),
+          admission: admission,
         )
         match rebound {
           HarnessSeatRefused { detail: d } => HandInSeatReleaseRefused { detail: d }
@@ -2695,7 +2696,7 @@ fn harness_rebind_fleet_for_revision(config: HarnessTurnConfig, prior: HarnessSe
                 environment: config.environment,
                 completion: config.completion,
                 backend_access: BackendAdmittedBySeat,
-                acceptance_capacity: FleetSeatHeld { binding: rebound },
+                acceptance_capacity: FleetSeatHeld { binding: rebound, admission: admission },
               }
             }
         }
@@ -2707,8 +2708,8 @@ fn harness_rebind_fleet_for_revision(config: HarnessTurnConfig, prior: HarnessSe
 fn harness_resume_after_acceptance_wait(config: HarnessTurnConfig, handin: String) -> HarnessHandInSeat {
   match config.acceptance_capacity {
     KeepBindingAlive => HandInSeatReady { config: config }
-    FleetSeatHeld { binding: _ } => HandInSeatReady { config: config }
-    FleetSeatReleasedForAcceptance { binding } => harness_rebind_fleet_for_revision(config: config, prior: binding, handin: handin)
+    FleetSeatHeld { binding: _, admission: _ } => HandInSeatReady { config: config }
+    FleetSeatReleasedForAcceptance { binding, admission } => harness_rebind_fleet_for_revision(config: config, prior: binding, admission: admission, handin: handin)
   }
 }
 
@@ -2737,8 +2738,8 @@ fn harness_outcome_steps_taken(outcome: HarnessTurnOutcome) -> Int {
 fn harness_release_capacity_if_held(config: HarnessTurnConfig, outcome: HarnessTurnOutcome) -> HarnessTurnOutcome {
   match config.acceptance_capacity {
     KeepBindingAlive => outcome
-    FleetSeatReleasedForAcceptance { binding: _ } => outcome
-    FleetSeatHeld { binding } =>
+    FleetSeatReleasedForAcceptance { binding: _, admission: _ } => outcome
+    FleetSeatHeld { binding, admission: _ } =>
       match harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr) {
         HarnessSeatReleased { partition: _ } => outcome
         HarnessSeatReleaseNotApplicable { why: _ } => outcome
