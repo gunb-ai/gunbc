@@ -30427,7 +30427,7 @@ mod nfr_tests {
     fn nfr_frontier_reader_accepts_row_at_home() {
         let synthetic = "module a\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { subject: PathSubject { path: \"a.dag::f\" }, reason: r, dissolution: d }\n\
+               FrontierRow { subject: PathSubject { path: \"f\" }, reason: r, dissolution: d }\n\
              ]\n";
         let triples = super::non_fold_residue_triples_from_module_source_with(
             "a.dag",
@@ -30440,7 +30440,7 @@ mod nfr_tests {
                 .map(super::nfr_identity_join_line)
                 .collect::<Vec<_>>(),
             vec!["a.dag::f\tr\td".to_string()],
-            "a row hosted in a.dag naming a.dag::f must be accepted"
+            "a co-located row names only the symbol; the host file supplies the path prefix"
         );
     }
 

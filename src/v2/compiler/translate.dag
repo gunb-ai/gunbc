@@ -2749,5 +2749,5 @@ fn translate_diagnostic_reason_head(
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "src/v2/compiler/translate.dag::translate_edge_is_arrow_contract" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "translate_edge_is_arrow_contract" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]

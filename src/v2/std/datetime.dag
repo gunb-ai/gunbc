@@ -660,6 +660,6 @@ fn make_leap_second_offset_datetime(
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "src/v2/std/datetime.dag::calendar_date_admits" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "src/v2/std/datetime.dag::leap_second_next_day" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "calendar_date_admits" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "leap_second_next_day" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]

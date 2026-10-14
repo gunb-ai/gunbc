@@ -337,7 +337,7 @@ fn envelope_bounded_by(child: Envelope, parent: Envelope) -> Bool {
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/std/effect_grant.dag::namespace_tree_eq" },
+      subject: PathSubject { path: "namespace_tree_eq" },
       reason: nfr_reason_namespace_tree_eq,
       dissolution: nfr_dissolve_derived_equality,
     },

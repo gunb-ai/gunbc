@@ -2569,5 +2569,5 @@ fn mtcollins1_boot_hpm_check(username: NonEmptyStr, password_file: NonEmptyStr, 
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_boot_diagnostic_bundle.dag::media_loss_of_look" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "media_loss_of_look" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]

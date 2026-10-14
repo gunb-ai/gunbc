@@ -2182,5 +2182,5 @@ data nfr_reason_fci1_prestate_equal: String = "FCI-1 prestate equality retains i
 data nfr_dissolve_fci1_prestate_equal: DissolutionCondition = unbound_dissolution(description: "a typed equality capability becomes sufficient to compare every AllocationSlotPrestate constructor without duplicated cross-product arms, then this row deletes")
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag::fci1_slot_prestate_equal" }, reason: nfr_reason_fci1_prestate_equal, dissolution: nfr_dissolve_fci1_prestate_equal },
+  FrontierRow { subject: PathSubject { path: "fci1_slot_prestate_equal" }, reason: nfr_reason_fci1_prestate_equal, dissolution: nfr_dissolve_fci1_prestate_equal },
 ]

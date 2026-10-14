@@ -179,7 +179,7 @@ data nfr_dissolve_local_tidy: DissolutionCondition = unbound_dissolution(descrip
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger" },
+      subject: PathSubject { path: "local_tidy_path_matches_trigger" },
       reason: nfr_reason_local_tidy,
       dissolution: nfr_dissolve_local_tidy,
     },

@@ -1346,12 +1346,12 @@ data nfr_dissolve_git_text_observation_projection: DissolutionCondition = unboun
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/live_deploy/repository_convergence.dag::git_text_or_empty" },
+      subject: PathSubject { path: "git_text_or_empty" },
       reason: nfr_reason_git_text_observation_projection,
       dissolution: nfr_dissolve_git_text_observation_projection,
     },
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/live_deploy/repository_convergence.dag::git_text_value" },
+      subject: PathSubject { path: "git_text_value" },
       reason: nfr_reason_git_text_observation_projection,
       dissolution: nfr_dissolve_git_text_observation_projection,
     },

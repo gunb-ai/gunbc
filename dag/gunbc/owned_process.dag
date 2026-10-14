@@ -175,5 +175,5 @@ fn owned_release_text(r: OwnedRelease) -> String {
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/owned_process.dag::owned_process_standing_of" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "owned_process_standing_of" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]

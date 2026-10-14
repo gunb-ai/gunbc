@@ -888,7 +888,7 @@ data nfr_dissolve_release_identity_absent_split: DissolutionCondition = unbound_
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/live_deploy/readiness.dag::healthz_release_identity_refusal" },
+      subject: PathSubject { path: "healthz_release_identity_refusal" },
       reason: nfr_reason_release_identity_absent_split,
       dissolution: nfr_dissolve_release_identity_absent_split,
     },

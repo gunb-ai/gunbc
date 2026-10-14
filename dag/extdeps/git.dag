@@ -1973,7 +1973,7 @@ fn git_remote_url_observation_of(
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/extdeps/git.dag::git_diff_name_status_pending_after_status" },
+      subject: PathSubject { path: "git_diff_name_status_pending_after_status" },
       reason: nfr_reason_land_red_era,
       dissolution: nfr_dissolve_owning_fold,
     },

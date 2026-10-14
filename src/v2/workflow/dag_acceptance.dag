@@ -1366,32 +1366,32 @@ data nfr_dissolve_acceptance_verdict_append: DissolutionCondition = unbound_diss
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::execute_obligation" },
+      subject: PathSubject { path: "execute_obligation" },
       reason: nfr_reason_acceptance_obligation_partition,
       dissolution: nfr_dissolve_acceptance_obligation_partition,
     },
   FrontierRow {
-      subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::is_front_end_obligation" },
+      subject: PathSubject { path: "is_front_end_obligation" },
       reason: nfr_reason_acceptance_obligation_partition,
       dissolution: nfr_dissolve_acceptance_obligation_partition,
     },
   FrontierRow {
-      subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::obligation_eq" },
+      subject: PathSubject { path: "obligation_eq" },
       reason: nfr_reason_acceptance_obligation_eq,
       dissolution: nfr_dissolve_derived_equality,
     },
   FrontierRow {
-      subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::obligation_front_end_depth" },
+      subject: PathSubject { path: "obligation_front_end_depth" },
       reason: nfr_reason_acceptance_obligation_partition,
       dissolution: nfr_dissolve_acceptance_obligation_partition,
     },
   FrontierRow {
-      subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::verdict_with_further_rejection" },
+      subject: PathSubject { path: "verdict_with_further_rejection" },
       reason: nfr_reason_acceptance_verdict_append,
       dissolution: nfr_dissolve_acceptance_verdict_append,
     },
   FrontierRow {
-      subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::verdict_with_further_unfinished" },
+      subject: PathSubject { path: "verdict_with_further_unfinished" },
       reason: nfr_reason_acceptance_verdict_append,
       dissolution: nfr_dissolve_acceptance_verdict_append,
     },

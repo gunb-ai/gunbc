@@ -2930,17 +2930,17 @@ data wave1_gate1_d_census_class_c_split_note: String = "wave1_gate1_d_census (te
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/commit_workflow.dag::commit_workflow_surface_eq" },
+      subject: PathSubject { path: "commit_workflow_surface_eq" },
       reason: nfr_reason_land_red_era,
       dissolution: nfr_dissolve_owning_fold,
     },
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/commit_workflow.dag::gate_eq" },
+      subject: PathSubject { path: "gate_eq" },
       reason: nfr_reason_land_red_era,
       dissolution: nfr_dissolve_owning_fold,
     },
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/commit_workflow.dag::local_tidy_check_eq" },
+      subject: PathSubject { path: "local_tidy_check_eq" },
       reason: nfr_reason_land_red_era,
       dissolution: nfr_dissolve_owning_fold,
     },

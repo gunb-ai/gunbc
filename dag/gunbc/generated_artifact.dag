@@ -486,7 +486,7 @@ fn artifact_producer_row(a: GeneratedArtifact) -> GeneratedArtifactProducerRow {
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/generated_artifact.dag::artifact_eq" },
+      subject: PathSubject { path: "artifact_eq" },
       reason: nfr_reason_land_red_era,
       dissolution: nfr_dissolve_owning_fold,
     },

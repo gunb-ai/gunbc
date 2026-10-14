@@ -630,6 +630,6 @@ fn qualified_name_owning_module(
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "src/v2/std/qualified_name.dag::qn_fold_step" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "src/v2/std/qualified_name.dag::lexical_reference_label_optional" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "qn_fold_step" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "lexical_reference_label_optional" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
 ]

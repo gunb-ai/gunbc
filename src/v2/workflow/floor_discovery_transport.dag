@@ -185,7 +185,7 @@ data nfr_dissolve_floor_discovery_transport: DissolutionCondition = unbound_diss
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "src/v2/workflow/floor_discovery_transport.dag::floor_discovery_transport_observe" },
+      subject: PathSubject { path: "floor_discovery_transport_observe" },
       reason: nfr_reason_floor_discovery_transport,
       dissolution: nfr_dissolve_floor_discovery_transport,
     },

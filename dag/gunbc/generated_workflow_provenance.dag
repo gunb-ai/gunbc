@@ -76,7 +76,7 @@ data nfr_dissolve_generated_workflow_provenance_projection: DissolutionCondition
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/generated_workflow_provenance.dag::generated_workflow_provenance" },
+      subject: PathSubject { path: "generated_workflow_provenance" },
       reason: nfr_reason_generated_workflow_provenance_projection,
       dissolution: nfr_dissolve_generated_workflow_provenance_projection,
     },

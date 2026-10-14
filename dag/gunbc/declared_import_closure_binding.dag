@@ -91,17 +91,17 @@ data nfr_dissolve_class_b_binding_projection: DissolutionCondition = unbound_dis
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_listed_import" },
+      subject: PathSubject { path: "binding_source_is_listed_import" },
       reason: nfr_reason_class_b_binding_projection,
       dissolution: nfr_dissolve_class_b_binding_projection,
     },
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_pool_coincidence" },
+      subject: PathSubject { path: "binding_source_is_pool_coincidence" },
       reason: nfr_reason_class_b_binding_projection,
       dissolution: nfr_dissolve_class_b_binding_projection,
     },
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_refused_at_intended_seam" },
+      subject: PathSubject { path: "binding_refused_at_intended_seam" },
       reason: nfr_reason_class_b_binding_projection,
       dissolution: nfr_dissolve_class_b_binding_projection,
     },

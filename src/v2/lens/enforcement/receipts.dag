@@ -262,7 +262,7 @@ fn derive_receipt(
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "src/v2/lens/enforcement/receipts.dag::consumer_entry_identity_for" },
+      subject: PathSubject { path: "consumer_entry_identity_for" },
       reason: nfr_reason_land_red_era,
       dissolution: nfr_dissolve_owning_fold,
     },

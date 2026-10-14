@@ -3635,10 +3635,10 @@ data nfr_reason_eval_projection_receiver_not_aggregate: String = "field projecti
 data nfr_dissolve_eval_projection_receiver_not_aggregate: DissolutionCondition = unbound_dissolution(description: "RuntimeValue exposes a typed field-bearing projection (derived from its declaration, dag/std/algebra) so eval reads fields without a per-variant match, and this row deletes")
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "src/v2/compiler/eval.dag::eval_node_is_callee_reference" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "src/v2/compiler/eval.dag::eval_node_is_transform" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "eval_node_is_callee_reference" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "eval_node_is_transform" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow {
-      subject: PathSubject { path: "src/v2/compiler/eval.dag::eval_field_projection_of_receiver" },
+      subject: PathSubject { path: "eval_field_projection_of_receiver" },
       reason: nfr_reason_eval_projection_receiver_not_aggregate,
       dissolution: nfr_dissolve_eval_projection_receiver_not_aggregate,
     },

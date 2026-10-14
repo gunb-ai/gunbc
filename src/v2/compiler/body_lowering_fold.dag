@@ -12828,7 +12828,7 @@ fn body_lower_finish_for_normalize(
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "src/v2/compiler/body_lowering_fold.dag::body_lower_where_argument" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "src/v2/compiler/body_lowering_fold.dag::body_lower_where_leaf_atom_optional" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "src/v2/compiler/body_lowering_fold.dag::body_lower_where_predicate" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "body_lower_where_argument" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "body_lower_where_leaf_atom_optional" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "body_lower_where_predicate" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
 ]

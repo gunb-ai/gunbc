@@ -4,14 +4,14 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { List }
 // Shared NFR class strings live once here. Subject modules that are not seed-mirrored
-// hold `data non_fold_residue_frontier` beside the sites and import these names.
-// Rows whose subject modules emit into the stage0 seed (std.effects, std.occurrence_binding_*,
-// namespace_cut admission) live in this file so those audit lists are not compiled into the
-// seed. Membership is the host union (`non_fold_residue_identity_join_triples`).
-// Discovery: the host reader walks production `.dag` files, keeps those whose source
-// declares `data non_fold_residue_frontier`, and parses only those; a row whose
-// PathSubject.path file prefix is not the file that hosts the decl is refused, located,
-// except the seed-mirrored prefixes hosted here.
+// hold `data non_fold_residue_frontier` beside the sites (PathSubject names only the
+// symbol; the host file is the path prefix) and import these names.
+// Rows whose subject modules have a stage0 mirror (`src/v1/stage0/src/<module>.rs`)
+// live in this file so those audit lists are not compiled into the seed. The exception
+// is that observed mirror set, not a second path list. Membership is the host union
+// (`non_fold_residue_identity_join_triples`).
+// Discovery: the host reader walks production `.dag` files whose source mentions the
+// data name, parses them, and keeps the exact `data non_fold_residue_frontier` item.
 // The required floor judges sites per diff (non_fold_residue_diff_verdict); the
 // whole-corpus census (nfr_whole_corpus_typed_census) derives the union.
 // Detection-only: never auto-delete rows — greening a site deletes its row by hand with the

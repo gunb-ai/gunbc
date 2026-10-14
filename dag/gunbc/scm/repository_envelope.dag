@@ -5038,7 +5038,7 @@ data nfr_dissolve_json_natural_projection: DissolutionCondition = unbound_dissol
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/scm/repository_envelope.dag::repository_natural_from_json" },
+      subject: PathSubject { path: "repository_natural_from_json" },
       reason: nfr_reason_json_natural_projection,
       dissolution: nfr_dissolve_json_natural_projection,
     },

@@ -653,17 +653,17 @@ data nfr_dissolve_provider_standing_limit_draw: DissolutionCondition = unbound_d
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_subject_covers_dispatch_draw" },
+      subject: PathSubject { path: "limit_subject_covers_dispatch_draw" },
       reason: nfr_reason_provider_standing_limit_draw,
       dissolution: nfr_dissolve_provider_standing_limit_draw,
     },
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/provider_standing.dag::limit_observation_blocks_dispatch" },
+      subject: PathSubject { path: "limit_observation_blocks_dispatch" },
       reason: nfr_reason_provider_standing_limit_draw,
       dissolution: nfr_dissolve_provider_standing_limit_draw,
     },
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/provider_standing.dag::provider_standing_bundle_is_selection_eligible" },
+      subject: PathSubject { path: "provider_standing_bundle_is_selection_eligible" },
       reason: nfr_reason_provider_standing_limit_draw,
       dissolution: nfr_dissolve_provider_standing_limit_draw,
     },

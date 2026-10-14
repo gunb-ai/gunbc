@@ -429,22 +429,22 @@ fn cost_coverage_unknown_fraction_bps(receipt: CostCoverageTreeReceipt) -> Int {
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_body_not_located" },
+      subject: PathSubject { path: "cost_coverage_fn_verdict_is_body_not_located" },
       reason: nfr_reason_land_red_era,
       dissolution: nfr_dissolve_owning_fold,
     },
   FrontierRow {
-      subject: PathSubject { path: "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_known" },
+      subject: PathSubject { path: "cost_coverage_fn_verdict_is_known" },
       reason: nfr_reason_land_red_era,
       dissolution: nfr_dissolve_owning_fold,
     },
   FrontierRow {
-      subject: PathSubject { path: "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_parse_tree_opaque" },
+      subject: PathSubject { path: "cost_coverage_fn_verdict_is_parse_tree_opaque" },
       reason: nfr_reason_land_red_era,
       dissolution: nfr_dissolve_owning_fold,
     },
   FrontierRow {
-      subject: PathSubject { path: "src/v2/lens/enforcement/cost_coverage.dag::cost_coverage_fn_verdict_is_unknown" },
+      subject: PathSubject { path: "cost_coverage_fn_verdict_is_unknown" },
       reason: nfr_reason_land_red_era,
       dissolution: nfr_dissolve_owning_fold,
     },

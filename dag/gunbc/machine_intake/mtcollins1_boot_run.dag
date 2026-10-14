@@ -2998,9 +2998,9 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() -> Runner
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag::mtcollins1_boot_await_capture_terminal" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag::mtcollins1_boot_on_srv1_resolving_toolchain" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag::mtcollins1_boot_sol_is_held" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag::mtcollins1_sol_await_observer" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag::sol_await_establishment_until" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "mtcollins1_boot_await_capture_terminal" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "mtcollins1_boot_on_srv1_resolving_toolchain" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "mtcollins1_boot_sol_is_held" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "mtcollins1_sol_await_observer" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "sol_await_establishment_until" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]

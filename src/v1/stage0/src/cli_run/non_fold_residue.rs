@@ -105,19 +105,37 @@ pub(crate) fn nfr_identity_join_line(t: &NfrFrontierTriple) -> String {
     format!("{}\t{}\t{}", t.path, t.reason, t.dissolution)
 }
 
-/// Seed-mirrored subject modules cannot host NFR lists: those lists emit into stage0 rust.
-/// Their rows live on `gunbc.non_fold_residue` instead.
 const NFR_SEED_MIRROR_EXCEPTION_HOST: &str = "dag/gunbc/non_fold_residue.dag";
-const NFR_SEED_MIRROR_EXCEPTION_PREFIXES: &[&str] = &[
-    "dag/std/effects.dag",
-    "dag/std/occurrence_binding_candidates.dag",
-    "dag/std/occurrence_binding_resolve.dag",
-    "dag/gunbc/namespace_cut/namespace_reference_derived_closure_admission.dag",
-];
+
+fn nfr_dag_rel_to_source_module(dag_rel: &str) -> Option<String> {
+    let stem = dag_rel.strip_suffix(".dag")?;
+    let rest = stem
+        .strip_prefix("dag/")
+        .or_else(|| stem.strip_prefix("src/"))?;
+    Some(rest.replace('/', "."))
+}
+
+fn nfr_dag_rel_has_stage0_mirror(dag_rel: &str) -> bool {
+    let Some(module) = nfr_dag_rel_to_source_module(dag_rel) else {
+        return false;
+    };
+    let basename = format!("{}.rs", module.replace('.', "_"));
+    process_workspace_root()
+        .join("src/v1/stage0/src")
+        .join(basename)
+        .is_file()
+}
 
 fn nfr_seed_mirror_home_exception(host: &str, path_prefix: &str) -> bool {
-    host == NFR_SEED_MIRROR_EXCEPTION_HOST
-        && NFR_SEED_MIRROR_EXCEPTION_PREFIXES.contains(&path_prefix)
+    host == NFR_SEED_MIRROR_EXCEPTION_HOST && nfr_dag_rel_has_stage0_mirror(path_prefix)
+}
+
+fn nfr_join_site_key(module_rel_path: &str, authored_path: &str) -> String {
+    if authored_path.contains("::") {
+        authored_path.to_string()
+    } else {
+        format!("{module_rel_path}::{authored_path}")
+    }
 }
 
 fn nfr_expr_ident(
@@ -145,41 +163,8 @@ fn nfr_expr_ident(
     }
 }
 
-fn nfr_data_decl_ident(line: &str) -> Option<&str> {
-    let rest = line.trim_start().strip_prefix("data ")?.trim_start();
-    let ident_end = rest
-        .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
-        .unwrap_or(rest.len());
-    let ident = &rest[..ident_end];
-    if ident.is_empty() {
-        None
-    } else {
-        Some(ident)
-    }
-}
-
 pub(crate) fn nfr_content_declares_frontier(content: &str) -> bool {
-    content
-        .lines()
-        .any(|line| nfr_data_decl_ident(line) == Some(NON_FOLD_RESIDUE_FRONTIER_DATA_NAME))
-}
-
-fn nfr_refuse_near_miss_frontier_data_ident(module_rel_path: &str, content: &str) {
-    for (i, line) in content.lines().enumerate() {
-        let Some(ident) = nfr_data_decl_ident(line) else {
-            continue;
-        };
-        if ident.contains(NON_FOLD_RESIDUE_FRONTIER_DATA_NAME)
-            && ident != NON_FOLD_RESIDUE_FRONTIER_DATA_NAME
-        {
-            panic!(
-                "nfr frontier reader: near-miss data decl `{ident}` in {module_rel_path}:{} \
-                 (only `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` hosts rows; a similarly spelled \
-                 data name is refused, not skipped)",
-                i + 1
-            );
-        }
-    }
+    content.contains(NON_FOLD_RESIDUE_FRONTIER_DATA_NAME)
 }
 
 /// Project the path site keys out of a `non_fold_residue_frontier` list of DIRECT record
@@ -197,7 +182,6 @@ pub(crate) fn non_fold_residue_triples_from_module_source_with(
     content: &str,
     home: NfrHomeCheck,
 ) -> Vec<NfrFrontierTriple> {
-    nfr_refuse_near_miss_frontier_data_ident(module_rel_path, content);
     if !nfr_content_declares_frontier(content) {
         return Vec::new();
     }
@@ -245,162 +229,167 @@ fn non_fold_residue_units_from_parse_source(
         .as_ref()
         .unwrap_or_else(|| panic!("nfr frontier reader: {module_rel_path} parsed to no module"));
     let data_name = NON_FOLD_RESIDUE_FRONTIER_DATA_NAME;
+    let mut found = None;
     for item in module.children.iter() {
-        if item.name != data_name
-            || item.module_item_kind
-                != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue
-        {
+        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue {
             continue;
         }
-        let body = item.body.as_ref().unwrap_or_else(|| {
-            panic!("nfr frontier reader: `data {data_name}` in {module_rel_path} has no value body")
-        });
-        if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
+        if item.name.contains(data_name) && item.name != data_name {
             panic!(
-                "nfr frontier reader: `data {data_name}` in {module_rel_path} is not a list \
-                 literal"
+                "nfr frontier reader: near-miss data decl `{}` in {module_rel_path} \
+                 (only `{data_name}` hosts rows; a similarly spelled data name is refused, \
+                 not skipped)",
+                item.name
             );
         }
-        let mut units = Vec::new();
-        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-        for el in body.children.iter() {
-            if !matches!(el.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
-                panic!(
-                    "nfr frontier reader: an element of `{data_name}` in {module_rel_path} is \
+        if item.name == data_name {
+            found = Some(item);
+        }
+    }
+    let Some(item) = found else {
+        return Vec::new();
+    };
+    let body = item.body.as_ref().unwrap_or_else(|| {
+        panic!("nfr frontier reader: `data {data_name}` in {module_rel_path} has no value body")
+    });
+    if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
+        panic!(
+            "nfr frontier reader: `data {data_name}` in {module_rel_path} is not a list \
+                 literal"
+        );
+    }
+    let mut units = Vec::new();
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for el in body.children.iter() {
+        if !matches!(el.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
+            panic!(
+                "nfr frontier reader: an element of `{data_name}` in {module_rel_path} is \
                      not a record literal (refusing — rows must stay directly host-readable)"
-                );
-            }
-            let mut path: Option<String> = None;
-            let mut reason: Option<String> = None;
-            let mut dissolution: Option<String> = None;
-            for field in el.children.iter() {
-                let fname = crate::v1_std_core::field_init_node_name_at(
-                    field.clone(),
+            );
+        }
+        let mut path: Option<String> = None;
+        let mut reason: Option<String> = None;
+        let mut dissolution: Option<String> = None;
+        for field in el.children.iter() {
+            let fname =
+                crate::v1_std_core::field_init_node_name_at(field.clone(), source_indices.clone());
+            let value = crate::v1_std_core::field_init_node_value(field.clone());
+            if fname == "reason" {
+                reason = Some(nfr_expr_ident(
+                    value,
                     source_indices.clone(),
-                );
-                let value = crate::v1_std_core::field_init_node_value(field.clone());
-                if fname == "reason" {
-                    reason = Some(nfr_expr_ident(
-                        value,
-                        source_indices.clone(),
-                        "reason",
-                        module_rel_path,
-                    ));
-                    continue;
-                }
-                if fname == "dissolution" {
-                    dissolution = Some(nfr_expr_ident(
-                        value,
-                        source_indices.clone(),
-                        "dissolution",
-                        module_rel_path,
-                    ));
-                    continue;
-                }
-                if fname != "subject" {
-                    continue;
-                }
-                match value.expr_data.as_ref() {
-                    ExprData::ExprRecordLit { .. } => {
-                        let variant_name = crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            value.clone(),
-                        );
-                        if variant_name != "PathSubject" {
-                            panic!(
-                                "nfr frontier reader: `subject` in a `{data_name}` row of \
-                                 {module_rel_path} is not PathSubject {{ ... }}"
-                            );
-                        }
-                        let mut row_path: Option<String> = None;
-                        for subfield in value.children.iter() {
-                            let subname = crate::v1_std_core::field_init_node_name_at(
-                                subfield.clone(),
-                                source_indices.clone(),
-                            );
-                            if subname != "path" {
-                                continue;
-                            }
-                            let path_value =
-                                crate::v1_std_core::field_init_node_value(subfield.clone());
-                            match path_value.expr_data.as_ref() {
-                                ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
-                                    LiteralValue::LitStr { value: s } => row_path = Some(s.clone()),
-                                    _ => panic!(
-                                        "nfr frontier reader: `path` in a `{data_name}` row \
-                                         of {module_rel_path} is not a string literal"
-                                    ),
-                                },
-                                _ => panic!(
-                                    "nfr frontier reader: `path` in a `{data_name}` row of \
-                                     {module_rel_path} is not a literal"
-                                ),
-                            }
-                        }
-                        path = Some(row_path.unwrap_or_else(|| {
-                            panic!(
-                                "nfr frontier reader: `subject` in a `{data_name}` row of \
-                                 {module_rel_path} is `PathSubject` but carries no `path` field"
-                            )
-                        }));
-                    }
-                    _ => panic!(
-                        "nfr frontier reader: `subject` in a `{data_name}` row of \
-                         {module_rel_path} is not a record literal"
-                    ),
-                }
+                    "reason",
+                    module_rel_path,
+                ));
+                continue;
             }
-            let path = path.unwrap_or_else(|| {
-                panic!(
-                    "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
+            if fname == "dissolution" {
+                dissolution = Some(nfr_expr_ident(
+                    value,
+                    source_indices.clone(),
+                    "dissolution",
+                    module_rel_path,
+                ));
+                continue;
+            }
+            if fname != "subject" {
+                continue;
+            }
+            match value.expr_data.as_ref() {
+                ExprData::ExprRecordLit { .. } => {
+                    let variant_name =
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), value.clone());
+                    if variant_name != "PathSubject" {
+                        panic!(
+                            "nfr frontier reader: `subject` in a `{data_name}` row of \
+                                 {module_rel_path} is not PathSubject {{ ... }}"
+                        );
+                    }
+                    let mut row_path: Option<String> = None;
+                    for subfield in value.children.iter() {
+                        let subname = crate::v1_std_core::field_init_node_name_at(
+                            subfield.clone(),
+                            source_indices.clone(),
+                        );
+                        if subname != "path" {
+                            continue;
+                        }
+                        let path_value =
+                            crate::v1_std_core::field_init_node_value(subfield.clone());
+                        match path_value.expr_data.as_ref() {
+                            ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
+                                LiteralValue::LitStr { value: s } => row_path = Some(s.clone()),
+                                _ => panic!(
+                                    "nfr frontier reader: `path` in a `{data_name}` row \
+                                         of {module_rel_path} is not a string literal"
+                                ),
+                            },
+                            _ => panic!(
+                                "nfr frontier reader: `path` in a `{data_name}` row of \
+                                     {module_rel_path} is not a literal"
+                            ),
+                        }
+                    }
+                    path = Some(row_path.unwrap_or_else(|| {
+                        panic!(
+                            "nfr frontier reader: `subject` in a `{data_name}` row of \
+                                 {module_rel_path} is `PathSubject` but carries no `path` field"
+                        )
+                    }));
+                }
+                _ => panic!(
+                    "nfr frontier reader: `subject` in a `{data_name}` row of \
+                         {module_rel_path} is not a record literal"
+                ),
+            }
+        }
+        let authored_path = path.unwrap_or_else(|| {
+            panic!(
+                "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
                      `subject` field"
-                )
-            });
-            if home == NfrHomeCheck::Require {
-                let prefix = path.split("::").next().unwrap_or("");
-                if prefix != module_rel_path
-                    && !nfr_seed_mirror_home_exception(module_rel_path, prefix)
-                {
-                    panic!(
-                        "nfr frontier reader: row path {path:?} in {module_rel_path} is not at \
+            )
+        });
+        if home == NfrHomeCheck::Require && authored_path.contains("::") {
+            let prefix = authored_path.split("::").next().unwrap_or("");
+            if prefix != module_rel_path && !nfr_seed_mirror_home_exception(module_rel_path, prefix)
+            {
+                panic!(
+                        "nfr frontier reader: row path {authored_path:?} in {module_rel_path} is not at \
                          home (subject file prefix {prefix:?} must equal the hosting module \
                          path {module_rel_path:?})"
                     );
-                }
             }
-            if !seen.insert(path.clone()) {
-                panic!(
-                    "nfr frontier reader: duplicate path {path:?} in `{data_name}` of \
+        }
+        let path = nfr_join_site_key(module_rel_path, &authored_path);
+        if !seen.insert(path.clone()) {
+            panic!(
+                "nfr frontier reader: duplicate path {path:?} in `{data_name}` of \
                      {module_rel_path} (the const this replaced tolerated duplicates; the \
                      typed roster refuses them)"
-                );
-            }
-            let reason = reason.unwrap_or_else(|| {
-                panic!(
-                    "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
-                     `reason` ident"
-                )
-            });
-            let dissolution = dissolution.unwrap_or_else(|| {
-                panic!(
-                    "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
-                     `dissolution` ident"
-                )
-            });
-            units.push(NfrFrontierTriple {
-                path,
-                reason,
-                dissolution,
-            });
-        }
-        if units.is_empty() {
-            panic!(
-                "nfr frontier reader: `{data_name}` in {module_rel_path} is empty (fail-closed)"
             );
         }
-        return units;
+        let reason = reason.unwrap_or_else(|| {
+            panic!(
+                "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
+                     `reason` ident"
+            )
+        });
+        let dissolution = dissolution.unwrap_or_else(|| {
+            panic!(
+                "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
+                     `dissolution` ident"
+            )
+        });
+        units.push(NfrFrontierTriple {
+            path,
+            reason,
+            dissolution,
+        });
     }
-    panic!("nfr frontier reader: no `data {data_name}` def in {module_rel_path}")
+    if units.is_empty() {
+        panic!("nfr frontier reader: `{data_name}` in {module_rel_path} is empty (fail-closed)");
+    }
+    return units;
 }
 
 fn nfr_workspace_carrier_files(root: &Path) -> Vec<(String, String)> {
@@ -424,7 +413,6 @@ fn nfr_workspace_carrier_files(root: &Path) -> Vec<(String, String)> {
             .unwrap_or(item.path())
             .to_string_lossy()
             .replace('\\', "/");
-        nfr_refuse_near_miss_frontier_data_ident(&rel, &content);
         if !nfr_content_declares_frontier(&content) {
             continue;
         }

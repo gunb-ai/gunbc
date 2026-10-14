@@ -511,7 +511,7 @@ data nfr_dissolve_wildcard_total: DissolutionCondition = unbound_dissolution(des
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "src/v2/lens/cost/valuation.dag::multiply_evaluations" },
+      subject: PathSubject { path: "multiply_evaluations" },
       reason: nfr_reason_cost_valuation_zero_annihilator,
       dissolution: nfr_dissolve_wildcard_total,
     },

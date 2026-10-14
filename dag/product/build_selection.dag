@@ -311,12 +311,12 @@ data nfr_dissolve_build_axis_reading_refined_carrier: DissolutionCondition = unb
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/product/build_selection.dag::cash_reading" },
+      subject: PathSubject { path: "cash_reading" },
       reason: nfr_reason_build_axis_reading_unreachable_arm,
       dissolution: nfr_dissolve_build_axis_reading_refined_carrier,
     },
   FrontierRow {
-      subject: PathSubject { path: "dag/product/build_selection.dag::ceiling_reading" },
+      subject: PathSubject { path: "ceiling_reading" },
       reason: nfr_reason_build_axis_reading_unreachable_arm,
       dissolution: nfr_dissolve_build_axis_reading_refined_carrier,
     },

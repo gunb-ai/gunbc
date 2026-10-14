@@ -489,6 +489,6 @@ data nfr_reason_native_app_attest_arm_equal: String = "same-constructor equality
 data nfr_dissolve_native_app_attest_arm_equal: DissolutionCondition = unbound_dissolution(description: "a typed constructor-equality capability (derived from inhabitance, dag/std/algebra) can compare AttestationRefusal and AssertionRefusal by arm without cross-product arms, then these rows delete")
 
 data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/native_app_attest.dag::same_assertion_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/native_app_attest.dag::same_attestation_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
+  FrontierRow { subject: PathSubject { path: "same_assertion_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
+  FrontierRow { subject: PathSubject { path: "same_attestation_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
 ]

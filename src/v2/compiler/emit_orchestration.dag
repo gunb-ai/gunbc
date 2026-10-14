@@ -1445,7 +1445,7 @@ data nfr_dissolve_orch_emit: DissolutionCondition = unbound_dissolution(descript
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "src/v2/compiler/emit_orchestration.dag::orch_emit_let_step" },
+      subject: PathSubject { path: "orch_emit_let_step" },
       reason: nfr_reason_orch_emit,
       dissolution: nfr_dissolve_orch_emit,
     },

@@ -1558,7 +1558,7 @@ data nfr_dissolve_verification_producer_absent: DissolutionCondition = unbound_d
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_workflow_progress.dag::verification_segment" },
+      subject: PathSubject { path: "verification_segment" },
       reason: nfr_reason_verification_producer_absent,
       dissolution: nfr_dissolve_verification_producer_absent,
     },

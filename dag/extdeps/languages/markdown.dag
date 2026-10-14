@@ -763,7 +763,7 @@ data parse_inline_markdown_minimal_scaffold: Disposition = Scaffold {
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "dag/extdeps/languages/markdown.dag::md_nested" },
+      subject: PathSubject { path: "md_nested" },
       reason: nfr_reason_land_red_era,
       dissolution: nfr_dissolve_owning_fold,
     },
