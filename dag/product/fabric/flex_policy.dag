@@ -13,7 +13,7 @@ import std.measure {
   exact_decimal_to_money_per_hour_ceil,
 }
 import extdeps.currency.currency { CurrencyCode }
-import product.fabric.identity { fabric_identity_eq }
+import product.fabric.identity { fabric_identity_eq, OfferKey }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply {
   EqualCostOfferTieBreak, PlacementAffinityKey, GrantDuration, ExactGrantDuration,
@@ -154,6 +154,7 @@ type FlexBidRefusal
   | FlexMoneyRefused { refusal: MoneyRefusal }
   | FlexMarketPriceUnobserved
   | FlexMarketQuoteCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
+  | FlexCandidateConsequencesUnestablished { offer_key: OfferKey, missing: List<NonEmptyStr> }
 
 type FlexCandidateJoin<P>
   = FlexCandidatesJoined { candidates: List<CandidateOffer<P>> }

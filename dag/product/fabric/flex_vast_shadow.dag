@@ -17,7 +17,8 @@ import product.fabric.identity { OfferKey }
 import product.fabric.flex_policy {
   FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey,
   FlexBidAttempt, FlexBidAdmission, FlexBidRefused, FlexScreenedCandidate,
-  FlexDecimalConversionRefused, FlexOccupancySummed, FlexOccupancyCurrencyMismatch,
+  FlexCandidateConsequencesUnestablished, FlexDecimalConversionRefused,
+  FlexOccupancySummed, FlexOccupancyCurrencyMismatch,
   FlexActuationMode, FlexActuationDry, FlexActuationWet,
   flex_bid_admission, occupancy_sum, AcquisitionActive,
   PhysicalMachineObservationIdentity, ProviderAccountObservationIdentity,
@@ -495,29 +496,40 @@ fn flex_candidates_from_vast_offer(
   }
 }
 
+type FlexOfferBind
+  = FlexAttemptBound { attempt: FlexBidAttempt<NonEmptyStr> }
+  | FlexAttemptCandidateUnestablished {
+      offer_key: OfferKey
+      missing: List<NonEmptyStr>
+      machine: FlexMachineKey
+    }
+
 fn flex_bind_attempt_to_offer(
   offer: VastAiOffer,
   attempt: FlexBidAttempt<NonEmptyStr>,
-) -> FlexBidAttempt<NonEmptyStr> {
+) -> FlexOfferBind {
   let machine = flex_machine_key_for_offer(account: attempt.machine.account, offer: offer)
-  let candidates = match flex_candidates_from_vast_offer(offer: offer, machine: machine) {
-    VastCandidateDerived { candidates: cs } => cs
-    VastCandidateConsequencesUnestablished { offer_key: _, missing: _ } => []
-  }
-  FlexBidAttempt {
-    machine: machine,
-    min_bid: offer.min_bid,
-    quote_currency: vast_ai_quote_currency,
-    candidates: candidates,
-    subject: attempt.subject,
-    on_demand_reference: attempt.on_demand_reference,
-    requirements: attempt.requirements,
-    reservation: attempt.reservation,
-    generation: attempt.generation,
-    delay_valuation: attempt.delay_valuation,
-    tie: attempt.tie,
-    affinity: attempt.affinity,
-    market: attempt.market,
+  match flex_candidates_from_vast_offer(offer: offer, machine: machine) {
+    VastCandidateConsequencesUnestablished { offer_key: k, missing: ms } =>
+      FlexAttemptCandidateUnestablished { offer_key: k, missing: ms, machine: machine }
+    VastCandidateDerived { candidates: cs } =>
+      FlexAttemptBound {
+        attempt: FlexBidAttempt {
+          machine: machine,
+          min_bid: offer.min_bid,
+          quote_currency: vast_ai_quote_currency,
+          candidates: cs,
+          subject: attempt.subject,
+          on_demand_reference: attempt.on_demand_reference,
+          requirements: attempt.requirements,
+          reservation: attempt.reservation,
+          generation: attempt.generation,
+          delay_valuation: attempt.delay_valuation,
+          tie: attempt.tie,
+          affinity: attempt.affinity,
+          market: attempt.market,
+        },
+      }
   }
 }
 
@@ -529,29 +541,41 @@ fn flex_shadow_bid(
   offer: VastAiOffer,
   attempt: FlexBidAttempt<NonEmptyStr>,
 ) -> FlexShadowBidReceipt {
-  let bound = flex_bind_attempt_to_offer(offer: offer, attempt: attempt)
-  match vast_ai_min_bid_money_per_hour(offer: offer) {
-    DecimalMoneyPerHourRefused { conversion: c } =>
+  match flex_bind_attempt_to_offer(offer: offer, attempt: attempt) {
+    FlexAttemptCandidateUnestablished { offer_key: k, missing: ms, machine: machine } =>
       FlexShadowBidReceipt {
         offer_id: offer.id,
-        offer_key: flex_vast_offer_key(offer: offer),
-        machine: bound.machine,
-        admission: FlexBidRefused { cause: FlexDecimalConversionRefused { conversion: c } },
+        offer_key: k,
+        machine: machine,
+        admission: FlexBidRefused {
+          cause: FlexCandidateConsequencesUnestablished { offer_key: k, missing: ms },
+        },
         actuation: policy.actuation,
       }
-    DecimalMoneyPerHourConverted { rate: _ } =>
-      FlexShadowBidReceipt {
-        offer_id: offer.id,
-        offer_key: flex_vast_offer_key(offer: offer),
-        machine: bound.machine,
-        admission: flex_bid_admission(
-          policy: policy,
-          occupancy: occupancy,
-          window: window,
-          account: account,
-          attempt: bound,
-        ),
-        actuation: policy.actuation,
+    FlexAttemptBound { attempt: bound } =>
+      match vast_ai_min_bid_money_per_hour(offer: offer) {
+        DecimalMoneyPerHourRefused { conversion: c } =>
+          FlexShadowBidReceipt {
+            offer_id: offer.id,
+            offer_key: flex_vast_offer_key(offer: offer),
+            machine: bound.machine,
+            admission: FlexBidRefused { cause: FlexDecimalConversionRefused { conversion: c } },
+            actuation: policy.actuation,
+          }
+        DecimalMoneyPerHourConverted { rate: _ } =>
+          FlexShadowBidReceipt {
+            offer_id: offer.id,
+            offer_key: flex_vast_offer_key(offer: offer),
+            machine: bound.machine,
+            admission: flex_bid_admission(
+              policy: policy,
+              occupancy: occupancy,
+              window: window,
+              account: account,
+              attempt: bound,
+            ),
+            actuation: policy.actuation,
+          }
       }
   }
 }

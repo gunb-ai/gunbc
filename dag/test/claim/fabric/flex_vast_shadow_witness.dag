@@ -35,6 +35,7 @@ import product.fabric.flex_policy {
   FlexScreenedCandidate, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused,
   FlexNewAcquisition, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
   FlexOnDemandReferenceMissing, FlexActuationDry, FlexActuationWet,
+  FlexCandidateConsequencesUnestablished,
   flex_machine_key_eq,
 }
 import product.fabric.flex_market {
@@ -49,7 +50,8 @@ import product.fabric.flex_vast_shadow {
   flex_gpu_class_rtx_5000_48gb, flex_gpu_class_72gb, flex_gpu_class_rtx_pro_6000_96gb,
   flex_gpu_class_matches, flex_offer_supported, flex_offer_in_shadow_field,
   flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
-  flex_bind_attempt_to_offer, flex_vast_offer_key, flex_keyset_page_limit,
+  flex_bind_attempt_to_offer, FlexAttemptBound, FlexAttemptCandidateUnestablished,
+  flex_vast_offer_key, flex_keyset_page_limit,
   flex_fold_instance_pages, flex_cap_from_roster,
   flex_fold_charge_pages, FlexChargesComplete, FlexChargesPartial, FlexChargesUnreadable, FlexChargesUnobserved,
   FlexInstancesPageTurn, FlexChargesPageTurn, FlexInstancesComplete, FlexInstancesUnobserved,
@@ -619,7 +621,12 @@ test fn shadow_bid_records_m0_admission_and_stays_dry() -> Bool {
     && match receipt.admission {
       FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: _ } => false
       FlexBidUnchanged { bid: _, account: _, occupancy: _, window: _ } => false
-      FlexBidRefused { cause: _ } => true
+      FlexBidRefused { cause: c } =>
+        match c {
+          FlexCandidateConsequencesUnestablished { offer_key: k, missing: ms } =>
+            (k == flex_vast_offer_key(offer: offer)) && ((ms |> length) > 0)
+          _ => false
+        }
     }
 }
 
@@ -658,12 +665,20 @@ test fn a_foreign_candidate_identity_does_not_ride_the_vast_offer() -> Bool {
   (ra.offer_key == rb.offer_key)
     && (ra.offer_key == flex_vast_offer_key(offer: offer))
     && (ra.offer_key != ("offer-42" as OfferKey))
-    && (bound_a.candidates |> length) == 0
-    && (bound_b.candidates |> length) == 0
-    && match flex_candidates_from_vast_offer(offer: offer, machine: bound_a.machine) {
-      VastCandidateConsequencesUnestablished { offer_key: k, missing: ms } =>
+    && match bound_a {
+      FlexAttemptCandidateUnestablished { offer_key: k, missing: ms, machine: _ } =>
         (k == flex_vast_offer_key(offer: offer)) && ((ms |> length) > 0)
-      VastCandidateDerived { candidates: _ } => false
+      FlexAttemptBound { attempt: _ } => false
+    }
+    && match bound_b {
+      FlexAttemptCandidateUnestablished { offer_key: k, missing: ms, machine: _ } =>
+        (k == flex_vast_offer_key(offer: offer)) && ((ms |> length) > 0)
+      FlexAttemptBound { attempt: _ } => false
+    }
+    && match ra.admission {
+      FlexBidRefused { cause: FlexCandidateConsequencesUnestablished { offer_key: k, missing: _ } } =>
+        k == flex_vast_offer_key(offer: offer)
+      _ => false
     }
 }
 

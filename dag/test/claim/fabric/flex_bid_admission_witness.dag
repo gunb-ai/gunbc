@@ -50,7 +50,7 @@ import product.fabric.flex_policy {
   FlexOnDemandReference, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
   FlexOnDemandReferenceMissing, FlexActuationDry,
   FlexHorizonPriced, FlexHorizonUnobserved, FlexHorizonRefused,
-  FlexMarketPriceUnobserved, FlexMarketQuoteCurrencyMismatch,
+  FlexMarketPriceUnobserved, FlexMarketQuoteCurrencyMismatch, FlexCandidateConsequencesUnestablished,
   flex_bid_admission, flex_price_offer,
 }
 import product.fabric.flex_market {
@@ -387,6 +387,7 @@ fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
         FlexMoneyRefused { refusal: _ } => "money"
         FlexMarketPriceUnobserved => "market-unobserved"
         FlexMarketQuoteCurrencyMismatch { left: _, right: _ } => "market-currency"
+        FlexCandidateConsequencesUnestablished { offer_key: _, missing: _ } => "candidate-unestablished"
       }
   }
 }
