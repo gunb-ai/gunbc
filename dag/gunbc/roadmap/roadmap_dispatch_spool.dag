@@ -12,6 +12,7 @@ module gunbc.roadmap.roadmap_dispatch_spool
 
 import std.algebra { trim }
 import std.types { String, NonEmptyStr, List, Bool, FilePath }
+import std.optional { Present }
 import std.content_hash { content_hash_atom }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io {
@@ -52,6 +53,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchExecutorRequest,
   DispatchExecutorRequestDecoded,
   DispatchExecutorRequestUnknown,
+  ExecutorDefault,
 }
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_belt_actuate {
@@ -63,7 +65,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
 data dispatch_request_schema: NonEmptyStr = "belt-dispatch-spool-request/v1"
 
 type DispatchSpoolRequest
-  = DispatchSpoolDispatch { node_id: String, executor: DispatchExecutorRequest, executor_word: String }
+  = DispatchSpoolDispatch { node_id: String, executor: DispatchExecutorRequest, executor_word: String? }
 
 type DispatchRequestDecode
   = DispatchRequestDecoded { request: DispatchSpoolRequest }
@@ -122,11 +124,29 @@ type DispatchRequestEnqueue
 fn dispatch_request_enqueue(
   instance_root: String,
   node_id: String,
-  executor_word: String,
+  executor_word: String?,
 ) -> DispatchRequestEnqueue {
   if trim(node_id) == "" {
     DispatchRequestNotEnqueued { detail: "dispatch spool enqueue refuses an empty node_id" }
   } else {
+    match executor_word {
+      Present { value: w } =>
+        if trim(w) == "" {
+          DispatchRequestNotEnqueued { detail: "dispatch spool enqueue refuses a present empty executor; omit the member for ExecutorDefault" }
+        } else {
+          dispatch_request_enqueue_addressed(instance_root: instance_root, node_id: node_id, executor_word: executor_word)
+        }
+      Absent =>
+        dispatch_request_enqueue_addressed(instance_root: instance_root, node_id: node_id, executor_word: executor_word)
+    }
+  }
+}
+
+fn dispatch_request_enqueue_addressed(
+  instance_root: String,
+  node_id: String,
+  executor_word: String?,
+) -> DispatchRequestEnqueue {
     let key = dispatch_spool_key(node_id: node_id, executor_word: executor_word)
     let entry = dispatch_spool_entry_name(key: key)
     let path = dispatch_request_path_for(instance_root: instance_root, key: key)
@@ -155,25 +175,31 @@ fn dispatch_request_enqueue(
         }
       }
     }
-  }
 }
 
-fn dispatch_spool_key(node_id: String, executor_word: String) -> String {
+fn dispatch_spool_key(node_id: String, executor_word: String?) -> String {
   content_hash_atom(
-    value: join([dispatch_request_schema as String, "|", node_id, "|", executor_word], "") as NonEmptyStr,
+    value: join([
+      dispatch_request_schema as String,
+      "|",
+      node_id,
+      match executor_word {
+        Absent => "|executor-absent"
+        Present { value: w } => join(["|executor-present|", w], "")
+      },
+    ], "") as NonEmptyStr,
   ).digest as String
 }
 
-fn dispatch_request_json(node_id: String, executor_word: String) -> String {
+fn dispatch_request_json(node_id: String, executor_word: String?) -> String {
   serialize_json(v: json_object(members: concat(
     [
       json_kv(key: "schema", value: json_string(s: dispatch_request_schema as String)),
       json_kv(key: "node_id", value: json_string(s: node_id)),
     ],
-    if executor_word == "" {
-      [] as List<JsonKeyValue>
-    } else {
-      [json_kv(key: "executor", value: json_string(s: executor_word))]
+    match executor_word {
+      Absent => [] as List<JsonKeyValue>
+      Present { value: w } => [json_kv(key: "executor", value: json_string(s: w))]
     },
   )))
 }
@@ -215,8 +241,9 @@ fn dispatch_request_decode_dispatch_fields(doc: JsonValue) -> DispatchRequestDec
             } else {
               match json_field_string(obj: doc, key: "executor") {
                 FieldMalformed { cause: c } => DispatchRequestUndecodable { reason: c }
-                FieldAbsent => dispatch_request_decode_executor(node_id: node_id, executor_word: "")
-                FieldRead { value: w } => dispatch_request_decode_executor(node_id: node_id, executor_word: w)
+                FieldAbsent => dispatch_request_decode_executor(node_id: node_id, executor_word: none)
+                FieldRead { value: w } =>
+                  dispatch_request_decode_executor(node_id: node_id, executor_word: Present { value: w })
               }
             }
         }
@@ -224,19 +251,36 @@ fn dispatch_request_decode_dispatch_fields(doc: JsonValue) -> DispatchRequestDec
   }
 }
 
-fn dispatch_request_decode_executor(node_id: String, executor_word: String) -> DispatchRequestDecode {
-  match decode_dispatch_executor_request(word: executor_word) {
-    DispatchExecutorRequestUnknown { word, known } =>
-      DispatchRequestUndecodable {
-        reason: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", ")], ""),
-      }
-    DispatchExecutorRequestDecoded { request: executor } =>
+fn dispatch_request_decode_executor(node_id: String, executor_word: String?) -> DispatchRequestDecode {
+  match executor_word {
+    Absent =>
       DispatchRequestDecoded {
         request: DispatchSpoolDispatch {
           node_id: node_id,
-          executor: executor,
-          executor_word: executor_word,
+          executor: ExecutorDefault,
+          executor_word: none,
         },
+      }
+    Present { value: w } =>
+      if trim(w) == "" {
+        DispatchRequestUndecodable {
+          reason: "dispatch request executor member is present and empty; omit the member for ExecutorDefault",
+        }
+      } else {
+        match decode_dispatch_executor_request(word: w) {
+          DispatchExecutorRequestUnknown { word, known } =>
+            DispatchRequestUndecodable {
+              reason: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", ")], ""),
+            }
+          DispatchExecutorRequestDecoded { request: executor } =>
+            DispatchRequestDecoded {
+              request: DispatchSpoolDispatch {
+                node_id: node_id,
+                executor: executor,
+                executor_word: Present { value: w },
+              },
+            }
+        }
       }
   }
 }
@@ -368,12 +412,17 @@ fn dispatch_spool_answer_admitted(
       )
       let write = Filesystem.Write(
         path: join([dispatch_answer_dir(instance_root: instance_root), "/", entry], ""),
-        content: serialize_json(v: json_object(members: [
-          json_kv(key: "schema", value: json_string(s: "belt-dispatch-spool-answer/v1")),
-          json_kv(key: "node_id", value: json_string(s: node_id)),
-          json_kv(key: "executor", value: json_string(s: executor_word)),
-          json_kv(key: "spawn", value: belt_spawn_outcome_json(o: spawn)),
-        ])),
+        content: serialize_json(v: json_object(members: concat(
+          [
+            json_kv(key: "schema", value: json_string(s: "belt-dispatch-spool-answer/v1")),
+            json_kv(key: "node_id", value: json_string(s: node_id)),
+            json_kv(key: "spawn", value: belt_spawn_outcome_json(o: spawn)),
+          ],
+          match executor_word {
+            Absent => [] as List<JsonKeyValue>
+            Present { value: w } => [json_kv(key: "executor", value: json_string(s: w))]
+          },
+        ))),
       )
       if !write.success {
         dispatch_spool_retire_request(

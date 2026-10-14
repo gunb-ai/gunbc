@@ -539,7 +539,7 @@ fn belt_dispatch_spool_enqueue_cli(node_id: String) -> ProcessExit {
       match dispatch_request_enqueue(
         instance_root: instance.instance_root as String,
         node_id: node_id,
-        executor_word: "",
+        executor_word: none,
       ) {
         DispatchRequestEnqueued { path: _, entry: _ } => ExitSuccess
         DispatchRequestNotEnqueued { detail } => exit_failure(reason: detail)
