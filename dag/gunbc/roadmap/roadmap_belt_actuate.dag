@@ -37,6 +37,10 @@ import gunbc.dispatch_credential_snapshot {
   CredentialSnapshotRemoved,
   CredentialSnapshotRemovalFailed,
 }
+import gunbc.dispatch.credential_acquisition {
+  credential_admit_reader_or_discard,
+  LaunchAdmitted, LaunchLostSnapshotDiscarded, LaunchLostDiscardFailed,
+}
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch {
   PreparedAttemptLaunch,
@@ -1427,6 +1431,24 @@ fn belt_persist_oracle_pin_for_instance(
 // its command, its properties and its output redirection in one call -- so its start phase is
 // empty. An empty step list is executed as a no-op by belt_exec_steps, which is the honest encoding
 // of "this container has nothing further to do", not a skipped check.
+type BeltCredentialAdmit
+  = BeltCredentialAdmitOk
+  | BeltCredentialAdmitLost { detail: String }
+
+fn belt_credential_admit_before_spawn(prepared: PreparedAttemptLaunch) -> BeltCredentialAdmit {
+  match prepared_attempt_launch_alternative(prepared: prepared) {
+    SnapshotFreeLaunch { attempt: _, executor: _ } => BeltCredentialAdmitOk
+    SnapshotLaunch { snapshot } =>
+      match credential_admit_reader_or_discard(snapshot: snapshot) {
+        LaunchAdmitted => BeltCredentialAdmitOk
+        LaunchLostSnapshotDiscarded =>
+          BeltCredentialAdmitLost { detail: "begin_launch lost; snapshot discarded" }
+        LaunchLostDiscardFailed { reason: r } =>
+          BeltCredentialAdmitLost { detail: r as String }
+      }
+  }
+}
+
 fn belt_session_container_create(
   instance: HostDashboardInstance,
   attempt_key: String,
@@ -3174,6 +3196,16 @@ fn belt_spawn_admitted(
                 launch: launch,
               }
             ExecStepsOk =>
+              match belt_credential_admit_before_spawn(prepared: prepared) {
+                BeltCredentialAdmitLost { detail } =>
+                  SpawnFailed {
+                    node_id: node.node as String,
+                    step: "credential-begin-launch",
+                    detail: detail,
+                    provider: provider_wire_label,
+                    launch: launch,
+                  }
+                BeltCredentialAdmitOk =>
               match belt_session_container_create(
                 instance: instance,
                 attempt_key: attempt_key,
@@ -3232,6 +3264,7 @@ fn belt_spawn_admitted(
                       }
                     }
                   }
+              }
               }
           }
       }

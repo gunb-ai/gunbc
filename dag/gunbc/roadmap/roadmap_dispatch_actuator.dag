@@ -257,7 +257,7 @@ import gunbc.dispatch_credential_snapshot {
   CredentialSnapshotRemovalFailed,
   credential_snapshot_tombstone_body,
 }
-import gunbc.dispatch.credential_acquisition { credential_register_then_take, credential_admit_reader_or_discard, LaunchAdmitted, LaunchLostSnapshotDiscarded, LaunchLostDiscardFailed }
+import gunbc.dispatch.credential_acquisition { credential_register_then_take }
 import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
 import gunbc.worker_turn_snapshot_custody {
   claude_worker_turn_snapshot_custody,
@@ -2648,12 +2648,6 @@ fn dispatch_provider_inner_argv_for_launch(
   let model = prepared_attempt_model(prepared: prepared)
   match prepared_attempt_launch_alternative(prepared: prepared) {
     SnapshotLaunch { snapshot } =>
-      match credential_admit_reader_or_discard(snapshot: snapshot) {
-        LaunchLostSnapshotDiscarded =>
-          ClaudeProviderCredentialUnbound { reason: "begin_launch lost; snapshot discarded" as NonEmptyStr }
-        LaunchLostDiscardFailed { reason: r } =>
-          ClaudeProviderCredentialUnbound { reason: r }
-        LaunchAdmitted =>
       match taken_credential_snapshot_executor(snapshot: snapshot) {
         ClaudeFromSnapshot =>
           claude_inner_argv_for_credential(
@@ -2689,7 +2683,6 @@ fn dispatch_provider_inner_argv_for_launch(
               CursorWorkerTurnRefused { reason } => CursorProviderCredentialUnbound { reason: reason }
             }
           }
-      }
       }
     SnapshotFreeLaunch { attempt: _, executor } =>
       match executor {
