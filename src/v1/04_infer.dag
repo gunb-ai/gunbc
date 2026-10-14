@@ -10815,13 +10815,15 @@ fn present_value_expected_from_optional(type_name: String, field_name: String, v
     match expected {
       Absent => none
       Present { value: exp } =>
-        let peeled_optional = (exp.return_cardinality == CardOptional)
-          || (exp.name == "Optional" && (exp.children |> count) == 1)
-          || (exp.name == "Optional" && exp.connective == Disj)
-        if peeled_optional == false {
+        let inner = extract_optional_inner_node(n: exp)
+        let peeled = inner.occurrence_identity != exp.occurrence_identity
+          || inner.name != exp.name
+          || (inner.children |> count) != (exp.children |> count)
+          || inner.connective != exp.connective
+          || inner.return_cardinality != exp.return_cardinality
+        if peeled == false {
           none
         } else {
-          let inner = extract_optional_inner_node(n: exp)
           match value.expr_data {
             ExprRecordLit { parent_enum: _ } => Present { value: inner }
             ExprListLit =>

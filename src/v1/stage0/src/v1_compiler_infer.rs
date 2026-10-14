@@ -17303,16 +17303,18 @@ pub fn present_value_expected_from_optional(
         } else {
             match expected.clone() {
                 Some(exp) => {
-                    let peeled_optional = ((exp.return_cardinality.clone()
-                        == Cardinality::CardOptional)
-                        || ((exp.name.clone() == "Optional".to_string())
-                            && ((exp.children.clone().len() as i64) == 1))
-                        || ((exp.name.clone() == "Optional".to_string())
-                            && (exp.connective.clone() == Disj)));
-                    if (peeled_optional.clone() == false) {
+                    let inner = extract_optional_inner_node(exp.clone());
+                    let peeled = ((inner.occurrence_identity.clone()
+                        != exp.occurrence_identity.clone())
+                        || (inner.name.clone() != exp.name.clone())
+                        || ((inner.children.clone().len() as i64)
+                            != (exp.children.clone().len() as i64))
+                        || (inner.connective.clone() != exp.connective.clone())
+                        || (inner.return_cardinality.clone()
+                            != exp.return_cardinality.clone()));
+                    if (peeled.clone() == false) {
                         std::option::Option::None
                     } else {
-                        let inner = extract_optional_inner_node(exp.clone());
                         match (*value.expr_data.clone()).clone() {
                             ExprData::ExprRecordLit { parent_enum: _, .. } => Some(inner.clone()),
                             ExprData::ExprListLit => {

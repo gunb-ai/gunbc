@@ -1575,15 +1575,8 @@ Rc::new(NodeResolveResult {
                         });
                         let resolved_args = Rc::new({
                             let mut __result = Vec::new();
-                            for (idx, child) in n.children.clone().iter().cloned().enumerate() {
-                                if let Some(ar) = arg_results.get(idx).cloned() {
-                                    __result.push(rendered_use_site_type(
-                                        child.clone(),
-                                        ar.resolved.clone(),
-                                    ));
-                                } else {
-                                    __result.push(child.clone());
-                                }
+                            for ar in arg_results.iter().cloned() {
+                                __result.push(ar.resolved.clone());
                             }
                             __result
                         });
@@ -1906,7 +1899,7 @@ Rc::new(NodeResolveResult {
                                     ident: None,
                                 });
                                 Rc::new(NodeResolveResult {
-                                    resolved: Rc::new(Node {
+                                    resolved: stamp_kernel_collection(Rc::new(Node {
                                         occurrence_identity: n.occurrence_identity.clone(),
                                         name: type_name.clone(),
                                         span: n.span.clone(),
@@ -1917,7 +1910,7 @@ Rc::new(NodeResolveResult {
                                         ]),
                                         connective: n.connective.clone(),
                                         params: n.params.clone(),
-                                        inferred: n.inferred.clone(),
+                                        inferred: std::option::Option::None,
                                         return_cardinality: n.return_cardinality.clone(),
                                         uses: n.uses.clone(),
                                         body: n.body.clone(),
@@ -1932,7 +1925,7 @@ Rc::new(NodeResolveResult {
                                         declaration: n.declaration.clone(),
                                         expr_data: Rc::new(ExprData::NoExprData),
                                         ident: None,
-                                    }),
+                                    })),
                                     diagnostics: v1_rt::concat(
                                         key_diags.clone(),
                                         val_diags.clone(),
@@ -2012,7 +2005,7 @@ Rc::new(NodeResolveResult {
                                                 ident: None,
                                             });
                                             Rc::new(NodeResolveResult {
-                                                resolved: Rc::new(Node {
+                                                resolved: stamp_kernel_collection(Rc::new(Node {
                                                     occurrence_identity: n
                                                         .occurrence_identity
                                                         .clone(),
@@ -2022,7 +2015,7 @@ Rc::new(NodeResolveResult {
                                                     children: Rc::new(vec![resolved_child.clone()]),
                                                     connective: n.connective.clone(),
                                                     params: n.params.clone(),
-                                                    inferred: n.inferred.clone(),
+                                                    inferred: std::option::Option::None,
                                                     return_cardinality: n
                                                         .return_cardinality
                                                         .clone(),
@@ -2041,7 +2034,7 @@ Rc::new(NodeResolveResult {
                                                     declaration: n.declaration.clone(),
                                                     expr_data: Rc::new(ExprData::NoExprData),
                                                     ident: None,
-                                                }),
+                                                })),
                                                 diagnostics: el_diags.clone(),
                                             })
                                         }
@@ -2395,6 +2388,33 @@ pub fn resolve_field(
             diagnostics: v1_rt::concat(type_diags.clone(), default_diags.clone()),
         })
     }
+}
+
+pub fn stamp_kernel_collection(n: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        occurrence_identity: n.occurrence_identity.clone(),
+        name: n.name.clone(),
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: n.children.clone(),
+        connective: n.connective.clone(),
+        params: n.params.clone(),
+        inferred: Some(Rc::new(InferredNode::Resolved { node: n.clone() })),
+        return_cardinality: n.return_cardinality.clone(),
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive.clone(),
+        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        match_pattern: n.match_pattern.clone(),
+        module_item_kind: n.module_item_kind.clone(),
+        declaration_marker: n.declaration_marker.clone(),
+        declaration: n.declaration.clone(),
+        expr_data: n.expr_data.clone(),
+        ident: n.ident.clone(),
+    })
 }
 
 pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node> {
@@ -4403,7 +4423,13 @@ pub fn resolve_item_types(
                 let mut __result = Vec::new();
                 for child in item.children.clone().iter().cloned() {
                     __result.push({
-                        let authored_type = crate::v1_std_core::field_node_type_expr(child.clone());
+                        let authored_type = match child.children.clone().first().cloned() {
+                            Some(v) => v.clone(),
+                            std::option::Option::None => match child.inferred.as_deref() {
+                                Some(InferredNode::Resolved { node: t }) => t.clone(),
+                                _ => crate::v1_std_core::field_node_type_expr(child.clone()),
+                            },
+                        };
                         let tr =
                             resolve_node(authored_type.clone(), env.clone(), module_name.clone());
                         let type_diags = v1_rt::concat(
@@ -4423,11 +4449,13 @@ pub fn resolve_item_types(
                                 children: child.children.clone(),
                                 connective: child.connective.clone(),
                                 params: child.params.clone(),
-                                inferred: field_inferred_with_declaration(
-                                    child.clone(),
-                                    tp_names.clone(),
-                                    env.clone(),
-                                ),
+                                inferred: Some(Rc::new(InferredNode::Resolved {
+                                    node: reference_tree_with_declaration(
+                                        tr.resolved.clone(),
+                                        tp_names.clone(),
+                                        env.clone(),
+                                    ),
+                                })),
                                 return_cardinality: child.return_cardinality.clone(),
                                 uses: child.uses.clone(),
                                 body: child.body.clone(),
@@ -4490,11 +4518,13 @@ pub fn resolve_item_types(
                                                 children: field.children.clone(),
                                                 connective: field.connective.clone(),
                                                 params: field.params.clone(),
-                                                inferred: field_inferred_with_declaration(
-                                                    field.clone(),
-                                                    tp_names.clone(),
-                                                    env.clone(),
-                                                ),
+                                                inferred: Some(Rc::new(InferredNode::Resolved {
+                                                    node: reference_tree_with_declaration(
+                                                        tr.resolved.clone(),
+                                                        tp_names.clone(),
+                                                        env.clone(),
+                                                    ),
+                                                })),
                                                 return_cardinality: field
                                                     .return_cardinality
                                                     .clone(),
