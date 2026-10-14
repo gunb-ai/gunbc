@@ -831,13 +831,13 @@ fn compile_stage0(
 ) -> Result<HashMap<String, String>, String> {
     // This is the one emission whose population IS the stage0 seed, so the host shell's module
     // roster is read from its lib.rs and the package graph from the emitted tree's own partition.
-    let host_shell_modules = super::emitted_closure_compile_host::closure_modules(
+    let declared_shell_modules = super::emitted_closure_compile_host::closure_modules(
         &workspace_root().join("src/v1/stage0/src/lib.rs"),
     )?;
     compile_stage0_admitted(
         sources,
         selection,
-        Rc::new(host_shell_modules.into_iter().collect()),
+        Rc::new(declared_shell_modules.into_iter().collect()),
         emitted_tree_packages(&workspace_root())?,
     )
 }
@@ -4642,14 +4642,14 @@ fn convergence_surface_roles(
             _ => {}
         }
     }
-    let host_shell_modules = super::emitted_closure_compile_host::binary_modules(
+    let seed_binary_modules = super::emitted_closure_compile_host::binary_modules(
         &workspace.join("src/v1/stage0/src/lib.rs"),
     )?
     .into_iter()
     .collect::<BTreeSet<_>>();
     let partition_rows =
         crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows();
-    let seed_modules = assembled_seed_modules(host_shell_modules, partition_rows.as_ref());
+    let seed_modules = assembled_seed_modules(seed_binary_modules, partition_rows.as_ref());
     let seed_embedded_basenames = seed_modules
         .into_iter()
         .map(|module| format!("{module}.rs"))
@@ -4665,7 +4665,7 @@ fn convergence_surface_roles(
 }
 
 fn assembled_seed_modules(
-    mut host_shell_modules: BTreeSet<String>,
+    mut seed_binary_modules: BTreeSet<String>,
     partition_rows: &crate::std_types::List<
         Rc<crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateRow>,
     >,
@@ -4674,13 +4674,13 @@ fn assembled_seed_modules(
     for row in partition_rows.iter() {
         match row.kind {
             GeneratedFoundationCrate | GeneratedLayeredCoreCrate => {
-                host_shell_modules.extend(row.modules.iter().cloned());
+                seed_binary_modules.extend(row.modules.iter().cloned());
             }
             // Emit-core and facade crates are consumers/re-exports, not module-bearing assembly owners.
             GeneratedEmitCoreCrate | GeneratedFacadeCrate => {}
         }
     }
-    host_shell_modules
+    seed_binary_modules
 }
 
 fn convergence_plan_from_model(
@@ -5124,9 +5124,9 @@ fn install_convergence_stage(
     // The generated shell declares the emitted modules not owned by a partition.
     // Read the same declaration surface convergence_surface_roles uses for seed
     // membership; missing partition ownership alone must never imply shell ownership.
-    let host_shell_modules =
+    let declared_shell_modules =
         super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
-    let actuation = partition_rebuild_actuation(source_roots, basenames, &host_shell_modules)?;
+    let actuation = partition_rebuild_actuation(source_roots, basenames, &declared_shell_modules)?;
     install_convergence_stage_with_backend(
         model,
         workspace,
@@ -6159,7 +6159,7 @@ pub fn run_regen_round_cost(
         drained_marks,
     )
     .map_err(|cause| cause.to_string())?;
-    let host_shell_modules =
+    let declared_shell_modules =
         super::emitted_closure_compile_host::closure_modules(&stage0_src.join("lib.rs"))?;
     let rendered = render_round_cost_receipt(
         source_roots,
@@ -6173,7 +6173,7 @@ pub fn run_regen_round_cost(
         &changed_paths,
         &convergence_stage_receipt_ids,
         &installed_mirrors,
-        &host_shell_modules,
+        &declared_shell_modules,
         &rebuild_packages,
         &executable_digest,
         &second_generation_candidate_digest,
@@ -6472,7 +6472,7 @@ mod regen_round_cost_tests {
     #[test]
     fn assembled_seed_includes_foundation_and_layered_partitions_not_emit_consumer() {
         let workspace = workspace_root();
-        let host_shell_modules = super::super::emitted_closure_compile_host::closure_modules(
+        let seed_binary_modules = super::super::emitted_closure_compile_host::binary_modules(
             &workspace.join("src/v1/stage0/src/lib.rs"),
         )
         .expect("the executable assembly manifest resolves")
@@ -6480,7 +6480,7 @@ mod regen_round_cost_tests {
         .collect::<BTreeSet<_>>();
         let rows =
             crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows();
-        let assembled = assembled_seed_modules(host_shell_modules, rows.as_ref());
+        let assembled = assembled_seed_modules(seed_binary_modules, rows.as_ref());
         assert!(assembled.contains("v1_rt"));
         assert!(assembled.contains("std_content_hash"));
         assert!(assembled.contains("std_measure"));
