@@ -9,7 +9,7 @@ import std.measure {
   ByteSize, gibibyte, gibibyte_to_byte_size, byte_size, byte_size_count,
 }
 import extdeps.currency.currency { Usd }
-import std.decision { SelectedWithin }
+import std.decision { SelectedWithin, ValuedObjective, CostPerAcceptedUnit, NetValue }
 import product.fabric.flex_market {
   FlexBidLevel, FlexBidLevelThreeFifths, FlexBidLevelFourFifths, FlexBidLevelMarket,
   FlexMarketQuoted, FlexMarketUnobserved,
@@ -26,7 +26,7 @@ import product.fabric.flex_market {
   flex_vram_class, flex_ownership, flex_ours_only,
   flex_owner_label_gunbc_flex, flex_card_dead, flex_cleanup_dead, flex_release_admit,
   flex_held_effective_rate, flex_dollars_per_vram, FlexVramHourlyQuoted, FlexVramHourlyZeroCapacity,
-  flex_rank_entry, flex_select_owned_cards,
+  flex_rank_entry, flex_select_owned_cards, flex_rank_policy, flex_rank_objective, flex_term_vram_hour,
   FlexRentalSample,
   FlexCardUnitEstablished, FlexCardUnitUnconfirmed, flex_rented_card_fungible, flex_ninfer_qwen_probe,
 }
@@ -348,6 +348,30 @@ test fn ranking_selects_the_held_card_when_the_premium_covers_a_small_price_gap(
     SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: id_held)
     _ => false
   }
+}
+
+test fn ranking_policy_is_net_value_on_vram_hour_not_cost_per_accepted_work() -> Bool {
+  match flex_rank_policy(currency: Usd) {
+    ValuedObjective { identity: id, valuations: vs, measure: m, currency: _ } =>
+      match m {
+        CostPerAcceptedUnit { unit: _ } => false
+        NetValue =>
+          declaration_ref_eq(a: id, b: flex_rank_objective)
+            && ((vs |> count) == 1)
+            && match vs.first() {
+              Absent => false
+              Present { value: v } => declaration_ref_eq(a: v.term, b: flex_term_vram_hour.identity)
+            }
+      }
+    UniqueSurvivorRequired { identity: _ } => false
+    PreferSurvivor { identity: _, preferred: _ } => false
+  }
+}
+
+test fn zero_vram_rank_entry_declares_the_axis_gap() -> Bool {
+  let card = owned(id: "zero", vram: byte_size(count: 0), rate: 1000000, held: false, running: false, loading: false, outbid: false, age: 0)
+  let entry = flex_rank_entry(id: id_cheap, label: "zero" as NonEmptyStr, card: card)
+  ((entry.readings |> count) == 0) && ((entry.missing_inputs |> count) == 1)
 }
 
 test fn a_ninfer_qwen_catalog_unit_is_placeable_and_unconfirmed_is_not() -> Bool {

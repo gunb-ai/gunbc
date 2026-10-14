@@ -12,7 +12,7 @@ import std.measure {
 }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.currency.currency { CurrencyCode }
-import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.demand {
@@ -20,14 +20,14 @@ import product.fabric.demand {
   fabric_demand_required_term_ids, fabric_demand_objective_terms,
 }
 import product.fabric.supply { seconds_per_hour }
-import std.pareto { SelectionAxis, AxisReading, ParetoEntry, HigherIsBetter, LowerIsBetter }
+import std.pareto { SelectionAxis, AxisReading, AxisGap, ParetoEntry, HigherIsBetter, LowerIsBetter }
 import std.interval { degenerate_interval }
 import std.decision {
   TermValuation as DecisionTermValuation,
-  ValuedObjective, CostPerAcceptedUnit, SelectionPolicy,
+  ValuedObjective, CostPerAcceptedUnit, NetValue, SelectionPolicy,
   select_realization, RealizationSelectionResult, SelectedWithin, SelectionNeedsEvidence,
   SelectionNeedsPolicy, CandidateFieldUnestablished, NoFeasibleRealization, RealizationSelectionRefused,
-  DecisionVariable, ContextParameter, DecisionConstraint, ObjectiveMeasure, ChoiceDomain,
+  DecisionVariable, ContextParameter, DecisionConstraint, ObjectiveTerm, ObjectiveMeasure, ChoiceDomain,
   DecisionSubject, DecisionRegion, VariesAlong, MonotoneDecreasing, ConstraintSatisfied,
   ParameterBound, DecisionAssessment, PhysicalModelEstablished, CausalModelEstablished,
   FleetObservedCoupling,
@@ -45,10 +45,10 @@ import extdeps.cloud.vast_ai {
 // (read-only): gunb-ai/ctrl lib/vast_bidder.mjs, vast_rentals.mjs. No second decision algebra:
 // level choice and card ranking consume std.decision ValuedObjective / std.pareto.
 //
-// Objective relation: fabric DemandObjective is CostPerAcceptedUnit (debt_payoff). A productive
-// hour is this experiment's accepted-unit realization — serving seconds minus reconstruction —
-// until turn throughput is counted. Ranking's accepted unit is VRAM GB, a capacity proxy, not a
-// second objective.
+// Objective relation: bid-level choice uses fabric DemandObjective CostPerAcceptedUnit
+// (debt_payoff): term_money is total rental cost, term_accepted_work is productive seconds.
+// Card ranking is a different decision: NetValue over flex_term_vram_hour (MoneyPerByteHour
+// after the held switch premium). Those identities are not fabric demand terms.
 //
 // DECLARED FRONTIERS (DESIGN §3c) for bright-moth-475 (wet loop, key custody, harness placement):
 data flex_wet_consumes_market_policy: DissolutionCondition = unbound_dissolution(description: "Wet create/destroy loop executes flex_quoted_bid, flex_choose_bid_level (via flex_select_scored_level / select_realization), flex_select_owned_cards, flex_cleanup_dead, flex_release_admit, and flex_ours_only over gunbc-flex. TRIGGER: that loop remains if test.claim.fabric.flex_market_witness is deleted. SUFFICIENT FOR deleting this row.")
@@ -367,6 +367,20 @@ data flex_market_constraint: DeclarationRef = decl_ref(module_path: "product.fab
 data flex_market_region: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_market_region")
 data flex_market_domain: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_market_domain")
 data flex_market_coupling: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_market_coupling")
+data flex_rank_subject: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_rank_subject")
+data flex_rank_objective: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_rank_objective")
+data flex_rank_var: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_rank_var")
+data flex_rank_param: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_rank_param")
+data flex_rank_constraint: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_rank_constraint")
+data flex_rank_region: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_rank_region")
+data flex_rank_domain: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_rank_domain")
+data flex_rank_coupling: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_rank_coupling")
+data flex_rank_evidence: DeclarationRef = decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_rank_evidence")
+
+data flex_term_vram_hour: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.fabric.flex_market", decl_name: "flex_term_vram_hour"),
+  ground: TranscribedUncited { read_obligation: "card rank is money per VRAM-byte-hour after the held switch premium, not fabric accepted-work" as NonEmptyStr },
+}
 
 data flex_market_physical_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.vast.ai/api-reference/search/search-offers" }
@@ -418,7 +432,7 @@ fn flex_market_assessment() -> DecisionAssessment {
   DecisionAssessment {
     subject: DecisionSubject {
       identity: flex_market_subject,
-      question: "which interruptible bid level or card realizes cost per accepted unit" as NonEmptyStr,
+      question: "which interruptible bid level realizes cost per productive serving second" as NonEmptyStr,
       parameters: [ContextParameter { identity: flex_market_param }],
       constraints: [DecisionConstraint { identity: flex_market_constraint }],
       objective: ObjectiveMeasure {
@@ -469,7 +483,7 @@ fn flex_select_scored_level(tallies: List<FlexLevelTally>, currency: CurrencyCod
     field: map(flex_scored_levels(tallies: tallies), t =>
       flex_level_entry(id: flex_level_identity(level: t.level), label: "bid-level" as NonEmptyStr, tally: t)
     ),
-    axes: flex_rank_axes(),
+    axes: flex_level_axes(),
     constraints: [],
     constraint_authority: flex_level_constraints,
     policy: flex_level_valued_policy(currency: currency),
@@ -477,16 +491,65 @@ fn flex_select_scored_level(tallies: List<FlexLevelTally>, currency: CurrencyCod
   )
 }
 
+fn flex_rank_assessment() -> DecisionAssessment {
+  let term_ids = [flex_term_vram_hour.identity]
+  DecisionAssessment {
+    subject: DecisionSubject {
+      identity: flex_rank_subject,
+      question: "which owned interruptible card has the lowest money per VRAM-byte-hour" as NonEmptyStr,
+      parameters: [ContextParameter { identity: flex_rank_param }],
+      constraints: [DecisionConstraint { identity: flex_rank_constraint }],
+      objective: ObjectiveMeasure {
+        identity: flex_rank_objective,
+        goal: LowerIsBetter,
+        terms: [flex_term_vram_hour],
+      },
+      choice_domain: ChoiceDomain {
+        identity: flex_rank_domain,
+        variables: [DecisionVariable { identity: flex_rank_var }],
+      },
+    },
+    sensitivities: [
+      VariesAlong {
+        term: flex_term_vram_hour.identity,
+        variable: flex_rank_var,
+        region: DecisionRegion { identity: flex_rank_region },
+        relation: MonotoneDecreasing,
+        coupling: CitedToAuthority { authority: flex_market_physical_authority },
+      }
+    ],
+    constraints: [
+      ConstraintSatisfied { constraint: flex_rank_constraint, evidence: "flex card rank hard constraints are empty" as NonEmptyStr },
+    ],
+    parameters: [
+      ParameterBound { parameter: flex_rank_param, evidence: "flex interruptible card rank" as NonEmptyStr },
+    ],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: term_ids },
+    causal_model: CausalModelEstablished {
+      couplings: [
+        FleetObservedCoupling {
+          receipt: flex_rank_coupling,
+          term: flex_term_vram_hour.identity,
+          variable: flex_rank_var,
+          subject: flex_rank_subject,
+        }
+      ],
+    },
+  }
+}
+
 fn flex_select_owned_cards(entries: List<ParetoEntry>, currency: CurrencyCode) -> RealizationSelectionResult<ParetoEntry> {
   select_realization(
-    assessment: flex_market_assessment(),
+    assessment: flex_rank_assessment(),
     candidate_field_identity: flex_card_field,
     field: entries,
     axes: flex_rank_axes(),
     constraints: [],
-    constraint_authority: flex_level_constraints,
+    constraint_authority: flex_rank_constraint,
     policy: flex_rank_policy(currency: currency),
-    evidence_snapshot: flex_level_evidence,
+    evidence_snapshot: flex_rank_evidence,
   )
 }
 
@@ -596,20 +659,29 @@ fn flex_dollars_per_vram(rate: MoneyPerHour, vram: ByteSize) -> FlexVramHourly {
 
 fn flex_rank_entry(id: DeclarationRef, label: NonEmptyStr, card: FlexOwnedCard) -> ParetoEntry {
   let effective = flex_held_effective_rate(rate: card.rate, held: card.held && (card.running || card.loading))
-  ParetoEntry {
-    identity: id,
-    display_label: label,
-    readings: [
-      AxisReading { axis: term_money.identity, interval_micro: degenerate_interval(point: money_per_hour_micros(q: effective) as Int) },
-      AxisReading { axis: term_delay.identity, interval_micro: degenerate_interval(point: 0) },
-      AxisReading { axis: term_interruption.identity, interval_micro: degenerate_interval(point: 0) },
-      AxisReading { axis: term_accepted_work.identity, interval_micro: degenerate_interval(point: byte_size_count(b: card.vram) as Int) },
-    ],
-    missing_inputs: [],
+  match flex_dollars_per_vram(rate: effective, vram: card.vram) {
+    FlexVramHourlyZeroCapacity =>
+      ParetoEntry {
+        identity: id,
+        display_label: label,
+        readings: [],
+        missing_inputs: [
+          AxisGap { axis: flex_term_vram_hour.identity, cause: "VRAM capacity is zero so money per byte-hour is unwritable" as NonEmptyStr },
+        ],
+      }
+    FlexVramHourlyQuoted { rate: ev } =>
+      ParetoEntry {
+        identity: id,
+        display_label: label,
+        readings: [
+          AxisReading { axis: flex_term_vram_hour.identity, interval_micro: degenerate_interval(point: money_amount_micro_count(m: ev.amount) as Int) },
+        ],
+        missing_inputs: [],
+      }
   }
 }
 
-fn flex_rank_axes() -> List<SelectionAxis> {
+fn flex_level_axes() -> List<SelectionAxis> {
   [
     SelectionAxis { identity: term_money.identity, goal: LowerIsBetter },
     SelectionAxis { identity: term_delay.identity, goal: LowerIsBetter },
@@ -618,8 +690,19 @@ fn flex_rank_axes() -> List<SelectionAxis> {
   ]
 }
 
+fn flex_rank_axes() -> List<SelectionAxis> {
+  [SelectionAxis { identity: flex_term_vram_hour.identity, goal: LowerIsBetter }]
+}
+
 fn flex_rank_policy(currency: CurrencyCode) -> SelectionPolicy {
-  flex_level_valued_policy(currency: currency)
+  ValuedObjective {
+    identity: flex_rank_objective,
+    valuations: [
+      DecisionTermValuation { term: flex_term_vram_hour.identity, scale_micro: money_amount_micro(count: 1), goal: LowerIsBetter },
+    ],
+    measure: NetValue,
+    currency: currency,
+  }
 }
 
 fn flex_card_dead(card: FlexOwnedCard) -> Bool {
