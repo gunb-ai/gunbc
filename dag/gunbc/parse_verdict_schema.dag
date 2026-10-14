@@ -1,6 +1,8 @@
 module gunbc.parse_verdict_schema
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE PARSE-VERDICT RECEIPT WIRE, ONE PLACE. ParseVerdictRequest stays a family of
 // std.materialization_provider ArtifactRequest (extracting the variant would fork the coproduct).
@@ -16,6 +18,30 @@ fn parse_verdict_receipt_line_prefix() -> String {
 
 fn parse_verdict_walk_accepted_line(source_digest: String) -> String {
   concat(parse_verdict_receipt_line_prefix(), source_digest, "\t", parse_verdict_receipt_accepted)
+}
+
+fn parse_verdict_stored_accepted_line(source_digest: String, compiler: String) -> String {
+  join([parse_verdict_request_family, "\t", source_digest, "\t", compiler, "\t", parse_verdict_receipt_accepted], "")
+}
+
+data parse_verdict_receipts_empty_detail: String = "ParseVerdictReceiptsEmpty: compiler-stamped walk produced no Accepted receipts"
+
+// PR-2 is the named consumer of restore-keys and of the saved receipts blob. PR-1 publishes
+// and does not restore. The trigger is the restoring step existing on pull_request heads.
+type ParseVerdictLaterConsumer {
+  declaration: DeclarationRef
+  named_consumer: NonEmptyStr
+  trigger: DissolutionCondition
+}
+
+data parse_verdict_pr2_restore_frontier: ParseVerdictLaterConsumer = ParseVerdictLaterConsumer {
+  declaration: DeclarationRef {
+    module_path: "gunbc.parse_verdict_schema",
+    decl_name: "parse_verdict_request_family",
+    field: WholeDeclaration
+  },
+  named_consumer: "gunbc.parse_verdict_restore — PR-2 restores the GHA prefix gunbc-materialization-parse-verdict-<compiler>- on pull_request and reads receipts.tsv",
+  trigger: unbound_dissolution(description: "dissolves when the PR-2 consumer step restores that prefix on pull_request heads and refuses EvictedRefused when the blob is absent")
 }
 
 // Named roots of the parse-compiler identity (not the member list). Members are

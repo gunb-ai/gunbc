@@ -5,7 +5,7 @@ import std.optional { Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
 import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_push }
-import gunbc.action_use_admission { cache_action }
+import gunbc.action_use_admission { cache_save_action }
 import gunbc.ci.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import v2.cli.population_verb_names { cli_verb_parse_population }
 import gunbc.instrument_targets { v2_native_cli_source_roots }
@@ -20,7 +20,6 @@ import gunbc.host.memory_envelope {
 import std.algebra { list_map }
 import gunbc.parse_verdict_schema {
   parse_verdict_request_family,
-  parse_verdict_receipt_accepted,
 }
 
 // POLICY (not the GitHub cache interface): this repository publishes materialization receipts
@@ -64,10 +63,10 @@ data generation_one_parse_compiler_identity_suffix: String = ".parse_compiler_id
 data parse_verdict_compiler_output: String = "compiler_identity"
 data parse_verdict_parser_bin_output: String = "parser_bin"
 
-// The walk's argv (parse-population + source roots) is modeled; the runner glue that finds the
-// generation-one binary, stamps compiler onto Accepted lines, and writes GITHUB_OUTPUT is a
-// foreign-executor shell string, same class as rust_clippy_all_targets_shell_emit_dissolution_trigger.
-data parse_verdict_publish_shell_emit_dissolution_text: NonEmptyStr = "dissolve-on: parse_verdict_publish_walk_step -- hand-shell run carrier for locating the generation-one executable, walking parse-population, and stamping compiler onto Accepted receipt lines. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders this step from modeled bash_build statements rather than a joined command string, at which point this row and the comment it projects delete together."
+// The walk's argv (parse-population --compiler + source roots) is modeled; locating the
+// generation-one binary and writing GITHUB_OUTPUT is foreign-executor shell, same class as
+// rust_clippy_all_targets_shell_emit_dissolution_trigger.
+data parse_verdict_publish_shell_emit_dissolution_text: NonEmptyStr = "dissolve-on: parse_verdict_publish_walk_step -- hand-shell run carrier for locating the generation-one executable and writing GITHUB_OUTPUT. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders this step from modeled bash_build statements rather than a joined command string, at which point this row and the comment it projects delete together."
 data parse_verdict_publish_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: parse_verdict_publish_shell_emit_dissolution_text)
 
 fn parse_verdict_identity_command() -> String {
@@ -96,9 +95,7 @@ fn parse_verdict_publish_command() -> String {
       join(["compiler=\"${{ steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_compiler_output, " }}\""], ""),
       "if [ -z \"$bin\" ] || [ ! -x \"$bin\" ] || [ -z \"$compiler\" ]; then echo \"::error::IdentityUnknown: parser identity or generation-one executable missing after the identity step\"; exit 1; fi",
       join(["mkdir -p \"", parse_verdict_receipt_dir, "\""], ""),
-      join(["\"$bin\" ", cli_verb_parse_population, source_root_argv(), " | tee \"", parse_verdict_receipt_dir, "/walk.txt\""], ""),
-      join(["while IFS= read -r line; do fam=$(printf %s \"$line\" | cut -f1); digest=$(printf %s \"$line\" | cut -f2); verdict=$(printf %s \"$line\" | cut -f3); if [ \"$fam\" = ", parse_verdict_request_family, " ] && [ \"$verdict\" = ", parse_verdict_receipt_accepted, " ]; then printf \"", parse_verdict_request_family, "\\t%s\\t%s\\t", parse_verdict_receipt_accepted, "\\n\" \"$digest\" \"$compiler\"; fi; done < \"", parse_verdict_receipt_dir, "/walk.txt\" > \"", parse_verdict_receipt_dir, "/receipts.tsv\""], ""),
-      join(["if [ ! -s \"", parse_verdict_receipt_dir, "/receipts.tsv\" ]; then echo \"::error::ParseVerdictReceiptsEmpty: stamp matched no Accepted walk lines\"; exit 1; fi"], "")
+      join(["\"$bin\" ", cli_verb_parse_population, " --compiler \"$compiler\"", source_root_argv(), " > \"", parse_verdict_receipt_dir, "/receipts.tsv\""], "")
     ],
     "; "
   )
@@ -177,18 +174,15 @@ fn parse_verdict_publish_cache_key() -> String {
   )
 }
 
-// SAVE MUST NOT OVERWRITE THE WALK. cache_action is the combined restore-then-save action, and
-// gunbc.fleet.fleet_release_bins_key records that it can prefix-restore even with no restore-keys.
-// actions/cache/save is not an admitted ActionRelease (uses text is owner/repo@commit, no
-// subdirectory). So this step runs AFTER the identity step (so the key can name the compiler) and
-// BEFORE the walk: a restore, prefix or exact, can only extract into an empty receipt dir; the
-// walk then writes receipts.tsv; the action's post step saves that. Restore-keys stay off this
-// step until a restoring consumer exists.
+// SAVE-ONLY. actions/cache (combined) restores before save and can overwrite receipts.tsv.
+// cache_save_action is the subdirectory action (save/action.yml at the same commit), admitted as
+// its own row. This step runs AFTER the walk. Restore-keys belong on the PR-2 consumer
+// (gunbc.parse_verdict_schema parse_verdict_pr2_restore_frontier).
 fn materialization_family_cache_save_step(family: String, path: String, cache_key: String) -> Step {
   UsesStep {
     name: Present { value: join(["Save ", family, " receipts to Actions cache"], "") },
     id: none,
-    uses: cache_action,
+    uses: cache_save_action,
     with: Present {
       value: [
         kv(key: "path", value: yaml_string(s: path)),
