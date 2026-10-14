@@ -37,6 +37,10 @@ import gunbc.live_deploy.slice_bounds {
   user_work_slice_memory_max_of, user_slice_backstop_memory_max_of, user_slice_backstop_memory_swap_max,
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots }
+import gunbc.live_deploy.served_slice_charge {
+  host_served_deployment_claim, ServedDeploymentClaimResolved, ServedDeploymentNotPlaced,
+  ServedDeploymentClaimUnmeasured,
+}
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_pressure_limit, gunbc_oomd_sessions_slice, pressure_is_kill }
 import extdeps.systemd {
@@ -834,6 +838,19 @@ fn user_manager_backstop_knobs() -> List<ConvergeKnob> {
   ]
 }
 
+// THE BACKSTOP IS OWED WHERE THE --user WORK IS PLACED, not on every runner host.
+// user@UID.service is the live-deploy principal (gunbc_service_uid); belt/compute transients
+// start under that user manager. host_served_deployment_claim is the same placement predicate
+// as the slice charge. A fleet-wide concat would write MemoryMax on srv3/srv4's user@1000
+// while the slice file and the charge stay on the prod-role holder.
+fn user_manager_backstop_knobs_for(host: HostIdentity) -> List<ConvergeKnob> {
+  match host_served_deployment_claim(host: host) {
+    ServedDeploymentClaimResolved { memory: _ } => user_manager_backstop_knobs()
+    ServedDeploymentNotPlaced => []
+    ServedDeploymentClaimUnmeasured { cause: _ } => []
+  }
+}
+
 fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) -> HostConverge {
   HostConverge {
     identity: h.identity,
@@ -843,7 +860,7 @@ fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) 
           concat(gunbc_pinned_tree_knobs(host: h.identity), runner_host_knobs(h: h)),
           session_knobs,
         ),
-        user_manager_backstop_knobs(),
+        user_manager_backstop_knobs_for(host: h.identity),
       ),
       codex_runtime_bundle_knobs(host: h.identity),
     ),

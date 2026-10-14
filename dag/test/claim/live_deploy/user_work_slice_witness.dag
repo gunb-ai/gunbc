@@ -26,7 +26,8 @@ import gunbc.compute.unit_bounds {
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_properties }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
-import gunbc.host.host_converge { user_manager_backstop_knobs, user_manager_instance_unit }
+import gunbc.host.host_converge { user_manager_backstop_knobs, user_manager_backstop_knobs_for, user_manager_instance_unit }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 
 fn property_words(props: List<SystemdRunProperty>) -> List<String> {
   props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
@@ -99,4 +100,9 @@ test fn host_converge_backstop_knobs_name_user_at_service_uid() -> Bool {
     && string_contains(s: user_manager_instance_unit(), pattern: "user@1000.service")
     && any(knobs, k => k.name == "user_manager_memory_max_bytes")
     && any(knobs, k => k.name == "user_manager_memory_swap_max_bytes")
+}
+
+test fn user_manager_backstop_is_owed_only_on_the_placed_host() -> Bool {
+  user_manager_backstop_knobs_for(host: operator_host_srv1).length() == 2
+    && user_manager_backstop_knobs_for(host: operator_host_srv3).length() == 0
 }
