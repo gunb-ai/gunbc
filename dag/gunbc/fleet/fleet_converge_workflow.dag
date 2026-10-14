@@ -3961,6 +3961,45 @@ fn fleet_converge_mtcollins1_boot_pair_build_step() -> Step {
   }
 }
 
+// FAN POLICY IS A PHASE OF THIS JOB, NOT A SECOND MODE. The operator addendum (2026-10-14) forbids
+// a machine sitting on a controller default unobserved after boot. The existing MtCollins1FanObserve
+// mode is not renamed; this job runs the same read (first sample is out-of-band drift, including a
+// hand-set Cooling Manager disable) before the power cycle so the series is not mixed with chassis
+// writes it cannot see. PWM apply stays unbound until set_fan_speed JSON members are cited.
+fn fleet_converge_mtcollins1_boot_fan_observe_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins fan policy phase: observe Cooling Manager and PWM (reads only; first sample is drift)" },
+    id: Present { value: "mtcollins1_boot_fan_observe" },
+    run: gunbc_ci_mtcollins1_fan_observe_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_fan_observe_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload Mt. Collins boot-phase fan observation series" },
+    id: Present { value: "mtcollins1_boot_fan_observe_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "mtcollins1-boot-fan-observation")),
+      kv(key: "path", value: yaml_string(s: mtcollins1_fan_observation_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: Step) -> List<Step> {
   concat(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []), [
     fleet_converge_mtcollins1_boot_pair_build_step(),
@@ -3971,7 +4010,9 @@ fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: 
       service_account: fleet_converge_mtcollins1_boot_service_account(),
     ),
     fleet_key_step,
+    fleet_converge_mtcollins1_boot_fan_observe_step(),
     boot_step,
+    fleet_converge_mtcollins1_boot_fan_observe_receipt_upload_step(),
     fleet_converge_mtcollins1_boot_receipt_upload_step(),
     ci_fleet_key_agent_cleanup_step(),
   ])
