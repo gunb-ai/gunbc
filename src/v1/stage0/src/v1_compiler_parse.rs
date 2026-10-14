@@ -2566,22 +2566,23 @@ pub fn tok_is_keyword_name(tok: Option<Rc<Token>>, env: Rc<ParseEnvironment>) ->
 pub fn keyword_may_bind_as_pattern_name(text: String, env: Rc<ParseEnvironment>) -> bool {
     match v1_rt::lookup(&env.non_pattern_binder_keywords.clone(), text.clone()) {
         Some(_) => false,
-        std::option::Option::None => match v1_rt::lookup(&env.non_name_keywords.clone(), text.clone())
-        {
-            Some(_) => false,
-            std::option::Option::None => true,
-        },
+        std::option::Option::None => {
+            match v1_rt::lookup(&env.non_name_keywords.clone(), text.clone()) {
+                Some(_) => false,
+                std::option::Option::None => true,
+            }
+        }
     }
 }
 
 pub fn reserved_keyword_pattern_binder_error(text: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
     parse_error(
         v1_rt::concat(
-            v1_rt::concat("pattern binder '".to_string(), text),
+            v1_rt::concat("pattern binder '".to_string(), text.clone()),
             "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier"
                 .to_string(),
         ),
-        span,
+        span.clone(),
     )
 }
 
@@ -17682,29 +17683,30 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                         err: std::option::Option::None,
                     }),
                     std::option::Option::None => {
-                        if keyword_may_bind_as_pattern_name(kw_text.clone(), ctx.env.clone())
-                        {
-                            let rest = token_stream_advance(tokens.clone(), 1);
-                            let minted = mint_parsed_node_identity(
-                                ctx.clone(),
-                                Rc::new(ParsedExtentAt::ConsumedWindow {
-                                    from: tokens.clone(),
-                                    to: rest.clone(),
-                                }),
-                            );
-                            Rc::new(PatternResult {
-                                pattern: Rc::new(MatchPattern::Bind {
-                                    declaration:
-                                        crate::v1_std_core::make_pattern_binder_declaration_node(
-                                            minted.identity.clone(),
-                                            kw_text.clone(),
-                                            span.clone(),
-                                        ),
-                                }),
-                                tokens: rest.clone(),
-                                ctx: minted.ctx.clone(),
-                                err: std::option::Option::None,
-                            })
+                        if keyword_may_bind_as_pattern_name(kw_text.clone(), ctx.env.clone()) {
+                            {
+                                let rest = token_stream_advance(tokens.clone(), 1);
+                                let minted = mint_parsed_node_identity(
+                                    ctx.clone(),
+                                    Rc::new(ParsedExtentAt::ConsumedWindow {
+                                        from: tokens.clone(),
+                                        to: rest.clone(),
+                                    }),
+                                );
+                                Rc::new(PatternResult {
+                                    pattern: Rc::new(MatchPattern::Bind {
+                                        declaration:
+                                            crate::v1_std_core::make_pattern_binder_declaration_node(
+                                                minted.identity.clone(),
+                                                kw_text.clone(),
+                                                span.clone(),
+                                            ),
+                                    }),
+                                    tokens: rest.clone(),
+                                    ctx: minted.ctx.clone(),
+                                    err: std::option::Option::None,
+                                })
+                            }
                         } else {
                             Rc::new(PatternResult {
                                 pattern: Rc::new(MatchPattern::Wildcard),
@@ -17928,25 +17930,23 @@ pub fn parse_variant_bindings_brace_acc(
                             t.text.clone(),
                         ) {
                             Some(_) => {}
-                            std::option::Option::None => {
-                                match v1_rt::lookup(
-                                    &ctx.env.clone().non_name_keywords.clone(),
-                                    t.text.clone(),
-                                ) {
-                                    Some(_) => {
-                                        return Rc::new(BindingsResult {
-                                            field_bindings: Rc::new(vec![]),
-                                            tokens: tokens.clone(),
-                                            ctx: ctx.clone(),
-                                            err: Some(reserved_keyword_pattern_binder_error(
-                                                t.text.clone(),
-                                                t.span.clone(),
-                                            )),
-                                        });
-                                    }
-                                    std::option::Option::None => {}
+                            std::option::Option::None => match v1_rt::lookup(
+                                &ctx.env.clone().non_name_keywords.clone(),
+                                t.text.clone(),
+                            ) {
+                                Some(_) => {
+                                    return Rc::new(BindingsResult {
+                                        field_bindings: Rc::new(vec![]),
+                                        tokens: tokens.clone(),
+                                        ctx: ctx.clone(),
+                                        err: Some(reserved_keyword_pattern_binder_error(
+                                            t.text.clone(),
+                                            t.span.clone(),
+                                        )),
+                                    })
                                 }
-                            }
+                                std::option::Option::None => {}
+                            },
                         }
                     }
                 }
