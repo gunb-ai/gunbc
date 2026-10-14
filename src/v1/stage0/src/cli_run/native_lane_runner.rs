@@ -24,7 +24,7 @@
 //! (the marked declarations of the `v2` modules) with the floor's own per-file discovery producer,
 //! executes every derived identity plus the authority's named live-verdict controls, mints the `NativeRouteReceipt`, and
 //! evaluates `native_route_admission` and `native_route_admission_summary` over it
-//! (`v2.compiler.compile` `native_lane_run`).
+//! (`v2.workflow.v2_native_route` `native_route_admission`).
 //!
 //! WHAT THIS MODULE NO LONGER DOES, AND WHY THE DELETION IS THE POINT. It used to bracket the
 //! route with the v1 interpreter on both ends: a Wet interpreter context folding
@@ -202,7 +202,7 @@ const CLI_DOOR_REFUSAL_EXIT: i32 = 1;
 /// THE STATUS A PARSE REFUSAL TAKES, WHICH IS NOT THE EMIT REFUSAL'S. `v2_cli_exit` maps a
 /// `CliUsageRefused` -- a command line that was not usable, decided before any walk -- to
 /// `extdeps.process.gnu_bash_exit` `exit_code_misuse`, which is `2`, the same split
-/// `v2.compiler.compile` `native_driver_plan_exit` makes. The no-entry control is such a refusal.
+/// `v2.compiler.source_root_eval` `native_driver_plan_exit` makes. The no-entry control is such a refusal.
 const CLI_DOOR_USAGE_REFUSAL_EXIT: i32 = 2;
 
 /// THE THREE MARKERS OF THE CLI'S REFUSAL RECORD, named so each is required rather than sought.
@@ -715,7 +715,7 @@ fn prepare_emitted_compiler_for_entry(
     // THE PLANTED DEFECT, ON THE ARTIFACT THIS PREPARATION IS ABOUT TO HAND ON.
     //
     // Until this block landed, both retained native build subjects -- the test driver
-    // (`v2.compiler.compile`) and the CLI (`v2.cli.compile_cli`) -- were admitted on a GREEN CARGO
+    // (`v2.compiler.source_root_eval`) and the CLI (`v2.cli.compile_cli`) -- were admitted on a GREEN CARGO
     // RUN ALONE, and this call site passed the literal
     // `"v2_native_lane_carries_no_mutation_probe"` where the required emit-compile phase passes its
     // probe symbol. A cargo phase that is green because nothing was measured is the decoration
@@ -3397,7 +3397,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
 }
 
 /// THE GENERATION-ONE EXECUTABLE OUTLIVES THE RUN, because generation two is that executable
-/// emitting `v2.compiler.compile` and nothing else may stand in for it. The probe root is NOT
+/// emitting `v2.compiler.source_root_eval` and nothing else may stand in for it. The probe root is NOT
 /// retained: once the executable is copied out and its copy re-hashes to the identity the run
 /// recorded, the root and its per-run cargo target dir have no further consumer, so it drops as
 /// `PrivateProbeRoot` is designed to. The copy is named by its own sha256, so the path names the
@@ -3995,7 +3995,7 @@ pub fn run_v2_native_frontier(source_roots: &[String]) -> Result<NativeFrontierR
 }
 
 /// THE NATIVE CENSUS, AS THE EMITTED BINARY REPORTED IT. The grouping is
-/// decided inside the binary (`v2.compiler.compile` `native_census_cause_groups_add`); the host
+/// decided inside the binary (`v2.compiler.source_root_eval` `native_census_cause_groups_add`); the host
 /// carries the terminal marker's counts and decides nothing about them.
 pub struct NativeCensusRun {
     pub cause_groups: u64,
@@ -4231,7 +4231,7 @@ fn decode_census_terminal(
 }
 
 /// WHETHER THE SCOPED RUN'S POPULATION IS THE SUBJECT'S WHOLE CLOSURE, as the terminal states it:
-/// `v2.compiler.compile` `NativeCensusScope`'s two arms, and nothing else. A blocked population is
+/// `v2.compiler.source_root_eval` `NativeCensusScope`'s two arms, and nothing else. A blocked population is
 /// carried with its block count, never reported as closed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NativeCensusScopeWord {

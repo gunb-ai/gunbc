@@ -4615,7 +4615,7 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
 /// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
 /// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
 /// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
-/// the exit are decided by `v2.compiler.compile` `native_demand_census_output`, so the host adds no
+/// the exit are decided by `v2.compiler.source_root_eval` `native_demand_census_output`, so the host adds no
 /// verdict: exit 0 is the census holding (its rows account for every uses fn), 1 is a census finding,
 /// and 2 or a refused preparation is no observation.
 /// `gunbc.instrument_targets` `generic_identity_census_label`. TRANSPORT ONLY: the fixture and the
