@@ -39,7 +39,7 @@ import gunbc.dispatch_credential_snapshot {
 }
 import gunbc.dispatch_credential_acquisition {
   credential_admit_reader_or_discard,
-  LaunchAdmitted, LaunchLostSnapshotDiscarded, LaunchLostDiscardFailed,
+  CredentialLaunchAdmitted, LaunchLostSnapshotDiscarded, LaunchLostDiscardFailed,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch {
@@ -1440,7 +1440,7 @@ fn belt_credential_admit_before_spawn(prepared: PreparedAttemptLaunch) -> BeltCr
     SnapshotFreeLaunch { attempt: _, executor: _ } => BeltCredentialAdmitOk
     SnapshotLaunch { snapshot } =>
       match credential_admit_reader_or_discard(snapshot: snapshot) {
-        LaunchAdmitted => BeltCredentialAdmitOk
+        CredentialLaunchAdmitted => BeltCredentialAdmitOk
         LaunchLostSnapshotDiscarded =>
           BeltCredentialAdmitLost { detail: "begin_launch lost; snapshot discarded" }
         LaunchLostDiscardFailed { reason: r } =>
