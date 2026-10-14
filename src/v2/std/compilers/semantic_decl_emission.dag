@@ -66,6 +66,10 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.node {
+  Arrow,
+  Occupancy,
+  Instantiation,
+  ComputationNode,
   Atom,
   Conj,
   Disj,

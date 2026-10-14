@@ -8,9 +8,29 @@ import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclSerializeProf
 import std.optional { Absent, Present }
 import v2.std.witness { map_get_checked }
 import v2.std.qualified_name { declaration_reference_path_optional }
-import v2.std.compilers.target_model { TargetModel, TargetTypeExprAtom, TargetTypeExpression, concrete_syntax_token_list_from_node, target_atom_type_spelling, target_type_expr_declaration_reference_emitted, target_type_expression_spelling, type_expression_projection_from_target }
-import v2.std.diagnostic { Accepted, Rejected, Diagnostic, ExternalContractUnknown, Outcome, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected }
-import v2.std.node { Atom, Disj, Conj, Node, Symbol, TypeNode }
+import v2.std.compilers.target_model {
+  TargetModel,
+  TargetTypeExprAtom,
+  TargetTypeExpression,
+  concrete_syntax_token_list_from_node,
+  target_atom_type_spelling,
+  target_type_expr_declaration_reference_emitted,
+  target_type_expression_spelling,
+  type_expression_projection_from_target
+}
+import v2.std.diagnostic {
+  Accepted,
+  Rejected,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Arrow, Occupancy, Instantiation, ComputationNode, Atom, Disj, Conj, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import std.algebra { Empty, contains, empty_map }

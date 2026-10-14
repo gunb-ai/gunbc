@@ -7,6 +7,11 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empt
 import v2.std.diagnostic { Accepted, Locus, Rejected, node_locus }
 import v2.std.integer { Int }
 import v2.std.node {
+  Disj,
+  Arrow,
+  Occupancy,
+  Instantiation,
+  ComputationNode,
   Atom,
   Conj,
   Edge,

@@ -296,6 +296,7 @@ import v2.std.compilers.semantic_decl_emission {
   semantic_decl_serialize_profile_bundle
 }
 import v2.std.node {
+  ComputationNode,
   Arrow,
   Atom,
   Occupancy,

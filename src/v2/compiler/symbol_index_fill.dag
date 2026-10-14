@@ -10,6 +10,9 @@ import v2.std.node_query { binder_node_parts }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node {
+  Occupancy,
+  Instantiation,
+  Atom,
   Arrow,
   ComputationNode,
   Conj,
