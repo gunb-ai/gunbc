@@ -21,6 +21,7 @@ import gunbc.github_effect_perform {
   PublisherJwtStaged, PublisherJwtReady, PublisherJwtNotReady,
   publisher_key_unreadable, publisher_installation_token_refused, publisher_jwt_after_removal,
   stage_sign_and_remove_publisher_key, AppJwtSigned, AppJwtUnsigned,
+  heal_publisher_installation_token_permissions, publication_helper_installation_token_permissions,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.auth.github_apps { gunbai_bot_declared }
@@ -201,4 +202,28 @@ test fn witness_the_staged_key_file_is_removed_when_signing_refuses() -> Bool {
     PublisherJwtReady { jwt: _ } => false
   }
   refused && !after.success
+}
+
+test fn heal_installation_token_permissions_are_contents_write_only() -> Bool {
+  let p = heal_publisher_installation_token_permissions
+  match p.contents {
+    Present { value: v } => v == "write"
+    Absent => false
+  }
+    && match p.pull_requests {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn publication_helper_installation_token_permissions_add_pull_requests_write() -> Bool {
+  let p = publication_helper_installation_token_permissions
+  match p.contents {
+    Present { value: v } => v == "write"
+    Absent => false
+  }
+    && match p.pull_requests {
+      Present { value: v } => v == "write"
+      Absent => false
+    }
 }
