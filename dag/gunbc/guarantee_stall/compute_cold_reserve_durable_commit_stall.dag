@@ -13,7 +13,7 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 //
 // WHAT HOLDS MEANWHILE: the cold instrument runs compute_run_unit with a hermetic instance whose
 // store root is disjoint from srv1-live; production compute_provide still opens
-// compute_durable_store(instance) and stages beside that root. Those are mitigations. They do not
+// compute_store(instance) and stages beside that root. Those are mitigations. They do not
 // make an unreserved durable commit structurally impossible.
 data compute_cold_reserve_durable_commit_stall: GuaranteeStall = GuaranteeStall {
   subject: "a cold compute unit reserves on a declared compute ledger and durable-commits its outputs under that reservation",

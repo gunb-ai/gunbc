@@ -81,7 +81,7 @@ import std.materialization_ladder {
   materialization_ladder, ladder_verdict_is_green, ladder_verdict_prescribes, verdict_identity,
 }
 import std.realization { Materialization, Memoize, Recompute, Share }
-import std.materialization_store_grant { MaterializationStoreRoot, DurableHostVolumeRoot, materialization_store_frame, materialization_store_staging_root_path }
+import std.materialization_store_grant { MaterializationStoreRoot, materialization_store_frame, materialization_store_staging_root_path }
 import std.materialization_object {
   ArtifactPayload, ArtifactBlobPart, StoreLookup, StoreLookupHit, StoreLookupMiss, StoreLookupRefused, StoreLookupRefusal,
   StoreLookupObjectUnavailable, StoreLookupObjectMalformed, StoreLookupManifestUninterpretable, StoreLookupPayloadMissing,
@@ -902,7 +902,7 @@ fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout
 // the store root's path, never re-spelled. A staged file is named by the work identity and the
 // declared output, and is removed once the commit has linked it.
 fn compute_staging_dir(instance: HostDashboardInstance) -> String {
-  materialization_store_staging_root_path(root: compute_durable_store(instance: instance).root)
+  materialization_store_staging_root_path(root: instance.materialization_store_root)
 }
 
 fn compute_staged_path(layout: ComputeLayout, declared: String) -> String {
@@ -1653,16 +1653,16 @@ fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostR
 
 // THE STORE A COMPUTE REQUEST USES: a root and the budgets it is opened under. The budgets are policy
 // (gunbc.materialization_store_budgets), handed to the transport as a parameter; production uses
-// compute_durable_store(instance) from HostDashboardInstance.materialization_store_root, and a
-// witness supplies a scratch root with fixture rows.
+// compute_store(instance), whose root IS the instance field (DurableHostVolumeRoot or
+// EphemeralHostVolumeRoot — never rewritten), and a witness supplies a scratch root with fixture rows.
 type ComputeStore {
   root: MaterializationStoreRoot
   budgets: List<LocalStoreFamilyBudget>
 }
 
-fn compute_durable_store(instance: HostDashboardInstance) -> ComputeStore {
+fn compute_store(instance: HostDashboardInstance) -> ComputeStore {
   ComputeStore {
-    root: DurableHostVolumeRoot { root: instance.materialization_store_root as String },
+    root: instance.materialization_store_root,
     budgets: materialization_store_durable_family_budgets,
   }
 }
@@ -2003,10 +2003,9 @@ fn compute_execution_identity(identity: String, plan: ComputeMaterializationPlan
 }
 
 // WHICH STORE IS POLICY, SO IT ARRIVES AS A PARAMETER (DESIGN section 3: an operation carrying a literal
-// it should receive has leaked policy). The production caller names compute_durable_store(instance)
-// once, in compute_provide_admitted, from HostDashboardInstance.materialization_store_root; the
-// serve-or-produce decision below is the same code for any store, which is what lets its inhabitance
-// claim execute it against a scratch root.
+// it should receive has leaked policy). The production caller names compute_store(instance) once, in
+// compute_provide_admitted; the serve-or-produce decision below is the same code for any store, which
+// is what lets its inhabitance claim execute it against a scratch root.
 fn compute_provide_leaf(
   store: ComputeStore,
   instance: HostDashboardInstance,
@@ -2459,9 +2458,9 @@ fn compute_provide_admitted(instance: HostDashboardInstance, commit: String, op:
         SubjectResolved { subject } =>
           match op {
             BuildGunbcBinaries { profile: _, bins: _ } =>
-              compute_provide_leaf(store: compute_durable_store(instance: instance), instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
-            CompileEntry { entry: _ } => compute_provide_dependent(store: compute_durable_store(instance: instance), instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
-            RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: compute_durable_store(instance: instance), instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+              compute_provide_leaf(store: compute_store(instance: instance), instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
+            CompileEntry { entry: _ } => compute_provide_dependent(store: compute_store(instance: instance), instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+            RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: compute_store(instance: instance), instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
           }
       }
   }

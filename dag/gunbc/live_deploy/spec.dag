@@ -34,7 +34,7 @@ import gunbc.fleet.fleet_intent_network {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
-import std.materialization_store_grant { materialization_store_root_path, materialization_store_staging_root_path, DurableHostVolumeRoot }
+import std.materialization_store_grant { materialization_store_root_path, materialization_store_staging_root_path }
 import gunbc.host.host_layout {
   srv1_gunbc_repo_root,
   srv1_gunbc_approval_broker_root,
@@ -1265,7 +1265,7 @@ fn deployment_role_singleton_ensured_steps(holding: RoleSingletonHolding) -> Lis
 // layout resolved through a total host-identity lookup.
 fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
   let owner = PosixOwnerNames { user: gunbc_service_user, group: gunbc_service_user }
-  let store = DurableHostVolumeRoot { root: srv1_live_dashboard_instance().materialization_store_root as String }
+  let store = srv1_live_dashboard_instance().materialization_store_root
   [
     OwnedDirectoryDeclared {
       member: "devboot-artifact-store" as NonEmptyStr,

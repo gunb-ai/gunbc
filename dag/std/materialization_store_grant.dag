@@ -14,32 +14,38 @@ import std.filesystem_path_grant { absolute_path_position }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_tmp_scratch_store_root }
 
-// THE DURABLE ROOT GRANT FOR THE MATERIALIZATION STORE, AND WHY IT IS A COPRODUCT RATHER THAN A PATH.
+// THE STORE ROOT IS A COPRODUCT SO DURABILITY IS CONSTRUCTED, NOT INFERRED FROM A PATH.
 //
 // std.artifact_store_scratch_grant admits /tmp/gunbc_* roots, which are frame-owned scratch: on a
 // Firecracker runner the guest /tmp dies with the attempt, so a store rooted there is a per-attempt
 // cache and can never discharge a reuse obligation whose lifetime spans runs (DESIGN section 2:
-// retention must span the obligated lifetime). A durable store outlives the attempt. WHICH HOST
-// PATH that is lives on HostDashboardInstance.materialization_store_root (gunbc.roadmap.roadmap_dashboard_instance),
-// not in this module: a corpus-wide constant was one name for srv1's volume and every other
-// instance (DESIGN section 3 meaning fork). DurableHostVolumeRoot carries the path the instance
-// declared. WitnessScratchRoot still admits only /tmp/gunbc_* scratch; its durability is DERIVED
-// as ephemeral.
+// retention must span the obligated lifetime). WitnessScratchRoot is that grant; durability is
+// DERIVED as ephemeral.
 //
-// DECLARED FRONTIER: this module grants the guest-side PATH. Attaching the gunbc-owned host volume
+// WHICH HOST PATH a live volume uses lives on HostDashboardInstance.materialization_store_root
+// (gunbc.roadmap.roadmap_dashboard_instance), not as a corpus-wide constant. DurableHostVolumeRoot
+// is ONLY for a volume that outlives the run (srv1 /var/lib/gunbc/materialization-store, labs,
+// macbook). A per-run job workspace is EphemeralHostVolumeRoot: same host-path grant shape, durability
+// EphemeralToFrame. Wrapping that workspace as DurableHostVolumeRoot would be a meaning fork
+// (DESIGN section 3) and a silent widen (DESIGN section 5).
+//
+// DECLARED FRONTIER: this module grants the guest-side PATH. Attaching a gunbc-owned host volume
 // as a Firecracker drive is the runner lane's act. Until that attachment lands, a durable-root open
 // on a runner guest finds no initialized store and REFUSES as unavailable
 // (extdeps.realization.materialization_store_local), never falls back to scratch. srv1's instance
-// declares /var/lib/gunbc/materialization-store; discharged there by gunbc.live_deploy.spec
-// deployment_ensured_srv1_host_directories, reading that instance field.
+// declares DurableHostVolumeRoot at /var/lib/gunbc/materialization-store; discharged there by
+// gunbc.live_deploy.spec deployment_ensured_srv1_host_directories.
 //
 // LIFECYCLE GRADE: LifecycleByConvention, honestly. A durable store is not released by frame
 // teardown -- that is its purpose -- so it cannot claim LifecycleByConstruction; its release is the
 // retention and eviction the provider machinery owns (std.artifact_store accounting under the
-// provider), which is a cleanup that can fail or be forgotten, i.e. the weaker grade.
+// provider), which is a cleanup that can fail or be forgotten, i.e. the weaker grade. An ephemeral
+// host-volume root dies with the workspace; the grade is still ByConvention because workspace
+// teardown is not this grant's constructor.
 
 type MaterializationStoreRoot
   = DurableHostVolumeRoot { root: String }
+  | EphemeralHostVolumeRoot { root: String }
   | WitnessScratchRoot { root: String }
 
 type MaterializationStoreDurability
@@ -54,6 +60,7 @@ data materialization_store_frame: Frame = Frame {
 fn materialization_store_root_path(root: MaterializationStoreRoot) -> String {
   match root {
     DurableHostVolumeRoot { root: r } => r
+    EphemeralHostVolumeRoot { root: r } => r
     WitnessScratchRoot { root: r } => r
   }
 }
@@ -68,6 +75,7 @@ fn materialization_store_staging_root_path(root: MaterializationStoreRoot) -> St
 fn materialization_store_durability(root: MaterializationStoreRoot) -> MaterializationStoreDurability {
   match root {
     DurableHostVolumeRoot { root: _ } => DurableAcrossRuns
+    EphemeralHostVolumeRoot { root: _ } => EphemeralToFrame
     WitnessScratchRoot { root: _ } => EphemeralToFrame
   }
 }
@@ -76,6 +84,13 @@ fn materialization_store_durability_name(d: MaterializationStoreDurability) -> S
   match d {
     DurableAcrossRuns => "durable_across_runs"
     EphemeralToFrame => "ephemeral_to_frame"
+  }
+}
+
+fn materialization_store_host_volume_envelope(path: String) -> Envelope {
+  Envelope {
+    frame: materialization_store_frame,
+    grants: materialization_store_grants(root_position: absolute_path_position(path: path))
   }
 }
 
@@ -88,11 +103,8 @@ fn materialization_store_grants(root_position: NamespacePosition) -> List<Grant>
 
 fn materialization_store_envelope(root: MaterializationStoreRoot) -> Envelope {
   match root {
-    DurableHostVolumeRoot { root: r } =>
-      Envelope {
-        frame: materialization_store_frame,
-        grants: materialization_store_grants(root_position: absolute_path_position(path: r))
-      }
+    DurableHostVolumeRoot { root: r } => materialization_store_host_volume_envelope(path: r)
+    EphemeralHostVolumeRoot { root: r } => materialization_store_host_volume_envelope(path: r)
     WitnessScratchRoot { root: r } =>
       if is_gunbc_tmp_scratch_store_root(store_root: r) {
         Envelope {
