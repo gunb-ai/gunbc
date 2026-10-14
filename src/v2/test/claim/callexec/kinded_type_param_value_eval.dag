@@ -73,3 +73,39 @@ test fn kpe_non_generic_call_carries_no_instances() -> Bool {
       }
   }
 }
+
+fn kpp_src() -> String {
+  concat(kpe_prelude(), "fn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  width_of(x: b8)\n}\n")
+}
+
+test fn kpp_assembles() -> Bool {
+  match cref_assemble(src: kpp_src()) { Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false }
+}
+
+test fn kpp_infers() -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: kpp_src())) { Present { value: _ } => true
+    Absent => false }
+}
+
+test fn kpp_call_found() -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: kpp_src())) {
+    Absent => false
+    Present { value: inferred } => match cref_the_call_to(root: inferred.root, name: ^width_of) { Present { value: _ } => true
+      Absent => false }
+  }
+}
+
+fn kpp_reason() -> Optional<Symbol> {
+  match kpe_eval(body: "fn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  width_of(x: b8)\n}\n", name: ^width_of) {
+    Present { value: Rejected { diagnostics: d } } => Present { value: diagnostics_fatal_reason(d: d) }
+    _ => Absent
+  }
+}
+
+test fn kpp_is_absent_eval_not_run() -> Bool { kpp_reason() == Absent }
+test fn kpp_is_instance_absent() -> Bool { kpp_reason() == Present { value: ^eval_rejected_type_argument_instance_absent } }
+test fn kpp_is_not_value() -> Bool { kpp_reason() == Present { value: ^eval_rejected_type_argument_read_as_value } }
+test fn kpp_is_unbound_param() -> Bool { kpp_reason() == Present { value: ^eval_rejected_parameter_reference_unbound } }
+test fn kpp_is_grounding() -> Bool { kpp_reason() == Present { value: ^eval_rejected_grounding_not_derived } }
+test fn kpp_is_lookup_miss() -> Bool { kpp_reason() == Present { value: ^eval_rejected_runtime_binding_lookup_miss } }
