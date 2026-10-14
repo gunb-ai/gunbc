@@ -166,11 +166,17 @@ fn keyed_roster_index_step<K, V>(
   }
 }
 
+// Declared return type carries K and V to the emitted turbofish; an empty_map() in the init
+// literal of a generic fn has no type-argument evidence to render.
+fn keyed_roster_empty_slots<K, V>() -> Map<SubjectKey<K>, KeyedRosterSlot<K, V>> {
+  empty_map()
+}
+
 fn keyed_roster_index<K, V>(rows: List<KeyedRow<SubjectKey<K>, V>>) -> KeyedRosterIndex<K, V> {
   let build = fold(
     rows,
     init: KeyedRosterIndexBuild {
-      slots: empty_map(),
+      slots: keyed_roster_empty_slots(),
       distinct_reversed: [],
       duplicated_reversed: [],
       earliest_duplicate: none,
