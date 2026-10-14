@@ -212,7 +212,11 @@ fn harness_turn_exit_released(outcome: HarnessTurnOutcome, seat: HarnessSeatRele
     HarnessSeatReleased { partition: _ } => harness_turn_exit(outcome: outcome)
     HarnessHostedCredentialRemoved => harness_turn_exit(outcome: outcome)
     HarnessSeatReleaseRefused { detail: d } =>
-      ExitFailure { code: 1, reason: join([harness_outcome_label(outcome: outcome), "; seat ", harness_seat_release_wire(r: seat)], "") }
+      if d.contains("this release does not apply to the standing pool") {
+        harness_turn_exit(outcome: outcome)
+      } else {
+        ExitFailure { code: 1, reason: join([harness_outcome_label(outcome: outcome), "; seat ", harness_seat_release_wire(r: seat)], "") }
+      }
   }
 }
 

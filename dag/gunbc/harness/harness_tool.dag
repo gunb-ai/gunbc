@@ -10,7 +10,9 @@ import extdeps.languages.json.parse {
   JsonMemberFound, json_object_unique_member,
 }
 import extdeps.gunbc
-import gunbc.harness.harness_wire { HarnessWireBlock, WireToolUseBlock }
+import gunbc.harness.harness_wire {
+  HarnessWireBlock, WireToolUseBlock, HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape,
+}
 import gunbc.harness.harness_tool_kind {
   HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
   harness_tool_wire_name,
@@ -318,4 +320,60 @@ fn harness_unimplemented_tool_detail(tool: HarnessTool) -> String {
 // file tools stay declared and unadvertised until they have a realization.
 fn harness_offered_tools() -> List<HarnessTool> {
   [RunCommandTool, HandInTool]
+}
+
+data harness_run_command_description: String = "Run a shell command in the attempt's working directory and return its combined output and exit code."
+
+data harness_hand_in_description: String = "Hand in the ready candidate written to .gunbc-submission.json. This call blocks until acceptance returns; the tool result is Accepted, ChangesRequested with evidence, or Unavailable with its cause. Do not run the node's acceptance witness yourself."
+
+fn harness_hand_in_schema() -> JsonValue {
+  json_object([
+    json_kv(key: "type", value: json_string(s: "object")),
+    json_kv(key: "properties", value: json_object([])),
+    json_kv(key: "required", value: json_array(elements: [])),
+  ])
+}
+
+fn harness_offered_tool_schema(tool: HarnessTool) -> JsonValue {
+  match tool {
+    RunCommandTool => harness_run_command_schema()
+    HandInTool => harness_hand_in_schema()
+    ReadFileTool => harness_hand_in_schema()
+    WriteFileTool => harness_hand_in_schema()
+    EditFileTool => harness_hand_in_schema()
+  }
+}
+
+fn harness_offered_tool_description(tool: HarnessTool) -> String {
+  match tool {
+    RunCommandTool => harness_run_command_description
+    HandInTool => harness_hand_in_description
+    ReadFileTool => harness_unimplemented_tool_detail(tool: ReadFileTool)
+    WriteFileTool => harness_unimplemented_tool_detail(tool: WriteFileTool)
+    EditFileTool => harness_unimplemented_tool_detail(tool: EditFileTool)
+  }
+}
+
+fn harness_offered_tool_json(shape: HarnessWireShape, tool: HarnessTool) -> JsonValue {
+  match shape {
+    AnthropicMessagesShape =>
+      json_object([
+        json_kv(key: "name", value: json_string(s: harness_tool_wire_name(tool: tool))),
+        json_kv(key: "description", value: json_string(s: harness_offered_tool_description(tool: tool))),
+        json_kv(key: "input_schema", value: harness_offered_tool_schema(tool: tool)),
+      ])
+    OpenAiChatCompletionsShape =>
+      json_object([
+        json_kv(key: "type", value: json_string(s: "function")),
+        json_kv(key: "function", value: json_object([
+          json_kv(key: "name", value: json_string(s: harness_tool_wire_name(tool: tool))),
+          json_kv(key: "description", value: json_string(s: harness_offered_tool_description(tool: tool))),
+          json_kv(key: "parameters", value: harness_offered_tool_schema(tool: tool)),
+        ])),
+      ])
+  }
+}
+
+fn harness_offered_tools_json(shape: HarnessWireShape) -> JsonValue {
+  json_array(elements: map(harness_offered_tools(), t => harness_offered_tool_json(shape: shape, tool: t)))
 }
