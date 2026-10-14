@@ -9,7 +9,7 @@ import std.measure {
   MoneyRate, MoneyPerHour, MoneyAmountMicro,   money_amount_micro, money_amount_micro_count,
   second, hardware_thread_count, byte_size_count, gibibyte, gibibyte_to_byte_size,
 }
-import extdeps.currency.currency { Usd }
+import extdeps.currency.currency { Usd, Eur, currency_code_eq }
 import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance { EncumbranceLedger }
 import product.fabric.identity { FabricIdentity, OfferKey }
@@ -57,6 +57,7 @@ import product.fabric.flex_vast_shadow {
   flex_reconcile_acquisition,
   flex_qwen_serving_image, flex_qwen_published_tcp_port, flex_qwen_disk, flex_qwen_model_id,
   flex_write_decision, FlexWriteHeldDry, FlexWriteBlockedUnreadable,
+  FlexWriteBlockedRateUnconverted, FlexWriteBlockedCurrencyMismatch,
   FlexWriteBlockedOverCap, FlexWriteBlockedPartialRoster, FlexWriteWetUnwired,
   FlexInstancesStanding, FlexInstancesExhausted, FlexInstancesPartial, FlexInstancesUnreadable,
   FlexCapUnder, FlexCapOver, FlexCapAtLimit, FlexCapNeedsExhaustedRoster, FlexCapUnreadable,
@@ -342,30 +343,65 @@ fn write_gate_conjunction() -> Bool {
                 FlexWriteBlockedOverCap =>
                   match flex_write_decision(policy: live_policy(), roster: exhausted(rows: [])) {
                     FlexWriteWetUnwired => true
-                    FlexWriteHeldDry => false
-                    FlexWriteBlockedUnreadable => false
-                    FlexWriteBlockedOverCap => false
-                    FlexWriteBlockedPartialRoster => false
+                    _ => false
                   }
-                FlexWriteHeldDry => false
-                FlexWriteBlockedUnreadable => false
-                FlexWriteBlockedPartialRoster => false
-                FlexWriteWetUnwired => false
+                _ => false
               }
-            FlexWriteHeldDry => false
-            FlexWriteBlockedUnreadable => false
-            FlexWriteBlockedOverCap => false
-            FlexWriteWetUnwired => false
+            _ => false
           }
-        FlexWriteHeldDry => false
-        FlexWriteBlockedOverCap => false
-        FlexWriteBlockedPartialRoster => false
-        FlexWriteWetUnwired => false
+        _ => false
       }
-    FlexWriteBlockedUnreadable => false
-    FlexWriteBlockedOverCap => false
-    FlexWriteBlockedPartialRoster => false
-    FlexWriteWetUnwired => false
+    _ => false
+  }
+}
+
+fn eur_live_policy() -> FlexPolicy {
+  FlexPolicy {
+    fleet_rate_cap: MoneyPerHour { amount: money_amount_micro(count: 1340000), currency: Eur },
+    on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
+    acquisition_horizon: second(count: 3600),
+    owner: flex_owner_label_gunbc_flex,
+    actuation: FlexActuationWet,
+  }
+}
+
+fn inst_scale_refused(id: Int, machine_id: Int) -> VastAiInstance {
+  VastAiInstance {
+    id: id,
+    machine_id: machine_id,
+    actual_status: Present { value: "running" },
+    gpu_name: "RTX PRO 6000",
+    gpu_ram: 98304,
+    num_gpus: 1,
+    image_uuid: flex_qwen_serving_image as String,
+    is_bid: Present { value: true },
+    min_bid: ExactDecimal { units: 1, fraction_digits: -1 },
+    dph_total: ExactDecimal { units: 1, fraction_digits: -1 },
+    label: Present { value: flex_owner_label_gunbc_flex as String },
+  }
+}
+
+test fn write_decision_keeps_rate_and_currency_refusals_distinct_from_unreadable() -> Bool {
+  let labelled = exhausted(rows: [
+    inst_labelled(
+      id: 1,
+      machine_id: 1,
+      label: Present { value: flex_owner_label_gunbc_flex as String },
+      dollars: 1,
+    ),
+  ])
+  match flex_write_decision(policy: live_policy(), roster: FlexInstancesUnreadable) {
+    FlexWriteBlockedUnreadable =>
+      match flex_write_decision(policy: live_policy(), roster: exhausted(rows: [inst_scale_refused(id: 1, machine_id: 1)])) {
+        FlexWriteBlockedRateUnconverted =>
+          match flex_write_decision(policy: eur_live_policy(), roster: labelled) {
+            FlexWriteBlockedCurrencyMismatch { left: l, right: r } =>
+              currency_code_eq(a: l, b: Eur) && currency_code_eq(a: r, b: Usd)
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
   }
 }
 
@@ -536,10 +572,7 @@ fn dry_pass_records_unreadable_list() -> Bool {
     FlexInstancesUnreadable =>
       match pass.write {
         FlexWriteHeldDry => true
-        FlexWriteBlockedUnreadable => false
-        FlexWriteBlockedOverCap => false
-        FlexWriteBlockedPartialRoster => false
-        FlexWriteWetUnwired => false
+        _ => false
       }
     FlexInstancesExhausted { instances: _, total: _ } => false
     FlexInstancesPartial { next_token: _, observed: _, total: _ } => false

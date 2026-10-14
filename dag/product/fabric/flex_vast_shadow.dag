@@ -10,7 +10,7 @@ import std.measure {
   byte_size_count, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused,
 }
 import std.checked_arithmetic { checked_int_to_nat }
-import extdeps.currency.currency { Usd }
+import extdeps.currency.currency { CurrencyCode, Usd }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
 import product.fabric.identity { OfferKey }
@@ -55,6 +55,8 @@ data flex_rented_serving_allocation_join: DissolutionCondition = unbound_dissolu
 type FlexWriteDecision
   = FlexWriteHeldDry
   | FlexWriteBlockedUnreadable
+  | FlexWriteBlockedRateUnconverted
+  | FlexWriteBlockedCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
   | FlexWriteBlockedPartialRoster
   | FlexWriteBlockedOverCap
   | FlexWriteWetUnwired
@@ -78,7 +80,7 @@ type FlexCapAssessment
   | FlexCapNeedsExhaustedRoster
   | FlexCapUnreadable
   | FlexCapRateUnconverted
-  | FlexCapCurrencyMismatch
+  | FlexCapCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
 
 fn flex_instances_page(page: VastAiInstances) -> FlexInstancesStanding {
   match page.next_token {
@@ -204,7 +206,7 @@ fn flex_cap_from_roster(policy: FlexPolicy, roster: FlexInstancesStanding) -> Fl
         FlexLabelledRateUnconverted => FlexCapRateUnconverted
         FlexLabelledStandingBuilt { occupancy: occ } =>
           match occupancy_sum(occupancy: occ, currency: policy.fleet_rate_cap.currency, ours: policy.owner) {
-            FlexOccupancyCurrencyMismatch { left: _, right: _ } => FlexCapCurrencyMismatch
+            FlexOccupancyCurrencyMismatch { left: l, right: r } => FlexCapCurrencyMismatch { left: l, right: r }
             FlexOccupancySummed { rate: occupied } =>
               if !measure_le(a: occupied.amount, b: policy.fleet_rate_cap.amount) {
                 FlexCapOver { occupied: occupied, cap: policy.fleet_rate_cap }
@@ -227,8 +229,8 @@ fn flex_write_decision(policy: FlexPolicy, roster: FlexInstancesStanding) -> Fle
       match flex_cap_from_roster(policy: policy, roster: roster) {
         FlexCapUnreadable => FlexWriteBlockedUnreadable
         FlexCapNeedsExhaustedRoster => FlexWriteBlockedPartialRoster
-        FlexCapRateUnconverted => FlexWriteBlockedUnreadable
-        FlexCapCurrencyMismatch => FlexWriteBlockedUnreadable
+        FlexCapRateUnconverted => FlexWriteBlockedRateUnconverted
+        FlexCapCurrencyMismatch { left: l, right: r } => FlexWriteBlockedCurrencyMismatch { left: l, right: r }
         FlexCapOver { occupied: _, cap: _ } => FlexWriteBlockedOverCap
         FlexCapAtLimit { occupied: _, cap: _ } => FlexWriteBlockedOverCap
         FlexCapUnder { occupied: _, cap: _ } => FlexWriteWetUnwired
