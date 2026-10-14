@@ -53,6 +53,7 @@ type MachineShape {
 type MachineShapeRefusalCause
   = UnknownDomain { id: DomainId }
   | UnknownLevel { owner: DomainId, level: LevelId }
+  | CatalogExecutionLanesUnstated
 
 type MachineShapeConstruction
   = MachineShapeOk { shape: MachineShape }
