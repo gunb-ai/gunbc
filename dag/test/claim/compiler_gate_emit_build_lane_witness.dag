@@ -14,6 +14,13 @@ import gunbc.witness.compiler_gate_workflow {
   compiler_gate_emit_build_notice_lines,
   compiler_gate_emit_build_step
 }
+import gunbc.parse_verdict_publish {
+  materialization_publish_if,
+  parse_verdict_publish_walk_step,
+  parse_verdict_publish_save_step,
+  parse_verdict_publish_step_name,
+  parse_verdict_save_step_name,
+}
 import gunbc.required_ci_contract_epoch {
   required_ci_context_name,
   required_ci_emitted_subject_obligations,
@@ -447,4 +454,28 @@ test fn the_seed_product_reuse_input_is_the_dag_rows() -> Bool {
   let runner = Filesystem.Read(path: native_lane_runner_source_path, expect: ExpectSuccess).content
   string_contains(s: runner, pattern: rust_str_const_line(name: "PRODUCT_REUSE_ENV", value: native_product_reuse_env_name))
     && string_contains(s: runner, pattern: rust_str_const_line(name: "PRODUCT_REUSE_FRESH_VALUE", value: native_product_reuse_fresh_value))
+}
+
+fn step_if_condition(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c { Present { value: v } => v  Absent => "" }
+  }
+}
+
+test fn the_required_job_binds_the_parse_verdict_publisher() -> Bool {
+  let names = compiler_gate_emit_build_bound_steps() |> map(b => b.step_name)
+  any(names, n => n == parse_verdict_publish_step_name)
+    && any(names, n => n == parse_verdict_save_step_name())
+}
+
+test fn a_pr_head_run_never_publishes() -> Bool {
+  let guard = materialization_publish_if()
+  (step_if_condition(step: parse_verdict_publish_walk_step()) == guard)
+    && (step_if_condition(step: parse_verdict_publish_save_step()) == guard)
+    && string_contains(s: guard, pattern: "refs/heads/main")
+    && string_contains(s: guard, pattern: "push")
+    && (string_contains(s: guard, pattern: "pull_request") == false)
 }

@@ -28,6 +28,7 @@ import std.cache_interface {
   ReleasedAtProviderScopeExit,
   ReleasedManually,
   ReleasedAfterInterval,
+  ReleasedAfterIdle,
   ReleasedNever,
 }
 import std.materialization_ladder {
@@ -219,6 +220,7 @@ fn growth_admission(r: ProviderRetention) -> RoleAdmission {
     ReleasedNever => capacity_admission(c: r.capacity)
     ReleasedManually => capacity_admission(c: r.capacity)
     ReleasedAfterInterval { after_write: _ } => capacity_admission(c: r.capacity)
+    ReleasedAfterIdle { idle: _ } => capacity_admission(c: r.capacity)
   }
 }
 

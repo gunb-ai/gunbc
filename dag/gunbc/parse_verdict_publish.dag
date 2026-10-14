@@ -1,0 +1,167 @@
+module gunbc.parse_verdict_publish
+
+import std.types { Bool, String, List }
+import std.optional { Present }
+import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
+import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_push }
+import gunbc.action_use_admission { cache_action }
+import gunbc.ci.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
+import v2.cli.population_verb_names { cli_verb_parse_population }
+import gunbc.instrument_targets { v2_native_cli_source_roots }
+import gunbc.emitted_subject_build_gate { native_step_memory_inputs }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_job_cgroup_ownership }
+import gunbc.host.memory_envelope {
+  EnvelopeSlotRequired,
+  EnvelopeNotRequested,
+  EnvelopeRequirementUnreadable,
+  memory_envelope_required_ci_contract,
+}
+import std.algebra { list_map }
+
+// POLICY (not the GitHub cache interface): this repository publishes materialization receipts
+// only from a push of refs/heads/main. A pull-request run may restore a default-branch entry
+// (extdeps.cache.github_actions gha_cache_entry_restorable_by) and must never save one.
+data materialization_publish_ref: String = "refs/heads/main"
+
+fn materialization_publish_if() -> String {
+  join(["github.event_name == '", github_event_name_push, "' && github.ref == '", materialization_publish_ref, "'"], "")
+}
+
+// ONE PROVIDER, GENERIC OVER REQUEST FAMILIES. The GHA cache key prefix names the family so a
+// later test-verdict family (operator E6) is another prefix, not another save mechanism.
+data parse_verdict_request_family: String = "parse-verdict"
+
+fn materialization_gha_cache_key_prefix(family: String) -> String {
+  join(["gunbc-materialization-", family, "-"], "")
+}
+
+data parse_verdict_publish_step_id: String = "publish_parse_verdicts"
+data parse_verdict_publish_step_name: String = "Walk parse-population and publish verdict receipts"
+fn parse_verdict_save_step_name() -> String {
+  join(["Save ", parse_verdict_request_family, " receipts to Actions cache"], "")
+}
+data parse_verdict_receipt_dir: String = ".gunbc/parse-verdicts"
+data generation_one_executable_prefix: String = "v2-native-cli-gen-one-"
+data generation_one_closure_identity_suffix: String = ".closure_identity"
+data parse_verdict_compiler_output: String = "compiler_identity"
+
+fn parse_verdict_publish_command() -> String {
+  join(
+    [
+      "set -o pipefail",
+      "n=0",
+      "bin=",
+      join(["for f in \"$RUNNER_TEMP\"/", generation_one_executable_prefix, "*; do"], ""),
+      "  [ -f \"$f\" ] || continue",
+      join(["  case \"$f\" in *", generation_one_closure_identity_suffix, ") continue ;; esac"], ""),
+      "  n=$((n+1))",
+      "  bin=$f",
+      "done",
+      "if [ \"$n\" -ne 1 ]; then echo \"::error::IdentityUnknown: expected exactly one generation-one executable under RUNNER_TEMP, found $n\"; exit 1; fi",
+      join(["cid=\"$bin", generation_one_closure_identity_suffix, "\""], ""),
+      "if [ ! -s \"$cid\" ]; then echo \"::error::IdentityUnknown: missing or empty parser identity beside the generation-one executable\"; exit 1; fi",
+      "compiler=$(cat \"$cid\")",
+      join(["mkdir -p \"", parse_verdict_receipt_dir, "\""], ""),
+      join(["\"$bin\" ", cli_verb_parse_population, source_root_argv(), " | tee \"", parse_verdict_receipt_dir, "/walk.txt\""], ""),
+      join(["echo \"", parse_verdict_compiler_output, "=$compiler\" >> \"$GITHUB_OUTPUT\""], "")
+    ],
+    "; "
+  )
+}
+
+fn source_root_argv() -> String {
+  join(
+    list_map(xs: v2_native_cli_source_roots(), f: fn(root) { join([" --source-root ", root], "") }),
+    ""
+  )
+}
+
+fn parse_verdict_publish_script() -> String {
+  concat(wrap_command_with_floor_attempt_receipt(command: parse_verdict_publish_command()), "\n")
+}
+
+fn parse_verdict_publish_script_is_renderable() -> Bool {
+  wrap_command_is_renderable(command: parse_verdict_publish_command())
+}
+
+fn parse_verdict_publish_memory_env() -> List<YamlKeyValue> {
+  match memory_envelope_required_ci_contract().requirement {
+    EnvelopeSlotRequired =>
+      list_map(
+        xs: native_step_memory_inputs(ownership: gunbc_runner_slot_job_cgroup_ownership),
+        f: fn(env_input) { kv(key: env_input.env_name, value: yaml_string(s: env_input.env_value)) }
+      )
+    EnvelopeNotRequested => []
+    EnvelopeRequirementUnreadable { raw: _ } => []
+  }
+}
+
+fn parse_verdict_publish_walk_step() -> Step {
+  RunStep {
+    name: Present { value: parse_verdict_publish_step_name },
+    id: Present { value: parse_verdict_publish_step_id },
+    run: parse_verdict_publish_script(),
+    shell: none,
+    env: Present { value: parse_verdict_publish_memory_env() },
+    working_directory: none,
+    if_condition: Present { value: materialization_publish_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn parse_verdict_publish_cache_key() -> String {
+  join(
+    [
+      materialization_gha_cache_key_prefix(family: parse_verdict_request_family),
+      "${{ steps.",
+      parse_verdict_publish_step_id,
+      ".outputs.",
+      parse_verdict_compiler_output,
+      " }}-${{ github.sha }}"
+    ],
+    ""
+  )
+}
+
+fn parse_verdict_publish_restore_keys() -> String {
+  join(
+    [
+      materialization_gha_cache_key_prefix(family: parse_verdict_request_family),
+      "${{ steps.",
+      parse_verdict_publish_step_id,
+      ".outputs.",
+      parse_verdict_compiler_output,
+      " }}-\n"
+    ],
+    ""
+  )
+}
+
+fn materialization_family_cache_save_step(family: String, path: String, cache_key: String, restore_keys: String) -> Step {
+  UsesStep {
+    name: Present { value: join(["Save ", family, " receipts to Actions cache"], "") },
+    id: none,
+    uses: cache_action,
+    with: Present {
+      value: [
+        kv(key: "path", value: yaml_string(s: path)),
+        kv(key: "key", value: yaml_string(s: cache_key)),
+        kv(key: "restore-keys", value: yaml_string(s: restore_keys))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: materialization_publish_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn parse_verdict_publish_save_step() -> Step {
+  materialization_family_cache_save_step(
+    family: parse_verdict_request_family,
+    path: parse_verdict_receipt_dir,
+    cache_key: parse_verdict_publish_cache_key(),
+    restore_keys: parse_verdict_publish_restore_keys()
+  )
+}
