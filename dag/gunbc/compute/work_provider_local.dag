@@ -145,6 +145,15 @@ type ComputeLayout {
   attempts_dir: String
 }
 
+// THE PRODUCER LEASE'S LOCATION IS DERIVED ONCE: the layout and the discharge both read it here.
+fn compute_leases_dir(root: String) -> String {
+  join([root, "/leases"], "")
+}
+
+fn compute_lease_path(leases_dir: String, identity_hex: String) -> String {
+  join([leases_dir, "/", identity_hex], "")
+}
+
 fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
   let root = compute_root(instance: instance) as String
   let work_dir = join([root, "/work/", identity_hex], "")
@@ -153,8 +162,8 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
     work_dir: work_dir,
     checkout: join([work_dir, "/src"], ""),
     out_dir: join([work_dir, "/out"], ""),
-    leases_dir: join([root, "/leases"], ""),
-    lease_path: join([root, "/leases/", identity_hex], ""),
+    leases_dir: compute_leases_dir(root: root),
+    lease_path: compute_lease_path(leases_dir: compute_leases_dir(root: root), identity_hex: identity_hex),
     staging_dir: compute_staging_dir(),
     target_dir: join([root, "/target"], ""),
     log_path: join([work_dir, "/log"], ""),
@@ -1597,7 +1606,13 @@ type LeaseDrop
   | LeaseNotDropped { detail: String }
 
 fn compute_drop_producer_lease(layout: ComputeLayout) -> LeaseDrop {
-  let dropped = Filesystem.Delete(path: layout.lease_path)
+  compute_drop_lease_at(lease_path: layout.lease_path)
+}
+
+// THE ONE DELETE. The layout-shaped door above and the seat discharge (which holds a leases directory
+// and an attempt record's identity, never a layout) both land here, so the lease is dropped by one effect.
+fn compute_drop_lease_at(lease_path: String) -> LeaseDrop {
+  let dropped = Filesystem.Delete(path: lease_path)
   if dropped.success { LeaseDropped } else { LeaseNotDropped { detail: dropped.error } }
 }
 
@@ -2609,6 +2624,10 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
 // a field read off a layout: a layout is built around one work identity and recovery arrives
 // holding a reference, not an identity. Deriving the root through a layout with an empty identity
 // would work and would also be a second spelling of the same path (DESIGN 3).
+fn compute_leases_root(instance: HostDashboardInstance) -> String {
+  compute_leases_dir(root: compute_root(instance: instance) as String)
+}
+
 fn compute_attempts_root(instance: HostDashboardInstance) -> NonEmptyStr {
   join([compute_root(instance: instance) as String, "/attempts"], "") as NonEmptyStr
 }
@@ -2652,11 +2671,44 @@ fn compute_recovery_wire(r: ComputeRecovery) -> String {
 type UnitLifecycleSource
   = ObserveUnitLifecycle
   | SuppliedUnitLifecycle { lifecycle: UnitLifecycle }
+  | SuppliedStoppableUnit { before: UnitLifecycle, after_stop: UnitLifecycle }
 
 fn unit_lifecycle_from_source(source: UnitLifecycleSource, unit: NonEmptyStr) -> UnitLifecycle {
   match source {
     ObserveUnitLifecycle => observe_unit_lifecycle(unit: unit)
     SuppliedUnitLifecycle { lifecycle: l } => l
+    SuppliedStoppableUnit { before: b, after_stop: _ } => b
+  }
+}
+
+// STOPPING THE UNIT AN ATTEMPT RECORD NAMES. The unit is the one in the attempt's own slot record, never
+// one found by scanning units. A failed stop is a typed refusal that keeps the charge; a stop that
+// "succeeded" proves nothing by itself -- the door re-observes the lifecycle before it releases.
+type UnitStop
+  = UnitStopped
+  | UnitStopFailed { detail: String }
+
+fn compute_stop_unit(unit: NonEmptyStr) -> UnitStop {
+  let stopped = systemd.Systemctl.StopUserUnit(unit: unit)
+  match stopped.outcome {
+    ShellSpawnRefused { program: _, cause: c } => UnitStopFailed { detail: join(["systemctl could not be run: ", c as String], "") }
+    ShellExited => if stopped.success { UnitStopped } else { UnitStopFailed { detail: stopped.stderr } }
+  }
+}
+
+// A supplied lifecycle has no manager to stop; the stoppable arm names what the unit reads AFTER the stop.
+fn unit_stop_by_source(source: UnitLifecycleSource, unit: NonEmptyStr) -> UnitStop {
+  match source {
+    ObserveUnitLifecycle => compute_stop_unit(unit: unit)
+    SuppliedUnitLifecycle { lifecycle: _ } => UnitStopped
+    SuppliedStoppableUnit { before: _, after_stop: _ } => UnitStopped
+  }
+}
+
+fn unit_source_after_stop(source: UnitLifecycleSource) -> UnitLifecycleSource {
+  match source {
+    SuppliedStoppableUnit { before: _, after_stop: a } => SuppliedUnitLifecycle { lifecycle: a }
+    _ => source
   }
 }
 

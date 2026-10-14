@@ -1,6 +1,7 @@
 module test.claim.compute.attempt_discharge_wet_witness
 
 import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim, string_contains }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
@@ -16,14 +17,15 @@ import gunbc.compute.attempt_lifecycle {
   AttemptTransition, AttemptAdvanced, attempt_open, attempt_begin_launch, attempt_terminate,
 }
 import gunbc.compute.work_provider_local {
-  UnitLifecycleSource, SuppliedUnitLifecycle, compute_reservation_reference, compute_seat_dir,
+  UnitLifecycleSource, SuppliedUnitLifecycle, SuppliedStoppableUnit, compute_reservation_reference, compute_seat_dir,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
   attempt_exit_spool_stage_dir,
 }
 import gunbc.compute.compute_seat_ensure {
-  SeatEnsureOutcome, SeatEnsureNoop, SeatEnsureReleased, SeatEnsureRefused, SeatEnsureRed,
+  SeatEnsureOutcome, SeatEnsureNoop, SeatEnsureReleased, SeatEnsureRefused, SeatEnsureRed, SeatEnsureLeaseDropped,
+  SeatOwnerStanding, SeatOwnerEnded, SeatOwnerLive,
   compute_seat_ensure_in,
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRan, SeatDischargeRefused, compute_seat_discharge_all,
 }
@@ -129,9 +131,13 @@ fn opened(root: String, reference: String, owner: AttemptOwner) -> Bool {
 }
 
 fn launching(root: String, reference: String) -> Bool {
-  match attempt_slot_read(root: attempts_at(root: root), reference: reference as NonEmptyStr) {
+  launching_in(dir: attempts_at(root: root), reference: reference)
+}
+
+fn launching_in(dir: NonEmptyStr, reference: String) -> Bool {
+  match attempt_slot_read(root: dir, reference: reference as NonEmptyStr) {
     AttemptSlotHeld { record: rec, generation: g } =>
-      match attempt_begin_launch(root: attempts_at(root: root), record: rec, expected: g) {
+      match attempt_begin_launch(root: dir, record: rec, expected: g) {
         AttemptAdvanced { state: _, generation: _ } => true
         _ => false
       }
@@ -151,8 +157,33 @@ fn unknown() -> UnitLifecycleSource {
   SuppliedUnitLifecycle { lifecycle: UnitLifecycleUnknown { detail: "supplied: the manager did not answer" } }
 }
 
+fn stoppable() -> UnitLifecycleSource {
+  SuppliedStoppableUnit { before: UnitStillRunning { detail: "supplied: the unit is running" }, after_stop: UnitTerminatedSuccess { detail: "supplied: the unit ended after the stop" } }
+}
+
+fn leases_at(root: String) -> String {
+  join([trim(s: root), "/leases"], "")
+}
+
+// THE PRODUCER LEASE of the fixture record (identity feedfacefeedface), written as the provider writes it.
+fn lease_held(root: String) -> Bool {
+  made(path: leases_at(root: root)) && Filesystem.Write(path: join([leases_at(root: root), "/feedfacefeedface"], ""), content: "held\n").success
+}
+
+fn lease_listed(root: String) -> Bool {
+  string_contains(s: Filesystem.List(path: leases_at(root: root)).entries, pattern: "feedfacefeedface")
+}
+
+fn ensure_owner(root: String, reference: String, source: UnitLifecycleSource, owner: SeatOwnerStanding) -> SeatEnsureOutcome {
+  if made(path: leases_at(root: root)) {
+    compute_seat_ensure_in(attempts_root: attempts_at(root: root), leases_dir: leases_at(root: root), subject: subject_at(root: root), reference: reference as NonEmptyStr, source: source, owner: owner)
+  } else {
+    SeatEnsureRefused { reference: reference, reason: "the fixture could not create its leases directory" }
+  }
+}
+
 fn ensure(root: String, reference: String, source: UnitLifecycleSource) -> SeatEnsureOutcome {
-  compute_seat_ensure_in(attempts_root: attempts_at(root: root), subject: subject_at(root: root), reference: reference as NonEmptyStr, source: source)
+  ensure_owner(root: root, reference: reference, source: source, owner: SeatOwnerLive)
 }
 
 fn is_released(o: SeatEnsureOutcome) -> Bool {
@@ -287,7 +318,7 @@ test fn a_reference_no_record_names_is_refused_and_nothing_is_released() -> Bool
 }
 
 fn driver_outcomes(root: String, source: UnitLifecycleSource) -> List<SeatEnsureOutcome> {
-  match compute_seat_discharge_all(instance_root: root, attempts_dir: trim(s: root), subject: subject_at(root: root), source: source) {
+  match compute_seat_discharge_all(instance_root: root, attempts_dir: trim(s: root), leases_dir: leases_at(root: root), subject: subject_at(root: root), source: source) {
     SeatDischargeRan { outcomes: os } => os
     SeatDischargeSkipped { why: _ } => [] as List<SeatEnsureOutcome>
     SeatDischargeRefused { reason: r } => [SeatEnsureRefused { reference: "", reason: r }]
@@ -300,8 +331,9 @@ test fn the_driver_does_not_discharge_a_seat_without_an_exit_record() -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-drv", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-drv")
+    && launching(root: root, reference: "r-drv")
     && spool_unrecorded(root: root)
-    && !any(driver_outcomes(root: root, source: ended()), o => is_released(o: o))
+    && !any(driver_outcomes(root: root, source: stoppable()), o => is_released(o: o))
     && committed(subject: subject) == granted_kib
 }
 
@@ -380,10 +412,12 @@ test fn a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_director
     }
   opened(root: root, reference: "r-a", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-a")
+    && launching(root: root, reference: "r-a")
     && other_open
     && reserved(subject: subject, reference: "r-b")
+    && launching_in(dir: seat_dir_of(root: root, key: "key-b"), reference: "r-b")
     && exit_recorded(root: root, key: "key-a")
-    && count(driver_outcomes(root: root, source: ended())) == 1
+    && count(driver_outcomes(root: root, source: stoppable())) == 2
     && committed(subject: subject) == granted_kib
     && !is_terminal_in(dir: seat_dir_of(root: root, key: "key-b"), reference: "r-b")
 }
@@ -405,4 +439,98 @@ test fn the_reservation_reference_is_the_identity_and_its_ordinal() -> Bool {
     && a == (compute_reservation_reference(identity: "feedfacefeedface", ordinal: 0) as String)
     && !string_contains(s: a, pattern: "@")
     && string_contains(s: a, pattern: "feedfacefeedface")
+}
+
+// DEAD OWNER, LIVE COMPUTE UNIT (Apply): the owner is proven ended and the unit its own slot names is still
+// live. The unit is STOPPED, the door re-proves termination and the seat comes back. Cross-attempt safety:
+// a joiner attaches only to a stored outcome (compute_attach_under_lease), never to this running unit.
+test fn a_dead_owners_live_compute_unit_is_stopped_and_its_seat_released() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-dead", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-dead")
+    && launching(root: root, reference: "r-dead")
+    && is_released(o: ensure_owner(root: root, reference: "r-dead", source: stoppable(), owner: SeatOwnerEnded))
+    && committed(subject: subject) == 0
+}
+
+// THE CONTROL: the same live unit under a LIVE owner is a Noop -- the unit is not stopped, the seat stays.
+// (The stoppable source would answer "ended" only after a stop, so a release here would prove a stop ran.)
+test fn a_live_owners_live_compute_unit_is_not_stopped() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-lv", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-lv")
+    && launching(root: root, reference: "r-lv")
+    && is_noop(o: ensure_owner(root: root, reference: "r-lv", source: stoppable(), owner: SeatOwnerLive))
+    && committed(subject: subject) == granted_kib
+    && !is_terminal(root: root, reference: "r-lv")
+}
+
+// AN UNKNOWN LIFECYCLE IS NEVER STOPPED, even for a dead owner: the charge is kept.
+test fn a_dead_owners_unknown_unit_is_refused_not_stopped() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-du", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-du")
+    && launching(root: root, reference: "r-du")
+    && is_refused(o: ensure_owner(root: root, reference: "r-du", source: unknown(), owner: SeatOwnerEnded))
+    && committed(subject: subject) == granted_kib
+}
+
+// FINISHED COMPUTE UNDER A LIVE OWNER: no worker exit record exists, the compute unit ended, the seat is
+// held. The driver enumerates the attempt's own seat directory and releases it.
+test fn a_finished_compute_unit_under_a_live_owner_is_released_by_the_driver() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-fin", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-fin")
+    && launching(root: root, reference: "r-fin")
+    && spool_unrecorded(root: root)
+    && lease_held(root: root)
+    && any(driver_outcomes(root: root, source: ended()), o => is_released(o: o))
+    && committed(subject: subject) == 0
+    && !lease_listed(root: root)
+}
+
+// THE PRODUCER LEASE FOLLOWS THE SEAT: after the discharge both the ledger and the lease are gone.
+test fn the_discharge_drops_the_producer_lease_with_the_seat() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-ls", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-ls")
+    && launching(root: root, reference: "r-ls")
+    && lease_held(root: root)
+    && lease_listed(root: root)
+    && is_released(o: ensure(root: root, reference: "r-ls", source: ended()))
+    && committed(subject: subject) == 0
+    && !lease_listed(root: root)
+}
+
+// A LEASE LEFT BEHIND AFTER THE SEAT WAS ALREADY RETURNED (the crash window between release and drop) is
+// dropped by the next pass and counted as its own outcome.
+test fn a_lease_left_after_the_seat_was_returned_is_dropped_and_counted() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-lo", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-lo")
+    && launching(root: root, reference: "r-lo")
+    && is_released(o: ensure(root: root, reference: "r-lo", source: ended()))
+    && lease_held(root: root)
+    && match ensure(root: root, reference: "r-lo", source: ended()) { SeatEnsureLeaseDropped { reference: _ } => true  _ => false }
+    && !lease_listed(root: root)
+    && is_noop(o: ensure(root: root, reference: "r-lo", source: ended()))
+}
+
+// A LEASE IS NEVER DROPPED ON A DOUBT: unit still running under a live owner -> lease stays.
+test fn a_lease_is_kept_while_the_unit_is_live() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-lk", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-lk")
+    && launching(root: root, reference: "r-lk")
+    && lease_held(root: root)
+    && is_noop(o: ensure(root: root, reference: "r-lk", source: running()))
+    && lease_listed(root: root)
+    && committed(subject: subject) == granted_kib
 }
