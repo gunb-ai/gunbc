@@ -1604,7 +1604,7 @@ fn infer_variant_arm_value_reference_facts(
     Absent =>
       outcome_rejected(infer_declaration_identity_unavailable_diagnostic(at: n))
     Present { value: coproduct } =>
-      if infer_variant_arm_payload_is_nullary(payload: declared) {
+      if infer_empty_product_shape(node: declared) {
         infer_reference_facts_or_frontier(
           o: infer_facts_denoting(
             o: inferred_facts_from_derived_type(
@@ -1620,14 +1620,6 @@ fn infer_variant_arm_value_reference_facts(
       } else {
         inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
       }
-  }
-}
-
-fn infer_variant_arm_payload_is_nullary(payload: Node) -> Bool {
-  match payload.kind {
-    TypeNode { connective: Conj } => length(xs: payload.children) == 0
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -5937,21 +5929,22 @@ fn infer_arrow_empty_domain_edge(parent: Node, edge: Edge, children_remaining: I
     TypeNode { connective: Arrow } =>
       (children_remaining == length(xs: parent.children))
         && (edge.label == Positional)
-        && (length(xs: edge.target.children) == 0)
-        && (match edge.target.kind {
-          TypeNode { connective: Conj } => true
-          TypeNode { connective: Atom { identity: _ } } => false
-          TypeNode { connective: Disj } => false
-          TypeNode { connective: Arrow } => false
-          TypeNode { connective: Occupancy } => false
-          TypeNode { connective: Instantiation } => false
-          ComputationNode { behavior: _ } => false
-        })
+        && infer_empty_product_shape(node: edge.target)
     TypeNode { connective: Atom { identity: _ } } => false
     TypeNode { connective: Conj } => false
     TypeNode { connective: Disj } => false
     TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+// THE EMPTY PRODUCT IS A CHILDLESS CONJ. Sum nullary payloads, an Arrow's empty domain, and a
+// nullary coproduct-arm reference all ask this one shape; a marker on it must move every consumer.
+fn infer_empty_product_shape(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } => length(xs: node.children) == 0
+    TypeNode { connective: _ } => false
     ComputationNode { behavior: _ } => false
   }
 }
@@ -6170,11 +6163,7 @@ fn infer_sum_nullary_payload_edge(parent: Node, edge: Edge) -> Bool {
         Authored { name: _ } => true
         Positional => false
       })
-        && (length(xs: edge.target.children) == 0)
-        && (match edge.target.kind {
-          TypeNode { connective: Conj } => true
-          _ => false
-        })
+        && infer_empty_product_shape(node: edge.target)
     _ => false
   }
 }
