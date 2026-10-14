@@ -918,8 +918,8 @@ fn approval_broker_runtime_caps_for(host: HostIdentity) -> ApprovalBrokerRuntime
 
 type SliceControlCaps {
   unit: NonEmptyStr
-  memory_max: Int
-  memory_high: Int
+  memory_max: ByteSize
+  memory_high: ByteSize
 }
 
 fn slice_control_caps_for(host: HostIdentity) -> List<SliceControlCaps> {
@@ -937,8 +937,8 @@ fn slice_control_caps_for(host: HostIdentity) -> List<SliceControlCaps> {
               Present { value: high } => [
                 SliceControlCaps {
                   unit: gunbc_oomd_sessions_slice,
-                  memory_max: byte_size_count(b: max),
-                  memory_high: byte_size_count(b: high),
+                  memory_max: max,
+                  memory_high: high,
                 },
               ]
             }
@@ -950,8 +950,8 @@ fn slice_control_caps_for(host: HostIdentity) -> List<SliceControlCaps> {
       ApprovalBrokerRuntimeCapsDerived { knobs: _ } => [
         SliceControlCaps {
           unit: gunbc_approval_broker_slice_unit_name,
-          memory_max: byte_size_count(b: approval_broker_slice_memory_max),
-          memory_high: byte_size_count(b: approval_broker_slice_memory_high),
+          memory_max: approval_broker_slice_memory_max,
+          memory_high: approval_broker_slice_memory_high,
         },
       ]
     },

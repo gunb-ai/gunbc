@@ -191,6 +191,6 @@ test fn slice_control_caps_include_sessions_and_broker_on_srv1_only() -> Bool {
   let srv3 = slice_control_caps_for(host: operator_host_srv3)
   srv1.length() == 2
     && srv3.length() == 0
-    && any(srv1, c => c.unit as String == "sessions.slice" && c.memory_max == 137438953472)
-    && any(srv1, c => c.unit as String == "gunbc-approval-broker.slice" && c.memory_max == 17179869184 && c.memory_high == 15032385536)
+    && any(srv1, c => c.unit as String == "sessions.slice" && byte_size_count(b: c.memory_max) == 137438953472)
+    && any(srv1, c => c.unit as String == "gunbc-approval-broker.slice" && byte_size_count(b: c.memory_max) == 17179869184 && byte_size_count(b: c.memory_high) == 15032385536)
 }
