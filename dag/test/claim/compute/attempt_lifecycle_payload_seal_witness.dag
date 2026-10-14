@@ -9,9 +9,9 @@ data payload_resupply_source: String = probe_hdr + "fn resupply(root: NonEmptySt
 
 data lawful_begin_launch_source: String = probe_hdr + "fn resupply(root: NonEmptyStr, rec: AttemptRecord, g: CasGeneration) -> AttemptTransition {\n  attempt_begin_launch(root: root, reference: rec.reference as NonEmptyStr, expected: g)\n}\n"
 
-data commit_probe_imports: String = "module probe_commit_bytes_caller\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasExpectation, ExpectSlotAbsent }\nimport gunbc.compute.attempt_lifecycle { AttemptRecord, AttemptTransition, attempt_commit_bytes, attempt_open }\n"
+data commit_probe_imports: String = "module probe_commit_bytes_caller\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasExpectation, ExpectSlotAbsent }\nimport gunbc.compute.attempt_lifecycle { AttemptState, AttemptReserved, AttemptTransition, attempt_commit_bytes, attempt_open, AttemptRecord }\n"
 
-data unadmitted_commit_source: String = commit_probe_imports + "fn forge(root: NonEmptyStr, rec: AttemptRecord) -> AttemptTransition {\n  attempt_commit_bytes(root: root, record: rec, expected: ExpectSlotAbsent)\n}\n"
+data unadmitted_commit_source: String = commit_probe_imports + "fn forge(root: NonEmptyStr, reference: NonEmptyStr, payload: NonEmptyStr) -> AttemptTransition {\n  attempt_commit_bytes(root: root, reference: reference, state: AttemptReserved, payload: payload, expected: ExpectSlotAbsent)\n}\n"
 
 data lawful_open_source: String = commit_probe_imports + "fn forge(root: NonEmptyStr, rec: AttemptRecord) -> AttemptTransition {\n  attempt_open(root: root, record: rec)\n}\n"
 

@@ -134,7 +134,7 @@ import extdeps.filesystem.filesystem_io
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import gunbc.command_runner { run_shell_command_observe }
-import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit, PosixShKeepFile, PosixShRemoveFileAfterRead }
+import extdeps.posix.sh_invocation { posix_sh_export_from_file_unreadable_exit, PosixShKeepFile, PosixShReplaceFileWithTombstoneAfterRead }
 import gunbc.dispatch_selection {
   ClaudeCredentialRef, ClaudeOAuthTokenSecretRef, ClaudeApiKeySecretRef, ClaudeStateRootRef,
   claude_dispatch_credential, inventory_with_observed_standing, claude_offer_for_instance,
@@ -256,7 +256,7 @@ import gunbc.dispatch_credential_snapshot {
   CredentialSnapshotRemoved,
   CredentialSnapshotRemovalFailed,
 }
-import gunbc.dispatch.credential_acquisition { credential_register_then_take }
+import gunbc.dispatch.credential_acquisition { credential_register_then_take, credential_admit_reader_or_discard, LaunchAdmitted, LaunchLostSnapshotDiscarded, LaunchLostDiscardFailed }
 import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
 import gunbc.worker_turn_snapshot_custody {
   claude_worker_turn_snapshot_custody,
@@ -765,9 +765,6 @@ fn dispatch_actuator_claude_selection_observed(
         executor: ClaudeFromSnapshot,
         custody: custody,
         snapshot: dispatch_credential_snapshot_path_for_attempt(attempt: attempt, executor: ClaudeFromSnapshot),
-        belt_unit: "",
-        invocation_id: "",
-        control_group: "",
       ) {
         DispatchSnapshotRefused { reason } => DispatchAttemptSelectionRefused { reason: dispatch_snapshot_refusal_text(reason: reason) }
         DispatchSnapshotTaken { snapshot } => {
@@ -871,9 +868,6 @@ fn cursor_selection_observed(attempt: DispatchAttempt, sizing_expectation: Sizin
       executor: CursorFromSnapshot,
       custody: snapshot_custody_declaration(executor: CursorFromSnapshot),
       snapshot: dispatch_credential_snapshot_path_for_attempt(attempt: attempt, executor: CursorFromSnapshot),
-      belt_unit: "",
-      invocation_id: "",
-      control_group: "",
     ) {
       DispatchSnapshotRefused { reason } => DispatchAttemptSelectionRefused { reason: dispatch_snapshot_refusal_text(reason: reason) }
       DispatchSnapshotTaken { snapshot } => {
@@ -2624,7 +2618,7 @@ fn claude_inner_argv_for_credential(
     ClaudeOAuthTokenSecretRef { secret_ref } =>
       match claude_code_custody_path(secret_ref: secret_ref) {
         Present { value: _ } =>
-          match claude_code_oauth_env_wrapped_command(token_path: taken_credential_snapshot_path(snapshot: snapshot), argv: argv, disposition: PosixShRemoveFileAfterRead) {
+          match claude_code_oauth_env_wrapped_command(token_path: taken_credential_snapshot_path(snapshot: snapshot), argv: argv, disposition: PosixShReplaceFileWithTombstoneAfterRead) {
             ClaudeCodeEnvWrapped { command } => DispatchProviderInnerArgvReady { argv: argv_words(command: command) }
             ClaudeCodeEnvWrapRefused { reason } => ClaudeProviderCredentialUnbound { reason: reason }
           }
@@ -2653,6 +2647,12 @@ fn dispatch_provider_inner_argv_for_launch(
   let model = prepared_attempt_model(prepared: prepared)
   match prepared_attempt_launch_alternative(prepared: prepared) {
     SnapshotLaunch { snapshot } =>
+      match credential_admit_reader_or_discard(snapshot: snapshot) {
+        LaunchLostSnapshotDiscarded =>
+          ClaudeProviderCredentialUnbound { reason: "begin_launch lost; snapshot discarded" as NonEmptyStr }
+        LaunchLostDiscardFailed { reason: r } =>
+          ClaudeProviderCredentialUnbound { reason: r }
+        LaunchAdmitted =>
       match taken_credential_snapshot_executor(snapshot: snapshot) {
         ClaudeFromSnapshot =>
           claude_inner_argv_for_credential(
@@ -2688,6 +2688,7 @@ fn dispatch_provider_inner_argv_for_launch(
               CursorWorkerTurnRefused { reason } => CursorProviderCredentialUnbound { reason: reason }
             }
           }
+      }
       }
     SnapshotFreeLaunch { attempt: _, executor } =>
       match executor {
