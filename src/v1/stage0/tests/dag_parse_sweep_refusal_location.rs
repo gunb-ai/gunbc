@@ -87,3 +87,71 @@ fn parse_sweep_refusal_location_follows_the_offending_line() {
         errors[0]
     );
 }
+
+// Out-of-closure body grammaticality belongs to the parse sweep, not to an entry compile.
+// Pair A: the entry's dependency closure compiles while a sibling file's body is malformed.
+// Pair B: the same population under `run_dag_parse_sweep` refuses at that body.
+#[test]
+fn out_of_closure_malformed_body_is_owned_by_the_parse_sweep() {
+    use std::rc::Rc;
+    use v1_compiler::v1_compiler_compile::{
+        compile_to_resolved_with_options, default_compile_pipeline_options, SourceFile,
+    };
+
+    let entry = "module probe_root.entry\n\ndata ok: Bool = true\n";
+    let outsider = "module probe_root.outsider\n\nfn body_probe(x: Int) -> Int { let = = = 9 }\n";
+
+    let options = {
+        let mut opts = (*default_compile_pipeline_options()).clone();
+        opts.census_only_sources = Rc::new(
+            vec![Rc::new(SourceFile {
+                path: "outsider.dag".to_string(),
+                content: outsider.to_string(),
+            })]
+            .into(),
+        );
+        Rc::new(opts)
+    };
+    let resolved = compile_to_resolved_with_options(
+        Rc::new(
+            vec![Rc::new(SourceFile {
+                path: "entry.dag".to_string(),
+                content: entry.to_string(),
+            })]
+            .into(),
+        ),
+        options,
+    );
+    let hard = resolved
+        .diagnostics
+        .iter()
+        .any(|d| v1_compiler::v1_std_core::is_error_diagnostic(d.diagnostic.clone()));
+    assert!(
+        !hard,
+        "an entry compile must not refuse an out-of-closure body parse: {:?}",
+        resolved
+            .diagnostics
+            .iter()
+            .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect::<Vec<_>>()
+    );
+
+    let dir = scratch_root("body_probe_authority");
+    let root = dir.join("probe_root");
+    std::fs::create_dir_all(&root).expect("probe root");
+    std::fs::write(root.join("entry.dag"), entry).expect("entry");
+    std::fs::write(root.join("outsider.dag"), outsider).expect("outsider");
+    match v1_compiler::cli_run::run_dag_parse_sweep(&dir, &["probe_root"]) {
+        Ok(sweep) => panic!(
+            "parse sweep must refuse the malformed outsider body; parsed {} clean file(s)",
+            sweep.parse_clean
+        ),
+        Err(errors) => {
+            assert!(
+                errors.iter().any(|e| e.contains("expected name, found Eq")
+                    || e.contains("outsider.dag")),
+                "sweep must locate the outsider body parse, got {errors:?}"
+            );
+        }
+    }
+}
