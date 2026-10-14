@@ -19,14 +19,6 @@ pub struct CgroupMemoryRead {
 
 /// WHY A READ CANNOT SILENTLY RETURN ZERO. Each arm names a distinct thing that went wrong, and
 /// none of them may render as "it fit".
-///
-/// THIS IS NOT A MIRROR OF `gunbc.floor_memory_demand` `DemandReadRefusalCause`, and an earlier
-/// revision of this comment said it was. The two vocabularies have DIFFERENT SUBJECTS. Everything
-/// here happens BEFORE there is anything to judge -- no cgroup, no child, no attributable counter
-/// -- so these refusals terminate the invocation with NO observation and never reach the fold.
-/// What the model's arm covers is the one way a COMPLETE set of readings can still be
-/// uninterpretable. Claiming a mirror forked the vocabulary in both directions at once: the model
-/// carried arms nothing could construct while every refusal this file actually emits was unmodeled.
 #[derive(Debug, Clone)]
 pub enum QualificationRefusal {
     CgroupFileUnreadable { path: String, detail: String },

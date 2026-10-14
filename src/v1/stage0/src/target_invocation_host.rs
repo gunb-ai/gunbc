@@ -3493,20 +3493,6 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
     }
 }
 
-/// THE SUPERVISED MEMORY QUALIFICATION OF A REQUIRED-FLOOR RUN.
-///
-/// The three terminations are load-bearing and map onto `gunbc.floor_memory_demand`'s three arms:
-/// `DemandObserved` is ObservationHeld (0), `DemandBounded` is ObservationDidNotHold (1) — the
-/// peak is a LOWER BOUND, so the run produced a reading that may not size anything downward — and
-/// every refusal is Refused (2), no observation at all. An instrument that rendered "could not
-/// read" the same as "it fits" would reproduce one layer out the conflation it exists to remove.
-///
-/// THE PRECONDITION IS CHECKED BEFORE THE WORKLOAD, NOT AFTER. Resolving the measurement cgroup
-/// first means a 35-minute run is never spent producing a figure that cannot be qualified — and,
-/// more importantly, an invocation with no enforceable limit REFUSES instead of reporting a
-/// number. An unbounded run and a bounded one are indistinguishable in everything the workload
-/// itself emits, which is the class
-/// `gunbc.recurring_failure_mode.suppressed_precondition_failure_runs_the_workload_unconstrained`.
 /// THE MEASURED RUN BY PHASE: the child's seam beats, transcribed by the supervisor and folded by
 /// `gunbc.floor.floor_demand` `floor_phase_attribution`, one line per phase in the order the run entered
 /// them. `entry` is the held set the phase inherited, `peak` the largest over its own beats, and
