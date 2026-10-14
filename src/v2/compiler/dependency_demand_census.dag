@@ -642,11 +642,15 @@ fn demand_census_unbound_locus_from_diagnostics(d: NonEmptyDiagnostics) -> Optio
       NodeLocus { anchor: a } =>
         match node_atom_identity_optional(node: a.at) {
           Present { value: n } => optional_present(value: UnboundNamed { name: n })
+<<<<<<< HEAD
           Absent =>
             optional_present(value: UnboundShaped {
               kind: a.at.kind,
               reference: demand_census_shaped_reference_optional(node: a.at)
             })
+=======
+          Absent => optional_present(value: UnboundShaped { kind: a.at.kind })
+>>>>>>> 602c41a999 (Construct Optional via optional_present so emit's if branches inhabit one type.)
         }
       Textual { file: _, extent: _ } => optional_absent()
       SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
