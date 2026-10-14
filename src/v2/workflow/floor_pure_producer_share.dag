@@ -1250,7 +1250,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "rcf_an_undeclared_field_refuses_and_is_named_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "rcf_inhabiting_field_values_are_accepted_and_decided_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "rcf_generic_nullary_arm_field_is_accepted_and_decided_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "rcf_generic_nullary_arm_tail_is_fslist_int_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "rcf_generic_nullary_arm_tail_facts_are_applied_open_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "rcf_nongeneric_nullary_arm_field_is_accepted_and_decided_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "rcf_generic_nullary_arm_conflicting_element_type_refuses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "rcf_generic_nullary_arm_position_vs_value_refuses_holds", standing: ActiveFillDebt }
