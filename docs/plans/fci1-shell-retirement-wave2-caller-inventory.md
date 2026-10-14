@@ -185,13 +185,29 @@ Consequence for the caller graph:
     the *witness* `dag/test/claim/fabric/fci1_bounded_execution_context_emit_witness.dag` in its
     stratified sample paths.
 
-**Critical for retirement:** the in-gate conservation claim checks only the *emit dag's emitted
-content* (the expected `.env` text) and the conservation of the witness dag — **not** the shell
-scripts. `reference_conservation_stratified_sample_paths` contains only `.dag` blobs; the four shell
-files and the `.env` are not census subjects. Therefore deleting the shell files does **not**
-break the in-gate conservation claim, and the only in-gate references to the FCI-1 set are the
-generated-artifact registration and the emit dag, which are the context.env's own provenance.
-The rung-drop prose row (`fabric_evidence_gating`) is documentary only.
+**Critical for retirement — the four shell files are gate-invisible, the `.env` is not.**
+
+- `reference_conservation_stratified_sample_paths` contains only `.dag` blobs; none of the five
+  files is a census subject, so the reference-conservation claim is untouched by deleting any of
+  them.
+- The four shell files (`live_instrument.sh`, `bounded_execution_controls.sh`, `evidence_driver.sh`,
+  `evidence_calibration.sh`) are **not** registered in `gunbc.generated_artifact`, so the required
+  `GeneratedArtifactPhase` (the in-gate drift phase, `gunbc.required_ci_phase_roster`, running in
+  the BuildLane of the required merge context) never sees them. Deleting them is invisible to that
+  phase.
+- The `.env` **is** registered: `Fci1BoundedExecutionContextArtifact` is
+  `CommitRequired { consumer: HostReconciler }` (`generated_artifact.dag:260`), so it is in the
+  committed drift population that the phase adjudicates against `artifact_generate`, "refusing on
+  any Drifted or **Absent** verdict" (`ci_spec.dag`). **Deleting the `.env` while it stays
+  registered goes RED in the required gate.** Retirement must delete the file together with the
+  registration arm (`generated_artifact.dag`), the producer decl_ref
+  (`expected_fci1_bounded_execution_context_env`), the `.gitattributes` merge line, and the
+  witness-dag census entry — or the drift phase stays red on an `Absent` verdict.
+
+The in-gate conservation claim itself checks only the *emit dag's emitted content* (the expected
+`.env` text) and the conservation of the witness dag — **not** the shell scripts. The only in-gate
+references to the FCI-1 set are the generated-artifact registration and the emit dag, which are the
+context.env's own provenance; the rung-drop prose row (`fabric_evidence_gating`) is documentary only.
 
 ## 5. Open / needs confirmation
 - Nothing blocked. This is read-only. Wave 1 (royal-otter-526) landing is what gates any *code*
