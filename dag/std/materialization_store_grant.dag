@@ -13,6 +13,7 @@ import std.effect_grant {
 import std.filesystem_path_grant { absolute_path_position }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_tmp_scratch_store_root }
+import std.algebra { string_contains }
 
 // THE STORE ROOT IS A COPRODUCT SO DURABILITY IS CONSTRUCTED, NOT INFERRED FROM A PATH.
 //
@@ -24,10 +25,16 @@ import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_
 //
 // WHICH HOST PATH a live volume uses lives on HostDashboardInstance.materialization_store_root
 // (gunbc.roadmap.roadmap_dashboard_instance), not as a corpus-wide constant. DurableHostVolumeRoot
-// is ONLY for a volume that outlives the run (srv1 /var/lib/gunbc/materialization-store, labs,
-// macbook). A per-run job workspace is EphemeralHostVolumeRoot: same host-path grant shape, durability
-// EphemeralToFrame. Wrapping that workspace as DurableHostVolumeRoot would be a meaning fork
-// (DESIGN section 3) and a silent widen (DESIGN section 5).
+// therefore carries a path. On origin/main the arm was fieldless and the path was one std constant,
+// so DurableHostVolumeRoot { root: "/tmp/x" } had no constructor (structurally impossible). The
+// field reopens that state. Declared drop: gunbc.rung_drop
+// durable_host_volume_root_path_is_an_arbitrary_string. Temporary rung is the envelope guard
+// is_durable_host_volume_path: a Durable arm whose path is scratch, /tmp, /var/tmp, or the
+// hermetic compute workspace receives no grants (admit_effect Denies). Durability is still read
+// from the arm. Restoration is a closed durable-volume identity with no String field.
+//
+// A per-run job workspace is EphemeralHostVolumeRoot: same host-path grant shape, durability
+// EphemeralToFrame.
 //
 // DECLARED FRONTIER: this module grants the guest-side PATH. Attaching a gunbc-owned host volume
 // as a Firecracker drive is the runner lane's act. Until that attachment lands, a durable-root open
@@ -87,6 +94,15 @@ fn materialization_store_durability_name(d: MaterializationStoreDurability) -> S
   }
 }
 
+fn is_durable_host_volume_path(path: String) -> Bool {
+  !is_gunbc_tmp_scratch_store_root(store_root: path)
+    && path != "/tmp"
+    && !path.starts_with(prefix: "/tmp/")
+    && path != "/var/tmp"
+    && !path.starts_with(prefix: "/var/tmp/")
+    && !string_contains(s: path, pattern: "/.gunbc-compute-hermetic/")
+}
+
 fn materialization_store_host_volume_envelope(path: String) -> Envelope {
   Envelope {
     frame: materialization_store_frame,
@@ -103,7 +119,12 @@ fn materialization_store_grants(root_position: NamespacePosition) -> List<Grant>
 
 fn materialization_store_envelope(root: MaterializationStoreRoot) -> Envelope {
   match root {
-    DurableHostVolumeRoot { root: r } => materialization_store_host_volume_envelope(path: r)
+    DurableHostVolumeRoot { root: r } =>
+      if is_durable_host_volume_path(path: r) {
+        materialization_store_host_volume_envelope(path: r)
+      } else {
+        Envelope { frame: materialization_store_frame, grants: [] }
+      }
     EphemeralHostVolumeRoot { root: r } => materialization_store_host_volume_envelope(path: r)
     WitnessScratchRoot { root: r } =>
       if is_gunbc_tmp_scratch_store_root(store_root: r) {
