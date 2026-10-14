@@ -4,11 +4,13 @@ import std.types { Bool, FilePath }
 import gunbc.roadmap.roadmap_dashboard_instance {
   fleet_compute_hermetic_dashboard_instance_at, srv1_live_dashboard_instance,
   IsolatedJobToolchainHomes, srv1_linux_toolchain,
+  macbook_local_dashboard_instance, srv2_deploy_dashboard_instance,
+  srv1_lab_dashboard_instance, srv2_preview_dashboard_instance, srv2_lab_dashboard_instance,
 }
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_provider_local { compute_store, compute_staging_dir }
 import std.materialization_store_grant {
-  DurableHostVolume, JobWorkspaceScoped, WitnessScratchRoot,
+  MaterializationStoreRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace, WitnessScratchRoot,
   materialization_store_root_path, materialization_store_durability, materialization_store_host_volume_path,
   DurableAcrossRuns, EphemeralToFrame,
 }
@@ -74,13 +76,15 @@ test fn the_hermetic_store_root_is_the_instance_field_and_not_srv1_live() -> Boo
     && (compute_staging_dir(instance: h) == join([hermetic_path, "-staging"], ""))
     && (compute_staging_dir(instance: live) == join([live_path, "-staging"], ""))
     && match hermetic_root {
-      JobWorkspaceScoped => true
+      FrameJobWorkspace => true
       DurableHostVolume => false
+      PersistentInstanceWorkspace => false
       WitnessScratchRoot { root: _ } => false
     }
     && match live_root {
       DurableHostVolume => live_path == materialization_store_host_volume_path
-      JobWorkspaceScoped => false
+      PersistentInstanceWorkspace => false
+      FrameJobWorkspace => false
       WitnessScratchRoot { root: _ } => false
     }
     && match materialization_store_durability(root: hermetic_root) {
@@ -115,6 +119,43 @@ test fn the_job_memory_demand_is_the_unit_grant_plus_declared_launcher_headroom(
     && (headroom == 1073741824)
     && (demand == grant + headroom)
     && (demand > grant)
+}
+
+fn store_root_is_persistent_workspace(root: MaterializationStoreRoot) -> Bool {
+  match root {
+    PersistentInstanceWorkspace => true
+    DurableHostVolume => false
+    FrameJobWorkspace => false
+    WitnessScratchRoot { root: _ } => false
+  }
+}
+
+fn store_root_is_frame_workspace(root: MaterializationStoreRoot) -> Bool {
+  match root {
+    FrameJobWorkspace => true
+    DurableHostVolume => false
+    PersistentInstanceWorkspace => false
+    WitnessScratchRoot { root: _ } => false
+  }
+}
+
+test fn literal_instance_roots_pick_persistent_workspace_and_parameterized_roots_pick_frame() -> Bool {
+  let hermetic = fleet_compute_hermetic_dashboard_instance_at(
+    workspace: "/job-workspace" as FilePath,
+    toolchain_homes: witness_isolated_job_toolchain_homes(),
+  )
+  store_root_is_persistent_workspace(root: macbook_local_dashboard_instance().materialization_store_root)
+    && store_root_is_persistent_workspace(root: srv2_deploy_dashboard_instance().materialization_store_root)
+    && match srv1_live_dashboard_instance().materialization_store_root {
+      DurableHostVolume => true
+      PersistentInstanceWorkspace => false
+      FrameJobWorkspace => false
+      WitnessScratchRoot { root: _ } => false
+    }
+    && store_root_is_frame_workspace(root: srv1_lab_dashboard_instance().materialization_store_root)
+    && store_root_is_frame_workspace(root: srv2_preview_dashboard_instance().materialization_store_root)
+    && store_root_is_frame_workspace(root: srv2_lab_dashboard_instance().materialization_store_root)
+    && store_root_is_frame_workspace(root: hermetic.materialization_store_root)
 }
 
 test fn the_cold_instrument_is_not_a_required_emit_build_row() -> Bool {
