@@ -318,8 +318,23 @@ fn harness_unimplemented_tool_detail(tool: HarnessTool) -> String {
 // OFFERED TOOLS ARE THE ONES THAT RUN. run_command is the shell; hand_in is the typed acceptance
 // wait (operator ruling 2026-10-14: trusted operations may block to their own budget). The three
 // file tools stay declared and unadvertised until they have a realization.
+type OfferedHarnessTool
+  = OfferedRunCommandTool
+  | OfferedHandInTool
+
+fn harness_offered_tool_kind(tool: OfferedHarnessTool) -> HarnessTool {
+  match tool {
+    OfferedRunCommandTool => RunCommandTool
+    OfferedHandInTool => HandInTool
+  }
+}
+
+fn harness_offered_tool_rows() -> List<OfferedHarnessTool> {
+  [OfferedRunCommandTool, OfferedHandInTool]
+}
+
 fn harness_offered_tools() -> List<HarnessTool> {
-  [RunCommandTool, HandInTool]
+  map(harness_offered_tool_rows(), t => harness_offered_tool_kind(tool: t))
 }
 
 data harness_run_command_description: String = "Run a shell command in the attempt's working directory and return its combined output and exit code."
@@ -334,31 +349,26 @@ fn harness_hand_in_schema() -> JsonValue {
   ])
 }
 
-fn harness_offered_tool_schema(tool: HarnessTool) -> JsonValue {
+fn harness_offered_tool_schema(tool: OfferedHarnessTool) -> JsonValue {
   match tool {
-    RunCommandTool => harness_run_command_schema()
-    HandInTool => harness_hand_in_schema()
-    ReadFileTool => harness_hand_in_schema()
-    WriteFileTool => harness_hand_in_schema()
-    EditFileTool => harness_hand_in_schema()
+    OfferedRunCommandTool => harness_run_command_schema()
+    OfferedHandInTool => harness_hand_in_schema()
   }
 }
 
-fn harness_offered_tool_description(tool: HarnessTool) -> String {
+fn harness_offered_tool_description(tool: OfferedHarnessTool) -> String {
   match tool {
-    RunCommandTool => harness_run_command_description
-    HandInTool => harness_hand_in_description
-    ReadFileTool => harness_unimplemented_tool_detail(tool: ReadFileTool)
-    WriteFileTool => harness_unimplemented_tool_detail(tool: WriteFileTool)
-    EditFileTool => harness_unimplemented_tool_detail(tool: EditFileTool)
+    OfferedRunCommandTool => harness_run_command_description
+    OfferedHandInTool => harness_hand_in_description
   }
 }
 
-fn harness_offered_tool_json(shape: HarnessWireShape, tool: HarnessTool) -> JsonValue {
+fn harness_offered_tool_json(shape: HarnessWireShape, tool: OfferedHarnessTool) -> JsonValue {
+  let kind = harness_offered_tool_kind(tool: tool)
   match shape {
     AnthropicMessagesShape =>
       json_object([
-        json_kv(key: "name", value: json_string(s: harness_tool_wire_name(tool: tool))),
+        json_kv(key: "name", value: json_string(s: harness_tool_wire_name(tool: kind))),
         json_kv(key: "description", value: json_string(s: harness_offered_tool_description(tool: tool))),
         json_kv(key: "input_schema", value: harness_offered_tool_schema(tool: tool)),
       ])
@@ -366,7 +376,7 @@ fn harness_offered_tool_json(shape: HarnessWireShape, tool: HarnessTool) -> Json
       json_object([
         json_kv(key: "type", value: json_string(s: "function")),
         json_kv(key: "function", value: json_object([
-          json_kv(key: "name", value: json_string(s: harness_tool_wire_name(tool: tool))),
+          json_kv(key: "name", value: json_string(s: harness_tool_wire_name(tool: kind))),
           json_kv(key: "description", value: json_string(s: harness_offered_tool_description(tool: tool))),
           json_kv(key: "parameters", value: harness_offered_tool_schema(tool: tool)),
         ])),
@@ -375,5 +385,5 @@ fn harness_offered_tool_json(shape: HarnessWireShape, tool: HarnessTool) -> Json
 }
 
 fn harness_offered_tools_json(shape: HarnessWireShape) -> JsonValue {
-  json_array(elements: map(harness_offered_tools(), t => harness_offered_tool_json(shape: shape, tool: t)))
+  json_array(elements: map(harness_offered_tool_rows(), t => harness_offered_tool_json(shape: shape, tool: t)))
 }

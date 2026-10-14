@@ -17,7 +17,7 @@ import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
 import gunbc.harness.harness_seat { harness_turn_request,
   HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, HarnessOperatorBound, harness_bind_seat, HarnessSeatReleased, HarnessHostedCredentialRemoved,
-  HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire, harness_now_epoch,
+  HarnessSeatReleaseRefused, HarnessSeatReleaseNotApplicable, harness_release_seat, harness_seat_release_wire, harness_now_epoch,
   AnyAdmittedModel,
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, serving_co_tenancy_class_wire }
@@ -77,6 +77,7 @@ fn fabric_seat_probe(receipt: NonEmptyStr) -> ProcessExit {
       match seat_release {
         HarnessHostedCredentialRemoved => exit_failure(reason: "seat probe: a fleet seat release answered as a hosted credential removal")
         HarnessSeatReleased { partition: _ } => if w.success { ExitSuccess } else { exit_failure(reason: join(["seat probe: receipt write failed: ", w.error], "")) }
+        HarnessSeatReleaseNotApplicable { why } => exit_failure(reason: join(["seat probe: granted but the standing pool no longer holds this seat: ", why], ""))
         HarnessSeatReleaseRefused { detail: d } => exit_failure(reason: join(["seat probe: granted but release refused: ", d], ""))
       }
     }

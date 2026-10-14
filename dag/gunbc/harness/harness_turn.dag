@@ -34,7 +34,7 @@ import gunbc.harness.harness_seat {
   HostedInflightRead, HostedInflightUnread, HostedInflightHeld, HostedInflightRefused, harness_hosted_inflight_read,
   harness_hosted_inflight_acquire, harness_hosted_inflight_release, hosted_inflight_carried,
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, HarnessOperatorBound,
-  harness_release_seat, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseRefused,
+  harness_release_seat, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseNotApplicable, HarnessSeatReleaseRefused,
 }
 import gunbc.fabric.fabric_quota { quota_window_start }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
@@ -2646,6 +2646,7 @@ fn harness_release_fleet_seat_for_handin(config: HarnessTurnConfig) -> HarnessHa
             acceptance_capacity: KeepBindingAlive,
           } }
         HarnessSeatReleaseRefused { detail } => HandInSeatReleaseRefused { detail: detail }
+        HarnessSeatReleaseNotApplicable { why } => HandInSeatReleaseRefused { detail: why }
       }
   }
 }

@@ -37,7 +37,7 @@ import gunbc.harness.harness_seat_pointer { harness_seat_pointer_path, harness_s
 import gunbc.serving.caller_retry_contract { caller_backlog_wire, serving_route_caller_backlog }
 import gunbc.harness.harness_seat { harness_turn_request, harness_seat_pointer_of,
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, HarnessOperatorBound, harness_bind_seat, harness_bind_hosted,
-  HarnessSeatRelease, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseRefused, harness_release_seat,
+  HarnessSeatRelease, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseNotApplicable, HarnessSeatReleaseRefused, harness_release_seat,
   harness_seat_release_wire, harness_release_held, harness_release_capability,
   HarnessReleaseCapability, harness_release_capability_wire,
   ServingModelRequirement, AnyAdmittedModel,
@@ -211,12 +211,9 @@ fn harness_turn_exit_released(outcome: HarnessTurnOutcome, seat: HarnessSeatRele
   match seat {
     HarnessSeatReleased { partition: _ } => harness_turn_exit(outcome: outcome)
     HarnessHostedCredentialRemoved => harness_turn_exit(outcome: outcome)
-    HarnessSeatReleaseRefused { detail: d } =>
-      if d.contains("this release does not apply to the standing pool") {
-        harness_turn_exit(outcome: outcome)
-      } else {
-        ExitFailure { code: 1, reason: join([harness_outcome_label(outcome: outcome), "; seat ", harness_seat_release_wire(r: seat)], "") }
-      }
+    HarnessSeatReleaseNotApplicable { why: _ } => harness_turn_exit(outcome: outcome)
+    HarnessSeatReleaseRefused { detail: _ } =>
+      ExitFailure { code: 1, reason: join([harness_outcome_label(outcome: outcome), "; seat ", harness_seat_release_wire(r: seat)], "") }
   }
 }
 
@@ -627,6 +624,8 @@ fn harness_release_admitted(partition: String, reference: String, grant: String,
   match harness_release_held(short_hostname: harness_executor_short_hostname(), capability: capability, reason: reason as NonEmptyStr) {
     HarnessSeatReleased { partition: _ } => ExitSuccess
     HarnessHostedCredentialRemoved => ExitFailure { code: 1, reason: join(["harness seat release for ", harness_release_capability_wire(c: capability), " answered as a hosted credential removal; the seat may still be held"], "") }
+    HarnessSeatReleaseNotApplicable { why } =>
+      ExitFailure { code: 1, reason: join(["harness seat release for ", harness_release_capability_wire(c: capability), " does not apply to the standing pool: ", why], "") }
     HarnessSeatReleaseRefused { detail: d } =>
       ExitFailure { code: 1, reason: join(["harness seat release refused for ", harness_release_capability_wire(c: capability), ": ", d], "") }
   }

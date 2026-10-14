@@ -37,7 +37,7 @@ import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire
 import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch, replica_endpoint_launch_key }
 import gunbc.harness.harness_seat {
   HarnessSeatReference, HarnessSeatPoolIdentity, harness_seat_reference_wire,
-  release_retry, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseRefused,
+  release_retry, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseNotApplicable, HarnessSeatReleaseRefused,
 }
 
 // ── THE SECOND DOOR, AND WHY AUTHENTICATION ALONE DOES NOT CLOSE IT ──────────────────────────
@@ -713,6 +713,7 @@ fn front_door_release_after_end(store: FabricStorageBinding, pool: HarnessSeatPo
   match release_retry(store: store, partition: pool.partition, ceiling: pool.ceiling, reference: reference, reason: "the front door's proxied stream ended" as NonEmptyStr, now: now) {
     HarnessSeatReleased { partition: _ } => StreamEndedSeatReleased
     HarnessHostedCredentialRemoved => StreamEndedReleaseRefused { detail: "a seat-pool release answered as a hosted credential removal; the seat may still be held" }
+    HarnessSeatReleaseNotApplicable { why } => StreamEndedReleaseRefused { detail: why }
     HarnessSeatReleaseRefused { detail: d } => StreamEndedReleaseRefused { detail: d }
   }
 }
