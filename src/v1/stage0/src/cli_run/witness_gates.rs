@@ -343,8 +343,8 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
         &compile_clean_scope_plan_for_ci(),
     ) {
         Ok(None) => true,
-        Ok(Some((sources, index))) => {
-            let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
+        Ok(Some((sources, _index))) => {
+            let options = v1_compiler_compile::default_compile_pipeline_options();
             let result = v1_compiler_compile::compile_to_resolved_with_options(
                 Rc::new(sources.into()),
                 options,

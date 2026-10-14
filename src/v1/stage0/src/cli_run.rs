@@ -7150,7 +7150,6 @@ pub struct CompileRun {
     /// Bytes of the resolved closure's sources: the byte half of the population a run measured,
     /// read by the root demand measurement's census.
     pub closure_source_bytes: u64,
-    pub census_modules: usize,
     pub blocking_diagnostics: usize,
     pub advisory_diagnostics: usize,
     pub wall_ms: u128,
@@ -7170,11 +7169,10 @@ impl CompileRun {
     /// state inferable only from the presence of a neighbour.
     pub fn measurement_line(&self, prefix: &str) -> String {
         format!(
-            "{prefix}: {} subject={} closure={} census={} emitted={} blocking={} advisory={} wall_ms={}",
+            "{prefix}: {} subject={} closure={} emitted={} blocking={} advisory={} wall_ms={}",
             self.disposition.tag(),
             self.subject.receipt(),
             self.closure_modules,
-            self.census_modules,
             match &self.disposition {
                 CompileDisposition::Completed { emitted_count } => emitted_count.to_string(),
                 // NOT "0": a transaction that never ran has no emitted count, and a zero
@@ -7190,13 +7188,11 @@ impl CompileRun {
                 CompileDisposition::NotExecuted { .. } => "n/a".to_string(),
             },
             match self.disposition {
-                CompileDisposition::NotExecuted { .. } =>
-                    "n/a".to_string(),
+                CompileDisposition::NotExecuted { .. } => "n/a".to_string(),
                 _ => self.blocking_diagnostics.to_string(),
             },
             match self.disposition {
-                CompileDisposition::NotExecuted { .. } =>
-                    "n/a".to_string(),
+                CompileDisposition::NotExecuted { .. } => "n/a".to_string(),
                 _ => self.advisory_diagnostics.to_string(),
             },
             self.wall_ms,
@@ -7541,7 +7537,6 @@ fn compile_not_executed(
         subject: subject.clone(),
         closure_modules: 0,
         closure_source_bytes: 0,
-        census_modules: 0,
         blocking_diagnostics: 0,
         advisory_diagnostics: 0,
         wall_ms: started.elapsed().as_millis(),
@@ -8160,15 +8155,7 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
             }
         }
     };
-    // Everything indexed and outside the closure enters the NAME CENSUS only. This is
-    // what makes the transaction see a parse break anywhere under the source roots. ONE
-    // derivation, shared with the required floor and the XL-1 tap:
-    // compile_clean_census_only_sources_for_compiled keys membership on MODULE PATH
-    // because the closure loader and the index normalize paths differently (review 67039
-    // on gunbc#11461: this arm and the tap each carried a copy, and the copies had already
-    // drifted from the helper in sort order).
-    let options = compile_clean_pipeline_options_for_sources(Some(&index), &closure);
-    let census_modules = options.census_only_sources.len();
+    let options = v1_compiler_compile::default_compile_pipeline_options();
 
     // RESOLVE ONCE, EMIT N TIMES. `compile_sources_with_options` is literally
     // `emit_resolved_for_target ∘ compile_to_resolved_with_options`, so the single-target
@@ -8264,7 +8251,6 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
             .iter()
             .map(|source| source.content.len() as u64)
             .sum(),
-        census_modules,
         blocking_diagnostics: blocking,
         // Derived from one population rather than scanned twice, so the two counts cannot
         // disagree with the total.
@@ -15637,7 +15623,7 @@ fn finish_resolved_graph_assembly(
     let effect_analysis =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry);
     // ONE AUTHORITY FOR THE CAUSE-TO-DIAGNOSTIC MAPPING, called rather than mirrored by hand. This
-    // block used to hand-copy `typecheck_with_census_extra`'s five-arm `EffectIncompleteness` match,
+    // block used to hand-copy `typecheck`'s five-arm `EffectIncompleteness` match,
     // three of its message strings verbatim included -- two sources for one fact, which DESIGN §2
     // calls the forked-logic trap and §3 an authority fork, and whose failure is silent: a message
     // edited on one side, or a sixth arm added on one side and defaulted on the other, disagrees

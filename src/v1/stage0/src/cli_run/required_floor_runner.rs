@@ -124,10 +124,10 @@ pub(crate) fn floor_inventory_content_digest(inventory: &[PreparedSourceView]) -
 /// (`compile_clean_via_index_verdict_equivalence` tests).
 pub(crate) fn floor_compile_clean_emit_ok(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    index: Option<&MultiEntryIndex>,
+    _index: Option<&MultiEntryIndex>,
 ) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
-    let options = compile_clean_pipeline_options_for_sources(index, &sources);
+    let options = v1_compiler_compile::default_compile_pipeline_options();
     let result = v1_compiler_compile::compile_sources_with_options(
         Rc::new(sources.into()),
         RenderTarget::Dag,

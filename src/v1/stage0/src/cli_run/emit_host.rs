@@ -1520,7 +1520,7 @@ fn compile_dag_primitive_call_edges_on_this_thread(
         closure.len()
     ));
     v1_rt::trace_mark("primitive-call-edges.resolve.begin".to_string());
-    let options = compile_clean_pipeline_options_for_sources(Some(&index), &closure);
+    let options = v1_compiler_compile::default_compile_pipeline_options();
     let resolved =
         v1_compiler_compile::compile_to_resolved_with_options(Rc::new(closure.into()), options);
     v1_rt::trace_mark("primitive-call-edges.resolve.done".to_string());
@@ -2568,10 +2568,7 @@ pub(crate) fn compile_xl1_primary_root_tap(
             }
         }
     };
-    // The pool outside the closure enters the name census only -- the SAME derivation the
-    // compile transaction's PrimaryRoot arm and the required floor consume, never a copy
-    // (review 67039 on gunbc#11461).
-    let options = compile_clean_pipeline_options_for_sources(Some(&index), &closure);
+    let options = v1_compiler_compile::default_compile_pipeline_options();
     let resolved = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         v1_compiler_compile::compile_to_resolved_with_options(
             Rc::new(closure.clone().into()),

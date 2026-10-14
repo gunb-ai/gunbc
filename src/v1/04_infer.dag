@@ -16025,7 +16025,7 @@ fn build_local_variants(items: List<Node>, source_indices: Map<String, NewlineIn
 
 // Cost shape (bare-minimum-cost, DESIGN 6): the census-eligible variant-owner pairs depend only on
 // global_bare and the name-census si — whole-closure facts identical for every module — so
-// build_global_bare_variant_locals computes them ONCE per closure in typecheck_with_census_extra
+// build_global_bare_variant_locals computes them ONCE per closure in typecheck
 // and the base map threads down realize_module -> typecheck_module -> build_module_context. The
 // former per-module shape rescanned the whole census and re-inserted every eligible pair into every
 // module's locals: 464 modules x 12,554 census keys = 5.8M iterations and 1.29M persistent-map
@@ -17581,10 +17581,6 @@ type RealizeState {
   diags_by_name: Map<String, List<ErrorNode>>
 }
 
-fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
-  typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_si: source_indices)
-}
-
 // ONE HOME FOR THE CAUSE-TO-DIAGNOSTIC MAPPING, BECAUSE IT HAD TWO AND THEY COULD DRIFT.
 // The seed's graph assembly renders the same five EffectIncompleteness arms the moment it unwraps a
 // ServiceEffectAnalysis, and it did so by HAND-COPYING this match -- three of the message strings
@@ -17629,15 +17625,12 @@ fn effect_incompleteness_diagnostics(causes: List<EffectIncompleteness>) -> List
   )
 }
 
-fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> TypedGraph {
+fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let resolved_by_name = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: rm.module), rm)
   )
-  let symbol_index = symbol_index_with_qualified_fill(
-    closure: build_symbol_index_census(modules: graph.modules, source_indices: census_si),
-    fill: build_symbol_index_qualified_fill(modules: census_fill_modules, source_indices: census_si)
-  )
+  let symbol_index = build_symbol_index_census(modules: graph.modules, source_indices: source_indices)
   let global_variant_base = build_global_bare_variant_locals(global_bare: symbol_index.global_bare, source_indices: source_indices)
   let state = graph.modules |> fold(init: RealizeState {
     module_index: empty_map(),
@@ -17844,11 +17837,7 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
 }
 
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ResolvedGraph {
-  reconcile_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_si: source_indices)
-}
-
-fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> ResolvedGraph {
-  let typed = typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: census_fill_modules, census_si: census_si)
+  let typed = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
   ResolvedGraph {
