@@ -9,8 +9,13 @@ import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_provider_local { compute_durable_store, compute_staging_dir }
 import std.materialization_store_grant { DurableHostVolumeRoot, WitnessScratchRoot }
 import gunbc.instrument_targets { compute_run_unit_cold_label }
+import gunbc.instruments.compute_run_unit_cold {
+  compute_run_unit_cold_unit_grant_bytes, compute_run_unit_cold_unit_grant,
+  compute_run_unit_cold_launcher_headroom, compute_run_unit_cold_job_memory_demand,
+}
 import gunbc.emitted_subject_build_gate { emitted_subject_build_rows }
 import extdeps.bazel.label { render_label, label_eq }
+import std.measure { byte_size_count, kibibyte_count }
 
 test fn the_hermetic_instance_is_not_srv1_live() -> Bool {
   let h = fleet_compute_hermetic_dashboard_instance_at(workspace: "/job-workspace" as FilePath)
@@ -56,6 +61,17 @@ test fn the_hermetic_store_root_is_the_instance_field_and_not_srv1_live() -> Boo
       DurableHostVolumeRoot { root: r } => r == live_path
       WitnessScratchRoot { root: _ } => false
     }
+}
+
+test fn the_job_memory_demand_is_the_unit_grant_plus_declared_launcher_headroom() -> Bool {
+  let grant = byte_size_count(b: compute_run_unit_cold_unit_grant_bytes)
+  let headroom = byte_size_count(b: compute_run_unit_cold_launcher_headroom)
+  let demand = byte_size_count(b: compute_run_unit_cold_job_memory_demand())
+  (kibibyte_count(k: compute_run_unit_cold_unit_grant()) == 16777216)
+    && (grant == 17179869184)
+    && (headroom == 1073741824)
+    && (demand == grant + headroom)
+    && (demand > grant)
 }
 
 test fn the_cold_instrument_is_not_a_required_emit_build_row() -> Bool {

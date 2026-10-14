@@ -3,7 +3,10 @@ module gunbc.instruments.compute_run_unit_cold
 import std.types { String, Bool, Int, List, FilePath, GitRef, NonEmptyStr }
 import std.algebra { trim, starts_with }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.measure { kibibyte }
+import std.measure {
+  ByteSize, Kibibyte, gibibyte, gibibyte_to_byte_size,
+  kibibyte_from_byte_size_floor, measure_add,
+}
 import std.optional { Present, Absent }
 import std.env_binding { EnvSet, EnvBinding }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
@@ -31,6 +34,25 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // gunbc.compute.work_provider_local compute_run_unit, not a copy. No bus is ExitFailure code 2
 // (gunbc test: no observation). Each run's instance root is
 // <git-toplevel>/.gunbc-compute-hermetic/<unix-millis>, so target_dir is empty at start.
+
+// THE UNIT GRANT IS ONE BYTESIZE. compute_run_unit takes Kibibyte; the dispatch job cgroup must
+// admit that grant PLUS the wet CliWire evaluator that launches systemd-run --user. Those two
+// quantities are derived here so a later edit cannot retune the unit without the job wall, or
+// size the job wall to the grant alone (review 79835).
+data compute_run_unit_cold_unit_grant_bytes: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 16))
+
+fn compute_run_unit_cold_unit_grant() -> Kibibyte {
+  kibibyte_from_byte_size_floor(b: compute_run_unit_cold_unit_grant_bytes)
+}
+
+// POLICY BUDGET for the gunbc process and systemd-run --user that sit outside the unit MemoryMax.
+// Not native_step_memory_headroom: that row is slot MemoryHigh minus the compiler trip, a different
+// subject. One gibibyte, as a declared launcher reservation, not a measured RSS.
+data compute_run_unit_cold_launcher_headroom: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 1))
+
+fn compute_run_unit_cold_job_memory_demand() -> ByteSize {
+  measure_add(a: compute_run_unit_cold_unit_grant_bytes, b: compute_run_unit_cold_launcher_headroom)
+}
 
 type HermeticUserSessionRuntime
   = HermeticUserSessionRuntimeBound { runtime_dir: FilePath }
@@ -205,7 +227,6 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
                 if wt != "" {
                   CliWirePrintable { bytes: wt, exit: ExitFailure { code: 1, reason: wt } }
                 } else {
-                  let granted = kibibyte(count: 16777216)
                   let op = work_default_build()
                   match compute_run_unit(
                     instance: instance,
@@ -214,7 +235,7 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
                     argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency),
                     env: concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
                     launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
-                    granted: granted,
+                    granted: compute_run_unit_cold_unit_grant(),
                   ) {
                     ComputeUnitRunRefused { cause: _ } =>
                       CliWirePrintable {
