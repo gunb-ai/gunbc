@@ -1,0 +1,81 @@
+// K3 BASELINE INSTRUMENT — eval steps of `std.keyed_roster` `keyed_roster_build` at three
+// cardinalities (256, 512 and 1024 synthetic distinct keys).
+//
+// WHY THIS EXISTS. `keyed_roster_build` folds `keyed_roster_insert_into_unique`, which performs
+// one linear `keyed_row_find` scan plus one growing `concat(rows, [incoming])` per element, so
+// building a roster is quadratic (O(n^2) interpreter work for n keys). The cause is the signature,
+// not the body: `key_eq` is an arbitrary caller-supplied `fn K K -> Bool`, and an arbitrary
+// predicate cannot be indexed. The census (gunbc.repository_census_coverage
+// `repository_census_keyed_roster_dissolution_note`) measured that function wall-clock at 85ms,
+// 318ms and 1273ms over the same three sizes, but wall-clock is a property of the runner, not of
+// the work. This specimen re-derives the SAME work as a count of interpreter eval-steps -- the
+// host-independent quantity the required floor enforces (the eval-step analog of the census's
+// millisecond baseline) -- and it is re-derivable on main: the named row
+// `v2.workflow.keyed_roster_build_eval_steps` names THIS module and its three `--function`s, so
+// any reader reproduces the readings by running them and reading the `[witness] eval_steps=...`
+// line each prints.
+//
+// THE INPUT IS BUILT LINEARLY ON PURPOSE. The keys are 0..n, distinct and O(1)-comparable (`Int`
+// is i64-backed, so `key_eq` is a single compare). They are assembled by the long-list-on-the-left
+// / singleton-on-the-right idiom (`concat(acc, [key])`), which the runtime charges as a CONSTANT
+// number of eval-steps per step (a `concat` is one expression; `record_eval_step` is called from
+// `eval_expr` and nowhere else) -- NOT as a per-item copy. So the key list costs O(n) eval-steps
+// and the reading isolates `keyed_roster_build`'s O(n^2) scan rather than the input construction.
+// (A naive `concat([key], tail)` build would be O(n^2) itself and would swamp the thing under
+// test: after K4 regrounds `keyed_roster_build` to linear, a quadratic input would still read
+// quadratic and the instrument would show no improvement.)
+//
+// THE READING IS THE DELTA, PER FUNCTION. `claim_batch` measures `eval_steps` as the steps taken
+// running each `--function` (a `steps_started`/`evaluator_steps()` delta, net of any
+// shared-artifact fill) and prints one `[witness] <fn>: ... eval_steps=...` line per function. So
+// the three cardinalities run as three functions in one invocation, each reading independent of
+// the others.
+//
+// DO NOT CHANGE the cardinalities or the key-count without RE-MEASURING the named row: the row
+// pins these exact three sizes (the census's sizes), so a different n would no longer be the
+// baseline K4 is measured against.
+module test.claim.keyed_roster_build_eval_steps_specimen
+import std.types { Int, Bool, List }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster { keyed_roster_build, KeyedRosterBuilt }
+
+// O(n): the long list stays the left operand and the singleton the right, so each append is a
+// constant number of eval-steps (see the module header). n distinct keys, 0..n, in order.
+fn build_distinct_int_keys(n: Int, acc: List<Int>) -> List<Int> {
+  if n <= 0 {
+    acc
+  } else {
+    build_distinct_int_keys(n: n - 1, acc: concat(acc, [n - 1]))
+  }
+}
+
+// O(1) key equality on i64-backed Int keys: the scan cost is the O(n) find, not the compare.
+fn int_key_eq(a: Int, b: Int) -> Bool {
+  a == b
+}
+
+// THE WORK UNDER TEST. Build a unique roster of `n` distinct keys through `keyed_roster_build`.
+// Returns true iff every key landed (rows.length == n): a false means the specimen did not perform
+// the work, so the reading would be meaningless. It performs no other O(n^2)-or-worse work, so the
+// reading tracks `keyed_roster_build`'s own complexity.
+fn build_unique_roster(n: Int) -> Bool {
+  match keyed_roster_build(
+    incomings: map(build_distinct_int_keys(n: n, acc: []), k => KeyedRow { row_key: k, value: k }),
+    key_eq: int_key_eq,
+  ) {
+    KeyedRosterBuilt { rows } => rows.length() == n
+    _ => false
+  }
+}
+
+test fn keyed_roster_build_256_keys_performs_its_declared_work() -> Bool {
+  build_unique_roster(256)
+}
+
+test fn keyed_roster_build_512_keys_performs_its_declared_work() -> Bool {
+  build_unique_roster(512)
+}
+
+test fn keyed_roster_build_1024_keys_performs_its_declared_work() -> Bool {
+  build_unique_roster(1024)
+}
