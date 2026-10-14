@@ -44,6 +44,9 @@ import gunbc.machine_intake.megarac_fan_thermal_guard {
   RestoreDeclaredPhase,
   TemperatureUnreadable,
   ThermalGuardTripped,
+  MegaRacFanPhasePwmRefused,
+  MegaRacFanPhaseWritesReady,
+  megarac_fan_boot_phase_write_plan,
   megarac_fan_run_exit_restore,
   megarac_fan_safety_restore,
   megarac_thermal_guard_verdict,
@@ -121,6 +124,10 @@ test fn mtcollins1_grounded_read_is_automatic_with_two_live_pairs() -> Bool {
               && (megarac_set_manager_status_body(standing: CoolingManagerAutomatic) as String)
                 == "{\"manager_disabled\":0}"
               && mtcollins1_megarac_thermal_snapshot_2026_10_14.system_inlet_suspect
+              && match megarac_manager_disabled_of_wire(manager_disabled: 2) {
+                MegaRacManagerDisabledRefused { wire: w } => w == 2
+                MegaRacManagerDisabledAdmitted { standing: _ } => false
+              }
               && match mtcollins1_megarac_operator_hand_set_2026_10_14_2200 {
                 HandSetDeclaredUnobserved { declared_at: t, read_obligation: _ } =>
                   (t as String) == "2026-10-14T22:00:00Z"
@@ -215,6 +222,18 @@ test fn unreadable_temperature_re_enables_the_cooling_manager() -> Bool {
         }
     MegaRacThermalGuardHolds => false
     MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
+  }
+}
+
+test fn boot_job_admits_the_fan_pwm_all_write_plan() -> Bool {
+  match megarac_fan_boot_phase_write_plan() {
+    MegaRacFanPhaseWritesReady { manager_body: m, pwm_body: p } =>
+      (m as String) == "{\"manager_disabled\":1}"
+        && match p {
+          Present { value: b } => (b as String) == "{\"fan_pwm_all\":\"20\"}"
+          Absent => false
+        }
+    MegaRacFanPhasePwmRefused { duty: _ } => false
   }
 }
 

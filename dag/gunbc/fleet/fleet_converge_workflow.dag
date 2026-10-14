@@ -3965,7 +3965,7 @@ fn fleet_converge_mtcollins1_boot_pair_build_step() -> Step {
 // a machine sitting on a controller default unobserved after boot. The existing MtCollins1FanObserve
 // mode is not renamed; this job runs the same read (first sample is out-of-band drift, including a
 // hand-set Cooling Manager disable) before the power cycle so the series is not mixed with chassis
-// writes it cannot see. PWM apply stays unbound until set_fan_speed JSON members are cited.
+// writes it cannot see. PWM members are bound (fan_pwm_all STRING); this step still reads first.
 fn fleet_converge_mtcollins1_boot_fan_observe_step() -> Step {
   RunStep {
     name: Present { value: "Mt. Collins fan policy phase: observe Cooling Manager and PWM (reads only; first sample is drift)" },

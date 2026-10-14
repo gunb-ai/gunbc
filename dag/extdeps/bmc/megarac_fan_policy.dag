@@ -68,15 +68,19 @@ fn megarac_fan_policy_read_obligation() -> NonEmptyStr? {
 
 // THE CONVERGE SURFACE, BOUND TO THE FOXCONN MT. COLLINS SERVED-UI FAN CONTROL.
 //
-// The write is the SP-X REST FanControlView path, not an OEM IPMI command. BmcProtocol still has
-// no REST arm, so the bound surface's protocol field stays the family IPMI floor used for SDR tach.
+// Fan writes are SP-X REST, not IPMI and not Redfish. BmcProtocol has no REST arm, so that
+// family coproduct is not this field: stuffing Ipmi here would type a false protocol. SDR tach
+// still uses the family IPMI floor (megarac_fan_sdr_protocol_floor).
+type MegaRacFanControlTransport
+  = MegaRacSpxRest
+
 type MegaRacFanModeSurface
   = MegaRacFanModeSurfaceUnbound { read_obligation: NonEmptyStr }
-  | MegaRacFanModeSurfaceBound { protocol: BmcProtocol, contract_note: NonEmptyStr }
+  | MegaRacFanModeSurfaceBound { transport: MegaRacFanControlTransport, contract_note: NonEmptyStr }
 
 data megarac_fan_mode_surface: MegaRacFanModeSurface = MegaRacFanModeSurfaceBound {
-  protocol: Ipmi,
-  contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). Executed read-only 2026-10-14 ~21:50Z: POST /api/session, GET these two, DELETE /api/session. READ: GET /api/fan_control/get_manager_status {manager_disabled:0|1} and GET /api/fan_control/get_fan_info [{id,fan_number,fan_speed,fan_pwm}] (UI labels speed as PWM percentage). WRITE manager: POST /api/fan_control/set_manager_status {manager_disabled:r}; UI confirms both directions. WRITE PWM: POST /api/fan_control/set_fan_speed JSON {fan_pwm_all: r} with r a STRING from select#fan_all_speed (20..100 step 5); no per-fan write; only while manager_disabled is 1; readback is get_fan_info. Instance values of that read (automatic, UI fans 1-4 pwm 0 / 5-6 pwm 20, SDR FAN0-3 presence-absent, FAN4_0/1 and FAN5_0/1 5700-5800 rpm) live in gunbc.machine_intake.megarac_fan_mode_observation, never as AMI documentation. BmcProtocol has no SP-X REST arm; this field stays the family IPMI floor used for SDR tach.",
+  transport: MegaRacSpxRest,
+  contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). Executed read-only 2026-10-14 ~21:50Z: POST /api/session, GET these two, DELETE /api/session. READ: GET /api/fan_control/get_manager_status {manager_disabled:0|1} and GET /api/fan_control/get_fan_info [{id,fan_number,fan_speed,fan_pwm}] (UI labels speed as PWM percentage). WRITE manager: POST /api/fan_control/set_manager_status {manager_disabled:r}; UI confirms both directions. WRITE PWM: POST /api/fan_control/set_fan_speed JSON {fan_pwm_all: r} with r a STRING from select#fan_all_speed (20..100 step 5); no per-fan write; only while manager_disabled is 1; readback is get_fan_info. Instance values of that read live in gunbc.machine_intake.megarac_fan_mode_observation.",
 }
 
 // A REST FAN_INFO ROW IS NOT A ROTOR. get_fan_info still lists a slot at pwm 0 after the
@@ -169,17 +173,17 @@ fn megarac_fan_boot_pwm_admitted(duty: Percent) -> Bool {
 fn megarac_fan_mode_surface_read_obligation(surface: MegaRacFanModeSurface) -> NonEmptyStr? {
   match surface {
     MegaRacFanModeSurfaceUnbound { read_obligation: o } => Present { value: o }
-    MegaRacFanModeSurfaceBound { protocol: _, contract_note: _ } => Absent
+    MegaRacFanModeSurfaceBound { transport: _, contract_note: _ } => Absent
   }
 }
 
-// THE ONE PROTOCOL A CONVERGE MAY ASSUME AT FAMILY GRAIN. Stated as a function over the surface
-// rather than a bare row so that a bound surface answers with its OWN protocol and an unbound one
-// answers with the family floor, which is IPMI. A consumer that took Redfish from a family row would
-// be taking a per-build fact from the wrong grain.
-fn megarac_fan_mode_protocol_floor(surface: MegaRacFanModeSurface) -> BmcProtocol {
+fn megarac_fan_sdr_protocol_floor() -> BmcProtocol {
+  Ipmi
+}
+
+fn megarac_fan_bound_transport(surface: MegaRacFanModeSurface) -> MegaRacFanControlTransport? {
   match surface {
-    MegaRacFanModeSurfaceUnbound { read_obligation: _ } => Ipmi
-    MegaRacFanModeSurfaceBound { protocol: p, contract_note: _ } => p
+    MegaRacFanModeSurfaceUnbound { read_obligation: _ } => Absent
+    MegaRacFanModeSurfaceBound { transport: t, contract_note: _ } => Present { value: t }
   }
 }
