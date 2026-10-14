@@ -403,7 +403,7 @@ fn dispatch_spool_answer_admitted(
     DispatchSpoolDispatch { node_id, executor, executor_word } => {
       let spawn = belt_dispatch_node_for_instance_over(
         instance: instance,
-        plan: roadmap_plan_projection(),
+        plan: fn() { roadmap_plan_projection() },
         node_id: node_id,
         request: LaunchAutonomous,
         executor: executor,
