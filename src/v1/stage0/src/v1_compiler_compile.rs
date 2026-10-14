@@ -24,9 +24,7 @@ pub use crate::std_occurrence_identity::{
 pub use crate::std_occurrence_identity::{
     NodeOccurrenceIdentity, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
 };
-pub use crate::std_source_annotation::{
-    source_annotation_graph_empty,
-};
+pub use crate::std_source_annotation::source_annotation_graph_empty;
 pub use crate::std_source_annotation::{SourceAnnotationGraph, UnboundAnnotationCapture};
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
@@ -3788,20 +3786,15 @@ pub fn compile_to_resolved_with_options(
                 let all_diags = v1_rt::concat(typed_diags.clone(), complexity_diags.clone());
                 let ownership = extract_ownership_proofs(typed.clone());
                 let ownership_diags = ownership_diagnostics(ownership.clone());
-                let test_reference_diags = test_reference_diagnostics(
-                    typed.clone(),
-                    source_indices.clone(),
-                );
+                let test_reference_diags =
+                    test_reference_diagnostics(typed.clone(), source_indices.clone());
                 let _ = v1_rt::trace_mark("compile.analyses.done".to_string());
                 Rc::new(ResolvedPipelineResult {
                     graph: Some(typed.clone()),
                     diagnostics: v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(
-                                    frontend.diagnostics.clone(),
-                                    norm_diags.clone(),
-                                ),
+                                v1_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
                                 all_diags.clone(),
                             ),
                             ownership_diags.clone(),

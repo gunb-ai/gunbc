@@ -148,8 +148,9 @@ fn out_of_closure_malformed_body_is_owned_by_the_parse_sweep() {
         ),
         Err(errors) => {
             assert!(
-                errors.iter().any(|e| e.contains("expected name, found Eq")
-                    || e.contains("outsider.dag")),
+                errors
+                    .iter()
+                    .any(|e| e.contains("expected name, found Eq") || e.contains("outsider.dag")),
                 "sweep must locate the outsider body parse, got {errors:?}"
             );
         }
