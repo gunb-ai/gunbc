@@ -1589,15 +1589,90 @@ fn infer_declaration_reference_facts_indexed(
 }
 
 // THE VALUE TYPE OF A VARIANT-ARM REFERENCE IS THE DECLARING COPRODUCT, never the arm's
-// payload Conj. That Conj is the constructor's input shape. One function answers for both
-// the declaration-reference facts fold and the operand-type reader: a missing claimant
-// refuses declaration_identity_unavailable; a payload-bearing arm used bare stays
-// GroundingNotDerived; a nullary arm is the coproduct. Expected-type checking is not this
-// repair, and the payload answer is not a reachable alternative.
+// payload Conj. That Conj is the constructor's input shape. A GENERIC coproduct is applied
+// to fresh open type-parameter atoms (infer_coproduct_type_applied_open); the use site
+// solves those binders. It is never the bare head, and never UndecidableGenericFormal.
+// One function answers for both the declaration-reference facts fold and the operand-type
+// reader: a missing claimant refuses declaration_identity_unavailable; a payload-bearing
+// arm used bare stays GroundingNotDerived; a nullary arm is that applied coproduct.
+// Expected-type checking is not this repair, and the payload answer is not a reachable
+// alternative.
 type InferVariantArmReferenceValue
   = VariantArmReferenceValueCoproduct { coproduct: QualifiedName }
   | VariantArmReferenceValueNotDerived
   | VariantArmReferenceValueIdentityUnavailable
+
+fn infer_open_type_param_atom(name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: name } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn infer_node_is_open_param_atom(n: Node, name: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => (id == name) && (length(xs: n.children) == 0)
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn infer_args_are_open_params(params: List<Symbol>, args: List<Node>) -> Bool {
+  match params {
+    Empty =>
+      match args {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: p, tail: pt } =>
+      match args {
+        Empty => false
+        Cons { head: a, tail: at } =>
+          infer_node_is_open_param_atom(n: a, name: p) && infer_args_are_open_params(params: pt, args: at)
+      }
+  }
+}
+
+fn infer_open_coproduct_binders(t: Node, declarations: SymbolIndex) -> Optional<List<Symbol>> {
+  match t.kind {
+    TypeNode { connective: Instantiation } =>
+      let ha = infer_type_head_and_args(t: t)
+      match declaration_reference_path_optional(node: ha.head) {
+        Absent => optional_absent()
+        Present { value: path } =>
+          let params = symbol_index_declared_type_params_at(index: declarations, qualified_path: path)
+          if (length(xs: params) == 0) || (length(xs: params) != length(xs: ha.args)) {
+            optional_absent()
+          } else if infer_args_are_open_params(params: params, args: ha.args) {
+            optional_present(value: params)
+          } else {
+            optional_absent()
+          }
+      }
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+fn infer_coproduct_type_applied_open(index: SymbolIndex, coproduct: QualifiedName) -> Node {
+  let head = declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic)
+  let params = symbol_index_declared_type_params_at(index: index, qualified_path: coproduct)
+  match params {
+    Empty => head
+    Cons { head: _, tail: _ } =>
+      Node {
+        kind: TypeNode { connective: Instantiation },
+        children: Cons {
+          head: Edge { label: Positional, target: head },
+          tail: list_map(xs: params, f: fn(p) {
+            Edge { label: Positional, target: infer_open_type_param_atom(name: p) }
+          })
+        },
+        occurrence_id: OccurrenceSynthetic
+      }
+  }
+}
 
 fn infer_variant_arm_reference_value(
   index: SymbolIndex,
@@ -1662,7 +1737,7 @@ fn infer_variant_arm_value_reference_facts(
         o: infer_facts_denoting(
           o: inferred_facts_from_derived_type(
             node: n,
-            derived_type: declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic),
+            derived_type: infer_coproduct_type_applied_open(index: resolved.resolved_declarations, coproduct: coproduct),
             descent: Holds { value: descent_proof }
           ),
           declaration: declared
@@ -2116,7 +2191,7 @@ fn infer_branch_operand_resolved_type_with_entries(
           match verdict {
             VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
               Holds {
-                value: declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic)
+                value: infer_coproduct_type_applied_open(index: resolved.resolved_declarations, coproduct: coproduct)
               }
             VariantArmReferenceValueNotDerived => inferred_facts_resolved_type(facts: facts)
             VariantArmReferenceValueIdentityUnavailable =>
@@ -3981,7 +4056,8 @@ fn infer_judge_declared_position(
   declarations: SymbolIndex,
   formal: InhabitanceFormal,
   produced_at: Node,
-  type_params: List<Symbol>
+  type_params: List<Symbol>,
+  instances: List<TypeVariableInstance>
 ) -> Outcome<Bool> {
   match infer_declared_position_undecidable_reason(declared: formal.declared, type_params: type_params) {
     Present { value: reason } =>
@@ -4009,7 +4085,7 @@ fn infer_judge_declared_position(
             reason: undecidable_argument_type_not_derived()
           )
         Holds { value: produced } =>
-          let obligation = infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: formal.declared), produced: produced, application: application, type_variables: type_params, declarations: declarations)
+          let obligation = infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: formal.declared), produced: infer_solve_open_generic_coproduct_type(produced: infer_type_instantiated(t: produced, instances: instances), expected: infer_declared_type_denotation(declared: formal.declared), declarations: declarations), application: application, type_variables: type_params, declarations: declarations)
           match declared_type_inhabitance(obligation: obligation) {
             Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
             InhabitanceUndecidable { reason: reason } =>
@@ -4125,6 +4201,23 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
           }
         TypeNode { connective: _ } => InferFormalMatched { instances: instances }
         ComputationNode { behavior: _ } => InferFormalMatched { instances: instances }
+      }
+  }
+}
+
+// A NULLARY GENERIC ARM IS OPEN UNTIL THE USE SITE SOLVES IT. The authority emits
+// Instantiation of the coproduct at its declared binders (infer_coproduct_type_applied_open).
+// Matching those binders against the position's declared type (never inhabitance
+// type_variables, never UndecidableGenericFormal) is the solve: FsEmpty at FsList<Int>
+// becomes FsList<Int>. A concrete produced type is left as written, so FsList<Bool> at
+// FsList<Int> still refuses.
+fn infer_solve_open_generic_coproduct_type(produced: Node, expected: Node, declarations: SymbolIndex) -> Node {
+  match infer_open_coproduct_binders(t: produced, declarations: declarations) {
+    Absent => produced
+    Present { value: binders } =>
+      match infer_match_generic_formal(formal: produced, produced: expected, type_params: binders, instances: Empty, declarations: declarations) {
+        InferFormalShapeMismatch => produced
+        InferFormalMatched { instances: matched } => infer_type_instantiated(t: produced, instances: matched)
       }
   }
 }
@@ -4527,7 +4620,8 @@ fn infer_judge_generic_formal(
             declarations: declarations,
             formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: infer_type_instantiated(t: formal.declared, instances: matched) },
             produced_at: arg,
-            type_params: type_params
+            type_params: type_params,
+            instances: matched
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: _, diagnostics: d } => Accepted { value: matched, diagnostics: d }
@@ -4558,7 +4652,7 @@ fn infer_judge_application_argument_instantiating(
       if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_params) {
         infer_judge_generic_formal(position: position, application: application, entries: entries, declarations: declarations, formal: formal, arg: arg, type_params: type_params, instances: instances)
       } else {
-        match infer_judge_declared_position(position: position, application: application, entries: entries, declarations: declarations, formal: formal, produced_at: arg, type_params: type_params) {
+        match infer_judge_declared_position(position: position, application: application, entries: entries, declarations: declarations, formal: formal, produced_at: arg, type_params: type_params, instances: instances) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
         }
@@ -4573,7 +4667,8 @@ fn infer_judge_application_argument_instantiating(
             declarations: declarations,
             formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: instance },
             produced_at: arg,
-            type_params: type_params
+            type_params: type_params,
+            instances: instances
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
@@ -5651,7 +5746,8 @@ fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>, re
             declarations: resolved.resolved_declarations,
             formal: InhabitanceFormal { parameter_identity: ^let_annotation, declared: annotation },
             produced_at: bound,
-            type_params: []
+            type_params: [],
+            instances: infer_no_type_variable_instances()
           )
       }
   }
@@ -7309,7 +7405,8 @@ fn infer_binder_default_check(parts: BinderParts, entries: List<InferredFactsEnt
         declarations: declarations,
         formal: InhabitanceFormal { parameter_identity: ^binder_default, declared: parts.type_node },
         produced_at: default,
-        type_params: []
+        type_params: [],
+        instances: infer_no_type_variable_instances()
       )
   }
 }
@@ -7339,7 +7436,8 @@ fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntr
                 declarations: declarations,
                 formal: InhabitanceFormal { parameter_identity: ^declared_return, declared: declared },
                 produced_at: body,
-                type_params: type_param_names(n: node)
+                type_params: type_param_names(n: node),
+                instances: infer_no_type_variable_instances()
               )
           }
         _ => outcome_accepted(true)
