@@ -1287,6 +1287,11 @@ fn dispatch_attempt_state_path_for_instance(
 // not to loosen the reader but to stop writing the wrong content into a typed stream. The worker's
 // stdout keeps its own sibling file, and provider-events.jsonl is written only by something that
 // speaks the schema.
+// THE WORKER-OWNED CHILD OF THE ATTEMPT DIRECTORY. Owner-side records (request-binding.json,
+// launch-identity.json, attempt-key, admission) stay in dispatch_attempt_state_path_for_instance
+// itself, which is read-only to the unit. The log path is the single producer of that child:
+// ReadWritePaths scratch is path_parent_directory of stdout, and events/request scratch follow
+// this same parent. Do not add a parallel worker-dir function.
 fn dispatch_attempt_worker_log_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -1298,7 +1303,7 @@ fn dispatch_attempt_worker_log_path_for_instance(
       node_id: node_id,
       attempt_key: attempt_key,
     ),
-    "/worker-stdout.log",
+    "/worker/worker-stdout.log",
   ], "")
 }
 
@@ -1308,11 +1313,11 @@ fn dispatch_attempt_request_scratch_path_for_instance(
   attempt_key: String,
 ) -> String {
   join([
-    dispatch_attempt_state_path_for_instance(
+    path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
       instance: instance,
       node_id: node_id,
       attempt_key: attempt_key,
-    ),
+    )),
     "/harness-request.json",
   ], "")
 }
@@ -1323,11 +1328,11 @@ fn dispatch_attempt_events_path_for_instance(
   attempt_key: String,
 ) -> String {
   join([
-    dispatch_attempt_state_path_for_instance(
+    path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
       instance: instance,
       node_id: node_id,
       attempt_key: attempt_key,
-    ),
+    )),
     "/provider-events.jsonl",
   ], "")
 }
@@ -2985,12 +2990,13 @@ fn dispatch_worker_unit_stream_properties(
 // /opt/gunbc/bin and the deployed checkout (smart-gull-336 item c). The belt creates the worktree
 // and the attempt-state directory *before* the unit starts (git_worktree_add_argv_for_instance,
 // attempt_state_prepare_argv_for_instance); what the unit may write is only this attempt's
-// working_directory, the directory that holds its stdout log (scratch, events, verification
-// beside that log), and the repository git dir. Linked-worktree commit/stash/fetch write objects
+// working_directory, the parent of its stdout log (the worker/ child: logs, events, request
+// scratch), and the repository git dir. Linked-worktree commit/stash/fetch write objects
 // and refs in the common git dir (repo/.git), not only .git/worktrees/<name>. The deployed
-// working tree and the binary stay outside the set. The whole attempt-state root and the exit
-// spool inbox stay outside it so the worker cannot forge owner-side records (Manager B). /tmp is
-// already a private tmpfs (PrivateTmp=yes). AttemptResourceSet is not in this tree.
+// working tree and the binary stay outside the set. The attempt directory itself (owner records),
+// the attempt-state root, and the exit spool inbox stay outside it so the worker cannot forge
+// request-binding or launch-identity (Manager B). /tmp is already a private tmpfs
+// (PrivateTmp=yes). AttemptResourceSet is not in this tree.
 fn dispatch_worker_writable_path_list(instance: HostDashboardInstance, working_directory: String, scratch_directory: String) -> List<String> {
   [
     working_directory,
