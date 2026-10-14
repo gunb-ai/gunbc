@@ -86,6 +86,46 @@ fn dispatch_spool_entry_name(key: String) -> String {
   join([key, ".json"], "")
 }
 
+fn dispatch_request_path_for(instance_root: String, key: String) -> String {
+  join([
+    dispatch_request_dir(instance_root: instance_root),
+    "/",
+    dispatch_spool_entry_name(key: key),
+  ], "")
+}
+
+type DispatchRequestEnqueue
+  = DispatchRequestEnqueued { path: String, entry: String }
+  | DispatchRequestNotEnqueued { detail: String }
+
+fn dispatch_request_enqueue(
+  instance_root: String,
+  node_id: String,
+  executor_word: String,
+) -> DispatchRequestEnqueue {
+  if trim(node_id) == "" {
+    DispatchRequestNotEnqueued { detail: "dispatch spool enqueue refuses an empty node_id" }
+  } else {
+    let key = dispatch_spool_key(node_id: node_id, executor_word: executor_word)
+    let entry = dispatch_spool_entry_name(key: key)
+    let path = dispatch_request_path_for(instance_root: instance_root, key: key)
+    let write = Filesystem.Write(
+      path: path,
+      content: dispatch_request_json(node_id: node_id, executor_word: executor_word),
+    )
+    if write.success {
+      DispatchRequestEnqueued { path: path, entry: entry }
+    } else {
+      DispatchRequestNotEnqueued {
+        detail: join([
+          "the dispatch request could not be written, so nothing was asked of the belt: ",
+          path, " (", write.error, ")",
+        ], ""),
+      }
+    }
+  }
+}
+
 fn dispatch_spool_key(node_id: String, executor_word: String) -> String {
   content_hash_atom(
     value: join([dispatch_request_schema as String, "|", node_id, "|", executor_word], "") as NonEmptyStr,

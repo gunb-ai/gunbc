@@ -59,6 +59,9 @@ import gunbc.roadmap.roadmap_dispatch_spool {
   dispatch_spool_run_standing,
   DispatchSpoolRunCompleted,
   DispatchSpoolRunStopped,
+  dispatch_request_enqueue,
+  DispatchRequestEnqueued,
+  DispatchRequestNotEnqueued,
 }
 
 // THE LAUNCH ENTRYPOINT, and the home of every belt entry, because the served observation module
@@ -396,6 +399,7 @@ fn belt_integrate_one_cli(repo_root: String, node_id: String, attempt_key: Strin
 //   - belt_exit_drain_cli           hands each recorded unit exit to its attempt's unit
 //   - belt_discover_once_cli        the bounded anti-entropy pass: discovers and queues, never works
 //   - belt_launch_enqueue_cli       what the deployment's belt service runs: queue the one launch
+//   - belt_dispatch_spool_enqueue_cli writes one OS-principal dispatch request (the automation writer)
 //   - belt_dispatch_spool_drain_cli drains OS-principal dispatch requests into belt_dispatch
 // Every entry resolves its instance from GUNBC_BELT_SPAWN_WORKDIR, as belt_run_once_cli does and for
 // that function's fail-closed reason.
@@ -525,6 +529,22 @@ fn belt_discover_once_cli() -> ProcessExit {
 fn belt_launch_enqueue_cli() -> ProcessExit {
   belt_instance_from_env(entry: "belt_launch_enqueue_cli", continuation: instance =>
     belt_obligations_enqueued_exit(context: "belt_launch_enqueue_cli", enqueues: [belt_instance_obligation_enqueue(instance: instance, kind: LaunchObligation)]))
+}
+
+fn belt_dispatch_spool_enqueue_cli(node_id: String) -> ProcessExit {
+  if string_length(s: node_id) == 0 {
+    exit_failure(reason: "belt_dispatch_spool_enqueue_cli: node_id is empty")
+  } else {
+    belt_instance_from_env(entry: "belt_dispatch_spool_enqueue_cli", continuation: instance =>
+      match dispatch_request_enqueue(
+        instance_root: instance.instance_root as String,
+        node_id: node_id,
+        executor_word: "",
+      ) {
+        DispatchRequestEnqueued { path: _, entry: _ } => ExitSuccess
+        DispatchRequestNotEnqueued { detail } => exit_failure(reason: detail)
+      })
+  }
 }
 
 fn belt_dispatch_spool_drain_cli() -> ProcessExit {
