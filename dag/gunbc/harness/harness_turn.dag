@@ -1,7 +1,7 @@
 module gunbc.harness.harness_turn
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr, GitRef }
-import std.measure { TokenCount, token_count_value, Second, second, second_count }
+import std.measure { TokenCount, token_count_value, Second, second, second_count, money_amount_micro }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -35,7 +35,12 @@ import gunbc.harness.harness_seat {
   harness_hosted_inflight_acquire, harness_hosted_inflight_release, hosted_inflight_carried,
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, HarnessOperatorBound,
   harness_release_seat, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseNotApplicable, HarnessSeatReleaseRefused,
+  harness_bind_seat, AnyAdmittedModel,
 }
+import product.capacity.lease { LeasePolicy, QuiescenceRequired }
+import product.fabric.demand { AdmissionTerms, BuyTerms, admission_terms, debt_payoff_objective }
+import extdeps.currency.currency { Usd }
+import extdeps.tools.hostname
 import gunbc.fabric.fabric_quota { quota_window_start }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding
@@ -84,6 +89,7 @@ import gunbc.harness.harness_wire {
   HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
   HarnessUsageRead, UsageRead, UsageUnreadable,
   harness_decode_response, harness_stop_reason_wire, harness_tool_result_block,
+  harness_context_budget_for,
 }
 import gunbc.harness.harness_tool {
   HarnessToolEnvironment, HarnessToolOutcome, ToolCompleted, ToolRefused,
@@ -313,6 +319,7 @@ type HarnessTurnConfig {
 type HarnessAcceptanceCapacity
   = KeepBindingAlive
   | FleetSeatHeld { binding: HarnessSeatBinding }
+  | FleetSeatReleasedForAcceptance { binding: HarnessSeatBinding }
 
 // THE WINDOW THE HARNESS WORKS IN AND THE WINDOW THE ENGINE ADMITS ARE ONE NUMBER, and this field
 // is how the second reaches the first. gunbc.spark.serving_desired declares the roster ceiling the
@@ -2544,7 +2551,7 @@ fn harness_handin_candidate_from_observations(
   if !head_success {
     HandInWorktreeUnreadable { cause: join(["git.Inspect.HeadCommitIn refused in ", worktree, ": ", head_stderr], "") }
   } else if !tree_success {
-    HandInWorktreeUnreadable { cause: join(["git.Inspect.ShowTree refused in ", worktree, ": ", tree_stderr], "") }
+    HandInWorktreeUnreadable { cause: join(["git.Inspect.ShowTreeIn refused in ", worktree, ": ", tree_stderr], "") }
   } else {
     HandInWorktreeObserved { head_sha: trim(head_sha), tree_sha: trim(tree_sha) }
   }
@@ -2552,7 +2559,7 @@ fn harness_handin_candidate_from_observations(
 
 fn harness_observe_handin_candidate(worktree: String) -> HandInWorktreeObservation {
   let head = git.Inspect.HeadCommitIn(repository_path: worktree)
-  let tree = git.Inspect.ShowTree(ref: "HEAD" as GitRef)
+  let tree = git.Inspect.ShowTreeIn(repository_path: worktree, ref: "HEAD" as GitRef)
   harness_handin_candidate_from_observations(
     worktree: worktree,
     head_success: head.success,
@@ -2602,51 +2609,134 @@ type HarnessHandInSeat
   = HandInSeatReady { config: HarnessTurnConfig }
   | HandInSeatReleaseRefused { detail: String }
 
+fn harness_turn_config_with_capacity(config: HarnessTurnConfig, acceptance_capacity: HarnessAcceptanceCapacity) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: config.backend_url,
+    model: config.model,
+    max_tokens: config.max_tokens,
+    serving_unit: config.serving_unit,
+    reasoning_mode: config.reasoning_mode,
+    wire_shape: config.wire_shape,
+    system_prompt: config.system_prompt,
+    supervision: config.supervision,
+    request_scratch_path: config.request_scratch_path,
+    events_path: config.events_path,
+    context_budget: config.context_budget,
+    request_deadline: config.request_deadline,
+    environment: config.environment,
+    completion: config.completion,
+    backend_access: config.backend_access,
+    acceptance_capacity: acceptance_capacity,
+  }
+}
+
 fn harness_release_fleet_seat_for_handin(config: HarnessTurnConfig) -> HarnessHandInSeat {
   match config.acceptance_capacity {
     KeepBindingAlive => HandInSeatReady { config: config }
+    FleetSeatReleasedForAcceptance { binding: _ } => HandInSeatReady { config: config }
     FleetSeatHeld { binding } =>
       match harness_release_seat(binding: binding, reason: "awaiting acceptance" as NonEmptyStr) {
         HarnessSeatReleased { partition: _ } =>
-          HandInSeatReady { config: HarnessTurnConfig {
-            backend_url: config.backend_url,
-            model: config.model,
-            max_tokens: config.max_tokens,
-            serving_unit: config.serving_unit,
-            reasoning_mode: config.reasoning_mode,
-            wire_shape: config.wire_shape,
-            system_prompt: config.system_prompt,
-            supervision: config.supervision,
-            request_scratch_path: config.request_scratch_path,
-            events_path: config.events_path,
-            context_budget: config.context_budget,
-            request_deadline: config.request_deadline,
-            environment: config.environment,
-            completion: config.completion,
-            backend_access: config.backend_access,
-            acceptance_capacity: KeepBindingAlive,
-          } }
+          HandInSeatReady { config: harness_turn_config_with_capacity(config: config, acceptance_capacity: FleetSeatReleasedForAcceptance { binding: binding }) }
         HarnessHostedCredentialRemoved =>
-          HandInSeatReady { config: HarnessTurnConfig {
-            backend_url: config.backend_url,
-            model: config.model,
-            max_tokens: config.max_tokens,
-            serving_unit: config.serving_unit,
-            reasoning_mode: config.reasoning_mode,
-            wire_shape: config.wire_shape,
-            system_prompt: config.system_prompt,
-            supervision: config.supervision,
-            request_scratch_path: config.request_scratch_path,
-            events_path: config.events_path,
-            context_budget: config.context_budget,
-            request_deadline: config.request_deadline,
-            environment: config.environment,
-            completion: config.completion,
-            backend_access: config.backend_access,
-            acceptance_capacity: KeepBindingAlive,
-          } }
+          HandInSeatReady { config: harness_turn_config_with_capacity(config: config, acceptance_capacity: KeepBindingAlive) }
         HarnessSeatReleaseRefused { detail } => HandInSeatReleaseRefused { detail: detail }
         HarnessSeatReleaseNotApplicable { why } => HandInSeatReleaseRefused { detail: why }
+      }
+  }
+}
+
+fn harness_revision_admission() -> AdmissionTerms {
+  admission_terms(
+    buy: BuyTerms {
+      budget_account: "harness-cli",
+      currency: Usd,
+      reservation_price: money_amount_micro(count: 0),
+      maximum_buy_order: money_amount_micro(count: 0),
+    },
+    deadline: none,
+    objective: debt_payoff_objective,
+  )
+}
+
+fn harness_rebind_fleet_for_revision(config: HarnessTurnConfig, prior: HarnessSeatBinding, handin: String) -> HarnessHandInSeat {
+  match prior {
+    HarnessSeatRefused { detail: d } => HandInSeatReleaseRefused { detail: d }
+    HarnessSeatPending { detail: d } => HandInSeatReleaseRefused { detail: d }
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => HandInSeatReleaseRefused { detail: "a hosted binding cannot be rebound as a fleet seat after acceptance" }
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => HandInSeatReady { config: config }
+    HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: _, unit: _, class: class, seat: seat } => {
+      let host = os.Hostname.ReadShort()
+      if !host.success {
+        HandInSeatReleaseRefused { detail: "the executor hostname could not be read, so a fleet seat cannot be rebound after acceptance" }
+      } else {
+        let worktree = config.environment.working_directory as String
+        let attempt = join([seat.attempt as String, "+rev+", handin], "") as NonEmptyStr
+        let rebound = harness_bind_seat(
+          short_hostname: host.value,
+          class: class,
+          requirement: AnyAdmittedModel,
+          shape: config.wire_shape,
+          inputs: [config.system_prompt, handin],
+          actor: join(["worker:", worktree], "") as NonEmptyStr,
+          attempt: attempt,
+          policy: LeasePolicy {
+            maximum_duration_seconds: second_count(s: config.request_deadline) + 60,
+            release_law: QuiescenceRequired,
+          },
+          session: none,
+          admission: harness_revision_admission(),
+        )
+        match rebound {
+          HarnessSeatRefused { detail: d } => HandInSeatReleaseRefused { detail: d }
+          HarnessSeatPending { detail: d } => HandInSeatReleaseRefused { detail: join(["fleet seat pending after acceptance, so revision cannot continue on a released seat: ", d], "") }
+          HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => HandInSeatReleaseRefused { detail: "revision rebind answered as a hosted quota binding" }
+          HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => HandInSeatReleaseRefused { detail: "revision rebind answered as an operator endpoint" }
+          HarnessSeatBound { url: u, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: m, unit: un, class: _, seat: _ } =>
+            HandInSeatReady {
+              config: HarnessTurnConfig {
+                backend_url: u,
+                model: m as String,
+                max_tokens: config.max_tokens,
+                serving_unit: un,
+                reasoning_mode: config.reasoning_mode,
+                wire_shape: config.wire_shape,
+                system_prompt: config.system_prompt,
+                supervision: config.supervision,
+                request_scratch_path: config.request_scratch_path,
+                events_path: config.events_path,
+                context_budget: harness_context_budget_for(unit: un),
+                request_deadline: config.request_deadline,
+                environment: config.environment,
+                completion: config.completion,
+                backend_access: BackendAdmittedBySeat,
+                acceptance_capacity: FleetSeatHeld { binding: rebound },
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn harness_resume_after_acceptance_wait(config: HarnessTurnConfig, handin: String) -> HarnessHandInSeat {
+  match config.acceptance_capacity {
+    KeepBindingAlive => HandInSeatReady { config: config }
+    FleetSeatHeld { binding: _ } => HandInSeatReady { config: config }
+    FleetSeatReleasedForAcceptance { binding } => harness_rebind_fleet_for_revision(config: config, prior: binding, handin: handin)
+  }
+}
+
+fn harness_release_capacity_if_held(config: HarnessTurnConfig, outcome: HarnessTurnOutcome) -> HarnessTurnOutcome {
+  match config.acceptance_capacity {
+    KeepBindingAlive => outcome
+    FleetSeatReleasedForAcceptance { binding: _ } => outcome
+    FleetSeatHeld { binding } =>
+      match harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr) {
+        HarnessSeatReleased { partition: _ } => outcome
+        HarnessHostedCredentialRemoved => outcome
+        HarnessSeatReleaseNotApplicable { why: _ } => outcome
+        HarnessSeatReleaseRefused { detail: _ } => outcome
       }
   }
 }
@@ -2933,31 +3023,45 @@ fn harness_apply_acceptance(
         match harness_write_events(config: config, events: revising) {
           HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
           HarnessEventsWritten =>
-            match tool_use_id {
-              Present { value: id } =>
-                harness_turn_continue(
+            match harness_resume_after_acceptance_wait(config: config, handin: handin) {
+              HandInSeatReleaseRefused { detail } =>
+                harness_turn_acceptance_unavailable(
                   config: config,
-                  messages: messages,
-                  blocks: blocks,
-                  results: concat(prior_results, [HarnessToolResult {
-                    tool_use_id: id,
-                    text: harness_acceptance_outcome_tool_text(o: outcome),
-                    is_error: false,
-                  }]),
-                  steps_remaining: steps_remaining,
+                  handin: handin,
+                  cause: join(["changes were requested, but a fleet seat could not be rebound for revision: ", detail], ""),
                   steps_taken: steps_taken,
-                  input_tokens: input_tokens,
                   events: revising,
-                  repairs_used: 0,
                 )
-              Absent =>
-                harness_turn_loop(
-                  config: config,
-                  messages: harness_messages_with_steer(shape: config.wire_shape, messages: messages, steer: harness_revision_text(handin: handin, stage: stage, findings: findings)),
-                  steps_remaining: route.round_steps,
-                  steps_taken: steps_taken,
-                  events: revising,
-                  repairs_used: 0,
+              HandInSeatReady { config: resumed } =>
+                harness_release_capacity_if_held(
+                  config: resumed,
+                  outcome: match tool_use_id {
+                    Present { value: id } =>
+                      harness_turn_continue(
+                        config: resumed,
+                        messages: messages,
+                        blocks: blocks,
+                        results: concat(prior_results, [HarnessToolResult {
+                          tool_use_id: id,
+                          text: harness_acceptance_outcome_tool_text(o: outcome),
+                          is_error: false,
+                        }]),
+                        steps_remaining: steps_remaining,
+                        steps_taken: steps_taken,
+                        input_tokens: input_tokens,
+                        events: revising,
+                        repairs_used: 0,
+                      )
+                    Absent =>
+                      harness_turn_loop(
+                        config: resumed,
+                        messages: harness_messages_with_steer(shape: config.wire_shape, messages: messages, steer: harness_revision_text(handin: handin, stage: stage, findings: findings)),
+                        steps_remaining: route.round_steps,
+                        steps_taken: steps_taken,
+                        events: revising,
+                        repairs_used: 0,
+                      )
+                  },
                 )
             }
         }
