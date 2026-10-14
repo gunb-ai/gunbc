@@ -14,6 +14,7 @@ import gunbc.compute.recorded_cgroup_drain {
   recorded_cgroup_drain,
   recorded_cgroup_may_seal,
   recorded_path_standing_from_events_error,
+  recorded_path_standing_from_events_body,
 }
 
 fn drain(invocation_ended: Bool, path: RecordedCgroupPathStanding) -> RecordedCgroupDrain {
@@ -67,6 +68,15 @@ test fn same_invocation_still_current_never_seals() -> Bool {
   }
     && !recorded_cgroup_may_seal(d: drain(invocation_ended: false, path: RecordedPathEmpty))
     && !recorded_cgroup_may_seal(d: drain(invocation_ended: false, path: RecordedPathAbsent))
+}
+
+test fn events_body_populated_zero_is_empty() -> Bool {
+  match recorded_path_standing_from_events_body(body: "populated 0\nfrozen 0\n") {
+    RecordedPathEmpty => true
+    RecordedPathAbsent => false
+    RecordedPathPopulated => false
+    RecordedPathUnreadable { detail: _ } => false
+  }
 }
 
 test fn later_invocation_or_inactive_ends_the_recorded_one() -> Bool {

@@ -2,15 +2,23 @@ module gunbc.roadmap.roadmap_belt_tick_cli
 
 import std.types { String }
 import gunbc.compute.recorded_cgroup_drain {
-  RecordedInvocationEnded,
-  RecordedPathUnreadable,
-  recorded_cgroup_drain,
-  recorded_cgroup_may_seal,
+  RecordedCgroupMaySeal,
+  RecordedCgroupPreserve,
+  observe_belt_unit_cgroup_drain,
+  recorded_cgroup_drain_detail,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.languages.json.emit { serialize_json, JsonValue, json_object, json_kv, json_string }
 import gunbc.host.host_layout { belt_spawn_workdir_env_var }
+import gunbc.live_deploy.desired {
+  desired_deployment_for_instance_id,
+  desired_roster_refusal_detail,
+  DesiredDeploymentFound,
+  DesiredDeploymentUnknownInstanceId,
+  DesiredDeploymentRosterRefused,
+}
+import gunbc.live_deploy.spec { deployment_belt_service_unit_name }
 import gunbc.roadmap.roadmap_belt { roadmap_belt_production_spawn_mode }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -509,16 +517,29 @@ fn belt_exit_drain_cli() -> ProcessExit {
 }
 
 fn belt_credential_recovery_cli() -> ProcessExit {
-  belt_instance_from_env(entry: "belt_credential_recovery_cli", continuation: instance => {
-    let drain = recorded_cgroup_drain(
-      invocation: RecordedInvocationEnded,
-      path: RecordedPathUnreadable { detail: join(["belt credential recovery for ", instance.host_identity as String, " has no recorded ControlGroup yet"], "") })
-    if recorded_cgroup_may_seal(d: drain) {
-      ExitSuccess
-    } else {
-      ExitSuccess
-    }
-  })
+  belt_instance_from_env(entry: "belt_credential_recovery_cli", continuation: instance =>
+    match desired_deployment_for_instance_id(instance_id: instance.instance_id as String) {
+      DesiredDeploymentRosterRefused { refusal: r } =>
+        exit_failure(reason: join(["belt_credential_recovery_cli: desired roster refused: ", desired_roster_refusal_detail(refusal: r)], ""))
+      DesiredDeploymentUnknownInstanceId { instance_id: id } =>
+        exit_failure(reason: join(["belt_credential_recovery_cli: no desired deployment for instance ", id], ""))
+      DesiredDeploymentFound { row: row } => {
+        let unit = deployment_belt_service_unit_name(names: row.names)
+        let drain = observe_belt_unit_cgroup_drain(unit: unit)
+        let receipt = serialize_json(v: json_object(members: [
+          json_kv(key: "unit", value: json_string(s: unit as String)),
+          json_kv(key: "drain", value: json_string(s: recorded_cgroup_drain_detail(d: drain))),
+        ]))
+        if string_length(s: receipt) == 0 {
+          exit_failure(reason: "belt_credential_recovery_cli: drain receipt was empty")
+        } else {
+          match drain {
+            RecordedCgroupMaySeal { detail: _ } => ExitSuccess
+            RecordedCgroupPreserve { detail: _ } => ExitSuccess
+          }
+        }
+      }
+    })
 }
 
 fn belt_discover_once_cli() -> ProcessExit {
