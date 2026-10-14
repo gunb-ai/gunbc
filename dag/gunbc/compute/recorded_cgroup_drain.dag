@@ -44,11 +44,7 @@ fn recorded_cgroup_drain(path: RecordedCgroupPathStanding) -> RecordedCgroupDrai
 }
 
 fn recorded_path_standing_from_events_error(error: String) -> RecordedCgroupPathStanding {
-  if string_contains(s: error, pattern: "ENOENT") {
-    RecordedPathAbsent
-  } else {
-    RecordedPathUnreadable { detail: error }
-  }
+  RecordedPathUnreadable { detail: error }
 }
 
 fn recorded_path_standing_from_events_body(body: String) -> RecordedCgroupPathStanding {
@@ -62,7 +58,8 @@ fn recorded_path_standing_from_exact_read(read: FilesystemExactRead) -> Recorded
   match read {
     FilesystemExactPathRead { path: _, content: body } => recorded_path_standing_from_events_body(body: body)
     FilesystemExactPathAbsent { path: _ } => RecordedPathAbsent
-    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => recorded_path_standing_from_events_error(error: e)
+    FilesystemExactPathUnreadable { path: _, kind: _, error: e } =>
+      recorded_path_standing_from_events_error(error: e)
     FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } =>
       RecordedPathUnreadable { detail: join([o, ": ", e], "") }
   }
