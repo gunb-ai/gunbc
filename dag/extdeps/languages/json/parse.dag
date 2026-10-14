@@ -2,6 +2,9 @@ module extdeps.languages.json.parse
 
 import std.types { String, Int, List, Bool }
 import std.nat { Nat }
+import std.optional { Absent, Present }
+import std.algebra { string_concat_join }
+import std.integer { int_to_decimal_string }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.emit {
@@ -289,9 +292,9 @@ type JsonDocumentParse
 fn json_document_gap_text(gap: JsonDocumentGap) -> String {
   match gap {
     JsonDocumentMalformedAt { at: at } =>
-      concat("not readable as JSON at offset ", to_string(value: at))
+      concat("not readable as JSON at offset ", int_to_decimal_string(value: at))
     JsonDocumentTrailingContentAt { at: at } =>
-      concat("one complete JSON value followed by trailing content at offset ", to_string(value: at))
+      concat("one complete JSON value followed by trailing content at offset ", int_to_decimal_string(value: at))
   }
 }
 
@@ -376,8 +379,8 @@ type JsonMemberPresence
 fn json_member_presence(obj: JsonValue, key: String) -> JsonMemberPresence {
   match json_object_unique_member(v: obj, key: key) {
     JsonMemberAbsent => JsonMemberMissing
-    JsonMemberNotAnObject => JsonMemberUnreadable { cause: join(["the enclosing value carrying ", key, " is not an object"], "") }
-    JsonMemberDuplicated { count: n } => JsonMemberUnreadable { cause: join([key, " is named ", to_string(n), " times in one object"], "") }
+    JsonMemberNotAnObject => JsonMemberUnreadable { cause: string_concat_join(fields: ["the enclosing value carrying ", key, " is not an object"], separator: "") }
+    JsonMemberDuplicated { count: n } => JsonMemberUnreadable { cause: string_concat_join(fields: [key, " is named ", int_to_decimal_string(value: n), " times in one object"], separator: "") }
     JsonMemberFound { value: v } =>
       match v {
         JsonNull => JsonMemberNull
@@ -393,8 +396,8 @@ fn json_member_presence(obj: JsonValue, key: String) -> JsonMemberPresence {
 fn json_field(obj: JsonValue, key: String) -> JsonFieldRead<JsonValue> {
   match json_object_unique_member(v: obj, key: key) {
     JsonMemberAbsent => FieldAbsent
-    JsonMemberNotAnObject => FieldMalformed { cause: join(["the enclosing value carrying ", key, " is not an object"], "") }
-    JsonMemberDuplicated { count: n } => FieldMalformed { cause: join([key, " is named ", to_string(n), " times in one object"], "") }
+    JsonMemberNotAnObject => FieldMalformed { cause: string_concat_join(fields: ["the enclosing value carrying ", key, " is not an object"], separator: "") }
+    JsonMemberDuplicated { count: n } => FieldMalformed { cause: string_concat_join(fields: [key, " is named ", int_to_decimal_string(value: n), " times in one object"], separator: "") }
     JsonMemberFound { value: v } =>
       match v {
         JsonNull => FieldAbsent
@@ -415,10 +418,10 @@ fn json_field_string(obj: JsonValue, key: String) -> JsonFieldRead<String> {
       match v {
         JsonString { value: s } => FieldRead { value: s }
         JsonNull => FieldAbsent
-        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where a string was expected"], "") }
-        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where a string was expected"], "") }
-        JsonArray { elements: _ } => FieldMalformed { cause: join([key, " is an array where a string was expected"], "") }
-        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where a string was expected"], "") }
+        JsonBool { value: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is a bool where a string was expected"], separator: "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is a number where a string was expected"], separator: "") }
+        JsonArray { elements: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is an array where a string was expected"], separator: "") }
+        JsonObject { members: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is an object where a string was expected"], separator: "") }
       }
   }
 }
@@ -431,10 +434,10 @@ fn json_field_bool(obj: JsonValue, key: String) -> JsonFieldRead<Bool> {
       match v {
         JsonBool { value: b } => FieldRead { value: b }
         JsonNull => FieldAbsent
-        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where a bool was expected"], "") }
-        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where a bool was expected"], "") }
-        JsonArray { elements: _ } => FieldMalformed { cause: join([key, " is an array where a bool was expected"], "") }
-        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where a bool was expected"], "") }
+        JsonString { value: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is a string where a bool was expected"], separator: "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is a number where a bool was expected"], separator: "") }
+        JsonArray { elements: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is an array where a bool was expected"], separator: "") }
+        JsonObject { members: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is an object where a bool was expected"], separator: "") }
       }
   }
 }
@@ -448,13 +451,13 @@ fn json_field_int(obj: JsonValue, key: String) -> JsonFieldRead<Int> {
         JsonNumber { lexeme: lx } =>
           match parse_int(s: lx) {
             Present { value: n } => FieldRead { value: n }
-            Absent => FieldMalformed { cause: join([key, " carries the number lexeme ", lx, ", which is not an integer"], "") }
+            Absent => FieldMalformed { cause: string_concat_join(fields: [key, " carries the number lexeme ", lx, ", which is not an integer"], separator: "") }
           }
         JsonNull => FieldAbsent
-        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where a number was expected"], "") }
-        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where a number was expected"], "") }
-        JsonArray { elements: _ } => FieldMalformed { cause: join([key, " is an array where a number was expected"], "") }
-        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where a number was expected"], "") }
+        JsonBool { value: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is a bool where a number was expected"], separator: "") }
+        JsonString { value: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is a string where a number was expected"], separator: "") }
+        JsonArray { elements: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is an array where a number was expected"], separator: "") }
+        JsonObject { members: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is an object where a number was expected"], separator: "") }
       }
   }
 }
@@ -469,7 +472,7 @@ fn json_field_nat(obj: JsonValue, key: String) -> JsonFieldRead<Nat> {
     FieldMalformed { cause: c } => FieldMalformed { cause: c }
     FieldRead { value: n } =>
       if n < 0 {
-        FieldMalformed { cause: join([key, " is ", to_string(n), ", which no unsigned carrier can hold; it is refused rather than clamped"], "") }
+        FieldMalformed { cause: string_concat_join(fields: [key, " is ", int_to_decimal_string(value: n), ", which no unsigned carrier can hold; it is refused rather than clamped"], separator: "") }
       } else {
         FieldRead { value: n }
       }
@@ -489,12 +492,12 @@ fn json_string_list_step(acc: JsonStringListAcc, key: String, v: JsonValue) -> J
     Present { value: _ } => acc
     Absent =>
       match v {
-        JsonString { value: s } => JsonStringListAcc { values: concat(acc.values, [s]), cause: none }
-        JsonNull => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds a null where every element must be a string"], "") } }
-        JsonBool { value: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds a bool where every element must be a string"], "") } }
-        JsonNumber { lexeme: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds a number where every element must be a string"], "") } }
-        JsonArray { elements: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds an array where every element must be a string"], "") } }
-        JsonObject { members: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: join([key, " holds an object where every element must be a string"], "") } }
+        JsonString { value: s } => JsonStringListAcc { values: concat(acc.values, [s]), cause: Absent }
+        JsonNull => JsonStringListAcc { values: acc.values, cause: Present { value: string_concat_join(fields: [key, " holds a null where every element must be a string"], separator: "") } }
+        JsonBool { value: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: string_concat_join(fields: [key, " holds a bool where every element must be a string"], separator: "") } }
+        JsonNumber { lexeme: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: string_concat_join(fields: [key, " holds a number where every element must be a string"], separator: "") } }
+        JsonArray { elements: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: string_concat_join(fields: [key, " holds an array where every element must be a string"], separator: "") } }
+        JsonObject { members: _ } => JsonStringListAcc { values: acc.values, cause: Present { value: string_concat_join(fields: [key, " holds an object where every element must be a string"], separator: "") } }
       }
   }
 }
@@ -507,17 +510,17 @@ fn json_field_string_list(obj: JsonValue, key: String) -> JsonFieldRead<List<Str
     FieldRead { value: v } =>
       match v {
         JsonArray { elements: es } => {
-          let acc = fold(es, init: JsonStringListAcc { values: [], cause: none }, f: (a, e) => json_string_list_step(acc: a, key: key, v: e))
+          let acc = fold(es, init: JsonStringListAcc { values: [], cause: Absent }, f: (a, e) => json_string_list_step(acc: a, key: key, v: e))
           match acc.cause {
             Present { value: c } => FieldMalformed { cause: c }
             Absent => FieldRead { value: acc.values }
           }
         }
         JsonNull => FieldAbsent
-        JsonBool { value: _ } => FieldMalformed { cause: join([key, " is a bool where an array was expected"], "") }
-        JsonNumber { lexeme: _ } => FieldMalformed { cause: join([key, " is a number where an array was expected"], "") }
-        JsonString { value: _ } => FieldMalformed { cause: join([key, " is a string where an array was expected"], "") }
-        JsonObject { members: _ } => FieldMalformed { cause: join([key, " is an object where an array was expected"], "") }
+        JsonBool { value: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is a bool where an array was expected"], separator: "") }
+        JsonNumber { lexeme: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is a number where an array was expected"], separator: "") }
+        JsonString { value: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is a string where an array was expected"], separator: "") }
+        JsonObject { members: _ } => FieldMalformed { cause: string_concat_join(fields: [key, " is an object where an array was expected"], separator: "") }
       }
   }
 }
@@ -531,8 +534,8 @@ fn json_field_string_list(obj: JsonValue, key: String) -> JsonFieldRead<List<Str
 // findings permanently.
 fn json_field_value<T>(r: JsonFieldRead<T>) -> T? {
   match r {
-    FieldAbsent => none
-    FieldMalformed { cause: _ } => none
+    FieldAbsent => Absent
+    FieldMalformed { cause: _ } => Absent
     FieldRead { value: v } => Present { value: v }
   }
 }
@@ -540,8 +543,8 @@ fn json_field_value<T>(r: JsonFieldRead<T>) -> T? {
 
 fn json_field_cause<T>(r: JsonFieldRead<T>) -> String? {
   match r {
-    FieldAbsent => none
+    FieldAbsent => Absent
     FieldMalformed { cause: c } => Present { value: c }
-    FieldRead { value: _ } => none
+    FieldRead { value: _ } => Absent
   }
 }

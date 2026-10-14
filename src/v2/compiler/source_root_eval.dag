@@ -89,6 +89,10 @@ import v2.compiler.name_resolve {
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIdAllocator,
+  OccurrenceMinted,
+  OccurrencePending,
+  OccurrenceProjected,
+  OccurrenceSynthetic,
   occurrence_id_allocator_initial,
   scoped_occurrence_allocator,
 }
@@ -605,6 +609,99 @@ fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, text:
   } else {
     FileRefusalAtOtherFile { file: file }
   }
+}
+
+// ACCEPTED FILES' SPAN INDEXES, JOINED BY OCCURRENCE ID TO THE FILE THAT MINTED THEM. The census
+// locates a later resolve/infer fatal by looking up the owner and resolving that file's index at
+// the demand (native_census_locate), not by converting every occurrence to a line at absorb
+// (DESIGN §2: one undeclared pure demand may recompute; §6: ids × bytes through
+// source_line_col_at_byte is a quadratic fold). The stored values are a path and a SpanIndex, never
+// a Locus on the census row. Refused parses do not contribute: their ids are reused by the next
+// file (native_test_context_absorb). A colliding id already in `owner` is left as it was (base-wins).
+type NativeCensusFileSpans {
+  spans: SpanIndex
+  text: String
+}
+
+type NativeCensusPositionTable {
+  owner: Map<OccurrenceId, Symbol>
+  files: Map<Symbol, NativeCensusFileSpans>
+}
+
+fn native_census_position_table_empty() -> NativeCensusPositionTable {
+  NativeCensusPositionTable { owner: empty_map(), files: empty_map() }
+}
+
+// ONE ACCEPTED FILE, RECORDED FOR LATER LOOKUP. Occurrence ids are owned by this path (base-wins);
+// the span index and text stay with the file so a later fatal can resolve a line through
+// native_file_refusal_at. A refused parse never enters this table.
+fn native_census_positions_absorb_accepted(
+  table: NativeCensusPositionTable,
+  path: Symbol,
+  spans: SpanIndex,
+  text: String
+) -> NativeCensusPositionTable {
+  NativeCensusPositionTable {
+    owner: fold_list(
+      xs: map_keys(spans.entries),
+      empty: table.owner,
+      cons: fn(acc, id) {
+        match map_lookup(acc, id) {
+          Present { value: _ } => acc
+          Absent => map_insert(m: acc, key: id, value: path)
+        }
+      }
+    ),
+    files: map_insert(m: table.files, key: path, value: NativeCensusFileSpans { spans: spans, text: text })
+  }
+}
+
+fn native_census_owner_key(node: Node) -> Optional<OccurrenceId> {
+  match node.occurrence_id {
+    OccurrenceMinted { id: id } => optional_present(value: id)
+    OccurrenceProjected { id: _, caused_by: cause } => optional_present(value: cause.occurrence)
+    OccurrenceSynthetic => optional_absent()
+    OccurrencePending { caused_by: _ } => optional_absent()
+  }
+}
+
+fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
+  match at {
+    Textual { file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
+    SourcePortLocus { anchor: _, file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
+    InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
+    DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
+    NodeLocus { anchor: a } =>
+      match native_census_owner_key(node: a.at) {
+        Absent => FileRefusalAtUnresolvedNode
+        Present { value: id } =>
+          match map_lookup(positions.owner, id) {
+            Absent => FileRefusalAtUnresolvedNode
+            Present { value: owner_path } =>
+              match map_lookup(positions.files, owner_path) {
+                Absent => FileRefusalAtUnresolvedNode
+                Present { value: file } =>
+                  native_file_refusal_at(at: at, path: owner_path, spans: file.spans, text: file.text)
+              }
+          }
+      }
+  }
+}
+
+fn native_census_locate_textual(file: Symbol, extent: Extent, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
+  match map_lookup(positions.files, file) {
+    Present { value: stored } => native_file_refusal_textual(file: file, extent: extent, path: path, text: stored.text)
+    Absent =>
+      if file == path {
+        FileRefusalAtUnresolvedNode
+      } else {
+        FileRefusalAtOtherFile { file: file }
+      }
+  }
+}
+
+fn native_census_locate_fatal(chain: NonEmptyDiagnostics, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
+  native_census_locate(at: diagnostics_fatal(d: chain).at, path: path, positions: positions)
 }
 
 // THE FILE'S ROOT, ABSORBED. This is the half of the per-file step that is NOT the front end:

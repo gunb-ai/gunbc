@@ -41,7 +41,7 @@ test fn w_the_pending_exit_names_the_external_retry_obligation() -> Bool {
     && (match serving_route_caller_backlog() { DurableCallerBacklog => false  ExternalRetryObligation { unmet: us } => length(us) > 0  CallerBacklogRosterMalformed { duplicated: _ } => false })
     && (match harness_placement_pending_exit(detail: "fixture") {
       ExitSuccess => false
-      ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "EXTERNAL RETRY OBLIGATION") && string_contains(s: r, pattern: "no-double-execution")
+      ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "EXTERNAL RETRY OBLIGATION") && string_contains(s: r, pattern: "retriable-refusal")
     })
 }
 
