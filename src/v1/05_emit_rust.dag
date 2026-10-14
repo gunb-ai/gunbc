@@ -8309,7 +8309,7 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
   } else if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
     render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, source_indices: source_indices, env: env)
   } else if authored_type.connective == NoConnective && authored_type.children |> count > 0 {
-    render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+    render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: generic_param_names, env: env))
   } else {
     render_rust_type_with_applied_binding(n: resolved_type(n: field), shared_types: shared_types, source_indices: source_indices, env: env)
   }
@@ -11845,22 +11845,22 @@ fn rust_runtime_bridge_name(function_name: String) -> String {
   }
 }
 
-fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match map_type.children |> skip(1) |> first {
     Present { value: value_child } =>
-      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
       if rendered == "" { "" } else { rendered }
     Absent => ""
   }
 }
 
-fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let key_str = match map_type.children |> first {
     Present { value: key_child } =>
-      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     Absent => ""
   }
-  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
+  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if key_str != "" && val_str != "" {
     concat(key_str, ", ", val_str)
   } else { "" }
@@ -11894,7 +11894,7 @@ fn type_node_carries_erased_type_argument(n: Node) -> Bool {
 }
 
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
+  let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
   } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)

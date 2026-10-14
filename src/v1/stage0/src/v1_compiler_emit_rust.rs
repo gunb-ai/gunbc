@@ -17392,7 +17392,11 @@ pub fn render_rust_field_type_with_applied_binding(
                             authored_type.clone(),
                             shared_types.clone(),
                             source_indices.clone(),
-                            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                            crate::v1_compiler_infer_emit_info::emit_info_with_fn_type_context(
+                                crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                                generic_param_names.clone(),
+                                env.clone(),
+                            ),
                         )
                     } else {
                         render_rust_type_with_applied_binding(
@@ -25078,6 +25082,7 @@ pub fn rust_empty_map_value_type_str(
     map_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match map_type.children.clone().get((1) as usize).cloned() {
         Some(value_child) => {
@@ -25085,7 +25090,7 @@ pub fn rust_empty_map_value_type_str(
                 crate::v1_compiler_infer_types::child_type_node(value_child.clone()),
                 shared_types.clone(),
                 source_indices.clone(),
-                crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                emit_info.clone(),
             );
             if (rendered.clone() == "".to_string()) {
                 "".to_string()
@@ -25101,6 +25106,7 @@ pub fn rust_empty_map_kv_type_str(
     map_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         let key_str = match map_type.children.clone().first().cloned() {
@@ -25108,7 +25114,7 @@ pub fn rust_empty_map_kv_type_str(
                 crate::v1_compiler_infer_types::child_type_node(key_child.clone()),
                 shared_types.clone(),
                 source_indices.clone(),
-                crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                emit_info.clone(),
             ),
             std::option::Option::None => "".to_string(),
         };
@@ -25116,6 +25122,7 @@ pub fn rust_empty_map_kv_type_str(
             map_type.clone(),
             shared_types.clone(),
             source_indices.clone(),
+            emit_info.clone(),
         );
         if ((key_str.clone() != "".to_string()) && (val_str.clone() != "".to_string())) {
             v1_rt::concat(
@@ -25157,6 +25164,7 @@ pub fn rust_empty_map_init_expr(
             map_type.clone(),
             shared_types.clone(),
             source_indices.clone(),
+            emit_info.clone(),
         );
         if (kv_type_str.clone() == "".to_string()) {
             rust_shared_wrap_ctor(
