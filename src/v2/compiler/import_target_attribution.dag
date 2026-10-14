@@ -1,6 +1,6 @@
 module v2.compiler.import_target_attribution
 
-import std.algebra { Empty, FreeMonoid, fold_list, list_find_first, list_snoc_item, trim }
+import std.algebra { FreeMonoid, fold_list, list_find_first, trim }
 import std.types { Bool }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.node { Symbol }
@@ -26,7 +26,7 @@ fn declared_module_from_source(content: String) -> Optional<QualifiedName> {
     xs: split(s: content, delimiter: "\n"),
     predicate: fn(line) { starts_with(s: trim(line), prefix: "module ") }
   ) {
-    Absent => Absent
+    Absent => optional_absent()
     Present { value: line } =>
       optional_present(
         value: qualified_name_from_dotted_string(
