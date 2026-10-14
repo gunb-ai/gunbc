@@ -1570,7 +1570,6 @@ fn bmc_fan_observe_with_credential(
   }
 }
 }
-}
 
 fn bmc_fan_observe_only_with_credential(
   target: BmcFanConvergeTarget,
