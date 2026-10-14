@@ -315,7 +315,6 @@ import std.process { ExitFailure, ExitSuccess, ProcessExit }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import v2.std.witness { Holds, Violates, Witness, witness_violates }
 import v2.compiler.refinement_discharge { infer_and_discharge }
-import gunbc.guarantee_measurement { ContentFingerprint, MeasurementRevision, measurement_revision_eq }
 
 // THIS MODULE IS THE COMPILER PIPELINE ENTRY. It carries the fact rather than being recognised
 // by name: the emitter selected its entry-point arm by matching "v1.compiler.compile", a
@@ -6405,7 +6404,7 @@ type CensusRunCompletion
 
 type CensusRunRecord {
   subject: String
-  revision: MeasurementRevision
+  revision: Fnv1a64Structural
   scope: NativeCensusScope
   population: List<String>
   population_digest: Fnv1a64Structural
@@ -6441,8 +6440,8 @@ type CensusObligationIndex
 
 type CensusRunDiff {
   revision_changed: Bool
-  before_revision: MeasurementRevision
-  after_revision: MeasurementRevision
+  before_revision: Fnv1a64Structural
+  after_revision: Fnv1a64Structural
   members_added: List<String>
   members_removed: List<String>
   findings: List<CensusRunDiffFinding>
@@ -6467,7 +6466,7 @@ fn census_population_digest(members: List<String>) -> Fnv1a64Structural {
 
 fn census_run_record(
   subject: String,
-  revision: MeasurementRevision,
+  revision: Fnv1a64Structural,
   scope: NativeCensusScope,
   population: List<String>,
   obligations: List<CensusObligationRow>,
@@ -7081,7 +7080,7 @@ fn census_run_diff(before: CensusRunRecord, after: CensusRunRecord) -> CensusRun
     }
     CensusRunDiffCompared {
       diff: CensusRunDiff {
-        revision_changed: !measurement_revision_eq(left: before.revision, right: after.revision),
+        revision_changed: !content_hash_eq_structural(left: before.revision, right: after.revision),
         before_revision: before.revision,
         after_revision: after.revision,
         members_added: added,
@@ -7152,19 +7151,20 @@ fn census_block_obligation_rows(blocks: List<CensusBlock>) -> List<CensusObligat
   })
 }
 
-// THE REVISION IS THE CONTENT THAT WAS READ (gunbc.plans.census_scoped_run section 6): a
-// ContentFingerprint over the member digests in read order, so two runs over identical bytes are one
-// revision whatever commit either claimed, and a claimed commit stays the host's record field.
-fn census_read_revision(member_digests: List<String>) -> MeasurementRevision {
-  ContentFingerprint {
-    digest: fold_list(
-      xs: member_digests,
-      empty: content_hash_atom(value: "census-run-reads-empty" as NonEmptyStr),
-      cons: fn(acc, d) {
-        content_hash_combine_structural(left: acc, right: content_hash_atom(value: d as NonEmptyStr))
-      }
-    )
-  }
+// THE REVISION IS THE CONTENT THAT WAS READ (gunbc.plans.census_scoped_run section 6): one structural
+// digest over the member digests in read order, so two runs over identical bytes are one revision
+// whatever commit either claimed. The claimed commit stays the host record's revision_claimed field;
+// it is not a fact this walk observed. (Not gunbc.guarantee_measurement MeasurementRevision: that
+// module is outside what the emitted compiler can build, and its GitRevision arm would be a claim
+// here, not an observation.)
+fn census_read_revision(member_digests: List<String>) -> Fnv1a64Structural {
+  fold_list(
+    xs: member_digests,
+    empty: content_hash_atom(value: "census-run-reads-empty" as NonEmptyStr),
+    cons: fn(acc, d) {
+      content_hash_combine_structural(left: acc, right: content_hash_atom(value: d as NonEmptyStr))
+    }
+  )
 }
 
 // A RECORD IS BUILT ONLY FROM A WALK THAT FINISHED, so its completion is CensusRunComplete; a run that
