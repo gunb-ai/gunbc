@@ -2823,6 +2823,11 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
 // a new step -- the attempt directory and the one subdirectory it is required to contain come into
 // existence together, and publication_receipt_directory_is_named_once_note's requirement that a
 // reader be able to LIST the directory holds from attempt birth instead of from first publish.
+// The worker/ child (path_parent_directory of dispatch_attempt_worker_log_path_for_instance) is
+// in this same list: the belt runs attempt_state_prepare_argv_for_instance as step
+// attempt-state-prepare, then belt_attempt_state_initialize_for_instance writes
+// launch-identity.json, then the unit starts. ReadWritePaths has no '-' prefix, so a missing
+// worker/ is NAMESPACE 226 rather than a silent drop of the write grant (Manager B).
 fn attempt_state_prepare_argv_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
@@ -2839,6 +2844,11 @@ fn attempt_state_prepare_argv_for_instance(
         node_id: node_id,
         attempt_key: attempt_key,
       ),
+      path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+      )),
       dispatch_attempt_publication_dir_for_instance(
         instance: instance,
         node_id: node_id,

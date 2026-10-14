@@ -131,7 +131,14 @@ test fn the_prepare_step_creates_the_verification_directory_with_the_attempt_dir
   )
   string_contains(s: wire, pattern: verification_dir)
     && string_contains(s: verification_dir, pattern: "/verification")
-    && string_contains(s: wire, pattern: "/worker/")
+    && string_contains(
+      s: wire,
+      pattern: path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: key,
+      )),
+    )
 }
 
 // DISCRIMINATING: the worker unit no longer outlives its process (reversal of 2026-09-05, bold-bee-114
