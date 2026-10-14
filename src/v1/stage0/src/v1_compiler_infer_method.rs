@@ -1550,15 +1550,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: type_variable_node("declared_import_closure_binding_result".to_string()),
     }));
-                __m.insert("class_b_import_closure_gate_not_affected_skip".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
                 __m.insert("witness_layer_roots_compile_clean_check".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
-                __m.insert("witness_layer_roots_compile_clean_emit_check".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: bool_type(),
     }));

@@ -121,9 +121,7 @@ pub enum EvalBuiltinArm {
     FreeCallEntryClosureModuleIdentities,
     FreeCallCompileDagCallFormLeafGuard,
     FreeCallObserveDeclaredImportClosureSymbolBinding,
-    FreeCallClassBImportClosureGateNotAffectedSkip,
     FreeCallWitnessLayerRootsCompileCleanCheck,
-    FreeCallWitnessLayerRootsCompileCleanEmitCheck,
     FreeCallInstallOrConsumeFloorCompileCleanGateReceipt,
     FreeCallRecordGeneratedArtifactDriftGateFailureDetail,
     FreeCallRecordGeneratedArtifactDriftGateClean,
@@ -270,9 +268,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "entry_closure_module_identities" => Some(EvalBuiltinArm::FreeCallEntryClosureModuleIdentities),
         "compile_dag_call_form_leaf_guard" => Some(EvalBuiltinArm::FreeCallCompileDagCallFormLeafGuard),
         "observe_declared_import_closure_symbol_binding" => Some(EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding),
-        "class_b_import_closure_gate_not_affected_skip" => Some(EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip),
         "witness_layer_roots_compile_clean_check" => Some(EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanCheck),
-        "witness_layer_roots_compile_clean_emit_check" => Some(EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanEmitCheck),
         "install_or_consume_floor_compile_clean_gate_receipt" => Some(EvalBuiltinArm::FreeCallInstallOrConsumeFloorCompileCleanGateReceipt),
         "record_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail),
         "record_generated_artifact_drift_gate_clean" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateClean),
@@ -417,9 +413,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.entry_closure_module_identities") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallEntryClosureModuleIdentities };
     ("free_call.compile_dag_call_form_leaf_guard") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagCallFormLeafGuard };
     ("free_call.observe_declared_import_closure_symbol_binding") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding };
-    ("free_call.class_b_import_closure_gate_not_affected_skip") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip };
     ("free_call.witness_layer_roots_compile_clean_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanCheck };
-    ("free_call.witness_layer_roots_compile_clean_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanEmitCheck };
     ("free_call.install_or_consume_floor_compile_clean_gate_receipt") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallInstallOrConsumeFloorCompileCleanGateReceipt };
     ("free_call.record_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail };
     ("free_call.record_generated_artifact_drift_gate_clean") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateClean };

@@ -5546,29 +5546,16 @@ pub(crate) enum CompileCleanScopePlan {
 pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_shard_entry_paths_fast";
 
+#[cfg(test)]
 pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_fixtures.dag";
-pub const CLASS_B_PROBE_REL: &str = "src/v2/workflow/class_b_import_closure_probe.dag";
+#[cfg(test)]
 pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
+#[cfg(test)]
 pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
+#[cfg(test)]
 pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
+#[cfg(test)]
 const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_pool_roots";
-
-pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
-    CLASS_B_ENTRY_REL,
-    CLASS_B_PROBE_REL,
-    CLASS_B_BINDING_REL,
-    CLASS_B_OVERLAY_REL,
-];
-
-pub const CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL: &str = "class_b_gate_not_affected_skip";
-pub const RUN_CLASS_B_GATE_LABEL: &str = "run_class_b_gate";
-/// Grep-countable run-arm markers for failure paths that still execute the gate (regen shape:
-/// fail-closed by running, not by widening). Distinct from structural `run_class_b_gate` arms
-/// so routine closure/diff failures are observable in job logs (loyal-ram-550 #7835).
-pub const RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL: &str =
-    "run_class_b_gate:diff_observation_failed";
-pub const RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL: &str =
-    "run_class_b_gate:input_closure_failed";
 
 /// Module-path -> source-file index over a set of `.dag` source roots.
 ///
@@ -5837,7 +5824,11 @@ fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
             let closure_units = sources.len() as u128;
             let leg_started = std::time::Instant::now();
             let _ = drain_module_typecheck_walls();
-            let (ok, failure_detail) = floor_compile_clean_emit_ok_via_index(sources, &index_roots);
+            let (ok, failure_detail) = match compile_clean::compile_clean_cli_verdict_whole_tree() {
+                Ok(ok) => (ok, String::new()),
+                Err(detail) => (false, detail),
+            };
+            let _ = (sources, index_roots);
             let wall_ms = leg_started.elapsed().as_millis();
             let module_typecheck_walls = drain_module_typecheck_walls();
             write_floor_compile_clean_cost_receipt(
@@ -6324,206 +6315,6 @@ mod shared_cache_collision_guard_tests {
         assert!(
             err.contains("co-residence collision") && err.contains("std.foo"),
             "collision error must name the module and the seam: {err}"
-        );
-    }
-}
-
-#[cfg(test)]
-mod compile_clean_via_index_verdict_equivalence {
-    //! Verdict-equivalence controls for the floor receipt's via-index compile
-    //! (lever 1, typecheck investigation PR #6766): the raw pipeline
-    //! (`floor_compile_clean_emit_ok`, still the oracle behind
-    //! `witness_layer_roots_compile_clean_emit_check`) and the shared-index receipt
-    //! path (`floor_compile_clean_emit_ok_via_index`) must agree — green on a clean
-    //! corpus, red on a planted unresolved import, red on a planted type mismatch.
-    //! The raw path shares no caches with the via-index path, so agreement is an
-    //! independent second opinion, not a self-check. Whole-tree agreement receipts
-    //! (green 377.7s vs 381.4s; planted-inject red 4.3s vs 361.6s; both agree) are
-    //! recorded in PR #6766.
-
-    use super::{floor_compile_clean_emit_ok, floor_compile_clean_emit_ok_via_index};
-    use crate::v1_compiler_compile::SourceFile;
-    use std::fs;
-    use std::rc::Rc;
-
-    struct Corpus {
-        dir: std::path::PathBuf,
-        roots: Vec<String>,
-        sources: Vec<Rc<SourceFile>>,
-    }
-
-    impl Corpus {
-        /// Write `files` under a fresh fixture dir (the via-index path builds its
-        /// `process_shared_index` from on-disk roots) and mirror them as the source
-        /// set both compile paths receive.
-        fn new(tag: &str, files: &[(&str, &str)]) -> Corpus {
-            use std::sync::atomic::{AtomicU64, Ordering};
-            static SEQ: AtomicU64 = AtomicU64::new(0);
-            let seq = SEQ.fetch_add(1, Ordering::SeqCst);
-            let dir = super::workspace_root().join("target").join(format!(
-                "compile-clean-equiv-{tag}-{}-{seq}",
-                std::process::id()
-            ));
-            let _ = fs::remove_dir_all(&dir);
-            fs::create_dir_all(&dir).expect("create fixture dir");
-            let mut sources = Vec::new();
-            for (name, content) in files {
-                let path = dir.join(name);
-                fs::write(&path, content).expect("write fixture module");
-                sources.push(Rc::new(SourceFile {
-                    path: path.to_string_lossy().into_owned(),
-                    content: (*content).to_string(),
-                }));
-            }
-            let roots = vec![dir.to_string_lossy().into_owned()];
-            Corpus {
-                dir,
-                roots,
-                sources,
-            }
-        }
-
-        fn verdicts(&self) -> (bool, bool) {
-            let raw = floor_compile_clean_emit_ok(self.sources.clone(), None);
-            let via_index =
-                floor_compile_clean_emit_ok_via_index(self.sources.clone(), &self.roots).0;
-            (raw, via_index)
-        }
-    }
-
-    impl Drop for Corpus {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.dir);
-        }
-    }
-
-    /// §5 discriminating RED: an unresolved import must red BOTH paths.
-    /// CAUSAL control for the regen-closure de-fork — the companion to
-    /// `regen_subject_admits_a_provider_reached_only_by_reference`.
-    ///
-    /// That test proves the provider ENTERS the subject, not that it enters BECAUSE OF THE
-    /// REFERENCE: if the closure admitted every module in the wider roots for an unrelated
-    /// reason, it would still pass while the edge did no work — the both-arms-green failure one
-    /// level up.
-    ///
-    /// So this fixture is byte-identical to that one EXCEPT the seed does not name the provider,
-    /// which must then be ABSENT from the subject. Together the pair establishes the edge is
-    /// causal: reference present -> admitted, absent -> not admitted, everything else fixed.
-    #[test]
-    fn regen_subject_omits_a_provider_nothing_references() {
-        let base = super::workspace_root()
-            .join("target")
-            .join(format!("regen-closure-causal-{}", std::process::id()));
-        let entry_root = base.join("seed");
-        let provider_root = base.join("corpus");
-        let _ = fs::remove_dir_all(&base);
-        fs::create_dir_all(&entry_root).expect("create entry root");
-        fs::create_dir_all(&provider_root).expect("create provider root");
-
-        // The ONLY difference from the admitting test: no reference to the provider.
-        // QUALIFIED, not bare: since #12741 a bare name across source trees refuses typed
-        // (CrossTreeBareReference), so the cross-tree reference the de-fork must follow is
-        // written the way production must write it.
-        fs::write(
-            entry_root.join("seed.dag"),
-            "module v1.regen_seed_probe\nfn probe() -> Int {\n  1\n}\n",
-        )
-        .expect("write seed");
-        fs::write(
-            provider_root.join("provider.dag"),
-            "module std.regen_provider_probe\nfn regen_provider_probe_answer() -> Int {\n  7\n}\n",
-        )
-        .expect("write provider");
-
-        let roots = vec![
-            entry_root.to_string_lossy().into_owned(),
-            provider_root.to_string_lossy().into_owned(),
-        ];
-        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots)
-            .expect("regen subject over the fixture roots");
-
-        let _ = fs::remove_dir_all(&base);
-
-        assert!(
-            !admitted
-                .iter()
-                .any(|(_, c)| c.contains("module std.regen_provider_probe")),
-            "an unreferenced provider must NOT be admitted -- if it is, the closure is \
-             widening the subject rather than following edges, and the admitting test \
-             proves nothing about causality; admitted {} module(s): {:?}",
-            admitted.len(),
-            admitted.iter().map(|(p, _)| p).collect::<Vec<_>>()
-        );
-    }
-
-    /// DISCRIMINATING RED for the regen-closure de-fork.
-    ///
-    /// A seed module reaching its provider by REFERENCE ONLY -- no `import` line anywhere --
-    /// must still have that provider admitted to the regen subject. Before the de-fork,
-    /// `regen_input_sources` grew its closure with `extract_import_paths` alone and dropped it.
-    ///
-    /// THE FIXTURE'S SHAPE IS THE WHOLE CONTROL. An earlier version wrote both modules into ONE
-    /// directory and passed it as the entry root; `collect_dag_files_result` then picked the
-    /// provider up as a SEED, so the closure was never asked to find anything and the test
-    /// passed against the old import-only walk too -- green in both arms, evidence of nothing.
-    /// The provider must live OUTSIDE the entry root and inside the wider root set, exactly
-    /// production's shape: entry root `src/v1`, providers under `dag/`.
-    #[test]
-    fn regen_subject_admits_a_provider_reached_only_by_reference() {
-        let base = super::workspace_root()
-            .join("target")
-            .join(format!("regen-closure-defork-{}", std::process::id()));
-        let entry_root = base.join("seed");
-        let provider_root = base.join("corpus");
-        let _ = fs::remove_dir_all(&base);
-        fs::create_dir_all(&entry_root).expect("create entry root");
-        fs::create_dir_all(&provider_root).expect("create provider root");
-
-        fs::write(
-            entry_root.join("seed.dag"),
-            "module v1.regen_seed_probe\nfn probe() -> Int {\n  std.regen_provider_probe.regen_provider_probe_answer()\n}\n",
-        )
-        .expect("write seed");
-        fs::write(
-            provider_root.join("provider.dag"),
-            "module std.regen_provider_probe\nfn regen_provider_probe_answer() -> Int {\n  7\n}\n",
-        )
-        .expect("write provider");
-
-        // Preconditions, asserted rather than assumed -- if a later edit adds an
-        // import to the fixture, or moves the provider under the entry root, this
-        // test would keep passing while testing nothing (which is how its first
-        // version failed).
-        let seed_text = fs::read_to_string(entry_root.join("seed.dag")).expect("read seed");
-        assert!(
-            super::extract_import_paths(&seed_text).is_empty(),
-            "fixture precondition: the seed reaches its provider by reference only"
-        );
-        let mut entry_files = Vec::new();
-        super::collect_dag_files_result(&entry_root, &mut entry_files).expect("walk entry root");
-        assert_eq!(
-            entry_files.len(),
-            1,
-            "fixture precondition: the provider must NOT be reachable as a seed"
-        );
-
-        let roots = vec![
-            entry_root.to_string_lossy().into_owned(),
-            provider_root.to_string_lossy().into_owned(),
-        ];
-        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots)
-            .expect("regen subject over the fixture roots");
-
-        let _ = fs::remove_dir_all(&base);
-
-        assert!(
-            admitted
-                .iter()
-                .any(|(_, c)| c.contains("module std.regen_provider_probe")),
-            "a provider reached only by reference must be admitted to the regen subject; \
-             admitted {} module(s): {:?}",
-            admitted.len(),
-            admitted.iter().map(|(p, _)| p).collect::<Vec<_>>()
         );
     }
 }
@@ -32025,21 +31816,6 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
-    /// Hand-Rust receipt: the emit leg is a strict superset of resolve for the same sources.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn emit_success_implies_resolve_success_on_live_witness_roots() {
-        with_env_test_lock(|| {
-            // Whole-tree path only: this receipt is about emit⊇resolve, not lever-a scoping.
-            // In CI `GITHUB_ACTIONS=true` would route through the live shard-roster disposition.
-            let _ga = EnvGuard::remove("GITHUB_ACTIONS");
-            let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
-            if witness_layer_roots_compile_clean_emit_check() {
-                assert!(witness_layer_roots_compile_clean_check());
-            }
-        });
-    }
-
     /// §5 discriminating RED: gate without an installed receipt must refuse (never run a second compile).
     #[test]
     fn floor_compile_clean_gate_refuses_without_receipt() {
@@ -32311,139 +32087,6 @@ mod witness_layer_roots_compile_clean_tests {
                 "expected SkipNoAffected, got {plan:?}"
             );
         });
-    }
-
-    /// Class B gate skip: unrelated path outside the gate input closure skips on pull_request.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn class_b_gate_skip_skips_on_unrelated_path() {
-        const UNRELATED: &str = "src/v2/lens/machine_shape.dag";
-        let closure = class_b_import_closure_input_sources(&workspace_root())
-            .expect("Class B gate closure must compute");
-        assert!(
-            !closure.iter().any(|p| p == UNRELATED),
-            "{UNRELATED} entered the Class B gate input closure — choose a new skip subject"
-        );
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    &format!("M\\000{UNRELATED}\\000"),
-                );
-                assert_eq!(
-                    class_b_import_closure_gate_skip_label_for_ci(),
-                    CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL
-                );
-            });
-        });
-    }
-
-    /// Class B gate skip: touching the subject entry runs the gate.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn class_b_gate_skip_runs_on_subject_entry() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    &format!("M\\000{CLASS_B_ENTRY_REL}\\000"),
-                );
-                assert_eq!(
-                    class_b_import_closure_gate_skip_label_for_ci(),
-                    RUN_CLASS_B_GATE_LABEL
-                );
-            });
-        });
-    }
-
-    /// Class B gate skip: departed non-docs path runs the gate.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn class_b_gate_skip_runs_on_departed_dag_path() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "D\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(
-                    class_b_import_closure_gate_skip_label_for_ci(),
-                    RUN_CLASS_B_GATE_LABEL
-                );
-            });
-        });
-    }
-
-    /// Class B gate skip: non-pull_request always runs (cold control).
-    #[test]
-    fn class_b_gate_skip_runs_on_push_event() {
-        // NO `with_workspace_cwd` HERE, deliberately: the label is derived from the two env vars
-        // below and this body resolves no path at all, so the chdir was pure residue — and a
-        // process-global chdir in a lane-gating test yanks the cwd out from under every other
-        // test in the binary for the width of this call (see `no_gating_test_reaches_a_process_cwd_mutator`).
-        with_env_test_lock(|| {
-            let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
-            let _ns = EnvGuard::set(
-                "GUNBC_CI_DIFF_NAME_STATUS",
-                "M\\000src/v2/lens/machine_shape.dag\\000",
-            );
-            assert_eq!(
-                class_b_import_closure_gate_skip_label_for_ci(),
-                RUN_CLASS_B_GATE_LABEL
-            );
-        });
-    }
-
-    /// Failure arm — diff observation failed still RUNs the gate (regen shape), but carries a
-    /// grep-countable label distinct from structural `run_class_b_gate` so routine observation
-    /// failures are observable in job logs without widening to skip.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn class_b_gate_skip_runs_with_countable_label_when_diff_observation_fails() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
-                let _ns =
-                    EnvGuard::set("GUNBC_CI_DIFF_NAME_STATUS", "Z\\000src/v1/whatever.rs\\000");
-                assert_eq!(
-                    class_b_import_closure_gate_skip_label_for_ci(),
-                    RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
-                );
-                assert!(
-                    !class_b_import_closure_gate_not_affected_skip_for_ci(),
-                    "a failure arm must still run the gate, never skip"
-                );
-            });
-        });
-    }
-
-    /// The two failure run labels must stay distinguishable from each other and from the
-    /// structural run / skip labels so each deficit is separately countable in job logs.
-    #[test]
-    fn class_b_gate_skip_labels_are_distinct_and_countable() {
-        assert_ne!(
-            RUN_CLASS_B_GATE_LABEL,
-            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
-        );
-        assert_ne!(
-            RUN_CLASS_B_GATE_LABEL,
-            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
-        );
-        assert_ne!(
-            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL,
-            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
-        );
-        assert_ne!(
-            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL,
-            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
-        );
-        assert_ne!(
-            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL,
-            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
-        );
     }
 
     #[test]

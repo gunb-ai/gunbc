@@ -1393,16 +1393,10 @@ pub fn compile_clean_diagnostic_census(
     })
 }
 
-/// Floor compile-clean verdict over the whole-tree closure (shared-index receipt semantics).
+/// Floor compile-clean verdict. The via-index emit oracle is gone (no executing
+/// route); this is the CLI realization.
 pub fn compile_clean_floor_verdict_whole_tree() -> Result<bool, String> {
-    let roots = default_source_roots();
-    let sources = match witness_layer_roots_compile_clean_sources_for_plan(
-        &CompileCleanScopePlan::WholeTree,
-    )? {
-        None => return Ok(true),
-        Some(s) => s,
-    };
-    Ok(floor_compile_clean_emit_ok_via_index(sources, &roots).0)
+    compile_clean_cli_verdict_whole_tree()
 }
 
 /// CLI compile-clean verdict: same source closure and diagnostic policy as the floor,

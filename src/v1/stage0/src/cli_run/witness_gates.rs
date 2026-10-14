@@ -362,22 +362,6 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
     }
 }
 
-/// Emit leg: `--target dag` compile over witness layer roots without shell or disk write.
-/// Direct-run oracle for non-floor contexts (cargo tests, enrolled witnesses). The CI
-/// floor gate consumes `install_or_consume_floor_compile_clean_gate_receipt` instead (Lever A).
-pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
-    match witness_layer_roots_compile_clean_sources_and_index_for_plan(
-        &compile_clean_scope_plan_for_ci(),
-    ) {
-        Ok(None) => true,
-        Ok(Some((sources, index))) => floor_compile_clean_emit_ok(sources, Some(&index)),
-        Err(msg) => {
-            eprintln!("compile-clean emit: source load failed ({msg})");
-            false
-        }
-    }
-}
-
 pub(crate) fn witness_cost_nanosecond_value(
     ctx: &v1_interpreter::InterpContext,
     nanos: u128,
