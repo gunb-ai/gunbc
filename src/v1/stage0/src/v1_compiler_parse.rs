@@ -115,7 +115,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TokenStream {
     pub all: Rc<Vec<Rc<Token>>>,
     pub pos: i64,
@@ -246,23 +246,14 @@ pub struct ParseContext {
     pub source_extents: Rc<ParseSourceExtentState>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParsedSourceExtent {
     pub occurrence: OccurrenceId,
     pub extent: Rc<SourceSpan>,
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum ErasedSourceScopeKind {
@@ -270,34 +261,34 @@ pub enum ErasedSourceScopeKind {
     ErasedSingletonBlockScope,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ErasedScopeRelation {
     ErasedScopeEncloses { occurrence: OccurrenceId },
     ErasedScopeInside { container: OccurrenceId },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ErasedSourceScope {
     pub kind: ErasedSourceScopeKind,
     pub extent: Rc<SourceSpan>,
     pub relation: Rc<ErasedScopeRelation>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RecordedErasedScope {
     pub kind: ErasedSourceScopeKind,
     pub extent: Rc<SourceSpan>,
     pub enclosed: OccurrenceId,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParsedSourceExtents {
     pub extents: Rc<Vec<Rc<ParsedSourceExtent>>>,
     pub erased_scopes: Rc<Vec<Rc<ErasedSourceScope>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParseSourceExtentState {
     pub recorded: Rc<HashMap<OccurrenceId, Rc<SourceSpan>>>,
     pub published: Rc<Vec<Rc<ParsedSourceExtent>>>,
@@ -421,7 +412,7 @@ pub fn erased_scope_relation(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParseResult {
     pub module: Option<Rc<Node>>,
     pub error: Option<Rc<ErrorNode>>,
@@ -464,7 +455,7 @@ pub struct ParsedPatternStampResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ParsedOccurrenceRole {
     ParsedOccurrenceUnclassified,
@@ -493,7 +484,7 @@ pub struct ParsedNodeIdentityMint {
     pub ctx: Rc<ParseContext>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ParsedExtentAt {
     ConsumedWindow {
@@ -949,7 +940,7 @@ pub fn parsed_node_with_ident(node: Rc<Node>, ident: i64) -> Rc<Node> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum AdvanceResult {
     AdvanceOk {
@@ -973,7 +964,7 @@ impl AdvanceResult {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EatResult {
     EatConsumed {
@@ -993,14 +984,14 @@ impl EatResult {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TokenResult {
     pub token: Rc<Token>,
     pub tokens: Rc<TokenStream>,
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NameResult {
     pub name: String,
     pub span: Rc<SourceSpan>,
@@ -1298,7 +1289,7 @@ pub fn mint_parsed_optional_int_property(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParsedStringPart {
     pub part: Rc<StringPart>,
     pub at: Rc<ParsedExtentAt>,
@@ -1394,7 +1385,7 @@ pub struct ItemPrefixResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceConfig {
     pub endpoint: Rc<Node>,
     pub auth: Option<Rc<Node>>,
@@ -1411,15 +1402,13 @@ pub struct ConfigResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingPower {
     pub left: i64,
     pub right: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ExpectedToken {
     ExpectKeyword { text: String },
@@ -1643,7 +1632,7 @@ pub struct PipeCalleeResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserParam {
     pub occurrence_identity: Rc<NodeOccurrenceIdentity>,
     pub name: String,
@@ -1668,7 +1657,7 @@ pub struct IdentCollectResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RangeBound {
     pub value: i64,
     pub property_at: Rc<ParsedExtentAt>,
@@ -1775,20 +1764,20 @@ pub struct OpBodyResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UnitResult {
     pub tokens: Rc<TokenStream>,
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringLitResult {
     pub value: String,
     pub tokens: Rc<TokenStream>,
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IntLitResult {
     pub value: i64,
     pub tokens: Rc<TokenStream>,
@@ -1796,16 +1785,7 @@ pub struct IntLitResult {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum ParserHelperIdentity {
@@ -1814,14 +1794,14 @@ pub enum ParserHelperIdentity {
     ParserHelperWith,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ParserCallIdentity {
     ParserCallHelper { helper: ParserHelperIdentity },
     ParserCallFunction { name: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ParserResultWitness {
     ParserWitnessAdvance,
@@ -1842,7 +1822,7 @@ impl ParserResultWitness {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescResult {
     pub desc: Option<String>,
     pub tokens: Rc<TokenStream>,
@@ -11929,7 +11909,7 @@ pub fn parse_op_requires_members(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OperationRequiresDeclaration {
     RequiresUndeclared,
@@ -13970,13 +13950,13 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HeadsBlockSkipResult {
     pub tokens: Rc<TokenStream>,
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HeadsDataValueSkipResult {
     pub tokens: Rc<TokenStream>,
     pub err: Option<Rc<ErrorNode>>,

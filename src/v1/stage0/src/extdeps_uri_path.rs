@@ -29,14 +29,14 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum UrlPathToken {
     LiteralToken { text: String },
     ParamToken { name: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PathTemplate {
     pub tokens: Rc<Vec<Rc<UrlPathToken>>>,
 }
@@ -81,7 +81,7 @@ pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PathParamBinding {
     pub name: String,
     pub value: String,
@@ -119,14 +119,14 @@ pub fn render_path_template(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PathSegmentTokensResult {
     ParsedSegmentTokens { tokens: Rc<Vec<Rc<UrlPathToken>>> },
     MalformedPathSegment { segment: String, reason: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PathTemplateParseResult {
     ParsedPathTemplate {
@@ -260,7 +260,7 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PathTemplateMatch {
     PathMatched {

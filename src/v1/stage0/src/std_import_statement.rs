@@ -14,13 +14,13 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParsedImportStatement {
     pub span: Rc<SourceSpan>,
     pub imported_module: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ImportStatementParseCause {
     SourceHasNoModuleDeclaration,
@@ -64,7 +64,7 @@ pub fn import_statement_parse_cause_label(cause: Rc<ImportStatementParseCause>) 
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ParsedImportStatements {
     ImportStatementsParsed {
@@ -75,14 +75,14 @@ pub enum ParsedImportStatements {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParsedImportObservation<LexicalToken: Clone> {
     pub tokens: Rc<Vec<LexicalToken>>,
     pub imports: Rc<ParsedImportStatements>,
     pub _phantom: std::marker::PhantomData<LexicalToken>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ImportStripRefusal {
     ImportSpanNamesAnotherFile {
@@ -111,7 +111,7 @@ pub enum ImportStripRefusal {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ImportStripOutcome {
     ImportStatementsStripped {
@@ -124,7 +124,7 @@ pub enum ImportStripOutcome {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ImportStripProgress {
     ImportStripScanning {
@@ -139,7 +139,7 @@ pub enum ImportStripProgress {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportStripCoordinateSegment {
     pub source_file: FilePath,
     pub original_start: i64,

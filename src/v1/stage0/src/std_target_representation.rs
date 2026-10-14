@@ -17,14 +17,14 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceTypeTargetBinding<R: Clone> {
     pub source: Rc<DeclarationRef>,
     pub representation: R,
     pub _phantom: std::marker::PhantomData<R>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RepresentationSpelling<R: Clone> {
     pub representation: R,
     pub reference_position: NonEmptyStr,
@@ -32,7 +32,7 @@ pub struct RepresentationSpelling<R: Clone> {
     pub _phantom: std::marker::PhantomData<R>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ExactBindingResolution<R: Clone> {
     ResolvedExactBinding {
@@ -127,7 +127,7 @@ pub fn representation_spelling_for<R: Clone>(
     .cloned()
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CheckpointRowDisposition {
     MigratedToExactBinding {
@@ -142,7 +142,7 @@ pub enum CheckpointRowDisposition {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CheckpointRowMigration {
     pub dag_name: NonEmptyStr,
     pub disposition: Rc<CheckpointRowDisposition>,
@@ -175,14 +175,14 @@ pub fn checkpoint_row_migration_for(
     .cloned()
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RepresentationValue<R: Clone> {
     pub representation: R,
     pub value_spelling: NonEmptyStr,
     pub _phantom: std::marker::PhantomData<R>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum VariantParentKey {
     VariantParentDeclaration { declaration: Rc<DeclarationRef> },
@@ -222,7 +222,7 @@ pub fn variant_parent_key_label(k: Rc<VariantParentKey>) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceVariantTargetValue<R: Clone> {
     pub parent: Rc<VariantParentKey>,
     pub variant: NonEmptyStr,
@@ -230,7 +230,7 @@ pub struct SourceVariantTargetValue<R: Clone> {
     pub _phantom: std::marker::PhantomData<R>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum VariantParentIdentity {
     VariantParentIdentified { key: Rc<VariantParentKey> },
@@ -238,7 +238,7 @@ pub enum VariantParentIdentity {
     VariantParentBeforeInference,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum VariantValueRealization {
     VariantRealizesAsTargetValue {

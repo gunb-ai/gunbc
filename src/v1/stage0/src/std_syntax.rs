@@ -14,16 +14,7 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum BinOp {
@@ -43,7 +34,7 @@ pub enum BinOp {
     NullCoalesce,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum LiteralValue {
     LitStr { value: String },
@@ -55,16 +46,7 @@ pub enum LiteralValue {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum BodyKind {
@@ -79,16 +61,7 @@ pub enum BodyKind {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum ItemFormKind {
@@ -100,7 +73,7 @@ pub enum ItemFormKind {
     OtherForm,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemForm {
     pub kind: ItemFormKind,
     pub keyword: String,
@@ -113,16 +86,7 @@ pub struct ItemForm {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum AlgebraFieldKind {
@@ -136,7 +100,7 @@ pub enum AlgebraFieldKind {
     AlgJoin,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldEntry {
     pub kind: AlgebraFieldKind,
     pub field_name: String,
@@ -175,7 +139,7 @@ pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
     CACHED.with(|c: &Rc<Vec<Rc<AlgebraFieldEntry>>>| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperatorSpec {
     pub symbol: String,
     pub left_bp: i64,
@@ -184,7 +148,7 @@ pub struct OperatorSpec {
     pub algebra_field: Option<AlgebraFieldKind>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SyntaxSpec {
     pub item_forms: Rc<Vec<Rc<ItemForm>>>,
     pub operators: Rc<Vec<Rc<OperatorSpec>>>,
@@ -192,7 +156,7 @@ pub struct SyntaxSpec {
     pub keyword_set: Rc<HashMap<String, bool>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParseEnvironment {
     pub syntax_spec: Rc<SyntaxSpec>,
     pub non_name_keywords: Rc<HashMap<String, bool>>,

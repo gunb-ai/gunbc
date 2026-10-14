@@ -61,7 +61,7 @@ pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
     CACHED.with(|c: &Rc<HashMap<String, TokenShape>>| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TokenizerState {
     pub pos: i64,
     pub tokens: Rc<Vec<Rc<Token>>>,
@@ -69,7 +69,7 @@ pub struct TokenizerState {
     pub interp_depth: Rc<Vec<i64>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ScanStep {
     ScannedToken {
@@ -82,26 +82,26 @@ pub enum ScanStep {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct V1LexArtifact {
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TokPos {
     pub pos: i64,
     pub interp_depth: Rc<Vec<i64>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScanResult {
     pub pos: i64,
     pub token: Rc<Token>,
     pub interp_depth: Rc<Vec<i64>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRef {
     pub file: String,
     pub text: String,
@@ -964,7 +964,7 @@ pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum StringScanResult {
     ClosedString { content: Rc<Vec<i64>>, end_pos: i64 },
@@ -988,7 +988,7 @@ impl StringScanResult {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EscapeProcessResult {
     EscapesProcessed { text: String },
@@ -1317,9 +1317,7 @@ pub fn hex_escape_char(hi: i64, lo: i64) -> Option<i64> {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UnicodeEscape {
     pub code_point: i64,
     pub next_pos: i64,

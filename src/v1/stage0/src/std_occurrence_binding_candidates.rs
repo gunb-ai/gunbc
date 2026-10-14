@@ -112,7 +112,7 @@ pub struct DeclarationExposureRow {
     pub exposure: Rc<DeclarationExposure>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AuthoredOrderRow {
     pub occurrence: OccurrenceId,
     pub ordinal: AuthoredTokenOrdinal,
@@ -125,13 +125,13 @@ pub struct OccurrenceBindingCandidateInputs {
     pub authored_order_rows: Rc<Vec<Rc<AuthoredOrderRow>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceModulePathRow {
     pub occurrence: OccurrenceId,
     pub module_path: NonEmptyStr,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OccurrenceModulePathIndexRefusal {
     DuplicateOccurrenceModulePathRow {
@@ -158,7 +158,7 @@ impl OccurrenceModulePathIndexRefusal {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceModulePathIndexBuild {
     pub module_by_occurrence: Rc<HashMap<i64, NonEmptyStr>>,
     pub refusal: Option<Rc<OccurrenceModulePathIndexRefusal>>,
@@ -294,16 +294,7 @@ pub fn declaration_exposure_from_containment_note() -> String {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum DeclarationExposureGrounding {
@@ -460,7 +451,7 @@ pub fn exposure_by_occurrence_build(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum AuthoredOrderIndexRefusal {
     MissingAuthoredOrderRow {
@@ -485,7 +476,7 @@ impl AuthoredOrderIndexRefusal {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AuthoredOrderIndexBuild {
     pub order_by_occurrence: Rc<HashMap<i64, AuthoredTokenOrdinal>>,
     pub refusal: Option<Rc<AuthoredOrderIndexRefusal>>,
@@ -1028,7 +1019,7 @@ pub fn candidate_occurrence_ids_for_reference(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BoundReferenceProvider {
     pub reference_occurrence: OccurrenceId,
     pub declaration_occurrence: OccurrenceId,
@@ -1036,7 +1027,7 @@ pub struct BoundReferenceProvider {
     pub provider_module: NonEmptyStr,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DirectModuleDependency {
     pub consumer_module: NonEmptyStr,
     pub provider_module: NonEmptyStr,
@@ -1051,7 +1042,7 @@ pub fn direct_module_dependency_from_provider(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DirectModuleDependencyDedupBuild {
     pub providers_by_consumer: Rc<HashMap<NonEmptyStr, Rc<BTreeSet<String>>>>,
     pub edges_first_seen: Rc<Vec<Rc<DirectModuleDependency>>>,
@@ -1402,13 +1393,13 @@ pub fn module_path_file_row_dissolve_on() -> Rc<DissolutionCondition> {
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModulePathFileRow {
     pub module_path: NonEmptyStr,
     pub file_path: FilePath,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ModulePathFileIndexRefusal {
     ModulePathFileDuplicateSame {
@@ -1434,13 +1425,13 @@ impl ModulePathFileIndexRefusal {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModulePathFileIndexBuild {
     pub entries: Rc<HashMap<String, FilePath>>,
     pub refusal: Option<Rc<ModulePathFileIndexRefusal>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ModulePathFileIndex {
     ModulePathFileIndexReady {
@@ -1561,7 +1552,7 @@ pub enum StructuralBindingWalk {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CrossFileBindingProvenance {
     pub reference_occurrence: OccurrenceId,
     pub declaration_occurrence: OccurrenceId,
@@ -1600,7 +1591,7 @@ pub fn cross_file_binding_provenance_from_provider(
 }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CrossFileBindingProvenanceProjection {
     CrossFileBindingProvenanceProjectionBound {
@@ -1626,7 +1617,7 @@ pub enum CrossFileBindingProvenancePopulation {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CrossFileBindingProvenanceBuild {
     pub module_files: Rc<HashMap<String, FilePath>>,
     pub provenances_reversed: Rc<Vec<Rc<CrossFileBindingProvenance>>>,
@@ -1708,13 +1699,13 @@ pub fn cross_file_binding_provenance_from_bound_population(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DirectFileDependency {
     pub consumer_file: FilePath,
     pub provider_file: FilePath,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DirectFileDependencyDedupBuild {
     pub providers_by_consumer: Rc<HashMap<FilePath, Rc<BTreeSet<String>>>>,
     pub edges_first_seen: Rc<Vec<Rc<DirectFileDependency>>>,
@@ -2050,7 +2041,7 @@ pub fn structural_binding_walk(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceIdRemapState {
     pub allocator: OccurrenceIdAllocator,
     pub remap: Rc<HashMap<i64, OccurrenceId>>,
@@ -2065,7 +2056,7 @@ pub fn occurrence_id_remap_state_with_fresh_map(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceIdRemapResult {
     pub id: OccurrenceId,
     pub state: Rc<OccurrenceIdRemapState>,
@@ -2300,7 +2291,7 @@ pub struct OccurrenceBindingInputsRekeyResult {
     pub state: Rc<OccurrenceIdRemapState>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceModulePathRekeyBuild {
     pub rows_reversed: Rc<Vec<Rc<OccurrenceModulePathRow>>>,
     pub state: Rc<OccurrenceIdRemapState>,
@@ -2312,7 +2303,7 @@ pub struct OccurrenceExposureRekeyBuild {
     pub state: Rc<OccurrenceIdRemapState>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceOrderRekeyBuild {
     pub rows_reversed: Rc<Vec<Rc<AuthoredOrderRow>>>,
     pub state: Rc<OccurrenceIdRemapState>,
@@ -2472,7 +2463,7 @@ pub struct CrossFileBindingClosureRow {
     pub file_path: FilePath,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum AssembledCrossFileBindingClosureRefusal {
     AssembledCrossFileBindingClosureModulePathFileRefused {
@@ -3073,16 +3064,7 @@ pub fn occurrence_safe_collector_dedup_receipt() -> String {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum Section13PopulationLawId {
@@ -3094,14 +3076,14 @@ pub enum Section13PopulationLawId {
     Section13RepeatedDiscoverySameIdentityCollapse,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Section13ExactHeadExecutionObservation {
     pub head: CommitSha,
     pub declaration: Rc<DeclarationRef>,
     pub passed: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Section13PopulationLawEvidence {
     Section13PopulationLawExecuting {
@@ -3112,13 +3094,13 @@ pub enum Section13PopulationLawEvidence {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Section13PopulationLawRosterRow {
     pub law: Section13PopulationLawId,
     pub evidence: Rc<Section13PopulationLawEvidence>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Section13PopulationLawRosterVerdict {
     Section13PopulationLawRosterHolds,

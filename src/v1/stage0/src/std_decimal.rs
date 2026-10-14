@@ -75,15 +75,13 @@ pub fn fixed_point_domain_ok(value: i64, decimals: i64) -> bool {
     ((value.clone() >= 0) && (decimals.clone() >= 0))
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExactDecimal {
     pub units: i64,
     pub fraction_digits: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ExactDecimalAdmission {
     ExactDecimalAdmitted { canonical: ExactDecimal },
@@ -151,7 +149,7 @@ pub fn exact_decimal_equal(a: ExactDecimal, b: ExactDecimal) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ExactDecimalDifference {
     ExactDifference { value: ExactDecimal },
