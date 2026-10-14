@@ -105,57 +105,13 @@ pub(crate) fn nfr_identity_join_line(t: &NfrFrontierTriple) -> String {
 }
 
 const NFR_OBSERVING_LAYER_HOST: &str = "dag/gunbc/non_fold_residue.dag";
-const NFR_OBSERVING_PREFIXES_DATA_NAME: &str = "nfr_observing_layer_home_prefixes";
 
-fn nfr_prefix_covers(policy: &str, subject_file: &str) -> bool {
-    if policy.ends_with('/') {
-        subject_file.starts_with(policy)
-    } else {
-        subject_file == policy
-    }
+fn nfr_host_is_forbidden_upstream(host: &str) -> bool {
+    host.starts_with("dag/extdeps/") || host.starts_with("src/v2/extdeps/")
 }
 
-fn nfr_string_list_data_from_parse(
-    module: &crate::v1_std_core::Node,
-    module_rel_path: &str,
-    data_name: &str,
-) -> Option<Vec<String>> {
-    use crate::v1_std_core::{ExprData, LiteralValue};
-    let mut found = None;
-    for item in module.children.iter() {
-        if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemDataValue {
-            continue;
-        }
-        if item.name == data_name {
-            found = Some(item);
-        }
-    }
-    let item = found?;
-    let body = item.body.as_ref().unwrap_or_else(|| {
-        panic!("nfr frontier reader: `data {data_name}` in {module_rel_path} has no value body")
-    });
-    if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
-        panic!(
-            "nfr frontier reader: `data {data_name}` in {module_rel_path} is not a list literal"
-        );
-    }
-    let mut out = Vec::new();
-    for el in body.children.iter() {
-        match el.expr_data.as_ref() {
-            ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
-                LiteralValue::LitStr { value: s } => out.push(s.clone()),
-                _ => panic!(
-                    "nfr frontier reader: an element of `{data_name}` in {module_rel_path} \
-                     is not a string literal"
-                ),
-            },
-            _ => panic!(
-                "nfr frontier reader: an element of `{data_name}` in {module_rel_path} is \
-                 not a string literal"
-            ),
-        }
-    }
-    Some(out)
+fn nfr_observing_layer_home_exception(host: &str) -> bool {
+    host == NFR_OBSERVING_LAYER_HOST
 }
 
 fn nfr_parse_module_from_source(
@@ -184,38 +140,6 @@ fn nfr_parse_module_from_source(
         );
     }
     (result, source_indices)
-}
-
-fn nfr_workspace_observing_prefixes() -> &'static [String] {
-    static PREFIXES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-    PREFIXES.get_or_init(|| {
-        let rel = NFR_OBSERVING_LAYER_HOST;
-        let path = process_workspace_root().join(rel);
-        let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("nfr frontier reader: cannot read policy {rel}: {e}"));
-        let (parsed, _) = nfr_parse_module_from_source(rel, &content);
-        let module = parsed
-            .module
-            .as_ref()
-            .unwrap_or_else(|| panic!("nfr frontier reader: {rel} parsed to no module"));
-        nfr_string_list_data_from_parse(module, rel, NFR_OBSERVING_PREFIXES_DATA_NAME)
-            .unwrap_or_else(|| {
-                panic!(
-                    "nfr frontier reader: {rel} has no `{NFR_OBSERVING_PREFIXES_DATA_NAME}` \
-                     (the home-exception policy)"
-                )
-            })
-    })
-}
-
-fn nfr_host_is_forbidden_upstream(host: &str, prefixes: &[String]) -> bool {
-    prefixes
-        .iter()
-        .any(|p| p.ends_with('/') && host.starts_with(p.as_str()))
-}
-
-fn nfr_observing_layer_home_exception(host: &str, path_prefix: &str, prefixes: &[String]) -> bool {
-    host == NFR_OBSERVING_LAYER_HOST && prefixes.iter().any(|p| nfr_prefix_covers(p, path_prefix))
 }
 
 fn nfr_join_site_key(module_rel_path: &str, authored_path: &str) -> String {
@@ -299,7 +223,6 @@ fn non_fold_residue_units_from_parse_source(
         .module
         .as_ref()
         .unwrap_or_else(|| panic!("nfr frontier reader: {module_rel_path} parsed to no module"));
-    let prefixes = nfr_workspace_observing_prefixes();
     let data_name = NON_FOLD_RESIDUE_FRONTIER_DATA_NAME;
     let mut found = None;
     for item in module.children.iter() {
@@ -421,9 +344,7 @@ fn non_fold_residue_units_from_parse_source(
                      `subject` field"
             )
         });
-        if home == NfrHomeCheck::Require
-            && nfr_host_is_forbidden_upstream(module_rel_path, prefixes)
-        {
+        if home == NfrHomeCheck::Require && nfr_host_is_forbidden_upstream(module_rel_path) {
             panic!(
                 "nfr frontier reader: `{data_name}` in {module_rel_path} stores repository \
                  coverage state in an upstream module; the observing layer is \
@@ -432,9 +353,7 @@ fn non_fold_residue_units_from_parse_source(
         }
         if home == NfrHomeCheck::Require && authored_path.contains("::") {
             let prefix = authored_path.split("::").next().unwrap_or("");
-            if prefix != module_rel_path
-                && !nfr_observing_layer_home_exception(module_rel_path, prefix, prefixes)
-            {
+            if prefix != module_rel_path && !nfr_observing_layer_home_exception(module_rel_path) {
                 panic!(
                         "nfr frontier reader: row path {authored_path:?} in {module_rel_path} is not at \
                          home (subject file prefix {prefix:?} must equal the hosting module \

@@ -30513,31 +30513,6 @@ mod nfr_tests {
     }
 
     #[test]
-    fn nfr_frontier_reader_refuses_undeclared_prefix_on_observing_host() {
-        let synthetic = "module gunbc.non_fold_residue\n\n\
-             data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { subject: PathSubject { path: \"src/v2/compiler/infer.dag::f\" }, reason: r, dissolution: d }\n\
-             ]\n";
-        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source_with(
-                "dag/gunbc/non_fold_residue.dag",
-                synthetic,
-                super::NfrHomeCheck::Require,
-            )
-        }))
-        .expect_err("a row whose prefix is not in nfr_observing_layer_home_prefixes must refuse");
-        let message = refusal
-            .downcast_ref::<String>()
-            .cloned()
-            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
-            .unwrap_or_default();
-        assert!(
-            message.contains("not at home") && message.contains("src/v2/compiler/infer.dag"),
-            "the refusal must LOCATE the undeclared prefix; got: {message}"
-        );
-    }
-
-    #[test]
     fn nfr_frontier_reader_skips_comment_or_string_mention_without_a_decl() {
         let comment = "module m\n// data non_fold_residue_frontier: List<FrontierRow> = []\n";
         assert!(

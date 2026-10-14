@@ -6,12 +6,13 @@ import std.types { List }
 // Shared NFR class strings live once here. Owned subject modules that are not
 // seed-mirrored hold `data non_fold_residue_frontier` beside the sites (PathSubject
 // names only the symbol; the host file is the path prefix) and import these names.
-// Two observing-layer exceptions live in this file, declared as
-// `nfr_observing_layer_home_prefixes`: (1) seed-mirrored subjects, so stage0 rust
-// does not compile the audit lists; (2) every `dag/extdeps/` and `src/v2/extdeps/`
+// Two observing-layer exceptions live in this file's `non_fold_residue_frontier`
+// list (one authority: the rows): (1) seed-mirrored subjects, so stage0 rust does
+// not compile the audit lists; (2) every `dag/extdeps/` and `src/v2/extdeps/`
 // subject — coverage is a receipt in this layer, not a fact of the observed upstream
-// (DESIGN §3 external upstream decomposition). Membership is the host union
-// (`non_fold_residue_identity_join_triples`).
+// (DESIGN §3 external upstream decomposition; those two directories are
+// `gunbc.source_layout` trees, not a second path roster). Membership is the host
+// union (`non_fold_residue_identity_join_triples`).
 // Discovery: the host reader walks production `.dag` files whose source mentions the
 // data name, parses them, and keeps the exact `data non_fold_residue_frontier` item.
 // The required floor judges sites per diff (non_fold_residue_diff_verdict); the
@@ -37,21 +38,6 @@ data nfr_reason_trait_derive_shape_table: String = "trait-shape→derive-trait c
 data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBindingResolution admission projection (StructuralBindingResolved arm extracts binding_outcome; off-variant wildcard Absent collapses six typed index-build refusal variants into option-absence) landed with N3-A carrier move (#7772); un-migrated modeling at assess_reference_binding_observation — the carrier distinguishes refusals but binding_outcome_from_resolution still absorbs them; declared at landing so the ratchet re-arms"
 
 data nfr_dissolve_binding_outcome_resolution_wildcard: DissolutionCondition = unbound_dissolution(description: "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row")
-
-// POLICY (DESIGN §3: interface, realization and policy are three facts). Subject-file prefixes
-// that may be hosted on this observing-layer module. A trailing slash is a directory of the
-// source layout (extdeps coverage stays here). A whole `.dag` path is a seed-mirrored subject
-// (DESIGN §7: declared, with reason and trigger — not a filesystem probe). The seed reader
-// consumes this list; it does not decide membership. Dissolve a file prefix when that module's
-// stage0 mirror is gone and its rows move home.
-data nfr_observing_layer_home_prefixes: List<String> = [
-  "dag/extdeps/",
-  "src/v2/extdeps/",
-  "dag/std/effects.dag",
-  "dag/std/occurrence_binding_candidates.dag",
-  "dag/std/occurrence_binding_resolve.dag",
-  "dag/gunbc/namespace_cut/namespace_reference_derived_closure_admission.dag",
-]
 
 // Seed-mirrored subjects and extdeps coverage receipts: lists stay here.
 data non_fold_residue_frontier: List<FrontierRow> = [
