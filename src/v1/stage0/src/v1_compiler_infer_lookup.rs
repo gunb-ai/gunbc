@@ -50,7 +50,8 @@ use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, OtherItem, ServiceItem, TypeItem,
 };
 pub use crate::v1_compiler_infer_method::{
-    infer_builtin_call_type, is_empty_map_constructor, is_empty_set_constructor,
+    bare_call_non_declaration_binding, infer_builtin_call_type, is_empty_map_constructor,
+    is_empty_set_constructor, NonDeclarationBinding,
 };
 pub use crate::v1_compiler_infer_resolve::{fn_type_param_names, peel_nominal_alias_identity};
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
@@ -308,9 +309,12 @@ pub fn resolved_plain_call_target_for_outcome(
 }
 
 pub fn census_fallback_skips_non_declaration_binding(name: String) -> bool {
-    is_empty_map_constructor(name.clone())
-        || is_empty_set_constructor(name.clone())
-        || infer_builtin_call_type(name.clone()).is_some()
+    match bare_call_non_declaration_binding(name.clone()) {
+        NonDeclarationBinding::EmptyCollectionConstructor => true,
+        NonDeclarationBinding::BuiltinFunction => true,
+        NonDeclarationBinding::KernelMethodOnly => false,
+        NonDeclarationBinding::DeclarationOnly => false,
+    }
 }
 
 pub fn callable_lookup_over_candidates(

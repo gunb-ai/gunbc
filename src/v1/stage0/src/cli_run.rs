@@ -10074,6 +10074,34 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// Kernel empty_map infers against a Map spelled as a type alias. node_is_keyed_collection
+    /// looks at the expected node's own children; an alias has none, so the kernel arm used to
+    /// refuse "expected type is not a keyed collection" once empty_map stopped binding the
+    /// census declaration.
+    #[test]
+    fn host_reconcile_kernel_empty_map_inhabits_map_type_alias() {
+        let fixture = Fixture::new(&[(
+            "entry.dag",
+            "module fx.entry\ntype NamedMap = Map<String, Int>\nfn main() -> NamedMap { empty_map() }\n",
+        )]);
+        let index = fixture.index();
+        let (graph, _) =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy())
+                .expect("kernel empty_map must inhabit a Map type alias");
+        let blocking: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        assert!(
+            blocking
+                .iter()
+                .all(|d| !d.contains("expected type is not a keyed collection")),
+            "kernel empty_map must accept a Map alias as the expected keyed collection: {blocking:?}"
+        );
+    }
+
     /// THE INDEX ROUTE READS THE INDEX'S PARSE. `load_sources_for_entry_with_index` (the discovery
     /// route's loader) follows a dotted reference through the one parse per file the index owns:
     /// after the first entry its closure files are in `parsed_references`, and a second entry

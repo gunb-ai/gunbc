@@ -75,7 +75,11 @@ import v1.compiler.infer_service {
   check_service_method_call_node
 }
 
-import v1.compiler.infer_method { infer_builtin_call_type, is_empty_map_constructor, is_empty_set_constructor }
+import v1.compiler.infer_method {
+  infer_builtin_call_type,
+  bare_call_non_declaration_binding, EmptyCollectionConstructor, BuiltinFunction,
+  KernelMethodOnly, DeclarationOnly
+}
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
@@ -414,9 +418,11 @@ fn resolved_plain_call_target_for_outcome(outcome: CallTargetOutcome) -> CallTar
 // verdict, because the verdict is taken on the population and a position is read only after the
 // count has proven the population is a singleton.
 fn census_fallback_skips_non_declaration_binding(name: String) -> Bool {
-  is_empty_map_constructor(name: name) || is_empty_set_constructor(name: name) || match infer_builtin_call_type(name: name) {
-    Present { value: _ } => true
-    Absent => false
+  match bare_call_non_declaration_binding(name: name) {
+    EmptyCollectionConstructor => true
+    BuiltinFunction => true
+    KernelMethodOnly => false
+    DeclarationOnly => false
   }
 }
 

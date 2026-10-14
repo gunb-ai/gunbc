@@ -120,7 +120,9 @@ import v1.compiler.infer_types {
 }
 import v1.compiler.infer_method {
   builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names,
-  is_empty_map_constructor, is_empty_set_constructor
+  is_empty_map_constructor, is_empty_set_constructor,
+  bare_call_non_declaration_binding, EmptyCollectionConstructor, BuiltinFunction,
+  KernelMethodOnly, DeclarationOnly
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
@@ -8407,6 +8409,24 @@ fn infer_binop_operands(left_expr: Node, right_expr: Node, scope: InferScope) ->
   }
 }
 
+fn expected_type_is_keyed_collection(exp: Node, scope: InferScope) -> Bool {
+  let si = scope.type_env.source_indices
+  if node_is_keyed_collection(n: exp, source_indices: si) {
+    true
+  } else {
+    (exp.children |> count) == 2 && (exp.name == "Map" || qualified_last_segment(name: exp.name) == "Map")
+  }
+}
+
+fn expected_type_is_set_collection(exp: Node, scope: InferScope) -> Bool {
+  let si = scope.type_env.source_indices
+  if node_is_set_collection(n: exp, source_indices: si) {
+    true
+  } else {
+    (exp.children |> count) == 1 && (exp.name == "Set" || qualified_last_segment(name: exp.name) == "Set")
+  }
+}
+
 fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
@@ -9052,7 +9072,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let bare_m = bare_map_node()
           match expected {
             Present { value: exp } =>
-              if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) {
+              if expected_type_is_keyed_collection(exp: exp, scope: scope) {
                 InferResult {
                   typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                     name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map", projected_from: none } } }, descent_evidence: none },
@@ -9120,7 +9140,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let bare_s = bare_set_node()
           match expected {
             Present { value: exp } =>
-              if node_is_set_collection(n: exp, source_indices: scope.type_env.source_indices) {
+              if expected_type_is_set_collection(exp: exp, scope: scope) {
                 InferResult {
                   typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                     name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target_for_outcome(outcome: call_target) } }, descent_evidence: none },
@@ -13858,19 +13878,24 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
         FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
         FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
         FuncSigUnresolved =>
-          match infer_builtin_call_type(name: func_name) {
-            Present { value: _ } => BuiltinCallableResolved { primitive_name: func_name }
-            Absent =>
-              if is_empty_map_constructor(name: func_name) || is_empty_set_constructor(name: func_name) {
-                BuiltinCallableResolved { primitive_name: func_name }
-              } else {
-                match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
-                  Present { value: bd } => DeclaredCallableIdentityResolved {
-                    declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
-                    borrowed_declaration: bd.node
-                  }
-                  Absent => CallableUnresolved { name: func_name }
+          match bare_call_non_declaration_binding(name: func_name) {
+            EmptyCollectionConstructor => BuiltinCallableResolved { primitive_name: func_name }
+            BuiltinFunction => BuiltinCallableResolved { primitive_name: func_name }
+            KernelMethodOnly =>
+              match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
+                Present { value: bd } => DeclaredCallableIdentityResolved {
+                  declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
+                  borrowed_declaration: bd.node
                 }
+                Absent => CallableUnresolved { name: func_name }
+              }
+            DeclarationOnly =>
+              match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
+                Present { value: bd } => DeclaredCallableIdentityResolved {
+                  declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
+                  borrowed_declaration: bd.node
+                }
+                Absent => CallableUnresolved { name: func_name }
               }
           }
       }

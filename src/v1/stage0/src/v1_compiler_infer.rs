@@ -13868,7 +13868,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             {
                                 let bare_m = crate::v1_compiler_infer_types::bare_map_node();
 match expected.clone() {
-    Some(exp) => if crate::v1_compiler_infer_types::node_is_keyed_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
+    Some(exp) => if expected_type_is_keyed_collection(exp.clone(), scope.clone()) {
                                     Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
@@ -13957,7 +13957,7 @@ match bare_m.clone() {
                                 {
                                     let bare_s = crate::v1_compiler_infer_types::bare_set_node();
 match expected.clone() {
-    Some(exp) => if crate::v1_compiler_infer_types::node_is_set_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
+    Some(exp) => if expected_type_is_set_collection(exp.clone(), scope.clone()) {
                                         Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
@@ -23631,6 +23631,28 @@ pub struct SigParamSplit {
     pub generic_names: Rc<Vec<String>>,
 }
 
+pub fn expected_type_is_keyed_collection(exp: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    let si = scope.type_env.clone().source_indices.clone();
+    if crate::v1_compiler_infer_types::node_is_keyed_collection(exp.clone(), si.clone()) {
+        true
+    } else {
+        ((exp.children.clone().len() as i64) == 2)
+            && (exp.name.clone() == "Map"
+                || crate::v1_std_core::qualified_last_segment(exp.name.clone()) == "Map")
+    }
+}
+
+pub fn expected_type_is_set_collection(exp: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    let si = scope.type_env.clone().source_indices.clone();
+    if crate::v1_compiler_infer_types::node_is_set_collection(exp.clone(), si.clone()) {
+        true
+    } else {
+        ((exp.children.clone().len() as i64) == 1)
+            && (exp.name.clone() == "Set"
+                || crate::v1_std_core::qualified_last_segment(exp.name.clone()) == "Set")
+    }
+}
+
 pub fn call_target_for_direct_call(
     scope: Rc<InferScope>,
     func_name: String,
@@ -23666,40 +23688,36 @@ pub fn call_target_for_direct_call(
                 })
             }
             FuncSigLookup::FuncSigUnresolved => {
-                match crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) {
-                    Some(_) => Rc::new(CallTargetOutcome::BuiltinCallableResolved {
-                        primitive_name: func_name.clone(),
-                    }),
-                    std::option::Option::None => {
-                        if crate::v1_compiler_infer_method::is_empty_map_constructor(
-                            func_name.clone(),
-                        ) || crate::v1_compiler_infer_method::is_empty_set_constructor(
+                match crate::v1_compiler_infer_method::bare_call_non_declaration_binding(
+                    func_name.clone(),
+                ) {
+                    crate::v1_compiler_infer_method::NonDeclarationBinding::EmptyCollectionConstructor
+                    | crate::v1_compiler_infer_method::NonDeclarationBinding::BuiltinFunction => {
+                        Rc::new(CallTargetOutcome::BuiltinCallableResolved {
+                            primitive_name: func_name.clone(),
+                        })
+                    }
+                    crate::v1_compiler_infer_method::NonDeclarationBinding::KernelMethodOnly
+                    | crate::v1_compiler_infer_method::NonDeclarationBinding::DeclarationOnly => {
+                        match crate::v1_compiler_infer_lookup::census_declaration_identity(
+                            scope.type_env.clone(),
                             func_name.clone(),
                         ) {
-                            Rc::new(CallTargetOutcome::BuiltinCallableResolved {
-                                primitive_name: func_name.clone(),
-                            })
-                        } else {
-                            match crate::v1_compiler_infer_lookup::census_declaration_identity(
-                                scope.type_env.clone(),
-                                func_name.clone(),
-                            ) {
-                                Some(bd) => {
-                                    Rc::new(CallTargetOutcome::DeclaredCallableIdentityResolved {
-                                        declared: Rc::new(DeclaredCallableIdentity {
-                                            owner_module_path: bd.owner_module_path.clone(),
-                                            decl_name: crate::v1_std_core::qualified_last_segment(
-                                                func_name.clone(),
-                                            ),
-                                        }),
-                                        borrowed_declaration: bd.node.clone(),
-                                    })
-                                }
-                                std::option::Option::None => {
-                                    Rc::new(CallTargetOutcome::CallableUnresolved {
-                                        name: func_name.clone(),
-                                    })
-                                }
+                            Some(bd) => {
+                                Rc::new(CallTargetOutcome::DeclaredCallableIdentityResolved {
+                                    declared: Rc::new(DeclaredCallableIdentity {
+                                        owner_module_path: bd.owner_module_path.clone(),
+                                        decl_name: crate::v1_std_core::qualified_last_segment(
+                                            func_name.clone(),
+                                        ),
+                                    }),
+                                    borrowed_declaration: bd.node.clone(),
+                                })
+                            }
+                            std::option::Option::None => {
+                                Rc::new(CallTargetOutcome::CallableUnresolved {
+                                    name: func_name.clone(),
+                                })
                             }
                         }
                     }
