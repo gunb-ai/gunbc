@@ -180,10 +180,16 @@ data instrument_dispatch_whole_tree_memory_demand: ByteSize = byte_size(21474836
 // compiler_gate_stage0_regen_step, the memory note), plus headroom for the seed build's children.
 data instrument_dispatch_stage0_regen_memory_demand: ByteSize = byte_size(17179869184)
 
+// 16 GiB: the cold compute_run_unit / work_default_build policy budget. The unit grant in
+// gunbc.instruments.compute_run_unit_cold is kibibyte(count: 16777216), which is this byte count;
+// the job cgroup must admit that grant plus the wet interpreter that launches systemd-run --user.
+// Same magnitude as the regen row, different subject — not that row's name (DESIGN §3 meaning fork).
+data instrument_dispatch_compute_run_unit_cold_memory_demand: ByteSize = byte_size(17179869184)
+
 fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> {
   [
     InstrumentDispatchMemoryDemand { label: regen_round_cost_label(), demand: instrument_dispatch_stage0_regen_memory_demand },
-    InstrumentDispatchMemoryDemand { label: compute_run_unit_cold_label(), demand: instrument_dispatch_stage0_regen_memory_demand },
+    InstrumentDispatchMemoryDemand { label: compute_run_unit_cold_label(), demand: instrument_dispatch_compute_run_unit_cold_memory_demand },
     InstrumentDispatchMemoryDemand { label: dependency_demand_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
   ]
