@@ -10844,8 +10844,52 @@ fn node_is_std_optional(n: Node, scope: InferScope) -> Bool {
   }
 }
 
+fn std_optional_declaration_ref() -> DeclarationRef {
+  decl_ref(module_path: "std.optional", decl_name: "Optional")
+}
+
+// CANONICAL DeclarationRef EQUALITY against the one reference the kernel mint is bound to; no
+// module-path or name part is compared on its own.
 fn declaration_is_std_optional(d: DeclarationRef) -> Bool {
-  (d.module_path as String) == "std.optional" && (d.decl_name as String) == "Optional"
+  d == std_optional_declaration_ref()
+}
+
+// THE PRESENT ARM AND ITS MEMBER, READ FROM THE CANONICAL DECLARATION: the arm of
+// std.optional::Optional that carries a member, and that member's name. Neither is a spelling
+// compared against "Present" / "value".
+fn std_optional_present_arm(scope: InferScope) -> Node? {
+  match declaration_node_of_ref(d: std_optional_declaration_ref(), env: scope.type_env) {
+    Absent => none
+    Present { value: decl } => decl.children |> filter(a => (a.children |> count) > 0) |> first
+  }
+}
+
+fn std_optional_present_arm_name(scope: InferScope) -> String {
+  match std_optional_present_arm(scope: scope) {
+    Present { value: arm } => arm.name
+    Absent => ""
+  }
+}
+
+fn std_optional_payload_member_name(scope: InferScope) -> String {
+  match std_optional_present_arm(scope: scope) {
+    Present { value: arm } =>
+      match arm.children |> first {
+        Present { value: member } => member.name
+        Absent => ""
+      }
+    Absent => ""
+  }
+}
+
+// A parent spelling is asked of the census (the declaration its mint is bound to), never compared.
+fn parent_name_is_std_optional(parent_name: String) -> Bool {
+  match kernel_mint_parent_identity(minted_name: parent_name) {
+    VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } => declaration_is_std_optional(d: d)
+    VariantParentIdentified { key: _ } => false
+    VariantParentUnrecovered { cause: _ } => false
+    VariantParentBeforeInference => false
+  }
 }
 
 // THE CARRIED IDENTITY FIRST: a reference the resolver stamped (Node.declaration) names its
@@ -10894,8 +10938,7 @@ fn optional_reading_by_census(n: Node, scope: InferScope, spelling: String) -> O
 // receives the peeled node; a list literal only when that node admits a list, so
 // `Present { value: [] }` under `Map<K, V>?` still answers none; a call is unchanged.
 fn std_optional_payload_node(exp: Node, type_name: String, field_name: String, scope: InferScope) -> Node? {
-  let optional_ref = decl_ref(module_path: "std.optional", decl_name: "Optional")
-  let declaration = declaration_node_of_ref(d: optional_ref, env: scope.type_env)
+  let declaration = declaration_node_of_ref(d: std_optional_declaration_ref(), env: scope.type_env)
   match declaration {
     Absent => none
     Present { value: decl } =>
@@ -11330,10 +11373,24 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           && name_binding.resolved.connective == Conj
       Absent => false
     }
-    let skip_owner_widen = type_name_declares_own_product || match local_variant_parent {
-      Present { value: parent_name } => parent_name == "Optional"
+    let parent_is_std_optional = (match expected_decided_owner {
+      Present { value: decided } => node_is_std_optional(n: decided, scope: scope)
       Absent => false
-    }
+    }) || (match owner_from_variant_node {
+      Present { value: owner } => node_is_std_optional(n: owner, scope: scope)
+      Absent => false
+    }) || (match expected {
+      Present { value: exp } =>
+        node_is_std_optional(n: exp, scope: scope) || match exp.inferred {
+          Present { value: Resolved { node: rt } } => node_is_std_optional(n: rt, scope: scope)
+          _ => false
+        }
+      Absent => false
+    }) || (match local_variant_parent {
+      Present { value: parent_name } => parent_name_is_std_optional(parent_name: parent_name)
+      Absent => false
+    })
+    let skip_owner_widen = type_name_declares_own_product || (parent_is_std_optional && type_name.value == std_optional_present_arm_name(scope: scope))
     let interned_owner = match local_variant_parent {
       Present { value: parent_name } =>
         if skip_owner_widen { none } else {
@@ -11375,8 +11432,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           }
       }
     }
-    let expected_optional_parent = Present { value: "Optional" }
-    let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
+    let is_present_ctor = parent_is_std_optional && type_name.value == std_optional_present_arm_name(scope: scope)
     // Present skip_owner_widen leaves raw_resolved as the Present product (Conj), not Optional.
     // variant_literal_expected_application requires the coproduct owner; expected_owner is that
     // Optional declaration when the context is nominal Optional<T>. T? still answers none.
@@ -11392,7 +11448,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let resolved_node = if applied_expected_owner != none {
       applied_expected_owner.value
     } else if is_present_ctor {
-      let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == "value") |> first
+      let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == std_optional_payload_member_name(scope: scope)) |> first
       let payload_optional = match val_field {
         Present { value: val_fir } => with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))
         Absent => raw_resolved
@@ -17684,6 +17740,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     type_decl_items: built.type_decl_items,
     data_variant_wire_spellings: empty_map(),
     fn_decl_items: built.fn_decl_items,
+    fn_map_key_bounds: empty_map(),
     recursive_type_set: all_recursive,
     fielded_variants: variant_shapes.fielded,
     positional_payload_variants: variant_shapes.positional_payload,

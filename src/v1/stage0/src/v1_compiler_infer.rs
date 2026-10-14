@@ -17323,9 +17323,62 @@ pub fn node_is_std_optional(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
     }
 }
 
+pub fn std_optional_declaration_ref() -> Rc<DeclarationRef> {
+    crate::std_decl_ref::decl_ref("std.optional".to_string(), "Optional".to_string())
+}
+
 pub fn declaration_is_std_optional(d: Rc<DeclarationRef>) -> bool {
-    ((d.module_path.clone() == "std.optional".to_string())
-        && (d.decl_name.clone() == "Optional".to_string()))
+    (d.clone() == std_optional_declaration_ref())
+}
+
+pub fn std_optional_present_arm(scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    match crate::v1_compiler_infer_env::declaration_node_of_ref(
+        std_optional_declaration_ref(),
+        scope.type_env.clone(),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(decl) => Rc::new({
+            let mut __result = Vec::new();
+            for a in decl.children.clone().iter().cloned() {
+                if ((a.children.clone().len() as i64) > 0) {
+                    __result.push(a);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned(),
+    }
+}
+
+pub fn std_optional_present_arm_name(scope: Rc<InferScope>) -> String {
+    match std_optional_present_arm(scope.clone()) {
+        Some(arm) => arm.name.clone(),
+        std::option::Option::None => "".to_string(),
+    }
+}
+
+pub fn std_optional_payload_member_name(scope: Rc<InferScope>) -> String {
+    match std_optional_present_arm(scope.clone()) {
+        Some(arm) => match arm.children.clone().first().cloned() {
+            Some(member) => member.name.clone(),
+            std::option::Option::None => "".to_string(),
+        },
+        std::option::Option::None => "".to_string(),
+    }
+}
+
+pub fn parent_name_is_std_optional(parent_name: String) -> bool {
+    match (*kernel_mint_parent_identity(parent_name.clone())).clone() {
+        VariantParentIdentity::VariantParentIdentified { ref key, .. } => match key.as_ref() {
+            VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
+                declaration_is_std_optional(d.clone())
+            }
+            _ => false,
+        },
+        VariantParentIdentity::VariantParentUnrecovered { cause: _, .. } => false,
+        VariantParentIdentity::VariantParentBeforeInference => false,
+    }
 }
 
 pub fn optional_declaration_reading(
@@ -17442,10 +17495,8 @@ pub fn std_optional_payload_node(
     scope: Rc<InferScope>,
 ) -> Option<Rc<Node>> {
     {
-        let optional_ref =
-            crate::std_decl_ref::decl_ref("std.optional".to_string(), "Optional".to_string());
         let declaration = crate::v1_compiler_infer_env::declaration_node_of_ref(
-            optional_ref.clone(),
+            std_optional_declaration_ref(),
             scope.type_env.clone(),
         );
         match declaration.clone() {
@@ -18185,11 +18236,31 @@ Rc::new(FieldInferResult {
                         }
                         std::option::Option::None => false,
                     };
+                let parent_is_std_optional = (((match expected_decided_owner.clone() {
+                    Some(decided) => node_is_std_optional(decided.clone(), scope.clone()),
+                    std::option::Option::None => false,
+                } || match owner_from_variant_node.clone() {
+                    Some(owner) => node_is_std_optional(owner.clone(), scope.clone()),
+                    std::option::Option::None => false,
+                }) || match expected.clone() {
+                    Some(exp) => {
+                        (node_is_std_optional(exp.clone(), scope.clone())
+                            || match exp.inferred.clone().as_deref().cloned() {
+                                Some(InferredNode::Resolved { node: rt, .. }) => {
+                                    node_is_std_optional(rt.clone(), scope.clone())
+                                }
+                                _ => false,
+                            })
+                    }
+                    std::option::Option::None => false,
+                }) || match local_variant_parent.clone() {
+                    Some(parent_name) => parent_name_is_std_optional(parent_name.clone()),
+                    std::option::Option::None => false,
+                });
                 let skip_owner_widen = (type_name_declares_own_product.clone()
-                    || match local_variant_parent.clone() {
-                        Some(parent_name) => (parent_name.clone() == "Optional".to_string()),
-                        std::option::Option::None => false,
-                    });
+                    || (parent_is_std_optional.clone()
+                        && (type_name.clone().unwrap()
+                            == std_optional_present_arm_name(scope.clone()))));
                 let interned_owner = match local_variant_parent.clone() {
                     Some(parent_name) => {
                         if skip_owner_widen.clone() {
@@ -18250,10 +18321,9 @@ Rc::new(FieldInferResult {
                         },
                     }
                 };
-                let expected_optional_parent = Some("Optional".to_string());
-                let is_present_ctor = ((type_name.clone().unwrap() == "Present".to_string())
-                    && (local_variant_parent.clone().as_deref()
-                        == expected_optional_parent.clone().as_deref()));
+                let is_present_ctor = (parent_is_std_optional.clone()
+                    && (type_name.clone().unwrap()
+                        == std_optional_present_arm_name(scope.clone())));
                 let present_application_owner = match expected_owner.clone() {
                     Some(coproduct) => coproduct.clone(),
                     std::option::Option::None => raw_resolved.clone(),
@@ -18279,7 +18349,7 @@ Rc::new(FieldInferResult {
                                     if (crate::v1_std_core::field_init_node_name_at(
                                         fir.typed_field.clone(),
                                         scope.type_env.clone().source_indices.clone(),
-                                    ) == "value".to_string())
+                                    ) == std_optional_payload_member_name(scope.clone()))
                                     {
                                         __result.push(fir);
                                     }
@@ -32152,6 +32222,7 @@ pub fn build_emit_graph_info(
             data_variant_wire_spellings: v1_rt::rc_empty_map::<String, Rc<DataVariantWireSpelling>>(
             ),
             fn_decl_items: built.fn_decl_items.clone(),
+            fn_map_key_bounds: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: variant_shapes.fielded.clone(),
             positional_payload_variants: variant_shapes.positional_payload.clone(),
