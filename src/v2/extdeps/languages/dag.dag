@@ -1892,16 +1892,25 @@ fn dag_grammar_postfix_as_suffix_expr() -> GrammarExpr {
 // An index suffix `[e]` is a postfix step beside the dotted and cast ones, so `xs[i]` is ONE
 // postfix expression. Before it the suffix did not exist and `xs[i]` parsed as `xs` followed by the
 // list literal `[i]`, two juxtaposed expressions that lowering read as the first alone or as a
-// second statement -- a silent misread (DESIGN section 5). v1 reads a `[` after any complete
-// operand as an index (02_parse parse_postfix, ExprIndex), so the juxtaposition this production
-// claims was never a program v1 accepted; the only reading it removes is that one. A slice `[a..b]`
-// has no production and refuses at parse, as it did.
+// second statement -- a silent misread (DESIGN section 5). A slice `[a..b]` has no production and
+// refuses at parse, as it did.
+//
+// THE `[` IS ON THE OPERAND'S LINE. v1 reads a `[` as an index only when it is the very next token
+// after a complete operand (02_parse parse_postfix, ExprIndex), and v1's token stream carries the
+// newline, so a `[` that opens the next line is not an index there: it begins the next statement, a
+// list literal. `let wire = f(value: value)` followed on the next line by `[a, b]` is a binding and
+// the block's value (src/v2/std/integer.dag integer_int_to_signed_i32_le_bytes). Without this
+// predicate the suffix read across the line break and parsed it as `f(..)[a, b]` with no body after
+// the let -- a different program, which normalize then refused for the missing body.
 fn dag_grammar_postfix_index_suffix_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
+    left: grammar_expr_not_predicate(element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_lbracket))),
     right: dag_grammar_sequence(
-      left: dag_grammar_expr_list_helper(),
-      right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
+      left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
+      right: dag_grammar_sequence(
+        left: dag_grammar_expr_list_helper(),
+        right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
+      )
     )
   )
 }
