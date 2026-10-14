@@ -74,7 +74,7 @@ import extdeps.shell
 import extdeps.shell.exec
 import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
 import extdeps.tools.util_linux_flock { flock_program, flock_exclusive_nonblocking_words }
-import v2.std.orchestration { EnvSet }
+import std.env_binding { EnvSet }
 import v2.std.compilers.cli_surface {
   ProcessArgvExpansion,
   process_argv_expansion,
