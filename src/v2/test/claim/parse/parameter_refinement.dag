@@ -1,6 +1,6 @@
 module v2.test.claim.parse.parameter_refinement
 
-import v2.compiler.infer { refinement_declaration_of_node }
+import v2.std.type_binder { refinement_declaration_of_node }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node }
 

@@ -374,13 +374,44 @@ fn emitted_build_failed_refusal(
 /// compiler" is. The seed is used exactly once here, in-process, to emit; the receipt records
 /// the seed's identity honestly, and this job claims no native bootstrap.
 fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparation, String> {
-    prepare_emitted_compiler_for_entry(source_roots, NATIVE_COMPILE_ENTRY)
+    prepare_emitted_compiler_for_entry(source_roots, NATIVE_COMPILE_ENTRY).map_err(String::from)
+}
+
+/// WHICH PREPARATION REFUSAL, carried by the producer that knows. The two causes a consumer must tell
+/// apart (the seed emit refused the entry; the emitted compiler did not build) are variants set at the
+/// refusing site, so no caller reads the message text to classify. Every other refusal is `Other`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreparationCause {
+    EmissionRefused,
+    EmittedCompilerBuildFailed,
+    Other,
+}
+
+#[derive(Debug)]
+pub struct PreparationRefusal {
+    pub cause: PreparationCause,
+    pub message: String,
+}
+
+impl From<String> for PreparationRefusal {
+    fn from(message: String) -> Self {
+        PreparationRefusal {
+            cause: PreparationCause::Other,
+            message,
+        }
+    }
+}
+
+impl From<PreparationRefusal> for String {
+    fn from(refusal: PreparationRefusal) -> String {
+        refusal.message
+    }
 }
 
 fn prepare_emitted_compiler_for_entry(
     source_roots: &[String],
     entry: &str,
-) -> Result<EmittedPreparation, String> {
+) -> Result<EmittedPreparation, PreparationRefusal> {
     let workspace = super::process_workspace_root();
     // A root PRIVATE TO THIS RUN, created under the declared execution environment's base
     // (per-job runner temp in CI, system temp locally): `emitted_closure_compile_host`
@@ -402,13 +433,13 @@ fn prepare_emitted_compiler_for_entry(
         std::env::var(PRODUCT_REUSE_ENV).ok().as_deref() == Some(PRODUCT_REUSE_FRESH_VALUE);
     let store = if fresh_required {
         if let Some(root) = super::native_product_cache::store_root() {
-            return Err(format!(
+            return Err(PreparationRefusal::from(format!(
                 "V2-NATIVE REFUSAL cause=NativeProductReuseRefused — {PRODUCT_REUSE_ENV}={PRODUCT_REUSE_FRESH_VALUE} \
                  requires this run to emit and build {entry} itself, yet GUNBC_NATIVE_CACHE_ROOT binds a native \
                  product store at {}; a restored final product may not stand in for the build this run owes, so \
                  unbind the store or withdraw the input",
                 root.display()
-            ));
+            )));
         }
         eprintln!(
             "v2-native-route: FRESH PRODUCT REQUIRED — {PRODUCT_REUSE_ENV}={PRODUCT_REUSE_FRESH_VALUE}: the native \
@@ -485,11 +516,11 @@ fn prepare_emitted_compiler_for_entry(
                     })?;
                 let binary_identity = sha256_file(&binary_path)?;
                 if binary_identity != manifest.binary_sha256 {
-                    return Err(format!(
+                    return Err(PreparationRefusal::from(format!(
                         "V2-NATIVE REFUSAL cause=NativeProductRestoredDifferently — restored \
                          {binary_identity}, manifest records {}",
                         manifest.binary_sha256
-                    ));
+                    )));
                 }
                 // THE ORACLE COMPILER IS THIS HOST'S, NOT THE PRODUCER'S. `manifest.compiler_path`
                 // names the executable on the host that built the product; a shared-store restore
@@ -504,12 +535,12 @@ fn prepare_emitted_compiler_for_entry(
                         format!("V2-NATIVE REFUSAL cause=NativeProductCompilerUnresolved — {cause}")
                     })?;
                 if local_identity != manifest.rustc_identity {
-                    return Err(format!(
+                    return Err(PreparationRefusal::from(format!(
                         "V2-NATIVE REFUSAL cause=NativeProductToolchainDiffers — this host's \
                          compiler {local_compiler} is `{local_identity}`, the product was built \
                          by `{}`",
                         manifest.rustc_identity
-                    ));
+                    )));
                 }
                 let seed_identity = sha256_file(&std::env::current_exe().map_err(|e| {
                     format!("V2-NATIVE REFUSAL cause=SeedIdentityUnreadable — current_exe: {e}")
@@ -561,17 +592,21 @@ fn prepare_emitted_compiler_for_entry(
     match &run.disposition {
         super::CompileDisposition::Completed { .. } => {}
         super::CompileDisposition::Refused { phase, cause } => {
-            return Err(format!(
-                "V2-NATIVE REFUSAL cause=EmissionRefused stage={phase} — {cause}"
-            ))
+            return Err(PreparationRefusal {
+                cause: PreparationCause::EmissionRefused,
+                message: format!("V2-NATIVE REFUSAL cause=EmissionRefused stage={phase} — {cause}"),
+            })
         }
         super::CompileDisposition::NotExecuted {
             earlier_phase,
             cause,
         } => {
-            return Err(format!(
-                "V2-NATIVE REFUSAL cause=EmissionRefused stage={earlier_phase} — {cause}"
-            ))
+            return Err(PreparationRefusal {
+                cause: PreparationCause::EmissionRefused,
+                message: format!(
+                    "V2-NATIVE REFUSAL cause=EmissionRefused stage={earlier_phase} — {cause}"
+                ),
+            })
         }
     }
     let emitted = super::emitted_closure_compile_host::write_probe_crate(&run, &probe_root, entry)
@@ -620,21 +655,24 @@ fn prepare_emitted_compiler_for_entry(
         &verdict
     {
         // INFRA, NOT A SELF-HOST DEFECT: no compiler judged the emitted crate.
-        return Err(format!(
+        return Err(PreparationRefusal::from(format!(
             "V2-NATIVE REFUSAL cause=EmittedBuildDependencyFetchFailed class=Infra — {}",
             super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
-        ));
+        )));
     }
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
-        return Err(emitted_build_failed_refusal(
-            probe_root,
-            &crate_dir,
-            &verdict,
-            &format!(
-                "argv={:?} RUSTFLAGS={:?} rustc={rustc}",
-                invocation.argv, invocation.rustflags
+        return Err(PreparationRefusal {
+            cause: PreparationCause::EmittedCompilerBuildFailed,
+            message: emitted_build_failed_refusal(
+                probe_root,
+                &crate_dir,
+                &verdict,
+                &format!(
+                    "argv={:?} RUSTFLAGS={:?} rustc={rustc}",
+                    invocation.argv, invocation.rustflags
+                ),
             ),
-        ));
+        });
     }
     // `cargo_verdict_compiled` admitted only the `Completed { status: 0 }` arm, so the fields
     // below are the run's own; a verdict of any other shape refused above.
@@ -652,11 +690,14 @@ fn prepare_emitted_compiler_for_entry(
             *cargo_network_retries,
         ),
         other => {
-            return Err(format!(
-                "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — verdict admitted as compiled \
-                 is not a completed run: {}",
-                super::emitted_closure_compile_host::cargo_verdict_summary(other)
-            ))
+            return Err(PreparationRefusal {
+                cause: PreparationCause::EmittedCompilerBuildFailed,
+                message: format!(
+                    "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — verdict admitted as compiled \
+                     is not a completed run: {}",
+                    super::emitted_closure_compile_host::cargo_verdict_summary(other)
+                ),
+            })
         }
     };
     let build = EmittedBuildObserved {
@@ -680,11 +721,11 @@ fn prepare_emitted_compiler_for_entry(
         super::emitted_closure_compile_host::probe_package_name(entry),
     );
     if !binary_path.is_file() {
-        return Err(format!(
+        return Err(PreparationRefusal::from(format!(
             "V2-NATIVE REFUSAL cause=EmittedCompilerAbsent — cargo reported success but {} is \
              not a file",
             binary_path.display()
-        ));
+        )));
     }
     let binary_identity = sha256_file(&binary_path)?;
     let seed_identity = sha256_file(&std::env::current_exe().map_err(|e| {
@@ -763,10 +804,10 @@ fn prepare_emitted_compiler_for_entry(
             &entry_module,
         );
         if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
-            return Err(format!(
+            return Err(PreparationRefusal::from(format!(
                 "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
                 super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
-            ));
+            )));
         }
         eprintln!(
             "v2-native-route: discriminating red established — {}",
@@ -775,12 +816,12 @@ fn prepare_emitted_compiler_for_entry(
         red_completed = true;
         let identity_after_mutation = sha256_file(&binary_path)?;
         if identity_after_mutation != binary_identity {
-            return Err(format!(
+            return Err(PreparationRefusal::from(format!(
                 "V2-NATIVE REFUSAL cause=EmittedCompilerReplacedByFaultedArm — {} was {binary_identity} \
                  when the clean baseline built it and is {identity_after_mutation} after the fault was \
                  injected and removed; the executable handed on is not the one the green build produced",
                 binary_path.display()
-            ));
+            )));
         }
     }
 
@@ -3686,6 +3727,27 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
     })
 }
 
+/// ONE `emit --entry <module>` RUN OF THE NATIVE v2 CLI PER MODULE, over a CLI prepared once. The
+/// caller reads each module's own refusal out of the JSON; this carries status and both streams
+/// unjudged (`gunbc.cardinality_realization_seed_growth`).
+pub fn run_v2_native_cli_emit(
+    source_roots: &[String],
+    entries: &[String],
+) -> Result<Vec<(String, Option<i32>, String, String)>, String> {
+    let prepared = prepare_emitted_compiler_for_entry(source_roots, V2_NATIVE_CLI_ENTRY)?;
+    let mut runs = Vec::new();
+    for entry in entries {
+        let mut args = vec!["emit".to_string(), "--entry".to_string(), entry.clone()];
+        for root in source_roots {
+            args.push("--source-root".to_string());
+            args.push(root.clone());
+        }
+        let run = run_cli_door(&prepared.binary_path, &args)?;
+        runs.push((entry.clone(), run.status, run.stdout, run.stderr));
+    }
+    Ok(runs)
+}
+
 /// ONE RUN OF A `std.compiler_entry` `NativeClaimDriver` PROGRAM, as the observation the reader
 /// needs and nothing it decides. `gunbc.native_claim_program` `native_claim_program_standing` reads
 /// `stdout` and `status` and answers held / not held / no observation; this struct carries them
@@ -3730,7 +3792,7 @@ pub fn run_native_claim_program(
     source_roots: &[String],
     entry: &str,
     deadline: std::time::Duration,
-) -> Result<NativeClaimProgramAttempt, String> {
+) -> Result<NativeClaimProgramAttempt, PreparationRefusal> {
     let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
     eprintln!(
         "native-claim: {entry} built (closure {}) -- running {} deadline_ms={}",
@@ -3792,9 +3854,9 @@ pub fn run_native_claim_program(
                 let _ = child.kill();
                 let _ = stdout_join.join();
                 let _ = stderr_join.join();
-                return Err(format!(
+                return Err(PreparationRefusal::from(format!(
                     "NATIVE-CLAIM REFUSAL cause=WaitFailed entry={entry} — {cause}"
-                ));
+                )));
             }
         }
     };
