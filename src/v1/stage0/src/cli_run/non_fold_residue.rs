@@ -775,14 +775,14 @@ mod nfr_typed_tests {
         );
     }
 
-    // A7 POSITIVE CONTROL: the dissolved shape of `execute_obligation` -- a total derived
-    // partition (obligation_partition: 8 named arms, no wildcard) is the single authority, and
-    // the match folds over the 2-variant partition (FrontEnd/BackEnd named) with the back-end
-    // arm dispatching over the derived 4-variant back-end coproduct (BE1..BE4 named). No
-    // wildcard anywhere, so the site is not residue -- this is exactly the move that deletes
-    // the roster row.
+    // A7 POSITIVE CONTROL: the dissolved shape of `execute_obligation` -- a hand-authored
+    // total partition (obligation_partition: 8 named arms, no wildcard) is the single
+    // authority, and the match folds over the 2-variant partition (FrontEnd/BackEnd named)
+    // with the back-end arm dispatching over the 4-variant back-end coproduct (BE1..BE4
+    // named). No wildcard anywhere, so the site is not residue -- this is exactly the move
+    // that deletes the roster row.
     #[test]
-    fn green_control_partition_fold_over_derived_coproduct_is_not_residue() {
+    fn green_control_partition_fold_over_partition_coproduct_is_not_residue() {
         let got = sites(
             "module m\ntype Stage = S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8\n\
              type FrontStage = FS1 | FS2 | FS3 | FS4\n\
@@ -800,7 +800,7 @@ mod nfr_typed_tests {
         );
         assert!(
             !got.contains("m.dag::execute"),
-            "folding over the derived partition (no wildcard) must NOT be flagged; got {got:?}"
+            "folding over the hand-authored partition (no wildcard) must NOT be flagged; got {got:?}"
         );
         assert!(
             !got.contains("m.dag::side_of"),
