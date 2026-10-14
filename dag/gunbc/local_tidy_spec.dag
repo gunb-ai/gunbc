@@ -170,4 +170,3 @@ fn local_tidy_fmt_outcome_blocks(outcome: LocalTidyFmtOutcome) -> Bool {
     FmtToolUnavailable { program: _, cause: _ } => true
   }
 }
-

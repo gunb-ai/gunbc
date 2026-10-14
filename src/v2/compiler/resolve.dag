@@ -1,4 +1,5 @@
 module v2.compiler.resolve
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b, nfr_reason_landed_after_typed_census }
 import v2.std.language_model { LanguageModel }
 
 import v2.compiler.normalized_tree { normalized_tree_record_declarations, MemberDeclarationsNotRead, MemberDeclarationsRead, NormalizedTree, normalized_tree_resource_declarations }
@@ -284,6 +285,8 @@ import v2.std.map_introduction {
   map_introduction_expected_head_is_map
 }
 import std.types { List }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
 // stage that needs a reference's declaration asks the SAME authority resolution asked
@@ -2770,7 +2773,6 @@ fn resolve_transform_children(
   }))
 }
 
-
 // A MATCH ARM'S BINDERS ARE A LEXICAL FRAME, LIKE PARAMETERS AND `let`. Normalize lowers a pat
 // over a fielded variant to the construct shape (v2.std.node_query construct_node): a tag edge that
 // names the constructor and one edge per field the pat names, whose target is the
@@ -3361,7 +3363,6 @@ fn resolve_elided_construct_is_map_literal(n: Node) -> Bool {
     MapLiteralEntriesMalformed => true
   }
 }
-
 
 fn resolve_map_literal_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
   let type_args = node_positional_child_targets(node: x.expected)
@@ -4389,7 +4390,6 @@ fn resolve_preserve_module_root_named_edge(e: Edge) -> Bool {
     || labeled_named_is(x: e, label_of: edge_label_of, wanted: ^grammar_production_identity_node_projection)
 }
 
-
 // ONE EDGE'S TARGET, OBSERVED. A preserved metadata edge is accepted as its own target unchanged,
 // so the caller rebuilding Edge { label, target } reproduces the edge exactly.
 fn resolve_child_edge(
@@ -4609,7 +4609,6 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
     n: n
   )
 }
-
 
 // THE BODY OF AN ARROW IS WALKED UNDER ITS DECLARED RETURN, as authored: a `data x: T = e` lowers to
 // Arrow(<empty domain>, T, T, body: e) and a `fn f(..) -> T { e }` to the same shape, so this one
@@ -5027,3 +5026,25 @@ fn resolve_walk_with_namespace_policy(
     )))
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "arrow_domain_has_named_bindings" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_arrow_domain_walk" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_arrow_resource_requirements" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_bind_binder_target" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_construct_tag_names_constructor" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_declaring_entering" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_elided_construct_walk" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_expected_head_node_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_expected_head_path_as_written" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_expected_rename_chain" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_loop_node" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_map_key_type_is_string_literal_type" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_realized_declaration" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_record_field_type_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_transform_operator_child" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "arrow_domain_frame_binders" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "bind_frame_binders" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_loop_carrier_binder" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_where_predicate_operator" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+]
