@@ -4540,9 +4540,26 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     .iter()
     .all(|v| shared_type_census_subject_build_from_cargo_verdict(v).is_err());
     let unobserved_live_control = unobserved_mapped && !census::observation_held(held, true);
-    let completed_nonzero_control = census::build_is_refused_finding(refuse_report.build.clone())
-        && census::build_is_reportable_finding(refuse_report.build.clone())
-        && census::observation_held(held, false);
+    let synthetic_nonzero = CargoVerdict::Completed {
+        status: 1,
+        stderr_tail: "error[E0204]: the trait `Copy` cannot be implemented".to_string(),
+        probe_line: None,
+        probe_diagnostic: None,
+        warning_count: 0,
+        warning_headers: vec![],
+        cargo_network_retries: 0,
+        first_error: None,
+    };
+    let synthetic_refused_build =
+        shared_type_census_subject_build_from_cargo_verdict(&synthetic_nonzero);
+    let completed_nonzero_control = match &synthetic_refused_build {
+        Ok(build) => {
+            census::build_is_refused_finding(build.clone())
+                && census::build_is_reportable_finding(build.clone())
+                && census::observation_held(held, false)
+        }
+        Err(_) => false,
+    };
     println!(
         "{PREFIX}: {}",
         census::control_line(

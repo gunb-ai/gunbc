@@ -13,13 +13,14 @@ import v1.compiler.languages { sharing_for_target }
 import v1.compiler.artifact { Rust }
 import std.types { List, String, Bool }
 
-// THE SHARED-TYPE SET IS KEYED ON A TYPE'S BARE NAME (v1.compiler.emit_rust build_shared_types).
-// This module owns the SHARING GRADE of a leaf collision whose declarers are both in one
-// emitted closure, and the SUBJECT-GRAIN rustc build of that closure. Independent sharing is
-// maybe_mark_shared_type per declaration. rustc is one cargo run per subject, never stamped
-// onto every different-sharing row.
+// THE SHARED-TYPE SET IS KEYED ON DECLARATION IDENTITY (v1.compiler.emit_rust build_shared_types,
+// TypeSummary.key). This module owns the leaf-name COINCIDENCE of two identities in one emitted
+// closure, and the SUBJECT-GRAIN rustc build of that closure. Independent sharing is
+// maybe_mark_shared_type per declaration. Two identities that share a leaf are not a collision:
+// they build independently. rustc is one cargo run per subject, never stamped onto every
+// different-sharing row.
 //
-// EmitGraphInfo.recursive_type_set is leaf-keyed last-write-wins. When a colliding leaf is in
+// EmitGraphInfo.recursive_type_set is leaf-keyed last-write-wins. When a coinciding leaf is in
 // that set, this module does not report SameSharing/DifferentSharing from it:
 // SharingUndeterminedByDeclaration.
 //
@@ -75,7 +76,7 @@ fn leaf_collision_row(leaf: String, declarers: List<String>, would_share: List<B
 }
 
 fn declaration_would_share(summary: TypeSummary, recursive_type_set: Set<String>, needs_sharing: Bool) -> Bool {
-  set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: needs_sharing), summary.name)
+  set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: needs_sharing), summary.key)
 }
 
 fn would_share_of_identity(info: EmitGraphInfo, identity: String, needs_sharing: Bool) -> Bool {
@@ -156,9 +157,8 @@ fn diagnostic_names_class(diagnostic: String, class: String) -> Bool {
 
 fn refuse_control_holds(report: SubjectCollisionReport) -> Bool {
   match report.build {
-    BuildRefused { diagnostic: d } =>
-      report_has_different_sharing(report: report) && diagnostic_names_class(diagnostic: d, class: refuse_diagnostic_class)
-    BuildAccepted => false
+    BuildAccepted => report_has_different_sharing(report: report)
+    BuildRefused { diagnostic: _ } => false
     BuildNotAttempted => false
   }
 }
@@ -200,7 +200,7 @@ fn would_share_cell(b: Bool) -> String {
 }
 
 fn collision_report_line(subject: String, row: LeafCollisionRow) -> String {
-  concat(concat(concat(concat("collision subject=", subject), concat(" leaf=", row.leaf)), concat(" declarers=", row.declarers |> join(separator: ","))), concat(concat(" would_share=", row.would_share |> map(b => would_share_cell(b: b)) |> join(separator: ",")), concat(" sharing=", sharing_label(sharing: row.sharing))))
+  concat(concat(concat(concat("leaf-name coincidence subject=", subject), concat(" leaf=", row.leaf)), concat(" identities=", row.declarers |> join(separator: ","))), concat(concat(" would_share=", row.would_share |> map(b => would_share_cell(b: b)) |> join(separator: ",")), concat(" sharing=", sharing_label(sharing: row.sharing))))
 }
 
 fn subject_summary_line(kind: String, name: String, report: SubjectCollisionReport) -> String {
@@ -225,7 +225,7 @@ fn subject_summary_line(kind: String, name: String, report: SubjectCollisionRepo
       DifferentSharing => false
     }
   ) |> count
-  concat(concat(concat(concat(concat("subject kind=", kind), concat(" name=", name)), concat(" colliding_leaves=", to_string(report.rows |> count))), concat(concat(" same_sharing=", to_string(same)), concat(" different_sharing=", to_string(different)))), concat(concat(" undetermined_sharing=", to_string(undetermined)), concat(" build=", build_label(build: report.build))))
+  concat(concat(concat(concat(concat("subject kind=", kind), concat(" name=", name)),                     concat(" coinciding_leaves=", to_string(report.rows |> count))), concat(concat(" same_sharing=", to_string(same)), concat(" different_sharing=", to_string(different)))), concat(concat(" undetermined_sharing=", to_string(undetermined)), concat(" build=", build_label(build: report.build))))
 }
 
 fn control_line(name: String, held: Bool) -> String {
@@ -239,7 +239,7 @@ fn fixture_standing(refuse_report: SubjectCollisionReport, silent_report: Subjec
   let held = refuse_held && silent_held && green_held
   [
     concat("STANDING ", if held { "held" } else { "unmet" }),
-    control_line(name: "refuse_different_sharing_rustc_e0204", held: refuse_held),
+    control_line(name: "DifferentSharingIdentitiesBuildIndependently", held: refuse_held),
     control_line(name: "silent_different_sharing_rustc_accepted", held: silent_held),
     control_line(name: "green_no_collision_rustc_accepted", held: green_held)
   ] |> join(separator: "\n")

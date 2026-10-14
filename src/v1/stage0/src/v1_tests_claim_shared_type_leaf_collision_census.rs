@@ -136,7 +136,7 @@ pub fn declaration_would_share(
             recursive_type_set.clone(),
             needs_sharing.clone(),
         ),
-        summary.name.clone(),
+        summary.key.clone(),
     )
 }
 
@@ -317,11 +317,8 @@ pub fn diagnostic_names_class(diagnostic: String, class: String) -> bool {
 
 pub fn refuse_control_holds(report: Rc<SubjectCollisionReport>) -> bool {
     match (*report.build.clone()).clone() {
-        SubjectBuild::BuildRefused { diagnostic: d, .. } => {
-            (report_has_different_sharing(report.clone())
-                && diagnostic_names_class(d.clone(), refuse_diagnostic_class()))
-        }
-        SubjectBuild::BuildAccepted => false,
+        SubjectBuild::BuildAccepted => report_has_different_sharing(report.clone()),
+        SubjectBuild::BuildRefused { diagnostic: _, .. } => false,
         SubjectBuild::BuildNotAttempted => false,
     }
 }
@@ -372,11 +369,14 @@ pub fn collision_report_line(subject: String, row: Rc<LeafCollisionRow>) -> Stri
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat("collision subject=".to_string(), subject.clone()),
+                v1_rt::concat(
+                    "leaf-name coincidence subject=".to_string(),
+                    subject.clone(),
+                ),
                 v1_rt::concat(" leaf=".to_string(), row.leaf.clone()),
             ),
             v1_rt::concat(
-                " declarers=".to_string(),
+                " identities=".to_string(),
                 row.declarers.clone().join(&",".to_string()),
             ),
         ),
@@ -453,7 +453,7 @@ pub fn subject_summary_line(
                         v1_rt::concat(" name=".to_string(), name.clone()),
                     ),
                     v1_rt::concat(
-                        " colliding_leaves=".to_string(),
+                        " coinciding_leaves=".to_string(),
                         (report.rows.clone().len() as i64).to_string(),
                     ),
                 ),
@@ -510,7 +510,7 @@ pub fn fixture_standing(
                 },
             ),
             control_line(
-                "refuse_different_sharing_rustc_e0204".to_string(),
+                "DifferentSharingIdentitiesBuildIndependently".to_string(),
                 refuse_held.clone(),
             ),
             control_line(
