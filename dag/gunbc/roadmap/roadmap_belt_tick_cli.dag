@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_belt_tick_cli
 import std.types { String, NonEmptyStr }
 import gunbc.dispatch.credential_acquisition {
   credential_acquisition_slots_root,
-  credential_recover_listed,
+  credential_recover_root,
 }
 import gunbc.live_deploy.desired {
   desired_deployment_for_instance_id,
@@ -528,12 +528,7 @@ fn belt_credential_recovery_cli() -> ProcessExit {
           Present { value: now } => {
             let unit = deployment_belt_service_unit_name(names: row.names)
             let root = credential_acquisition_slots_root(instance_root: instance.instance_root as String)
-            let listing = Filesystem.List(path: root as String)
-            let recovered = if listing.success {
-              credential_recover_listed(root: root, listing: listing.entries, now: now)
-            } else {
-              join(["no credential slots yet: ", listing.error], "")
-            }
+            let recovered = credential_recover_root(root: root, now: now)
             let receipt = serialize_json(v: json_object(members: [
               json_kv(key: "unit", value: json_string(s: unit as String)),
               json_kv(key: "slots_root", value: json_string(s: root as String)),

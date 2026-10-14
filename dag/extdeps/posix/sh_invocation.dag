@@ -139,14 +139,12 @@ data posix_sh_export_from_file_unreadable_exit: Int = 78
 // that cannot be consumed refuses the launch with exit 79 -- distinct from 78 (unreadable).
 data posix_sh_export_from_file_unremovable_exit: Int = 79
 
-data posix_sh_export_tombstone_body: String = "{\"tombstone\":true}\n"
-
 type PosixShFileDisposition
   = PosixShKeepFile
   | PosixShRemoveFileAfterRead
-  | PosixShReplaceFileWithTombstoneAfterRead
+  | PosixShReplaceFileAfterRead { body: String }
 
-fn posix_sh_export_tombstone_statements() -> List<Node> {
+fn posix_sh_export_replace_statements(body: String) -> List<Node> {
   [
     bash_build_or_else(
       left: bash_build_assign(
@@ -166,7 +164,7 @@ fn posix_sh_export_tombstone_statements() -> List<Node> {
         inner: bash_build_command_with_words(words: [
           bash_build_word_lit(text: "printf"),
           bash_build_word_lit(text: "%s"),
-          bash_build_word_lit(text: posix_sh_export_tombstone_body),
+          bash_build_word_lit(text: body),
         ]),
         path: bash_build_word_var(name: "t"),
       ),
@@ -201,7 +199,7 @@ fn posix_sh_export_remove_statements(disposition: PosixShFileDisposition) -> Lis
           right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unremovable_exit)),
         ),
       ]
-    PosixShReplaceFileWithTombstoneAfterRead => posix_sh_export_tombstone_statements()
+    PosixShReplaceFileAfterRead { body } => posix_sh_export_replace_statements(body: body)
   }
 }
 
