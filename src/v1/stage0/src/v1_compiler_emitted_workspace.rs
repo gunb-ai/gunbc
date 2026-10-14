@@ -55,7 +55,7 @@ pub fn emitted_workspace_module_dir() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EmittedWorkspaceRealizationRefusal {
     EmittedWorkspaceCrateNotUnique { count: i64 },
@@ -65,7 +65,7 @@ pub enum EmittedWorkspaceRealizationRefusal {
     EmittedWorkspaceRenderRefused { message: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmittedWorkspaceRealized {
     pub files: Rc<Vec<Rc<TextFile>>>,
     pub build: Rc<EmittedWorkspaceBuild>,
@@ -73,7 +73,7 @@ pub struct EmittedWorkspaceRealized {
     pub registry_dependencies: Rc<Vec<Rc<CargoDependency>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EmittedWorkspaceRealization {
     EmittedWorkspaceRealizedOk {
@@ -84,7 +84,7 @@ pub enum EmittedWorkspaceRealization {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EmittedFilePlacement {
     PlacedModule {
@@ -470,7 +470,7 @@ pub fn emitted_workspace_realization_refusal_message(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EmittedWorkspaceRedRealization {
     EmittedWorkspaceRedRealized {

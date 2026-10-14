@@ -25,16 +25,7 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum CollisionSharing {
@@ -43,7 +34,7 @@ pub enum CollisionSharing {
     SharingUndeterminedByDeclaration,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum SubjectBuild {
     BuildAccepted,
@@ -62,7 +53,7 @@ impl SubjectBuild {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LeafCollisionRow {
     pub leaf: String,
     pub declarers: Rc<Vec<String>>,
@@ -70,7 +61,7 @@ pub struct LeafCollisionRow {
     pub sharing: CollisionSharing,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SubjectCollisionReport {
     pub rows: Rc<Vec<Rc<LeafCollisionRow>>>,
     pub build: Rc<SubjectBuild>,

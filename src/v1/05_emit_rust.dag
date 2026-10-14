@@ -187,7 +187,7 @@ import std.types { is_container_type, is_kernel_type, container_template_algebra
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name_local, binding_declares_name, listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_on_chain, binding_declares_name, listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -2232,7 +2232,7 @@ fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List
   } else if listed_import_required_bare_call_blocked(env: env, name: name) {
     true
   } else {
-    match lookup_binding_by_name_local(env: env, name: name) {
+    match lookup_binding_on_chain(env: env, name: name) {
       Present { value: binding } =>
         // A name its binding does not declare is a variant constructor (Present, Absent): no Rust type
         // carries that spelling, so the annotation cannot name it.
@@ -13362,24 +13362,6 @@ fn lambda_scope_from_children(scope: InferScope, params: List<String>, param_nod
 // node-grain check above missed it because the formal's spelling resolves to SOME
 // binding in the whole-pool env; the rendered-string check is the one authority both
 // arms consult, so the two cannot disagree.
-fn dbg_inferred_kind(n: Node) -> String {
-  if n.inferred == none { "none" } else {
-    match n.inferred.value {
-      TypeVariable { id: _ } => "tv"
-      Resolved { node: _ } => "res"
-      _ => "other"
-    }
-  }
-}
-
-fn dbg_type_node(n: Node, depth: Int, source_indices: Map<String, NewlineIndex>) -> String {
-  let nom = if type_node_is_nominal(n: n) { "1" } else { "0" }
-  let app = if type_node_has_applied_binding(n: n, source_indices: source_indices) { "1" } else { "0" }
-  let here = [" /*[", authored_name_at(source_indices: source_indices, node: n), " ch=", to_string(n.children |> count), " pa=", to_string(n.params |> count), " inf=", dbg_inferred_kind(n: n), " nom=", nom, " app=", app, "]"] |> join(separator: "")
-  let kids = if depth >= 3 { "" } else { n.children |> map(c => dbg_type_node(n: child_type_node(ch: c), depth: depth + 1, source_indices: source_indices)) |> join(separator: "") }
-  concat(concat(here, kids), " */")
-}
-
 fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallback_types: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, fold_acc_uses_fallback: Bool, type_env: TypeEnv) -> List<String> {
   params |> enumerate |> map(pair =>
     let idx = pair.first
@@ -13398,8 +13380,7 @@ fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallbac
               } else if type_node_has_closure_unbound_generic_atom(n: param_type, generic_param_names: emit_info.fn_generic_param_names, env: type_env, source_indices: source_indices) {
                 none
               } else {
-                let rendered0 = render_rust_type(n: param_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-                let rendered = if contains(rendered0, "Present<") { concat(rendered0, dbg_type_node(n: param_type, depth: 0, source_indices: source_indices)) } else { rendered0 }
+                let rendered = render_rust_type(n: param_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
                 if rust_fold_rendered_type_has_any_spurious_generic(type_str: rendered, generic_param_names: emit_info.fn_generic_param_names) { none }
                 else { Present { value: rendered } }
               }
@@ -13632,7 +13613,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic { "_" } else if contains(acc_type_str, "Present<") { concat(acc_type_str, dbg_type_node(n: acc_type_node, depth: 0, source_indices: scope.type_env.source_indices)) } else { acc_type_str }
+  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic { "_" } else { acc_type_str }
   let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {

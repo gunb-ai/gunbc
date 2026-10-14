@@ -274,7 +274,7 @@ pub fn comments_leave_occurrence_identities_unchanged_holds() -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CharEdit {
     pub start: i64,
     pub end: i64,
