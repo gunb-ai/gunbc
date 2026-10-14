@@ -2263,6 +2263,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "wait_with_no_running_job_is_refused" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "wait_with_no_running_job_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "wait_after_a_job_finishes_does_not_return_instantly_as_a_poll" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "wait_after_a_job_finishes_does_not_return_instantly_as_a_poll",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "wait_returns_when_a_job_finishes_before_the_timeout" },
       entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
       function: "wait_returns_when_a_job_finishes_before_the_timeout",

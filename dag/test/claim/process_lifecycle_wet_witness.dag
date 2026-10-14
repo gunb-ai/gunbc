@@ -57,7 +57,8 @@ test fn start_refused_missing_binary_witness() -> Bool {
     program: "gunbc-no-such-binary-for-start-refusal-witness" as NonEmptyStr,
     arguments: [] as List<String>,
     stdout_file: "/dev/null" as NonEmptyStr,
-    stderr_file: "/dev/null" as NonEmptyStr
+    stderr_file: "/dev/null" as NonEmptyStr,
+    working_directory: "/tmp" as NonEmptyStr
   )
   match refused.spawn {
     SpawnRefused { program: refused_program, cause: cause } =>
@@ -111,7 +112,8 @@ test fn kill_confirmed_by_reap_witness() -> Bool {
         program: "env" as NonEmptyStr,
         arguments: ["-C", dir.path, "HOST=127.0.0.1", concat("PORT=", to_string(port)), "node", concat(dir.path, "/server.js")],
         stdout_file: concat(dir.path, "/server.stdout.log") as NonEmptyStr,
-        stderr_file: concat(dir.path, "/server.stderr.log") as NonEmptyStr
+        stderr_file: concat(dir.path, "/server.stderr.log") as NonEmptyStr,
+        working_directory: dir.path as NonEmptyStr
       )
       match spawn.spawn {
         Spawned { pid: pid } => {
@@ -168,7 +170,8 @@ test fn readiness_stalled_listener_witness() -> Bool {
         program: "env" as NonEmptyStr,
         arguments: ["-C", dir.path, "HOST=127.0.0.1", concat("PORT=", to_string(port)), "node", concat(dir.path, "/stalled.js")],
         stdout_file: concat(dir.path, "/stalled.stdout.log") as NonEmptyStr,
-        stderr_file: concat(dir.path, "/stalled.stderr.log") as NonEmptyStr
+        stderr_file: concat(dir.path, "/stalled.stderr.log") as NonEmptyStr,
+        working_directory: dir.path as NonEmptyStr
       )
       match stalled_js.success {
         true =>

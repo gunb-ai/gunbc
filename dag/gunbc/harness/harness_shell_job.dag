@@ -15,12 +15,19 @@ import gunbc.harness.harness_shell_job_policy {
 // pgid. Manager B's AttemptResourceSet (#13929) is the attempt-owned hold set; this type is the
 // shell-job inhabitant of that set. Discharge is harness_discharge_shell_jobs.
 
+type HarnessJobStanding
+  = JobRunningStanding
+  | JobExitedStanding { code: Int }
+  | JobSignaledStanding { signal: Int }
+  | JobReapRefusedStanding { cause: NonEmptyStr }
+
 type HarnessShellJob {
   id: String
   pid: Int
   command: String
   stdout_file: FilePath
   stderr_file: FilePath
+  standing: HarnessJobStanding
 }
 
 type HarnessShellJobObservation
@@ -29,14 +36,58 @@ type HarnessShellJobObservation
   | JobSignaled { job: HarnessShellJob, signal: Int }
   | JobReapRefused { job: HarnessShellJob, cause: NonEmptyStr }
 
-fn harness_observe_job(job: HarnessShellJob) -> HarnessShellJobObservation {
-  let reaped = posix.Process.Reap(pid: job.pid)
-  match reaped.reaped {
-    StillRunning => JobStillRunning { job: job }
-    Exited { code } => JobExited { job: job, code: code }
-    Signaled { signal } => JobSignaled { job: job, signal: signal }
-    ReapRefused { cause } => JobReapRefused { job: job, cause: cause }
+fn harness_job_with_standing(job: HarnessShellJob, standing: HarnessJobStanding) -> HarnessShellJob {
+  HarnessShellJob {
+    id: job.id,
+    pid: job.pid,
+    command: job.command,
+    stdout_file: job.stdout_file,
+    stderr_file: job.stderr_file,
+    standing: standing,
   }
+}
+
+fn harness_refresh_job(job: HarnessShellJob) -> HarnessShellJob {
+  match job.standing {
+    JobExitedStanding { code: _ } => job
+    JobSignaledStanding { signal: _ } => job
+    JobReapRefusedStanding { cause: _ } => job
+    JobRunningStanding =>
+      match posix.Process.Reap(pid: job.pid).reaped {
+        StillRunning => job
+        Exited { code } => harness_job_with_standing(job: job, standing: JobExitedStanding { code: code })
+        Signaled { signal } =>
+          harness_job_with_standing(job: job, standing: JobSignaledStanding { signal: signal })
+        ReapRefused { cause } =>
+          harness_job_with_standing(job: job, standing: JobReapRefusedStanding { cause: cause })
+      }
+  }
+}
+
+fn harness_refresh_jobs(jobs: List<HarnessShellJob>) -> List<HarnessShellJob> {
+  map(jobs, j => harness_refresh_job(job: j))
+}
+
+fn harness_job_is_running(job: HarnessShellJob) -> Bool {
+  match job.standing {
+    JobRunningStanding => true
+    JobExitedStanding { code: _ } => false
+    JobSignaledStanding { signal: _ } => false
+    JobReapRefusedStanding { cause: _ } => false
+  }
+}
+
+fn harness_observe_standing(job: HarnessShellJob) -> HarnessShellJobObservation {
+  match job.standing {
+    JobRunningStanding => JobStillRunning { job: job }
+    JobExitedStanding { code } => JobExited { job: job, code: code }
+    JobSignaledStanding { signal } => JobSignaled { job: job, signal: signal }
+    JobReapRefusedStanding { cause } => JobReapRefused { job: job, cause: cause }
+  }
+}
+
+fn harness_observe_job(job: HarnessShellJob) -> HarnessShellJobObservation {
+  harness_observe_standing(job: harness_refresh_job(job: job))
 }
 
 fn harness_job_finished(obs: HarnessShellJobObservation) -> Bool {
@@ -68,7 +119,7 @@ fn harness_command_table(jobs: List<HarnessShellJob>) -> String {
     join(
       concat(
         ["COMMAND TABLE:"],
-        map(jobs, j => harness_command_table_line(obs: harness_observe_job(job: j))),
+        map(jobs, j => harness_command_table_line(obs: harness_observe_standing(job: j))),
       ),
       "\n",
     )
@@ -119,43 +170,51 @@ fn harness_find_job(jobs: List<HarnessShellJob>, id: String) -> HarnessShellJob?
     })
 }
 
-fn harness_first_finished_observation(jobs: List<HarnessShellJob>) -> HarnessShellJobObservation? {
-  fold(jobs, init: none, f: (acc, j) =>
+fn harness_first_running_now_finished(before: List<HarnessShellJob>, after: List<HarnessShellJob>) -> HarnessShellJobObservation? {
+  fold(after, init: none, f: (acc, j) =>
     match acc {
       Present { value: _ } => acc
-      Absent => {
-        let obs = harness_observe_job(job: j)
-        if harness_job_finished(obs: obs) {
-          Present { value: obs }
-        } else {
-          none
+      Absent =>
+        match harness_find_job(jobs: before, id: j.id) {
+          Absent => none
+          Present { value: prior } =>
+            if harness_job_is_running(job: prior) && !harness_job_is_running(job: j) {
+              Present { value: harness_observe_standing(job: j) }
+            } else {
+              none
+            }
         }
-      }
     })
 }
 
 type HarnessWaitLoop
-  = WaitLoopFinished { observation: HarnessShellJobObservation }
-  | WaitLoopExpired
+  = WaitLoopFinished { jobs: List<HarnessShellJob>, observation: HarnessShellJobObservation }
+  | WaitLoopExpired { jobs: List<HarnessShellJob> }
+  | WaitLoopNoRunningJob { jobs: List<HarnessShellJob> }
 
 fn harness_wait_until_any(jobs: List<HarnessShellJob>, remaining: Second) -> HarnessWaitLoop {
-  match harness_first_finished_observation(jobs: jobs) {
-    Present { value: obs } => WaitLoopFinished { observation: obs }
-    Absent =>
-      if measure_le(a: remaining, b: second(count: 0)) {
-        WaitLoopExpired
-      } else {
-        let _pause = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
-        match measure_sub(a: remaining, b: second(count: 1)) {
-          MeasureDifference { value: next } => harness_wait_until_any(jobs: jobs, remaining: next)
-          MeasureSubtrahendExceedsMinuend => WaitLoopExpired
+  let stamped = harness_refresh_jobs(jobs: jobs)
+  if list_length(items: filter(stamped, j => harness_job_is_running(job: j))) == 0 {
+    WaitLoopNoRunningJob { jobs: stamped }
+  } else {
+    match harness_first_running_now_finished(before: jobs, after: stamped) {
+      Present { value: obs } => WaitLoopFinished { jobs: stamped, observation: obs }
+      Absent =>
+        if measure_le(a: remaining, b: second(count: 0)) {
+          WaitLoopExpired { jobs: stamped }
+        } else {
+          let _pause = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
+          match measure_sub(a: remaining, b: second(count: 1)) {
+            MeasureDifference { value: next } => harness_wait_until_any(jobs: stamped, remaining: next)
+            MeasureSubtrahendExceedsMinuend => WaitLoopExpired { jobs: stamped }
+          }
         }
-      }
+    }
   }
 }
 
 fn harness_job_stdio_path(worktree: FilePath, slot: Int, suffix: String) -> FilePath {
-  join([worktree as String, "/.harness-job-", to_string(value: slot), suffix], "") as FilePath
+  join([worktree as String, ".job-", to_string(value: slot), suffix], "") as FilePath
 }
 
 type HarnessShellSpawn
@@ -174,7 +233,6 @@ fn harness_start_shell_job(
   let spawn = posix.Process.StartDetached(
     program: timeout_program as NonEmptyStr,
     arguments: [
-      "--foreground",
       to_string(value: schedule_seconds(s: schedule.backstop)),
       "/bin/sh",
       "-c",
@@ -182,6 +240,7 @@ fn harness_start_shell_job(
     ],
     stdout_file: stdout_file as NonEmptyStr,
     stderr_file: stderr_file as NonEmptyStr,
+    working_directory: worktree as NonEmptyStr,
   )
   match spawn.spawn {
     SpawnRefused { program, cause } => ShellSpawnFailed { program: program, cause: cause }
@@ -193,6 +252,7 @@ fn harness_start_shell_job(
           command: command,
           stdout_file: stdout_file,
           stderr_file: stderr_file,
+          standing: JobRunningStanding,
         },
       }
   }

@@ -4,6 +4,8 @@ import std.types { Bool, String, List, FilePath, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { second }
 import extdeps.shell
+import extdeps.posix.signal
+import extdeps.filesystem.filesystem_io
 import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, WaitUseDefault,
 }
@@ -83,6 +85,41 @@ test fn a_command_over_the_inline_hold_returns_a_job_not_duration_exceeded() -> 
   dir.success && ok
 }
 
+test fn wait_with_no_running_job_is_refused() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let waited = harness_wait_jobs_scheduled(
+    environment: env_at(dir: dir.path),
+    schedule: wait_early_schedule(),
+    request: WaitUseDefault,
+  )
+  let text = harness_outcome_text(outcome: waited.outcome)
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && text.contains("no running job")
+}
+
+test fn wait_after_a_job_finishes_does_not_return_instantly_as_a_poll() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let started = harness_run_command_scheduled(
+    environment: env_at(dir: dir.path),
+    command: "sleep 1",
+    schedule: wait_early_schedule(),
+  )
+  let first = harness_wait_jobs_scheduled(
+    environment: started.environment,
+    schedule: wait_early_schedule(),
+    request: WaitUseDefault,
+  )
+  let second = harness_wait_jobs_scheduled(
+    environment: first.environment,
+    schedule: wait_early_schedule(),
+    request: WaitUseDefault,
+  )
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success
+    && harness_outcome_text(outcome: first.outcome).contains("a job finished before the wait elapsed")
+    && harness_outcome_text(outcome: second.outcome).contains("no running job")
+}
+
 test fn wait_returns_when_a_job_finishes_before_the_timeout() -> Bool {
   let dir = shell.Mktemp.Dir()
   let started = harness_run_command_scheduled(
@@ -113,7 +150,7 @@ test fn the_backstop_kills_the_process_group() -> Bool {
   }
   let started = harness_run_command_scheduled(
     environment: env_at(dir: dir.path),
-    command: "sleep 30",
+    command: "sh -c 'sleep 30 & printf %s $! > grandchild.pid; wait'",
     schedule: tight,
   )
   let waited = harness_wait_jobs_scheduled(
@@ -121,7 +158,7 @@ test fn the_backstop_kills_the_process_group() -> Bool {
     schedule: tight,
     request: WaitUseDefault,
   )
-  let finished = match started.environment.jobs.first() {
+  let timeout_dead = match waited.environment.jobs.first() {
     Absent => is_duration_exceeded(outcome: started.outcome) || is_duration_exceeded(outcome: waited.outcome)
     Present { value: j } =>
       match harness_observe_job(job: j) {
@@ -131,6 +168,12 @@ test fn the_backstop_kills_the_process_group() -> Bool {
         JobReapRefused { job: _, cause: _ } => true
       }
   }
+  let grandchild = Filesystem.Read(path: concat(dir.path, "/grandchild.pid"))
+  let grandchild_gone = if grandchild.success && grandchild.content.length() > 0 {
+    !posix.Signal.TerminateProcess(pid: grandchild.content as NonEmptyStr).success
+  } else {
+    timeout_dead
+  }
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && finished
+  dir.success && timeout_dead && grandchild_gone
 }
