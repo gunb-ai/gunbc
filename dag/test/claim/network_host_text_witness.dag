@@ -1,4 +1,4 @@
-module test.claim.network.host_text_witness
+module test.claim.network_host_text_witness
 
 import std.types { String, Bool, Int, NonEmptyStr, Port }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
