@@ -1591,6 +1591,54 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "only_one_of_two_retries_claims_the_seat_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "only_one_of_two_retries_claims_the_seat_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "completion_admits_a_current_grant_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "completion_admits_a_current_grant_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "completion_refuses_a_grant_expired_by_the_observed_clock_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "completion_refuses_a_grant_expired_by_the_observed_clock_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "completion_refuses_a_grant_the_partition_has_released_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "completion_refuses_a_grant_the_partition_has_released_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "a_live_seat_on_card_a_refuses_a_claim_on_card_b_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "a_live_seat_on_card_a_refuses_a_claim_on_card_b_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "a_released_seat_on_card_a_admits_exactly_one_claim_on_card_b_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "a_released_seat_on_card_a_admits_exactly_one_claim_on_card_b_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "a_record_cancelled_on_card_a_is_not_revived_on_card_b_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "a_record_cancelled_on_card_a_is_not_revived_on_card_b_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.serving_caller_backlog_wet_witness", function: "only_one_of_two_acquired_seats_for_one_hold_leaves_settle_bound_by_real_execution" },
+      entry: "dag/test/claim/serving_caller_backlog_wet_witness.dag",
+      function: "only_one_of_two_acquired_seats_for_one_hold_leaves_settle_bound_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.filesystem_link_create_new_wet_witness", function: "a_link_publishes_the_source_bytes_and_keeps_the_source_by_real_execution" },
       entry: "dag/test/claim/filesystem_link_create_new_wet_witness.dag",
       function: "a_link_publishes_the_source_bytes_and_keeps_the_source_by_real_execution",
