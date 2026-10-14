@@ -1,6 +1,6 @@
 module gunbc.compute.unit_bounds
 
-import std.types { String, List, NonEmptyStr }
+import std.types { String, List, NonEmptyStr, Bool }
 import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count }
@@ -16,6 +16,7 @@ import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire 
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
 }
+import gunbc.runner.runner_unit { runner_unit_prefix }
 
 // THE ONE FOLD FROM A CAPACITY GRANT TO THE PROPERTIES OF THE UNIT THAT HOLDS IT. It used to live in
 // gunbc.compute.work_provider_local as compute_unit_properties, and it moved here rather than being
@@ -106,6 +107,90 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
     SystemdRunCommandRefused { cause: _ } => []
     SystemdRunCommandReady { command } =>
       filter(argv_words(command: command), w => w != "__placeholder__")
+  }
+}
+
+// WHEN THE SEED TRAMPOLINE WRAPS. Observations are supplied (cgroup text, env presence, probe);
+// this fold is the only policy. Seed cannot eval it at wrap time; it mirrors the arms and the
+// cited env/cgroup needles. Join: the_seed_trampoline_mirrors_the_declared_wrap_standing.
+// UserSessionAbsent refuses: a host that owes the bound and has no user manager must not run
+// unbounded (review 80042). CiExempt / RunnerSlotExempt skip because those processes already sit
+// in a declared slot cgroup, not because the user manager is missing.
+data user_work_scope_ci_env_name: String = "GITHUB_ACTIONS"
+data user_work_scope_xdg_runtime_dir_env_name: String = "XDG_RUNTIME_DIR"
+
+type UserWorkScopeCgroupRead
+  = CgroupText { text: String }
+  | CgroupReadFailed
+
+type UserWorkScopeStanding
+  = AlreadyInSlice
+  | RunnerSlotExempt
+  | CiExempt
+  | UnitTestExempt
+  | UserSessionAbsent
+  | UserManagerOwed
+  | CgroupUnreadable
+  | UserManagerProbeFailed
+
+type UserWorkScopeStandingEffect
+  = WrapIntoUserWorkSlice
+  | SkipUserWorkScope { standing: UserWorkScopeStanding }
+  | RefuseUserWorkScope { standing: UserWorkScopeStanding }
+
+fn user_work_scope_standing(
+  unit_test: Bool,
+  github_actions: Bool,
+  cgroup: UserWorkScopeCgroupRead,
+  user_manager_reachable: Bool,
+  xdg_runtime_dir: Bool,
+) -> UserWorkScopeStanding {
+  if unit_test {
+    UnitTestExempt
+  } else if github_actions {
+    CiExempt
+  } else {
+    match cgroup {
+      CgroupReadFailed => CgroupUnreadable
+      CgroupText { text } =>
+        if string_contains(s: text, pattern: user_work_slice_unit_name as String) {
+          AlreadyInSlice
+        } else if string_contains(s: text, pattern: runner_unit_prefix) {
+          RunnerSlotExempt
+        } else if user_manager_reachable {
+          UserManagerOwed
+        } else if xdg_runtime_dir {
+          UserManagerProbeFailed
+        } else {
+          UserSessionAbsent
+        }
+    }
+  }
+}
+
+fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
+  match s {
+    AlreadyInSlice => "AlreadyInSlice"
+    RunnerSlotExempt => "RunnerSlotExempt"
+    CiExempt => "CiExempt"
+    UnitTestExempt => "UnitTestExempt"
+    UserSessionAbsent => "UserSessionAbsent"
+    UserManagerOwed => "UserManagerOwed"
+    CgroupUnreadable => "CgroupUnreadable"
+    UserManagerProbeFailed => "UserManagerProbeFailed"
+  }
+}
+
+fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeStandingEffect {
+  match s {
+    UserManagerOwed => WrapIntoUserWorkSlice
+    AlreadyInSlice => SkipUserWorkScope { standing: AlreadyInSlice }
+    UnitTestExempt => SkipUserWorkScope { standing: UnitTestExempt }
+    RunnerSlotExempt => SkipUserWorkScope { standing: RunnerSlotExempt }
+    CiExempt => SkipUserWorkScope { standing: CiExempt }
+    CgroupUnreadable => RefuseUserWorkScope { standing: CgroupUnreadable }
+    UserManagerProbeFailed => RefuseUserWorkScope { standing: UserManagerProbeFailed }
+    UserSessionAbsent => RefuseUserWorkScope { standing: UserSessionAbsent }
   }
 }
 

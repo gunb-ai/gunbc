@@ -1,8 +1,8 @@
 //! Seed trampoline for `gunbc.compute.unit_bounds` `gunbc_user_work_scope_command`.
-//! The prefix argv is owned by `user_work_scope_wrap_prefix_argv`; this file cannot
-//! eval that fold (wrap runs before corpus resolve). The join is
-//! `test.claim.live_deploy.user_work_slice_witness`
-//! `the_seed_trampoline_mirrors_the_declared_wrap_prefix`.
+//! Prefix argv: `user_work_scope_wrap_prefix_argv`. Standing: `user_work_scope_standing` /
+//! `user_work_scope_standing_effect`. Seed cannot eval those folds at wrap time; the join is
+//! `the_seed_trampoline_mirrors_the_declared_wrap_prefix` and
+//! `the_seed_trampoline_mirrors_the_declared_wrap_standing`.
 //! Retention: `v2.compiler.self_host.seed_retention_frontier` `retained_support_dir_member`
 //! (`src/cli_run/user_work_scope.rs`); trigger: Test/Run wrap is emitted, this file deletes.
 
@@ -13,6 +13,12 @@ use std::process::Command;
 const USER_WORK_SLICE: &str = "gunbc-user-work.slice";
 // SEED MIRROR of `gunbc.live_deploy.slice_bounds user_work_slice_memory_swap_max`
 const USER_WORK_SLICE_MEMORY_SWAP_MAX_BYTES: u64 = 0;
+// SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_ci_env_name`
+const USER_WORK_SCOPE_CI_ENV: &str = "GITHUB_ACTIONS";
+// SEED MIRROR of `gunbc.runner.runner_unit runner_unit_prefix`
+const RUNNER_SLOT_CGROUP_NEEDLE: &str = "actions-runner@";
+// SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_xdg_runtime_dir_env_name`
+const USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV: &str = "XDG_RUNTIME_DIR";
 
 #[derive(Clone, Copy)]
 enum UserWorkScopeStanding {
@@ -27,17 +33,15 @@ enum UserWorkScopeStanding {
 }
 
 pub fn reexec_into_user_work_slice_if_owed() {
-    match user_work_scope_standing() {
+    let standing = user_work_scope_standing();
+    match standing {
         UserWorkScopeStanding::UserManagerOwed => wrap_now(),
-        UserWorkScopeStanding::CgroupUnreadable => {
+        UserWorkScopeStanding::CgroupUnreadable
+        | UserWorkScopeStanding::UserManagerProbeFailed
+        | UserWorkScopeStanding::UserSessionAbsent => {
             eprintln!(
-                "error: /proc/self/cgroup unreadable; cannot decide wrap into {USER_WORK_SLICE}"
-            );
-            std::process::exit(2);
-        }
-        UserWorkScopeStanding::UserManagerProbeFailed => {
-            eprintln!(
-                "error: systemctl --user show-environment failed with XDG_RUNTIME_DIR set; cannot wrap into {USER_WORK_SLICE}"
+                "error: cannot wrap into {USER_WORK_SLICE} ({})",
+                standing_wire(standing)
             );
             std::process::exit(2);
         }
@@ -92,7 +96,7 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
     if cfg!(test) {
         return UserWorkScopeStanding::UnitTestExempt;
     }
-    if std::env::var_os("GITHUB_ACTIONS").is_some() {
+    if std::env::var_os(USER_WORK_SCOPE_CI_ENV).is_some() {
         return UserWorkScopeStanding::CiExempt;
     }
     let cg = match std::fs::read_to_string("/proc/self/cgroup") {
@@ -102,7 +106,7 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
     if cg.contains(USER_WORK_SLICE) {
         return UserWorkScopeStanding::AlreadyInSlice;
     }
-    if cg.contains("actions-runner@") {
+    if cg.contains(RUNNER_SLOT_CGROUP_NEEDLE) {
         return UserWorkScopeStanding::RunnerSlotExempt;
     }
     let probe_ok = Command::new("systemctl")
@@ -114,7 +118,7 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
         .unwrap_or(false);
     if probe_ok {
         UserWorkScopeStanding::UserManagerOwed
-    } else if std::env::var_os("XDG_RUNTIME_DIR").is_some() {
+    } else if std::env::var_os(USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV).is_some() {
         UserWorkScopeStanding::UserManagerProbeFailed
     } else {
         UserWorkScopeStanding::UserSessionAbsent

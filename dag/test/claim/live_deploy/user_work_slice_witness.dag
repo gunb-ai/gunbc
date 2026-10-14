@@ -26,7 +26,14 @@ import gunbc.compute.unit_bounds {
   compute_grant_unit_properties, gunbc_user_work_scope_command,
   gunbc_user_work_wait_command, gunbc_user_work_transient_command,
   user_work_scope_wrap_prefix_argv,
+  user_work_scope_standing, user_work_scope_standing_effect, user_work_scope_standing_wire,
+  user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
+  CgroupText, CgroupReadFailed,
+  AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, UserSessionAbsent,
+  UserManagerOwed, CgroupUnreadable, UserManagerProbeFailed,
+  WrapIntoUserWorkSlice, SkipUserWorkScope, RefuseUserWorkScope,
 }
+import gunbc.runner.runner_unit { runner_unit_prefix }
 import gunbc.gunbc_cli_command { gunbc_test_user_work_scope_command }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_properties }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
@@ -163,6 +170,72 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_prefix() -> Bool {
     )
     && string_contains(s: seed, pattern: "CgroupUnreadable")
     && string_contains(s: seed, pattern: "UserManagerProbeFailed")
+    && string_contains(s: seed, pattern: "std::process::exit(2)")
+}
+
+test fn user_work_scope_standing_selects_from_supplied_observations() -> Bool {
+  match user_work_scope_standing(unit_test: true, github_actions: true, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+    UnitTestExempt =>
+      match user_work_scope_standing(unit_test: false, github_actions: true, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+        CiExempt =>
+          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+            CgroupUnreadable =>
+              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: user_work_slice_unit_name as String }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                AlreadyInSlice =>
+                  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: runner_unit_prefix }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                    RunnerSlotExempt =>
+                      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: true, xdg_runtime_dir: false) {
+                        UserManagerOwed =>
+                          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: true) {
+                            UserManagerProbeFailed =>
+                              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                                UserSessionAbsent => true
+                                _ => false
+                              }
+                            _ => false
+                          }
+                        _ => false
+                      }
+                    _ => false
+                  }
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn user_session_absent_refuses_rather_than_skipping() -> Bool {
+  match user_work_scope_standing_effect(s: UserSessionAbsent) {
+    RefuseUserWorkScope { standing: UserSessionAbsent } =>
+      match user_work_scope_standing_effect(s: CiExempt) {
+        SkipUserWorkScope { standing: CiExempt } =>
+          match user_work_scope_standing_effect(s: UserManagerOwed) {
+            WrapIntoUserWorkSlice => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
+  let seed = filesystem_read(path: seed_user_work_scope_path).content
+  string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_ci_env_name`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_ci_env_name, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.runner.runner_unit runner_unit_prefix`")
+    && string_contains(s: seed, pattern: concat("\"", concat(runner_unit_prefix, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_xdg_runtime_dir_env_name`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_xdg_runtime_dir_env_name, "\"")))
+    && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: UserSessionAbsent))
+    && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: RunnerSlotExempt))
+    && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: CiExempt))
+    && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: UserManagerOwed))
+    && string_contains(s: seed, pattern: "UserWorkScopeStanding::UserSessionAbsent =>")
     && string_contains(s: seed, pattern: "std::process::exit(2)")
 }
 
