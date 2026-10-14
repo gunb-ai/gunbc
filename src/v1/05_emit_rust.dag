@@ -172,7 +172,8 @@ import v1.compiler.trait_derive_emit {
   v1_item_wf_propagated_clone_bounded_param_names,
   v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
   v1_map_key_head_names_in_type_expr,
-  v1_wf_child_type_node,
+  v1_wf_child_type_node, v1_type_expr_wf_needs_clone_param, v1_map_key_nested_names_in_type_expr, v1_map_key_bounded_type_params,
+  v1_item_map_key_bounded_param_names, v1_emit_type_params_with_map_key_bounds,
   v1_clone_impl_required_type_params,
   v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal,
   trait_derive_emit_fn_clone_bound_keyed_carrier_module,
@@ -3599,6 +3600,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     type_decl_items: base_info.type_decl_items,
     source_indices: closure_source_indices
   )
+  let map_key_bounded = v1_map_key_bounded_type_params(type_decl_items: base_info.type_decl_items, source_indices: closure_source_indices)
   let clone_impl_required = v1_clone_impl_required_type_params(
     type_decl_items: base_info.type_decl_items,
     source_indices: closure_source_indices
@@ -3611,7 +3613,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: typed.modules, data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
-    fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, source_indices: closure_source_indices),
+    fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, type_decl_items: base_info.type_decl_items, type_bounds: map_key_bounded, source_indices: closure_source_indices),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     positional_payload_variants: base_info.positional_payload_variants,
@@ -3625,6 +3627,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     clone_bounded_type_params: clone_bounded,
     map_key_required_type_names: map_key_required,
     clone_impl_required_type_params: clone_impl_required,
+    map_key_bounded_type_params: map_key_bounded,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none,
@@ -4296,6 +4299,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
+  let map_key_bounded = v1_map_key_bounded_type_params(type_decl_items: base_info.type_decl_items, source_indices: merged_module_source_indices(modules: [typed_module]))
   let clone_impl_required = v1_clone_impl_required_type_params(
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])
@@ -4308,7 +4312,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: [typed_module], data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
-    fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, source_indices: merged_module_source_indices(modules: [typed_module])),
+    fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, type_decl_items: base_info.type_decl_items, type_bounds: map_key_bounded, source_indices: merged_module_source_indices(modules: [typed_module])),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     positional_payload_variants: base_info.positional_payload_variants,
@@ -4322,6 +4326,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     clone_bounded_type_params: clone_bounded,
     map_key_required_type_names: map_key_required,
     clone_impl_required_type_params: clone_impl_required,
+    map_key_bounded_type_params: map_key_bounded,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none,
@@ -5776,6 +5781,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     clone_bounded_type_params: emit_info.clone_bounded_type_params,
     map_key_required_type_names: emit_info.map_key_required_type_names,
     clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+    map_key_bounded_type_params: emit_info.map_key_bounded_type_params,
     fn_generic_param_names: emit_info.fn_generic_param_names,
     fn_type_env: scope.type_env,
     fn_return_type: emit_info.fn_return_type,
@@ -7780,6 +7786,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             clone_bounded_type_params: emit_info.clone_bounded_type_params,
             map_key_required_type_names: emit_info.map_key_required_type_names,
             clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+            map_key_bounded_type_params: emit_info.map_key_bounded_type_params,
             fn_generic_param_names: emit_info.fn_generic_param_names,
             fn_type_env: emit_info.fn_type_env,
             fn_return_type: emit_info.fn_return_type,
@@ -7938,9 +7945,12 @@ fn emit_item_header_clone_param_names(
 fn emit_type_params_from_clone_param_names(
   params: List<Node>,
   clone_param_names: List<String>,
+  key_param_names: List<String>,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
-  if (clone_param_names |> count) > 0 {
+  if (key_param_names |> count) > 0 {
+    v1_emit_type_params_with_map_key_bounds(params: params, clone_param_names: clone_param_names, key_param_names: key_param_names, source_indices: source_indices)
+  } else if (clone_param_names |> count) > 0 {
     v1_emit_type_params_with_clone_bounds(params: params, clone_param_names: clone_param_names, source_indices: source_indices)
   } else {
     emit_type_params(params: params, source_indices: source_indices)
@@ -8064,6 +8074,11 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let type_params = emit_type_params_from_clone_param_names(
       params: item.params,
       clone_param_names: header_clone_param_names,
+      key_param_names: v1_item_map_key_bounded_param_names(
+        item_identity: type_decl_identity(owner_module: env.module_path, decl_name: item_text),
+        generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
+        bounds: emit_info.map_key_bounded_type_params
+      ),
       source_indices: env.source_indices
     )
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
@@ -8107,6 +8122,11 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let type_params = emit_type_params_from_clone_param_names(
       params: item.params,
       clone_param_names: header_clone_param_names,
+      key_param_names: v1_item_map_key_bounded_param_names(
+        item_identity: type_decl_identity(owner_module: env.module_path, decl_name: item_text),
+        generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
+        bounds: emit_info.map_key_bounded_type_params
+      ),
       source_indices: env.source_indices
     )
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
@@ -8895,44 +8915,6 @@ fn rust_map_key_bound_traits() -> List<String> {
   ["std::cmp::Eq", "std::hash::Hash"]
 }
 
-// EVERY GENERIC INSIDE A KEY-POSITION TYPE ARGUMENT EARNS THE BOUND, AT ANY DEPTH. The key type of
-// `Map<SubjectKey<K>, V>` is `SubjectKey<K>`, and the im::HashMap bridges require that whole type to
-// be Eq + Hash; a derived `SubjectKey<K>: Hash` holds only when `K: Hash`, so `K` owes the bound
-// although it is not the head of the key. Reading only the key's head name left `K` bare (rustc
-// E0277 on the std.keyed_roster index). The walk collects every name in the key expression and
-// the caller filters to the fn's generics, so a generic that never reaches a key position stays
-// unbounded (pinned by the negative control in map_key_derive_requirement_witness).
-// The key subtree is walked through child_type_node at EVERY level: a child that carries an
-// inference is a wrapper whose structure (its type arguments) lives on the resolved type, so
-// reading `.children` of the raw child saw `Wrapper` and lost the `K` inside `Wrapper<K>`; only a
-// bare `K` key was found, through the head. The same resolved node answers the head and the
-// arguments, so one walk covers both.
-fn v1_type_expr_all_names(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let node = v1_wf_child_type_node(ch: type_expr, source_indices: source_indices)
-  concat(
-    [authored_name_at(source_indices: source_indices, node: node)],
-    node.children |> flat_map(c => v1_type_expr_all_names(type_expr: c, source_indices: source_indices))
-  )
-}
-
-fn v1_map_key_nested_names_in_type_expr(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let own = match v1_type_expr_keyed_map_verdict(type_expr: type_expr, source_indices: source_indices) {
-    KeyedMap =>
-      match type_expr.children |> first {
-        Present { value: key_child } => v1_type_expr_all_names(type_expr: key_child, source_indices: source_indices)
-        Absent => []
-      }
-    NotKeyedMap => []
-    KeyedMapUndecidable { name: _ } => []
-  }
-  concat(
-    own,
-    type_expr.children |> flat_map(ch =>
-      v1_map_key_nested_names_in_type_expr(type_expr: child_type_node(ch: ch), source_indices: source_indices)
-    )
-  )
-}
-
 fn v1_fn_signature_map_key_param_names(value_params: List<Node>, ret: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
   let from_params = value_params |> flat_map(p => v1_map_key_nested_names_in_type_expr(type_expr: param_node_type_expr(n: p), source_indices: source_indices))
   let from_ret = v1_map_key_nested_names_in_type_expr(type_expr: ret, source_indices: source_indices)
@@ -9682,18 +9664,26 @@ fn v1_call_site_forwarded_param_names(
 // from callees' declared bounds, closed to a fixpoint. Computed once per emission where the
 // EmitGraphInfo is assembled and read at every call site, so a call graph with fan-out costs one
 // pass per round (rounds <= fn count, in practice 2-3), never a re-walk per path.
-fn v1_fn_map_key_bound_table(fn_decl_items: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<String>> {
+fn v1_fn_map_key_bound_table(fn_decl_items: Map<String, Node>, type_decl_items: TypeDeclIndex, type_bounds: Map<String, Set<String>>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<String>> {
   let names = sorted_map_keys(fn_decl_items)
   let seed = names |> fold(init: empty_map(), f: (acc, n) =>
     match map_get(fn_decl_items, n) {
       Present { value: item } =>
         let generics = function_type_params(params: item.params) |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
-        let bound = v1_fn_signature_map_key_param_names(
+        let direct = v1_fn_signature_map_key_param_names(
           value_params: function_value_params(params: item.params),
           ret: resolved_type(n: item),
           generic_param_names: generics,
           source_indices: source_indices
         )
+        // A signature NAMING a declared type whose header owes the key bounds owes them at the
+        // same argument position (the declaration's own bound, read from the table -- never
+        // re-derived per call site).
+        let sig_type_exprs = concat(function_value_params(params: item.params) |> map(p => param_node_type_expr(n: p)), [resolved_type(n: item)])
+        let via_type = generics |> filter(g => sig_type_exprs |> any(te =>
+          v1_type_expr_wf_needs_clone_param(param_name: g, type_expr: te, bounds: type_bounds, type_decl_items: type_decl_items, source_indices: source_indices)
+        ))
+        let bound = v1_union_bound_param_names(base: direct, extra: via_type)
         if (bound |> count) > 0 { map_insert(acc, n, bound) } else { acc }
       Absent => acc
     }
@@ -13682,6 +13672,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               clone_bounded_type_params: emit_info.clone_bounded_type_params,
               map_key_required_type_names: emit_info.map_key_required_type_names,
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+              map_key_bounded_type_params: emit_info.map_key_bounded_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
               fn_return_type: emit_info.fn_return_type,
@@ -13717,6 +13708,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               clone_bounded_type_params: emit_info.clone_bounded_type_params,
               map_key_required_type_names: emit_info.map_key_required_type_names,
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+              map_key_bounded_type_params: emit_info.map_key_bounded_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
               fn_return_type: emit_info.fn_return_type,
