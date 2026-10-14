@@ -17929,19 +17929,22 @@ pub fn parse_variant_bindings_brace_acc(
                         ) {
                             Some(_) => {}
                             std::option::Option::None => {
-                                if !keyword_may_bind_as_pattern_name(
+                                match v1_rt::lookup(
+                                    &ctx.env.clone().non_name_keywords.clone(),
                                     t.text.clone(),
-                                    ctx.env.clone(),
                                 ) {
-                                    return Rc::new(BindingsResult {
-                                        field_bindings: Rc::new(vec![]),
-                                        tokens: tokens.clone(),
-                                        ctx: ctx.clone(),
-                                        err: Some(reserved_keyword_pattern_binder_error(
-                                            t.text.clone(),
-                                            t.span.clone(),
-                                        )),
-                                    });
+                                    Some(_) => {
+                                        return Rc::new(BindingsResult {
+                                            field_bindings: Rc::new(vec![]),
+                                            tokens: tokens.clone(),
+                                            ctx: ctx.clone(),
+                                            err: Some(reserved_keyword_pattern_binder_error(
+                                                t.text.clone(),
+                                                t.span.clone(),
+                                            )),
+                                        });
+                                    }
+                                    std::option::Option::None => {}
                                 }
                             }
                         }
@@ -18002,6 +18005,17 @@ pub fn parse_variant_bindings_brace_acc(
                     }
                 }
                 EatResult::EatUnchanged { tokens: __eu, .. } => {
+                    if !keyword_may_bind_as_pattern_name(field_name.clone(), ctx.env.clone()) {
+                        return Rc::new(BindingsResult {
+                            field_bindings: Rc::new(vec![]),
+                            tokens: tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: Some(reserved_keyword_pattern_binder_error(
+                                field_name.clone(),
+                                field_name_span.clone(),
+                            )),
+                        });
+                    }
                     let e2 = eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
                     tokens = skip_newlines(match (*e2.clone()).clone() {
                         EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),

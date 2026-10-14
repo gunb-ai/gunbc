@@ -6519,8 +6519,10 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
           match lookup(ctx.env.syntax_spec.keyword_literals, key: t.text) {
             Present { value: _ } => {}
             Absent => {
-              if !keyword_may_bind_as_pattern_name(text: t.text, env: ctx.env) {
-                return BindingsResult { field_bindings: [], tokens: tokens, ctx: ctx, err: Present { value: reserved_keyword_pattern_binder_error(text: t.text, span: t.span) } }
+              match lookup(ctx.env.non_name_keywords, key: t.text) {
+                Present { value: _ } =>
+                  return BindingsResult { field_bindings: [], tokens: tokens, ctx: ctx, err: Present { value: reserved_keyword_pattern_binder_error(text: t.text, span: t.span) } }
+                Absent => {}
               }
             }
           }
@@ -6543,7 +6545,10 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
       let minted = mint_parsed_node_identity(ctx: r2.ctx, at: ConsumedWindow { from: binding_from, to: r2.tokens })
       let fb = make_field_binding_node(occurrence_identity: minted.identity, field_name: field_name, binding: r2.pattern, span: bind_span, name_span: field_name_span)
       parse_variant_bindings_brace_acc(tokens: tokens, ctx: minted.ctx, acc: list_push(acc, fb))
-    EatUnchanged { tokens: __eu } =>
+    EatUnchanged { tokens: __eu } => {
+      if !keyword_may_bind_as_pattern_name(text: field_name, env: ctx.env) {
+        return BindingsResult { field_bindings: [], tokens: tokens, ctx: ctx, err: Present { value: reserved_keyword_pattern_binder_error(text: field_name, span: field_name_span) } }
+      }
       let e2 = eat(tokens: tokens, expected: ExpectComma)
       let tokens = skip_newlines(tokens: match e2 { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
       let declaration_mint = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: field_name_span })
@@ -6560,6 +6565,7 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
         name_span: field_name_span
       )
       parse_variant_bindings_brace_acc(tokens: tokens, ctx: field_mint.ctx, acc: list_push(acc, fb))
+    }
     }
   }
 }

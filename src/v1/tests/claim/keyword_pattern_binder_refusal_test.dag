@@ -37,6 +37,8 @@ data release_colon_source: String = "module zqxkwbind.probe\n\ntype Context = Or
 
 data identifier_binder_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { reported_alias: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { reported_alias: value } => value == \"abc\", _ => false } }\n"
 
+data match_field_colon_value_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { match: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { match: value } => value == \"abc\", _ => false } }\n"
+
 data name_keyword_module_binder_source: String = "module zqxkwbind.probe\n\ntype Exposure = ModuleExposure { module: String }\n\nfn probe(e: Exposure) -> Bool { match e { ModuleExposure { module: module } => module == \"m\", _ => false } }\n"
 
 data true_false_lit_pattern_source: String = "module zqxkwbind.probe\n\nfn probe(b: Bool) -> Int { match b { true => 1, false => 0 } }\n"
@@ -101,6 +103,11 @@ test fn release_colon_refused_at_keyword_token_holds() -> Bool {
 // CONTROL: identifier binder `value` parses.
 test fn identifier_binder_value_is_accepted_holds() -> Bool {
   parsed_ok(source: identifier_binder_source)
+}
+
+// CONTROL: name-admissible `match` as a field name with identifier binder `value`.
+test fn match_field_colon_value_is_accepted_holds() -> Bool {
+  parsed_ok(source: match_field_colon_value_source)
 }
 
 // CONTROL: name-admissible keyword `module` remains a binder (corpus shape).
