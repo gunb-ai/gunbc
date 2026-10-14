@@ -75,7 +75,7 @@ import product.fabric.execution { ReservationRef }
 import gunbc.serving.caller_backlog {
   DispatchTurnKey, DurableAttemptStanding, LogicalWorkId, WorkIdDerivation, WorkIdDerived, WorkIdKeyNotOctets, logical_work_id_of,
   CallerWorkPhase, WorkWaiting, WorkCompleted, WorkCancelled, WorkRecoveryBoundExceeded, recovery_deficit_text,
-  CallerWorkRecord, CallerBacklogSnapshot, empty_caller_backlog,
+  CallerWorkRecord, CallerBacklogSnapshot, empty_caller_backlog, SeatRef,
   RecoveryEvent, RecoveryProbe, RecoveryRequest,
   DurableResumedWaiting, DurableResumedTerminal, DurableResumeUnknownWork, DurableResumeStoreUnreadable,
   DurableResumePayloadUndecodable, DurableResumeWorkMismatch, resume_waiting_durable,
@@ -1358,7 +1358,7 @@ fn harness_pending_keeps_waiting(hold: HarnessCallerHold, ready: Nat, detail: St
 // current, or one it does not show at all, is a turn that may be running, and a second retry refuses
 // rather than executing it again.
 type HarnessPredecessor
-  = HarnessPredecessorClaimable { expected: ReservationRef }
+  = HarnessPredecessorClaimable { expected: SeatRef }
   | HarnessPredecessorLive { detail: String }
 
 fn harness_grant_retired_in(oldest_first: List<ChainEnvelope<PoolEvent>>, reference: NonEmptyStr) -> Bool {
@@ -1375,13 +1375,13 @@ fn harness_grant_retired_in(oldest_first: List<ChainEnvelope<PoolEvent>>, refere
   }
 }
 
-fn harness_predecessor_of(hold: HarnessCallerHold, store: FabricStorageBinding, partition: PartitionId) -> HarnessPredecessor {
+fn harness_predecessor_of(hold: HarnessCallerHold, store: FabricStorageBinding) -> HarnessPredecessor {
   match resume_waiting_durable(root: hold.root, work: hold.work) {
     DurableResumedWaiting { record: r } =>
       if (r.reservation as String) == (harness_unplaced_reservation(work: hold.work) as String) {
-        HarnessPredecessorClaimable { expected: r.reservation }
+        HarnessPredecessorClaimable { expected: SeatRef { partition: r.partition, reservation: r.reservation } }
       } else {
-        match event_log_read_partition(store: store, partition: partition, budget: 4096) {
+        match event_log_read_partition(store: store, partition: r.partition, budget: 4096) {
           PartitionReadRefused { cause: c } => HarnessPredecessorLive { detail: join(["the prior seat could not be read, so it is not retired: ", event_log_refusal_wire(cause: c)], "") }
           PartitionReadOk { head: _, walk: walk } =>
             match walk {
@@ -1389,9 +1389,9 @@ fn harness_predecessor_of(hold: HarnessCallerHold, store: FabricStorageBinding, 
               ChainBudgetExhausted { at: a } => HarnessPredecessorLive { detail: join(["the partition chain exceeded the read budget at ", a as String], "") }
               ChainWalked { oldest_first: xs } =>
                 if harness_grant_retired_in(oldest_first: xs, reference: r.reservation as NonEmptyStr) {
-                  HarnessPredecessorClaimable { expected: r.reservation }
+                  HarnessPredecessorClaimable { expected: SeatRef { partition: r.partition, reservation: r.reservation } }
                 } else {
-                  HarnessPredecessorLive { detail: join(["the work is already running under seat ", r.reservation as String, ", which the seat authority has not retired"], "") }
+                  HarnessPredecessorLive { detail: join(["the work is already running under seat ", r.reservation as String, ", which partition ", r.partition as String, " of the seat authority has not retired"], "") }
                 }
             }
         }
@@ -1412,12 +1412,12 @@ type HarnessSeatClaim
   | HarnessSeatClaimRefused { detail: String }
 
 fn harness_claim_seat(hold: HarnessCallerHold, grant: LeaseGrant, store: FabricStorageBinding, partition: PartitionId) -> HarnessSeatClaim {
-  match harness_predecessor_of(hold: hold, store: store, partition: partition) {
+  match harness_predecessor_of(hold: hold, store: store) {
     HarnessPredecessorLive { detail: d } => HarnessSeatClaimRefused { detail: d }
     HarnessPredecessorClaimable { expected: e } =>
-      match rebind_reservation_durable(root: hold.root, work: hold.work, expected: e, reservation: grant.reference as ReservationRef) {
+      match rebind_reservation_durable(root: hold.root, work: hold.work, expected: e, next: SeatRef { partition: partition, reservation: grant.reference as ReservationRef }) {
         DurableReservationRebound { record: _ } => HarnessSeatClaimed
-        DurableRebindPredecessorMismatch { held: h } => HarnessSeatClaimRefused { detail: join(["another attempt already claimed this work under ", h as String], "") }
+        DurableRebindPredecessorMismatch { held: h } => HarnessSeatClaimRefused { detail: join(["another attempt already claimed this work under ", h.reservation as String, " in partition ", h.partition as String], "") }
         DurableRebindRefusedTerminal { phase: p } => HarnessSeatClaimRefused { detail: harness_caller_terminal_wire(phase: p) }
         DurableRebindUnknownWork => HarnessSeatClaimRefused { detail: "the waiting record is absent" }
         DurableRebindStoreRefused { detail: d } => HarnessSeatClaimRefused { detail: d as String }
@@ -1536,8 +1536,8 @@ fn harness_commit_on_walk(hold: HarnessCallerHold, record: CallerWorkRecord, pre
 // the seat partition now, the clock is read now.
 fn harness_complete_caller_turn(turn: HarnessCallerTurn, binding: HarnessSeatBinding) -> HarnessCallerCompletion {
   match binding {
-    HarnessSeatBound { url: _, grant: presented, partition: p, ceiling: _, replica_wire: _, launch: _, store: store, model: _, unit: _, class: _, seat: _ } =>
-      harness_complete_with_grant(turn: turn, presented: presented, store: store, partition: p)
+    HarnessSeatBound { url: _, grant: presented, partition: _, ceiling: _, replica_wire: _, launch: _, store: store, model: _, unit: _, class: _, seat: _ } =>
+      harness_complete_with_grant(turn: turn, presented: presented, store: store)
     HarnessSeatRefused { detail: _ } => HarnessCallerCompletionRefused { detail: "the binding holds no fleet seat" }
     HarnessSeatPending { detail: _ } => HarnessCallerCompletionRefused { detail: "the binding holds no fleet seat" }
     HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => HarnessCallerCompletionRefused { detail: "the binding holds no fleet seat" }
@@ -1547,13 +1547,13 @@ fn harness_complete_caller_turn(turn: HarnessCallerTurn, binding: HarnessSeatBin
 
 // THE GRANT-TAKING BODY OF THE COMPLETION, so an executing consumer can cross the production route (partition
 // read, current grant, observed clock) without constructing a whole HarnessSeatBound.
-fn harness_complete_with_grant(turn: HarnessCallerTurn, presented: LeaseGrant, store: FabricStorageBinding, partition: PartitionId) -> HarnessCallerCompletion {
+fn harness_complete_with_grant(turn: HarnessCallerTurn, presented: LeaseGrant, store: FabricStorageBinding) -> HarnessCallerCompletion {
   match logical_work_id_of(key: DispatchTurnKey { dispatch_node: turn.dispatch_node, ordinal: turn.ordinal }) {
     WorkIdKeyNotOctets { observed: o } => HarnessCallerCompletionRefused { detail: join(["the dispatch turn key is not octets (observed ", to_string(o), ")"], "") }
     WorkIdDerived { work: w } =>
       match resume_waiting_durable(root: turn.state_root, work: w) {
         DurableResumedWaiting { record: r } =>
-          match event_log_read_partition(store: store, partition: partition, budget: 4096) {
+          match event_log_read_partition(store: store, partition: r.partition, budget: 4096) {
             PartitionReadRefused { cause: c } => HarnessCallerCompletionRefused { detail: event_log_refusal_wire(cause: c) }
             PartitionReadOk { head: _, walk: walk } => harness_commit_on_walk(hold: HarnessCallerHold { work: w, root: turn.state_root }, record: r, presented: presented, walk: walk)
           }

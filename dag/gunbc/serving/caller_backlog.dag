@@ -13,6 +13,7 @@ import extdeps.languages.json.parse {
   json_field, json_field_bool, json_field_int, json_field_nat, json_field_string, parse_json_document,
 }
 import product.fabric.execution { ReservationRef }
+import product.capacity.event_chain { PartitionId }
 import product.fabric.budget { MoneyAccount, fence_admits }
 import product.capacity.lease { LeaseGrant, LeaseFence, FenceCurrent, FenceObsolete, FenceAhead, FenceForeignGrant, fence_verdict, lease_grant_expired_at }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
@@ -87,9 +88,21 @@ type RecoveryEvent {
   succeeded: Bool
 }
 
+// THE SEAT AUTHORITY A RESERVATION IS READ FROM: a seat's grant lives in one partition of the seat authority
+// (one per serving card), so a reservation alone cannot say where its retirement is proved. The record carries
+// both, and a rebind names both as the predecessor it replaces, so a failover from card A to card B proves A's
+// seat retired in A's partition and then moves the record from {A, a} to {B, b} in one compare-and-set.
+type SeatRef {
+  partition: PartitionId
+  reservation: ReservationRef
+}
+
+data caller_unplaced_partition: PartitionId = "unplaced" as PartitionId
+
 type CallerWorkRecord {
   work: LogicalWorkId
   reservation: ReservationRef
+  partition: PartitionId
   generation: Int
   phase: CallerWorkPhase
   recovery: List<RecoveryEvent>
@@ -141,6 +154,7 @@ fn waiting_record(work: LogicalWorkId, reservation: ReservationRef, generation: 
   CallerWorkRecord {
     work: work,
     reservation: reservation,
+    partition: caller_unplaced_partition,
     generation: generation,
     phase: WorkWaiting,
     recovery: [] as List<RecoveryEvent>,
@@ -275,6 +289,7 @@ fn encode_waiting_value(record: CallerWorkRecord) -> JsonValue {
   json_object(members: [
     json_kv(key: "work", value: json_string(s: record.work as String)),
     json_kv(key: "reservation", value: json_string(s: record.reservation as String)),
+    json_kv(key: "partition", value: json_string(s: record.partition as String)),
     json_kv(key: "generation", value: json_int(n: record.generation)),
     json_kv(key: "phase", value: encode_phase(phase: record.phase)),
     json_kv(key: "recovery", value: json_array(elements: fold(record.recovery, init: [] as List<JsonValue>, f: (acc, e) => concat(acc, [encode_recovery_event(event: e)])))),
@@ -435,6 +450,9 @@ fn decode_waiting_value(obj: JsonValue) -> CallerWorkRecord? {
       match required_json_string(obj: obj, key: "reservation") {
         Absent => none
         Present { value: reservation_s } =>
+         match required_json_string(obj: obj, key: "partition") {
+          Absent => none
+          Present { value: partition_s } =>
           match required_json_int(obj: obj, key: "generation") {
             Absent => none
             Present { value: generation } =>
@@ -451,6 +469,7 @@ fn decode_waiting_value(obj: JsonValue) -> CallerWorkRecord? {
                             value: CallerWorkRecord {
                               work: work_s as LogicalWorkId,
                               reservation: reservation_s as ReservationRef,
+                              partition: partition_s as PartitionId,
                               generation: generation,
                               phase: phase,
                               recovery: recovery,
@@ -460,6 +479,7 @@ fn decode_waiting_value(obj: JsonValue) -> CallerWorkRecord? {
                   }
               }
           }
+         }
       }
   }
 }
@@ -823,6 +843,7 @@ fn commit_attempt(
               record: CallerWorkRecord {
                 work: head.work,
                 reservation: head.reservation,
+                partition: head.partition,
                 generation: attempt_fence_generation(fence: fence),
                 phase: WorkCompleted,
                 recovery: head.recovery,
@@ -863,6 +884,7 @@ fn cancel_work(snapshot: CallerBacklogSnapshot, work: LogicalWorkId) -> CancelSt
             record: CallerWorkRecord {
               work: head.work,
               reservation: head.reservation,
+              partition: head.partition,
               generation: head.generation,
               phase: WorkCancelled,
               recovery: head.recovery,
@@ -941,7 +963,7 @@ fn cancel_work_durable(
 type RebindStanding
   = ReservationRebound { record: CallerWorkRecord }
   | RebindRefusedTerminal { phase: CallerWorkPhase }
-  | RebindPredecessorMismatch { held: ReservationRef }
+  | RebindPredecessorMismatch { held: SeatRef }
   | RebindUnknownWork
   | RebindDuplicate
 
@@ -950,25 +972,26 @@ type RebindStanding
 // the same predecessor: the second meets the first's reservation and refuses. Whether a bound
 // predecessor's grant is retired is the seat authority's fact, read by the caller before it names that
 // predecessor as expected; the record only guarantees that the claim is taken once per predecessor.
-fn rebind_reservation(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, expected: ReservationRef, reservation: ReservationRef) -> RebindStanding {
+fn rebind_reservation(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, expected: SeatRef, next: SeatRef) -> RebindStanding {
   match lookup_record(snapshot: snapshot, work: work) {
     CallerRecordAbsent => RebindUnknownWork
     CallerRecordDuplicated => RebindDuplicate
     CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting =>
-          if (head.reservation as String) == (expected as String) {
+          if (head.reservation as String) == (expected.reservation as String) && (head.partition as String) == (expected.partition as String) {
             ReservationRebound {
               record: CallerWorkRecord {
                 work: head.work,
-                reservation: reservation,
+                reservation: next.reservation,
+                partition: next.partition,
                 generation: head.generation,
                 phase: WorkWaiting,
                 recovery: head.recovery,
               },
             }
           } else {
-            RebindPredecessorMismatch { held: head.reservation }
+            RebindPredecessorMismatch { held: SeatRef { partition: head.partition, reservation: head.reservation } }
           }
         WorkCompleted => RebindRefusedTerminal { phase: head.phase }
         WorkCancelled => RebindRefusedTerminal { phase: head.phase }
@@ -980,7 +1003,7 @@ fn rebind_reservation(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, expe
 type DurableRebindStanding
   = DurableReservationRebound { record: CallerWorkRecord }
   | DurableRebindRefusedTerminal { phase: CallerWorkPhase }
-  | DurableRebindPredecessorMismatch { held: ReservationRef }
+  | DurableRebindPredecessorMismatch { held: SeatRef }
   | DurableRebindUnknownWork
   | DurableRebindStoreRefused { detail: NonEmptyStr }
   | DurableRebindKeyNotSlotAddressable { work: LogicalWorkId }
@@ -988,8 +1011,8 @@ type DurableRebindStanding
 fn rebind_reservation_durable(
   root: NonEmptyStr,
   work: LogicalWorkId,
-  expected: ReservationRef,
-  reservation: ReservationRef,
+  expected: SeatRef,
+  next: SeatRef,
 ) -> DurableRebindStanding {
   match observe_durable_record(root: root, work: work) {
     DurableSlotAbsent => DurableRebindUnknownWork
@@ -1002,7 +1025,7 @@ fn rebind_reservation_durable(
     }
     DurableSlotKeyNotSlotAddressable { work: w } => DurableRebindKeyNotSlotAddressable { work: w }
     DurableSlotPresent { record: held, generation: g } =>
-      match rebind_reservation(snapshot: singleton_snapshot(record: held), work: work, expected: expected, reservation: reservation) {
+      match rebind_reservation(snapshot: singleton_snapshot(record: held), work: work, expected: expected, next: next) {
         RebindUnknownWork => DurableRebindUnknownWork
         RebindPredecessorMismatch { held: h } => DurableRebindPredecessorMismatch { held: h }
         RebindDuplicate => DurableRebindStoreRefused {
@@ -1134,6 +1157,7 @@ fn note_recovery(
           let next = CallerWorkRecord {
             work: head.work,
             reservation: head.reservation,
+            partition: head.partition,
             generation: head.generation,
             phase: next_phase,
             recovery: next_events,

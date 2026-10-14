@@ -2,7 +2,7 @@ module test.claim.serving_caller_backlog_wet_witness
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.types { Bool, Int, NonEmptyStr, String }
+import std.types { Bool, Int, NonEmptyStr, String, List }
 import std.optional { Present, Absent }
 import std.durable_compare_and_set { cas_generation_first }
 import product.fabric.execution { ReservationRef }
@@ -26,6 +26,10 @@ import gunbc.serving.caller_backlog {
   RecoveryEvent, RecoveryProbe, RecoveryRequest,
 }
 import std.nat { Nat }
+import gunbc.serving.rented_replica { RentedReplicaIdentity }
+import gunbc.serving.replica_endpoint_launch { replica_endpoint_launch }
+import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm }
+import gunbc.serving.turn_admission { BatchQualityTolerant }
 import std.measure { Measure, Count, One }
 import product.capacity.pool { Pool }
 import product.capacity.event_chain { PartitionId }
@@ -35,10 +39,10 @@ import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageL
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import gunbc.fabric.fabric_event_log { SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused, fabric_seat_acquire, fabric_seat_release, seat_release_wire }
 import gunbc.harness.harness_seat {
-  HarnessCallerHold, HarnessCallerTurn, harness_complete_with_grant, HarnessCallerTurnCompleted, HarnessCallerCompletionRefused, harness_now_epoch, harness_unplaced_reservation, harness_seat_pool_root, harness_claim_seat, HarnessSeatClaimed, HarnessSeatClaimRefused,
+  harness_settle_caller_turn, PlacementRound, HarnessSeatBinding, HarnessSeatBound, HarnessSeatRefused, HarnessSeatReference, HarnessCallerHold, HarnessCallerTurn, harness_complete_with_grant, HarnessCallerTurnCompleted, HarnessCallerCompletionRefused, harness_now_epoch, harness_unplaced_reservation, harness_seat_pool_root, harness_claim_seat, HarnessSeatClaimed, HarnessSeatClaimRefused,
 }
 import gunbc.serving.caller_backlog {
-  rebind_reservation_durable, DurableReservationRebound, DurableRebindPredecessorMismatch, DurableRebindRefusedTerminal,
+  SeatRef, caller_unplaced_partition, DurableCancelled, rebind_reservation_durable, DurableReservationRebound, DurableRebindPredecessorMismatch, DurableRebindRefusedTerminal,
   DurableRebindUnknownWork, DurableRebindStoreRefused, DurableRebindKeyNotSlotAddressable,
 }
 import std.algebra { length }
@@ -777,13 +781,13 @@ test fn two_retries_rebinding_one_waiting_record_admit_exactly_one_by_real_execu
   let work = "logical-work-race" as LogicalWorkId
   let placeholder = harness_unplaced_reservation(work: work)
   let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, reservation: placeholder, generation: 1)
-  let first = rebind_reservation_durable(root: root, work: work, expected: placeholder, reservation: "seat-retry-a" as ReservationRef)
-  let second = rebind_reservation_durable(root: root, work: work, expected: placeholder, reservation: "seat-retry-b" as ReservationRef)
+  let first = rebind_reservation_durable(root: root, work: work, expected: SeatRef { partition: caller_unplaced_partition, reservation: placeholder }, next: SeatRef { partition: "card-a" as PartitionId, reservation: "seat-retry-a" as ReservationRef })
+  let second = rebind_reservation_durable(root: root, work: work, expected: SeatRef { partition: caller_unplaced_partition, reservation: placeholder }, next: SeatRef { partition: "card-a" as PartitionId, reservation: "seat-retry-b" as ReservationRef })
   let after = resume_waiting_durable(root: root, work: work)
   let cleaned = shell.Remove.RecursiveForce(path: root_path)
   (match persisted { DurableWaitingPersisted { record: _ } => true  other => false })
     && (match first { DurableReservationRebound { record: _ } => true  other => false })
-    && (match second { DurableRebindPredecessorMismatch { held: h } => (h as String) == "seat-retry-a"  other => false })
+    && (match second { DurableRebindPredecessorMismatch { held: h } => (h.reservation as String) == "seat-retry-a" && (h.partition as String) == "card-a"  other => false })
     && (match after { DurableResumedWaiting { record: r } => (r.reservation as String) == "seat-retry-a"  other => false })
     && cleaned.success
 }
@@ -879,7 +883,7 @@ fn completion_fixture(ordinal: Nat, acquired_at_offset: Int, release_before: Boo
                 let released = if release_before {
                   seat_release_wire(r: fabric_seat_release(store: store, partition: partition, root: claim_pool(), reference: "seat-completion" as NonEmptyStr, reason: "done" as NonEmptyStr, at: now, attempts: 3, budget: 4096))
                 } else { "kept" }
-                match harness_complete_with_grant(turn: turn, presented: g, store: store, partition: partition) {
+                match harness_complete_with_grant(turn: turn, presented: g, store: store) {
                   HarnessCallerTurnCompleted { record: _ } => "completed"
                   HarnessCallerCompletionRefused { detail: _ } => "refused"
                 }
@@ -910,4 +914,119 @@ test fn completion_refuses_a_grant_expired_by_the_observed_clock_by_real_executi
 
 test fn completion_refuses_a_grant_the_partition_has_released_by_real_execution() -> Bool {
   completion_fixture(ordinal: 3, acquired_at_offset: 0, release_before: true) == "refused"
+}
+
+// CROSS-CARD FAILOVER OVER TWO REAL PARTITIONS (review 5518160079). A work whose seat was on card A may be retried
+// on card B. The record carries the partition its reservation lives in, so retirement is proved in A's partition
+// (not the new seat's) and the record then moves {A, a} to {B, b} in one compare-and-set. scenario 1: A's seat is
+// live, so B's claim refuses. scenario 2: A's seat released, so exactly one of two retries claims B and the record
+// names B. scenario 3: a record cancelled while on A cannot be revived on B. Reading the new seat's partition for
+// the predecessor (the former behaviour) cannot see A's acquisition and so refuses B in scenario 2.
+fn failover_fixture(scenario: Int) -> String {
+  let dir = shell.Mktemp.Dir()
+  let fabric = fabric_storage_file_root(root: concat(dir.path as String, "/fabric") as NonEmptyStr)
+  let work = "logical-work-failover" as LogicalWorkId
+  let root = dir.path as NonEmptyStr
+  let observed = if !dir.success { "setup: no temp dir" } else { match fabric_storage_file_root_ensure(root: fabric) {
+    FabricStorageRootReady => {
+      let store = FabricStorageLocalFiles { root: fabric }
+      let card_a = "card-a" as PartitionId
+      let card_b = "card-b" as PartitionId
+      let hold = HarnessCallerHold { work: work, root: root }
+      let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, reservation: harness_unplaced_reservation(work: work), generation: 1)
+      match claim_acquire(store: store, partition: card_a, reference: "seat-a", at: 100) {
+        Absent => "setup: acquire a"
+        Present { value: ga } => match harness_claim_seat(hold: hold, grant: ga, store: store, partition: card_a) {
+          HarnessSeatClaimRefused { detail: d } => join(["setup: claim a refused: ", d], "")
+          HarnessSeatClaimed => match claim_acquire(store: store, partition: card_b, reference: "seat-b1", at: 101) {
+            Absent => "setup: acquire b1"
+            Present { value: gb1 } => match claim_acquire(store: store, partition: card_b, reference: "seat-b2", at: 102) {
+              Absent => "setup: acquire b2"
+              Present { value: gb2 } =>
+                if scenario == 1 {
+                  if claim_refused(c: harness_claim_seat(hold: hold, grant: gb1, store: store, partition: card_b)) { "b refused while a is live" } else { "b claimed over a live seat" }
+                } else if scenario == 2 {
+                  let released = fabric_seat_release(store: store, partition: card_a, root: claim_pool(), reference: "seat-a" as NonEmptyStr, reason: "done" as NonEmptyStr, at: 103, attempts: 3, budget: 4096)
+                  let first = harness_claim_seat(hold: hold, grant: gb1, store: store, partition: card_b)
+                  let second = harness_claim_seat(hold: hold, grant: gb2, store: store, partition: card_b)
+                  let after = resume_waiting_durable(root: root, work: work)
+                  if claim_taken(c: first) && claim_refused(c: second) && (match after { DurableResumedWaiting { record: r } => (r.partition as String) == "card-b" && (r.reservation as String) == "seat-b1"  other => false }) { "exactly one retry claimed b" } else { "wrong claim outcome" }
+                } else {
+                  let cancelled = cancel_work_durable(root: root, snapshot: empty_caller_backlog, work: work)
+                  let released = fabric_seat_release(store: store, partition: card_a, root: claim_pool(), reference: "seat-a" as NonEmptyStr, reason: "done" as NonEmptyStr, at: 103, attempts: 3, budget: 4096)
+                  if (match cancelled { DurableCancelled { record: _ } => true  other => false }) && claim_refused(c: harness_claim_seat(hold: hold, grant: gb1, store: store, partition: card_b)) { "cancelled record not revived on b" } else { "cancelled record revived or not cancelled" }
+                }
+            }
+          }
+        }
+      }
+    }
+    other => "setup: fabric root"
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  if cleaned.success { observed } else { "setup: cleanup" }
+}
+
+test fn a_live_seat_on_card_a_refuses_a_claim_on_card_b_by_real_execution() -> Bool {
+  failover_fixture(scenario: 1) == "b refused while a is live"
+}
+
+test fn a_released_seat_on_card_a_admits_exactly_one_claim_on_card_b_by_real_execution() -> Bool {
+  failover_fixture(scenario: 2) == "exactly one retry claimed b"
+}
+
+test fn a_record_cancelled_on_card_a_is_not_revived_on_card_b_by_real_execution() -> Bool {
+  failover_fixture(scenario: 3) == "cancelled record not revived on b"
+}
+
+fn settle_bound(grant: LeaseGrant, store: FabricStorageBinding, partition: PartitionId) -> HarnessSeatBinding {
+  let replica = RentedReplicaIdentity { node: "rental-1" as NonEmptyStr, device_index: 0, served_name: "settle-witness" as NonEmptyStr }
+  HarnessSeatBound {
+    url: "http://127.0.0.1:1",
+    grant: grant,
+    partition: partition,
+    ceiling: 2,
+    replica_wire: "settle-witness",
+    launch: replica_endpoint_launch(replica: replica, endpoint: "127.0.0.1:1" as NonEmptyStr, process_start_field: "1.0" as NonEmptyStr),
+    store: store,
+    model: "settle-model" as NonEmptyStr,
+    unit: DeepseekV4FlashOnVllm,
+    class: BatchQualityTolerant,
+    seat: HarnessSeatReference { attempt: "a" as NonEmptyStr, offer_key: "k" as NonEmptyStr, stamped_at: 100, round: 1, head: "h" as NonEmptyStr },
+  }
+}
+
+// TWO ACQUIRED SEATS FOR ONE HOLD THROUGH THE REAL SETTLE ROUTE (review 5518160079, no double execution): both
+// HarnessSeatBound outcomes cross harness_settle_caller_turn; only the one whose claim the durable record admits
+// is returned bound, and the other comes back refused (its seat released). If settle skipped the claim, both
+// would reach the worker turn and this reads RED.
+test fn only_one_of_two_acquired_seats_for_one_hold_leaves_settle_bound_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let fabric = fabric_storage_file_root(root: concat(dir.path as String, "/fabric") as NonEmptyStr)
+  let work = "logical-work-settle" as LogicalWorkId
+  let root = dir.path as NonEmptyStr
+  let ok = if !dir.success { false } else { match fabric_storage_file_root_ensure(root: fabric) {
+    FabricStorageRootReady => {
+      let store = FabricStorageLocalFiles { root: fabric }
+      let partition = "claim-partition" as PartitionId
+      let hold = HarnessCallerHold { work: work, root: root }
+      let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, reservation: harness_unplaced_reservation(work: work), generation: 1)
+      let placed = PlacementRound { done: none, excluded: [] as List<String>, notes: [] as List<String>, retryable: false, ready: 2, recovery: [] as List<RecoveryEvent> }
+      match claim_acquire(store: store, partition: partition, reference: "seat-s1", at: 100) {
+        Absent => false
+        Present { value: g1 } => match claim_acquire(store: store, partition: partition, reference: "seat-s2", at: 101) {
+          Absent => false
+          Present { value: g2 } => {
+            let first = harness_settle_caller_turn(hold: hold, placed: placed, outcome: settle_bound(grant: g1, store: store, partition: partition))
+            let second = harness_settle_caller_turn(hold: hold, placed: placed, outcome: settle_bound(grant: g2, store: store, partition: partition))
+            (match first { HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => true  other => false })
+              && (match second { HarnessSeatRefused { detail: _ } => true  other => false })
+          }
+        }
+      }
+    }
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  ok && cleaned.success
 }
