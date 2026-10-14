@@ -106,24 +106,11 @@ fn idempotency_witness(tree: InferredTree, dependencies: List<DependencyView>) -
   }
 }
 
-fn idempotency_verdict_eq(a: IdempotencyVerdict, b: IdempotencyVerdict) -> Bool {
-  match a {
-    AlgebraicIdempotenceProven { law: a_law } => match b {
-      AlgebraicIdempotenceProven { law: b_law } => a_law == b_law
-      _ => false
-    }
-    RequiresAlgebraWitness => match b {
-      RequiresAlgebraWitness => true
-      _ => false
-    }
-  }
-}
-
 fn idempotency_classified_eq(
   a: ClassifiedDependencyView<IdempotencyVerdict>,
   b: ClassifiedDependencyView<IdempotencyVerdict>
 ) -> Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: idempotency_verdict_eq)
+  classified_dependency_view_eq(a: a, b: b, classification_eq: fn(a, b) { a == b })
 }
 
 fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {

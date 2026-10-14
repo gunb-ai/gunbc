@@ -10,7 +10,7 @@ import std.decl_ref { decl_ref }
 import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
 
 // THE SUBJECT VECTOR AND THE TREE IT WAS READ FROM GET ONE PRODUCER, WHICH IS THIS MODULE'S WHOLE
-// CONTENT. gunbc.namespace_cut.namespace_step0_strip_producer strips and compiles the (path, content) vector it
+// CONTENT. v2.workflow.namespace_step0_strip_producer strips and compiles the (path, content) vector it
 // is HANDED, and says so: "that the handed vector is the whole of the tree the receipt names is the
 // caller's obligation ... nothing here can check it." Its next-rung trigger is exactly this
 // capability. Until it exists, a receipt naming the frozen manifest over a hand-supplied vector is

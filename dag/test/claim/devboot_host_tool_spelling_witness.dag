@@ -9,7 +9,7 @@ import extdeps.tools.mkdir {
   mkdir_parents_argv,
 }
 import extdeps.tools.env { env_path_resolved_program, env_bindings_argv }
-import v2.std.orchestration { EnvBinding, EnvSet }
+import std.env_binding { EnvBinding, EnvSet }
 import extdeps.rust.cargo {
   CargoEnvironmentVariable,
   CargoHomeEnv,

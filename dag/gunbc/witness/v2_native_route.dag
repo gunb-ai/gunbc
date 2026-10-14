@@ -99,6 +99,20 @@ fn native_route_module_package_text(module_qn: String) -> String {
   )
 }
 
+// THE SAME CORRESPONDENCE READ FROM THE PACKAGE SIDE: the module whose namespace segments are the
+// package's segments. It lives here, beside native_route_module_package_text, so the one fact has one
+// home; a consumer holding a package (the census subject's label) names the module through it rather
+// than re-folding the separator itself.
+fn native_route_package_text_module(package_text: String) -> String {
+  fold_list(
+    xs: split(s: package_text, delimiter: "/"),
+    empty: "",
+    cons: fn(acc, segment) {
+      if acc == "" { concat("", segment) } else { concat(concat(acc, "."), segment) }
+    }
+  )
+}
+
 fn native_route_label_in_package(package_text: String, declaration: String) -> LabelParse {
   parse_label(text: concat(concat(concat("//", package_text), ":"), declaration))
 }

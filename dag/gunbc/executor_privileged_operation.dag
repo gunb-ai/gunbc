@@ -29,7 +29,7 @@ import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.sha256sum { sha256sum_binary_path }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.tools.env { env_prefixed_argv }
-import v2.std.orchestration { EnvSet }
+import std.env_binding { EnvSet }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.cli_invoke { gunbc_run_invocation_words_with_functions, invocation_words_bare }
 import extdeps.posix.shell_command_language { posix_single_quote }

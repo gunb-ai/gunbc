@@ -268,6 +268,30 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
   - `gunbc.observation_ci_render::ci_event_line`
   - `gunbc.observation_ci_render::ci_render_line`
 
+### Cardinality / absence
+
+**Owns.** Presence and absence, optional-layer nesting, collection emptiness and nonemptiness, and the preservation of these facts from source through typing, execution, realization and declared ingestion conversions. Cardinality belongs to a named position and measure within the value's structure. Operator rulings of 2026-10-13, applying to every layer: `gunbc.design_ruling cardinality_one_concept`, `gunbc.design_ruling dag_absence_is_one_meaning`, `gunbc.design_ruling explicit_present_is_the_authoring_policy`, `gunbc.design_ruling optional_sugar_is_declaration_bound`, `gunbc.design_ruling nonemptiness_is_constructed_or_proved`, `gunbc.design_ruling native_first_complete_cuts`.
+
+**Boundaries.**
+
+- Failure causes, search progress, policy states and independently governed upstream null or missing states retain their own meanings. Factor their optional parts without erasing those distinctions; classify by contract, not by a variant-name suffix.
+- Conversion legality is section 4's judgment. This domain checks inhabitance and preservation; target realization cannot authorize a conversion, and a stated departure does not waive another design obligation.
+- Data cardinality is not evaluation multiplicity or a termination proof. The existing bound witnesses are not a claim that general collection-interval propagation or every acceptance path is implemented.
+
+**Existing authorities**
+
+- **Presence and sequences** — the canonical optional, possibly-empty sequence and nonempty sequence carriers
+  - `std.optional::Optional`
+  - `std.algebra::FreeMonoid`
+  - `std.algebra::FreeSemigroup`
+- **Optional-layer structure** — read and construct consecutive optional layers without collapsing their depth
+  - `v2.std.optional_layers::type_node_occupancy_read`
+  - `v2.std.optional_layers::wrap_type_node_occupancy`
+- **Declared-type boundaries** — the existing producer-versus-declared-type inhabitance judgment
+  - `v2.std.inhabitance::declared_type_inhabitance`
+- **Natural bounds** — the existing natural-order witness from which its two bounds are read
+  - `v2.std.cardinality::NatLeWitness`
+
 ## 3c. Consumption (who consumes a change, and how)
 
 Conformance asks whether a change inhabits existing models; **consumption asks the converse of every model it adds: who consumes it, and by what executing route** (ruling `gunbc.design_ruling consumption_interrogated_separately`). §5 already rules that a typecheck and a grep are not consumers, but folded into other questions it let a diff add a well-shaped type, a row and a witness that the row exists while nothing read the row. A declaration nothing consumes is §2's redundant work in its purest form.
@@ -429,9 +453,9 @@ One file per class under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_f
 
 The CI contract. From a bare clone, start at `gunbc.contributor_onboarding_path` (combined view: `gunbc.instruments.docs_projection_gate` `regen`): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document.
 
-- **CI is one required job.** `gunbc.witness.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `witnesses`, run on the fleet for every pull request and merge_group (ruling `gunbc.design_ruling v1_withdrawn_one_required_job`). It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no `witnesses` check — unobserved, not excused.
+- **CI is one required job.** `gunbc.witness.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `v2-bootstrap`, run on the fleet for every pull request and merge_group (ruling `gunbc.design_ruling v1_withdrawn_one_required_job`). It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no required check — unobserved, not excused.
 - **A non-required job repairs two generated populations and judges nothing.** `gunbc.heal_workflow` runs on same-repository pull requests that touch the generation inputs, converges the stage0 mirrors to the seed's own fixed point and rewrites the seed-build artifacts, and `gunbc.heal_publisher_workflow` pushes the result as one bot commit, compare-and-set on the head, with a receipt naming each artifact. A fork pull request gets a notice, and a non-converging round pushes nothing. `gunbc.drift_watch_workflow` runs on a schedule, reads the default branch and fails with one typed, located finding per drifted workflow, runner sudoers, githook, `.gitignore`, `.gitattributes` or fci1 context, each naming its remedy (`gunbc.tier_o_artifact_emit` `tier_o_artifacts`); it writes nothing. Neither is a required context and neither refuses a merge; every other generated artifact is left to its author (`gunbc.rung_drop` `v1_required_lanes_withdrawn`); the two added jobs are recorded at (ruling `gunbc.design_ruling regeneration_jobs_added_to_roster`).
 - **The memory envelope is part of the verdict** (ruling `gunbc.design_ruling memory_envelope_is_part_of_the_verdict`). Each subject step refuses a run no cgroup `memory.max` bounds, prints a memory receipt at exit, and refuses on any OOM kill or any swap whatever the producer answered (`gunbc.host.memory_envelope`; slot shape `gunbc.runner.runner_slot_desired`).
-- **What a green `witnesses` does not say.** Nothing on the required path evaluates a witness, refuses a module outside the two emitted closures, runs clippy or the v1 unit tests, or compares a generated artifact — this document included — with its authority. That loss is one declared drop, `gunbc.rung_drop` `v1_required_lanes_withdrawn`, whose population is re-derived by `gunbc test //gunbc/instruments:required-lane-resolution-census` and whose trigger is the native compiler judging that population. A new verdict joins the gate as a row judged by a binary built from the seed's emission, never as a lane handing the corpus to the v1 interpreter.
+- **What a green `v2-bootstrap` does not say.** Nothing on the required path evaluates a witness, refuses a module outside the two emitted closures, runs clippy or the v1 unit tests, or compares a generated artifact — this document included — with its authority. That loss is one declared drop, `gunbc.rung_drop` `v1_required_lanes_withdrawn`, whose population is re-derived by `gunbc test //gunbc/instruments:required-lane-resolution-census` and whose trigger is the native compiler judging that population. A new verdict joins the gate as a row judged by a binary built from the seed's emission, never as a lane handing the corpus to the v1 interpreter.
 - **The job roster is closed to growth** (ruling `gunbc.design_ruling job_roster_closed_to_growth`): adding a job needs operator sign-off; the reasoning an author owes is stated at `witness_floor_lane_jobs`.
 - **Measurements are `gunbc test <label>`** (ruling `gunbc.design_ruling instrument_is_a_row_not_a_flag`). A label is a row in `gunbc.instrument_targets` bound through `gunbc.target_binding` `TargetProducer`, never a flag on `claim_executor`. Exit 0 means the observation held, 1 that it did not, 2 that there was no observation (an unknown label refuses with 2).
