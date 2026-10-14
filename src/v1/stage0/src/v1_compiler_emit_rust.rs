@@ -11868,7 +11868,7 @@ pub fn has_physical_type_def_in_module_filename(
                             source_indices.clone(),
                             item.clone(),
                         ) == rhs_name.clone())
-                            && ((crate::v1_compiler_emit_core_support::is_type_def_item(
+                            && (((crate::v1_compiler_emit_core_support::is_type_def_item(
                                 item.clone(),
                             ) || crate::v1_compiler_emit_core_support::is_type_alias_item(
                                 item.clone(),
@@ -11876,7 +11876,8 @@ pub fn has_physical_type_def_in_module_filename(
                             )) || crate::v1_compiler_emit_core_support::is_type_decl_item(
                                 item.clone(),
                                 source_indices.clone(),
-                            )))
+                            )) || (item.module_item_kind.clone()
+                                == ParsedModuleItemKind::ModuleItemResource)))
                         {
                             __found = true;
                             break;
@@ -11979,7 +11980,7 @@ pub fn type_name_is_export_source_in_module(
             for item in tm.items.clone().iter().cloned() {
                 if ((crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
                     == name.clone())
-                    && ((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                    && (((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
                         || crate::v1_compiler_emit_core_support::is_type_alias_item(
                             item.clone(),
                             source_indices.clone(),
@@ -11987,7 +11988,9 @@ pub fn type_name_is_export_source_in_module(
                         || crate::v1_compiler_emit_core_support::is_type_decl_item(
                             item.clone(),
                             source_indices.clone(),
-                        )))
+                        ))
+                        || (item.module_item_kind.clone()
+                            == ParsedModuleItemKind::ModuleItemResource)))
                 {
                     __found = true;
                     break;
@@ -12019,7 +12022,7 @@ pub fn type_name_is_rust_importable_in_module(
             for item in tm.items.clone().iter().cloned() {
                 if ((crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
                     == name.clone())
-                    && ((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                    && (((crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
                         || crate::v1_compiler_emit_core_support::is_type_alias_item(
                             item.clone(),
                             source_indices.clone(),
@@ -12027,7 +12030,9 @@ pub fn type_name_is_rust_importable_in_module(
                         || crate::v1_compiler_emit_core_support::is_type_decl_item(
                             item.clone(),
                             source_indices.clone(),
-                        )))
+                        ))
+                        || (item.module_item_kind.clone()
+                            == ParsedModuleItemKind::ModuleItemResource)))
                 {
                     __result.push(item);
                 }
@@ -13241,7 +13246,9 @@ pub fn type_item_has_rust_nominal_shell_authority(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
-    if crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) {
+    if (crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+        || (item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemResource))
+    {
         true
     } else {
         if crate::v1_compiler_emit_core_support::is_type_alias_item(
