@@ -4,7 +4,7 @@ import std.types { Bool, String, List, NonEmptyStr }
 import std.optional { Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
-import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_push }
+import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_push, github_event_name_pull_request }
 import gunbc.action_use_admission { cache_save_action }
 import gunbc.ci.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 import v2.cli.population_verb_names { cli_verb_parse_population }
@@ -29,6 +29,12 @@ data materialization_publish_ref: String = "refs/heads/main"
 
 fn materialization_publish_if() -> String {
   join(["github.event_name == '", github_event_name_push, "' && github.ref == '", materialization_publish_ref, "'"], "")
+}
+
+// Identity is needed to name both the main save key and the PR restore prefix. Walk and save
+// stay push+main only.
+fn parse_verdict_identity_if() -> String {
+  join(["(", materialization_publish_if(), ") || (github.event_name == '", github_event_name_pull_request, "')"], "")
 }
 
 // ONE PROVIDER, GENERIC OVER REQUEST FAMILIES. The GHA cache key prefix names the family so a
@@ -140,7 +146,7 @@ fn parse_verdict_identity_step() -> Step {
     shell: none,
     env: Present { value: parse_verdict_publish_memory_env() },
     working_directory: none,
-    if_condition: Present { value: materialization_publish_if() },
+    if_condition: Present { value: parse_verdict_identity_if() },
     continue_on_error: none,
     timeout_minutes: none
   }

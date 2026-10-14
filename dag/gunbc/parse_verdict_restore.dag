@@ -1,0 +1,122 @@
+module gunbc.parse_verdict_restore
+
+import std.types { Bool, String, NonEmptyStr }
+import std.optional { Present }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_pull_request }
+import gunbc.action_use_admission { cache_restore_action }
+import gunbc.ci.ci_failure_class { wrap_command_is_renderable }
+import v2.cli.population_verb_names { cli_verb_parse_population }
+import gunbc.parse_verdict_schema {
+  parse_verdict_request_family,
+}
+import gunbc.parse_verdict_publish {
+  materialization_gha_cache_key_prefix,
+  parse_verdict_receipt_dir,
+  parse_verdict_publish_step_id,
+  parse_verdict_compiler_output,
+  parse_verdict_parser_bin_output,
+  parse_verdict_publish_memory_env,
+  parse_verdict_wrapped_script,
+  source_root_argv,
+}
+
+// POLICY: pull_request heads restore a default-branch blob and never save
+// (extdeps.cache.github_actions gha_cache_entry_restorable_by).
+fn materialization_restore_if() -> String {
+  join(["github.event_name == '", github_event_name_pull_request, "'"], "")
+}
+
+data parse_verdict_restore_step_id: String = "restore_parse_verdicts"
+data parse_verdict_restore_step_name: String = "Restore parse-verdict receipts from Actions cache"
+data parse_verdict_restore_consume_step_name: String = "Reuse or walk parse-verdict receipts"
+data parse_verdict_cache_hit_output: String = "cache-hit"
+
+fn parse_verdict_restore_prefix() -> String {
+  join(
+    [
+      materialization_gha_cache_key_prefix(family: parse_verdict_request_family),
+      "${{ steps.",
+      parse_verdict_publish_step_id,
+      ".outputs.",
+      parse_verdict_compiler_output,
+      " }}-"
+    ],
+    ""
+  )
+}
+
+// Exact key is the merge-base sha under this compiler. restore-keys is the compiler prefix
+// so a later main save still hits when base.sha itself was LRU-evicted.
+fn parse_verdict_restore_exact_key() -> String {
+  join([parse_verdict_restore_prefix(), "${{ github.event.pull_request.base.sha }}"], "")
+}
+
+fn parse_verdict_restore_step() -> Step {
+  UsesStep {
+    name: Present { value: parse_verdict_restore_step_name },
+    id: Present { value: parse_verdict_restore_step_id },
+    uses: cache_restore_action,
+    with: Present {
+      value: [
+        kv(key: "path", value: yaml_string(s: parse_verdict_receipt_dir)),
+        kv(key: "key", value: yaml_string(s: parse_verdict_restore_exact_key())),
+        kv(key: "restore-keys", value: yaml_string(s: parse_verdict_restore_prefix()))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: materialization_restore_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+data parse_verdict_restore_shell_emit_dissolution_text: NonEmptyStr = "dissolve-on: parse_verdict_restore_consume_step -- hand-shell standing + walk-on-miss. DISSOLVES WHEN v2.workflow.ci_workflow_run_emit renders this from modeled bash_build statements."
+data parse_verdict_restore_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: parse_verdict_restore_shell_emit_dissolution_text)
+
+// A prefix hit means this I_head has a blob (Reused). A miss cannot tell FreshIdentityWalked
+// (new compiler, never published) from EvictedRefused (same compiler, LRU) without an independent
+// I_base; the executing arm WALKS on miss rather than refusing a parser-change PR.
+fn parse_verdict_restore_consume_command() -> String {
+  join(
+    [
+      "set -o pipefail",
+      join(["hit=\"${{ steps.", parse_verdict_restore_step_id, ".outputs.", parse_verdict_cache_hit_output, " }}\""], ""),
+      join(["bin=\"${{ steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_parser_bin_output, " }}\""], ""),
+      join(["compiler=\"${{ steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_compiler_output, " }}\""], ""),
+      "if [ -z \"$bin\" ] || [ ! -x \"$bin\" ] || [ -z \"$compiler\" ]; then echo \"::error::IdentityUnknown: parser identity or generation-one executable missing after the identity step\"; exit 1; fi",
+      join(["mkdir -p \"", parse_verdict_receipt_dir, "\""], ""),
+      join(["receipts=\"", parse_verdict_receipt_dir, "/receipts.tsv\""], ""),
+      join(
+        [
+          "if [ \"$hit\" = \"true\" ]; then if [ ! -s \"$receipts\" ]; then echo \"::error::EvictedRefused: cache-hit but receipts.tsv missing or empty\"; exit 1; fi; echo \"parse-verdict reuse=Reused compiler=$compiler\"; else \"$bin\" ",
+          cli_verb_parse_population,
+          " --compiler \"$compiler\"",
+          source_root_argv(),
+          " > \"$receipts\"; echo \"parse-verdict reuse=FreshIdentityWalked compiler=$compiler\"; fi"
+        ],
+        ""
+      )
+    ],
+    "; "
+  )
+}
+
+fn parse_verdict_restore_consume_step() -> Step {
+  RunStep {
+    name: Present { value: parse_verdict_restore_consume_step_name },
+    id: none,
+    run: parse_verdict_wrapped_script(command: parse_verdict_restore_consume_command()),
+    shell: none,
+    env: Present { value: parse_verdict_publish_memory_env() },
+    working_directory: none,
+    if_condition: Present { value: materialization_restore_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn parse_verdict_restore_script_is_renderable() -> Bool {
+  wrap_command_is_renderable(command: parse_verdict_restore_consume_command())
+}

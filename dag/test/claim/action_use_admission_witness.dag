@@ -28,7 +28,7 @@ import gunbc.action_use_admission {
   realized_census_cost_standing,
   action_use_admitted, action_use_admission_reason, admit_action_release, admit_action_release_against, admit_realized_action_use,
   admit_workflow_action_uses, realized_workflow_reading, realized_distinct_uses,
-  upload_artifact_action, checkout_action, setup_rust_action, cache_save_action,
+  upload_artifact_action, checkout_action, setup_rust_action, cache_save_action, cache_restore_action,
   realized_use_is_a_repository_selection,
 }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow }
@@ -189,6 +189,11 @@ test fn green_pinned_selected_release_realized_is_admitted() -> Bool {
 test fn green_cache_save_subdirectory_release_is_admitted() -> Bool {
   action_use_admitted(a: admit_action_release(action_release: cache_save_action))
     && action_use_admitted(a: admit_realized_action_use(u: step_use(text: action_release_uses_text(action_release: cache_save_action))))
+}
+
+test fn green_cache_restore_subdirectory_release_is_admitted() -> Bool {
+  action_use_admitted(a: admit_action_release(action_release: cache_restore_action))
+    && action_use_admitted(a: admit_realized_action_use(u: step_use(text: action_release_uses_text(action_release: cache_restore_action))))
 }
 
 // ---------------------------------------------------------------------------------------------

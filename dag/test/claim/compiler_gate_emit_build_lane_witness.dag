@@ -16,6 +16,7 @@ import gunbc.witness.compiler_gate_workflow {
 }
 import gunbc.parse_verdict_publish {
   materialization_publish_if,
+  parse_verdict_identity_if,
   parse_verdict_identity_step,
   parse_verdict_publish_walk_step,
   parse_verdict_publish_save_step,
@@ -25,6 +26,11 @@ import gunbc.parse_verdict_publish {
   parse_verdict_publish_cache_key,
   parse_verdict_publish_step_id,
   parse_verdict_compiler_output,
+}
+import gunbc.parse_verdict_restore {
+  materialization_restore_if,
+  parse_verdict_restore_step,
+  parse_verdict_restore_consume_step,
 }
 import gunbc.parse_verdict_schema { parse_verdict_request_family }
 import gunbc.required_ci_contract_epoch {
@@ -529,7 +535,8 @@ test fn the_required_job_binds_the_parse_verdict_publisher() -> Bool {
 
 test fn a_pr_head_run_never_publishes() -> Bool {
   let guard = materialization_publish_if()
-  (step_if_condition(step: parse_verdict_identity_step()) == guard)
+  (step_if_condition(step: parse_verdict_identity_step()) == parse_verdict_identity_if())
+    && string_contains(s: parse_verdict_identity_if(), pattern: "pull_request")
     && (step_if_condition(step: parse_verdict_publish_walk_step()) == guard)
     && (step_if_condition(step: parse_verdict_publish_save_step()) == guard)
     && string_contains(s: guard, pattern: "refs/heads/main")
@@ -553,6 +560,15 @@ test fn the_publish_save_does_not_restore() -> Bool {
   any(keys, k => k == "key")
     && any(keys, k => k == "path")
     && (any(keys, k => k == "restore-keys") == false)
+}
+
+test fn a_pr_head_restores_and_never_saves() -> Bool {
+  let restore_if = materialization_restore_if()
+  (step_if_condition(step: parse_verdict_restore_step()) == restore_if)
+    && (step_if_condition(step: parse_verdict_restore_consume_step()) == restore_if)
+    && string_contains(s: restore_if, pattern: "pull_request")
+    && (string_contains(s: restore_if, pattern: "push") == false)
+    && any(step_with_keys(step: parse_verdict_restore_step()), k => k == "restore-keys")
 }
 
 test fn the_gha_object_key_carries_compiler_identity_and_sha() -> Bool {
