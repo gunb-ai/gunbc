@@ -2532,6 +2532,7 @@ pub fn rust_carrier_is_at_shared_layer(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     type_decl_items: Rc<TypeDeclIndex>,
+    generic_param_names: Rc<Vec<String>>,
 ) -> bool {
     {
         let leaf = rust_fn_sig_leaf_name(source_indices.clone(), n.clone());
@@ -2543,6 +2544,7 @@ pub fn rust_carrier_is_at_shared_layer(
                 n.clone(),
                 type_decl_items.clone(),
                 source_indices.clone(),
+                generic_param_names.clone(),
             ))
     }
 }
@@ -6480,6 +6482,23 @@ pub enum SharedLayerAnswer {
     SharedLayerRefuse { leaf: String, cause: String },
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum NeedsBoxAnswer {
+    NeedsBox,
+    NeedsNoBox,
+    NeedsBoxRefuse { leaf: String, cause: String },
+}
+
+pub fn box_type_by_needs_box(answer: NeedsBoxAnswer, ty: String) -> String {
+    match answer {
+        NeedsBoxAnswer::NeedsBox => {
+            v1_rt::concat(v1_rt::concat("Box<".to_string(), ty), ">".to_string())
+        }
+        NeedsBoxAnswer::NeedsNoBox => ty,
+        NeedsBoxAnswer::NeedsBoxRefuse { leaf, cause } => shared_layer_refuse_expr(leaf, cause),
+    }
+}
+
 pub fn shared_layer_refuse_expr(leaf: String, cause: String) -> String {
     emit_rust_compile_error_expr(v1_rt::concat(
         v1_rt::concat(
@@ -6498,6 +6517,7 @@ pub fn shared_layer_of_resolution(
     leaf: String,
     resolution: TypeDeclResolution,
     type_decl_items: Rc<TypeDeclIndex>,
+    generic_param_names: Rc<Vec<String>>,
 ) -> SharedLayerAnswer {
     if crate::std_types::is_container_type(leaf.clone()) {
         if v1_rt::set_contains(&shared_types, leaf.clone()) {
@@ -6525,9 +6545,8 @@ pub fn shared_layer_of_resolution(
             }
             TypeDeclResolution::TypeDeclNotDeclared => {
                 if leaf.clone() == "".to_string()
-                    || leaf.clone() == "fn".to_string()
                     || crate::std_types::is_kernel_type(leaf.clone())
-                    || ((leaf.clone().len() as i64) == 1 && rust_is_uppercase_letter(leaf.clone()))
+                    || type_var_in_fn_generic_scope(leaf.clone(), generic_param_names)
                 {
                     SharedLayerAnswer::SharedLayerAtValue
                 } else {
@@ -6655,6 +6674,7 @@ pub fn shared_layer_of_type_expr(
     type_expr: Rc<Node>,
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    generic_param_names: Rc<Vec<String>>,
 ) -> SharedLayerAnswer {
     let judged = match rust_operand_alias_or_refinement_continue(
         type_expr.clone(),
@@ -6686,26 +6706,32 @@ pub fn shared_layer_of_type_expr(
             }
         }
     };
-    let leaf = rust_fn_sig_leaf_name(source_indices.clone(), judged.clone());
-    shared_layer_of_resolution(
-        shared_types,
-        leaf,
-        (*crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
-            type_decl_items.clone(),
-            judged,
-            source_indices,
+    if rust_type_node_is_arrow(judged.clone()) {
+        SharedLayerAnswer::SharedLayerAtValue
+    } else {
+        let leaf = rust_fn_sig_leaf_name(source_indices.clone(), judged.clone());
+        shared_layer_of_resolution(
+            shared_types,
+            leaf,
+            (*crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
+                type_decl_items.clone(),
+                judged,
+                source_indices,
+            )
+            .resolution
+            .clone())
+            .clone(),
+            type_decl_items,
+            generic_param_names,
         )
-        .resolution
-        .clone())
-        .clone(),
-        type_decl_items,
-    )
+    }
 }
 
 pub fn shared_layer_of_leaf(
     shared_types: Rc<BTreeSet<String>>,
     leaf: String,
     type_decl_items: Rc<TypeDeclIndex>,
+    generic_param_names: Rc<Vec<String>>,
 ) -> SharedLayerAnswer {
     shared_layer_of_resolution(
         shared_types,
@@ -6716,6 +6742,7 @@ pub fn shared_layer_of_leaf(
         ))
         .clone(),
         type_decl_items,
+        generic_param_names,
     )
 }
 
@@ -6731,9 +6758,16 @@ pub fn shared_types_contains_type_expr(
     type_expr: Rc<Node>,
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    generic_param_names: Rc<Vec<String>>,
 ) -> bool {
     matches!(
-        shared_layer_of_type_expr(shared_types, type_expr, type_decl_items, source_indices),
+        shared_layer_of_type_expr(
+            shared_types,
+            type_expr,
+            type_decl_items,
+            source_indices,
+            generic_param_names,
+        ),
         SharedLayerAnswer::SharedLayerAtShared
     )
 }
@@ -6742,9 +6776,10 @@ pub fn shared_types_contains_leaf(
     shared_types: Rc<BTreeSet<String>>,
     leaf: String,
     type_decl_items: Rc<TypeDeclIndex>,
+    generic_param_names: Rc<Vec<String>>,
 ) -> bool {
     matches!(
-        shared_layer_of_leaf(shared_types, leaf, type_decl_items),
+        shared_layer_of_leaf(shared_types, leaf, type_decl_items, generic_param_names),
         SharedLayerAnswer::SharedLayerAtShared
     )
 }
@@ -16569,25 +16604,30 @@ pub fn needs_box_wrapping(
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     type_decl_items: Rc<TypeDeclIndex>,
-) -> bool {
+    generic_param_names: Rc<Vec<String>>,
+) -> NeedsBoxAnswer {
     let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
     let name = crate::v1_std_core::qualified_last_segment(authored);
-    if crate::std_types::is_container_type(name.clone()) {
-        if shared_types_contains_type_expr(shared_types, n, type_decl_items, source_indices) {
-            false
-        } else {
-            v1_rt::set_contains(&recursive_types, name)
+    let layer = shared_layer_of_type_expr(
+        shared_types.clone(),
+        n.clone(),
+        type_decl_items.clone(),
+        source_indices.clone(),
+        generic_param_names.clone(),
+    );
+    match layer {
+        SharedLayerAnswer::SharedLayerRefuse { leaf, cause } => {
+            NeedsBoxAnswer::NeedsBoxRefuse { leaf, cause }
         }
-    } else {
-        match shared_layer_of_type_expr(
-            shared_types.clone(),
-            n.clone(),
-            type_decl_items.clone(),
-            source_indices.clone(),
-        ) {
-            SharedLayerAnswer::SharedLayerAtShared => false,
-            SharedLayerAnswer::SharedLayerRefuse { .. } => false,
-            SharedLayerAnswer::SharedLayerAtValue => {
+        SharedLayerAnswer::SharedLayerAtShared => NeedsBoxAnswer::NeedsNoBox,
+        SharedLayerAnswer::SharedLayerAtValue => {
+            if crate::std_types::is_container_type(name.clone()) {
+                if v1_rt::set_contains(&recursive_types, name) {
+                    NeedsBoxAnswer::NeedsBox
+                } else {
+                    NeedsBoxAnswer::NeedsNoBox
+                }
+            } else {
                 match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
                     type_decl_items,
                     n,
@@ -16598,9 +16638,25 @@ pub fn needs_box_wrapping(
                 .clone()
                 {
                     TypeDeclResolution::TypeDeclResolved { identity, .. } => {
-                        v1_rt::set_contains(&recursive_types, identity)
+                        if v1_rt::set_contains(&recursive_types, identity) {
+                            NeedsBoxAnswer::NeedsBox
+                        } else {
+                            NeedsBoxAnswer::NeedsNoBox
+                        }
                     }
-                    _ => false,
+                    TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: amb } => {
+                        NeedsBoxAnswer::NeedsBoxRefuse {
+                            leaf: amb,
+                            cause: "TypeDeclLeafAmbiguous".to_string(),
+                        }
+                    }
+                    TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: und } => {
+                        NeedsBoxAnswer::NeedsBoxRefuse {
+                            leaf: und,
+                            cause: "TypeDeclKernelSpellingUndecided".to_string(),
+                        }
+                    }
+                    TypeDeclResolution::TypeDeclNotDeclared => NeedsBoxAnswer::NeedsNoBox,
                 }
             }
         }
@@ -17727,11 +17783,10 @@ pub fn rust_field_carrier_final_type(
             rt_field.clone(),
             type_decl_items.clone(),
             source_indices.clone(),
+            generic_param_names.clone(),
         ) {
             SharedLayerAnswer::SharedLayerRefuse { leaf, cause } => {
-                if !type_var_in_fn_generic_scope(leaf.clone(), generic_param_names.clone()) {
-                    return shared_layer_refuse_expr(leaf, cause);
-                }
+                return shared_layer_refuse_expr(leaf, cause);
             }
             _ => {}
         }
@@ -17743,27 +17798,29 @@ pub fn rust_field_carrier_final_type(
                 source_indices.clone(),
             ),
         );
-        if needs_box_wrapping(
+        match needs_box_wrapping(
             rt_field.clone(),
             recursive_types.clone(),
             shared_types.clone(),
             source_indices.clone(),
             type_decl_items.clone(),
+            generic_param_names.clone(),
         ) {
-            v1_rt::concat(
+            NeedsBoxAnswer::NeedsBox => v1_rt::concat(
                 v1_rt::concat("Box<".to_string(), ty.clone()),
                 ">".to_string(),
-            )
-        } else {
-            if (native_scalar.clone() != std::option::Option::None) {
-                ty.clone()
-            } else {
-                if (rust_carrier_is_at_shared_layer(
+            ),
+            NeedsBoxAnswer::NeedsBoxRefuse { leaf, cause } => shared_layer_refuse_expr(leaf, cause),
+            NeedsBoxAnswer::NeedsNoBox => {
+                if (native_scalar.clone() != std::option::Option::None) {
+                    ty.clone()
+                } else if rust_carrier_is_at_shared_layer(
                     rt_field.clone(),
                     source_indices.clone(),
                     shared_types.clone(),
                     type_decl_items.clone(),
-                ) && !rust_type_is_rc_wrapped(ty.clone()))
+                    generic_param_names.clone(),
+                ) && !rust_type_is_rc_wrapped(ty.clone())
                 {
                     crate::v1_compiler_languages::wrap_shared_type(RenderTarget::Rust, ty.clone())
                 } else {
@@ -18353,15 +18410,14 @@ if ((child.children.clone().len() as i64) == 0) {
                         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            ".to_string(), variant_path.clone()), "(_) => panic!(\"no ".to_string()), fname.clone()), " on positional-payload variant\"),".to_string())
                     } else {
                         {
-                            let arm_field_boxed = match Rc::new({ let mut __result = Vec::new(); for f in child.children.clone().iter().cloned() { if (crate::v1_compiler_infer_env::authored_name(env.clone(), f.clone()) == fname.clone()) { __result.push(f); } } __result }).first().cloned() {
-    Some(f) => needs_box_wrapping(crate::v1_compiler_infer_types::resolved_type(f.clone()), recursive_types.clone(), shared_types.clone(), env.source_indices.clone(), emit_info.type_decl_items.clone()),
-    std::option::Option::None => false,
+                            let clone_expr = match Rc::new({ let mut __result = Vec::new(); for f in child.children.clone().iter().cloned() { if (crate::v1_compiler_infer_env::authored_name(env.clone(), f.clone()) == fname.clone()) { __result.push(f); } } __result }).first().cloned() {
+    Some(f) => match needs_box_wrapping(crate::v1_compiler_infer_types::resolved_type(f.clone()), recursive_types.clone(), shared_types.clone(), env.source_indices.clone(), emit_info.type_decl_items.clone(), generic_param_names.clone()) {
+        NeedsBoxAnswer::NeedsBox => crate::v1_compiler_emit_core_support::apply_type_template1(sharing.deref_clone.clone(), "*__val".to_string()),
+        NeedsBoxAnswer::NeedsNoBox => crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), "__val".to_string()),
+        NeedsBoxAnswer::NeedsBoxRefuse { leaf, cause } => shared_layer_refuse_expr(leaf, cause),
+    },
+    std::option::Option::None => crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), "__val".to_string()),
 };
-let clone_expr = if arm_field_boxed.clone() {
-                                crate::v1_compiler_emit_core_support::apply_type_template1(sharing.deref_clone.clone(), "*__val".to_string())
-                            } else {
-                                crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), "__val".to_string())
-                            };
 v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            ".to_string(), variant_path.clone()), " { ".to_string()), crate::v1_compiler_emit::emit_ident(fname.clone(), RenderTarget::Rust)), ": __val, .. } => ".to_string()), clone_expr.clone()), ",".to_string())
 }
                     }
@@ -18880,20 +18936,17 @@ pub fn emit_variant_from_child(
                                 } else {
                                     raw_ty.clone()
                                 };
-                                let final_ty = if needs_box_wrapping(
-                                    type_node.clone(),
-                                    recursive_types.clone(),
-                                    shared_types.clone(),
-                                    env.source_indices.clone(),
-                                    emit_info.type_decl_items.clone(),
-                                ) {
-                                    v1_rt::concat(
-                                        v1_rt::concat("Box<".to_string(), ty.clone()),
-                                        ">".to_string(),
-                                    )
-                                } else {
-                                    ty.clone()
-                                };
+                                let final_ty = box_type_by_needs_box(
+                                    needs_box_wrapping(
+                                        type_node.clone(),
+                                        recursive_types.clone(),
+                                        shared_types.clone(),
+                                        env.source_indices.clone(),
+                                        emit_info.type_decl_items.clone(),
+                                        generic_param_names.clone(),
+                                    ),
+                                    ty.clone(),
+                                );
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
@@ -23100,6 +23153,7 @@ pub fn analyze_rc_pattern(
                                 shared_types.clone(),
                                 enum_name.clone(),
                                 emit_info.type_decl_items.clone(),
+                                emit_info.fn_generic_param_names.clone(),
                             ),
                             std::option::Option::None => {
                                 match crate::v1_compiler_infer_emit_info::type_summary_decided(
@@ -23110,6 +23164,7 @@ pub fn analyze_rc_pattern(
                                         shared_types.clone(),
                                         bare_n.clone(),
                                         emit_info.type_decl_items.clone(),
+                                        emit_info.fn_generic_param_names.clone(),
                                     ),
                                     std::option::Option::None => false,
                                 }
@@ -23204,16 +23259,20 @@ pub fn box_bound_fields_for_pattern(
                                     match (*fb_pat.clone()).clone() {
                                         MatchPattern::Wildcard => Rc::new(vec![]),
                                         _ => {
-                                            if rust_record_field_needs_box(
+                                            match rust_record_field_needs_box(
                                                 scope.clone(),
                                                 emit_info.clone(),
                                                 shared_types.clone(),
                                                 bare_n.clone(),
                                                 fb_name.clone(),
                                             ) {
-                                                Rc::new(vec![fb_name.clone()])
-                                            } else {
-                                                Rc::new(vec![])
+                                                NeedsBoxAnswer::NeedsBox => {
+                                                    Rc::new(vec![fb_name.clone()])
+                                                }
+                                                NeedsBoxAnswer::NeedsNoBox
+                                                | NeedsBoxAnswer::NeedsBoxRefuse { .. } => {
+                                                    Rc::new(vec![])
+                                                }
                                             }
                                         }
                                     }
@@ -23295,6 +23354,7 @@ pub fn analyze_rc_match(
                 source_indices.clone(),
                 shared_types.clone(),
                 emit_info.type_decl_items.clone(),
+                emit_info.fn_generic_param_names.clone(),
             ),
             _ => false,
         };
@@ -23330,6 +23390,7 @@ pub fn analyze_rc_match(
                         source_indices.clone(),
                         shared_types.clone(),
                         emit_info.type_decl_items.clone(),
+                        emit_info.fn_generic_param_names.clone(),
                     ))
             }
             _ => false,
@@ -24654,7 +24715,12 @@ pub fn variant_ref_self_wraps(
     type_decl_items: Rc<TypeDeclIndex>,
 ) -> bool {
     (freemonoid_empty_from_variant_parent(name.clone(), enum_name.clone())
-        || shared_types_contains_leaf(shared_types, enum_name, type_decl_items))
+        || shared_types_contains_leaf(
+            shared_types,
+            enum_name,
+            type_decl_items,
+            Rc::new(Vec::<String>::new()),
+        ))
 }
 
 pub fn emit_value_ref_ident(
@@ -24951,6 +25017,7 @@ pub fn emit_typed_expr_base(
                                                 shared_types.clone(),
                                                 enum_name.clone(),
                                                 emit_info.type_decl_items.clone(),
+                                                emit_info.fn_generic_param_names.clone(),
                                             ) {
                                                 rust_shared_wrap_ctor(qualified.clone())
                                             } else {
@@ -25029,7 +25096,7 @@ pub fn field_access_field_is_boxed(
     scope: Rc<InferScope>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> bool {
+) -> NeedsBoxAnswer {
     {
         let base_struct = crate::v1_compiler_infer::expand_type_for_field_access(
             crate::v1_compiler_infer_types::resolved_type(base.clone()),
@@ -25058,7 +25125,7 @@ pub fn field_access_field_is_boxed(
                         ),
                     ) != std::option::Option::None);
                 if grounds_to_host_scalar.clone() {
-                    false
+                    NeedsBoxAnswer::NeedsNoBox
                 } else {
                     needs_box_wrapping(
                         field_ty.clone(),
@@ -25066,10 +25133,11 @@ pub fn field_access_field_is_boxed(
                         shared_types.clone(),
                         scope.type_env.clone().source_indices.clone(),
                         emit_info.type_decl_items.clone(),
+                        emit_info.fn_generic_param_names.clone(),
                     )
                 }
             }
-            std::option::Option::None => false,
+            std::option::Option::None => NeedsBoxAnswer::NeedsNoBox,
         }
     }
 }
@@ -25373,98 +25441,99 @@ pub fn emit_typed_field_access(
                         .sharing
                         .clone();
                 match summary.clone() {
-                    Some(field_summary) => {
-                        match field_summary.access_style.clone() {
-                            FieldAccessStyle::TupleFirst => {
-                                crate::v1_compiler_emit_core_support::apply_type_template1(
-                                    sharing.clone_value.clone(),
-                                    v1_rt::concat(base_str.clone(), ".0".to_string()),
-                                )
-                            }
-                            FieldAccessStyle::TupleSecond => {
-                                crate::v1_compiler_emit_core_support::apply_type_template1(
-                                    sharing.clone_value.clone(),
-                                    v1_rt::concat(base_str.clone(), ".1".to_string()),
-                                )
-                            }
-                            FieldAccessStyle::OptionalUnwrap => v1_rt::concat(
-                                crate::v1_compiler_emit_core_support::apply_type_template1(
-                                    sharing.clone_value.clone(),
-                                    base_str.clone(),
-                                ),
-                                ".unwrap()".to_string(),
+                    Some(field_summary) => match field_summary.access_style.clone() {
+                        FieldAccessStyle::TupleFirst => {
+                            crate::v1_compiler_emit_core_support::apply_type_template1(
+                                sharing.clone_value.clone(),
+                                v1_rt::concat(base_str.clone(), ".0".to_string()),
+                            )
+                        }
+                        FieldAccessStyle::TupleSecond => {
+                            crate::v1_compiler_emit_core_support::apply_type_template1(
+                                sharing.clone_value.clone(),
+                                v1_rt::concat(base_str.clone(), ".1".to_string()),
+                            )
+                        }
+                        FieldAccessStyle::OptionalUnwrap => v1_rt::concat(
+                            crate::v1_compiler_emit_core_support::apply_type_template1(
+                                sharing.clone_value.clone(),
+                                base_str.clone(),
                             ),
-                            FieldAccessStyle::EnumAccessor => v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(base_str.clone(), ".".to_string()),
-                                    crate::v1_compiler_emit::emit_ident(
-                                        field.clone(),
-                                        RenderTarget::Rust,
-                                    ),
-                                ),
-                                "()".to_string(),
-                            ),
-                            FieldAccessStyle::StoredField => {
-                                let base_is_owned = match (*base.expr_data.clone()).clone() {
-                                    ExprData::ExprVar {
-                                        binding_kind: _, ..
-                                    } => {
-                                        let base_name = crate::v1_std_core::expr_var_name_at(
-                                            base.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        );
-                                        v1_rt::set_contains(
-                                            &emit_info.owned_bindings.clone(),
-                                            base_name.clone(),
-                                        )
-                                    }
-                                    _ => false,
-                                };
-                                let field_is_boxed = field_access_field_is_boxed(
-                                    base.clone(),
+                            ".unwrap()".to_string(),
+                        ),
+                        FieldAccessStyle::EnumAccessor => v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(base_str.clone(), ".".to_string()),
+                                crate::v1_compiler_emit::emit_ident(
                                     field.clone(),
-                                    scope.clone(),
-                                    shared_types.clone(),
-                                    emit_info.clone(),
-                                );
-                                let seal = type_reference_seal_reading(
-                                    crate::v1_compiler_infer_types::resolved_type(base.clone()),
-                                    emit_info.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                );
-                                let seal_undecided_leaf = match (*seal.clone()).clone() {
-                                    SealReading::SealUndecidedForAmbiguousLeaf {
-                                        leaf: leaf,
-                                        ..
-                                    } => leaf.clone(),
-                                    SealReading::ReferenceSealsConstruction => "".to_string(),
-                                    SealReading::ReferenceDoesNotSealConstruction => "".to_string(),
-                                };
-                                let sealed = match (*seal.clone()).clone() {
-                                    SealReading::ReferenceSealsConstruction => true,
-                                    SealReading::ReferenceDoesNotSealConstruction => false,
-                                    SealReading::SealUndecidedForAmbiguousLeaf {
-                                        leaf: _, ..
-                                    } => false,
-                                };
-                                if (seal_undecided_leaf.clone() != "".to_string()) {
-                                    emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("field access '.".to_string(), field.clone()), "': the base expression's type names '".to_string()), seal_undecided_leaf.clone()), "', which more than one module of this closure declares, and carries no declaration identity -- whether the field is read directly or through a sealed accessor is not decided".to_string()))
-                                } else {
-                                    if sealed.clone() {
+                                    RenderTarget::Rust,
+                                ),
+                            ),
+                            "()".to_string(),
+                        ),
+                        FieldAccessStyle::StoredField => {
+                            let base_is_owned = match (*base.expr_data.clone()).clone() {
+                                ExprData::ExprVar {
+                                    binding_kind: _, ..
+                                } => {
+                                    let base_name = crate::v1_std_core::expr_var_name_at(
+                                        base.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    );
+                                    v1_rt::set_contains(
+                                        &emit_info.owned_bindings.clone(),
+                                        base_name.clone(),
+                                    )
+                                }
+                                _ => false,
+                            };
+                            let field_is_boxed = field_access_field_is_boxed(
+                                base.clone(),
+                                field.clone(),
+                                scope.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                            );
+                            let seal = type_reference_seal_reading(
+                                crate::v1_compiler_infer_types::resolved_type(base.clone()),
+                                emit_info.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            );
+                            let seal_undecided_leaf = match (*seal.clone()).clone() {
+                                SealReading::SealUndecidedForAmbiguousLeaf {
+                                    leaf: leaf, ..
+                                } => leaf.clone(),
+                                SealReading::ReferenceSealsConstruction => "".to_string(),
+                                SealReading::ReferenceDoesNotSealConstruction => "".to_string(),
+                            };
+                            let sealed = match (*seal.clone()).clone() {
+                                SealReading::ReferenceSealsConstruction => true,
+                                SealReading::ReferenceDoesNotSealConstruction => false,
+                                SealReading::SealUndecidedForAmbiguousLeaf { leaf: _, .. } => false,
+                            };
+                            if (seal_undecided_leaf.clone() != "".to_string()) {
+                                emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("field access '.".to_string(), field.clone()), "': the base expression's type names '".to_string()), seal_undecided_leaf.clone()), "', which more than one module of this closure declares, and carries no declaration identity -- whether the field is read directly or through a sealed accessor is not decided".to_string()))
+                            } else {
+                                if sealed.clone() {
+                                    v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(base_str.clone(), ".".to_string()),
-                                                crate::v1_compiler_emit::emit_ident(
-                                                    field.clone(),
-                                                    RenderTarget::Rust,
-                                                ),
+                                            v1_rt::concat(base_str.clone(), ".".to_string()),
+                                            crate::v1_compiler_emit::emit_ident(
+                                                field.clone(),
+                                                RenderTarget::Rust,
                                             ),
-                                            "()".to_string(),
-                                        )
-                                    } else {
-                                        if field_is_boxed.clone() {
-                                            crate::v1_compiler_emit_core_support::apply_type_template1(sharing.deref_clone.clone(), v1_rt::concat(v1_rt::concat(base_str.clone(), ".".to_string()), crate::v1_compiler_emit::emit_ident(field.clone(), RenderTarget::Rust)))
-                                        } else {
+                                        ),
+                                        "()".to_string(),
+                                    )
+                                } else {
+                                    match field_is_boxed {
+                                            NeedsBoxAnswer::NeedsBoxRefuse { leaf, cause } => {
+                                                shared_layer_refuse_expr(leaf, cause)
+                                            }
+                                            NeedsBoxAnswer::NeedsBox => {
+                                                crate::v1_compiler_emit_core_support::apply_type_template1(sharing.deref_clone.clone(), v1_rt::concat(v1_rt::concat(base_str.clone(), ".".to_string()), crate::v1_compiler_emit::emit_ident(field.clone(), RenderTarget::Rust)))
+                                            }
+                                            NeedsBoxAnswer::NeedsNoBox => {
                                             if base_is_owned.clone() {
                                                 v1_rt::concat(
                                                     v1_rt::concat(
@@ -25479,12 +25548,12 @@ pub fn emit_typed_field_access(
                                             } else {
                                                 crate::v1_compiler_emit_core_support::apply_type_template1(sharing.clone_value.clone(), v1_rt::concat(v1_rt::concat(base_str.clone(), ".".to_string()), crate::v1_compiler_emit::emit_ident(field.clone(), RenderTarget::Rust)))
                                             }
+                                            }
                                         }
-                                    }
                                 }
                             }
                         }
-                    }
+                    },
                     std::option::Option::None => v1_rt::concat(
                         v1_rt::concat(
                             "compile_error!(\"field access missing reconcile summary for '"
@@ -26340,6 +26409,7 @@ pub fn emit_rust_expr_record_lit(
                                 expanded_rt.clone(),
                                 emit_info.type_decl_items.clone(),
                                 si.clone(),
+                                emit_info.fn_generic_param_names.clone(),
                             ))
                         {
                             expanded_name.clone()
@@ -26354,6 +26424,7 @@ pub fn emit_rust_expr_record_lit(
                     shared_types.clone(),
                     rc_name.clone(),
                     emit_info.type_decl_items.clone(),
+                    emit_info.fn_generic_param_names.clone(),
                 ))
                 && !rust_expr_is_grounded_shared_value(raw.clone()))
             {
@@ -27254,6 +27325,7 @@ pub fn emit_discriminant_call_scrutinee_lowering(
                             shared_types.clone(),
                             ty_name.clone(),
                             emit_info.type_decl_items.clone(),
+                            emit_info.fn_generic_param_names.clone(),
                         ) {
                             v1_rt::concat(
                                 v1_rt::concat("&*(".to_string(), scrutinee.clone()),
@@ -27823,12 +27895,14 @@ pub fn emit_typed_call(
                         crate::v1_compiler_infer_types::resolved_type(base_arg.clone()),
                         emit_info.type_decl_items.clone(),
                         scope.type_env.clone().source_indices.clone(),
+                        emit_info.fn_generic_param_names.clone(),
                     )
                 } else {
                     shared_types_contains_leaf(
                         shared_types.clone(),
                         type_name.clone(),
                         emit_info.type_decl_items.clone(),
+                        emit_info.fn_generic_param_names.clone(),
                     )
                 };
                 let sharing =
@@ -29362,6 +29436,7 @@ pub fn emit_rust_fold_method_call(
                 acc_type_node.clone(),
                 emit_info.type_decl_items.clone(),
                 scope.type_env.clone().source_indices.clone(),
+                emit_info.fn_generic_param_names.clone(),
             ));
         let fold_emit_info = if acc_unwrap.clone() {
             match (*fold_lambda_node.expr_data.clone()).clone() {
@@ -30504,11 +30579,13 @@ pub fn emit_rust_with_method_call(
                 rt.clone(),
                 emit_info.type_decl_items.clone(),
                 scope.type_env.clone().source_indices.clone(),
+                emit_info.fn_generic_param_names.clone(),
             ),
             _ => shared_types_contains_leaf(
                 shared_types.clone(),
                 type_name.clone(),
                 emit_info.type_decl_items.clone(),
+                emit_info.fn_generic_param_names.clone(),
             ),
         };
         let sharing = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
@@ -33734,7 +33811,7 @@ pub fn rust_record_field_needs_box(
     shared_types: Rc<BTreeSet<String>>,
     struct_name: String,
     field_name: String,
-) -> bool {
+) -> NeedsBoxAnswer {
     match rust_struct_field_type_node_variant_aware(
         scope.clone(),
         emit_info.clone(),
@@ -33747,8 +33824,9 @@ pub fn rust_record_field_needs_box(
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
             emit_info.type_decl_items.clone(),
+            emit_info.fn_generic_param_names.clone(),
         ),
-        std::option::Option::None => false,
+        std::option::Option::None => NeedsBoxAnswer::NeedsNoBox,
     }
 }
 
@@ -33772,19 +33850,21 @@ pub fn wrap_rust_record_field_value(
             {
                 rust_callable_field_value_wrap(raw.clone(), value_node.clone(), scope.clone())
             } else {
-                if rust_record_field_needs_box(
+                match rust_record_field_needs_box(
                     scope.clone(),
                     emit_info.clone(),
                     shared_types.clone(),
                     struct_name.clone(),
                     field_name.clone(),
                 ) {
-                    v1_rt::concat(
+                    NeedsBoxAnswer::NeedsBox => v1_rt::concat(
                         v1_rt::concat("Box::new(".to_string(), raw.clone()),
                         ")".to_string(),
-                    )
-                } else {
-                    raw.clone()
+                    ),
+                    NeedsBoxAnswer::NeedsNoBox => raw.clone(),
+                    NeedsBoxAnswer::NeedsBoxRefuse { leaf, cause } => {
+                        shared_layer_refuse_expr(leaf, cause)
+                    }
                 }
             }
         }
@@ -34096,6 +34176,7 @@ pub fn emit_field_value_with_context(
                             shared_types.clone(),
                             crate::v1_std_core::qualified_last_segment(rc_name.clone()),
                             emit_info.type_decl_items.clone(),
+                            emit_info.fn_generic_param_names.clone(),
                         ))
                         && !rust_expr_is_grounded_shared_value(raw.clone()))
                     {
@@ -34694,6 +34775,7 @@ pub fn emit_typed_record_lit(
                                                     shared_types.clone(),
                                                     r_sn.clone(),
                                                     emit_info.type_decl_items.clone(),
+                                                    emit_info.fn_generic_param_names.clone(),
                                                 ) {
                                                     rust_shared_wrap_ctor(struct_lit.clone())
                                                 } else {
@@ -34820,6 +34902,7 @@ pub fn emit_typed_record_lit(
                                         shared_types.clone(),
                                         resolved_sn.clone(),
                                         emit_info.type_decl_items.clone(),
+                                        emit_info.fn_generic_param_names.clone(),
                                     ) {
                                         rust_shared_wrap_ctor(struct_lit.clone())
                                     } else {
@@ -35413,6 +35496,7 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
                                             resolved_type.clone(),
                                             emit_info.type_decl_items.clone(),
                                             si.clone(),
+                                            emit_info.fn_generic_param_names.clone(),
                                         ))
                                     {
                                         rust_shared_wrap_ctor(raw.clone())
@@ -42073,6 +42157,7 @@ pub fn emit_data_def(
             scope.type_env.clone().source_indices.clone(),
             shared_types.clone(),
             emit_info.type_decl_items.clone(),
+            emit_info.fn_generic_param_names.clone(),
         );
         let ty_str = if preserves_declared_brand.clone() {
             render_rust_shared_type_with_optional(
@@ -42157,6 +42242,7 @@ pub fn value_inferred_type_is_rc_wrapped(
             scope.type_env.clone().source_indices.clone(),
             shared_types.clone(),
             emit_info.type_decl_items.clone(),
+            emit_info.fn_generic_param_names.clone(),
         ),
         _ => false,
     }
