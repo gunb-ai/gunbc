@@ -1,0 +1,109 @@
+module test.claim.native_app_attest_arm_witness
+
+import std.types { Int, List, String, Bool, NonEmptyStr }
+import gunbc.instruments.native_app_attest { same_attestation_arm, same_assertion_arm }
+import extdeps.apple.app_attest {
+  AttestKeyId, AppAttestDevelopment, AppAttestProduction,
+  AttestationRefusal, AttestationFormatUnexpected, AttestationChainUntrusted, AttestationNonceMismatch,
+  AttestationKeyIdMismatch, AttestationAppIdMismatch, AttestationCounterNonZero, AttestationEnvironmentUnexpected,
+  AttestationCredentialIdMismatch, AttestationValidationCategoryAbsent, AttestationUndecodable,
+  AttestationValidationCategoryRefused, AttestationBundleVersionAbsent, AttestationBundleVersionUnexpected,
+  AssertionRefusal, AssertionSignatureInvalid, AssertionAppIdMismatch, AssertionValidationCategoryRefused,
+  AssertionValidationCategoryAbsent, AssertionBundleVersionAbsent, AssertionBundleVersionUnexpected, AssertionUndecodable,
+}
+
+type TaggedAttestation {
+  tag: Int
+  refusal: AttestationRefusal
+}
+
+type TaggedAssertion {
+  tag: Int
+  refusal: AssertionRefusal
+}
+
+fn attestation_first_payloads() -> List<TaggedAttestation> {
+  [
+    TaggedAttestation { tag: 0, refusal: AttestationFormatUnexpected { declared: "a" } },
+    TaggedAttestation { tag: 1, refusal: AttestationChainUntrusted { detail: "a" } },
+    TaggedAttestation { tag: 2, refusal: AttestationNonceMismatch },
+    TaggedAttestation { tag: 3, refusal: AttestationKeyIdMismatch { declared: "a" as AttestKeyId } },
+    TaggedAttestation { tag: 4, refusal: AttestationAppIdMismatch { expected_app_id: "a" as NonEmptyStr } },
+    TaggedAttestation { tag: 5, refusal: AttestationCounterNonZero { counter: 1 } },
+    TaggedAttestation { tag: 6, refusal: AttestationEnvironmentUnexpected { expected: AppAttestProduction } },
+    TaggedAttestation { tag: 7, refusal: AttestationCredentialIdMismatch { declared: "a" as AttestKeyId } },
+    TaggedAttestation { tag: 8, refusal: AttestationValidationCategoryRefused { category: 1 } },
+    TaggedAttestation { tag: 9, refusal: AttestationValidationCategoryAbsent },
+    TaggedAttestation { tag: 10, refusal: AttestationBundleVersionAbsent },
+    TaggedAttestation { tag: 11, refusal: AttestationBundleVersionUnexpected { declared: "a" } },
+    TaggedAttestation { tag: 12, refusal: AttestationUndecodable { cause: "a" } },
+  ]
+}
+
+fn attestation_second_payloads() -> List<TaggedAttestation> {
+  [
+    TaggedAttestation { tag: 0, refusal: AttestationFormatUnexpected { declared: "b" } },
+    TaggedAttestation { tag: 1, refusal: AttestationChainUntrusted { detail: "b" } },
+    TaggedAttestation { tag: 2, refusal: AttestationNonceMismatch },
+    TaggedAttestation { tag: 3, refusal: AttestationKeyIdMismatch { declared: "b" as AttestKeyId } },
+    TaggedAttestation { tag: 4, refusal: AttestationAppIdMismatch { expected_app_id: "b" as NonEmptyStr } },
+    TaggedAttestation { tag: 5, refusal: AttestationCounterNonZero { counter: 2 } },
+    TaggedAttestation { tag: 6, refusal: AttestationEnvironmentUnexpected { expected: AppAttestDevelopment } },
+    TaggedAttestation { tag: 7, refusal: AttestationCredentialIdMismatch { declared: "b" as AttestKeyId } },
+    TaggedAttestation { tag: 8, refusal: AttestationValidationCategoryRefused { category: 2 } },
+    TaggedAttestation { tag: 9, refusal: AttestationValidationCategoryAbsent },
+    TaggedAttestation { tag: 10, refusal: AttestationBundleVersionAbsent },
+    TaggedAttestation { tag: 11, refusal: AttestationBundleVersionUnexpected { declared: "b" } },
+    TaggedAttestation { tag: 12, refusal: AttestationUndecodable { cause: "b" } },
+  ]
+}
+
+fn assertion_first_payloads() -> List<TaggedAssertion> {
+  [
+    TaggedAssertion { tag: 0, refusal: AssertionSignatureInvalid },
+    TaggedAssertion { tag: 1, refusal: AssertionAppIdMismatch { expected_app_id: "a" as NonEmptyStr } },
+    TaggedAssertion { tag: 2, refusal: AssertionValidationCategoryRefused { category: 1 } },
+    TaggedAssertion { tag: 3, refusal: AssertionValidationCategoryAbsent },
+    TaggedAssertion { tag: 4, refusal: AssertionBundleVersionAbsent },
+    TaggedAssertion { tag: 5, refusal: AssertionBundleVersionUnexpected { declared: "a" } },
+    TaggedAssertion { tag: 6, refusal: AssertionUndecodable { cause: "a" } },
+  ]
+}
+
+fn assertion_second_payloads() -> List<TaggedAssertion> {
+  [
+    TaggedAssertion { tag: 0, refusal: AssertionSignatureInvalid },
+    TaggedAssertion { tag: 1, refusal: AssertionAppIdMismatch { expected_app_id: "b" as NonEmptyStr } },
+    TaggedAssertion { tag: 2, refusal: AssertionValidationCategoryRefused { category: 2 } },
+    TaggedAssertion { tag: 3, refusal: AssertionValidationCategoryAbsent },
+    TaggedAssertion { tag: 4, refusal: AssertionBundleVersionAbsent },
+    TaggedAssertion { tag: 5, refusal: AssertionBundleVersionUnexpected { declared: "b" } },
+    TaggedAssertion { tag: 6, refusal: AssertionUndecodable { cause: "b" } },
+  ]
+}
+
+fn attestation_pair_disagreements(left: List<TaggedAttestation>, right: List<TaggedAttestation>) -> Int {
+  left |> filter(x => (right |> filter(y => same_attestation_arm(owed: x.refusal, got: y.refusal) != (x.tag == y.tag)) |> count) != 0) |> count
+}
+
+fn assertion_pair_disagreements(left: List<TaggedAssertion>, right: List<TaggedAssertion>) -> Int {
+  left |> filter(x => (right |> filter(y => same_assertion_arm(owed: x.refusal, got: y.refusal) != (x.tag == y.tag)) |> count) != 0) |> count
+}
+
+test fn attestation_arm_equality_holds_on_every_pair_and_payload() -> Bool {
+  (attestation_pair_disagreements(left: attestation_first_payloads(), right: attestation_first_payloads())) == 0
+    && (attestation_pair_disagreements(left: attestation_first_payloads(), right: attestation_second_payloads())) == 0
+}
+
+test fn assertion_arm_equality_holds_on_every_pair_and_payload() -> Bool {
+  (assertion_pair_disagreements(left: assertion_first_payloads(), right: assertion_first_payloads())) == 0
+    && (assertion_pair_disagreements(left: assertion_first_payloads(), right: assertion_second_payloads())) == 0
+}
+
+test fn attestation_arm_equality_pins_all_thirteen_arms() -> Bool {
+  (attestation_first_payloads() |> count) == 13
+}
+
+test fn assertion_arm_equality_pins_all_seven_arms() -> Bool {
+  (assertion_first_payloads() |> count) == 7
+}
