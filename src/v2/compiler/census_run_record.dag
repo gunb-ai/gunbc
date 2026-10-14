@@ -17,7 +17,7 @@ import std.content_hash {
 import std.occurrence_identity { OccurrenceId }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { Bool, List, NonEmptyStr, String }
-import gunbc.guarantee_measurement { ContentFingerprint, GitRevision, MeasurementRevision }
+import gunbc.guarantee_measurement { MeasurementRevision, measurement_revision_eq }
 import v2.compiler.compile {
   NativeCensusCauseFrontEnd,
   NativeCensusCauseInfer,
@@ -452,21 +452,6 @@ fn census_first_refusal_in_triple(triple: CensusModuleObligations) -> Optional<C
   }
 }
 
-fn census_run_revision_eq(left: MeasurementRevision, right: MeasurementRevision) -> Bool {
-  match left {
-    GitRevision { commit: c } =>
-      match right {
-        GitRevision { commit: d } => c == d
-        ContentFingerprint { digest: _ } => false
-      }
-    ContentFingerprint { digest: x } =>
-      match right {
-        ContentFingerprint { digest: y } => content_hash_eq_structural(left: x, right: y)
-        GitRevision { commit: _ } => false
-      }
-  }
-}
-
 fn census_file_refusal_at_eq(left: FileRefusalAt, right: FileRefusalAt) -> Bool {
   match left {
     FileRefusalAtLine { line: ll, byte_column: lc } =>
@@ -760,7 +745,7 @@ fn census_run_diff(before: CensusRunRecord, after: CensusRunRecord) -> CensusRun
     }
     CensusRunDiffCompared {
       diff: CensusRunDiff {
-        revision_changed: !census_run_revision_eq(left: before.revision, right: after.revision),
+        revision_changed: !measurement_revision_eq(left: before.revision, right: after.revision),
         before_revision: before.revision,
         after_revision: after.revision,
         members_added: added,
