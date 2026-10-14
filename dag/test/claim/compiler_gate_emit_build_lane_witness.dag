@@ -485,6 +485,24 @@ test fn a_pr_head_run_never_publishes() -> Bool {
     && (string_contains(s: guard, pattern: "pull_request") == false)
 }
 
+fn step_with_keys(step: Step) -> List<String> {
+  match step {
+    UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match w {
+        Present { value: kvs } => map(kvs, kv => kv.key)
+        Absent => []
+      }
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => []
+  }
+}
+
+test fn the_publish_save_does_not_restore() -> Bool {
+  let keys = step_with_keys(step: parse_verdict_publish_save_step())
+  any(keys, k => k == "key")
+    && any(keys, k => k == "path")
+    && (any(keys, k => k == "restore-keys") == false)
+}
+
 test fn the_gha_object_key_carries_compiler_identity_and_sha() -> Bool {
   let k = parse_verdict_publish_cache_key()
   let p = parse_verdict_publish_restore_keys()

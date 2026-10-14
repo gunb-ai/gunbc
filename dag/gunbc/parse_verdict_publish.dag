@@ -1,7 +1,8 @@
 module gunbc.parse_verdict_publish
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, NonEmptyStr }
 import std.optional { Present }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
 import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_push }
 import gunbc.action_use_admission { cache_action }
@@ -56,6 +57,12 @@ data generation_one_executable_prefix: String = "v2-native-cli-gen-one-"
 data generation_one_closure_identity_suffix: String = ".closure_identity"
 data parse_verdict_compiler_output: String = "compiler_identity"
 
+// The walk's argv (parse-population + source roots) is modeled; the runner glue that finds the
+// generation-one binary, stamps compiler onto Accepted lines, and writes GITHUB_OUTPUT is a
+// foreign-executor shell string, same class as rust_clippy_all_targets_shell_emit_dissolution_trigger.
+data parse_verdict_publish_shell_emit_dissolution_text: NonEmptyStr = "dissolve-on: parse_verdict_publish_walk_step -- hand-shell run carrier for locating the generation-one executable, walking parse-population, and stamping compiler onto Accepted receipt lines. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders this step from modeled bash_build statements rather than a joined command string, at which point this row and the comment it projects delete together."
+data parse_verdict_publish_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: parse_verdict_publish_shell_emit_dissolution_text)
+
 fn parse_verdict_publish_command() -> String {
   join(
     [
@@ -84,7 +91,10 @@ fn source_root_argv() -> String {
 }
 
 fn parse_verdict_publish_script() -> String {
-  concat(wrap_command_with_floor_attempt_receipt(command: parse_verdict_publish_command()), "\n")
+  concat(
+    concat("# ", concat(dissolution_description(condition: parse_verdict_publish_shell_emit_dissolution_trigger), "\n")),
+    concat(wrap_command_with_floor_attempt_receipt(command: parse_verdict_publish_command()), "\n")
+  )
 }
 
 fn parse_verdict_publish_script_is_renderable() -> Bool {
@@ -145,7 +155,12 @@ fn parse_verdict_publish_restore_keys() -> String {
   )
 }
 
-fn materialization_family_cache_save_step(family: String, path: String, cache_key: String, restore_keys: String) -> Step {
+// SAVE MUST NOT RESTORE. cache_action is the combined restore-then-save action. A prefix
+// restore-key would hit an earlier main sha, overwrite the walk's receipts, and post-save that
+// older blob under the new sha — fabricating commit N+1's verdict from N. Combined restore with
+// only the exact key still misses on a new sha (the key includes github.sha), so the walk's
+// directory is what gets saved. Restore-keys belong on the PR-2 consumer, not here.
+fn materialization_family_cache_save_step(family: String, path: String, cache_key: String) -> Step {
   UsesStep {
     name: Present { value: join(["Save ", family, " receipts to Actions cache"], "") },
     id: none,
@@ -153,8 +168,7 @@ fn materialization_family_cache_save_step(family: String, path: String, cache_ke
     with: Present {
       value: [
         kv(key: "path", value: yaml_string(s: path)),
-        kv(key: "key", value: yaml_string(s: cache_key)),
-        kv(key: "restore-keys", value: yaml_string(s: restore_keys))
+        kv(key: "key", value: yaml_string(s: cache_key))
       ]
     },
     env: none,
@@ -168,7 +182,6 @@ fn parse_verdict_publish_save_step() -> Step {
   materialization_family_cache_save_step(
     family: parse_verdict_request_family,
     path: parse_verdict_receipt_dir,
-    cache_key: parse_verdict_publish_cache_key(),
-    restore_keys: parse_verdict_publish_restore_keys()
+    cache_key: parse_verdict_publish_cache_key()
   )
 }
