@@ -67,6 +67,16 @@ jobs:
           key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+      - name: Record compile shape
+        run: |-
+          # dissolve-on: compile_shape_receipt -- orch-emitted foreign-executor observe step printing the compile shape cargo inherited on the required job; leaf echo/nproc/cgroup command rows remain until typed host observation lands on host_effect_apply (v2.std.orchestration orchestration_to_effect_plan_dissolve_on, shell-to-intent). Slot CPUQuota / CARGO_BUILD_JOBS isolation is a different unit and does not dissolve this carrier.
+          GUNBC_COMPILE_SHAPE_PREFIX='GUNBC_COMPILE_SHAPE'
+          echo "$GUNBC_COMPILE_SHAPE_PREFIX time_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unavailable) host=$(hostname 2>/dev/null || echo unavailable) runner=${RUNNER_NAME:-unset}"
+          echo "$GUNBC_COMPILE_SHAPE_PREFIX nproc=$(nproc 2>/dev/null || echo unavailable) cargo_build_jobs=${CARGO_BUILD_JOBS:-unset} rustc_wrapper=${RUSTC_WRAPPER:-unset}"
+          echo "$GUNBC_COMPILE_SHAPE_PREFIX makeflags=${MAKEFLAGS:-unset}"
+          GUNBC_COMPILE_SHAPE_JOBSERVER_AUTH=absent; case "${MAKEFLAGS:-}" in *jobserver*) GUNBC_COMPILE_SHAPE_JOBSERVER_AUTH=present ;; esac; GUNBC_COMPILE_SHAPE_FIFO=${CTRL_JOBSERVER_FIFO:-}; if [ -z "$GUNBC_COMPILE_SHAPE_FIFO" ]; then GUNBC_COMPILE_SHAPE_FIFO=$(printf '%s\n' "${MAKEFLAGS:-}" | sed -n 's/.*jobserver-auth=fifo:\([^ ]*\).*/\1/p' | head -n 1); fi; if [ -z "$GUNBC_COMPILE_SHAPE_FIFO" ]; then GUNBC_COMPILE_SHAPE_FIFO=unset; fi; GUNBC_COMPILE_SHAPE_TOKENS=${CTRL_JOBSERVER_TOKENS:-unset}; if [ "$GUNBC_COMPILE_SHAPE_TOKENS" = unset ] && [ -r /etc/default/ctrl-jobserver ]; then GUNBC_COMPILE_SHAPE_TOKENS=$(sed -n 's/^CTRL_JOBSERVER_TOKENS=//p' /etc/default/ctrl-jobserver 2>/dev/null | head -n 1); if [ -z "$GUNBC_COMPILE_SHAPE_TOKENS" ]; then GUNBC_COMPILE_SHAPE_TOKENS=unset; fi; fi; if [ "$GUNBC_COMPILE_SHAPE_FIFO" != unset ] && [ -e "$GUNBC_COMPILE_SHAPE_FIFO" ]; then GUNBC_COMPILE_SHAPE_FIFO_EXISTS=yes; else GUNBC_COMPILE_SHAPE_FIFO_EXISTS=no; fi; echo "$GUNBC_COMPILE_SHAPE_PREFIX jobserver_auth=$GUNBC_COMPILE_SHAPE_JOBSERVER_AUTH fifo=$GUNBC_COMPILE_SHAPE_FIFO fifo_exists=$GUNBC_COMPILE_SHAPE_FIFO_EXISTS tokens=$GUNBC_COMPILE_SHAPE_TOKENS"
+          echo "$GUNBC_COMPILE_SHAPE_PREFIX loadavg=$(tr ' ' ',' < /proc/loadavg 2>/dev/null || echo unavailable)"
+          GUNBC_COMPILE_SHAPE_CG=$(sed -n 's/^0:://p' /proc/self/cgroup 2>/dev/null | tail -n 1); if [ -z "$GUNBC_COMPILE_SHAPE_CG" ]; then GUNBC_COMPILE_SHAPE_CG=unavailable; fi; echo "$GUNBC_COMPILE_SHAPE_PREFIX cgroup=$GUNBC_COMPILE_SHAPE_CG"; GUNBC_COMPILE_SHAPE_CGDIR=/sys/fs/cgroup$GUNBC_COMPILE_SHAPE_CG; if [ -d "$GUNBC_COMPILE_SHAPE_CGDIR" ]; then echo "$GUNBC_COMPILE_SHAPE_PREFIX cpu.max=$(tr '\n' ' ' < "$GUNBC_COMPILE_SHAPE_CGDIR/cpu.max" 2>/dev/null || echo unavailable) cpu.weight=$(tr '\n' ' ' < "$GUNBC_COMPILE_SHAPE_CGDIR/cpu.weight" 2>/dev/null || echo unavailable) cpu.stat=$(tr '\n' ' ' < "$GUNBC_COMPILE_SHAPE_CGDIR/cpu.stat" 2>/dev/null || echo unavailable)"; else echo "$GUNBC_COMPILE_SHAPE_PREFIX cpu.max=unavailable cpu.weight=unavailable cpu.stat=unavailable"; fi
       - name: Build the compiler
         id: build_witness_fold
         run: |+
