@@ -20,6 +20,7 @@ import gunbc.host.host_axis_caps {
   control_shadow_refusal_count,
   derived_runner_memory_max_cap_member,
   derived_runner_memory_high_cap_member,
+  derived_runner_memory_swap_cap_member,
   derived_runner_memory_cap_members,
   runner_memory_cap_author_ready_for_shadow_revert,
   host_axis_caps_author_before_revert_enforced,
@@ -131,6 +132,13 @@ test fn witness_derived_memory_caps_match_allocation_authority() -> Bool {
     && string_contains(s: max.dropin_path as String, pattern: "20-fleet-width")
     && string_contains(s: high.content, pattern: to_string(byte_size_count(b: desired.memory_high)))
     && string_contains(s: high.dropin_path as String, pattern: "40-fleet-high")
+}
+
+test fn witness_derived_swap_cap_is_the_declared_zero() -> Bool {
+  let swap = derived_runner_memory_swap_cap_member()
+  string_contains(s: swap.dropin_path as String, pattern: "30-fleet-swap")
+    && string_contains(s: swap.content, pattern: "MemorySwapMax=0")
+    && byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max) == 0
 }
 
 test fn witness_control_shadow_revert_script_matches_extdeps_argv() -> Bool {
