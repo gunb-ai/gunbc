@@ -13,46 +13,34 @@ import std.effect_grant {
 import std.filesystem_path_grant { absolute_path_position }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_tmp_scratch_store_root }
-import std.algebra { string_contains }
 
 // THE STORE ROOT IS A COPRODUCT SO DURABILITY IS CONSTRUCTED, NOT INFERRED FROM A PATH.
 //
-// std.artifact_store_scratch_grant admits /tmp/gunbc_* roots, which are frame-owned scratch: on a
-// Firecracker runner the guest /tmp dies with the attempt, so a store rooted there is a per-attempt
-// cache and can never discharge a reuse obligation whose lifetime spans runs (DESIGN section 2:
-// retention must span the obligated lifetime). WitnessScratchRoot is that grant; durability is
-// DERIVED as ephemeral.
+// DurableHostVolume is fieldless: the live host volume is one declared path. A consumer that asks
+// for that durability cannot be handed /tmp (DESIGN section 4b, structurally impossible).
 //
-// WHICH HOST PATH a live volume uses lives on HostDashboardInstance.materialization_store_root
-// (gunbc.roadmap.roadmap_dashboard_instance), not as a corpus-wide constant. DurableHostVolumeRoot
-// therefore carries a path. On origin/main the arm was fieldless and the path was one std constant,
-// so DurableHostVolumeRoot { root: "/tmp/x" } had no constructor (structurally impossible). The
-// field reopens that state. Declared drop: gunbc.rung_drop
-// durable_host_volume_root_path_is_an_arbitrary_string. Temporary rung is the envelope guard
-// is_durable_host_volume_path: a Durable arm whose path is scratch, /tmp, /var/tmp, or the
-// hermetic compute workspace receives no grants (admit_effect Denies). Durability is still read
-// from the arm. Restoration is a closed durable-volume identity with no String field.
+// JobWorkspaceScoped is the other durable arm: the store is the declared leaf
+// `materialization-store` under a caller-supplied scope root. The arm has no String. Macbook,
+// srv2-deploy, isolated labs, and their witness copies collapse here -- their store was already
+// instance_root/materialization-store; that instance_root IS the declared workspace of that
+// instance. A per-run CI job workspace is EphemeralJobWorkspace, same leaf rule, durability
+// EphemeralToFrame, so wrapping a job directory as DurableAcrossRuns has no constructor.
 //
-// A per-run job workspace is EphemeralHostVolumeRoot: same host-path grant shape, durability
-// EphemeralToFrame.
+// WitnessScratchRoot is the only arm that takes a path; it admits only /tmp/gunbc_* scratch.
+//
+// scope_root is a path-resolution operand, not a store identity. DurableHostVolume ignores it.
 //
 // DECLARED FRONTIER: this module grants the guest-side PATH. Attaching a gunbc-owned host volume
-// as a Firecracker drive is the runner lane's act. Until that attachment lands, a durable-root open
-// on a runner guest finds no initialized store and REFUSES as unavailable
+// as a Firecracker drive is the runner lane's act. Until that attachment lands, a DurableHostVolume
+// open on a runner guest finds no initialized store and REFUSES as unavailable
 // (extdeps.realization.materialization_store_local), never falls back to scratch. srv1's instance
-// declares DurableHostVolumeRoot at /var/lib/gunbc/materialization-store; discharged there by
-// gunbc.live_deploy.spec deployment_ensured_srv1_host_directories.
-//
-// LIFECYCLE GRADE: LifecycleByConvention, honestly. A durable store is not released by frame
-// teardown -- that is its purpose -- so it cannot claim LifecycleByConstruction; its release is the
-// retention and eviction the provider machinery owns (std.artifact_store accounting under the
-// provider), which is a cleanup that can fail or be forgotten, i.e. the weaker grade. An ephemeral
-// host-volume root dies with the workspace; the grade is still ByConvention because workspace
-// teardown is not this grant's constructor.
+// declares DurableHostVolume; discharged there by gunbc.live_deploy.spec
+// deployment_ensured_srv1_host_directories.
 
 type MaterializationStoreRoot
-  = DurableHostVolumeRoot { root: String }
-  | EphemeralHostVolumeRoot { root: String }
+  = DurableHostVolume
+  | JobWorkspaceScoped
+  | EphemeralJobWorkspace
   | WitnessScratchRoot { root: String }
 
 type MaterializationStoreDurability
@@ -64,25 +52,28 @@ data materialization_store_frame: Frame = Frame {
   kind: SharedStateFrame
 }
 
-fn materialization_store_root_path(root: MaterializationStoreRoot) -> String {
+data materialization_store_host_volume_path: String = "/var/lib/gunbc/materialization-store"
+
+data materialization_store_workspace_leaf: String = "materialization-store"
+
+fn materialization_store_root_path(root: MaterializationStoreRoot, scope_root: String) -> String {
   match root {
-    DurableHostVolumeRoot { root: r } => r
-    EphemeralHostVolumeRoot { root: r } => r
+    DurableHostVolume => materialization_store_host_volume_path
+    JobWorkspaceScoped => join([scope_root, "/", materialization_store_workspace_leaf], "")
+    EphemeralJobWorkspace => join([scope_root, "/", materialization_store_workspace_leaf], "")
     WitnessScratchRoot { root: r } => r
   }
 }
 
-// THE STAGING SIBLING BELONGS TO THE STORE, so its path derives here, once, for both the producer
-// that stages into it (gunbc.compute.work_provider_local compute_staging_dir) and the deployment
-// that must create it. A sibling and not a child because the store lists its root.
-fn materialization_store_staging_root_path(root: MaterializationStoreRoot) -> String {
-  join([materialization_store_root_path(root: root), "-staging"], "")
+fn materialization_store_staging_root_path(root: MaterializationStoreRoot, scope_root: String) -> String {
+  join([materialization_store_root_path(root: root, scope_root: scope_root), "-staging"], "")
 }
 
 fn materialization_store_durability(root: MaterializationStoreRoot) -> MaterializationStoreDurability {
   match root {
-    DurableHostVolumeRoot { root: _ } => DurableAcrossRuns
-    EphemeralHostVolumeRoot { root: _ } => EphemeralToFrame
+    DurableHostVolume => DurableAcrossRuns
+    JobWorkspaceScoped => DurableAcrossRuns
+    EphemeralJobWorkspace => EphemeralToFrame
     WitnessScratchRoot { root: _ } => EphemeralToFrame
   }
 }
@@ -92,15 +83,6 @@ fn materialization_store_durability_name(d: MaterializationStoreDurability) -> S
     DurableAcrossRuns => "durable_across_runs"
     EphemeralToFrame => "ephemeral_to_frame"
   }
-}
-
-fn is_durable_host_volume_path(path: String) -> Bool {
-  !is_gunbc_tmp_scratch_store_root(store_root: path)
-    && path != "/tmp"
-    && !path.starts_with(prefix: "/tmp/")
-    && path != "/var/tmp"
-    && !path.starts_with(prefix: "/var/tmp/")
-    && !string_contains(s: path, pattern: "/.gunbc-compute-hermetic/")
 }
 
 fn materialization_store_host_volume_envelope(path: String) -> Envelope {
@@ -117,15 +99,15 @@ fn materialization_store_grants(root_position: NamespacePosition) -> List<Grant>
   ]
 }
 
-fn materialization_store_envelope(root: MaterializationStoreRoot) -> Envelope {
+fn materialization_store_envelope(root: MaterializationStoreRoot, scope_root: String) -> Envelope {
   match root {
-    DurableHostVolumeRoot { root: r } =>
-      if is_durable_host_volume_path(path: r) {
-        materialization_store_host_volume_envelope(path: r)
-      } else {
-        Envelope { frame: materialization_store_frame, grants: [] }
-      }
-    EphemeralHostVolumeRoot { root: r } => materialization_store_host_volume_envelope(path: r)
+    DurableHostVolume => materialization_store_host_volume_envelope(path: materialization_store_host_volume_path)
+    JobWorkspaceScoped => materialization_store_host_volume_envelope(
+      path: materialization_store_root_path(root: root, scope_root: scope_root)
+    )
+    EphemeralJobWorkspace => materialization_store_host_volume_envelope(
+      path: materialization_store_root_path(root: root, scope_root: scope_root)
+    )
     WitnessScratchRoot { root: r } =>
       if is_gunbc_tmp_scratch_store_root(store_root: r) {
         Envelope {
@@ -138,10 +120,10 @@ fn materialization_store_envelope(root: MaterializationStoreRoot) -> Envelope {
   }
 }
 
-fn materialization_store_admissible(root: MaterializationStoreRoot, verb: Verb) -> AccessDecision {
+fn materialization_store_admissible(root: MaterializationStoreRoot, scope_root: String, verb: Verb) -> AccessDecision {
   admit_effect(
-    env: materialization_store_envelope(root: root),
+    env: materialization_store_envelope(root: root, scope_root: scope_root),
     verb: verb,
-    target: absolute_path_position(path: materialization_store_root_path(root: root))
+    target: absolute_path_position(path: materialization_store_root_path(root: root, scope_root: scope_root))
   )
 }

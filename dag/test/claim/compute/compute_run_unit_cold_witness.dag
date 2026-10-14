@@ -8,8 +8,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_provider_local { compute_store, compute_staging_dir }
 import std.materialization_store_grant {
-  DurableHostVolumeRoot, EphemeralHostVolumeRoot, WitnessScratchRoot,
-  materialization_store_root_path, materialization_store_durability,
+  DurableHostVolume, JobWorkspaceScoped, EphemeralJobWorkspace, WitnessScratchRoot,
+  materialization_store_root_path, materialization_store_durability, materialization_store_host_volume_path,
   DurableAcrossRuns, EphemeralToFrame,
 }
 import gunbc.instrument_targets { compute_run_unit_cold_label }
@@ -66,21 +66,23 @@ test fn the_hermetic_store_root_is_the_instance_field_and_not_srv1_live() -> Boo
   let live = srv1_live_dashboard_instance()
   let hermetic_root = compute_store(instance: h).root
   let live_root = compute_store(instance: live).root
-  let hermetic_path = materialization_store_root_path(root: h.materialization_store_root)
-  let live_path = materialization_store_root_path(root: live.materialization_store_root)
+  let hermetic_path = materialization_store_root_path(root: h.materialization_store_root, scope_root: h.instance_root as String)
+  let live_path = materialization_store_root_path(root: live.materialization_store_root, scope_root: live.instance_root as String)
   (hermetic_path == join([workspace, "/materialization-store"], ""))
     && (live_path == "/var/lib/gunbc/materialization-store")
     && (hermetic_path != live_path)
     && (compute_staging_dir(instance: h) == join([hermetic_path, "-staging"], ""))
     && (compute_staging_dir(instance: live) == join([live_path, "-staging"], ""))
     && match hermetic_root {
-      EphemeralHostVolumeRoot { root: r } => r == hermetic_path
-      DurableHostVolumeRoot { root: _ } => false
+      EphemeralJobWorkspace => true
+      DurableHostVolume => false
+      JobWorkspaceScoped => false
       WitnessScratchRoot { root: _ } => false
     }
     && match live_root {
-      DurableHostVolumeRoot { root: r } => r == live_path
-      EphemeralHostVolumeRoot { root: _ } => false
+      DurableHostVolume => live_path == materialization_store_host_volume_path
+      JobWorkspaceScoped => false
+      EphemeralJobWorkspace => false
       WitnessScratchRoot { root: _ } => false
     }
     && match materialization_store_durability(root: hermetic_root) {

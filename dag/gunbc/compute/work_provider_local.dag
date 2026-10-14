@@ -902,7 +902,7 @@ fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout
 // the store root's path, never re-spelled. A staged file is named by the work identity and the
 // declared output, and is removed once the commit has linked it.
 fn compute_staging_dir(instance: HostDashboardInstance) -> String {
-  materialization_store_staging_root_path(root: instance.materialization_store_root)
+  materialization_store_staging_root_path(root: instance.materialization_store_root, scope_root: instance.instance_root as String)
 }
 
 fn compute_staged_path(layout: ComputeLayout, declared: String) -> String {
@@ -1653,16 +1653,18 @@ fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostR
 
 // THE STORE A COMPUTE REQUEST USES: a root and the budgets it is opened under. The budgets are policy
 // (gunbc.materialization_store_budgets), handed to the transport as a parameter; production uses
-// compute_store(instance), whose root IS the instance field (DurableHostVolumeRoot or
-// EphemeralHostVolumeRoot — never rewritten), and a witness supplies a scratch root with fixture rows.
+// compute_store(instance), whose root IS the instance field (DurableHostVolume, JobWorkspaceScoped
+// or EphemeralJobWorkspace — never rewritten), and a witness supplies a scratch root with fixture rows.
 type ComputeStore {
   root: MaterializationStoreRoot
+  scope_root: String
   budgets: List<LocalStoreFamilyBudget>
 }
 
 fn compute_store(instance: HostDashboardInstance) -> ComputeStore {
   ComputeStore {
     root: instance.materialization_store_root,
+    scope_root: instance.instance_root as String,
     budgets: materialization_store_durable_family_budgets,
   }
 }
@@ -1755,7 +1757,7 @@ type ComputeStoreOpen
 // Initialization is idempotent (an existing marker opens as the store it names), so opening and
 // initializing are one call; a missing root refuses, it is never created elsewhere.
 fn compute_store_open(store: ComputeStore) -> ComputeStoreOpen {
-  match local_store_initialize(root: store.root, instance_label: "gunbc-compute" as NonEmptyStr, budgets: store.budgets) {
+  match local_store_initialize(root: store.root, scope_root: store.scope_root, instance_label: "gunbc-compute" as NonEmptyStr, budgets: store.budgets) {
     LocalStoreInitializationRefused { root_path, cause } => ComputeStoreOpenRefused { detail: join(["the materialization store at ", root_path, " could not be initialized: ", compute_store_unavailable_detail(c: cause)], "") }
     LocalStoreInitialized { opening } => ComputeStoreOpened { opening: opening }
   }
