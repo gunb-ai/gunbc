@@ -6503,6 +6503,7 @@ pub fn shared_layer_of_resolution(
     shared_types: Rc<BTreeSet<String>>,
     leaf: String,
     resolution: TypeDeclResolution,
+    type_decl_items: Rc<TypeDeclIndex>,
 ) -> SharedLayerAnswer {
     if crate::std_types::is_container_type(leaf.clone()) {
         if v1_rt::set_contains(&shared_types, leaf.clone()) {
@@ -6525,8 +6526,8 @@ pub fn shared_layer_of_resolution(
                     cause: "TypeDeclLeafAmbiguous".to_string(),
                 }
             }
-            TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _ } => {
-                SharedLayerAnswer::SharedLayerAtValue
+            TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: und } => {
+                shared_layer_of_undecided_kernel_spelling(shared_types, und, type_decl_items)
             }
             TypeDeclResolution::TypeDeclNotDeclared => {
                 if leaf.clone() == "".to_string()
@@ -6542,6 +6543,28 @@ pub fn shared_layer_of_resolution(
                 }
             }
         }
+    }
+}
+
+pub fn shared_layer_of_undecided_kernel_spelling(
+    shared_types: Rc<BTreeSet<String>>,
+    leaf: String,
+    type_decl_items: Rc<TypeDeclIndex>,
+) -> SharedLayerAnswer {
+    let corpus = crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
+        type_decl_items,
+        leaf.clone(),
+    );
+    if corpus
+        .iter()
+        .any(|id| shared_types_contains_identity(shared_types.clone(), id.clone()))
+    {
+        SharedLayerAnswer::SharedLayerRefuse {
+            leaf,
+            cause: "TypeDeclKernelSpellingUndecided candidates disagree on layer".to_string(),
+        }
+    } else {
+        SharedLayerAnswer::SharedLayerAtValue
     }
 }
 
@@ -6585,7 +6608,6 @@ pub fn emit_alias_hop_scope(
 pub fn identity_keyed_recursive_type_set(
     leaf_set: Rc<BTreeSet<String>>,
     type_decl_items: Rc<TypeDeclIndex>,
-    type_summaries: Rc<TypeSummaryIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
     let from_decls = Rc::new(v1_rt::map_keys(&type_decl_items.by_identity))
@@ -6604,23 +6626,7 @@ pub fn identity_keyed_recursive_type_set(
                         source_indices.clone(),
                         crate::v1_compiler_infer_types::resolved_type(item.clone()),
                     );
-                    let summary_is_fielded =
-                        match crate::v1_compiler_infer_emit_info::type_summary_decided(
-                            type_summaries.clone(),
-                            identity.clone(),
-                        ) {
-                            Some(summary) => match (*summary.repr.clone()).clone() {
-                                TypeRepr::StructRepr => {
-                                    (Rc::new(v1_rt::sorted_map_keys(&summary.field_summaries)).len()
-                                        as i64)
-                                        > 0
-                                }
-                                TypeRepr::EnumRepr { unit_only, .. } => unit_only == false,
-                            },
-                            None => false,
-                        };
                     if v1_rt::set_contains(&leaf_set, leaf.clone())
-                        && summary_is_fielded
                         && !crate::v1_compiler_emit_core_support::is_type_alias_item(
                             item.clone(),
                             source_indices.clone(),
@@ -6655,18 +6661,49 @@ pub fn shared_layer_of_type_expr(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> SharedLayerAnswer {
-    let leaf = rust_fn_sig_leaf_name(source_indices.clone(), type_expr.clone());
+    let judged = match rust_operand_alias_or_refinement_continue(
+        type_expr.clone(),
+        emit_alias_hop_scope(source_indices.clone()),
+        1,
+    ) {
+        Some(next) => next,
+        std::option::Option::None => {
+            match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
+                type_decl_items.clone(),
+                type_expr.clone(),
+                source_indices.clone(),
+            )
+            .resolution
+            .clone())
+            .clone()
+            {
+                TypeDeclResolution::TypeDeclResolved { decl, .. } => {
+                    if crate::v1_compiler_emit_core_support::is_type_alias_item(
+                        decl.clone(),
+                        source_indices.clone(),
+                    ) {
+                        crate::v1_compiler_infer_types::resolved_type(decl)
+                    } else {
+                        type_expr.clone()
+                    }
+                }
+                _ => type_expr.clone(),
+            }
+        }
+    };
+    let leaf = rust_fn_sig_leaf_name(source_indices.clone(), judged.clone());
     shared_layer_of_resolution(
         shared_types,
         leaf,
         (*crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
-            type_decl_items,
-            type_expr,
+            type_decl_items.clone(),
+            judged,
             source_indices,
         )
         .resolution
         .clone())
         .clone(),
+        type_decl_items,
     )
 }
 
@@ -6678,8 +6715,12 @@ pub fn shared_layer_of_leaf(
     shared_layer_of_resolution(
         shared_types,
         leaf.clone(),
-        (*crate::v1_compiler_infer_emit_info::resolve_type_decl_leaf(type_decl_items, leaf))
-            .clone(),
+        (*crate::v1_compiler_infer_emit_info::resolve_type_decl_leaf(
+            type_decl_items.clone(),
+            leaf,
+        ))
+        .clone(),
+        type_decl_items,
     )
 }
 
@@ -7011,7 +7052,6 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
         let recursive_type_set = identity_keyed_recursive_type_set(
             base_info.recursive_type_set.clone(),
             base_info.type_decl_items.clone(),
-            base_info.type_summaries.clone(),
             closure_source_indices.clone(),
         );
         let shared = build_shared_types(
@@ -8304,7 +8344,6 @@ pub fn emit_module(
         let recursive_type_set = identity_keyed_recursive_type_set(
             base_info.recursive_type_set.clone(),
             base_info.type_decl_items.clone(),
-            base_info.type_summaries.clone(),
             module_source_indices.clone(),
         );
         let shared = build_shared_types(
@@ -33521,20 +33560,13 @@ pub fn rust_record_field_needs_box(
         struct_name.clone(),
         field_name.clone(),
     ) {
-        Some(field_type) => {
-            let leaf = rust_fn_sig_leaf_name(
-                scope.type_env.clone().source_indices.clone(),
-                field_type.clone(),
-            );
-            crate::std_types::is_container_type(leaf)
-                && needs_box_wrapping(
-                    field_type.clone(),
-                    emit_info.recursive_type_set.clone(),
-                    shared_types.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                    emit_info.type_decl_items.clone(),
-                )
-        }
+        Some(field_type) => needs_box_wrapping(
+            field_type.clone(),
+            emit_info.recursive_type_set.clone(),
+            shared_types.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            emit_info.type_decl_items.clone(),
+        ),
         std::option::Option::None => false,
     }
 }
