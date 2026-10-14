@@ -3,6 +3,7 @@ module gunbc.fleet.hetzner_cloud_server_control
 import std.optional { Absent, Present }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.resources { Network }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
@@ -53,7 +54,7 @@ fn hetzner_credentials(token: HetznerProjectToken) -> HetznerCredentials uses ne
           HetznerCredentialsRefused { cause: "THE HETZNER TOKEN COULD NOT BE READ: the access response did not decode" as NonEmptyStr }
         SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
           HetznerCredentialsRefused { cause: join(["THE HETZNER TOKEN READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested, ", answered about ", resolved], "") as NonEmptyStr }
-        SecretCredentialReady { credential: token, resolved_version: _ } => HetznerCredentialsReady { token: token }
+        SecretCredentialReady { credential: hetzner_secret, resolved_version: _ } => HetznerCredentialsReady { token: hetzner_secret }
       }
   }
 }
