@@ -1,5 +1,6 @@
 module gunbc.host.host_reset_return_run
 
+import std.optional { Absent, Present }
 import gunbc.host.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused, unit_hold_acquire, unit_hold_release, unit_hold_proof_refusal,
   host_reset_owner, admit_unit_hold_subject, UnitHoldSubjectAdmitted, UnitHoldNotRequired,

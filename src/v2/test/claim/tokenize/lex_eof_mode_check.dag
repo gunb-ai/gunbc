@@ -1,0 +1,169 @@
+module v2.test.claim.tokenize.lex_eof_mode_check
+
+import v2.std.text { String }
+import v2.std.compilers.lexing {
+  CharClassPattern,
+  CharPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  LexMode,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  ModeTransitionTokenRule,
+  ModeledLexRules,
+  OneOrMorePattern,
+  PopLexMode,
+  PushLexMode,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TokenStream,
+  TriviaRule,
+  WhitespaceChar
+}
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { ByteRange, DeclarationLocus, Textual, WholeFile }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE END-OF-INPUT VERDICT OF THE WALK: a mode still pushed when the text ends is an unterminated
+// context, refused at the token that opened it (tokenize_lex_e4_mode_unterminated). The walk reaches
+// that verdict in its step on an EMPTY cursor, which is a step AFTER the last scalar: v2.std.text
+// fold_source takes it as the end of the source. Before it did, the fold made one step per scalar, a
+// step that consumes a scalar leaves the cursor emptier, and the empty-cursor step existed only when
+// some lexeme was wider than one scalar. These claims hold the verdict at the shape where the count
+// used to run out exactly: every lexeme ONE scalar, the last of them the push that opened the mode.
+//
+// A language whose mode-pushing token is a single scalar is the generic lexer's to refuse correctly
+// whether or not any shipped language is one (the dag language is not: its first push is a template
+// head, which is wider than one scalar, so a text that opens a mode always had iterations to spare).
+
+fn ident_rule() -> LexRule {
+  TokenRule {
+    token_class: ^p_ident,
+    pattern: SequencePattern { left: CharClassPattern { class: IdentStartChar }, right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } } }
+  }
+}
+
+fn space_rule() -> LexRule {
+  TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } }
+}
+
+fn push_rule() -> LexRule {
+  ModeTransitionTokenRule { token_class: ^p_open, pattern: CharPattern { char: 40 }, transition: PushLexMode { mode: ^p_inner } }
+}
+
+// `(` opens a context and `)` closes it; the open is ONE scalar, so a text of single-scalar lexemes can
+// end with the context still open and no iteration left over.
+fn paren_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [space_rule(), ident_rule(), push_rule()],
+    modes: [
+      LexMode {
+        mode: ^p_inner,
+        rules: [
+          space_rule(),
+          ident_rule(),
+          push_rule(),
+          ModeTransitionTokenRule { token_class: ^p_close, pattern: CharPattern { char: 41 }, transition: PopLexMode }
+        ]
+      }
+    ]
+  }
+}
+
+fn lex_with(rules: LexRules, src: String) -> Outcome<TokenStream> {
+  tokenize(text: src, file: ^probe, rules: rules)
+}
+
+// The refusal's reason and byte extent, or a reason no rule set produces when the text lexed.
+type RefusalAt {
+  reason: Symbol
+  start: Int
+  end: Int
+}
+
+fn refusal_of(rules: LexRules, src: String) -> RefusalAt {
+  match lex_with(rules: rules, src: src) {
+    Accepted { value: _, diagnostics: _ } => RefusalAt { reason: ^p_accepted, start: -1, end: -1 }
+    Rejected { diagnostics: ds } =>
+      match ds.head.at {
+        Textual { file: _, extent: e } =>
+          match e {
+            ByteRange { start: s, end: b } => RefusalAt { reason: ds.head.reason, start: s, end: b }
+            WholeFile => RefusalAt { reason: ds.head.reason, start: -1, end: -1 }
+          }
+        NodeLocus { anchor: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+        SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+        InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+        DeclarationLocus { declaration: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+      }
+  }
+}
+
+fn paren() -> LexRules {
+  ModeledLexRules { root: paren_rules() }
+}
+
+fn refused_unterminated_at(rules: LexRules, src: String, start: Int, end: Int) -> Bool {
+  let r = refusal_of(rules: rules, src: src)
+  (r.reason == ^tokenize_lex_e4_mode_unterminated) && (r.start == start) && (r.end == end)
+}
+
+// RED before the end step was taken by fold_source: the text IS the opening push and nothing else. One
+// scalar, one lexeme, one iteration, so the walk's empty-cursor step was never taken and the text
+// lexed.
+test fn a_text_that_is_only_a_single_scalar_push_refuses_holds() -> Bool {
+  refused_unterminated_at(rules: paren(), src: "(", start: 0, end: 1)
+}
+
+// RED before the end step: one more single-scalar lexeme after the push, still no iteration to spare.
+test fn a_single_scalar_push_then_a_single_scalar_ident_refuses_holds() -> Bool {
+  refused_unterminated_at(rules: paren(), src: "(a", start: 0, end: 1)
+}
+
+test fn a_single_scalar_push_then_a_single_scalar_space_refuses_holds() -> Bool {
+  refused_unterminated_at(rules: paren(), src: "( ", start: 0, end: 1)
+}
+
+// RED before the end step: two pushes, refused at the INNERMOST open one (octets 1..2).
+test fn two_single_scalar_pushes_refuse_at_the_innermost_holds() -> Bool {
+  refused_unterminated_at(rules: paren(), src: "((", start: 1, end: 2)
+}
+
+// POSITIVE CONTROL, same open mode, one wider lexeme: the extra scalar was the iteration the
+// empty-cursor step needed, so this refused before the fix too. If it had not, the reds above would
+// not have discriminated on the lexeme width.
+test fn the_same_open_mode_after_a_wider_lexeme_refuses_holds() -> Bool {
+  refused_unterminated_at(rules: paren(), src: "(ab", start: 0, end: 1)
+}
+
+// POSITIVE CONTROL: a closed context is accepted, so the refusals above are the open mode's and not
+// the rule set's.
+test fn a_closed_single_scalar_context_lexes_holds() -> Bool {
+  refusal_of(rules: paren(), src: "()").reason == ^p_accepted
+}
+
+test fn a_closed_context_around_a_single_scalar_ident_lexes_holds() -> Bool {
+  refusal_of(rules: paren(), src: "(a)").reason == ^p_accepted
+}
+
+// THE DAG LANGUAGE. A file ending inside an unterminated string literal is refused at its opening
+// quote (no rule matches a quote whose closing quote never comes), a file ending inside an open
+// template hole is refused at the token that opened it, and a trailing line annotation without a final
+// newline is not an unterminated context (a line annotation ends where the text does). The language
+// has no block comment.
+test fn a_dag_text_ending_inside_a_string_literal_refuses_holds() -> Bool {
+  refusal_of(rules: dag_lex(), src: "module m\ndata a: String = \"abc").reason == ^tokenize_lex_e1_unrecognized_char
+}
+
+test fn a_dag_text_ending_inside_a_template_hole_refuses_holds() -> Bool {
+  refusal_of(rules: dag_lex(), src: "module m\ndata a: String = \"x\{a").reason == ^tokenize_lex_e4_mode_unterminated
+}
+
+test fn a_dag_text_ending_in_a_line_annotation_without_a_newline_lexes_holds() -> Bool {
+  refusal_of(rules: dag_lex(), src: "module m\n// note").reason == ^p_accepted
+}

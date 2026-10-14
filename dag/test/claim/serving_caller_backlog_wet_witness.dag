@@ -19,7 +19,8 @@ import gunbc.serving.caller_backlog {
   DurableCancelStoreRefused, DurableCancelKeyNotSlotAddressable,
   DurableAttemptCommitted, DurableAttemptFenceRefused, DurableAttemptNotWaiting,
   DurableAttemptUnknownWork, DurableAttemptStoreRefused, DurableAttemptKeyNotSlotAddressable,
-  persist_waiting_durable, resume_waiting_durable, cancel_work_durable, commit_attempt_durable,
+  persist_waiting_durable, resume_waiting_durable, cancel_work_durable, commit_attempt_durable, ComputeCellFence,
+  DispatchTurnKey, logical_work_id_of, WorkIdDerived, WorkIdKeyNotOctets,
   note_recovery_durable,
   WorkCancelled, WorkCompleted, WorkWaiting, WorkRecoveryBoundExceeded,
   RecoveryEvent, RecoveryProbe, RecoveryRequest,
@@ -195,7 +196,7 @@ test fn persist_cancel_and_commit_resume_as_terminal_by_real_execution() -> Bool
   let committed = match commit_snap {
     Absent => false
     Present { value: snap } =>
-      match commit_attempt_durable(root: root, snapshot: snap, account: account, work: commit_work, presented: 2) {
+      match commit_attempt_durable(root: root, snapshot: snap, fence: ComputeCellFence { account: account, presented: 2 }, work: commit_work) {
         DurableAttemptCommitted { record: r } =>
           match r.phase {
             WorkCompleted => true
@@ -508,9 +509,8 @@ test fn stale_waiting_snapshot_cannot_commit_over_cancel_by_real_execution() -> 
       match commit_attempt_durable(
         root: root,
         snapshot: snap,
-        account: wet_account(reservation: reservation, generation: 2),
+        fence: ComputeCellFence { account: wet_account(reservation: reservation, generation: 2), presented: 2 },
         work: work,
-        presented: 2,
       ) {
         DurableAttemptNotWaiting { phase: p } =>
           match p {
@@ -709,4 +709,45 @@ test fn stale_recovery_cannot_truncate_or_revive_terminal_by_real_execution() ->
     && stale_revive
     && still_terminal
     && removed.success
+}
+
+// A real dispatch node id carries a slash (node://session-x). The id derived from it must be a
+// valid slot key: persist succeeds and a fresh resume recovers the same work. Under the earlier
+// raw-JSON derivation this persists as DurablePersistKeyNotSlotAddressable.
+test fn slash_bearing_dispatch_node_derives_a_persistable_resumable_work_id_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let key = DispatchTurnKey { dispatch_node: "node://session-x" as NonEmptyStr, ordinal: 3 }
+  let ok = match logical_work_id_of(key: key) {
+    WorkIdKeyNotOctets { observed: _ } => false
+    WorkIdDerived { work: work } =>
+      !(work as String).contains("/")
+        && (match persist_waiting_durable(
+          root: root,
+          snapshot: empty_caller_backlog,
+          work: work,
+          reservation: "grant-slash" as ReservationRef,
+          generation: 1,
+        ) {
+          DurableWaitingPersisted { record: _ } => true
+          DurablePhasePersisted { record: _ } => false
+          DurablePersistIdempotent { record: _ } => false
+          DurablePersistRefusedTerminal { phase: _ } => false
+          DurablePersistStoreRefused { detail: _ } => false
+          DurablePersistKeyNotSlotAddressable { work: _ } => false
+          DurablePersistPayloadUnencodable { reason: _ } => false
+          DurablePersistUnknownWork => false
+          DurablePersistDuplicate => false
+        })
+        && (match resume_waiting_durable(root: root, work: work) {
+          DurableResumedWaiting { record: r } => (r.work as String) == (work as String)
+          DurableResumedTerminal { phase: _ } => false
+          DurableResumeUnknownWork => false
+          DurableResumeStoreUnreadable { detail: _ } => false
+          DurableResumePayloadUndecodable => false
+          DurableResumeWorkMismatch => false
+        })
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  ok && removed.success
 }
