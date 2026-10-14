@@ -789,8 +789,12 @@ migration window / unclimbed seed path, not a rung drop: the seed never held imp
 resolution, and native is climbing. The window is bounded by the generated corpus import
 sweep (gunbc#14017). Restoration: native `emit --entry v2.cli.compile_cli` over dag + src/v2
 first-fatals no concat/count as `resolve_reason_unbound_symbol` for missing template
-import. `map_get` is deleted; `map_lookup` is the survivor. `map_insert` / `empty_map` /
-`map_lookup` wait on #13872's real fns.
+import. Methods bind by receiver inhabitance, not import: deleting the last-tier free-call
+bind must not remove `map_get` (or `count`/`map`/`any`) from the carrier template lists.
+The named fn `collection_map_get_shape` (free-call / import identity) is deleted;
+`map_lookup` is the surviving free fn. The inline `map_get` METHOD template and
+`map_lookup` are one operation held twice until v1 method uses migrate or a dedicated
+rename. `map_insert` / `empty_map` / `map_lookup` wait on #13872's real fns.
 
 **RULED — the (Y) expected-type filter (operator, 2026-07-22; recorded in §4).** The re-adjudication
 is done: the pool-filter reading of (Y) dies with the `global_bare` tier (there is never a pool

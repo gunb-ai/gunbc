@@ -2031,6 +2031,19 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             callback_element_position: std::option::Option::None,
         }),
         Rc::new(AlgebraFieldTemplate {
+            name: "map_get".to_string(),
+            param_types: Rc::new(vec![
+                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+                Rc::new(AlgebraTypeTemplate::ReceiverKey),
+            ]),
+            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
+                inner: Rc::new(AlgebraTypeTemplate::ReceiverValue),
+            }),
+            size_effect: std::option::Option::None,
+            cost_shape: std::option::Option::None,
+            callback_element_position: std::option::Option::None,
+        }),
+        Rc::new(AlgebraFieldTemplate {
             name: "lookup".to_string(),
             param_types: Rc::new(vec![
                 Rc::new(AlgebraTypeTemplate::ReceiverSelf),
@@ -2050,6 +2063,19 @@ pub fn finitely_supported_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate
     Rc::new(vec![
         Rc::new(AlgebraFieldTemplate {
             name: "get".to_string(),
+            param_types: Rc::new(vec![
+                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+                Rc::new(AlgebraTypeTemplate::ReceiverKey),
+            ]),
+            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
+                inner: Rc::new(AlgebraTypeTemplate::ReceiverValue),
+            }),
+            size_effect: std::option::Option::None,
+            cost_shape: std::option::Option::None,
+            callback_element_position: std::option::Option::None,
+        }),
+        Rc::new(AlgebraFieldTemplate {
+            name: "map_get".to_string(),
             param_types: Rc::new(vec![
                 Rc::new(AlgebraTypeTemplate::ReceiverSelf),
                 Rc::new(AlgebraTypeTemplate::ReceiverKey),

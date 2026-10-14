@@ -223,8 +223,11 @@ type PartialFunction<K, V> {
 // subtyping: a finite map really does answer lookup, and saying so twice is the honest encoding
 // of "this one can do everything that one can, and more".
 //
-// `lookup` and `get` remain two template spellings of the keyed read. `map_get` is deleted;
-// `map_lookup` is the surviving fn.
+// `lookup` and `get` remain two template spellings of the keyed read. The named fn
+// `collection_map_get_shape` (free-call / import identity) is deleted; `map_lookup` is the
+// surviving free fn. `map_get` remains an inline METHOD template on these carriers so a
+// receiver call binds by inhabitance, not by import. That is the same operation as
+// `map_lookup`, held twice, until v1 method uses migrate or a dedicated rename.
 type FinitelySupportedFunction<K, V> {
   lookup: fn(K) -> V?
   empty: FinitelySupportedFunction<K, V>
@@ -1105,6 +1108,7 @@ fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
 fn partial_function_templates() -> List<AlgebraFieldTemplate> {
   [
     { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none }
   ]
 }
@@ -1112,6 +1116,7 @@ fn partial_function_templates() -> List<AlgebraFieldTemplate> {
 fn finitely_supported_function_templates() -> List<AlgebraFieldTemplate> {
   [
     { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_insert", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_merge", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
