@@ -22,6 +22,7 @@ import gunbc.parse_verdict_schema {
   EvictedRefused,
   BaseIdentityUnobserved,
 }
+import gunbc.parse_verdict_restore { parse_verdict_pr2_pre_identity_publish_transition }
 import extdeps.filesystem.filesystem_io
 
 data native_lane_runner_source_path: String = "src/v1/stage0/src/cli_run/native_lane_runner.rs"
@@ -98,6 +99,11 @@ test fn the_stored_line_stamps_compiler() -> Bool {
 test fn pr2_is_the_named_restore_consumer() -> Bool {
   (parse_verdict_pr2_restore_frontier.declaration.decl_name == "parse_verdict_request_family")
     && ((parse_verdict_pr2_restore_frontier.named_consumer as String) != parse_verdict_pr2_restore_frontier.declaration.decl_name)
+}
+
+test fn a_pre_identity_publish_base_refuses_unobserved() -> Bool {
+  string_contains(s: parse_verdict_pr2_pre_identity_publish_transition, pattern: "BaseIdentityUnobserved")
+    && string_contains(s: parse_verdict_pr2_pre_identity_publish_transition, pattern: "merge main")
 }
 
 test fn the_gen_one_sidecar_writer_is_seed_retained_against_the_hasher_justification() -> Bool {

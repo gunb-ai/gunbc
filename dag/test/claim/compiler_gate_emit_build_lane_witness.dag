@@ -18,8 +18,6 @@ import gunbc.parse_verdict_publish {
   materialization_publish_if,
   parse_verdict_identity_if,
   parse_verdict_identity_step,
-  parse_verdict_identity_blob_step,
-  parse_verdict_identity_blob_save_step,
   parse_verdict_publish_walk_step,
   parse_verdict_publish_save_step,
   parse_verdict_identity_step_name,
@@ -547,8 +545,6 @@ test fn a_pr_head_run_never_publishes() -> Bool {
     && string_contains(s: parse_verdict_identity_if(), pattern: "pull_request")
     && (step_if_condition(step: parse_verdict_publish_walk_step()) == guard)
     && (step_if_condition(step: parse_verdict_publish_save_step()) == guard)
-    && (step_if_condition(step: parse_verdict_identity_blob_step()) == guard)
-    && (step_if_condition(step: parse_verdict_identity_blob_save_step()) == guard)
     && string_contains(s: guard, pattern: "refs/heads/main")
     && string_contains(s: guard, pattern: "push")
     && (string_contains(s: guard, pattern: "pull_request") == false)
@@ -606,7 +602,6 @@ test fn a_pr_head_restores_and_never_saves() -> Bool {
 
 test fn the_identity_restore_key_is_sha_only() -> Bool {
   string_contains(s: parse_compiler_sha_identity_cache_prefix, pattern: "gunbc-parse-identity-")
-    && (step_if_condition(step: parse_verdict_identity_blob_save_step()) == materialization_publish_if())
 }
 
 test fn the_gha_object_key_carries_compiler_identity_and_sha() -> Bool {
