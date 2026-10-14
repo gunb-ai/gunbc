@@ -1174,9 +1174,9 @@ fn dag_grammar_generic_param_expr() -> GrammarExpr {
 // of `name: T <tail>` before `name: T`, both led by the same binding name. The tail is a refinement
 // (optionally followed by a default) or a default; the two start with `where` and `=`, so that inner
 // choice is disjoint. A plain parameter captures `name: (T, <empty>)`, which
-// v2.compiler.body_lowering_fold body_lower_typed_param_optional reads. A refinement does not lower:
-// the fn refuses at the clause (body_lowering_reason_parameter_refinement_unmodeled). A default lowers
-// onto the parameter's binder (XL-2 PR2c-ii).
+// v2.compiler.body_lowering_fold body_lower_typed_param_optional reads. A where clause is the
+// parameter's lowered type through body_lower_kept_where_clause (the type-variant reader). A default
+// lowers onto the parameter's binder (XL-2 PR2c-ii).
 fn dag_grammar_typed_param_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_value_name_before(follow: dag_grammar_terminal(token_class: ^dag_token_colon)),
@@ -1418,8 +1418,8 @@ fn dag_grammar_field_decl_expr() -> GrammarExpr {
 }
 
 // A FIELD MAY REFINE ITS TYPE WITH A WHERE CLAUSE (`n: Int where range(min: 0)`), in v1 parse_field's
-// order: type, refinement, wire key, default. It PARSES, and every lowering of a field REFUSES at the
-// clause (body_lowering_reason_field_refinement_unmodeled), the parameter precedent
+// order: type, refinement, wire key, default. It PARSES, and lowering carries the clause on the
+// field's type through body_lower_kept_where_clause (the type-variant reader).
 // (dag_grammar_typed_param_expr): the clause is the first slot of the tail, optional and led by `where`,
 // which neither `from` nor `=` can begin, so the three optional slots are disjoint and left-factored.
 // A field: the general field plus v1 parse_field's `[from "key"] [= default]` tail, which v1 admits on
