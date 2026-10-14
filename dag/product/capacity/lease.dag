@@ -29,11 +29,14 @@ fn lease_fence_of(admitting_event: EventId, generation: Nat) -> LeaseFence {
 type FenceVerdict
   = FenceCurrent
   | FenceObsolete { presented: Nat, current: Nat }
+  | FenceAhead { presented: Nat, current: Nat }
   | FenceForeignGrant { presented: GrantIdentity, current: GrantIdentity }
 
 fn fence_verdict(current: LeaseFence, presented: LeaseFence) -> FenceVerdict {
   if presented.generation < current.generation {
     FenceObsolete { presented: presented.generation, current: current.generation }
+  } else if presented.generation > current.generation {
+    FenceAhead { presented: presented.generation, current: current.generation }
   } else if (presented.grant as String) != (current.grant as String) {
     FenceForeignGrant { presented: presented.grant, current: current.grant }
   } else {

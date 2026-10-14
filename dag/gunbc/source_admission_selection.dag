@@ -1,5 +1,5 @@
 module gunbc.source_admission_selection
-// Compile-clean's source-transition selection, independent of gunbc.instruments.dag_compile_clean_scope (the import-closure SemanticEntrySelection). The two join only at the final verdict. This landing does not wire the axis into production compile-clean and does not delete compile_clean_census_fill_hard_diagnostics.
+// Compile-clean's source-transition selection, independent of gunbc.instruments.dag_compile_clean_scope (the import-closure SemanticEntrySelection). The two join only at the final verdict. This landing does not wire the axis into production compile-clean. Out-of-closure body grammaticality is owned by run_dag_parse_sweep.
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.algebra { FreeSemigroup }
@@ -412,7 +412,7 @@ fn mint_annotation_corpus_admitted(
   }
 }
 
-// compile_clean_census_fill_hard_diagnostics stays the differential oracle. Delete it only in the diff that lands all of: via-index admission green; file-locality executed; changed out-of-closure source RED; untouched-source-plus-mechanism-change RED; departure/precedence control; unobservable-transition refuses; exact population join; differential equivalence with that census across a controlled transition matrix; and an independent cold whole-corpus execution still green as a falsifier of incremental selection. This module does not satisfy that set: IncrementalSources is not production-wired, and AnnotationCorpusAdmitted cannot be minted while mechanism identity is unobservable.
+// Out-of-closure body parse is not this module's oracle. IncrementalSources is not production-wired, and AnnotationCorpusAdmitted cannot be minted while mechanism identity is unobservable.
 fn production_annotation_mechanism_identity() -> AnnotationMechanismIdentity {
   MechanismIdentityUnobservable {
     cause: MechanismIdentityUnobservableCause {

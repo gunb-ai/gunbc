@@ -53,7 +53,13 @@ type NonEmptyDiagnostics {
   tail: List<Diagnostic>
 }
 
-data non_empty_diagnostics_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "migrate_when_host_emit_names_free_semigroup — NonEmptyDiagnostics is FreeSemigroup<Diagnostic> by shape (one required Diagnostic plus a list of Diagnostic). It is not an Option alias: that host-emit mapping is Diagnostics -> Option<NonEmptyDiagnostics> via v1.compiler.emit_rust render_rust_diagnostics_carrier_applied, which hardcodes the type name NonEmptyDiagnostics as the Option inner. Dissolve into std.algebra FreeSemigroup<Diagnostic> when that renderer names FreeSemigroup rather than this monomorph; until then a second pair carrier remains.")
+// FROZEN (cardinality-carrier-consolidation cohort 2 / Manager 1): no independent semantic
+// distinction — this is FreeSemigroup<Diagnostic> by shape. Retained only because
+// v1.compiler.emit_rust render_rust_diagnostics_carrier_applied keys the host Option inner on
+// the type NAME "NonEmptyDiagnostics" (a spelling, not a declaration identity). No new
+// consumers, no growth. Dissolution is the emitter naming FreeSemigroup by declaration
+// identity (clever-crane-830).
+data non_empty_diagnostics_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "clever-crane-830_emit_names_free_semigroup_by_declaration_identity — NonEmptyDiagnostics is FreeSemigroup<Diagnostic> by shape. It is frozen, not semantically distinct: host-emit render_rust_diagnostics_carrier_applied hardcodes the type name NonEmptyDiagnostics as the Option inner (Diagnostics -> Option<NonEmptyDiagnostics>). Dissolve into std.algebra FreeSemigroup<Diagnostic> when that renderer keys on declaration identity and names FreeSemigroup rather than this monomorph.")
 
 // A refusal's reasons by name, in order. A producer whose consumer seam is String-typed cannot hand
 // the refusal on as data, so the text it hands on instead must still name what refused and why.

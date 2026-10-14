@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.a_possibly_empty_producer_enters_a_nonempty_consumer
 
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data a_possibly_empty_producer_enters_a_nonempty_consumer: RecurringFailureMode = RecurringFailureMode {
@@ -18,5 +19,9 @@ data a_possibly_empty_producer_enters_a_nonempty_consumer: RecurringFailureMode 
     "EXECUTED SPECIMEN (2026-10-13, gunbc#13889, native nested compile_dag_diagnostic_census): a synthetic module `fn probe() -> FreeSemigroup<Int> { Empty }` (and the `[]` literal at the same FreeSemigroup formal) produced no blocking DeclaredTypeNotInhabited row. The first-slice construction wall that did fire is MissingField / head on `FreeSemigroup { tail: Empty }` against imported std.algebra.FreeSemigroup, with an Accepted one-element positive (zero blocking). That construction refusal is not the inhabitance seam: writing a possibly-empty list at a FreeSemigroup position can still miss DeclaredTypeNotInhabited. Next-rung trigger remains cardinality-vertical-slice (producer-admits-zero into a FreeSemigroup consumer refuses).",
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "v2.test.claim.compiler.free_semigroup_empty_producer_witness", decl_name: "fse_empty_at_a_declared_free_semigroup_return_refuses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.free_semigroup_empty_producer_witness", decl_name: "fse_empty_variant_at_a_nonempty_product_formal_refuses_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.free_semigroup_empty_producer_witness", decl_name: "fse_a_constructed_nonempty_value_is_accepted_holds", field: WholeDeclaration },
+  ],
 }

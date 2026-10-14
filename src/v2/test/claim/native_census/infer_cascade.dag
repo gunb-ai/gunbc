@@ -1,5 +1,6 @@
 module v2.test.claim.native_census.infer_cascade
 
+import v2.compiler.native_test_vocabulary { FileRefusalAtUnresolvedNode }
 import v2.compiler.compile {
   NativeCensusCascadeMemberOf,
   NativeCensusCascadeNone,
@@ -292,6 +293,7 @@ fn sv_member(module: String) -> NativeCensusCauseMember {
     path: ^sv_root,
     module: optional_present(value: qualified_name_from_dotted_string(dotted: module)),
     head_reason: ^sv_head,
+    at: FileRefusalAtUnresolvedNode,
     cascade: NativeCensusCascadeNone
   }
 }
