@@ -38,8 +38,9 @@ fn materialization_gha_cache_key_prefix(family: String) -> String {
 
 // THE GHA OBJECT KEY, EXACTLY (not a receipt key). One blob per (family, compiler identity, sha):
 //   gunbc-materialization-<family>-<compiler_identity>-<github.sha>
-// compiler_identity is the emitted v2-native-cli closure digest (the sidecar beside
-// keep_generation_one_executable). Restore is prefix
+// compiler_identity is the parse-compiler digest (sidecar .parse_compiler_identity beside
+// keep_generation_one_executable): import_closure_live of tokenize+parse+schema, emitted
+// Rust of those modules, src/v1/stage0_runtime, rustc identity. Restore is prefix
 //   gunbc-materialization-<family>-<compiler_identity>-
 // so a parser-identity change cannot hit a prior compiler's blob.
 // THE RECEIPT PREIMAGE inside the blob is ParseVerdictRequest { source_digest, compiler }
@@ -56,6 +57,7 @@ fn parse_verdict_save_step_name() -> String {
 data parse_verdict_receipt_dir: String = ".gunbc/parse-verdicts"
 data generation_one_executable_prefix: String = "v2-native-cli-gen-one-"
 data generation_one_closure_identity_suffix: String = ".closure_identity"
+data generation_one_parse_compiler_identity_suffix: String = ".parse_compiler_identity"
 data parse_verdict_compiler_output: String = "compiler_identity"
 data parse_verdict_parser_bin_output: String = "parser_bin"
 
@@ -71,10 +73,10 @@ fn parse_verdict_identity_command() -> String {
       "set -o pipefail",
       "n=0",
       "bin=",
-      join(["for f in \"$RUNNER_TEMP\"/", generation_one_executable_prefix, "*; do [ -f \"$f\" ] || continue; case \"$f\" in *", generation_one_closure_identity_suffix, ") continue ;; esac; n=$((n+1)); bin=$f; done"], ""),
+      join(["for f in \"$RUNNER_TEMP\"/", generation_one_executable_prefix, "*; do [ -f \"$f\" ] || continue; case \"$f\" in *", generation_one_closure_identity_suffix, "|*", generation_one_parse_compiler_identity_suffix, ") continue ;; esac; n=$((n+1)); bin=$f; done"], ""),
       "if [ \"$n\" -ne 1 ]; then echo \"::error::IdentityUnknown: expected exactly one generation-one executable under RUNNER_TEMP, found $n\"; exit 1; fi",
-      join(["cid=\"$bin", generation_one_closure_identity_suffix, "\""], ""),
-      "if [ ! -s \"$cid\" ]; then echo \"::error::IdentityUnknown: missing or empty parser identity beside the generation-one executable\"; exit 1; fi",
+      join(["cid=\"$bin", generation_one_parse_compiler_identity_suffix, "\""], ""),
+      "if [ ! -s \"$cid\" ]; then echo \"::error::IdentityUnknown: missing or empty parse-compiler identity beside the generation-one executable\"; exit 1; fi",
       "compiler=$(cat \"$cid\")",
       join(["echo \"", parse_verdict_compiler_output, "=$compiler\" >> \"$GITHUB_OUTPUT\""], ""),
       join(["echo \"", parse_verdict_parser_bin_output, "=$bin\" >> \"$GITHUB_OUTPUT\""], "")

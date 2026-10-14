@@ -1,0 +1,55 @@
+module test.claim.parse_compiler_identity_witness
+
+import std.types { Bool }
+import std.algebra { length }
+import gunbc.parse_verdict_schema {
+  parse_compiler_identity_entries,
+  parse_compiler_tokenize_entry,
+  parse_compiler_parse_entry,
+  parse_compiler_schema_entry,
+  parse_verdict_reuse_from,
+  parse_verdict_reuse_may_save,
+  Reused,
+  FreshIdentityWalked,
+  EvictedRefused,
+}
+
+test fn parse_compiler_entries_are_tokenize_parse_and_schema() -> Bool {
+  let es = parse_compiler_identity_entries()
+  length(xs: es) == 3
+    && any(es, e => e == parse_compiler_tokenize_entry)
+    && any(es, e => e == parse_compiler_parse_entry)
+    && any(es, e => e == parse_compiler_schema_entry)
+}
+
+test fn a_changed_identity_is_a_fresh_walk_and_never_saves_on_a_pr() -> Bool {
+  match parse_verdict_reuse_from(i_head: "new", i_base: "old", restore_hit: false) {
+    FreshIdentityWalked { compiler: c } =>
+      c == "new" && (parse_verdict_reuse_may_save(standing: FreshIdentityWalked { compiler: c }, is_main_push: false) == false)
+    Reused { compiler: _ } => false
+    EvictedRefused { compiler: _ } => false
+  }
+}
+
+test fn same_identity_with_a_hit_is_reused() -> Bool {
+  match parse_verdict_reuse_from(i_head: "same", i_base: "same", restore_hit: true) {
+    Reused { compiler: c } => c == "same"
+    FreshIdentityWalked { compiler: _ } => false
+    EvictedRefused { compiler: _ } => false
+  }
+}
+
+test fn same_identity_with_a_miss_is_evicted() -> Bool {
+  match parse_verdict_reuse_from(i_head: "same", i_base: "same", restore_hit: false) {
+    EvictedRefused { compiler: c } => c == "same"
+    Reused { compiler: _ } => false
+    FreshIdentityWalked { compiler: _ } => false
+  }
+}
+
+test fn main_may_save_after_a_fresh_identity_walk() -> Bool {
+  parse_verdict_reuse_may_save(
+    standing: FreshIdentityWalked { compiler: "new" },
+    is_main_push: true
+  )
+}

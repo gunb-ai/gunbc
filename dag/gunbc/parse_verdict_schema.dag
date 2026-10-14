@@ -1,0 +1,51 @@
+module gunbc.parse_verdict_schema
+
+import std.types { Bool, String, List }
+
+// THE PARSE-VERDICT RECEIPT WIRE, ONE PLACE. ParseVerdictRequest stays a family of
+// std.materialization_provider ArtifactRequest (extracting the variant would fork the coproduct).
+// This module is the third import_closure_live entry of the parse-compiler identity: the wire
+// a publisher stamps and a consumer reads, not the rest of ArtifactRequest.
+
+data parse_verdict_receipt_line_prefix: String = "parse-verdict\t"
+data parse_verdict_receipt_accepted: String = "Accepted"
+
+// Named roots of the parse-compiler identity (not the member list). Members are
+// v2.lens.module_graph import_closure_live over these paths with pool_roots dag + src/v2.
+data parse_compiler_tokenize_entry: String = "src/v2/compiler/tokenize.dag"
+data parse_compiler_parse_entry: String = "src/v2/compiler/parse.dag"
+data parse_compiler_schema_entry: String = "dag/gunbc/parse_verdict_schema.dag"
+
+fn parse_compiler_identity_entries() -> List<String> {
+  [parse_compiler_tokenize_entry, parse_compiler_parse_entry, parse_compiler_schema_entry]
+}
+
+data parse_compiler_runtime_crate_dir: String = "src/v1/stage0_runtime"
+
+// I_head vs I_base by the same identity fold; prefix restore of the GHA blob.
+type ParseVerdictReuse
+  = Reused { compiler: String }
+  | FreshIdentityWalked { compiler: String }
+  | EvictedRefused { compiler: String }
+
+fn parse_verdict_reuse_from(i_head: String, i_base: String, restore_hit: Bool) -> ParseVerdictReuse {
+  if i_head != i_base {
+    FreshIdentityWalked { compiler: i_head }
+  } else if restore_hit {
+    Reused { compiler: i_head }
+  } else {
+    EvictedRefused { compiler: i_head }
+  }
+}
+
+fn parse_verdict_reuse_may_save(standing: ParseVerdictReuse, is_main_push: Bool) -> Bool {
+  if is_main_push {
+    true
+  } else {
+    match standing {
+      Reused { compiler: _ } => false
+      FreshIdentityWalked { compiler: _ } => false
+      EvictedRefused { compiler: _ } => false
+    }
+  }
+}

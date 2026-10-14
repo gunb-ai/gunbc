@@ -158,7 +158,7 @@ jobs:
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
           'set' '+e'
           'set' '-o' 'pipefail'
-          ('sh' '-e' '-c' 'set -o pipefail; n=0; bin=; for f in "$RUNNER_TEMP"/v2-native-cli-gen-one-*; do [ -f "$f" ] || continue; case "$f" in *.closure_identity) continue ;; esac; n=$((n+1)); bin=$f; done; if [ "$n" -ne 1 ]; then echo "::error::IdentityUnknown: expected exactly one generation-one executable under RUNNER_TEMP, found $n"; exit 1; fi; cid="$bin.closure_identity"; if [ ! -s "$cid" ]; then echo "::error::IdentityUnknown: missing or empty parser identity beside the generation-one executable"; exit 1; fi; compiler=$(cat "$cid"); echo "compiler_identity=$compiler" >> "$GITHUB_OUTPUT"; echo "parser_bin=$bin" >> "$GITHUB_OUTPUT"') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          ('sh' '-e' '-c' 'set -o pipefail; n=0; bin=; for f in "$RUNNER_TEMP"/v2-native-cli-gen-one-*; do [ -f "$f" ] || continue; case "$f" in *.closure_identity|*.parse_compiler_identity) continue ;; esac; n=$((n+1)); bin=$f; done; if [ "$n" -ne 1 ]; then echo "::error::IdentityUnknown: expected exactly one generation-one executable under RUNNER_TEMP, found $n"; exit 1; fi; cid="$bin.parse_compiler_identity"; if [ ! -s "$cid" ]; then echo "::error::IdentityUnknown: missing or empty parse-compiler identity beside the generation-one executable"; exit 1; fi; compiler=$(cat "$cid"); echo "compiler_identity=$compiler" >> "$GITHUB_OUTPUT"; echo "parser_bin=$bin" >> "$GITHUB_OUTPUT"') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
           GUNBC_FLOOR_EXIT="$?"
           GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
           GUNBC_FLOOR_CLASS='structural'
