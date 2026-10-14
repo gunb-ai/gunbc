@@ -46,8 +46,8 @@ test fn the_imported_card_route_lands_on_the_launch_port() -> Bool {
     }
 }
 
-test fn the_imported_card_is_vast_contract_55807382() -> Bool {
-  string_contains(s: rented_allocation_wire(id: operator_pod_allocation.identity) as String, pattern: "55807382")
+test fn the_imported_card_is_vast_instance_55954143() -> Bool {
+  string_contains(s: rented_allocation_wire(id: operator_pod_allocation.identity) as String, pattern: "55954143")
 }
 
 // RED: the drift harness_operator_route carried before #13918, the same real row with its forward landing

@@ -21,9 +21,12 @@ import gunbc.serving.rented_allocation {
 }
 
 // THE OPERATOR'S HAND-RENTED VAST CARD, IMPORTED AS ONE RENTED SERVING ALLOCATION. The operator rented it
-// on 2026-10-13 (Vast contract 55807382, label `daily workspace`, Hong Kong, RTX PRO 5000 Blackwell 48 GB)
-// and started ninfer-serve on it; this repository did not acquire it, so the origin is Imported and names
-// the launch it found running. Every field that already has an authority is that authority, not a copy:
+// on 2026-10-14 (Vast instance 55954143, label `daily workspace`, RTX PRO 6000 Blackwell Max-Q, 97887 MiB) to
+// replace contract 55807382, unreachable since 03:25Z that day, and started ninfer-serve on it at 16:12:59Z;
+// this repository did not acquire it, so the origin is Imported and names the launch it found running. The
+// facts below were read from srv1 at about 18:00Z: nvidia-smi name and memory, the host key at first contact,
+// the ninfer-serve command line, and /v1/models through the tunnel. Every field that already has an
+// authority is that authority, not a copy:
 // - the engine is gunbc.harness.operator_pod_launch operator_pod_ninfer_launch on operator_pod_listen_port;
 // - the route is gunbc.harness.harness_operator_route operator_endpoint_tunnel, the srv1 ssh -L forward the
 //   harness already dials, so the allocation and the harness cannot name two different tunnels;
@@ -32,28 +35,30 @@ import gunbc.serving.rented_allocation {
 // WHAT IS NOT YET READ, each standing in its own type rather than as a guessed value:
 // - the contract terms (machine id, dph_total, rental start) are behind the Vast API key, which has no
 //   custody here yet, so the contract is RentedContractUnread with that obligation;
-// - the card's sshd is published on port 11055, and RentedHostAccessDeclaration has no port until S2(b)
-//   gives SshTarget and KnownHostKeyRow a SocketAddress. No leg dials this declaration before then, and the
-//   host key row is written under the bare address for the same reason;
+// - srv1 reaches the card's sshd through Vast's gateway ssh7.vast.ai on port 15648, which passes through to
+//   the instance's own sshd (public address 133.206.145.128). RentedHostAccessDeclaration has no port until
+//   S2(b) gives SshTarget and KnownHostKeyRow a SocketAddress; no leg dials this declaration before then, and
+//   the host key row is written under the bare gateway name for the same reason, while srv1's known_hosts
+//   holds it under [ssh7.vast.ai]:15648;
 // - the authorized key is srv1's host-held id_ed25519_gpu_pod (gap register G10), not an operator agent key.
 //
 // imported_at is the day this row was authored, at day grain: the import is this declaration, not an
 // observed event with a finer instant.
-data operator_pod_allocation_contract_obligation: NonEmptyStr = "Read Vast contract 55807382 (machine_id, dph_total, start_date) through the Vast API once its key has custody, and replace this standing with the RentedContractRead offer" as NonEmptyStr
+data operator_pod_allocation_contract_obligation: NonEmptyStr = "Read Vast instance 55954143 (machine_id, dph_total, start_date) through the Vast API once its key has custody, and replace this standing with the RentedContractRead offer" as NonEmptyStr
 
 data operator_pod_card_host_key: KnownHostKeyRow = KnownHostKeyRow {
-  host: "vast-55807382" as HostIdentity,
-  endpoint: "221.181.169.114",
+  host: "vast-55954143" as HostIdentity,
+  endpoint: "ssh7.vast.ai",
   key_type: "ssh-ed25519",
-  public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIGDAY7hcaruUZpSDdxVZnW493XqeEr6lm/XeJNohgIt6",
-  sha256_fingerprint: "SHA256:AI4v+qjKxcoc1EtNe4xLwqgw1ehLPnNZq2AyoKhjTXk",
-  provenance: ScannedFirstContact { scanned_from: "srv1 ssh first contact to 221.181.169.114:11055, 2026-10-13" as NonEmptyStr },
+  public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIB0yPz+2aPqwpIrAxGB70Mb2+7cpVPZ+dlBtT9QS78bH",
+  sha256_fingerprint: "SHA256:2CtTlTTdlb/nFoKqzSO3mNSc6KRU+qarCYGrYuU1yB0",
+  provenance: ScannedFirstContact { scanned_from: "srv1 ssh first contact to [ssh7.vast.ai]:15648 (gateway to instance 55954143), 2026-10-14" as NonEmptyStr },
 }
 
 data operator_pod_allocation: RentedServingAllocation = RentedServingAllocation {
   identity: rented_allocation_identity(
     provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"),
-    contract: "55807382" as NonEmptyStr,
+    contract: "55954143" as NonEmptyStr,
   ),
   origin: RentedAllocationImported {
     imported_by: workspace_operator_principal(),
@@ -61,13 +66,13 @@ data operator_pod_allocation: RentedServingAllocation = RentedServingAllocation 
     found_running: decl_ref(module_path: "gunbc.harness.operator_pod_launch", decl_name: "operator_pod_ninfer_launch"),
   },
   contract: RentedContractUnread { obligation: operator_pod_allocation_contract_obligation },
-  card: RentedGpuDevice { index: 0, model: "RTX PRO 5000 Blackwell" as NonEmptyStr, memory: byte_size(count: 51539607552) },
+  card: RentedGpuDevice { index: 0, model: "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition" as NonEmptyStr, memory: byte_size(count: 102641958912) },
   end: RentedEndsOnOperatorRelease { decided_by: workspace_operator_principal() },
   engine: RentedNinferEngine { revision: "81c8ce09" as NonEmptyStr, launch: operator_pod_ninfer_launch, listen_port: operator_pod_listen_port },
   artifact: qwen3_8_27b_nvfp4_row,
   host: RentedHostAccessDeclaration {
-    node: "vast-55807382" as NonEmptyStr,
-    endpoint: "221.181.169.114" as NonEmptyStr,
+    node: "vast-55954143" as NonEmptyStr,
+    endpoint: "ssh7.vast.ai" as NonEmptyStr,
     principal: "root" as NonEmptyStr,
     host_key: operator_pod_card_host_key,
     operator_key: SshPublicKey { algorithm: Ed25519, material: "AAAAC3NzaC1lZDI1NTE5AAAAIAukWcfqhITs2EVxCXBGTcwKLTFHkzZePU5Yy3WFWSpY" as NonEmptyStr, comment: "srv1-gunbc-gpu-pod-tunnel" },
