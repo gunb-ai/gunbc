@@ -419,7 +419,7 @@ test fn the_ceiling_retry_opens_its_own_attempt_and_a_held_slot_refuses_it_befor
   let retry_reference = compute_ceiling_retry_reference(reference: "attempt-first" as NonEmptyStr)
   let squatter = record_for(reference: retry_reference as String)
   let held = attempt_open(root: root as NonEmptyStr, record: squatter)
-  let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", reference: retry_reference, granted: kibibyte(count: 27262976))
+  let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", owner: DirectInvocation { why: "wet witness" }, reference: retry_reference, granted: kibibyte(count: 27262976))
   let after = attempt_slot_read(root: root as NonEmptyStr, reference: retry_reference)
   attempt_transition_advanced(t: held)
     && (match opened { AttemptGateRefused { detail: d } => string_contains(s: d, pattern: "opening the attempt")  AttemptGateReady { record: _, generation: _ } => false })
@@ -438,7 +438,7 @@ test fn a_refused_reservation_closes_the_slot_it_was_taken_under() -> Bool {
     attempts_dir: root,
   }
   let reference = "attempt-refused" as NonEmptyStr
-  let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", reference: reference, granted: kibibyte(count: 1048576))
+  let opened = compute_open_attempt(layout: layout, identity: "abcdef0123456789", owner: DirectInvocation { why: "wet witness" }, reference: reference, granted: kibibyte(count: 1048576))
   let tree = match git_object_id_from_untagged_hex(hex: "0000000000000000000000000000000000000000") { Present { value: oid } => oid  Absent => "0000000000000000000000000000000000000000" }
   let r = compute_refused_after_open(
     instance: srv1_live_dashboard_instance(), identity: "abcdef0123456789", subject: ExactTree { tree: tree }, op: work_default_build(),
@@ -606,7 +606,7 @@ fn reuse_served_without_production(root_path: String) -> Bool {
   let toolchain = fixture_toolchain(rustc: "rustc fixture")
   let work_dir = compute_layout(instance: instance, identity_hex: compute_work_identity(subject: subject, op: work_default_build(), toolchain: toolchain)).work_dir
   let before = reuse_path_absent(path: work_dir)
-  let provided = compute_provide_leaf(store: reuse_store(root_path: root_path), instance: instance, commit: "fixture-commit", subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
+  let provided = compute_provide_leaf(store: reuse_store(root_path: root_path), instance: instance, owner: DirectInvocation { why: "wet witness" }, commit: "fixture-commit", subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
   let after = reuse_path_absent(path: work_dir)
   before && after
     && (match provided {

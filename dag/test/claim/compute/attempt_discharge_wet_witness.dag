@@ -56,7 +56,7 @@ fn subject_at(root: String) -> ComputeCapacitySubject {
 }
 
 fn attempts_at(root: String) -> NonEmptyStr {
-  join([trim(s: root), "/attempts"], "") as NonEmptyStr
+  trim(s: root) as NonEmptyStr
 }
 
 fn record_of(reference: String, state: AttemptState, owner: AttemptOwner) -> AttemptRecord {
@@ -157,13 +157,14 @@ test fn a_killed_reserved_attempt_keeps_its_seat_charged_until_the_ensure_runs()
 }
 
 // KILL AFTER OPEN, BEFORE RESERVE: the record exists, the ledger holds nothing. The ensure closes the
-// attempt and reports that nothing was held; it releases no seat it never reserved.
+// attempt and reports that nothing was held; it releases no seat it never reserved. An unrelated seat keeps the ledger present (an empty ledger is unreadable, which the ensure refuses on) and must stay charged.
 test fn a_kill_after_open_before_reserve_holds_no_seat_and_the_ensure_closes_the_attempt() -> Bool {
   let root = fresh_root()
   let subject = subject_at(root: root)
-  opened(root: root, reference: "r-open", owner: dispatch_owner())
+  reserved(subject: subject, reference: "r-other")
+    && opened(root: root, reference: "r-open", owner: dispatch_owner())
     && is_noop(o: ensure(root: root, reference: "r-open", source: ended()))
-    && committed(subject: subject) == 0
+    && committed(subject: subject) == granted_kib
     && is_terminal(root: root, reference: "r-open")
 }
 
