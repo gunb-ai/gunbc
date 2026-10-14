@@ -1227,6 +1227,27 @@ fn fold_non_empty<T>(head: T, tail: FreeMonoid<T>, cons: fn(T, T) -> T) -> T {
   fold_list(xs: tail, empty: head, cons: cons)
 }
 
+fn join_separated<T>(fields: FreeMonoid<T>, separator: T, combine: fn(T, T) -> T, empty: T) -> T {
+  match fields {
+    Empty => empty
+    Cons { head: first, tail: rest } =>
+      fold_list(
+        xs: rest,
+        empty: first,
+        cons: fn(acc, field) { combine(combine(acc, separator), field) }
+      )
+  }
+}
+
+fn string_concat_join(fields: FreeMonoid<String>, separator: String) -> String {
+  join_separated(
+    fields: fields,
+    separator: separator,
+    combine: fn(acc, field) { concat(acc, field) },
+    empty: ""
+  )
+}
+
 fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A {
   match xs {
     Empty => empty
