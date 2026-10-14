@@ -6,6 +6,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   fleet_compute_hermetic_dashboard_instance_at, srv1_live_dashboard_instance,
 }
 import gunbc.compute.host_capacity { compute_root }
+import gunbc.compute.work_provider_local { compute_durable_store, compute_staging_dir }
+import std.materialization_store_grant { DurableHostVolumeRoot, WitnessScratchRoot }
 import gunbc.instrument_targets { compute_run_unit_cold_label }
 import gunbc.emitted_subject_build_gate { emitted_subject_build_rows }
 import extdeps.bazel.label { render_label, label_eq }
@@ -31,6 +33,29 @@ test fn the_hermetic_compute_root_is_inside_the_job_workspace_not_opt_gunbc() ->
     && !starts_with(s: h.instance_root as String, prefix: "/opt/gunbc/")
     && !starts_with(s: root, prefix: live_root)
     && !starts_with(s: live_root, prefix: root)
+}
+
+test fn the_hermetic_store_root_is_the_instance_field_and_not_srv1_live() -> Bool {
+  let workspace = "/job-workspace"
+  let h = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath)
+  let live = srv1_live_dashboard_instance()
+  let hermetic_root = compute_durable_store(instance: h).root
+  let live_root = compute_durable_store(instance: live).root
+  let hermetic_path = h.materialization_store_root as String
+  let live_path = live.materialization_store_root as String
+  (hermetic_path == join([workspace, "/materialization-store"], ""))
+    && (live_path == "/var/lib/gunbc/materialization-store")
+    && (hermetic_path != live_path)
+    && (compute_staging_dir(instance: h) == join([hermetic_path, "-staging"], ""))
+    && (compute_staging_dir(instance: live) == join([live_path, "-staging"], ""))
+    && match hermetic_root {
+      DurableHostVolumeRoot { root: r } => r == hermetic_path
+      WitnessScratchRoot { root: _ } => false
+    }
+    && match live_root {
+      DurableHostVolumeRoot { root: r } => r == live_path
+      WitnessScratchRoot { root: _ } => false
+    }
 }
 
 test fn the_cold_instrument_is_not_a_required_emit_build_row() -> Bool {
