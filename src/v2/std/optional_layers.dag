@@ -2,7 +2,7 @@ module v2.std.optional_layers
 
 import std.nat { Nat, NatDifference, NatSubtrahendExceedsMinuend, Succ, Zero, nat_add, nat_sub }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.occurrence_identity { OccurrenceId, OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import v2.std.node {
   Occupancy,
   node_with_occurrence_id,
@@ -90,7 +90,7 @@ fn wrap_type_node_occupancy(base: Node, depth: Nat) -> Node {
 // ONE OCCUPANCY LAYER AT A GIVEN OCCURRENCE: the wrapper an explicit `Optional<T>` becomes at resolution keeps the
 // application's own source occurrence rather than a synthetic one, so occurrence preservation survives the rewrite
 // (v2.compiler.resolve resolve_type_application_normalized).
-fn wrap_type_node_occupancy_at(base: Node, occurrence_id: OccurrenceId) -> Node {
+fn wrap_type_node_occupancy_at(base: Node, occurrence_id: NodeOccurrenceIdentity) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Occupancy },
     children: [Edge { label: Positional, target: base }],
