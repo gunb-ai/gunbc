@@ -19,5 +19,5 @@ data cli_wire_program_producer_seed_growth_justification: SeedGrowthJustificatio
 
   trigger: "Delete this declaration when gunbc test's producer dispatch is emitted rather than hand-mirrored (the capability gunbc.target_invocation_seed_growth names for target_invocation_host as a whole), SUFFICIENT FOR a CliWireProgramProducer row to run with no hand-authored match arm. WHAT DOES NOT RETIRE IT: another string-match inside NativeClaimProgram; folding a wet WitnessBin instrument into NativeClaimDriver.",
 
-  current_boundary: "src/v1/stage0/src/target_invocation_host.rs run_cli_wire_program, called from run_producer behind gunbc.test CliWireProgramProducer rows including //gunbc/instruments:compute-run-unit-cold"
+  current_boundary: "src/v1/stage0/src/target_invocation_host.rs run_cli_wire_program, called from run_producer behind gunbc.test CliWireProgramProducer rows including //gunbc/instruments:compute-run-unit-cold and //gunbc/instruments:compute-run-unit-reuse-baseline"
 }

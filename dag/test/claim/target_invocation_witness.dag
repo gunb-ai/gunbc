@@ -98,6 +98,9 @@ import gunbc.instrument_targets {
   compute_run_unit_cold_label,
   compute_run_unit_cold_entry,
   compute_run_unit_cold_function,
+  compute_run_unit_reuse_baseline_label,
+  compute_run_unit_reuse_baseline_entry,
+  compute_run_unit_reuse_baseline_function,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
   instrument_targets, instrument_bindings,
@@ -1072,6 +1075,17 @@ test fn the_compute_run_unit_cold_operand_routes_to_its_own_producer() -> Bool {
       label_eq(a: b.target, b: compute_run_unit_cold_label())
         && (b.producer == CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_cold_function() })
         && !(b.producer == NativeClaimProgramProducer { entry: compute_run_unit_cold_entry() deadline: millisecond(count: 7200000) })
+        && !(b.producer == RegenRoundCostProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_compute_run_unit_reuse_baseline_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:compute-run-unit-reuse-baseline") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: compute_run_unit_reuse_baseline_label())
+        && (b.producer == CliWireProgramProducer { entry: compute_run_unit_reuse_baseline_entry() function: compute_run_unit_reuse_baseline_function() })
+        && !(b.producer == NativeClaimProgramProducer { entry: compute_run_unit_reuse_baseline_entry() deadline: millisecond(count: 7200000) })
         && !(b.producer == RegenRoundCostProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }

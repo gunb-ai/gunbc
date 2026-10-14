@@ -1,0 +1,20 @@
+module test.claim.compute.compute_run_unit_reuse_baseline_witness
+
+import std.types { Bool }
+import gunbc.instrument_targets { compute_run_unit_reuse_baseline_label }
+import gunbc.instruments.compute_run_unit_reuse_baseline { compute_run_unit_reuse_job_memory_demand }
+import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
+import gunbc.emitted_subject_build_gate { emitted_subject_build_rows }
+import extdeps.bazel.label { render_label, label_eq }
+import std.measure { byte_size_count }
+
+test fn the_reuse_baseline_instrument_is_not_a_required_emit_build_row() -> Bool {
+  let want = compute_run_unit_reuse_baseline_label()
+  all(emitted_subject_build_rows(), row => !label_eq(a: row.label, b: want))
+    && (render_label(l: want) == "//gunbc/instruments:compute-run-unit-reuse-baseline")
+}
+
+test fn the_reuse_baseline_job_memory_demand_is_the_cold_unit_route() -> Bool {
+  compute_run_unit_reuse_job_memory_demand() == compute_run_unit_cold_job_memory_demand()
+    && (byte_size_count(b: compute_run_unit_reuse_job_memory_demand()) > 0)
+}

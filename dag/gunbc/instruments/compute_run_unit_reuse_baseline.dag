@@ -1,0 +1,369 @@
+module gunbc.instruments.compute_run_unit_reuse_baseline
+
+import std.types { String, Bool, Int, List, FilePath, GitRef }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.optional { Present, Absent }
+import std.measure { ByteSize }
+import std.materialization_provider { ComputeWorkRequest }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance, IsolatedJobToolchainHomes,
+}
+import gunbc.instruments.compute_run_unit_cold {
+  compute_run_unit_cold_unit_grant, compute_run_unit_cold_job_memory_demand,
+  HermeticUserSessionRuntimeBound, HermeticUserSessionRuntimeAbsent,
+  observe_hermetic_user_session_runtime, observe_isolated_job_toolchain_homes,
+  hermetic_user_session_unit_setenv, hermetic_toolchain_unit_setenv, hermetic_user_session_launcher_env,
+  path_is_under_opt_gunbc, observe_workspace, observe_run_identity, mkdir_ok, observe_head,
+  target_dir_is_empty, unit_was_invoked, prepare_checkout, no_observation,
+}
+import gunbc.compute.work_provider_local {
+  ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
+  compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
+  NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire,
+  compute_observe_toolchain, ToolchainObserved, ToolchainObservationRefused,
+  compute_resolve_subject, SubjectResolved, SubjectResolutionRefused,
+  compute_work_identity, compute_store, compute_store_commit, ComputeCommitted, ComputeCommitNotOwed, ComputeCommitRefused,
+  compute_return_outputs, OutputsReturned, OutputsMismatch,
+  compute_materialization_plan, ComputeMaterializationPlanned, ComputeMaterializationRefused, ComputeMemoized, ComputeRecomputed,
+  ComputeMaterialization, compute_provide_leaf, ProvideResult, ProvideAttached, ProvideFresh,
+  HostRecordWritten, HostRecordLost,
+  compute_staging_dir,
+}
+import gunbc.compute.host_capacity { compute_root }
+import gunbc.compute.work_request {
+  work_default_build, WorkSucceeded, work_outcome_wire, work_declared_outputs,
+}
+import std.materialization_store_grant { materialization_store_root_path }
+import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
+import extdeps.git { shape_git_worktree_add_detached_argv }
+import extdeps.cache.sccache { sccache_installed_binary_path }
+import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// C3: cold then repeat of one work_default_build through the WAVE-0 B hermetic route
+// (compute_run_unit, then compute_store_commit / compute_provide_leaf). Not compute_reserve
+// (gunbc.guarantee_stall.compute_cold_reserve_durable_commit_stall). Readings: wall ms,
+// sccache hit/miss, result-store attach vs produce, target_dir. Numbers are stdout, not a data row.
+
+fn compute_run_unit_reuse_job_memory_demand() -> ByteSize {
+  compute_run_unit_cold_job_memory_demand()
+}
+
+fn sccache_show_stats(workdir: String) -> String {
+  match compute_exec(program: sccache_installed_binary_path, workdir: workdir, args: ["--show-stats"]) {
+    ComputeExecOk { stdout, stderr: _ } => stdout
+    ComputeExecFailed { exit_code: _, stdout, stderr } => join(["sccache --show-stats failed: ", stderr, stdout], "")
+  }
+}
+
+fn sccache_zero_stats(workdir: String) -> String {
+  match compute_exec(program: sccache_installed_binary_path, workdir: workdir, args: ["--zero-stats"]) {
+    ComputeExecOk { stdout: _, stderr: _ } => ""
+    ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
+  }
+}
+
+// The aggregate "Cache hits" / "Cache misses" rows, not the language-split children.
+fn sccache_aggregate_line(stats: String, label: String) -> String {
+  fold(split(s: stats, delimiter: "\n"), init: "", f: (acc, line) => {
+    let t = trim(s: line)
+    if t.starts_with(prefix: join([label, " ("], "")) {
+      acc
+    } else if t.starts_with(prefix: label) {
+      t
+    } else {
+      acc
+    }
+  })
+}
+
+fn observe_millis() -> Int {
+  match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail: _ } => -1
+    ClockUnixMillisObserved { millis } => millis
+  }
+}
+
+fn provide_outcome_wire(r: ProvideResult) -> String {
+  match r {
+    ProvideAttached { identity, ending, document: _, host_record } =>
+      join([
+        "attached identity=", identity,
+        " ending=", ending,
+        " host_record=", match host_record { HostRecordWritten => "written"  HostRecordLost { detail } => join(["lost:", detail], "") },
+      ], "")
+    ProvideFresh { outcome: _, document: _, host_record } =>
+      join([
+        "produced host_record=",
+        match host_record { HostRecordWritten => "written"  HostRecordLost { detail } => join(["lost:", detail], "") },
+      ], "")
+  }
+}
+
+fn prepare_run_root(instance: HostDashboardInstance, workspace: String, run_root: String, head: String) -> String {
+  match compute_exec(
+    program: compute_program(instance: instance, cap: GitWorkspaceCapability),
+    workdir: workspace,
+    args: shape_git_worktree_add_detached_argv(path: run_root as FilePath, commit: head as GitRef),
+  ) {
+    ComputeExecOk { stdout: _, stderr: _ } => ""
+    ComputeExecFailed { exit_code, stdout: _, stderr } =>
+      join(["git worktree add (run_root) exited ", to_string(value: exit_code), ": ", stderr], "")
+  }
+}
+
+fn compute_run_unit_reuse_baseline_exit() -> CliWireResponse {
+  match observe_hermetic_user_session_runtime() {
+    HermeticUserSessionRuntimeAbsent =>
+      no_observation(
+        bytes: "compute-run-unit-reuse-baseline: no observation: user session bus absent at /run/user/<uid>/bus (systemd-run --user cannot run)",
+        reason: "user session bus absent",
+      )
+    HermeticUserSessionRuntimeBound { runtime_dir } => {
+      match observe_isolated_job_toolchain_homes() {
+        Absent =>
+          CliWirePrintable {
+            bytes: "compute-run-unit-reuse-baseline: ToolchainHomesNotIsolated CARGO_HOME/RUSTUP_HOME unset or empty",
+            exit: ExitFailure { code: 1, reason: "ToolchainHomesNotIsolated" },
+          }
+        Present { value: toolchain_homes } => {
+          let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, toolchain_homes: toolchain_homes)
+          let workspace = observe_workspace(instance: probe)
+          let run_id = observe_run_identity()
+          if workspace == "" {
+            CliWirePrintable {
+              bytes: "compute-run-unit-reuse-baseline: git toplevel (job workspace) could not be read",
+              exit: ExitFailure { code: 1, reason: "workspace unreadable" },
+            }
+          } else if run_id == "" {
+            no_observation(
+              bytes: "compute-run-unit-reuse-baseline: no observation: clock unix millis unreadable, so this run has no unique root",
+              reason: "run identity unreadable",
+            )
+          } else if path_is_under_opt_gunbc(path: workspace) {
+            CliWirePrintable {
+              bytes: join(["compute-run-unit-reuse-baseline: workspace is host-shared production path ", workspace], ""),
+              exit: ExitFailure { code: 1, reason: "workspace under /opt/gunbc" },
+            }
+          } else {
+            let head = observe_head(instance: probe, workdir: workspace)
+            if head == "" {
+              CliWirePrintable {
+                bytes: "compute-run-unit-reuse-baseline: HEAD could not be read from the invoking checkout",
+                exit: ExitFailure { code: 1, reason: "HEAD unreadable" },
+              }
+            } else {
+              let run_root = join([workspace, "/.gunbc-compute-hermetic/", run_id], "")
+              let rooted = prepare_run_root(instance: probe, workspace: workspace, run_root: run_root, head: head)
+              if rooted != "" {
+                CliWirePrintable { bytes: rooted, exit: ExitFailure { code: 1, reason: rooted } }
+              } else {
+                let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: run_root as FilePath, toolchain_homes: toolchain_homes)
+                let root = compute_root(instance: instance) as String
+                if path_is_under_opt_gunbc(path: instance.instance_root as String) || path_is_under_opt_gunbc(path: root) {
+                  CliWirePrintable {
+                    bytes: join(["compute-run-unit-reuse-baseline: compute root resolved to host-shared path ", root], ""),
+                    exit: ExitFailure { code: 1, reason: "compute root under /opt/gunbc" },
+                  }
+                } else {
+                  match compute_observe_toolchain(instance: instance) {
+                    ToolchainObservationRefused { detail } =>
+                      CliWirePrintable {
+                        bytes: join(["compute-run-unit-reuse-baseline: toolchain observation refused: ", detail], ""),
+                        exit: ExitFailure { code: 1, reason: detail },
+                      }
+                    ToolchainObserved { toolchain } =>
+                      match compute_resolve_subject(instance: instance, commit: head) {
+                        SubjectResolutionRefused { detail } =>
+                          CliWirePrintable {
+                            bytes: join(["compute-run-unit-reuse-baseline: subject resolution refused: ", detail], ""),
+                            exit: ExitFailure { code: 1, reason: detail },
+                          }
+                        SubjectResolved { subject } => {
+                          let op = work_default_build()
+                          let request = ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain }
+                          match compute_materialization_plan(req: request) {
+                            ComputeMaterializationRefused { detail } =>
+                              CliWirePrintable {
+                                bytes: join(["compute-run-unit-reuse-baseline: materialization plan refused: ", detail], ""),
+                                exit: ExitFailure { code: 1, reason: detail },
+                              }
+                            ComputeMaterializationPlanned { plan } =>
+                              match plan {
+                                ComputeRecomputed { verdict } =>
+                                  CliWirePrintable {
+                                    bytes: join(["compute-run-unit-reuse-baseline: work_default_build is Recomputed (", verdict, "); a result-store attach baseline requires Memoize"], ""),
+                                    exit: ExitFailure { code: 1, reason: "plan is not memoized" },
+                                  }
+                                ComputeMemoized => {
+                                  let work_id = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
+                                  let layout = compute_layout(instance: instance, identity_hex: work_id)
+                                  let store_path = materialization_store_root_path(root: instance.materialization_store_root, scope_root: instance.instance_root as String)
+                                  let staging = compute_staging_dir(instance: instance)
+                                  let dirs_ok = mkdir_ok(instance: instance, path: layout.work_dir)
+                                    && mkdir_ok(instance: instance, path: layout.target_dir)
+                                    && mkdir_ok(instance: instance, path: layout.attempts_dir)
+                                    && mkdir_ok(instance: instance, path: layout.leases_dir)
+                                    && mkdir_ok(instance: instance, path: store_path)
+                                    && mkdir_ok(instance: instance, path: staging)
+                                  if !dirs_ok {
+                                    CliWirePrintable {
+                                      bytes: join(["compute-run-unit-reuse-baseline: could not create layout under ", layout.root], ""),
+                                      exit: ExitFailure { code: 1, reason: "layout directories were not created" },
+                                    }
+                                  } else if !target_dir_is_empty(path: layout.target_dir) {
+                                    CliWirePrintable {
+                                      bytes: join(["compute-run-unit-reuse-baseline: target_empty_at_start=false target_dir=", layout.target_dir], ""),
+                                      exit: ExitFailure { code: 1, reason: "target directory was not empty at start" },
+                                    }
+                                  } else {
+                                    let wt = prepare_checkout(instance: instance, layout: layout, head: head)
+                                    if wt != "" {
+                                      CliWirePrintable { bytes: wt, exit: ExitFailure { code: 1, reason: wt } }
+                                    } else {
+                                      let stats_before_cold = sccache_show_stats(workdir: layout.checkout)
+                                      let t0 = observe_millis()
+                                      match compute_run_unit(
+                                        instance: instance,
+                                        layout: layout,
+                                        identity_hex: work_id,
+                                        argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency),
+                                        env: concat(
+                                          concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
+                                          hermetic_toolchain_unit_setenv(homes: toolchain_homes),
+                                        ),
+                                        launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
+                                        granted: compute_run_unit_cold_unit_grant(),
+                                      ) {
+                                        ComputeUnitRunRefused { cause: _ } =>
+                                          CliWirePrintable {
+                                            bytes: "compute-run-unit-reuse-baseline: systemd-run option words refused",
+                                            exit: ExitFailure { code: 1, reason: "unit launch refused" },
+                                          }
+                                        ComputeUnitRunExecuted { run: unit_run } => {
+                                          let t1 = observe_millis()
+                                          let invoked = unit_was_invoked(summary: unit_run.summary)
+                                          let exec_ok = match unit_run.exec {
+                                            ComputeExecOk { stdout: _, stderr: _ } => true
+                                            ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
+                                          }
+                                          let log_written = Filesystem.Write(path: layout.log_path, content: match unit_run.exec {
+                                            ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
+                                            ComputeExecFailed { exit_code: _, stdout, stderr } => join([stdout, stderr], "")
+                                          }).success
+                                          let stats_after_cold = sccache_show_stats(workdir: layout.checkout)
+                                          let zero_stats_detail = sccache_zero_stats(workdir: layout.checkout)
+                                          if !(invoked && exec_ok && log_written && (t0 >= 0) && (t1 >= t0)) {
+                                            CliWirePrintable {
+                                              bytes: join([
+                                                "compute-run-unit-reuse-baseline cold failed\n",
+                                                "work_identity=", work_id, "\n",
+                                                "target_dir=", layout.target_dir, "\n",
+                                                "unit_invoked=", if invoked { "true" } else { "false" }, "\n",
+                                                "unit result: ", compute_summary_result_wire(summary: unit_run.summary), "\n",
+                                                "unit peak: ", compute_summary_peak_wire(summary: unit_run.summary), "\n",
+                                              ], ""),
+                                              exit: ExitFailure { code: 1, reason: "cold unit did not succeed" },
+                                            }
+                                          } else {
+                                            match compute_return_outputs(instance: instance, layout: layout, declared: work_declared_outputs(op: op)) {
+                                              OutputsMismatch { detail } =>
+                                                CliWirePrintable {
+                                                  bytes: join(["compute-run-unit-reuse-baseline: outputs mismatch: ", detail], ""),
+                                                  exit: ExitFailure { code: 1, reason: detail },
+                                                }
+                                              OutputsReturned { outputs } => {
+                                                let outcome = WorkSucceeded { identity: work_id, outputs: outputs, log_path: layout.log_path }
+                                                let materialization = ComputeMaterialization { store: compute_store(instance: instance), request: request, plan: ComputeMemoized }
+                                                match compute_store_commit(
+                                                  materialization: materialization,
+                                                  layout: layout,
+                                                  op: op,
+                                                  outcome: outcome,
+                                                  document: work_outcome_wire(o: outcome, subject: subject, op: op),
+                                                ) {
+                                                  ComputeCommitNotOwed =>
+                                                    CliWirePrintable {
+                                                      bytes: "compute-run-unit-reuse-baseline: store commit was not owed after a succeeded memoized build",
+                                                      exit: ExitFailure { code: 1, reason: "commit not owed" },
+                                                    }
+                                                  ComputeCommitRefused { detail } =>
+                                                    CliWirePrintable {
+                                                      bytes: join(["compute-run-unit-reuse-baseline: store commit refused: ", detail], ""),
+                                                      exit: ExitFailure { code: 1, reason: detail },
+                                                    }
+                                                  ComputeCommitted => {
+                                                    let t2 = observe_millis()
+                                                    let provided = compute_provide_leaf(
+                                                      store: compute_store(instance: instance),
+                                                      instance: instance,
+                                                      commit: head,
+                                                      subject: subject,
+                                                      op: op,
+                                                      toolchain: toolchain,
+                                                      dependency: NoComputeDependency,
+                                                    )
+                                                    let t3 = observe_millis()
+                                                    let stats_after_repeat = sccache_show_stats(workdir: layout.checkout)
+                                                    let attached = match provided {
+                                                      ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => true
+                                                      ProvideFresh { outcome: _, document: _, host_record: _ } => false
+                                                    }
+                                                    let bytes = join([
+                                                      "compute-run-unit-reuse-baseline work_identity=", work_id, "\n",
+                                                      "workspace=", workspace, "\n",
+                                                      "run_root=", run_root, "\n",
+                                                      "compute_root=", root, "\n",
+                                                      "cold_target_dir=", layout.target_dir, "\n",
+                                                      "repeat_target_dir=", layout.target_dir, "\n",
+                                                      "target_empty_at_start=true\n",
+                                                      "cold_wall_ms=", to_string(value: t1 - t0), "\n",
+                                                      "repeat_wall_ms=", to_string(value: t3 - t2), "\n",
+                                                      "cold_sccache_hits=", sccache_aggregate_line(stats: stats_after_cold, label: "Cache hits"), "\n",
+                                                      "cold_sccache_misses=", sccache_aggregate_line(stats: stats_after_cold, label: "Cache misses"), "\n",
+                                                      "repeat_sccache_hits=", sccache_aggregate_line(stats: stats_after_repeat, label: "Cache hits"), "\n",
+                                                      "repeat_sccache_misses=", sccache_aggregate_line(stats: stats_after_repeat, label: "Cache misses"), "\n",
+                                                      "cold_unit_invoked=", if invoked { "true" } else { "false" }, "\n",
+                                                      "cold_unit result: ", compute_summary_result_wire(summary: unit_run.summary), "\n",
+                                                      "cold_unit peak: ", compute_summary_peak_wire(summary: unit_run.summary), "\n",
+                                                      "result_store=", provide_outcome_wire(r: provided), "\n",
+                                                      "sccache_zero_after_cold=", if zero_stats_detail == "" { "ok" } else { zero_stats_detail }, "\n",
+                                                      "sccache_before_cold:\n", stats_before_cold, "\n",
+                                                    ], "")
+                                                    if attached && (t2 >= 0) && (t3 >= t2) {
+                                                      CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+                                                    } else {
+                                                      CliWirePrintable {
+                                                        bytes: bytes,
+                                                        exit: ExitFailure {
+                                                          code: 1,
+                                                          reason: if !attached { "repeat was not served by attachment" } else { "repeat wall clock unreadable" },
+                                                        },
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                          }
+                        }
+                      }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
