@@ -10024,6 +10024,40 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// A caller-imported, sealed constructor spelled `empty_map` still runs declaration
+    /// admission. Kernel empty_map is `BuiltinCallableResolved` only when no declaration is in
+    /// scope; last-segment spelling is not an exemption (review 79876).
+    #[test]
+    fn host_reconcile_imported_empty_map_still_enforces_admit_callers() {
+        let fixture = Fixture::new(&[
+            (
+                "sealed.dag",
+                "module fx.sealed\nfn empty_map() -> Int\n  admit_callers: [decl_ref(module_path: \"fx.never\", decl_name: \"never\")]\n{ 0 }\n",
+            ),
+            (
+                "entry.dag",
+                "module fx.entry\nimport fx.sealed { empty_map }\nfn main() -> Int { empty_map() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let outcome =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy());
+        let err = match outcome {
+            Err(e) => e,
+            Ok((graph, _)) => graph
+                .diagnostics
+                .iter()
+                .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+                .map(|d| format!("{:?}", d.diagnostic))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        assert!(
+            err.contains("fx.sealed") && err.contains("empty_map"),
+            "imported sealed empty_map must still refuse unpermitted callers: {err}"
+        );
+    }
+
     /// A selected source declaration whose owner is spelled `v2.std.collection` still
     /// enforces `admit_callers`. Module name is not an exemption.
     #[test]

@@ -1778,23 +1778,15 @@ pub fn constructor_call_admission_diags_for_outcome(
         match (*outcome).clone() {
             CallTargetOutcome::DeclaredCallableResolved { declared, .. }
             | CallTargetOutcome::DeclaredCallableIdentityResolved { declared, .. } => {
-                if crate::v1_compiler_infer_method::is_empty_map_constructor(
-                    crate::v1_std_core::qualified_last_segment(declared.decl_name.clone()),
-                ) || crate::v1_compiler_infer_method::is_empty_set_constructor(
-                    crate::v1_std_core::qualified_last_segment(declared.decl_name.clone()),
-                ) {
-                    Rc::new(vec![])
-                } else {
-                    constructor_admission_diags_from_lookup(
-                        crate::v1_compiler_infer_lookup::constructor_declaration_for_admission(
-                            scope.type_env.clone(),
-                            declared.owner_module_path.clone(),
-                            declared.decl_name.clone(),
-                        ),
-                        scope.clone(),
-                        span.clone(),
-                    )
-                }
+                constructor_admission_diags_from_lookup(
+                    crate::v1_compiler_infer_lookup::constructor_declaration_for_admission(
+                        scope.type_env.clone(),
+                        declared.owner_module_path.clone(),
+                        declared.decl_name.clone(),
+                    ),
+                    scope.clone(),
+                    span.clone(),
+                )
             }
             CallTargetOutcome::BuiltinCallableResolved { .. }
             | CallTargetOutcome::LocallyBoundCallee { .. }
@@ -13872,7 +13864,12 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                         })
                                     }
                                 } else {
-                                    if (!callee_is_body_binding.clone() && crate::v1_compiler_infer_method::is_empty_map_constructor(func_name.clone())) {
+                                    if (!callee_is_body_binding.clone()
+                                        && crate::v1_compiler_infer_method::is_empty_map_constructor(func_name.clone())
+                                        && matches!(
+                                            (*call_target).clone(),
+                                            CallTargetOutcome::BuiltinCallableResolved { .. }
+                                        )) {
                             {
                                 let bare_m = crate::v1_compiler_infer_types::bare_map_node();
 match expected.clone() {
@@ -13972,7 +13969,12 @@ match bare_m.clone() {
 }
 }
                         } else {
-                            if (!callee_is_body_binding.clone() && crate::v1_compiler_infer_method::is_empty_set_constructor(func_name.clone())) {
+                            if (!callee_is_body_binding.clone()
+                                && crate::v1_compiler_infer_method::is_empty_set_constructor(func_name.clone())
+                                && matches!(
+                                    (*call_target).clone(),
+                                    CallTargetOutcome::BuiltinCallableResolved { .. }
+                                )) {
                                 {
                                     let bare_s = crate::v1_compiler_infer_types::bare_set_node();
 match expected.clone() {
@@ -23894,15 +23896,7 @@ pub fn call_target_for_direct_call(
                 name: func_name.clone(),
             }),
         },
-        std::option::Option::None => match crate::v1_compiler_infer_method::bare_call_non_declaration_binding(
-            func_name.clone(),
-        ) {
-            crate::v1_compiler_infer_method::NonDeclarationBinding::EmptyCollectionConstructor => {
-                Rc::new(CallTargetOutcome::BuiltinCallableResolved {
-                    primitive_name: func_name.clone(),
-                })
-            }
-            _ => match (*crate::v1_compiler_infer_lookup::func_env_declared_func_sig(
+        std::option::Option::None => match (*crate::v1_compiler_infer_lookup::func_env_declared_func_sig(
             scope.func_env.clone(),
             scope.type_env.clone(),
             func_name.clone(),
@@ -23958,7 +23952,6 @@ pub fn call_target_for_direct_call(
                     }
                 }
             }
-        },
         },
     }
 }

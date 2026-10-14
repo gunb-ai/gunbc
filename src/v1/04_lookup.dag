@@ -435,9 +435,6 @@ fn callable_lookup_over_candidates(
     Present { value: sig } =>
       FuncSigResolved { sig: sig, declared: DeclaredCallableIdentity { owner_module_path: func_env.name, decl_name: qualified_last_segment(name: name) } }
     Absent =>
-      if census_fallback_skips_non_declaration_binding(name: name) {
-        FuncSigUnresolved
-      } else {
       let declared = parent_closure_callable_candidates(env: func_env, name: name)
       let builtin_admissible = match author_named_visibility(type_env: type_env, name: name) {
         AuthorNamedThisName => []
@@ -463,7 +460,6 @@ fn callable_lookup_over_candidates(
               FuncSigUnresolved
             }
           }
-      }
       }
   }
 }
@@ -497,7 +493,8 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
 
 // Direct-call target selection must not consult the whole-tree census before builtin /
 // empty-collection classification. Census fallback is skipped only for empty_map / empty_set
-// so a same-spelled declaration cannot bind them; builtins still take imported declarations.
+// so an unimported same-spelled census declaration cannot bind them; an imported declaration
+// in the func-env closure still binds, and kernel empty_map is Builtin only after that miss.
 // This lookup is func-env / import-closure declarations only.
 fn func_env_declared_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> FuncSigLookup {
   if listed_import_required_bare_call_blocked(env: type_env, name: name) {
@@ -514,21 +511,17 @@ fn func_env_declared_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name
             }
           }
         Absent =>
-          if census_fallback_skips_non_declaration_binding(name: name) {
-            FuncSigUnresolved
-          } else {
-            match decide_callable_candidates(candidates: parent_closure_callable_candidates(env: func_env, name: name)) {
-              FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
-              FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
-              FuncSigUnresolved => FuncSigUnresolved
-            }
+          match decide_callable_candidates(candidates: parent_closure_callable_candidates(env: func_env, name: name)) {
+            FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
+            FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
+            FuncSigUnresolved => FuncSigUnresolved
           }
       }
     } else {
-      if census_fallback_skips_non_declaration_binding(name: name) {
-        FuncSigUnresolved
-      } else {
-        lookup_resolved_sig(env: func_env, name: name)
+      match lookup_resolved_sig(env: func_env, name: name) {
+        FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
+        FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
+        FuncSigUnresolved => FuncSigUnresolved
       }
     }
   }

@@ -1249,9 +1249,6 @@ fn constructor_call_admission_diags_for_outcome(
   } else {
     match outcome {
       DeclaredCallableResolved { sig: _, declared: declared } =>
-        if is_empty_map_constructor(name: qualified_last_segment(name: declared.decl_name)) || is_empty_set_constructor(name: qualified_last_segment(name: declared.decl_name)) {
-          []
-        } else {
         constructor_admission_diags_from_lookup(
           lookup: constructor_declaration_for_admission(
             type_env: scope.type_env,
@@ -1261,11 +1258,7 @@ fn constructor_call_admission_diags_for_outcome(
           scope: scope,
           span: span
         )
-        }
       DeclaredCallableIdentityResolved { declared: declared, borrowed_declaration: _ } =>
-        if is_empty_map_constructor(name: qualified_last_segment(name: declared.decl_name)) || is_empty_set_constructor(name: qualified_last_segment(name: declared.decl_name)) {
-          []
-        } else {
         constructor_admission_diags_from_lookup(
           lookup: constructor_declaration_for_admission(
             type_env: scope.type_env,
@@ -1275,7 +1268,6 @@ fn constructor_call_admission_diags_for_outcome(
           scope: scope,
           span: span
         )
-        }
       BuiltinCallableResolved { primitive_name: _ } => []
       LocallyBoundCallee { name: _, binding: _ } => []
       CallableUnresolved { name: _ } => []
@@ -9212,7 +9204,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             ),
             diagnostics: concat(arg_diags, relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name))
           }
-        } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) {
+        } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) && match call_target { BuiltinCallableResolved { primitive_name: _ } => true, _ => false } {
           let bare_m = bare_map_node()
           match expected {
             Present { value: exp } =>
@@ -9287,7 +9279,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
-        } else if !callee_is_body_binding && is_empty_set_constructor(name: func_name) {
+        } else if !callee_is_body_binding && is_empty_set_constructor(name: func_name) && match call_target { BuiltinCallableResolved { primitive_name: _ } => true, _ => false } {
           let bare_s = bare_set_node()
           match expected {
             Present { value: exp } =>
@@ -14032,9 +14024,6 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
         Absent => LocallyBoundBindingMissing { name: func_name }
       }
     Absent =>
-      match bare_call_non_declaration_binding(name: func_name) {
-        EmptyCollectionConstructor => BuiltinCallableResolved { primitive_name: func_name }
-        _ =>
       match func_env_declared_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
         FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
         FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
@@ -14059,7 +14048,6 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
                 Absent => CallableUnresolved { name: func_name }
               }
           }
-      }
       }
   }
 }
