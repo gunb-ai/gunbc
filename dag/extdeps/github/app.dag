@@ -1739,8 +1739,82 @@ service github.AppInstallationAccessTokens {
   }
 }
 
+// GitHub's installation-token request `permissions` object (Create an installation access token
+// for an app, app_permissions_citation / docs.github.com/en/rest/apps/apps): each documented App
+// permission this module has an axis for is OPTIONAL. An omitted key is not requested; GitHub
+// then grants the installation's default for that axis, which is why a contents-only mint must
+// not send `pull_requests` at all. The REST encoder keys this record by each field's authored
+// name (`contents`, `pull_requests`, …), which matches GitHub's documented permission keys.
+// `permission_axis_wire_name` is the same spelling on GitHubAppPermission rows; it is not this
+// record's wire key.
 type GitHubInstallationTokenPermissions {
-  contents: String
+  actions: String?
+  administration: String?
+  artifact_metadata: String?
+  attestations: String?
+  checks: String?
+  code_quality: String?
+  contents: String?
+  deployments: String?
+  discussions: String?
+  id_token: String?
+  issues: String?
+  metadata: String?
+  models: String?
+  organization_self_hosted_runners: String?
+  packages: String?
+  pages: String?
+  pull_requests: String?
+  repository_projects: String?
+  security_events: String?
+  statuses: String?
+  vulnerability_alerts: String?
+  workflows: String?
+}
+
+fn installation_token_permission_access_wire(perms: List<GitHubAppPermission>, axis: GitHubPermissionAxis) -> String? {
+  fold_list(
+    xs: perms,
+    empty: none,
+    cons: fn(found, p) {
+      match found {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if permission_name_eq(a: p.name, b: axis) {
+            Present { value: permission_access_wire_name(access: p.access) as String }
+          } else {
+            none
+          }
+      }
+    }
+  )
+}
+
+fn github_installation_token_permissions(perms: List<GitHubAppPermission>) -> GitHubInstallationTokenPermissions {
+  GitHubInstallationTokenPermissions {
+    actions: installation_token_permission_access_wire(perms: perms, axis: ActionsAxis),
+    administration: installation_token_permission_access_wire(perms: perms, axis: AdministrationAxis),
+    artifact_metadata: installation_token_permission_access_wire(perms: perms, axis: ArtifactMetadataAxis),
+    attestations: installation_token_permission_access_wire(perms: perms, axis: AttestationsAxis),
+    checks: installation_token_permission_access_wire(perms: perms, axis: ChecksAxis),
+    code_quality: installation_token_permission_access_wire(perms: perms, axis: CodeQualityAxis),
+    contents: installation_token_permission_access_wire(perms: perms, axis: ContentsAxis),
+    deployments: installation_token_permission_access_wire(perms: perms, axis: DeploymentsAxis),
+    discussions: installation_token_permission_access_wire(perms: perms, axis: DiscussionsAxis),
+    id_token: installation_token_permission_access_wire(perms: perms, axis: IdTokenAxis),
+    issues: installation_token_permission_access_wire(perms: perms, axis: IssuesAxis),
+    metadata: installation_token_permission_access_wire(perms: perms, axis: MetadataAxis),
+    models: installation_token_permission_access_wire(perms: perms, axis: ModelsAxis),
+    organization_self_hosted_runners: installation_token_permission_access_wire(perms: perms, axis: OrganizationSelfHostedRunnersAxis),
+    packages: installation_token_permission_access_wire(perms: perms, axis: PackagesAxis),
+    pages: installation_token_permission_access_wire(perms: perms, axis: PagesAxis),
+    pull_requests: installation_token_permission_access_wire(perms: perms, axis: PullRequestsAxis),
+    repository_projects: installation_token_permission_access_wire(perms: perms, axis: RepositoryProjectsAxis),
+    security_events: installation_token_permission_access_wire(perms: perms, axis: SecurityEventsAxis),
+    statuses: installation_token_permission_access_wire(perms: perms, axis: StatusesAxis),
+    vulnerability_alerts: installation_token_permission_access_wire(perms: perms, axis: VulnerabilityAlertsAxis),
+    workflows: installation_token_permission_access_wire(perms: perms, axis: WorkflowsAxis),
+  }
 }
 
 // GET /app and GET /app/installations/{installation_id}, the two App-level READS a process holding

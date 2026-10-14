@@ -779,58 +779,6 @@ fn deployment_retired_belt_timer_unit_path(names: DeploymentNames) -> NonEmptySt
   join(["/etc/systemd/system/", deployment_retired_belt_timer_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
-// THE INSTANCE'S CREDENTIAL FILE IS A PATH THIS GRAPH NAMES AND A SECRET THIS GRAPH NEVER HOLDS,
-// AND IT IS NOW BOUND INTO EXACTLY ONE UNIT: the publication helper's.
-//
-// WHAT THIS ROW USED TO SAY, kept because the argument is what selected the shape that landed. An
-// earlier cut bound this file into BOTH multipurpose units via EnvironmentFileIfPresent, which does
-// deliver the credential and grants far more than it names, and it was withdrawn on two grounds. A
-// service-wide environment source reaches the whole process AND every child, and the belt spawns
-// providers through `env -C <workdir> <program>` with neither -i nor -u, so the token would reach
-// git, tmux and the dispatched provider session -- where `gh` consults GH_TOKEN then GITHUB_TOKEN
-// and those OVERRIDE credentials stored by `gh auth login`, so an ambient publication token does
-// not merely leak into a worker, it SILENTLY REPLACES the identity that worker was supposed to act
-// as. And file-backed delivery ALONE would not have fixed it: both units ran as the deployment
-// service user and the worker is spawned beneath that process, so a file readable by that principal
-// is readable by the worker. The transport changed; the set of principals that could read it did
-// not.
-//
-// BOTH OBJECTIONS ARE ABOUT WHO CAN READ, AND NEITHER SURVIVES A SEPARATE PRINCIPAL. The file is
-// owned by names.publication_principal and readable by nobody else, so the service user cannot read
-// it however its own units are bound; and the only process that resolves it -- the publication
-// helper -- spawns no provider, tmux or worker session, so there is nothing for the token to be
-// inherited INTO. That is stated more weakly than `spawns nothing` on purpose: the helper does
-// spawn `printenv` and `git`, and the sentence that is TRUE is the one that is also sufficient.
-// The withdrawal is therefore lifted for one unit and stands for the other two: the serve unit and
-// the belt unit bind no credential and contain no function that could name one, because
-// gunbc.roadmap.roadmap_belt_actuate's probe was DELETED rather than merely unbound.
-//
-// FILE-BACKED DELIVERY IS NOT MERELY INSUFFICIENT, IT IS UNNECESSARY, and this correction matters
-// more than the row it sits in. The earlier ruling said a file was not ENOUGH, which reads as
-// though a file plus something else were the required next step -- and a reader taking that reading
-// would build a carrier nobody needs. Both objections above are about WHO CAN READ, so the boundary
-// is the principal and the transport was never the defect; under a dedicated principal an
-// environment variable leaks nowhere a file would not. That is why this change adds no file-backed
-// std.credentials.CredentialSource variant, and the absence is a decision rather than an omission
-// (gunbc.roadmap.roadmap_publication_helper's header carries the second reason, which is that the v1 seed
-// resolves an auth source as an environment variable and nothing else).
-//
-// IT IS STILL ONE FILE FOR THE INSTANCE, and the reason is unchanged: TWO ingress paths reach
-// publication -- the belt tick, and POST /publish/{node_id} through gunbc.roadmap.roadmap_serve
-// serve_publish_handler_response_for_instance -> belt_publish_node_for_instance. They now reach it
-// by writing the same request document into the same spool, so they share the helper rather than
-// sharing a token, and fixing one without the other is no longer expressible.
-//
-// THE HOST OWNS THE FILE AND THE GRAPH OWNS ONLY ITS NAME. gunbc-tree-sync.env is written by the
-// apply because its content is a RUNNER PATH the deploy knows; a token is not derivable from
-// anything in this graph and must not become one. So a fresh instance whose file is absent gets a
-// located refusal naming the variable -- the helper writes an answer recording exactly that, and
-// the belt reports it -- rather than a helper that dies. See EnvironmentFileIfPresent in
-// extdeps.systemd.unit_file for why the optional form is the one that preserves that refusal.
-fn deployment_credential_env_path(names: DeploymentNames) -> NonEmptyStr {
-  join(["/etc/", deployment_belt_unit_stem(names: names), "-publication-credentials.env"], "") as NonEmptyStr
-}
-
 // THE DEPLOYED TREE'S REMOTE IS A MEMBER, and it needs a unit of its own for an ordering reason
 // rather than an aesthetic one. The convergence must run AS THE SERVICE USER -- the tree is
 // service-user-owned and the deploy principal is the unprivileged ci-runner

@@ -20,7 +20,7 @@ import gunbc.harness.harness_seat { harness_requirement_placement, AnyAdmittedMo
 import gunbc.harness.harness_reasoning_wire {
   Qwen3_8_27bOnNinfer, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
   harness_reasoning_kwargs_for, ReasoningOff, ReasoningMaximum, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
-  harness_unit_model_id,
+  harness_unit_model_id, harness_unit_reasoning_field,
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
 
@@ -46,7 +46,7 @@ fn w_roster_after(reading: OperatorModelsReading) -> HarnessBackendRoster {
 
 // ── 1. THE ROSTER SEES THE ROUTE ────────────────────────────────────────────────────────────────
 test fn the_roster_sees_the_operator_route_when_models_answers_with_its_model() -> Bool {
-  match w_roster_after(reading: OperatorModelsAnswered { body: w_models_body(id: "qwen3.8-27b") }) {
+  match w_roster_after(reading: OperatorModelsAnswered { body: w_models_body(id: "qwen") }) {
     HarnessRosterServing { serving: s, declined: d, unresolved: _ } =>
       count(s) == 1 && count(d) == 0
     HarnessRosterNoneServing { declined: _, unresolved: _ } => false
@@ -157,7 +157,7 @@ test fn the_route_urls_are_the_tunnel_origin_plus_ninfers_declared_paths() -> Bo
 
 test fn the_route_carries_the_servers_concurrency_ceiling_and_the_served_model_id() -> Bool {
   harness_operator_route.concurrency_ceiling == 8
-    && (harness_unit_model_id(unit: Qwen3_8_27bOnNinfer) as String) == "qwen3.8-27b"
+    && (harness_unit_model_id(unit: Qwen3_8_27bOnNinfer) as String) == "qwen"
 }
 
 test fn the_qwen_unit_refuses_reasoning_off_because_no_per_request_switch_was_read() -> Bool {
@@ -186,4 +186,21 @@ test fn a_models_document_with_no_data_array_is_unreadable_not_an_empty_list() -
     OperatorRouteModelNotAdmitted { advertised: _ } => false
     OperatorRouteUnreachable { url: _ } => false
   }
+}
+
+// ── 7. THE CARD'S ninfer, AS OBSERVED 2026-10-13 ──────────────────────────────────────────────
+// The card runs the same ninfer build and container as the 2026-10-11 pod, but its launch names the model
+// `qwen` (--model-id) where the pod left the container's own name, `qwen3.8-27b`. The request's model id is
+// therefore the launch's (gunbc.harness.operator_pod_launch), and a roster that asked for the container's name
+// would read the live card as ModelNotAdmitted. Its reasoning arrived split under reasoning_content, the
+// member ninfer's module already declares.
+test fn the_containers_own_name_is_not_admitted_by_the_cards_list() -> Bool {
+  match w_roster_after(reading: OperatorModelsAnswered { body: w_models_body(id: "qwen3.8-27b") }) {
+    HarnessRosterServing { serving: _, declined: _, unresolved: _ } => false
+    HarnessRosterNoneServing { declined: d, unresolved: _ } => count(d) == 1
+  }
+}
+
+test fn the_cards_reasoning_is_read_from_the_member_ninfer_emits() -> Bool {
+  (harness_unit_reasoning_field(unit: Qwen3_8_27bOnNinfer) as String) == "reasoning_content"
 }

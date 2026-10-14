@@ -57,7 +57,7 @@ type IntegratedComputeSystemCatalogRow {
   memory: MemoryFacts
   memory_bus_width: BitWidth
   memory_data_rate: Hertz
-  memory_bandwidth: Bandwidth
+  memory_bandwidth: Bandwidth?
   storage_capacity: ByteSize
   network_ports: List<SystemNetworkPort>
   external_power_supply: Watt
