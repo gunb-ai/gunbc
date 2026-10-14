@@ -30458,14 +30458,23 @@ mod nfr_tests {
         );
         let similarly_named = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier_discovery_note: String = \"data non_fold_residue_frontier\"\n";
-        assert!(
+        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             super::non_fold_residue_units_from_module_source_with(
                 "dag/gunbc/non_fold_residue.dag",
                 similarly_named,
                 super::NfrHomeCheck::Require,
             )
-            .is_empty(),
-            "a similarly-named data decl must be skipped, not refused"
+        }))
+        .expect_err("a similarly-named data decl must refuse, not skip");
+        let message = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default();
+        assert!(
+            message.contains("near-miss data decl")
+                && message.contains("non_fold_residue_frontier_discovery_note"),
+            "the refusal must LOCATE the near-miss ident; got: {message}"
         );
         let comment_then_decl = "module m\n\
              // `data non_fold_residue_frontier: List<FrontierRow>` in a comment\n\

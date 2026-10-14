@@ -130,12 +130,41 @@ fn nfr_expr_ident(
     }
 }
 
+fn nfr_data_decl_ident(line: &str) -> Option<&str> {
+    let rest = line.trim_start().strip_prefix("data ")?.trim_start();
+    let ident_end = rest
+        .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .unwrap_or(rest.len());
+    let ident = &rest[..ident_end];
+    if ident.is_empty() {
+        None
+    } else {
+        Some(ident)
+    }
+}
+
 pub(crate) fn nfr_content_declares_frontier(content: &str) -> bool {
-    content.lines().any(|line| {
-        let t = line.trim_start();
-        t.starts_with("data non_fold_residue_frontier:")
-            || t.starts_with("data non_fold_residue_frontier ")
-    })
+    content
+        .lines()
+        .any(|line| nfr_data_decl_ident(line) == Some(NON_FOLD_RESIDUE_FRONTIER_DATA_NAME))
+}
+
+fn nfr_refuse_near_miss_frontier_data_ident(module_rel_path: &str, content: &str) {
+    for (i, line) in content.lines().enumerate() {
+        let Some(ident) = nfr_data_decl_ident(line) else {
+            continue;
+        };
+        if ident.contains(NON_FOLD_RESIDUE_FRONTIER_DATA_NAME)
+            && ident != NON_FOLD_RESIDUE_FRONTIER_DATA_NAME
+        {
+            panic!(
+                "nfr frontier reader: near-miss data decl `{ident}` in {module_rel_path}:{} \
+                 (only `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` hosts rows; a similarly spelled \
+                 data name is refused, not skipped)",
+                i + 1
+            );
+        }
+    }
 }
 
 /// Project the path site keys out of a `non_fold_residue_frontier` list of DIRECT record
@@ -148,75 +177,16 @@ pub(crate) fn nfr_content_declares_frontier(content: &str) -> bool {
 // the rows (module-binding supply-carrier pattern), and with the scan below into a pure
 // `.dag` Node-tree lens at gunbc#5364. v1 seed-reader change is admissible because it
 // unblocks residue burn-down for the v2 program.
-/// The list literal only — so discovery does not tokenize a 10k-line subject module to read
-/// three FrontierRow records.
-fn nfr_frontier_list_source(content: &str) -> Option<String> {
-    // Byte-scan is a SUPERSET prefilter. Only a real data item (line starting `data
-    // non_fold_residue_frontier:`) is a decl; a comment or string mention is skipped
-    // and the scan continues to a later item-position hit.
-    let needle = "data non_fold_residue_frontier:";
-    let mut search_from = 0usize;
-    while let Some(rel) = content[search_from..].find(needle) {
-        let start = search_from + rel;
-        let line_start = content[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        if !content[line_start..start].trim().is_empty() {
-            search_from = start + needle.len();
-            continue;
-        }
-        let after = &content[start..];
-        let Some(bracket) = after.find('[') else {
-            search_from = start + needle.len();
-            continue;
-        };
-        let bytes = after.as_bytes();
-        let mut depth = 0i32;
-        let mut in_string = false;
-        let mut i = bracket;
-        while i < bytes.len() {
-            let b = bytes[i];
-            if in_string {
-                if b == b'\\' {
-                    i += 2;
-                    continue;
-                }
-                if b == b'"' {
-                    in_string = false;
-                }
-                i += 1;
-                continue;
-            }
-            match b {
-                b'"' => in_string = true,
-                b'[' => depth += 1,
-                b']' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        let literal = &after[bracket..=i];
-                        return Some(format!(
-                            "module nfr_frontier_slice\n\ndata non_fold_residue_frontier: List<FrontierRow> = {literal}\n"
-                        ));
-                    }
-                }
-                _ => {}
-            }
-            i += 1;
-        }
-        search_from = start + needle.len();
-    }
-    None
-}
-
 pub(crate) fn non_fold_residue_triples_from_module_source_with(
     module_rel_path: &str,
     content: &str,
     home: NfrHomeCheck,
 ) -> Vec<NfrFrontierTriple> {
-    let Some(parse_src) = nfr_frontier_list_source(content) else {
-        // Condition 4: a byte-scan hit (comment, string, similarly spelled decl) with no
-        // frontier list is skipped, never refused.
+    nfr_refuse_near_miss_frontier_data_ident(module_rel_path, content);
+    if !nfr_content_declares_frontier(content) {
         return Vec::new();
-    };
-    non_fold_residue_units_from_parse_source(module_rel_path, &parse_src, home)
+    }
+    non_fold_residue_units_from_parse_source(module_rel_path, content, home)
 }
 
 pub(crate) fn non_fold_residue_units_from_module_source_with(
@@ -431,15 +401,16 @@ fn nfr_workspace_carrier_files(root: &Path) -> Vec<(String, String)> {
                 item.path().display()
             )
         });
-        if !nfr_content_declares_frontier(&content) {
-            continue;
-        }
         let rel = item
             .path()
             .strip_prefix(root)
             .unwrap_or(item.path())
             .to_string_lossy()
             .replace('\\', "/");
+        nfr_refuse_near_miss_frontier_data_ident(&rel, &content);
+        if !nfr_content_declares_frontier(&content) {
+            continue;
+        }
         files.push((rel, content));
     }
     files
