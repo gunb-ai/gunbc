@@ -773,6 +773,57 @@ mod nfr_typed_tests {
         );
     }
 
+    // A7 (acceptance_obligation_partition) DISCRIMINATING RED: the pre-dissolution shape of
+    // `execute_obligation` -- a top-level wildcard over the closed obligation coproduct (the
+    // four back-end arms named, the four front-end arms collapsed into `_`) -- is residue.
+    // Same closed coproduct, same fn, wildcard present.
+    #[test]
+    fn red_control_wildcard_over_closed_coproduct_is_residue() {
+        let got = sites(
+            "module m\ntype Stage = S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8\n\
+             fn execute(stage: Stage) -> Bool {\n  match stage {\n\
+             S1 => true\n S2 => true\n S3 => true\n S4 => true\n\
+             _ => false\n  }\n}\n",
+        );
+        assert!(
+            got.contains("m.dag::execute"),
+            "a top-level wildcard over the closed obligation coproduct must be flagged; got {got:?}"
+        );
+    }
+
+    // A7 POSITIVE CONTROL: the dissolved shape of `execute_obligation` -- a hand-authored
+    // total partition (obligation_partition: 8 named arms, no wildcard) is the single
+    // authority, and the match folds over the 2-variant partition (FrontEnd/BackEnd named)
+    // with the back-end arm dispatching over the 4-variant back-end coproduct (BE1..BE4
+    // named). No wildcard anywhere, so the site is not residue -- this is exactly the move
+    // that deletes the roster row.
+    #[test]
+    fn green_control_partition_fold_over_partition_coproduct_is_not_residue() {
+        let got = sites(
+            "module m\ntype Stage = S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8\n\
+             type FrontStage = FS1 | FS2 | FS3 | FS4\n\
+             type BackEndStage = BE1 | BE2 | BE3 | BE4\n\
+             type Side = FrontEnd { s: FrontStage } | BackEnd { s: BackEndStage }\n\
+             fn side_of(stage: Stage) -> Side {\n  match stage {\n\
+             S1 => FrontEnd { s: FS1 }\n S2 => FrontEnd { s: FS2 }\n\
+             S3 => FrontEnd { s: FS3 }\n S4 => FrontEnd { s: FS4 }\n\
+             S5 => BackEnd { s: BE1 }\n S6 => BackEnd { s: BE2 }\n\
+             S7 => BackEnd { s: BE3 }\n S8 => BackEnd { s: BE4 }\n  }\n}\n\
+             fn execute(stage: Stage) -> Bool {\n  match side_of(stage) {\n\
+             FrontEnd { s: _ } => false\n\
+             BackEnd { s: be } => match be {\n\
+             BE1 => true\n BE2 => true\n BE3 => true\n BE4 => true\n  }\n  }\n}\n",
+        );
+        assert!(
+            !got.contains("m.dag::execute"),
+            "folding over the hand-authored partition (no wildcard) must NOT be flagged; got {got:?}"
+        );
+        assert!(
+            !got.contains("m.dag::side_of"),
+            "the total partition projection (8 named arms) must NOT be flagged; got {got:?}"
+        );
+    }
+
     // THE A6 (build_projection_partition) SHAPE, RED: an accumulator fold whose outer match
     // wildcard-shadows the non-refused arms of a closed coproduct, with a second wildcard over
     // the same accumulator nested in the open arm (running vs. first derivation). Both arms sit

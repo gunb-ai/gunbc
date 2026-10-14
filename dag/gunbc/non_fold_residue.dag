@@ -99,10 +99,6 @@ data nfr_reason_json_natural_projection: String = "one-variant decode over JsonV
 
 data nfr_dissolve_json_natural_projection: DissolutionCondition = unbound_dissolution(description: "typed JSON member decoding lands in the JSON language authority (extdeps.languages.json) with a per-shape refusal carrier, so the envelope reads a natural through a total decode rather than a hand match over JsonValue, and the row deletes with that decoder")
 
-data nfr_reason_acceptance_obligation_partition: String = "front-end-vs-back-end partition over DagStageObligation (eight arms): execute_obligation names the four back-end stages and routes the four front-end obligations through one wildcard StageNotRun/ExecutorUnavailable arm because they execute inside the staged front-end fold; is_front_end_obligation is the subset predicate (off-variant wildcard false); obligation_front_end_depth gives ResolveStage and every back-end obligation one shared depth. Each wildcard is the OTHER half of one partition, so enumerating it would clone one arm four or five times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_dissolve_acceptance_obligation_partition: DissolutionCondition = unbound_dissolution(description: "DagStageObligation carries a derived front-end/back-end partition from inhabitance — a total projection onto staged_front_end.FrontEndStage? that is the single authority for which obligations the front-end fold owns — so the three matches fold over the partition rather than the variant list, the wildcard arms become named cases, and the rows delete")
-
 data nfr_reason_acceptance_obligation_eq: String = "structural equality over DagStageObligation (obligation_eq): the three claim-carrying arms compare their claim identities through nested matches with off-variant wildcard false arms, and the outer wildcard compares discriminants for the five unit arms — the eq-row class the structural-equality rows above name, landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
 data nfr_reason_acceptance_verdict_append: String = "one-variant append over DagAcceptanceVerdict (three arms): verdict_with_further_rejection extends AcceptanceContractRejected and verdict_with_further_unfinished extends AcceptanceContractIncomplete, each returning the other two verdicts unchanged through one wildcard identity arm. Landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
@@ -302,24 +298,9 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_json_natural_projection,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::execute_obligation" },
-    reason: nfr_reason_acceptance_obligation_partition,
-    dissolution: nfr_dissolve_acceptance_obligation_partition,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::is_front_end_obligation" },
-    reason: nfr_reason_acceptance_obligation_partition,
-    dissolution: nfr_dissolve_acceptance_obligation_partition,
-  },
-  FrontierRow {
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::obligation_eq" },
     reason: nfr_reason_acceptance_obligation_eq,
     dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::obligation_front_end_depth" },
-    reason: nfr_reason_acceptance_obligation_partition,
-    dissolution: nfr_dissolve_acceptance_obligation_partition,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/workflow/dag_acceptance.dag::verdict_with_further_rejection" },
