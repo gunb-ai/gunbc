@@ -215,6 +215,12 @@ fn is_terminal(root: String, reference: String) -> Bool {
 // asserting the wrong route.
 test fn a_killed_reserved_attempt_keeps_its_seat_charged_until_the_ensure_runs() -> Bool {
   let root = fresh_root()
+  let ok = a_killed_reserved_attempt_keeps_its_seat_charged_until_the_ensure_runs_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_killed_reserved_attempt_keeps_its_seat_charged_until_the_ensure_runs_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-kill", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-kill")
@@ -226,6 +232,12 @@ test fn a_killed_reserved_attempt_keeps_its_seat_charged_until_the_ensure_runs()
 // attempt and reports that nothing was held; it releases no seat it never reserved. An unrelated seat keeps the ledger present (an empty ledger is unreadable, which the ensure refuses on) and must stay charged.
 test fn a_kill_after_open_before_reserve_holds_no_seat_and_the_ensure_closes_the_attempt() -> Bool {
   let root = fresh_root()
+  let ok = a_kill_after_open_before_reserve_holds_no_seat_and_the_ensure_closes_the_attempt_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_kill_after_open_before_reserve_holds_no_seat_and_the_ensure_closes_the_attempt_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   reserved(subject: subject, reference: "r-other")
     && opened(root: root, reference: "r-open", owner: dispatch_owner())
@@ -237,6 +249,12 @@ test fn a_kill_after_open_before_reserve_holds_no_seat_and_the_ensure_closes_the
 // KILL AFTER RESERVE, BEFORE UNIT START: the seat is held and the launch deadline has passed.
 test fn a_kill_after_reserve_is_discharged_once_the_launch_deadline_passes() -> Bool {
   let root = fresh_root()
+  let ok = a_kill_after_reserve_is_discharged_once_the_launch_deadline_passes_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_kill_after_reserve_is_discharged_once_the_launch_deadline_passes_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-res", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-res")
@@ -248,6 +266,12 @@ test fn a_kill_after_reserve_is_discharged_once_the_launch_deadline_passes() -> 
 // KILL AFTER UNIT START WITH THE UNIT ENDED: Launching, the unit proven ended -> the seat comes back.
 test fn a_kill_after_unit_start_with_an_ended_unit_is_discharged() -> Bool {
   let root = fresh_root()
+  let ok = a_kill_after_unit_start_with_an_ended_unit_is_discharged_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_kill_after_unit_start_with_an_ended_unit_is_discharged_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-end", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-end")
@@ -259,6 +283,12 @@ test fn a_kill_after_unit_start_with_an_ended_unit_is_discharged() -> Bool {
 // A LIVE OWNER IS NEVER DISCHARGED: Launching with the unit running is a Noop and the seat stays.
 test fn a_live_unit_keeps_its_seat_and_the_ensure_is_a_noop() -> Bool {
   let root = fresh_root()
+  let ok = a_live_unit_keeps_its_seat_and_the_ensure_is_a_noop_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_live_unit_keeps_its_seat_and_the_ensure_is_a_noop_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-live", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-live")
@@ -271,6 +301,12 @@ test fn a_live_unit_keeps_its_seat_and_the_ensure_is_a_noop() -> Bool {
 // AN UNKNOWN LIFECYCLE IS A REFUSAL AND THE CHARGE IS KEPT: no free on doubt.
 test fn an_unknown_unit_lifecycle_refuses_and_keeps_the_charge() -> Bool {
   let root = fresh_root()
+  let ok = an_unknown_unit_lifecycle_refuses_and_keeps_the_charge_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn an_unknown_unit_lifecycle_refuses_and_keeps_the_charge_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-unk", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-unk")
@@ -283,6 +319,12 @@ test fn an_unknown_unit_lifecycle_refuses_and_keeps_the_charge() -> Bool {
 // still charged. The old door declined this as "already terminal", making the window permanent.
 test fn a_kill_after_settle_before_release_is_discharged_from_the_terminal_record() -> Bool {
   let root = fresh_root()
+  let ok = a_kill_after_settle_before_release_is_discharged_from_the_terminal_record_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_kill_after_settle_before_release_is_discharged_from_the_terminal_record_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   let ok = opened(root: root, reference: "r-set", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-set")
@@ -304,6 +346,12 @@ test fn a_kill_after_settle_before_release_is_discharged_from_the_terminal_recor
 // A SECOND ENSURE FINDS NOTHING HELD AND RELEASES NOTHING TWICE.
 test fn a_second_ensure_over_a_discharged_seat_releases_nothing() -> Bool {
   let root = fresh_root()
+  let ok = a_second_ensure_over_a_discharged_seat_releases_nothing_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_second_ensure_over_a_discharged_seat_releases_nothing_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-twice", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-twice")
@@ -315,6 +363,12 @@ test fn a_second_ensure_over_a_discharged_seat_releases_nothing() -> Bool {
 // AN ABSENT SLOT IS NOT A RELEASE: the ensure refuses a reference no record names.
 test fn a_reference_no_record_names_is_refused_and_nothing_is_released() -> Bool {
   let root = fresh_root()
+  let ok = a_reference_no_record_names_is_refused_and_nothing_is_released_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_reference_no_record_names_is_refused_and_nothing_is_released_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   reserved(subject: subject, reference: "r-orphan")
     && is_refused(o: ensure(root: root, reference: "r-orphan", source: ended()))
@@ -332,6 +386,12 @@ fn driver_outcomes(root: String, source: UnitLifecycleSource) -> List<SeatEnsure
 // THE DRIVER KEEPS THE CHARGE WHEN NO EXIT RECORD PROVES THE ATTEMPT ENDED.
 test fn the_driver_does_not_discharge_a_seat_without_an_exit_record() -> Bool {
   let root = fresh_root()
+  let ok = the_driver_does_not_discharge_a_seat_without_an_exit_record_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn the_driver_does_not_discharge_a_seat_without_an_exit_record_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-drv", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-drv")
@@ -345,6 +405,12 @@ test fn the_driver_does_not_discharge_a_seat_without_an_exit_record() -> Bool {
 // seat under the attempt's own directory -> Apply -> Released with the independent readback at zero.
 test fn the_driver_releases_the_seat_of_an_attempt_whose_exit_record_exists_and_unit_ended() -> Bool {
   let root = fresh_root()
+  let ok = the_driver_releases_the_seat_of_an_attempt_whose_exit_record_exists_and_unit_ended_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn the_driver_releases_the_seat_of_an_attempt_whose_exit_record_exists_and_unit_ended_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-pos", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-pos")
@@ -358,6 +424,12 @@ test fn the_driver_releases_the_seat_of_an_attempt_whose_exit_record_exists_and_
 // AN EXIT RECORD IS THE REASON TO LOOK, NOT THE PROOF: the unit is running -> the charge stays.
 test fn an_exit_record_with_a_live_unit_keeps_the_charge() -> Bool {
   let root = fresh_root()
+  let ok = an_exit_record_with_a_live_unit_keeps_the_charge_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn an_exit_record_with_a_live_unit_keeps_the_charge_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-liv", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-liv")
@@ -371,6 +443,12 @@ test fn an_exit_record_with_a_live_unit_keeps_the_charge() -> Bool {
 // lifecycle is unknown keeps its charge; the same attempt with the unit proven ended is released.
 test fn a_terminal_record_releases_only_when_the_unit_is_proven_ended() -> Bool {
   let root = fresh_root()
+  let ok = a_terminal_record_releases_only_when_the_unit_is_proven_ended_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_terminal_record_releases_only_when_the_unit_is_proven_ended_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   let ok = opened(root: root, reference: "r-tm", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-tm")
@@ -395,6 +473,12 @@ test fn a_terminal_record_releases_only_when_the_unit_is_proven_ended() -> Bool 
 // A RECORD WITH NO RECORDED OWNER IS NOT A DIRECT INVOCATION: the ensure refuses and keeps the charge.
 test fn an_unrecorded_owner_refuses_and_keeps_the_charge() -> Bool {
   let root = fresh_root()
+  let ok = an_unrecorded_owner_refuses_and_keeps_the_charge_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn an_unrecorded_owner_refuses_and_keeps_the_charge_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-old", owner: OwnerUnrecorded { why: "legacy record" })
     && reserved(subject: subject, reference: "r-old")
@@ -407,6 +491,12 @@ test fn an_unrecorded_owner_refuses_and_keeps_the_charge() -> Bool {
 // seat under A's directory; another attempt's seat, held under its own directory, is never visited.
 test fn a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory() -> Bool {
   let root = fresh_root()
+  let ok = a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_dispatch_attempts_exit_discharges_only_the_seat_under_its_own_directory_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   let other_dir = seat_dir_of(root: root, key: "key-b") as String
   let other_open = made(path: other_dir)
@@ -450,6 +540,12 @@ test fn the_reservation_reference_is_the_identity_and_its_ordinal() -> Bool {
 // a joiner attaches only to a stored outcome (compute_attach_under_lease), never to this running unit.
 test fn a_dead_owners_live_compute_unit_is_stopped_and_its_seat_released() -> Bool {
   let root = fresh_root()
+  let ok = a_dead_owners_live_compute_unit_is_stopped_and_its_seat_released_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_dead_owners_live_compute_unit_is_stopped_and_its_seat_released_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-dead", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-dead")
@@ -462,6 +558,12 @@ test fn a_dead_owners_live_compute_unit_is_stopped_and_its_seat_released() -> Bo
 // (The stoppable source would answer "ended" only after a stop, so a release here would prove a stop ran.)
 test fn a_live_owners_live_compute_unit_is_not_stopped() -> Bool {
   let root = fresh_root()
+  let ok = a_live_owners_live_compute_unit_is_not_stopped_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_live_owners_live_compute_unit_is_not_stopped_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-lv", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-lv")
@@ -474,6 +576,12 @@ test fn a_live_owners_live_compute_unit_is_not_stopped() -> Bool {
 // AN UNKNOWN LIFECYCLE IS NEVER STOPPED, even for a dead owner: the charge is kept.
 test fn a_dead_owners_unknown_unit_is_refused_not_stopped() -> Bool {
   let root = fresh_root()
+  let ok = a_dead_owners_unknown_unit_is_refused_not_stopped_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_dead_owners_unknown_unit_is_refused_not_stopped_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-du", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-du")
@@ -486,6 +594,12 @@ test fn a_dead_owners_unknown_unit_is_refused_not_stopped() -> Bool {
 // held. The driver enumerates the attempt's own seat directory and releases it.
 test fn a_finished_compute_unit_under_a_live_owner_is_released_by_the_driver() -> Bool {
   let root = fresh_root()
+  let ok = a_finished_compute_unit_under_a_live_owner_is_released_by_the_driver_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_finished_compute_unit_under_a_live_owner_is_released_by_the_driver_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-fin", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-fin")
@@ -500,6 +614,12 @@ test fn a_finished_compute_unit_under_a_live_owner_is_released_by_the_driver() -
 // THE PRODUCER LEASE FOLLOWS THE SEAT: after the discharge both the ledger and the lease are gone.
 test fn the_discharge_drops_the_producer_lease_with_the_seat() -> Bool {
   let root = fresh_root()
+  let ok = the_discharge_drops_the_producer_lease_with_the_seat_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn the_discharge_drops_the_producer_lease_with_the_seat_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-ls", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-ls")
@@ -515,6 +635,12 @@ test fn the_discharge_drops_the_producer_lease_with_the_seat() -> Bool {
 // dropped by the next pass and counted as its own outcome.
 test fn a_lease_left_after_the_seat_was_returned_is_dropped_and_counted() -> Bool {
   let root = fresh_root()
+  let ok = a_lease_left_after_the_seat_was_returned_is_dropped_and_counted_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_lease_left_after_the_seat_was_returned_is_dropped_and_counted_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-lo", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-lo")
@@ -529,6 +655,12 @@ test fn a_lease_left_after_the_seat_was_returned_is_dropped_and_counted() -> Boo
 // A LEASE IS NEVER DROPPED ON A DOUBT: unit still running under a live owner -> lease stays.
 test fn a_lease_is_kept_while_the_unit_is_live() -> Bool {
   let root = fresh_root()
+  let ok = a_lease_is_kept_while_the_unit_is_live_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_lease_is_kept_while_the_unit_is_live_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-lk", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-lk")
@@ -543,6 +675,12 @@ test fn a_lease_is_kept_while_the_unit_is_live() -> Bool {
 // same identity. A's pass leaves B's lease standing.
 test fn another_attempts_lease_survives_this_attempts_discharge() -> Bool {
   let root = fresh_root()
+  let ok = another_attempts_lease_survives_this_attempts_discharge_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn another_attempts_lease_survives_this_attempts_discharge_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-oa", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-oa")
@@ -556,6 +694,12 @@ test fn another_attempts_lease_survives_this_attempts_discharge() -> Bool {
 // A LEGACY LEASE (commit + clock, no holder) IS REFUSED AND KEPT, never guessed at.
 test fn a_legacy_lease_naming_no_holder_is_refused_and_kept() -> Bool {
   let root = fresh_root()
+  let ok = a_legacy_lease_naming_no_holder_is_refused_and_kept_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_legacy_lease_naming_no_holder_is_refused_and_kept_cell(root: String) -> Bool {
   let subject = subject_at(root: root)
   opened(root: root, reference: "r-lg", owner: dispatch_owner())
     && reserved(subject: subject, reference: "r-lg")
@@ -569,6 +713,12 @@ test fn a_legacy_lease_naming_no_holder_is_refused_and_kept() -> Bool {
 // A LISTING THAT CANNOT BE READ IS NOT "NO LIVE SEATS": the pass refuses.
 test fn a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed() -> Bool {
   let root = fresh_root()
+  let ok = a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed_cell(root: String) -> Bool {
   match compute_seat_discharge_all(instance_root: root, attempts_dir: join([trim(s: root), "/no-such-attempts-dir"], ""), leases_dir: leases_at(root: root), subject: subject_at(root: root), source: ended()) {
     SeatDischargeRefused { reason: _ } => true
     SeatDischargeRan { outcomes: _ } => false
