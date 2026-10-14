@@ -817,17 +817,24 @@ fn prepare_emitted_compiler_for_entry(
         }
     }
 
-    let parse_compiler_identity = parse_compiler_identity_digest(
-        source_roots,
-        &workspace,
-        Some(&emitted),
-        &build.rustc_identity,
-    )?;
-    eprintln!(
-        "v2-native-route: parse-compiler identity {parse_compiler_identity} \
-         (tokenize+parse+schema import_closure_live; emitted rust of those modules; \
-         src/v1/stage0_runtime; rustc)"
-    );
+    // Self-host emits `v2.compiler.compile` and does not include parse-verdict schema .rs.
+    // The sidecar is only owed by the native-cli generation-one keep.
+    let parse_compiler_identity = if entry == V2_NATIVE_CLI_ENTRY {
+        let digest = parse_compiler_identity_digest(
+            source_roots,
+            &workspace,
+            Some(&emitted),
+            &build.rustc_identity,
+        )?;
+        eprintln!(
+            "v2-native-route: parse-compiler identity {digest} \
+             (tokenize+parse+schema import_closure_live; emitted rust of those modules; \
+             src/v1/stage0_runtime; rustc)"
+        );
+        digest
+    } else {
+        String::new()
+    };
     Ok(EmittedPreparation {
         binary_path,
         binary_identity,
