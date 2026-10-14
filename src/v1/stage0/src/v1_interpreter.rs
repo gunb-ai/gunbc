@@ -18329,7 +18329,6 @@ fn spawn_shell_detached(
     argv: &[String],
     stdout_path: &str,
     stderr_path: &str,
-    working_directory: &str,
     _ctx: &InterpContext,
     intent: &str,
 ) -> InterpResult<u32> {
@@ -18346,10 +18345,7 @@ fn spawn_shell_detached(
     cmd.args(&argv[1..])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::from(stdout_file))
-        .stderr(std::process::Stdio::from(stderr_file))
-        // POSIX.1-2024 posix_spawn_file_actions_addchdir: rustc's current_dir is the file action,
-        // not a pre_exec chdir and not a `cd` prefix in argv.
-        .current_dir(working_directory);
+        .stderr(std::process::Stdio::from(stderr_file));
     // The child leads its own process group: detached by contract, killable by exactly one pid.
     #[cfg(unix)]
     {
@@ -18422,7 +18418,6 @@ fn dispatch_start_detached_native(
     let arguments = word_list("arguments")?;
     let stdout_path = stdio_path_input(param_env, ctx, "stdout_file")?;
     let stderr_path = stdio_path_input(param_env, ctx, "stderr_file")?;
-    let working_directory = stdio_path_input(param_env, ctx, "working_directory")?;
 
     let mut argv: Vec<String> = Vec::with_capacity(arguments.len() + 1);
     argv.push(program.clone());
@@ -18436,7 +18431,7 @@ fn dispatch_start_detached_native(
         return Err(err);
     }
 
-    spawn_shell_detached(&argv, &stdout_path, &stderr_path, &working_directory, ctx, intent)
+    spawn_shell_detached(&argv, &stdout_path, &stderr_path, ctx, intent)
         .and_then(|pid| {
             let mapped = map_detached_outputs(op_node, ctx)?;
             let field = transport_outcome_output_field(op_node, ctx, "ProcessSpawnOutcome")

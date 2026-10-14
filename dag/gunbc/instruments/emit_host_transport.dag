@@ -292,8 +292,7 @@ fn run_node_http_serve_smoke() -> Bool {
         program: prefixed_cmd.program.invocation,
         arguments: prefixed_cmd.arguments,
         stdout_file: concat(dir.path, "/server.stdout.log") as NonEmptyStr,
-        stderr_file: concat(dir.path, "/server.stderr.log") as NonEmptyStr,
-        working_directory: dir.path as NonEmptyStr
+        stderr_file: concat(dir.path, "/server.stderr.log") as NonEmptyStr
       )
       match spawn.spawn {
         Spawned { pid: pid } => {

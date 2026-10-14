@@ -23,13 +23,6 @@ data extdeps_external_authority_anchor_wait: ExternalAuthority = ExternalAuthori
   }
 }
 
-data extdeps_external_authority_anchor_addchdir: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "pubs.opengroup.org/onlinepubs/9799919799/functions/posix_spawn_file_actions_addchdir.html"
-  }
-}
-
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -39,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [extdeps_external_authority_anchor_wait, extdeps_external_authority_anchor_addchdir]
+  further_citations: [extdeps_external_authority_anchor_wait]
 }
 
 // PROCESS LIFECYCLE, typed at the spawn boundary. `gunbc.instruments.emit_host_transport` (the node-http
@@ -47,9 +40,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // plumbing was the LAST untyped process lifecycle in the gunbc substrate; this service replaces
 // that plumbing with modeled operations whose upstream is the POSIX spawn family:
 //
-//   StartDetached  -- posix_spawn(3) with POSIX_SPAWN_SETPGROUP (pgid 0), stdio file actions, and
-//                     POSIX.1-2024 posix_spawn_file_actions_addchdir for working_directory (not a
-//                     `cd` prefix in argv); the child is its own process group and is NOT waited.
+//   StartDetached  -- posix_spawn(3) with POSIX_SPAWN_SETPGROUP (pgid 0) and stdio file actions;
+//                     the child is its own process group and is NOT waited: the caller holds a
+//                     pid, the same fact `&` / `$!` carried in shell, now a typed value.
 //   Reap           -- waitpid(3) (pubs.opengroup.org/onlinepubs/9699919799/functions/wait.html)
 //                     in its WNOHANG form, answerable only about a process the caller started.
 //   TerminateProcess lives in extdeps.posix.signal (kill(2) SIGTERM) and is the third arm of the
@@ -99,7 +92,6 @@ service posix.Process {
       arguments: List<String>
       stdout_file: NonEmptyStr
       stderr_file: NonEmptyStr
-      working_directory: NonEmptyStr
     }
     output { spawn: ProcessSpawnOutcome }
   }

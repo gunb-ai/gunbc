@@ -11,6 +11,7 @@ import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
 import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.filesystem { path_parent_directory }
 import gunbc.harness.harness_tool { HarnessToolEnvironment, harness_tool_environment }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnStoppedBySupervision, TurnSupervisionUnavailable, TurnAcceptanceUnavailable, HarnessSupervision, Unsupervised, SupervisedRounds, HarnessAcceptanceRoute, harness_tool_contract_wire,
@@ -94,8 +95,6 @@ data harness_macbook_working_directory: FilePath = "/Users/briansrls/gunbc" as F
 data harness_request_scratch_path: FilePath = "/tmp/gunbc-harness-request.json" as FilePath
 
 data harness_probe_events_path: FilePath = "/tmp/gunbc-harness-probe-events.jsonl" as FilePath
-
-data harness_default_duration_limit_seconds: Int = 120
 
 data harness_default_step_budget: Int = 8
 
@@ -222,6 +221,7 @@ fn harness_macbook_environment() -> HarnessToolEnvironment {
   harness_tool_environment(
     working_directory: harness_macbook_working_directory,
     timeout_program: harness_macbook_timeout_program,
+    job_output_directory: path_parent_directory(path: harness_request_scratch_path as String) as FilePath,
   )
 }
 
@@ -682,6 +682,7 @@ fn harness_worker_config(
     environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
+      job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
     ),
     completion: CompletesOnProviderStop,
     backend_access: backend.access,
@@ -885,6 +886,7 @@ fn harness_reviewer_config(
     environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
+      job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
     ),
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
@@ -969,6 +971,7 @@ fn harness_auditor_config(
     environment: harness_tool_environment(
       working_directory: worktree,
       timeout_program: timeout_program,
+      job_output_directory: path_parent_directory(path: request_scratch_path as String) as FilePath,
     ),
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,

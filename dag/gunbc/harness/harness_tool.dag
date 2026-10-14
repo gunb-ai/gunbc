@@ -20,16 +20,17 @@ import gunbc.harness.harness_tool_kind {
 }
 import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, HarnessWaitPace, WaitPaceReset, WaitPaceAfterWait,
-  HarnessWaitRequest, WaitUseDefault, WaitRequestedMinutes, WaitAdmitted, WaitRefusedNotADuration,
+  HarnessWaitRequest, WaitUseDefault, WaitRequestedMinutes, WaitMalformedMinutes, WaitAdmitted, WaitRefusedNotADuration,
   harness_shell_job_schedule, harness_admit_wait, schedule_seconds,
   harness_pace_after_window_change, harness_pace_after_expired_wait,
 }
 import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellSpawn, ShellSpawned, ShellSpawnFailed,
   harness_start_shell_job, harness_await_pid, harness_command_table, harness_read_job_text,
-  harness_replace_job, harness_drop_job, harness_find_job, harness_wait_until_any,
-  WaitLoopFinished, WaitLoopExpired, WaitLoopNoRunningJob, harness_kill_process_group,
-  harness_refresh_job,
+  harness_replace_job, harness_find_job, harness_wait_until_any,
+  WaitLoopFinished, WaitLoopExpired, WaitLoopNoRunningJob, harness_kill_running_job,
+  JobKillConfirmed, JobKillUnconfirmed,
+  harness_refresh_job, harness_job_is_running, harness_hand_in_blocked_by_running_jobs,
 }
 
 // THE HARNESS TOOL SURFACE, and the rule every disposition below is one instance of:
@@ -156,23 +157,24 @@ type HarnessToolStep {
 type HarnessToolEnvironment {
   working_directory: FilePath
   timeout_program: FilePath
+  job_output_directory: FilePath
   duration_limit_seconds: Int
   jobs: List<HarnessShellJob>
   wait_pace: HarnessWaitPace
-  next_job_slot: Int
 }
 
 fn harness_tool_environment(
   working_directory: FilePath,
   timeout_program: FilePath,
+  job_output_directory: FilePath,
 ) -> HarnessToolEnvironment {
   HarnessToolEnvironment {
     working_directory: working_directory,
     timeout_program: timeout_program,
+    job_output_directory: job_output_directory,
     duration_limit_seconds: schedule_seconds(s: harness_shell_job_schedule.backstop),
     jobs: [],
     wait_pace: WaitPaceReset,
-    next_job_slot: 0,
   }
 }
 
@@ -226,30 +228,14 @@ fn harness_env_with_jobs(
   HarnessToolEnvironment {
     working_directory: environment.working_directory,
     timeout_program: environment.timeout_program,
+    job_output_directory: environment.job_output_directory,
     duration_limit_seconds: environment.duration_limit_seconds,
     jobs: jobs,
     wait_pace: wait_pace,
-    next_job_slot: environment.next_job_slot,
   }
 }
 
-fn harness_env_with_jobs_and_slot(
-  environment: HarnessToolEnvironment,
-  jobs: List<HarnessShellJob>,
-  wait_pace: HarnessWaitPace,
-  next_job_slot: Int,
-) -> HarnessToolEnvironment {
-  HarnessToolEnvironment {
-    working_directory: environment.working_directory,
-    timeout_program: environment.timeout_program,
-    duration_limit_seconds: environment.duration_limit_seconds,
-    jobs: jobs,
-    wait_pace: wait_pace,
-    next_job_slot: next_job_slot,
-  }
-}
-
-fn harness_wait_note(seconds: Second, clamped: Bool, raised_to_minimum: Bool, asked_seconds: Second) -> String {
+fn harness_wait_note(seconds: Second, clamped: Bool, raised_to_minimum: Bool, capped_at_backstop: Bool, asked_seconds: Second) -> String {
   let clamped_note = if clamped {
     join([
       " [wait clamped from ", to_string(value: second_count(s: asked_seconds) as Int),
@@ -266,7 +252,16 @@ fn harness_wait_note(seconds: Second, clamped: Bool, raised_to_minimum: Bool, as
   } else {
     ""
   }
-  join([clamped_note, raised_note], "")
+  let backstop_note = if capped_at_backstop {
+    join([
+      " [wait capped at the shell-job backstop of ",
+      to_string(value: second_count(s: seconds) as Int),
+      "s; no job outlives it]",
+    ], "")
+  } else {
+    ""
+  }
+  join([clamped_note, raised_note, backstop_note], "")
 }
 
 fn harness_text_with_table(text: String, jobs: List<HarnessShellJob>) -> HarnessToolOutcome {
@@ -285,10 +280,10 @@ fn harness_run_command_scheduled(
 ) -> HarnessToolStep {
   let spawn = harness_start_shell_job(
     worktree: environment.working_directory,
+    job_output_directory: environment.job_output_directory,
     timeout_program: environment.timeout_program,
     command: command,
     schedule: schedule,
-    slot: environment.next_job_slot,
   )
   match spawn {
     ShellSpawnFailed { program, cause } =>
@@ -306,11 +301,10 @@ fn harness_run_command_scheduled(
         StillRunning => {
           let jobs = harness_replace_job(jobs: environment.jobs, job: job)
           HarnessToolStep {
-            environment: harness_env_with_jobs_and_slot(
+            environment: harness_env_with_jobs(
               environment: environment,
               jobs: jobs,
               wait_pace: harness_pace_after_window_change(),
-              next_job_slot: environment.next_job_slot + 1,
             ),
             outcome: ToolJob {
               id: job.id,
@@ -391,20 +385,27 @@ fn harness_wait_jobs_scheduled(
     pace: environment.wait_pace,
     request: request,
   ) {
-    WaitRefusedNotADuration { minutes } =>
+    WaitRefusedNotADuration { minutes, cause } =>
       HarnessToolStep {
         environment: environment,
         outcome: ToolRefused {
           disposition: ToolEffectRefused {
-            detail: join(["wait minutes must be a positive duration, got ", to_string(value: minutes)], ""),
+            detail: join([
+              "wait minutes must be a positive duration, got ",
+              to_string(value: minutes),
+              " (",
+              cause,
+              ")",
+            ], ""),
           },
         },
       }
-    WaitAdmitted { seconds, clamped, raised_to_minimum, asked_seconds } => {
+    WaitAdmitted { seconds, clamped, raised_to_minimum, capped_at_backstop, asked_seconds } => {
       let note = harness_wait_note(
         seconds: seconds,
         clamped: clamped,
         raised_to_minimum: raised_to_minimum,
+        capped_at_backstop: capped_at_backstop,
         asked_seconds: asked_seconds,
       )
       match harness_wait_until_any(jobs: environment.jobs, remaining: seconds) {
@@ -497,22 +498,43 @@ fn harness_kill_job(environment: HarnessToolEnvironment, id: String) -> HarnessT
           disposition: ToolEffectRefused { detail: join(["no job ", id], "") },
         },
       }
-    Present { value: job } => {
-      let _killed = harness_kill_process_group(pid: job.pid)
-      let _reap = harness_await_pid(pid: job.pid, remaining: second(count: 5))
-      let jobs = harness_drop_job(jobs: environment.jobs, id: id)
-      HarnessToolStep {
-        environment: harness_env_with_jobs(
+    Present { value: job } =>
+      if !harness_job_is_running(job: job) {
+        HarnessToolStep {
           environment: environment,
-          jobs: jobs,
-          wait_pace: harness_pace_after_window_change(),
-        ),
-        outcome: harness_text_with_table(
-          text: join(["killed process group ", job.id], ""),
-          jobs: jobs,
-        ),
+          outcome: ToolRefused {
+            disposition: ToolEffectRefused {
+              detail: join(["job ", id, " has finished; job_kill acts only on a running job"], ""),
+            },
+          },
+        }
+      } else {
+        match harness_kill_running_job(job: job) {
+          JobKillUnconfirmed { job: still, detail } =>
+            HarnessToolStep {
+              environment: harness_env_with_jobs(
+                environment: environment,
+                jobs: harness_replace_job(jobs: environment.jobs, job: still),
+                wait_pace: environment.wait_pace,
+              ),
+              outcome: ToolRefused { disposition: ToolEffectRefused { detail: detail } },
+            }
+          JobKillConfirmed { job: dead } => {
+            let jobs = harness_replace_job(jobs: environment.jobs, job: dead)
+            HarnessToolStep {
+              environment: harness_env_with_jobs(
+                environment: environment,
+                jobs: jobs,
+                wait_pace: harness_pace_after_window_change(),
+              ),
+              outcome: harness_text_with_table(
+                text: join(["killed process group ", dead.id], ""),
+                jobs: jobs,
+              ),
+            }
+          }
+        }
       }
-    }
   }
 }
 
@@ -565,7 +587,7 @@ fn harness_wait_request_from_block(block: HarnessWireBlock) -> HarnessWaitReques
       match json_field_int(obj: input, key: "minutes") {
         FieldRead { value: n } => WaitRequestedMinutes { minutes: n }
         FieldAbsent => WaitUseDefault
-        FieldMalformed { cause: _ } => WaitRequestedMinutes { minutes: 0 }
+        FieldMalformed { cause } => WaitMalformedMinutes { cause: cause }
       }
     WireTextBlock { text: _ } => WaitUseDefault
     WireThinkingBlock { thinking: _ } => WaitUseDefault

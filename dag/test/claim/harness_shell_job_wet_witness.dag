@@ -3,9 +3,13 @@ module test.claim.harness_shell_job_wet_witness
 import std.types { Bool, String, List, FilePath, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { second }
+import std.algebra { trim }
 import extdeps.shell
 import extdeps.posix.signal
 import extdeps.filesystem.filesystem_io
+import extdeps.tools.gnu_coreutils { pwd_command }
+import gunbc.command_runner { run_shell_command_capture, LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, WaitUseDefault,
 }
@@ -16,6 +20,7 @@ import gunbc.harness.harness_tool {
 }
 import gunbc.harness.harness_shell_job {
   harness_observe_job, JobStillRunning, JobExited, JobSignaled, JobReapRefused,
+  harness_job_is_running,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -42,10 +47,11 @@ fn wait_early_schedule() -> ShellJobSchedule {
   }
 }
 
-fn env_at(dir: String) -> HarnessToolEnvironment {
+fn env_at(worktree: String, output: String) -> HarnessToolEnvironment {
   harness_tool_environment(
-    working_directory: dir as FilePath,
+    working_directory: worktree as FilePath,
     timeout_program: "/usr/bin/timeout" as FilePath,
+    job_output_directory: output as FilePath,
   )
 }
 
@@ -69,10 +75,19 @@ fn is_duration_exceeded(outcome: HarnessToolOutcome) -> Bool {
   }
 }
 
+fn claim_process_cwd() -> String {
+  match run_shell_command_capture(command: pwd_command(), transport: LocalExec) {
+    ProcessOutputPresent { text } => trim(s: text)
+    ProcessOutputAbsent => ""
+    ProcessRefused { exit_code: _, stderr: _ } => ""
+  }
+}
+
 test fn a_command_over_the_inline_hold_returns_a_job_not_duration_exceeded() -> Bool {
   let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
   let step = harness_run_command_scheduled(
-    environment: env_at(dir: dir.path),
+    environment: env_at(worktree: dir.path, output: out.path),
     command: "sleep 20",
     schedule: fixture_schedule(),
   )
@@ -82,49 +97,97 @@ test fn a_command_over_the_inline_hold_returns_a_job_not_duration_exceeded() -> 
     Present { value: j } => harness_kill_job(environment: step.environment, id: j.id)
   }
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && ok
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success && ok
+}
+
+test fn run_command_pwd_equals_the_environment_working_directory() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let process_cwd = claim_process_cwd()
+  let step = harness_run_command_scheduled(
+    environment: env_at(worktree: dir.path, output: out.path),
+    command: "pwd",
+    schedule: fixture_schedule(),
+  )
+  let text = trim(s: harness_outcome_text(outcome: step.outcome))
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success
+    && process_cwd != dir.path
+    && text.contains(dir.path)
 }
 
 test fn wait_with_no_running_job_is_refused() -> Bool {
   let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
   let waited = harness_wait_jobs_scheduled(
-    environment: env_at(dir: dir.path),
+    environment: env_at(worktree: dir.path, output: out.path),
     schedule: wait_early_schedule(),
     request: WaitUseDefault,
   )
   let text = harness_outcome_text(outcome: waited.outcome)
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
   dir.success && text.contains("no running job")
 }
 
-test fn wait_after_a_job_finishes_does_not_return_instantly_as_a_poll() -> Bool {
+test fn wait_after_a_job_finishes_does_not_return_early_while_another_runs() -> Bool {
   let dir = shell.Mktemp.Dir()
-  let started = harness_run_command_scheduled(
-    environment: env_at(dir: dir.path),
+  let out = shell.Mktemp.Dir()
+  let first_job = harness_run_command_scheduled(
+    environment: env_at(worktree: dir.path, output: out.path),
     command: "sleep 1",
     schedule: wait_early_schedule(),
   )
-  let first = harness_wait_jobs_scheduled(
-    environment: started.environment,
+  let second_job = harness_run_command_scheduled(
+    environment: first_job.environment,
+    command: "sleep 20",
+    schedule: wait_early_schedule(),
+  )
+  let first_wait = harness_wait_jobs_scheduled(
+    environment: second_job.environment,
     schedule: wait_early_schedule(),
     request: WaitUseDefault,
   )
-  let second = harness_wait_jobs_scheduled(
-    environment: first.environment,
-    schedule: wait_early_schedule(),
+  let short_wait = ShellJobSchedule {
+    inline_hold: second(count: 0),
+    wait_base: second(count: 2),
+    wait_factor: 2,
+    wait_request_cap_factor: 4,
+    wait_minimum: second(count: 1),
+    backstop: second(count: 20),
+  }
+  let second_wait = harness_wait_jobs_scheduled(
+    environment: first_wait.environment,
+    schedule: short_wait,
     request: WaitUseDefault,
   )
+  let first_text = harness_outcome_text(outcome: first_wait.outcome)
+  let second_text = harness_outcome_text(outcome: second_wait.outcome)
+  let still_running = any(second_wait.environment.jobs, j => harness_job_is_running(job: j))
+  let _stop = fold(second_wait.environment.jobs, init: second_wait, f: (acc, j) =>
+    if harness_job_is_running(job: j) {
+      harness_kill_job(environment: acc.environment, id: j.id)
+    } else {
+      acc
+    })
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success
-    && harness_outcome_text(outcome: first.outcome).contains("a job finished before the wait elapsed")
-    && harness_outcome_text(outcome: second.outcome).contains("no running job")
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success
+    && first_text.contains("a job finished before the wait elapsed")
+    && first_text.contains("exit 0")
+    && second_text.contains("wait elapsed with no job finishing")
+    && !second_text.contains("a job finished before the wait elapsed")
+    && still_running
 }
 
 test fn wait_returns_when_a_job_finishes_before_the_timeout() -> Bool {
   let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
   let started = harness_run_command_scheduled(
-    environment: env_at(dir: dir.path),
-    command: "sleep 1",
+    environment: env_at(worktree: dir.path, output: out.path),
+    command: "sleep 1; exit 7",
     schedule: wait_early_schedule(),
   )
   let waited = harness_wait_jobs_scheduled(
@@ -133,13 +196,15 @@ test fn wait_returns_when_a_job_finishes_before_the_timeout() -> Bool {
     request: WaitUseDefault,
   )
   let text = harness_outcome_text(outcome: waited.outcome)
-  let ok = text.contains("a job finished before the wait elapsed")
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && ok
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && text.contains("a job finished before the wait elapsed") && text.contains("exit 7")
 }
 
 test fn the_backstop_kills_the_process_group() -> Bool {
   let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let marker = join([out.path, "/grandchild-28391.pid"], "")
   let tight = ShellJobSchedule {
     inline_hold: second(count: 1),
     wait_base: second(count: 6),
@@ -149,8 +214,8 @@ test fn the_backstop_kills_the_process_group() -> Bool {
     backstop: second(count: 2),
   }
   let started = harness_run_command_scheduled(
-    environment: env_at(dir: dir.path),
-    command: "sh -c 'sleep 30 & printf %s $! > grandchild.pid; wait'",
+    environment: env_at(worktree: dir.path, output: out.path),
+    command: join(["sleep 28391 & printf %s $! > ", marker, "; sleep 28392"], ""),
     schedule: tight,
   )
   let waited = harness_wait_jobs_scheduled(
@@ -164,16 +229,89 @@ test fn the_backstop_kills_the_process_group() -> Bool {
       match harness_observe_job(job: j) {
         JobStillRunning { job: _ } => false
         JobExited { job: _, code } => code == 124
-        JobSignaled { job: _, signal: _ } => true
-        JobReapRefused { job: _, cause: _ } => true
+        JobSignaled { job: _, signal: _ } => false
+        JobReapRefused { job: _, cause: _ } => false
       }
   }
-  let grandchild = Filesystem.Read(path: concat(dir.path, "/grandchild.pid"))
+  let grandchild = Filesystem.Read(path: marker)
   let grandchild_gone = if grandchild.success && grandchild.content.length() > 0 {
     !posix.Signal.TerminateProcess(pid: grandchild.content as NonEmptyStr).success
   } else {
-    timeout_dead
+    false
   }
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && timeout_dead && grandchild_gone
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success && timeout_dead && grandchild_gone
+}
+
+test fn job_kill_keeps_the_job_running_unless_reap_confirms_death() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let started = harness_run_command_scheduled(
+    environment: env_at(worktree: dir.path, output: out.path),
+    command: "sleep 20",
+    schedule: wait_early_schedule(),
+  )
+  let killed = match started.environment.jobs.first() {
+    Absent => started
+    Present { value: j } => harness_kill_job(environment: started.environment, id: j.id)
+  }
+  let text = harness_outcome_text(outcome: killed.outcome)
+  let confirmed = match killed.environment.jobs.first() {
+    Absent => false
+    Present { value: j } =>
+      match harness_observe_job(job: j) {
+        JobStillRunning { job: _ } => false
+        JobExited { job: _, code: _ } => true
+        JobSignaled { job: _, signal: _ } => true
+        JobReapRefused { job: _, cause: _ } => false
+      }
+  }
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success && confirmed && text.contains("killed process group")
+}
+
+test fn run_command_does_not_dirty_the_worktree_git_status() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let inited = shell.Exec.RunArgv(program: "git" as NonEmptyStr, arguments: ["-C", dir.path, "init", "-q"])
+  let configured = shell.Exec.RunArgv(
+    program: "git" as NonEmptyStr,
+    arguments: ["-C", dir.path, "config", "user.email", "job@example.test"],
+  )
+  let named = shell.Exec.RunArgv(
+    program: "git" as NonEmptyStr,
+    arguments: ["-C", dir.path, "config", "user.name", "job"],
+  )
+  let committed = shell.Exec.RunArgv(
+    program: "git" as NonEmptyStr,
+    arguments: ["-C", dir.path, "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "seed"],
+  )
+  let before = shell.Exec.RunArgv(
+    program: "git" as NonEmptyStr,
+    arguments: ["-C", dir.path, "status", "--porcelain"],
+  )
+  let step = harness_run_command_scheduled(
+    environment: env_at(worktree: dir.path, output: out.path),
+    command: "true",
+    schedule: fixture_schedule(),
+  )
+  let after = shell.Exec.RunArgv(
+    program: "git" as NonEmptyStr,
+    arguments: ["-C", dir.path, "status", "--porcelain"],
+  )
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success
+    && inited.exit_code == 0
+    && configured.exit_code == 0
+    && named.exit_code == 0
+    && committed.exit_code == 0
+    && before.stdout == after.stdout
+    && match step.outcome {
+      ToolCompleted { text: _, exit_code, standing: _ } => exit_code == 0
+      ToolJob { id: _, text: _ } => false
+      ToolRefused { disposition: _ } => false
+    }
 }

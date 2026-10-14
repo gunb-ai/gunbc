@@ -2269,9 +2269,15 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "wait_after_a_job_finishes_does_not_return_instantly_as_a_poll" },
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "run_command_pwd_equals_the_environment_working_directory" },
       entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
-      function: "wait_after_a_job_finishes_does_not_return_instantly_as_a_poll",
+      function: "run_command_pwd_equals_the_environment_working_directory",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "wait_after_a_job_finishes_does_not_return_early_while_another_runs" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "wait_after_a_job_finishes_does_not_return_early_while_another_runs",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -2284,6 +2290,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "the_backstop_kills_the_process_group" },
       entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
       function: "the_backstop_kills_the_process_group",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "job_kill_keeps_the_job_running_unless_reap_confirms_death" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "job_kill_keeps_the_job_running_unless_reap_confirms_death",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "run_command_does_not_dirty_the_worktree_git_status" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "run_command_does_not_dirty_the_worktree_git_status",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

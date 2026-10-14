@@ -1,6 +1,6 @@
 module gunbc.harness.harness_shell_job_policy
 
-import std.types { Int, Bool }
+import std.types { Int, Bool, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure {
@@ -47,15 +47,17 @@ type HarnessWaitPace
 type HarnessWaitRequest
   = WaitUseDefault
   | WaitRequestedMinutes { minutes: Int }
+  | WaitMalformedMinutes { cause: String }
 
 type HarnessWaitAdmission
   = WaitAdmitted {
       seconds: Second
       clamped: Bool
       raised_to_minimum: Bool
+      capped_at_backstop: Bool
       asked_seconds: Second
     }
-  | WaitRefusedNotADuration { minutes: Int }
+  | WaitRefusedNotADuration { minutes: Int, cause: String }
 
 fn schedule_seconds(s: Second) -> Int {
   second_count(s: s) as Int
@@ -76,11 +78,38 @@ fn harness_wait_fallback(schedule: ShellJobSchedule, pace: HarnessWaitPace) -> S
   }
 }
 
+fn harness_seconds_at_most_backstop(schedule: ShellJobSchedule, seconds: Second) -> Second {
+  if measure_le(a: seconds, b: schedule.backstop) {
+    seconds
+  } else {
+    schedule.backstop
+  }
+}
+
+fn harness_admitted_wait(
+  schedule: ShellJobSchedule,
+  seconds: Second,
+  clamped: Bool,
+  raised_to_minimum: Bool,
+  asked_seconds: Second,
+) -> HarnessWaitAdmission {
+  let capped = harness_seconds_at_most_backstop(schedule: schedule, seconds: seconds)
+  WaitAdmitted {
+    seconds: capped,
+    clamped: clamped,
+    raised_to_minimum: raised_to_minimum,
+    capped_at_backstop: !measure_le(a: seconds, b: schedule.backstop),
+    asked_seconds: asked_seconds,
+  }
+}
+
 // THE NEXT WAIT. A window change (job start or finish) is WaitPaceReset: start again at the base.
 // Otherwise the default doubles. A requested length in minutes is held to
 // [wait_minimum, wait_request_cap_factor × basis]. Below the minimum is RAISED, never a poll.
 // Above the cap is CLAMPED, and both departures are carried on the admission so the tool result
-// can say so. Zero or negative minutes are not a duration. Counts exist only at argv/sleep/text.
+// can say so. No admitted wait outlives the backstop (no job outlives it either), and that cap
+// is said on the admission. Zero or negative minutes are not a duration. A malformed minutes
+// member carries its parse cause rather than becoming 0. Counts exist only at argv/sleep/text.
 fn harness_admit_wait(
   schedule: ShellJobSchedule,
   pace: HarnessWaitPace,
@@ -96,41 +125,54 @@ fn harness_admit_wait(
   let minimum = schedule.wait_minimum
   match request {
     WaitUseDefault =>
-      WaitAdmitted {
+      harness_admitted_wait(
+        schedule: schedule,
         seconds: fallback,
         clamped: false,
         raised_to_minimum: false,
         asked_seconds: fallback,
-      }
+      )
+    WaitMalformedMinutes { cause } =>
+      WaitRefusedNotADuration { minutes: 0, cause: cause }
     WaitRequestedMinutes { minutes } =>
       match checked_int_to_nat(n: minutes) {
-        Absent => WaitRefusedNotADuration { minutes: minutes }
+        Absent =>
+          WaitRefusedNotADuration {
+            minutes: minutes,
+            cause: join(["minutes is ", to_string(value: minutes), ", which is not a positive duration"], ""),
+          }
         Present { value: n } =>
           if n == 0 {
-            WaitRefusedNotADuration { minutes: minutes }
+            WaitRefusedNotADuration {
+              minutes: minutes,
+              cause: "minutes is 0, which is not a positive duration",
+            }
           } else {
             let want = minute_to_second(m: minute(count: n))
             if !measure_le(a: minimum, b: want) {
-              WaitAdmitted {
+              harness_admitted_wait(
+                schedule: schedule,
                 seconds: minimum,
                 clamped: false,
                 raised_to_minimum: true,
                 asked_seconds: want,
-              }
+              )
             } else if !measure_le(a: want, b: cap) {
-              WaitAdmitted {
+              harness_admitted_wait(
+                schedule: schedule,
                 seconds: cap,
                 clamped: true,
                 raised_to_minimum: false,
                 asked_seconds: want,
-              }
+              )
             } else {
-              WaitAdmitted {
+              harness_admitted_wait(
+                schedule: schedule,
                 seconds: want,
                 clamped: false,
                 raised_to_minimum: false,
                 asked_seconds: want,
-              }
+              )
             }
           }
       }
