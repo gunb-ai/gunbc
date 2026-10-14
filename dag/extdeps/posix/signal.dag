@@ -32,6 +32,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // (pubs.opengroup.org/onlinepubs/9699919799/functions/kill.html): it names a process group.
 // That form is TerminateProcessGroup, used by the harness shell-job backstop and job_kill,
 // not by the host reaper.
+//
+// The group argv is kill -TERM -- -<pgid>, not kill -TERM -<pgid>. procps-ng kill(1)
+// (man7.org/linux/man-pages/man1/kill.1.html) documents the -- form for a negative pid
+// (`kill -- -123`). Without --, procps-ng 4.0.4 on srv1 returned rc 0 and signaled
+// nothing: -<pgid> was parsed as more options, a silent no-op. A success exit does not
+// prove delivery; the caller confirms death by reap (harness_kill_running_job).
 service posix.Signal {
   operation TerminateProcess {
     requires none
@@ -57,7 +63,7 @@ service posix.Signal {
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["kill", "-TERM", "-{pgid}"] }
+    transport shell { argv: ["kill", "-TERM", "--", "-{pgid}"] }
     exit {
       0 => Unit
       nonzero => String "kill -TERM process group failed"
