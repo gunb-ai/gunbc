@@ -5,13 +5,15 @@ import std.algebra { Cons, Empty, list_snoc_item, zip_map }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.arrow_contract { arrow_contract_conforms }
 import v2.std.arrow_signature { signature_order_edge, arrow_signature_order_head_is_list_introduction }
-import v2.std.node_query { binder_node_parts, named_child_lookup, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }
+import v2.std.node_query { binder_node_parts, find_labeled_child, find_named_child, named_child_lookup, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.extdeps.languages.dag_surface_item_standing {
   DagSurfaceNonTypeDeclaration,
   DagSurfaceTypeDeclaration,
   dag_surface_item_standing
 }
 import v2.std.node {
+  production_edge_label,
   MatchArmScopeExitEdge,
   arrow_named_edge_is_non_binder,
   arrow_first_positional_target,
@@ -277,6 +279,30 @@ fn type_decl_view(target: Node) -> TypeDeclView {
           type_decl_view_by_wrapper(target: target)
         }
     }
+  }
+}
+
+// A REFINEMENT DECLARATION READ FROM ITS DECLARED NODE: the where-clause production edge and the
+// carrier's type expression, or Absent when the node is not a refinement. `type Pos = Int where
+// positive` is stored as `Conj { <type-expr>: Int, <where-refinement-clause>: clause }`
+// (v2.compiler.body_lowering_fold body_lower_where_refined_type_edges). The one reader of that
+// shape, homed beside type_decl_view so the declaration classifier and v2.compiler.infer read it
+// from one place: v2.std.symbol_index type_decl_member_shape classifies a refinement as a type,
+// and v2.compiler.infer refinement_declaration reaches it through the symbol index.
+type RefinementDeclaration {
+  carrier: Node
+  where_clause: Node
+}
+
+fn refinement_declaration_of_node(decl: Node) -> Optional<RefinementDeclaration> {
+  match find_labeled_child(root: decl, label: production_edge_label(language: ^dag_language_model_surface_id, edge: ^dag_surface_where_refinement_clause)) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: clause, diagnostics: _ } =>
+      match find_named_child(root: decl, name: ^dag_surface_type_expr) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: head, diagnostics: _ } =>
+          Present { value: RefinementDeclaration { carrier: head, where_clause: clause } }
+      }
   }
 }
 
