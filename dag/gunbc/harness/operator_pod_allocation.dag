@@ -1,0 +1,90 @@
+module gunbc.harness.operator_pod_allocation
+
+import std.types { NonEmptyStr, List }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { bound_dissolution }
+import std.measure { byte_size }
+import std.decl_ref { decl_ref }
+import product.host_identity { HostIdentity }
+import extdeps.ssh.keys { SshPublicKey, Ed25519 }
+import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ScannedFirstContact }
+import gunbc.workspace_allocation_policy { workspace_operator_principal }
+import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
+import gunbc.harness.harness_operator_route { operator_endpoint_tunnel }
+import gunbc.serving.rented_replica { RentedGpuDevice }
+import gunbc.serving.rented_host_access { RentedHostAccessDeclaration }
+import gunbc.serving.rented_allocation {
+  RentedServingAllocation, RentedAllocationImported, RentedEndsOnOperatorRelease, RentedNinferEngine,
+  RentedSshLocalForward, RentedContractUnread, rented_allocation_identity,
+}
+
+// THE OPERATOR'S HAND-RENTED VAST CARD, IMPORTED AS ONE RENTED SERVING ALLOCATION. The operator rented it
+// on 2026-10-13 (Vast contract 55807382, label `daily workspace`, Hong Kong, RTX PRO 5000 Blackwell 48 GB)
+// and started ninfer-serve on it; this repository did not acquire it, so the origin is Imported and names
+// the launch it found running. Every field that already has an authority is that authority, not a copy:
+// - the engine is gunbc.harness.operator_pod_launch operator_pod_ninfer_launch on operator_pod_listen_port;
+// - the route is gunbc.harness.harness_operator_route operator_endpoint_tunnel, the srv1 ssh -L forward the
+//   harness already dials, so the allocation and the harness cannot name two different tunnels;
+// - the operator is gunbc.workspace_allocation_policy workspace_operator_principal.
+//
+// WHAT IS NOT YET READ, each standing in its own type rather than as a guessed value:
+// - the contract terms (machine id, dph_total, rental start) are behind the Vast API key, which has no
+//   custody here yet, so the contract is RentedContractUnread with that obligation;
+// - the card's sshd is published on port 11055, and RentedHostAccessDeclaration has no port until S2(b)
+//   gives SshTarget and KnownHostKeyRow a SocketAddress. No leg dials this declaration before then, and the
+//   host key row is written under the bare address for the same reason;
+// - the authorized key is srv1's host-held id_ed25519_gpu_pod (gap register G10), not an operator agent key.
+//
+// imported_at is the day this row was authored, at day grain: the import is this declaration, not an
+// observed event with a finer instant.
+data operator_pod_allocation_contract_obligation: NonEmptyStr = "Read Vast contract 55807382 (machine_id, dph_total, start_date) through the Vast API once its key has custody, and replace this standing with the RentedContractRead offer" as NonEmptyStr
+
+data operator_pod_card_host_key: KnownHostKeyRow = KnownHostKeyRow {
+  host: "vast-55807382" as HostIdentity,
+  endpoint: "221.181.169.114",
+  key_type: "ssh-ed25519",
+  public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIGDAY7hcaruUZpSDdxVZnW493XqeEr6lm/XeJNohgIt6",
+  sha256_fingerprint: "SHA256:AI4v+qjKxcoc1EtNe4xLwqgw1ehLPnNZq2AyoKhjTXk",
+  provenance: ScannedFirstContact { scanned_from: "srv1 ssh first contact to 221.181.169.114:11055, 2026-10-13" as NonEmptyStr },
+}
+
+data operator_pod_allocation: RentedServingAllocation = RentedServingAllocation {
+  identity: rented_allocation_identity(
+    provider: decl_ref(module_path: "extdeps.cloud.vast_ai", decl_name: "extdeps_external_authority_anchor"),
+    contract: "55807382" as NonEmptyStr,
+  ),
+  origin: RentedAllocationImported {
+    imported_by: workspace_operator_principal(),
+    imported_at: 1791936000000,
+    found_running: decl_ref(module_path: "gunbc.harness.operator_pod_launch", decl_name: "operator_pod_ninfer_launch"),
+  },
+  contract: RentedContractUnread { obligation: operator_pod_allocation_contract_obligation },
+  card: RentedGpuDevice { index: 0, model: "RTX PRO 5000 Blackwell" as NonEmptyStr, memory: byte_size(count: 51539607552) },
+  end: RentedEndsOnOperatorRelease { decided_by: workspace_operator_principal() },
+  engine: RentedNinferEngine { revision: "81c8ce09" as NonEmptyStr, launch: operator_pod_ninfer_launch, listen_port: operator_pod_listen_port },
+  artifact: qwen3_8_27b_nvfp4_row,
+  host: RentedHostAccessDeclaration {
+    node: "vast-55807382" as NonEmptyStr,
+    endpoint: "221.181.169.114" as NonEmptyStr,
+    principal: "root" as NonEmptyStr,
+    host_key: operator_pod_card_host_key,
+    operator_key: SshPublicKey { algorithm: Ed25519, material: "AAAAC3NzaC1lZDI1NTE5AAAAIAukWcfqhITs2EVxCXBGTcwKLTFHkzZePU5Yy3WFWSpY" as NonEmptyStr, comment: "srv1-gunbc-gpu-pod-tunnel" },
+    operator_key_fingerprint: "SHA256:o0M7fTVtH/AlET5TrrzsMPXp2+Dp3KselRa1oWIvdRQ" as NonEmptyStr,
+  },
+  route: RentedSshLocalForward { forward_host: operator_host_srv1, forward: operator_endpoint_tunnel },
+}
+
+// CONSUMED BY S4, a declared frontier (DESIGN §3c). Today only its inhabitance claim reads this row
+// (test.claim.serving.operator_pod_allocation_witness). The enroll-and-seat slice reads it through
+// gunbc.serving.rented_allocation_roster rented_allocation_roster: it probes, enrolls and seats the card
+// from the allocation and retires gunbc.harness.harness_operator_route. The row dissolves when that roster
+// declaration appears.
+data operator_pod_allocation_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.harness.operator_pod_allocation", decl_name: "operator_pod_allocation"),
+    reason: "the imported card's allocation is read by its inhabitance claim until S4's rented_allocation_roster enrolls and seats it and retires harness_operator_route",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_allocation_roster", decl_name: "rented_allocation_roster")),
+  )
+]

@@ -1,0 +1,74 @@
+module test.claim.serving.operator_pod_allocation_witness
+
+import std.types { String, Bool, NonEmptyStr }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.network.endpoint { socket_address }
+import extdeps.ssh.openssh_port_forwarding { PortForwardSpec }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
+import gunbc.harness.harness_operator_route { operator_endpoint_tunnel }
+import gunbc.harness.operator_pod_allocation { operator_pod_allocation }
+import gunbc.serving.serving_enrollment { serving_route_endpoint_wire, serving_route_turn_ceiling_count }
+import gunbc.serving.rented_allocation {
+  RentedServingAllocation, RentedSshLocalForward, RentedAllocationEnrollment, RentedAllocationEnrollable,
+  RentedAllocationNotEnrollable, rented_allocation_enrollment, rented_allocation_wire,
+  rented_route_lands_off_engine_port_obligation,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INHABITANCE CLAIM FOR test.claim.serving.rented_allocation_witness (DESIGN §3, pairing). That
+// witness supplies allocations; this one reads the REAL row, gunbc.harness.operator_pod_allocation
+// operator_pod_allocation, through the real derivation, and asserts the ROUTE: the endpoint is the srv1
+// tunnel's listener, and the forward lands on the port the operator's launch listens on.
+
+fn o_endpoint_wire(e: RentedAllocationEnrollment) -> String {
+  match e {
+    RentedAllocationEnrollable { allocation: _, enrollment: r } => serving_route_endpoint_wire(e: r.endpoint) as String
+    RentedAllocationNotEnrollable { allocation: _, obligation: o } => join(["refused: ", o as String], "")
+  }
+}
+
+test fn the_imported_card_derives_the_srv1_tunnel_listener() -> Bool {
+  o_endpoint_wire(e: rented_allocation_enrollment(a: operator_pod_allocation)) == "127.0.0.1:18090"
+}
+
+// The route, not only the answer: the derived endpoint is the tunnel's own listener, the tunnel's target
+// is the launch's port, and the served name and ceiling are the launch's.
+test fn the_imported_card_route_lands_on_the_launch_port() -> Bool {
+  operator_endpoint_tunnel.target.port == operator_pod_listen_port
+    && match rented_allocation_enrollment(a: operator_pod_allocation) {
+      RentedAllocationNotEnrollable { allocation: _, obligation: _ } => false
+      RentedAllocationEnrollable { allocation: _, enrollment: r } =>
+        r.endpoint.port == operator_endpoint_tunnel.listener.port
+          && (r.endpoint.replica.served_name as String) == (operator_pod_ninfer_launch.model_id as String)
+          && serving_route_turn_ceiling_count(c: r.ceiling) == operator_pod_ninfer_launch.max_concurrency
+    }
+}
+
+test fn the_imported_card_is_vast_contract_55807382() -> Bool {
+  string_contains(s: rented_allocation_wire(id: operator_pod_allocation.identity) as String, pattern: "55807382")
+}
+
+// RED: the drift harness_operator_route carried before #13918, the same real row with its forward landing
+// on 8080 while the launch listens on 8000. It is refused at derivation.
+test fn the_imported_card_forwarded_to_8080_is_refused() -> Bool {
+  let drifted = RentedServingAllocation {
+    identity: operator_pod_allocation.identity, origin: operator_pod_allocation.origin,
+    contract: operator_pod_allocation.contract, card: operator_pod_allocation.card,
+    end: operator_pod_allocation.end, engine: operator_pod_allocation.engine,
+    artifact: operator_pod_allocation.artifact, host: operator_pod_allocation.host,
+    route: RentedSshLocalForward {
+      forward_host: operator_host_srv1,
+      forward: PortForwardSpec {
+        direction: operator_endpoint_tunnel.direction,
+        listener: operator_endpoint_tunnel.listener,
+        target: socket_address(host: operator_endpoint_tunnel.target.host, port: 8080),
+      },
+    },
+  }
+  match rented_allocation_enrollment(a: drifted) {
+    RentedAllocationEnrollable { allocation: _, enrollment: _ } => false
+    RentedAllocationNotEnrollable { allocation: _, obligation: o } => o == rented_route_lands_off_engine_port_obligation
+  }
+}
