@@ -1,4 +1,6 @@
 module v2.test.claim.module_acquisition
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { Bool, List, Map }
 import v2.compiler.module_acquisition {
@@ -74,7 +76,7 @@ import v2.compiler.source_authority {
   reference_next_read,
   reference_prefixes
 }
-import std.algebra { HeadAbsent, HeadFound, length, list_head, list_map }
+import std.algebra { length, list_head, list_map }
 import v2.std.collection { empty_map, map_insert }
 import v2.std.cross_tree.import_model {
   CrossTreeFromTreeNotInRootSet,
@@ -745,8 +747,8 @@ fn marked_content_of(content: String, name: String) -> String {
 
 fn first_content_named(declarations: List<AcquisitionMarkedDeclaration>, name: String) -> String {
   match list_head(xs: declarations |> filter(fn(d) { d.name == name })) {
-    HeadAbsent => ""
-    HeadFound { value: d } => d.content
+    Absent => ""
+    Present { value: d } => d.content
   }
 }
 
