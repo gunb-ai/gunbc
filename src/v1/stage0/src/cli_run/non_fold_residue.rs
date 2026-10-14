@@ -105,6 +105,21 @@ pub(crate) fn nfr_identity_join_line(t: &NfrFrontierTriple) -> String {
     format!("{}\t{}\t{}", t.path, t.reason, t.dissolution)
 }
 
+/// Seed-mirrored subject modules cannot host NFR lists: those lists emit into stage0 rust.
+/// Their rows live on `gunbc.non_fold_residue` instead.
+const NFR_SEED_MIRROR_EXCEPTION_HOST: &str = "dag/gunbc/non_fold_residue.dag";
+const NFR_SEED_MIRROR_EXCEPTION_PREFIXES: &[&str] = &[
+    "dag/std/effects.dag",
+    "dag/std/occurrence_binding_candidates.dag",
+    "dag/std/occurrence_binding_resolve.dag",
+    "dag/gunbc/namespace_cut/namespace_reference_derived_closure_admission.dag",
+];
+
+fn nfr_seed_mirror_home_exception(host: &str, path_prefix: &str) -> bool {
+    host == NFR_SEED_MIRROR_EXCEPTION_HOST
+        && NFR_SEED_MIRROR_EXCEPTION_PREFIXES.contains(&path_prefix)
+}
+
 fn nfr_expr_ident(
     value: std::rc::Rc<crate::v1_std_core::Node>,
     source_indices: std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
@@ -343,7 +358,9 @@ fn non_fold_residue_units_from_parse_source(
             });
             if home == NfrHomeCheck::Require {
                 let prefix = path.split("::").next().unwrap_or("");
-                if prefix != module_rel_path {
+                if prefix != module_rel_path
+                    && !nfr_seed_mirror_home_exception(module_rel_path, prefix)
+                {
                     panic!(
                         "nfr frontier reader: row path {path:?} in {module_rel_path} is not at \
                          home (subject file prefix {prefix:?} must equal the hosting module \

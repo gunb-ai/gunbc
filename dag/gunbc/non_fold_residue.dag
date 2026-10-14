@@ -1,13 +1,17 @@
 module gunbc.non_fold_residue
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-// Shared NFR class strings live once here. Every subject module that still has a
-// residue holds `data non_fold_residue_frontier` beside the sites and imports these
-// names. std/extdeps may import this module: DESIGN §3's only import law is acyclicity.
-// Membership is the host union (`non_fold_residue_identity_join_triples`).
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.types { List }
+// Shared NFR class strings live once here. Subject modules that are not seed-mirrored
+// hold `data non_fold_residue_frontier` beside the sites and import these names.
+// Rows whose subject modules emit into the stage0 seed (std.effects, std.occurrence_binding_*,
+// namespace_cut admission) live in this file so those audit lists are not compiled into the
+// seed. Membership is the host union (`non_fold_residue_identity_join_triples`).
 // Discovery: the host reader walks production `.dag` files, keeps those whose source
 // declares `data non_fold_residue_frontier`, and parses only those; a row whose
-// PathSubject.path file prefix is not the file that hosts the decl is refused, located.
+// PathSubject.path file prefix is not the file that hosts the decl is refused, located,
+// except the seed-mirrored prefixes hosted here.
 // The required floor judges sites per diff (non_fold_residue_diff_verdict); the
 // whole-corpus census (nfr_whole_corpus_typed_census) derives the union.
 // Detection-only: never auto-delete rows — greening a site deletes its row by hand with the
@@ -27,3 +31,38 @@ data nfr_reason_structural_eq_mint: String = "structural equality fold (param sc
 data nfr_reason_typed_census_ca5ed1724b: String = "a top-level wildcard arm over a closed coproduct found by the whole-corpus TYPED census at main ca5ed1724b (#12610's joint landing; nfr_whole_corpus_typed_census, srv1, 2026-10-02). The typed walk keys on the scrutinee's inferred type, so it sees the local-binding, field and call scrutinees the deleted parameter-keyed scan never could; these sites predate the walk and are un-migrated modeling (DESIGN §6), rostered so the ratchet arms at unrostered=0"
 
 data nfr_reason_landed_after_typed_census: String = "a top-level wildcard arm over a closed coproduct that landed on main after the ca5ed1724b typed census, while that census's roster was still in review (#12980); the floor's diff-scoped typed walk named it on the roster PR's own run. Un-migrated modeling (DESIGN §6), rostered so the ratchet stays armed at unrostered=0"
+
+data nfr_reason_trait_derive_shape_table: String = "trait-shape→derive-trait capability table (nested match on ReprGroundingDeriveElemShape × ReprGroundingDeriveTrait with off-trait wildcard arms returning false) landed with Gate-1 sub-wall #2 predicate scaffold (#7174); surfaced by whole-corpus nfr receipt after affected-set predict-skipped corpus-read witness at landing"
+
+data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBindingResolution admission projection (StructuralBindingResolved arm extracts binding_outcome; off-variant wildcard Absent collapses six typed index-build refusal variants into option-absence) landed with N3-A carrier move (#7772); un-migrated modeling at assess_reference_binding_observation — the carrier distinguishes refusals but binding_outcome_from_resolution still absorbs them; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_binding_outcome_resolution_wildcard: DissolutionCondition = unbound_dissolution(description: "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row")
+
+// Seed-mirrored subjects: lists stay here so stage0 rust does not compile the audit rows.
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "dag/std/effects.dag::key_source_eq" },
+      reason: nfr_reason_structural_eq_mint,
+      dissolution: nfr_dissolve_derived_equality,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::declaration_exposure_eq" },
+      reason: nfr_reason_structural_eq_mint,
+      dissolution: nfr_dissolve_derived_equality,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/std/occurrence_binding_candidates.dag::section13_population_law_id_eq" },
+      reason: nfr_reason_structural_eq_mint,
+      dissolution: unbound_dissolution(description: "DISSOLVE-ON: Section13PopulationLawId equality becomes derived from inhabitance (dag/std/algebra, DESIGN §3/§4) and the hand nested-match equality fold deletes with the row"),
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_binding_verdict" },
+      reason: nfr_reason_trait_derive_shape_table,
+      dissolution: unbound_dissolution(description: "DISSOLVE-ON: OccurrenceCategory×OccurrenceCategory compatibility becomes a total derived table (or inhabitance-derived admissibility) and the nested wildcard arms delete with the row"),
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/namespace_cut/namespace_reference_derived_closure_admission.dag::binding_outcome_from_resolution" },
+      reason: nfr_reason_binding_outcome_resolution_wildcard,
+      dissolution: nfr_dissolve_binding_outcome_resolution_wildcard,
+    },
+]
