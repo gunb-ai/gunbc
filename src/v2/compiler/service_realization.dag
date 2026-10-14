@@ -622,7 +622,7 @@ fn rest_path_template_cause(inputs: List<Symbol>, text: String) -> Optional<Argv
     MalformedPathTemplate { raw: _, segment: _, reason: r } =>
       optional_present(value: BindingMalformed { detail: r })
     ParsedPathTemplate { template: t } =>
-      match rest_path_tokens_cause(inputs: inputs, tokens: t.tokens, seen: Empty) {
+      match rest_path_tokens_cause(inputs: inputs, tokens: t.tokens) {
         Present { value: cause } => optional_present(value: cause)
         Absent => rest_path_query_cause(inputs: inputs, text: text)
       }
@@ -651,28 +651,26 @@ fn rest_path_query_pair_cause(inputs: List<Symbol>, pair: String) -> Optional<Ar
       MalformedPathSegment { segment: _, reason: r } =>
         optional_present(value: BindingMalformed { detail: r })
       ParsedSegmentTokens { tokens: toks } =>
-        rest_path_tokens_cause(inputs: inputs, tokens: toks, seen: Empty)
+        rest_path_tokens_cause(inputs: inputs, tokens: toks)
     }
   }
 }
 
-fn rest_path_tokens_cause(inputs: List<Symbol>, tokens: List<UrlPathToken>, seen: List<Symbol>) -> Optional<ArgvRefusalCause> {
+fn rest_path_tokens_cause(inputs: List<Symbol>, tokens: List<UrlPathToken>) -> Optional<ArgvRefusalCause> {
   match tokens {
     Empty => optional_absent()
     Cons { head: tok, tail: rest } =>
       match tok {
-        LiteralToken { text: _ } => rest_path_tokens_cause(inputs: inputs, tokens: rest, seen: seen)
+        LiteralToken { text: _ } => rest_path_tokens_cause(inputs: inputs, tokens: rest)
         ParamToken { name: n } =>
-          rest_path_param_cause(inputs: inputs, name: n, rest: rest, seen: seen)
+          rest_path_param_cause(inputs: inputs, name: n, rest: rest)
       }
   }
 }
 
-fn rest_path_param_cause(inputs: List<Symbol>, name: String, rest: List<UrlPathToken>, seen: List<Symbol>) -> Optional<ArgvRefusalCause> {
-  let s = symbol_intern_lexeme(lexeme: name)
-  if symbol_in(xs: inputs, s: s) {
-    let next_seen = if symbol_in(xs: seen, s: s) { seen } else { list_snoc_item(xs: seen, item: s) }
-    rest_path_tokens_cause(inputs: inputs, tokens: rest, seen: next_seen)
+fn rest_path_param_cause(inputs: List<Symbol>, name: String, rest: List<UrlPathToken>) -> Optional<ArgvRefusalCause> {
+  if symbol_in(xs: inputs, s: symbol_intern_lexeme(lexeme: name)) {
+    rest_path_tokens_cause(inputs: inputs, tokens: rest)
   } else {
     optional_present(value: UndeclaredInputBound { name: name as OperationInputName })
   }
