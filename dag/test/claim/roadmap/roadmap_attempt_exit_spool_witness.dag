@@ -16,8 +16,6 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptWorkerRole, AttemptReviewerRole, AttemptAuditorRole,
   attempt_exit_record_from_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
   AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
-  attempt_exit_vendor_pane_entry_name, attempt_exit_vendor_pane_result_word,
-  attempt_exit_vendor_pane_entry_name_of_death, VendorPaneSignaled,
 }
 import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultSignal, ServiceResultExitCode }
 
@@ -55,36 +53,28 @@ test fn an_exit_record_decodes_to_its_status_and_a_kill_to_its_signal() -> Bool 
   exited && killed
 }
 
-test fn a_vendor_pane_record_derives_result_from_status() -> Bool {
-  let zero = attempt_exit_vendor_pane_entry_name(node_id: "n", attempt_key: "k", status: 0)
-  let killed_status = attempt_exit_vendor_pane_entry_name(node_id: "n", attempt_key: "k", status: 9)
-  let zero_ok = attempt_exit_vendor_pane_result_word(status: 0) == "success"
-    && match attempt_exit_entry_decode(entry_name: zero) {
-      AttemptExitEntryDecoded { record } =>
-        (match record.result { ServiceResultSuccess => true _ => false })
-          && (match record.end { AttemptProcessExitedWith { status } => status == 0 AttemptProcessSignaled { signal: _ } => false })
-      AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
-    }
-  let nine_ok = attempt_exit_vendor_pane_result_word(status: 9) == "exit-code"
-    && match attempt_exit_entry_decode(entry_name: killed_status) {
-      AttemptExitEntryDecoded { record } =>
-        (match record.result { ServiceResultExitCode => true _ => false })
-          && (match record.end { AttemptProcessExitedWith { status } => status == 9 AttemptProcessSignaled { signal: _ } => false })
-      AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
-    }
+test fn a_vendor_pane_exit_name_decodes_from_status() -> Bool {
+  let zero_ok = match attempt_exit_entry_decode(entry_name: "n+k+worker+vendorpane+success+exited+0") {
+    AttemptExitEntryDecoded { record } =>
+      (match record.result { ServiceResultSuccess => true _ => false })
+        && (match record.end { AttemptProcessExitedWith { status } => status == 0 AttemptProcessSignaled { signal: _ } => false })
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+  let nine_ok = match attempt_exit_entry_decode(entry_name: "n+k+worker+vendorpane+exit-code+exited+9") {
+    AttemptExitEntryDecoded { record } =>
+      (match record.result { ServiceResultExitCode => true _ => false })
+        && (match record.end { AttemptProcessExitedWith { status } => status == 9 AttemptProcessSignaled { signal: _ } => false })
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
   zero_ok && nine_ok
 }
 
-test fn a_vendor_pane_signal_record_decodes_as_killed() -> Bool {
-  match attempt_exit_vendor_pane_entry_name_of_death(node_id: "n", attempt_key: "k", death: VendorPaneSignaled { signal: 9 }) {
-    Absent => false
-    Present { value: name } =>
-      match attempt_exit_entry_decode(entry_name: name) {
-        AttemptExitEntryDecoded { record } =>
-          (match record.result { ServiceResultSignal => true  _ => false })
-            && (match record.end { AttemptProcessSignaled { signal } => linux_standard_signal_number(signal: signal) == 9  AttemptProcessExitedWith { status: _ } => false })
-        AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
-      }
+test fn a_vendor_pane_signal_name_decodes_as_killed() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "n+k+worker+vendorpane+signal+killed+KILL") {
+    AttemptExitEntryDecoded { record } =>
+      (match record.result { ServiceResultSignal => true  _ => false })
+        && (match record.end { AttemptProcessSignaled { signal } => linux_standard_signal_number(signal: signal) == 9  AttemptProcessExitedWith { status: _ } => false })
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }
 }
 
