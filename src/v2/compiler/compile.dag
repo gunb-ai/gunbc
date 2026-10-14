@@ -249,7 +249,10 @@ import v2.compiler.resolve {
   resolve,
   resolved_tree_of,
   ResolvedTree,
-  ClosureProviderRefusal
+  ClosureProviderRefusal,
+  ModuleOutcome,
+  declaration_available,
+  module_outcomes_provider_refusals
 }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize }
 import v2.std.staging { then_outcome }
@@ -3807,20 +3810,74 @@ fn native_demand_census_unbound_standing(authored: List<AuthoredUsesFunction>, d
   DemandModuleResolveRefused { authored: authored, first_reason: diagnostics_fatal_reason(d: d), first_unbound: native_demand_census_unbound_locus(d: d) }
 }
 
+fn native_demand_census_closure_outcomes(context: NativeTestContext) -> List<ModuleOutcome> {
+  match context.resolution {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: shared, diagnostics: _ } => closure_declarations_demand(shared: shared).refused
+  }
+}
+
+fn native_demand_census_function_available(outcomes: List<ModuleOutcome>, authored: AuthoredUsesFunction) -> Bool {
+  match authored.name {
+    Absent => false
+    Present { value: name } =>
+      declaration_available(outcomes: outcomes, path: qualified_name_snoc(qn: authored.owner, segment: name))
+  }
+}
+
 fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, authored: List<AuthoredUsesFunction>) -> NativeDemandCensusWalk {
   match qualified_name_from_module_node(root: root.root) {
     Rejected { diagnostics: _ } => w
     Accepted { value: module_qn, diagnostics: _ } =>
       let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc } })
       let step = native_test_resolve_module(context: w.context, module: module_qn)
+      let outcomes = native_demand_census_closure_outcomes(context: step.context)
       match step.resolved {
         Rejected { diagnostics: d } =>
+          let available = fold_list(xs: mine, empty: Empty, cons: fn(acc, a) {
+            if native_demand_census_function_available(outcomes: outcomes, authored: a) {
+              list_snoc_item(xs: acc, item: a)
+            } else {
+              acc
+            }
+          })
+          let refused = fold_list(xs: mine, empty: Empty, cons: fn(acc, a) {
+            if native_demand_census_function_available(outcomes: outcomes, authored: a) {
+              acc
+            } else {
+              list_snoc_item(xs: acc, item: a)
+            }
+          })
+          let with_available = match length(xs: available) > 0 {
+            true =>
+              list_snoc_item(xs: w.standings, item: DemandModuleResolved {
+                readings: fold_list(xs: available, empty: Empty, cons: fn(acc, a) {
+                  list_snoc_item(xs: acc, item: DemandCensusAuthoredReading {
+                    authored: a,
+                    readings: native_demand_census_readings(context: step.context, module_qn: module_qn, authored: a)
+                  })
+                })
+              })
+            false => w.standings
+          }
           NativeDemandCensusWalk {
             context: step.context,
             functions: w.functions,
             operations: w.operations,
             audited: w.audited,
-            standings: list_snoc_item(xs: w.standings, item: native_demand_census_resolve_refused(context: step.context, module_qn: module_qn, authored: mine, d: d))
+            standings: match length(xs: refused) > 0 {
+              true =>
+                list_snoc_item(
+                  xs: with_available,
+                  item: native_demand_census_resolve_refused(
+                    context: step.context,
+                    module_qn: module_qn,
+                    authored: refused,
+                    d: d
+                  )
+                )
+              false => with_available
+            }
           }
         Accepted { value: resolved, diagnostics: _ } =>
           let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
@@ -4568,7 +4625,7 @@ fn native_census_infer_cascade(
 ) -> NativeCensusCascade {
   native_census_infer_cascade_of(
     module_paths: module_paths,
-    providers: resolved.unavailable_providers,
+    providers: module_outcomes_provider_refusals(outcomes: resolved.unavailable_providers),
     chain: chain,
     attribution: fn(provider) { native_import_target_attribution(context: context, module: provider) }
   )

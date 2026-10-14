@@ -1,6 +1,13 @@
 module v2.test.lens_common.resolve_fixture
 
-import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.resolve {
+  DeclarationAvailable,
+  DeclarationRefused,
+  ModuleObserved,
+  ModuleOutcome,
+  ModuleUnavailable,
+  ResolvedTree
+}
 import v2.compiler.name_resolve { Admission, ClosureDeclarations, ResolutionSubject, closure_declarations_demand, resolution_context, resolve_with_admission_grounded }
 import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, ScopeRoot, empty_namespace }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
@@ -20,10 +27,10 @@ import v2.std.qualified_name { QualifiedName }
 import v2.std.node { Atom, Authored, Conj, Edge, Node, Symbol, TypeNode, allocate_pending_occurrences, content_hash, node_occurrence_allocator_after, node_with_occurrence_id, fold_list_node }
 import std.occurrence_identity { LexicalValueOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic, scoped_occurrence_allocator }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
-import std.optional { optional_present }
+import std.optional { Absent, Present, Optional, optional_absent, optional_present }
 import v2.std.collection { List }
 import v2.std.integer { Int }
-import std.algebra { Cons, Empty, FreeMonoid, list_map }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_map, list_snoc_item }
 
 // A SUPPLIED LOWERED MODULE, INTO REAL RESOLVE (DESIGN section 3's witness rule at resolve's boundary).
 // A row whose subject is what v2.compiler.resolve decides -- which declaration a dotted path names, which
@@ -231,8 +238,32 @@ type ClaimRefusedProvider {
   reason: Symbol
 }
 
+fn claim_refused_provider_of(o: ModuleOutcome) -> Optional<ClaimRefusedProvider> {
+  match o {
+    ModuleUnavailable { module: m, refusal: r } =>
+      optional_present(value: ClaimRefusedProvider { module: m, reason: r.head.reason })
+    ModuleObserved { module: m, declarations: ds } =>
+      fold_list(xs: ds, empty: optional_absent(), cons: fn(acc, d) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match d {
+              DeclarationAvailable { path: _ } => acc
+              DeclarationRefused { path: _, refusal: r } =>
+                optional_present(value: ClaimRefusedProvider { module: m, reason: r.head.reason })
+            }
+        }
+      })
+  }
+}
+
 fn claim_closure_refused(modules: List<ClaimLoweredModule>) -> Outcome<List<ClaimRefusedProvider>> {
   bind_outcome(o: claim_closure(modules: modules), f: fn(c) {
-    outcome_accepted(value: list_map(xs: c.refused, f: fn(r) { ClaimRefusedProvider { module: r.module, reason: r.refusal.head.reason } }))
+    outcome_accepted(value: fold_list(xs: c.refused, empty: [], cons: fn(acc, o) {
+      match claim_refused_provider_of(o: o) {
+        Absent => acc
+        Present { value: p } => list_snoc_item(xs: acc, item: p)
+      }
+    }))
   })
 }

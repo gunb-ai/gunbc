@@ -72,7 +72,7 @@ import v2.test.lens_common.resolve_fixture {
   claim_resolve_context,
   claim_resolve_lowered
 }
-import v2.compiler.resolve { BoundAtRoot, ClosureProviderRefusal, resolve_dotted_path_reading }
+import v2.compiler.resolve { BoundAtRoot, ClosureProviderRefusal, ModuleOutcome, ModuleUnavailable, resolve_dotted_path_reading }
 import v2.std.node_query { construct_node }
 
 // WHERE A FIELD PROJECTION STOPS TODAY, measured stage by stage rather than asserted. The normalized
@@ -271,7 +271,7 @@ fn fps_supplied_reading(records: List<ClaimRecord>, receiver: Node, codomain: No
   fps_supplied_reading_with(records: records, unavailable: [], receiver: receiver, codomain: codomain, field: field)
 }
 
-fn fps_supplied_reading_with(records: List<ClaimRecord>, unavailable: List<ClosureProviderRefusal>, receiver: Node, codomain: Node, field: Symbol) -> FpsReading {
+fn fps_supplied_reading_with(records: List<ClaimRecord>, unavailable: List<ModuleOutcome>, receiver: Node, codomain: Node, field: Symbol) -> FpsReading {
   fps_reading_of(o: outcome_accepted(value: claim_resolved_projection_tree(
     records: records,
     unavailable: unavailable,
@@ -1020,7 +1020,8 @@ fn fps_broken_provider_refusal() -> ClosureProviderRefusal {
 // THE INFER HALF: the same projection with the record ABSENT from the index -- exactly what the resolve half
 // shows the closure leaves.
 fn fps_unresolvable_provider_reading() -> FpsReading {
-  fps_supplied_reading_with(records: [], unavailable: [fps_broken_provider_refusal()], receiver: declaration_reference_node(qn: [^q, ^Leg], occurrence_id: claim_minted(n: 43)), codomain: fps_int(n: 2), field: ^target)
+  let p = fps_broken_provider_refusal()
+  fps_supplied_reading_with(records: [], unavailable: [ModuleUnavailable { module: p.module, refusal: p.refusal }], receiver: declaration_reference_node(qn: [^q, ^Leg], occurrence_id: claim_minted(n: 43)), codomain: fps_int(n: 2), field: ^target)
 }
 
 // Both reason fields are set only on an infer REFUSAL of a resolved program, so an accepted or
