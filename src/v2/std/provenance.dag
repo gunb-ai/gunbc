@@ -216,6 +216,28 @@ fn node_occurrence_id_optional(node: Node) -> Optional<OccurrenceId> {
   }
 }
 
+// THE AUTHORED SPAN OF A NODE. A projected identity is a later-stage id; the SpanIndex is keyed
+// by the parse-minted ids that actually have FromSource entries. Following OccurrenceProjected.caused_by
+// to that authored occurrence is ONE fact (DESIGN 6b: repair at the earliest link). A consumer that
+// looks the projected id up and then retries caused_by is a second copy of this walk. If the chain
+// ends without an authored occurrence, or the index has no textual origin for it, the answer is
+// Absent -- never a reconstructed or neighbouring span.
+fn node_authored_occurrence_id_optional(node: Node) -> Optional<OccurrenceId> {
+  match node.occurrence_id {
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrenceProjected { id: _, caused_by: cause } => Present { value: cause.occurrence }
+    OccurrenceSynthetic => Absent
+    OccurrencePending { caused_by: _ } => Absent
+  }
+}
+
+fn node_authored_span_optional(node: Node, index: SpanIndex) -> Optional<Locus> {
+  match node_authored_occurrence_id_optional(node: node) {
+    Absent => Absent
+    Present { value: id } => span_index_textual_locus_optional(index: index, id: id)
+  }
+}
+
 // THE OPTIONAL-SHAPED DOOR, FOR A CONSUMER THAT RENDERS RATHER THAN REFUSES. The Witness-returning
 // resolver above is the authority and this is its projection: a renderer asking "does this
 // occurrence have a source position" wants presence or absence, not a second diagnostic to fold

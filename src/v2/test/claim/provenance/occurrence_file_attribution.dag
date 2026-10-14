@@ -33,7 +33,7 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, list_starts_with }
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }
+import v2.std.provenance { SpanIndex, node_authored_span_optional, node_occurrence_id_optional, span_index_textual_locus_optional }
 import v2.std.text { String }
 import std.occurrence_identity {
   OccurrenceId,
@@ -83,9 +83,13 @@ fn attribution_read_b() -> DagSourceReadWitness {
 }
 
 fn attribution_occurrence_file(index: SpanIndex, node: Node) -> Optional<Symbol> {
-  match node_occurrence_id_optional(node: node) {
+  match node_authored_span_optional(node: node, index: index) {
     Absent => optional_absent()
-    Present { value: id } => attribution_file_of_id(index: index, id: id)
+    Present { value: locus } =>
+      match locus {
+        Textual { file: f, extent: _ } => optional_present(value: f)
+        _ => optional_absent()
+      }
   }
 }
 
