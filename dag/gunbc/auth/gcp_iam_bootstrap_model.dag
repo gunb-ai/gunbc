@@ -74,9 +74,19 @@ fn iam_bootstrap_apply_federation() -> DedicatedFederation {
     service_account_member: federated_service_account_member(email: iam_converge_service_account), secret_grants: [] }
 }
 
-// Every federation whose pool and account the identities stage may create: the job's own two and every target.
+// One row per federation the identities stage may create. own_trust marks the job's own two, whose
+// providers and workload trust the bootstrap also owns; a target gets a bare pool and account only.
+type IamBootstrapIdentity { federation: DedicatedFederation, own_trust: Bool }
+
+// The identities stage's creation population, in execution order. The stage folds these rows, and the
+// plan, the apply's pre-token refusal, the observe bindings and the trust bindings read the same rows.
+fn iam_bootstrap_identity_population() -> List<IamBootstrapIdentity> {
+  map([gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()], f => IamBootstrapIdentity { federation: f, own_trust: true })
+    + map(gcp_iam_converge_targets, f => IamBootstrapIdentity { federation: f, own_trust: false })
+}
+
 fn iam_bootstrap_identity_federations() -> List<DedicatedFederation> {
-  gcp_iam_converge_targets + [gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()]
+  map(iam_bootstrap_identity_population(), i => i.federation)
 }
 
 fn iam_bootstrap_resource_key(resource: IamBootstrapResource) -> String {
@@ -117,8 +127,8 @@ fn iam_bootstrap_capability_bindings() -> List<IamBootstrapBinding> {
 
 // Workload trust is a separate final stage, after deny and resource-local permission readbacks.
 fn iam_bootstrap_trust_bindings() -> List<IamBootstrapBinding> {
-  flat_map([gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()], f =>
-    map(impersonation_cells(f: f), c => IamBootstrapBinding { resource: BootstrapAccount { account: f.service_account }, cell: c }))
+  flat_map(filter(iam_bootstrap_identity_population(), i => i.own_trust), i =>
+    map(impersonation_cells(f: i.federation), c => IamBootstrapBinding { resource: BootstrapAccount { account: i.federation.service_account }, cell: c }))
 }
 
 data iam_bootstrap_deny_policy_id: NonEmptyStr = "gunbc-iam-converge-boundary"

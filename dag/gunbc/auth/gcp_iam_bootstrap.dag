@@ -25,7 +25,7 @@ import gunbc.secret_provision_actuator {
   observe_secret_container, create_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused, SecretObservationOutcome, SecretContainerCreation,
   SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown,
 }
-import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, estate_refused_texts, GcpIamEstatePartialNoop, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
+import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, estate_refused_texts, GcpIamEstatePartialNoop, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
 import gunbc.auth.heal_publisher_provision {
   standing_principal_set,
   DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present, dedicated_federation_pool_display_name_refusals,
@@ -35,9 +35,9 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_capability_bindings, iam_bootstrap_trust_bindings,
-  iam_bootstrap_apply_federation, iam_bootstrap_deny_policy_id, iam_bootstrap_attachment_point,
+  iam_bootstrap_deny_policy_id, iam_bootstrap_attachment_point,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
-  iam_bootstrap_identity_federations,
+  iam_bootstrap_identity_federations, iam_bootstrap_identity_population,
 }
 
 import gunbc.auth.gcp_iam_bootstrap_authority {
@@ -489,11 +489,9 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
   match stage {
     BootstrapServices => fold(iam_bootstrap_required_services, init: "", f: (prior, api) => if prior != "" { prior } else { iam_bootstrap_ensure_service(service: api, token: token) })
     BootstrapIdentities => {
-      let own = fold([gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()], init: "", f: (prior, f) =>
-        if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: f, own_trust: true, token: token) })
-      let targets = if own != "" { own } else { fold(gcp_iam_converge_targets, init: "", f: (prior, f) =>
-        if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: f, own_trust: false, token: token) }) }
-      if targets != "" { targets } else { fold(gcp_iam_converge_grant_set_secrets(), init: "", f: (prior, secret) =>
+      let identities = fold(iam_bootstrap_identity_population(), init: "", f: (prior, i) =>
+        if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: i.federation, own_trust: i.own_trust, token: token) })
+      if identities != "" { identities } else { fold(gcp_iam_converge_grant_set_secrets(), init: "", f: (prior, secret) =>
         if prior != "" { prior } else { iam_bootstrap_ensure_custody_container(secret: secret, token: token) }) }
     }
     BootstrapRoles => fold(iam_bootstrap_roles, init: "", f: (prior, role) => if prior != "" { prior } else { iam_bootstrap_ensure_role(role: role, token: token) })

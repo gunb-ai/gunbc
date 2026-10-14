@@ -41,7 +41,7 @@ import extdeps.cloud.gcp.iam {
   reconcile_gcp_policy, GcpPolicyDeltaRequired, gcp_cell_in,
 }
 
-import gunbc.auth.gcp_iam_converge { PolicyUnreadable, PolicyObserved, PolicyResourceAbsent, gcp_iam_converge_targets }
+import gunbc.auth.gcp_iam_converge { PolicyUnreadable, PolicyObserved, PolicyResourceAbsent }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, dedicated_federation_pool_display_name_refusals }
 import gunbc.auth.branch_dispatch_federation { hetzner_cloud_control_federation }
 import extdeps.cloud.gcp.iam_admin { workload_identity_pool_display_name_admitted }
@@ -329,10 +329,11 @@ fn with_pool_display_name(f: DedicatedFederation, name: NonEmptyStr) -> Dedicate
     service_account_member: f.service_account_member, secret_grants: f.secret_grants }
 }
 
-// The population the plan and the apply read before any token: every pool the identities stage may create.
+// The identities stage folds iam_bootstrap_identity_population, and the plan and the apply refuse over
+// the same rows before any token, so this reads the population that creates.
 test fn every_pool_the_bootstrap_creates_fits_the_display_name_cap() -> Bool {
   let federations = iam_bootstrap_identity_federations()
-  count(federations) == count(gcp_iam_converge_targets) + 2
+  count(federations) > 0
     && count(dedicated_federation_pool_display_name_refusals(federations: federations)) == 0
 }
 
