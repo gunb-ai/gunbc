@@ -108,3 +108,22 @@ test fn an_unclosed_index_still_refuses_at_parse_holds() -> Bool {
 test fn a_slice_still_refuses_at_parse_holds() -> Bool {
   parsed_ok(tag: "slice", text: slice_red_source) == false
 }
+
+// A `[` THAT OPENS THE NEXT LINE IS NOT AN INDEX. v1 indexes only when `[` is the very next token after
+// the operand, and its token stream carries the newline (02_parse parse_postfix); this suffix must agree,
+// or `let wire = value` followed by `[wire, wire]` on the next line parses as `value[wire, wire]` with no
+// body after the let and refuses -- the src/v2/std/integer.dag integer_int_to_signed_i32_le_bytes shape,
+// refused as normalized_tree_reason_wrapper_retention_not_normalized on main c87ebf9b06's successors. Read
+// as two statements it is a binding and the block's list value, and normalizes.
+data next_line_list_source: String = "module probe.index\n\nfn pair(value: Int) -> List<Int> {\n  let wire = value\n  [wire, wire]\n}\n"
+
+fn normalized_ok(tag: String, text: String) -> Bool {
+  match conservation_subject_of_text(path: "probe_" + tag + ".dag", text: text).normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_list_literal_on_the_next_line_is_a_statement_not_an_index_holds() -> Bool {
+  normalized_ok(tag: "next_line_list", text: next_line_list_source)
+}

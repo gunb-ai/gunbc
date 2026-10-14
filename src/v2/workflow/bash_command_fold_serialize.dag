@@ -20,6 +20,7 @@ import v2.extdeps.languages.bash {
   bash_stmt_subshell_emitted,
   bash_stmt_subshell_target_model,
   bash_redir_stderr_to_file_source_text,
+  bash_redir_from_file_source_text,
   bash_redir_to_file_source_text,
   bash_stmt_with_redir_emitted,
   bash_stmt_with_redir_target_model,
@@ -239,6 +240,8 @@ fn bash_fold_serialize_with_redir_node(stmt: Node) -> Outcome<String> {
                     bash_fold_serialize_with_redir_file(stmt: stmt, stmt_spelling: stmt_spelling, redir_of: fn(p) { bash_redir_to_file_source_text(path: p) })
                   } else if redir_binding == ^bash_production_fold_redir_stderr_to_file {
                     bash_fold_serialize_with_redir_file(stmt: stmt, stmt_spelling: stmt_spelling, redir_of: fn(p) { bash_redir_stderr_to_file_source_text(path: p) })
+                  } else if redir_binding == ^bash_production_fold_redir_from_file {
+                    bash_fold_serialize_with_redir_file(stmt: stmt, stmt_spelling: stmt_spelling, redir_of: fn(p) { bash_redir_from_file_source_text(path: p) })
                   } else {
                     bash_fold_serialize_refused(variant: ^bash_fold_serialize_redir_binding_unsupported)
                   }

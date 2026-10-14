@@ -1,0 +1,40 @@
+module gunbc.worker_turn_snapshot_custody
+
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.claude_code_credential { claude_code_oauth_harness_secret_ref, claude_code_oauth_harness_host_path }
+import gunbc.cursor_harness_credential { cursor_api_key_harness_secret_ref, cursor_worker_turn_api_key_host_path, cursor_worker_turn_custody_host }
+import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
+
+// ROOT-OWNED, OPERATOR GROUP. Cursor and Claude worker-turn custody files live in a directory the
+// operator can traverse and read, and cannot replace through directory permissions: the owner is
+// root (the publisher), the group is the operator account (the reader), and the directory mode is
+// owner-all group-traverse. The snapshot take observes that same ownership on the export receipt and
+// its directory. This is the host access model being claimed, not protection from privileges that
+// model does not constrain.
+
+data worker_turn_custody_root_owned_operator_group: PosixOwnerNames = PosixOwnerNames {
+  user: fleet_posix_root_user.name,
+  group: fleet_posix_operator_user.name,
+}
+
+data claude_worker_turn_snapshot_custody: SnapshotCustodyDeclaration = SnapshotCustodyDeclaration {
+  path: claude_code_oauth_harness_host_path,
+  secret: claude_code_oauth_harness_secret_ref,
+  host: operator_host_srv1,
+  reader: worker_turn_custody_root_owned_operator_group.group,
+  publisher: worker_turn_custody_root_owned_operator_group.user,
+}
+
+data cursor_worker_turn_snapshot_custody: SnapshotCustodyDeclaration = SnapshotCustodyDeclaration {
+  path: cursor_worker_turn_api_key_host_path,
+  secret: cursor_api_key_harness_secret_ref,
+  host: cursor_worker_turn_custody_host,
+  reader: worker_turn_custody_root_owned_operator_group.group,
+  publisher: worker_turn_custody_root_owned_operator_group.user,
+}
+
+fn snapshot_custody_ownership(declaration: SnapshotCustodyDeclaration) -> PosixOwnerNames {
+  PosixOwnerNames { user: declaration.publisher, group: declaration.reader }
+}
