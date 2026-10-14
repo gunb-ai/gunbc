@@ -563,7 +563,6 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "extdeps_posix_clock_gettime", to: "std_types"),
     stage0_module_dag_edge(from: "extdeps_ietf_http_semantics", to: "extdeps_external_authority"),
     stage0_module_dag_edge(from: "extdeps_external_authority", to: "std_roster_frontier"),
-    stage0_module_dag_edge(from: "std_key_relation", to: "std_decl_ref"),
     stage0_module_dag_edge(from: "std_key_relation", to: "std_dissolution"),
     stage0_module_dag_edge(from: "std_keyed_roster", to: "std_key_relation"),
     stage0_module_dag_edge(from: "std_roster_frontier", to: "std_key_relation"),
