@@ -50,16 +50,35 @@ type HarnessShellJob {
 // GNU timeout exits 124 when it kills the child. A command may also exit 124 itself, so 124 is
 // DurationExceeded only when elapsed time from started_at has reached this job's backstop.
 // Elapsed unknown is not "not the backstop": it is a third standing, because guessing either
-// DurationExceeded or ToolCompleted would fabricate the missing clock read.
+// DurationExceeded or ToolCompleted would fabricate the missing clock read. Whole-unix-second
+// subtraction has the same hole one grain below the backstop: a real timeout kill can read as
+// backstop minus that grain.
 data harness_gnu_timeout_killed_exit: Int = 124
+
+// Clock.Now is `date -u +%Y-%m-%dT%H:%M:%SZ`; TimestampToUnixSecs is `date +%s`. Both truncate
+// to a POSIX second, so elapsed is quantized to this grain — not a policy slack, the clock's
+// resolution cited from those transports in extdeps.clock.
+data harness_elapsed_clock_resolution: Second = second(count: 1)
+
+type HarnessBackstopUndecidedCause
+  = ElapsedUnreadable
+  | ElapsedWithinClockGrain
 
 type HarnessJobBackstopStanding
   = JobBackstopHit
   | JobOwnExit
-  | JobBackstopUndecided
+  | JobBackstopUndecided { cause: HarnessBackstopUndecidedCause }
 
 fn harness_exit_is_harness_backstop(code: Int, elapsed: Second, backstop: Second) -> Bool {
   code == harness_gnu_timeout_killed_exit && measure_le(a: backstop, b: elapsed)
+}
+
+fn harness_elapsed_in_backstop_clock_grain(elapsed: Second, backstop: Second) -> Bool {
+  match measure_sub(a: backstop, b: harness_elapsed_clock_resolution) {
+    MeasureSubtrahendExceedsMinuend => false
+    MeasureDifference { value: floor } =>
+      measure_le(a: floor, b: elapsed) && !measure_le(a: backstop, b: elapsed)
+  }
 }
 
 fn harness_job_elapsed_seconds(job: HarnessShellJob) -> Second? {
@@ -85,13 +104,16 @@ fn harness_backstop_standing(code: Int, elapsed: Second?, backstop: Second) -> H
   match elapsed {
     Absent =>
       if code == harness_gnu_timeout_killed_exit {
-        JobBackstopUndecided
+        JobBackstopUndecided { cause: ElapsedUnreadable }
       } else {
         JobOwnExit
       }
     Present { value: observed } =>
       if harness_exit_is_harness_backstop(code: code, elapsed: observed, backstop: backstop) {
         JobBackstopHit
+      } else if code == harness_gnu_timeout_killed_exit
+        && harness_elapsed_in_backstop_clock_grain(elapsed: observed, backstop: backstop) {
+        JobBackstopUndecided { cause: ElapsedWithinClockGrain }
       } else {
         JobOwnExit
       }
@@ -185,7 +207,7 @@ fn harness_command_table_exit_label(
       join(["  ", job.id, "  duration exceeded  $ ", job.command], "")
     JobOwnExit =>
       join(["  ", job.id, "  exit ", to_string(value: code), "  $ ", job.command], "")
-    JobBackstopUndecided =>
+    JobBackstopUndecided { cause: _ } =>
       join([
         "  ", job.id, "  exit ", to_string(value: code),
         ", backstop undecided  $ ", job.command,
@@ -383,6 +405,10 @@ fn harness_start_shell_job(
       bindings: [],
       command: inner,
     )
+    // Stamp before StartDetached: GNU timeout starts its clock at or after that instant, so
+    // elapsed from this stamp is an upper bound on timeout's own count. Stamping after spawn
+    // and the stdio moves biased elapsed low.
+    let started_at = Clock.Now().timestamp
     let spawn = posix.Process.StartDetached(
       program: wrapped.program.invocation,
       arguments: wrapped.arguments,
@@ -417,7 +443,7 @@ fn harness_start_shell_job(
               pending_out: pending_out.path,
               pending_err: pending_err.path,
             ),
-            started_at: Clock.Now().timestamp,
+            started_at: started_at,
             backstop: schedule.backstop,
             state: JobRunning,
           },

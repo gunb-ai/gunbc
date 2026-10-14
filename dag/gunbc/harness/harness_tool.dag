@@ -38,6 +38,7 @@ import gunbc.harness.harness_shell_job {
   harness_refresh_job, harness_job_is_running, harness_hand_in_blocked_by_running_jobs,
   harness_job_backstop_standing, HarnessJobBackstopStanding,
   JobBackstopHit, JobOwnExit, JobBackstopUndecided,
+  ElapsedUnreadable, ElapsedWithinClockGrain,
 }
 
 // THE HARNESS TOOL SURFACE, and the rule every disposition below is one instance of:
@@ -283,12 +284,18 @@ fn harness_job_backstop_exit_outcome(
         disposition: DurationExceeded { limit_seconds: schedule_seconds(s: job.backstop) },
       }
     JobOwnExit => completed
-    JobBackstopUndecided =>
+    JobBackstopUndecided { cause } =>
       ToolRefused {
         disposition: ToolEffectRefused {
           detail: join([
             "job ", job.id, " exited ", to_string(value: code),
-            " but elapsed time from started_at could not be read, so the harness backstop cannot be decided",
+            ", ",
+            match cause {
+              ElapsedUnreadable =>
+                "but elapsed time from started_at could not be read, so the harness backstop cannot be decided"
+              ElapsedWithinClockGrain =>
+                "but elapsed time is within the clock's one-second grain of the backstop, so the harness backstop cannot be decided"
+            },
           ], ""),
         },
       }
