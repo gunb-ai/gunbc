@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_workflow_progress
 
 import std.types { String, Int, Bool, List, NonEmptyStr }
+import extdeps.posix.signal { linux_standard_signal_render }
 import extdeps.filesystem.filesystem_io {
   FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
 }
@@ -360,8 +361,8 @@ fn provider_execution_process_forced_outcome(process: WorkerProcessEvidence) -> 
         value: ProviderFailed {
           activity: "provider process signaled",
           detail: join([
-            "provider process was killed by signal ",
-            to_string(signal),
+            "provider process was killed by ",
+            linux_standard_signal_render(n: signal),
             " before a terminal provider event",
           ], ""),
         },
@@ -414,8 +415,8 @@ fn provider_execution_reconcile_process(
           ProviderEventsRefused {
             activity: activity,
             detail: join([
-              "Codex emitted turn.completed but the retained pane was killed by signal ",
-              to_string(signal),
+              "Codex emitted turn.completed but the retained pane was killed by ",
+              linux_standard_signal_render(n: signal),
               "; terminal evidence conflicts",
             ], ""),
           }

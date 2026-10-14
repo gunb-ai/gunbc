@@ -64,7 +64,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
   AttemptProcessExitedWith, AttemptProcessSignaled, attempt_exit_record_observe,
 }
-import extdeps.posix.signal { linux_standard_signal_number }
+import extdeps.posix.signal { linux_standard_signal_number, linux_standard_signal_render }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
@@ -4124,6 +4124,10 @@ type DispatchSessionCleanup
       session_name: String,
       exit_code: Int,
     }
+  | DispatchClearSignaledSession {
+      session_name: String,
+      signal: Int,
+    }
   | DispatchCleanupRefused { reason: String }
 
 fn dispatch_session_cleanup_action(
@@ -4132,6 +4136,7 @@ fn dispatch_session_cleanup_action(
   match cleanup {
     DispatchStopRunningProcess { session_name: _ } => "stop"
     DispatchClearRetainedSession { session_name: _, exit_code: _ } => "clear"
+    DispatchClearSignaledSession { session_name: _, signal: _ } => "clear"
     DispatchCleanupRefused { reason: _ } => "unavailable"
   }
 }
@@ -4142,6 +4147,7 @@ fn dispatch_session_cleanup_allowed(
   match cleanup {
     DispatchStopRunningProcess { session_name: _ } => true
     DispatchClearRetainedSession { session_name: _, exit_code: _ } => true
+    DispatchClearSignaledSession { session_name: _, signal: _ } => true
     DispatchCleanupRefused { reason: _ } => false
   }
 }
@@ -4156,6 +4162,12 @@ fn dispatch_session_cleanup_detail(
       join([
         "provider process already exited ",
         to_string(exit_code),
+        "; only retained tmux session metadata will be removed",
+      ], "")
+    DispatchClearSignaledSession { session_name: _, signal } =>
+      join([
+        "provider process already killed by ",
+        linux_standard_signal_render(n: signal),
         "; only retained tmux session metadata will be removed",
       ], "")
     DispatchCleanupRefused { reason } => reason
@@ -4505,9 +4517,9 @@ fn dispatch_session_cleanup(
           exit_code: exit_code,
         }
       WorkerProcessSignaled { signal, last_command: _ } =>
-        DispatchClearRetainedSession {
+        DispatchClearSignaledSession {
           session_name: session.session_name,
-          exit_code: signal,
+          signal: signal,
         }
       WorkerProcessAbsent =>
         DispatchCleanupRefused {

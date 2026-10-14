@@ -203,6 +203,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_session_cleanup_for_live_session,
   DispatchStopRunningProcess,
   DispatchClearRetainedSession,
+  DispatchClearSignaledSession,
   DispatchCleanupRefused,
   dispatch_session_cleanup,
   dispatch_session_cleanup_action,
@@ -225,6 +226,7 @@ import extdeps.tmux {
   AttemptPanesParseRefused,
   parse_tmux_attempt_panes_output,
 }
+import extdeps.posix.signal { linux_standard_signal_render }
 import extdeps.llm.cli_lifecycle {
   provider_kind_label,
   provider_readiness_label,
@@ -2567,6 +2569,7 @@ type SupervisorConveneGate
   = ConveneClear
   | ConveneAlreadyLive
   | ConveneExitedNoVerdict { exit_code: Int }
+  | ConveneSignaledNoVerdict { signal: Int }
   | ConveneLivenessUnobserved { reason: String }
 
 fn belt_supervisor_convene_gate(process: WorkerProcessEvidence) -> SupervisorConveneGate {
@@ -2574,7 +2577,7 @@ fn belt_supervisor_convene_gate(process: WorkerProcessEvidence) -> SupervisorCon
     WorkerProcessAbsent => ConveneClear
     WorkerProcessRunning { command: _ } => ConveneAlreadyLive
     WorkerProcessExited { exit_code, last_command: _ } => ConveneExitedNoVerdict { exit_code: exit_code }
-    WorkerProcessSignaled { signal, last_command: _ } => ConveneExitedNoVerdict { exit_code: signal }
+    WorkerProcessSignaled { signal, last_command: _ } => ConveneSignaledNoVerdict { signal: signal }
     WorkerProcessUnobserved { reason } => ConveneLivenessUnobserved { reason: reason as String }
   }
 }
@@ -2778,6 +2781,14 @@ fn belt_supervisor_convene(
         node_id: node.node as String,
         step: "supervisor-exited-no-verdict",
         detail: join(["the supervisor unit for this escalation record exited ", to_string(exit_code), " without writing a verdict; the unit is retained for inspection and the record is not reconvened"], ""),
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    ConveneSignaledNoVerdict { signal } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "supervisor-signaled-no-verdict",
+        detail: join(["the supervisor unit for this escalation record was killed by ", linux_standard_signal_render(n: signal), " without writing a verdict; the unit is retained for inspection and the record is not reconvened"], ""),
         provider: provider_wire_label,
         launch: launch,
       }
@@ -10093,6 +10104,11 @@ type BeltStopResult
       session_name: String,
       exit_code: Int,
     }
+  | StopSignaledSessionCleared {
+      node_id: String,
+      session_name: String,
+      signal: Int,
+    }
   | StopDisabled { node_id: String, instance_id: String, reason: String }
   | StopRefusedResult { node_id: String, reason: String }
   | StopObserveRefused { node_id: String, reason: String }
@@ -10185,6 +10201,24 @@ fn belt_stop_node_for_instance(
                     detail: detail,
                   }
               }
+            DispatchClearSignaledSession { session_name, signal } =>
+              match belt_actuate_teardown_for_instance(
+                instance: instance,
+                session_name: session_name,
+              ) {
+                ReapedSession { session_name: cleared } =>
+                  StopSignaledSessionCleared {
+                    node_id: node_id,
+                    session_name: cleared,
+                    signal: signal,
+                  }
+                TeardownFailed { session_name: failed, detail } =>
+                  StopTeardownFailed {
+                    node_id: node_id,
+                    session_name: failed,
+                    detail: detail,
+                  }
+              }
           }
       }
         }
@@ -10226,6 +10260,19 @@ fn belt_stop_result_json_value(r: BeltStopResult) -> JsonValue {
         json_kv(key: "session_name", value: json_string(s: sn)),
         json_kv(key: "exit_code", value: json_int(n: exit_code)),
       ])
+    StopSignaledSessionCleared {
+      node_id: nid,
+      session_name: sn,
+      signal,
+    } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "session_cleared")),
+        json_kv(key: "action", value: json_string(s: "clear")),
+        json_kv(key: "ok", value: json_bool(b: true)),
+        json_kv(key: "session_name", value: json_string(s: sn)),
+        json_kv(key: "signal", value: json_string(s: linux_standard_signal_render(n: signal))),
+      ])
     StopDisabled { node_id: nid, instance_id: iid, reason: why } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
@@ -10266,6 +10313,11 @@ fn belt_stop_http_status(r: BeltStopResult) -> Int {
       node_id: _,
       session_name: _,
       exit_code: _,
+    } => 200
+    StopSignaledSessionCleared {
+      node_id: _,
+      session_name: _,
+      signal: _,
     } => 200
     StopDisabled { node_id: _, instance_id: _, reason: _ } => 403
     StopRefusedResult { node_id: _, reason: r2 } =>
@@ -10472,8 +10524,8 @@ fn belt_session_liveness_from_process(
       BeltSessionStaleTerminal {
         session_name: session_name,
         detail: join([
-          "retained pane: process killed by signal ",
-          to_string(signal),
+          "retained pane: process killed by ",
+          linux_standard_signal_render(n: signal),
           "; last command ",
           last_command,
         ], ""),
@@ -11413,7 +11465,7 @@ fn belt_audit_verified_attempt(instance: HostDashboardInstance, progress: Workfl
                 WorkerProcessExited { exit_code, last_command: _ } =>
                   ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor exited ", to_string(exit_code), " without writing a verdict; it is not respawned"], "") }
                 WorkerProcessSignaled { signal, last_command: _ } =>
-                  ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was killed by signal ", to_string(signal), " without writing a verdict; it is not respawned"], "") }
+                  ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was killed by ", linux_standard_signal_render(n: signal), " without writing a verdict; it is not respawned"], "") }
                 WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: reason as String }
                 WorkerProcessAbsent => belt_audit_spawn(instance: instance, progress: progress, worktree: worktree, head: head, verification_detail: verification_detail)
               }
@@ -11736,7 +11788,7 @@ fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_ke
         WorkerProcessExited { exit_code, last_command: _ } =>
           ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer exited ", to_string(exit_code), " without writing a verdict; its exit record and journal are retained for inspection"], "") }
         WorkerProcessSignaled { signal, last_command: _ } =>
-          ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was killed by signal ", to_string(signal), " without writing a verdict; its exit record and journal are retained for inspection"], "") }
+          ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was killed by ", linux_standard_signal_render(n: signal), " without writing a verdict; its exit record and journal are retained for inspection"], "") }
         WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: reason as String }
         WorkerProcessAbsent =>
           belt_review_spawn(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call)

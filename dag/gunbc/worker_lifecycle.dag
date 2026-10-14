@@ -2,6 +2,7 @@ module gunbc.worker_lifecycle
 
 import std.types { String, NonEmptyStr, Timestamp, Int }
 import std.integer { PositiveInt }
+import extdeps.posix.signal { linux_standard_signal_render }
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
   ProviderReadiness,
@@ -114,7 +115,7 @@ fn worker_process_evidence_detail(evidence: WorkerProcessEvidence) -> String {
     WorkerProcessSignaled { signal, last_command } =>
       join([
         "signal=",
-        to_string(signal),
+        linux_standard_signal_render(n: signal),
         if last_command == "" {
           ""
         } else {

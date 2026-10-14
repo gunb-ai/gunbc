@@ -1,6 +1,7 @@
 module extdeps.posix.signal
 
 import std.types { NonEmptyStr, String, Bool, Int }
+import std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -201,6 +202,13 @@ fn linux_standard_signal_of_number(n: Int) -> LinuxStandardSignal? {
   else if n == 30 { Present { value: SignalPwr } }
   else if n == 31 { Present { value: SignalSys } }
   else { none }
+}
+
+fn linux_standard_signal_render(n: Int) -> String {
+  match linux_standard_signal_of_number(n: n) {
+    Present { value: s } => join(["SIG", linux_standard_signal_wire_name(signal: s)], "")
+    Absent => join(["signal ", to_string(n)], "")
+  }
 }
 
 fn linux_standard_signal_number(signal: LinuxStandardSignal) -> Int {

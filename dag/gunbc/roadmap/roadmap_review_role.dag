@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_review_role
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
+import extdeps.posix.signal { linux_standard_signal_render }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
@@ -179,6 +180,7 @@ type CriterionStanding
   | CriterionUnreadable { key: String, detail: String }
   | CriterionReviewerRunning { key: String }
   | CriterionReviewerExitedWithoutVerdict { key: String, exit_code: Int }
+  | CriterionReviewerSignaledWithoutVerdict { key: String, signal: Int }
   | CriterionReviewerUnobserved { key: String, reason: String }
   | CriterionAwaitingReviewer { key: String }
 
@@ -196,7 +198,7 @@ fn criterion_standing(e: CriterionReviewEvidence) -> CriterionStanding {
       match e.process {
         WorkerProcessRunning { command: _ } => CriterionReviewerRunning { key: e.criterion_key }
         WorkerProcessExited { exit_code, last_command: _ } => CriterionReviewerExitedWithoutVerdict { key: e.criterion_key, exit_code: exit_code }
-        WorkerProcessSignaled { signal, last_command: _ } => CriterionReviewerExitedWithoutVerdict { key: e.criterion_key, exit_code: signal }
+        WorkerProcessSignaled { signal, last_command: _ } => CriterionReviewerSignaledWithoutVerdict { key: e.criterion_key, signal: signal }
         WorkerProcessUnobserved { reason } => CriterionReviewerUnobserved { key: e.criterion_key, reason: reason as String }
         WorkerProcessAbsent => CriterionAwaitingReviewer { key: e.criterion_key }
       }
@@ -212,6 +214,7 @@ fn criterion_standing_text(s: CriterionStanding) -> String {
     CriterionUnreadable { key, detail } => join([key, ": verdict unreadable — ", detail], "")
     CriterionReviewerRunning { key } => join([key, ": reviewer running"], "")
     CriterionReviewerExitedWithoutVerdict { key, exit_code } => join([key, ": reviewer exited ", to_string(value: exit_code), " without a verdict"], "")
+    CriterionReviewerSignaledWithoutVerdict { key, signal } => join([key, ": reviewer killed by ", linux_standard_signal_render(n: signal), " without a verdict"], "")
     CriterionReviewerUnobserved { key, reason } => join([key, ": reviewer unobserved — ", reason], "")
     CriterionAwaitingReviewer { key } => join([key, ": awaiting reviewer"], "")
   }
@@ -226,6 +229,7 @@ fn standing_is_changes(s: CriterionStanding) -> Bool {
     CriterionUnreadable { key: _, detail: _ } => false
     CriterionReviewerRunning { key: _ } => false
     CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => false
+    CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => false
     CriterionReviewerUnobserved { key: _, reason: _ } => false
     CriterionAwaitingReviewer { key: _ } => false
   }
@@ -239,6 +243,7 @@ fn standing_is_approved(s: CriterionStanding) -> Bool {
     CriterionUnreadable { key: _, detail: _ } => false
     CriterionReviewerRunning { key: _ } => false
     CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => false
+    CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => false
     CriterionReviewerUnobserved { key: _, reason: _ } => false
     CriterionAwaitingReviewer { key: _ } => false
   }
@@ -252,6 +257,7 @@ fn standing_is_running(s: CriterionStanding) -> Bool {
     CriterionUnreadable { key: _, detail: _ } => false
     CriterionReviewerRunning { key: _ } => true
     CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => false
+    CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => false
     CriterionReviewerUnobserved { key: _, reason: _ } => false
     CriterionAwaitingReviewer { key: _ } => false
   }
@@ -265,6 +271,7 @@ fn standing_blocks(s: CriterionStanding) -> Bool {
     CriterionUnreadable { key: _, detail: _ } => true
     CriterionReviewerRunning { key: _ } => false
     CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => true
+    CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => true
     CriterionReviewerUnobserved { key: _, reason: _ } => true
     CriterionAwaitingReviewer { key: _ } => false
   }
@@ -337,6 +344,7 @@ fn review_feedback_standings(standings: List<CriterionStanding>) -> WorkerFeedba
     CriterionUnreadable { key: _, detail: _ } => acc
     CriterionReviewerRunning { key: _ } => acc
     CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => acc
+    CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => acc
     CriterionReviewerUnobserved { key: _, reason: _ } => acc
     CriterionAwaitingReviewer { key: _ } => acc
   })
@@ -347,6 +355,7 @@ fn review_feedback_standings(standings: List<CriterionStanding>) -> WorkerFeedba
       CriterionUndecodable { key, reason } => [join([key, ": verdict undecodable: ", reason], "")]
       CriterionUnreadable { key, detail } => [join([key, ": verdict unreadable: ", detail], "")]
       CriterionReviewerExitedWithoutVerdict { key, exit_code } => [join([key, ": reviewer exited ", to_string(value: exit_code), " without a verdict"], "")]
+      CriterionReviewerSignaledWithoutVerdict { key, signal } => [join([key, ": reviewer killed by ", linux_standard_signal_render(n: signal), " without a verdict"], "")]
       CriterionReviewerUnobserved { key, reason } => [join([key, ": reviewer unobserved: ", reason], "")]
       CriterionApproved { key: _, summary: _ } => []
       CriterionChangesRequested { key: _, reasons: _ } => []
@@ -361,6 +370,7 @@ fn review_feedback_standings(standings: List<CriterionStanding>) -> WorkerFeedba
       CriterionUnreadable { key: _, detail: _ } => []
       CriterionReviewerRunning { key: _ } => []
       CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => []
+      CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => []
       CriterionReviewerUnobserved { key: _, reason: _ } => []
       CriterionAwaitingReviewer { key: _ } => []
     }),
@@ -373,6 +383,7 @@ fn review_feedback_standings(standings: List<CriterionStanding>) -> WorkerFeedba
       CriterionUndecodable { key: _, reason: _ } => []
       CriterionUnreadable { key: _, detail: _ } => []
       CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => []
+      CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => []
       CriterionReviewerUnobserved { key: _, reason: _ } => []
     }),
     overlap_count: count(filter(must_fix, g => feedback_path_criteria_count(g: g) > 1)),
