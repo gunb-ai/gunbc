@@ -1,6 +1,7 @@
 module gunbc.host.host_converge
 
 import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.optional { Absent, Present }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count, Second, second, second_count }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
@@ -34,9 +35,10 @@ import gunbc.session_reservation_policy {
 }
 import gunbc.ci.ci_fleet { fleet_intent_offers }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
-import gunbc.live_deploy.spec { gunbc_service_uid }
+import gunbc.live_deploy.spec { gunbc_service_uid, gunbc_approval_broker_slice_unit_name }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_memory_max_of, user_slice_backstop_memory_max_of, user_slice_backstop_memory_swap_max,
+  approval_broker_slice_memory_max, approval_broker_slice_memory_high,
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived }
 import gunbc.live_deploy.served_slice_charge {
@@ -82,6 +84,10 @@ data gunbc_runner_per_slot_cpu_dropin_path: String = runner_unit_dropin_path(fil
 data gunbc_runner_per_slot_high_dropin_path: String = runner_unit_dropin_path(file_name: "40-fleet-high.conf" as NonEmptyStr) as String
 data gunbc_runner_per_slot_tasks_dropin_path: String = runner_unit_dropin_path(file_name: "50-fleet-tasks.conf" as NonEmptyStr) as String
 data gunbc_runner_control_dropin_dir_prefix: String = "/etc/systemd/system.control/"
+// `systemctl set-property --runtime` writes here (systemd 255); it shadows the persistent
+// /etc/systemd/system.control drop-in until reboot or `systemctl revert`. Live 18/20 GiB on
+// gunbc-approval-broker.slice (2026-09-30) is that runtime residue: no row produces it.
+data gunbc_runtime_system_control_dropin_dir_prefix: String = "/run/systemd/system.control/"
 data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
 data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
 data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
@@ -874,6 +880,84 @@ fn user_manager_backstop_for(host: HostIdentity) -> UserManagerBackstop {
   }
 }
 
+fn approval_broker_runtime_cap_knobs() -> List<ConvergeKnob> {
+  [
+    slice_numeric_knob(
+      slice: GunbcSlice,
+      name: "approval_broker_memory_max_bytes",
+      unit: gunbc_approval_broker_slice_unit_name as String,
+      property: systemd_memory_max_property,
+      value: byte_size_count(b: approval_broker_slice_memory_max)
+    ),
+    slice_numeric_knob(
+      slice: GunbcSlice,
+      name: "approval_broker_memory_high_bytes",
+      unit: gunbc_approval_broker_slice_unit_name as String,
+      property: systemd_memory_high_property,
+      value: byte_size_count(b: approval_broker_slice_memory_high)
+    ),
+  ]
+}
+
+type ApprovalBrokerRuntimeCaps
+  = ApprovalBrokerRuntimeCapsNotOwed
+  | ApprovalBrokerRuntimeCapsDerived { knobs: List<ConvergeKnob> }
+  | ApprovalBrokerRuntimeCapsRefused { cause: String }
+
+// SAME PLACEMENT GATE AS THE USER-MANAGER BACKSTOP: the broker slice is a prod-role singleton,
+// so a runner-only host owes no MemoryMax/High converge for it. The live 18/20 GiB figures are
+// a /run/systemd/system.control set-property drop-in; desired is the model 16/14 GiB.
+fn approval_broker_runtime_caps_for(host: HostIdentity) -> ApprovalBrokerRuntimeCaps {
+  match host_served_deployment_claim(host: host) {
+    ServedDeploymentNotPlaced => ApprovalBrokerRuntimeCapsNotOwed
+    ServedDeploymentClaimUnmeasured { cause } => ApprovalBrokerRuntimeCapsRefused { cause: cause }
+    ServedDeploymentClaimResolved { memory: _ } =>
+      ApprovalBrokerRuntimeCapsDerived { knobs: approval_broker_runtime_cap_knobs() }
+  }
+}
+
+type SliceControlCaps {
+  unit: NonEmptyStr
+  memory_max: Int
+  memory_high: Int
+}
+
+fn slice_control_caps_for(host: HostIdentity) -> List<SliceControlCaps> {
+  concat(
+    match session_knob_standing_for(host: host) {
+      SessionKnobsNotOwed { cause: _ } => []
+      SessionKnobsUngrounded { cause: _ } => []
+      SessionKnobsDerived { knobs: _ } =>
+        match session_reservation_bytes(host: host) {
+          ReservationBytesNotApplicable => []
+          ReservationBytesUnestablished { cause: _ } => []
+          ReservationBytes { bytes: max } =>
+            match session_slice_memory_high_for(host: host) {
+              Absent => []
+              Present { value: high } => [
+                SliceControlCaps {
+                  unit: gunbc_oomd_sessions_slice,
+                  memory_max: byte_size_count(b: max),
+                  memory_high: byte_size_count(b: high),
+                },
+              ]
+            }
+        }
+    },
+    match approval_broker_runtime_caps_for(host: host) {
+      ApprovalBrokerRuntimeCapsNotOwed => []
+      ApprovalBrokerRuntimeCapsRefused { cause: _ } => []
+      ApprovalBrokerRuntimeCapsDerived { knobs: _ } => [
+        SliceControlCaps {
+          unit: gunbc_approval_broker_slice_unit_name,
+          memory_max: byte_size_count(b: approval_broker_slice_memory_max),
+          memory_high: byte_size_count(b: approval_broker_slice_memory_high),
+        },
+      ]
+    },
+  )
+}
+
 fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, backstop_knobs: List<ConvergeKnob>) -> HostConverge {
   HostConverge {
     identity: h.identity,
@@ -917,8 +1001,16 @@ fn fleet_converge_policy_from(plan: RunnerDeploymentPlan) -> ConvergePolicy {
                 hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: [])]),
               }
             UserManagerBackstopDerived { knobs } =>
-              FleetConvergeHosts {
-                hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: knobs)]),
+              match approval_broker_runtime_caps_for(host: h.identity) {
+                ApprovalBrokerRuntimeCapsRefused { cause } => FleetConvergeUnsound { reason: cause }
+                ApprovalBrokerRuntimeCapsNotOwed =>
+                  FleetConvergeHosts {
+                    hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: knobs)]),
+                  }
+                ApprovalBrokerRuntimeCapsDerived { knobs: broker } =>
+                  FleetConvergeHosts {
+                    hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: concat(knobs, broker))]),
+                  }
               }
           }
       }

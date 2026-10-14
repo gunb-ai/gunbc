@@ -180,6 +180,7 @@ import gunbc.live_deploy.emit {
   leftover_systemd_timer_retire_dissolution,
   live_deploy_publication_path_unit_file,
   deploy_memory_cap_apply_steps,
+  apply_slice_control_converge_steps,
   approval_broker_helper_sudoers_stage_name,
   approval_broker_helper_sudoers_readback_stage_name,
 }
@@ -196,6 +197,7 @@ import gunbc.host.host_axis_caps {
   deploy_memory_cap_shadow_revert_script,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   deploy_memory_cap_apply_script_from_authorization,
+  deploy_slice_control_converge_script,
   deploy_runner_memory_cap_author_script,
   derived_runner_memory_cap_members,
   cap_converge_decision,
@@ -629,6 +631,20 @@ test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
     && string_contains(s: steps, pattern: "20-fleet-width.conf")
     && string_contains(s: steps, pattern: deploy_memory_cap_shadow_revert_script(units: units))
     && string_contains(s: steps, pattern: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)))
+}
+
+test fn witness_apply_script_converges_sessions_and_broker_slice_control() -> Bool {
+  let host = operator_host_srv1
+  let script = deploy_slice_control_converge_script(host: host)
+  let steps = pipeline_steps_text(steps: apply_slice_control_converge_steps(spec: deployment_spec_srv1()))
+  let apply = witness_apply_script()
+  string_contains(s: steps, pattern: script)
+    && string_contains(s: apply, pattern: script)
+    && string_contains(s: script, pattern: "sessions.slice")
+    && string_contains(s: script, pattern: "gunbc-approval-broker.slice")
+    && string_contains(s: script, pattern: "17179869184")
+    && string_contains(s: script, pattern: "15032385536")
+    && string_contains(s: script, pattern: "137438953472")
 }
 
 data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. Working-byte rsync and repository convergence must instead ride the service-user oneshot unit (principal User=briansrls), and every mutation outside it must be one of the roster-granted sudo -n commands (fleet_posix_ci_runner_sudo_grants). Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (carried by the annotation on gunbc.live_deploy.emit install_d_owned_command)."

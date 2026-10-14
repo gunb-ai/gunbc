@@ -14,6 +14,7 @@ import gunbc.live_deploy.slice_bounds {
   user_work_slice_memory_max_of, user_work_slice_memory_high_of,
   user_slice_backstop_memory_max_of, user_manager_remainder,
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
+  approval_broker_slice_memory_max, approval_broker_slice_memory_high,
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, user_work_charged_slots }
 import gunbc.live_deploy.served_slice_charge {
@@ -29,6 +30,9 @@ import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance
 import gunbc.host.host_converge {
   user_manager_backstop_for, UserManagerBackstopNotOwed, UserManagerBackstopDerived,
   UserManagerBackstopRefused, user_manager_instance_unit,
+  approval_broker_runtime_caps_for, ApprovalBrokerRuntimeCapsNotOwed,
+  ApprovalBrokerRuntimeCapsDerived, ApprovalBrokerRuntimeCapsRefused,
+  slice_control_caps_for,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 
@@ -158,4 +162,28 @@ test fn user_manager_backstop_is_owed_only_on_the_placed_host() -> Bool {
     UserManagerBackstopNotOwed => false
     UserManagerBackstopRefused { cause: _ } => false
   }
+}
+
+test fn approval_broker_runtime_caps_are_the_model_14_16_on_the_placed_host() -> Bool {
+  match approval_broker_runtime_caps_for(host: operator_host_srv1) {
+    ApprovalBrokerRuntimeCapsNotOwed => false
+    ApprovalBrokerRuntimeCapsRefused { cause: _ } => false
+    ApprovalBrokerRuntimeCapsDerived { knobs } =>
+      any(knobs, k => k.name == "approval_broker_memory_max_bytes" && k.desired == to_string(byte_size_count(b: approval_broker_slice_memory_max)))
+        && any(knobs, k => k.name == "approval_broker_memory_high_bytes" && k.desired == to_string(byte_size_count(b: approval_broker_slice_memory_high)))
+        && match approval_broker_runtime_caps_for(host: operator_host_srv3) {
+          ApprovalBrokerRuntimeCapsNotOwed => true
+          ApprovalBrokerRuntimeCapsDerived { knobs: _ } => false
+          ApprovalBrokerRuntimeCapsRefused { cause: _ } => false
+        }
+  }
+}
+
+test fn slice_control_caps_include_sessions_and_broker_on_srv1_only() -> Bool {
+  let srv1 = slice_control_caps_for(host: operator_host_srv1)
+  let srv3 = slice_control_caps_for(host: operator_host_srv3)
+  srv1.length() == 2
+    && srv3.length() == 0
+    && any(srv1, c => c.unit as String == "sessions.slice" && c.memory_max == 137438953472)
+    && any(srv1, c => c.unit as String == "gunbc-approval-broker.slice" && c.memory_max == 17179869184 && c.memory_high == 15032385536)
 }

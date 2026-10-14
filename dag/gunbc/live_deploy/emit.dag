@@ -240,6 +240,8 @@ import gunbc.host.host_axis_caps {
   deploy_memory_cap_apply_script_from_authorization,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   host_axis_caps_author_before_revert_enforced,
+  slice_control_converge_stmts,
+  deploy_slice_control_converge_script,
 }
 import gunbc.ownership { Ownership }
 import std.algebra { list_tail }
@@ -252,7 +254,7 @@ import gunbc.membership_reconcile {
   membership_plan_admitting_outcome,
   membership_effects,
 }
-import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv }
+import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv, shell_command_text_of_stmts }
 import gunbc.live_deploy.operations {
   deploy_stage_dir_var,
   deploy_cap_stage_dir_var,
@@ -2290,6 +2292,27 @@ fn deploy_memory_cap_apply_steps(
   })
 }
 
+fn apply_slice_control_converge_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  let stmts = slice_control_converge_stmts(host: spec.target.host.identity)
+  if stmts.length() == 0 {
+    []
+  } else {
+    [deploy_raw(command: deploy_slice_control_converge_script(host: spec.target.host.identity))]
+  }
+}
+
+fn apply_slice_control_converge_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
+  let steps = apply_slice_control_converge_steps(spec: spec)
+  if steps.length() == 0 {
+    []
+  } else {
+    host_script_member_proceed(
+      member: "slice-control" as NonEmptyStr,
+      mutate_steps: steps,
+    )
+  }
+}
+
 // GunbcSourceTree stages working bytes with rsync --delete while excluding .git, then the
 // ServeBinary step replaces the owner-run oneshot with Git-native repository convergence.
 // Repository metadata is never transported as files: git imports the candidate objects from the
@@ -4205,7 +4228,10 @@ fn apply_intent_fragments(
       ],
       concat(
         owned_directory_fragments(spec: spec, plan: plan),
-        deploy_memory_cap_fragments(spec: spec, authorization: cap_authorization),
+        concat(
+          deploy_memory_cap_fragments(spec: spec, authorization: cap_authorization),
+          apply_slice_control_converge_fragments(spec: spec),
+        ),
       ),
     ),
     concat(
@@ -4506,7 +4532,10 @@ fn approval_broker_dark_install_body_fragments(
         member: "dark-install" as NonEmptyStr,
         steps: concat(
           apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
-          concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
+          concat(
+            concat([deploy_effect(inv: systemctl_daemon_reload_effect())], apply_slice_control_converge_steps(spec: spec)),
+            approval_broker_lifecycle_steps(spec: spec),
+          ),
         ),
       }],
     ),

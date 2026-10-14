@@ -208,6 +208,8 @@ data live_deploy_slice_memory_swap_max: ByteSize = byte_size(0)
 // before the store (503, marker approval-broker/broker), so their store half is unmeasured and the
 // margin is what covers it; MemoryMax sits 2 GiB above that for the kill boundary. Tighten both from
 // broker_demand_observed_max once the writing classes are read under BrokerServesAndWrites.
+// Live 18 GiB High / 20 GiB Max is a /run/systemd/system.control set-property residue
+// (2026-09-30); it is not this row. Apply reverts then set-property to these figures.
 data approval_broker_slice_memory_max: ByteSize = byte_size(17179869184)
 
 data approval_broker_slice_memory_high: ByteSize = byte_size(15032385536)

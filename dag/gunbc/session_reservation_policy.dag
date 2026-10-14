@@ -73,6 +73,8 @@ data srv1_session_aggregate_citation: SessionDemandReceiptCitation = SessionDema
 
 // OPERATOR RULING 2026-10-14 (sleek-owl-397 via clever-crane-830): the allowance IS the live
 // sessions.slice MemoryMax of 128 GiB, today a hand set-property drop-in under
+// /etc/systemd/system.control (and any /run/systemd/system.control twin, the same route as the
+// broker's 18/20 GiB runtime residue). Converge reverts then set-property so the model owns both.
 // /etc/systemd/system.control/sessions.slice.d. The same reading: memory.current 71.2 GB SI
 // (71200000000), memory.peak 120.3 GB SI (120300000000). Peak is the evidence floor; current is
 // cited in the receipt metric, not as a second floor. MemoryHigh 112 GiB is the live throttle
