@@ -67,15 +67,6 @@ pub struct SubjectCollisionReport {
     pub build: Rc<SubjectBuild>,
 }
 
-pub fn refuse_diagnostic_class() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "E0204".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn collision_sharing_of(would_share: Rc<Vec<bool>>) -> CollisionSharing {
     match would_share.clone().first().cloned() {
         std::option::Option::None => CollisionSharing::SameSharing,
@@ -311,19 +302,7 @@ pub fn report_has_no_collision(report: Rc<SubjectCollisionReport>) -> bool {
     ((report.rows.clone().len() as i64) == 0)
 }
 
-pub fn diagnostic_names_class(diagnostic: String, class: String) -> bool {
-    v1_rt::string_contains(&diagnostic, class.clone())
-}
-
-pub fn refuse_control_holds(report: Rc<SubjectCollisionReport>) -> bool {
-    match (*report.build.clone()).clone() {
-        SubjectBuild::BuildAccepted => report_has_different_sharing(report.clone()),
-        SubjectBuild::BuildRefused { diagnostic: _, .. } => false,
-        SubjectBuild::BuildNotAttempted => false,
-    }
-}
-
-pub fn silent_control_holds(report: Rc<SubjectCollisionReport>) -> bool {
+pub fn different_sharing_build_accepted(report: Rc<SubjectCollisionReport>) -> bool {
     match (*report.build.clone()).clone() {
         SubjectBuild::BuildAccepted => report_has_different_sharing(report.clone()),
         SubjectBuild::BuildRefused { diagnostic: _, .. } => false,
@@ -496,8 +475,8 @@ pub fn fixture_standing(
     green_report: Rc<SubjectCollisionReport>,
 ) -> String {
     {
-        let refuse_held = refuse_control_holds(refuse_report.clone());
-        let silent_held = silent_control_holds(silent_report.clone());
+        let refuse_held = different_sharing_build_accepted(refuse_report.clone());
+        let silent_held = different_sharing_build_accepted(silent_report.clone());
         let green_held = green_control_holds(green_report.clone());
         let held = ((refuse_held.clone() && silent_held.clone()) && green_held.clone());
         Rc::new(vec![
@@ -531,7 +510,8 @@ pub fn fixture_controls_hold(
     silent_report: Rc<SubjectCollisionReport>,
     green_report: Rc<SubjectCollisionReport>,
 ) -> bool {
-    ((refuse_control_holds(refuse_report.clone()) && silent_control_holds(silent_report.clone()))
+    ((different_sharing_build_accepted(refuse_report.clone())
+        && different_sharing_build_accepted(silent_report.clone()))
         && green_control_holds(green_report.clone()))
 }
 

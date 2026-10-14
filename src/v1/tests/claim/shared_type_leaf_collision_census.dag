@@ -48,8 +48,6 @@ type SubjectCollisionReport {
   build: SubjectBuild
 }
 
-data refuse_diagnostic_class: String = "E0204"
-
 fn collision_sharing_of(would_share: List<Bool>) -> CollisionSharing {
   match would_share |> first {
     Absent => SameSharing
@@ -151,19 +149,7 @@ fn report_has_no_collision(report: SubjectCollisionReport) -> Bool {
   (report.rows |> count) == 0
 }
 
-fn diagnostic_names_class(diagnostic: String, class: String) -> Bool {
-  string_contains(s: diagnostic, pattern: class)
-}
-
-fn refuse_control_holds(report: SubjectCollisionReport) -> Bool {
-  match report.build {
-    BuildAccepted => report_has_different_sharing(report: report)
-    BuildRefused { diagnostic: _ } => false
-    BuildNotAttempted => false
-  }
-}
-
-fn silent_control_holds(report: SubjectCollisionReport) -> Bool {
+fn different_sharing_build_accepted(report: SubjectCollisionReport) -> Bool {
   match report.build {
     BuildAccepted => report_has_different_sharing(report: report)
     BuildRefused { diagnostic: _ } => false
@@ -233,8 +219,8 @@ fn control_line(name: String, held: Bool) -> String {
 }
 
 fn fixture_standing(refuse_report: SubjectCollisionReport, silent_report: SubjectCollisionReport, green_report: SubjectCollisionReport) -> String {
-  let refuse_held = refuse_control_holds(report: refuse_report)
-  let silent_held = silent_control_holds(report: silent_report)
+  let refuse_held = different_sharing_build_accepted(report: refuse_report)
+  let silent_held = different_sharing_build_accepted(report: silent_report)
   let green_held = green_control_holds(report: green_report)
   let held = refuse_held && silent_held && green_held
   [
@@ -246,7 +232,7 @@ fn fixture_standing(refuse_report: SubjectCollisionReport, silent_report: Subjec
 }
 
 fn fixture_controls_hold(refuse_report: SubjectCollisionReport, silent_report: SubjectCollisionReport, green_report: SubjectCollisionReport) -> Bool {
-  refuse_control_holds(report: refuse_report) && silent_control_holds(report: silent_report) && green_control_holds(report: green_report)
+  different_sharing_build_accepted(report: refuse_report) && different_sharing_build_accepted(report: silent_report) && green_control_holds(report: green_report)
 }
 
 fn observation_held(standing_held: Bool, live_unobserved: Bool) -> Bool {
