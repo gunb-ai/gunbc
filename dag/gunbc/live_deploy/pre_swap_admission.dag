@@ -1,0 +1,156 @@
+module gunbc.live_deploy.pre_swap_admission
+
+import std.types { String, Bool, Int, NonEmptyStr }
+import std.algebra { trim }
+import std.integer { int_to_decimal_string }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count,
+}
+import gunbc.live_deploy.desired {
+  DesiredDeployment,
+  selected_deployment_spec,
+}
+import gunbc.live_deploy.spec { DeploymentSpec }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git
+import extdeps.shell
+
+// PRE-MUTATION ADMISSION FOR A LIVE SWAP. Two observed holes, one decision, used by the CI
+// transaction, the operator-local converge deploy, and the desired-instance apply. Nothing here
+// mutates a host; a refusal is the only answer a wet caller may act on besides proceed.
+//
+// (1) SERVE-ENTRY COMPILE. A revision whose server did not compile (a source annotation inside a
+// fn body) was installed; the new process crash-looped; deploy learned this only at readiness.
+// The candidate's declared serve entry file (DeploymentServiceConfig.serve_entry, the same
+// path ExecStart binds) is compiled before any apply fold runs. The path is a spec fact, not
+// a reverse lookup of a module name (DESIGN §3: paths follow names; this does not invent a
+// second path-to-name table). The compiled subject is that file's own source, not a glued
+// probe module.
+//
+// (2) TARGET-BOUND BRANCH. Operator 2026-10-09 let an empty --candidate-branch admit any nonempty
+// checkout (fleet_converge_deploy_branch_admits). Operator 2026-10-13 (gunbc.design_ruling
+// production_is_main_only_lab_admits_integration) narrows that: each DesiredDeployment row
+// carries the one NonEmptyStr branch it admits. There is no class default.
+// The CLI flag check remains a second, optional equality; it does not widen the row.
+
+type TargetBranchAdmission
+  = TargetBranchAdmitted
+  | TargetBranchRefused { reason: String }
+
+type ServeEntryCompileVerdict
+  = ServeEntryCompileAdmitted
+  | ServeEntryCompileBlocked { blocking: Int }
+  | ServeEntryCompileUnobserved { detail: String }
+
+type PreSwapAdmission
+  = PreSwapAdmitted
+  | PreSwapRefused { reason: String }
+
+fn target_branch_admission(admitted: NonEmptyStr, observed: String) -> TargetBranchAdmission {
+  let required = trim(s: admitted as String)
+  let seen = trim(s: observed)
+  if seen != "" && seen == required {
+    TargetBranchAdmitted
+  } else {
+    TargetBranchRefused {
+      reason: join([
+        "live_deploy: DeployTargetBranchRefused — checkout '",
+        seen,
+        "' is not the admitted branch '",
+        required,
+        "'",
+      ], ""),
+    }
+  }
+}
+
+fn serve_entry_compile_of(census: CompileDiagnosticCensus) -> ServeEntryCompileVerdict {
+  match census {
+    CensusNotRunnable { cause } => ServeEntryCompileUnobserved { detail: cause as String }
+    CensusObserved { rows } => {
+      let blocking = census_total_count(rows: census_blocking_rows(rows: rows))
+      if blocking > 0 {
+        ServeEntryCompileBlocked { blocking: blocking }
+      } else {
+        ServeEntryCompileAdmitted
+      }
+    }
+  }
+}
+
+fn observe_serve_entry_file_compile(entry: String) -> ServeEntryCompileVerdict {
+  let path = trim(s: entry)
+  if path == "" {
+    ServeEntryCompileUnobserved { detail: "serve entry path is empty" }
+  } else {
+    let r = Filesystem.Read(path: path)
+    if !r.success {
+      ServeEntryCompileUnobserved { detail: r.error }
+    } else {
+      serve_entry_compile_of(census: compile_dag_diagnostic_census(r.content))
+    }
+  }
+}
+
+fn observe_spec_serve_entry_compile(spec: DeploymentSpec) -> ServeEntryCompileVerdict {
+  observe_serve_entry_file_compile(entry: spec.service.serve_entry as String)
+}
+
+// Named checkout first. A sha checkout (Actions `ref: github.sha`) reports CurrentBranch HEAD;
+// then GITHUB_REF_NAME is the event branch, not a fabricated production class.
+fn observe_checkout_branch() -> String {
+  let named = trim(s: git.Core.CurrentBranch().branch)
+  if named != "" && named != "HEAD" {
+    named
+  } else {
+    match shell.Env.Get(name: "GITHUB_REF_NAME" as NonEmptyStr).value {
+      Absent => named
+      Present { value: v } => {
+        let event = trim(s: v)
+        if event == "" { named } else { event }
+      }
+    }
+  }
+}
+
+fn live_deploy_pre_swap_admission(
+  admitted: NonEmptyStr,
+  observed_branch: String,
+  compile: ServeEntryCompileVerdict,
+) -> PreSwapAdmission {
+  match target_branch_admission(admitted: admitted, observed: observed_branch) {
+    TargetBranchRefused { reason } => PreSwapRefused { reason: reason }
+    TargetBranchAdmitted =>
+      match compile {
+        ServeEntryCompileAdmitted => PreSwapAdmitted
+        ServeEntryCompileBlocked { blocking } =>
+          PreSwapRefused {
+            reason: join([
+              "live_deploy: ServeEntryCompileBlocked — the candidate serve entry has ",
+              int_to_decimal_string(value: blocking),
+              " blocking diagnostic(s); nothing was mutated",
+            ], ""),
+          }
+        ServeEntryCompileUnobserved { detail } =>
+          PreSwapRefused {
+            reason: join([
+              "live_deploy: ServeEntryCompileUnobserved — ",
+              detail,
+              "; nothing was mutated",
+            ], ""),
+          }
+      }
+  }
+}
+
+fn live_deploy_pre_swap_for_deployment(deployment: DesiredDeployment) -> PreSwapAdmission {
+  live_deploy_pre_swap_admission(
+    admitted: deployment.admitted_branch,
+    observed_branch: observe_checkout_branch(),
+    compile: observe_spec_serve_entry_compile(spec: selected_deployment_spec(row: deployment)),
+  )
+}
