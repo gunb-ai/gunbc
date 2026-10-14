@@ -2987,22 +2987,30 @@ fn dispatch_worker_unit_stream_properties(
 // THE WORKER'S WRITABLE SET IS THIS ATTEMPT'S PATHS, NOT THE INSTANCE ROOT AND NOT THE WHOLE
 // DISPATCH STATE. ProtectSystem=strict makes /usr /boot /etc /opt read-only except ReadWritePaths.
 // Spelling instance_root as that carve-out on srv1_live (instance_root=/opt/gunbc) reopened
-// /opt/gunbc/bin and the deployed checkout (smart-gull-336 item c). The belt creates the worktree
-// and the attempt-state directory *before* the unit starts (git_worktree_add_argv_for_instance,
-// attempt_state_prepare_argv_for_instance); what the unit may write is only this attempt's
-// working_directory, the parent of its stdout log (the worker/ child: logs, events, request
-// scratch), and the repository git dir. Linked-worktree commit/stash/fetch write objects
-// and refs in the common git dir (repo/.git), not only .git/worktrees/<name>. The deployed
-// working tree and the binary stay outside the set. The attempt directory itself (owner records),
-// the attempt-state root, and the exit spool inbox stay outside it so the worker cannot forge
-// request-binding or launch-identity (Manager B). /tmp is already a private tmpfs
-// (PrivateTmp=yes). AttemptResourceSet is not in this tree.
-fn dispatch_worker_writable_path_list(instance: HostDashboardInstance, working_directory: String, scratch_directory: String) -> List<String> {
+// /opt/gunbc/bin and the deployed checkout (smart-gull-336 item c). Carving the whole common
+// git dir would reopen the same class: the worker plants .git/hooks or .git/config, then
+// belt_commit_staged runs git from the belt process and the hook executes as the controller
+// (bright-moth-475 on 13942). Choice (1): keep objects/refs/logs/worktrees/packed-refs writable;
+// do not carve .git itself, so hooks, config, and info cannot be created or written. Choice (2)
+// (never run git with authority in a worker-writable repo) is the publication-transport
+// precedent and is not this cut; belt_commit_git still prefixes git_command_config_inert_args
+// so a planted hook would not be the hooksPath the controller uses. /tmp is PrivateTmp=yes.
+fn dispatch_worker_git_writable_paths(instance: HostDashboardInstance) -> List<String> {
+  let git = join([instance.repo_root as String, "/.git"], "")
   [
-    working_directory,
-    scratch_directory,
-    join([instance.repo_root as String, "/.git"], ""),
+    join([git, "/objects"], ""),
+    join([git, "/refs"], ""),
+    join([git, "/logs"], ""),
+    join([git, "/worktrees"], ""),
+    join([git, "/packed-refs"], ""),
   ]
+}
+
+fn dispatch_worker_writable_path_list(instance: HostDashboardInstance, working_directory: String, scratch_directory: String) -> List<String> {
+  concat(
+    [working_directory, scratch_directory],
+    dispatch_worker_git_writable_paths(instance: instance),
+  )
 }
 
 fn dispatch_worker_writable_paths(instance: HostDashboardInstance, working_directory: String, scratch_directory: String) -> String {

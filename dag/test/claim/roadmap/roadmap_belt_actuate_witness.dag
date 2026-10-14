@@ -3,7 +3,7 @@ module test.claim.roadmap.roadmap_belt_actuate_witness
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
-import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_outcome_with_release }
+import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_outcome_with_release, belt_commit_git_argv }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
@@ -3487,4 +3487,13 @@ test fn the_belt_addresses_the_attempt_its_spawn_commands_were_built_for() -> Bo
       }
     }
   }
+}
+
+// A worker-planted post-commit hook must not be the hooksPath belt_commit_git uses: command-line
+// `-c core.hooksPath=/dev/null` wins over repository and worktree config (git-config(1)).
+test fn belt_commit_git_does_not_use_a_worker_planted_hooks_path() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  let wire = join(belt_commit_git_argv(instance: inst, args: ["commit", "-q", "-m", "probe"]).args, separator: "\0")
+  string_contains(s: wire, pattern: "core.hooksPath=/dev/null")
+    && string_contains(s: wire, pattern: "core.fsmonitor=false")
 }
