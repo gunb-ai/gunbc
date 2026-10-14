@@ -28,6 +28,8 @@ import v2.compiler.source_root_eval {
   NativeLaneUniverseModule,
   native_demand_eval_identity,
   native_demand_infer_identity,
+  native_demand_binding,
+  native_demand_occurrence_census_contract,
   native_demand_plan,
   native_demand_resolve_identity,
   native_demand_cost_class,
@@ -76,11 +78,22 @@ fn g_one_module_plan() -> NativeDemandPlan {
   )
 }
 
-// ONE MODULE WITH THREE DECLARATIONS IS FIVE DEMANDS, NOT ONE. The stages are separate demands
-// because a module whose resolution refuses must leave its identities blocked on a NAMED refused
-// prerequisite, and that is only observable if the prerequisite is its own demand.
+// ONE MODULE WITH THREE DECLARATIONS IS SIX DEMANDS, NOT ONE. A module has three stage demands --
+// resolve, infer and the occurrence census -- and one eval demand per declaration. The stages are
+// separate demands because a module whose resolution refuses must leave its identities blocked on
+// a NAMED refused prerequisite, and that is only observable if the prerequisite is its own demand.
+// The count was five before the occurrence census became a stage of the plan; the census binding
+// is asserted by identity so a count that merely happens to be six cannot stand in for it.
 test fn a_module_derives_one_demand_per_stage_and_one_per_declaration_holds() -> Bool {
-  length(xs: g_one_module_plan().bindings) == 5
+  let plan = g_one_module_plan()
+  length(xs: plan.bindings) == 6
+    && match native_demand_binding(
+      plan: plan,
+      id: native_demand_occurrence_census_contract(module: "p.a", compiler: g_compiler()).demand_identity
+    ) {
+      Present { value: _ } => true
+      Absent => false
+    }
 }
 
 // ONLY THE ROOT OF THE CHAIN IS READY AT THE START. If infer or eval were ready before resolve

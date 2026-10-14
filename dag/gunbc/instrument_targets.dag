@@ -7,7 +7,6 @@ import gunbc.target_binding {
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
   BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
-  FloorMemoryQualificationProducer,
   TypedGraphExclusiveBytesProducer,
   TypedGraphExclusiveBytesFloorSubjectProducer,
   CompileCleanDiagnosticCensusProducer,
@@ -102,20 +101,9 @@ fn heads_reading_differential_label() -> Label {
   }
 }
 
-// THE FLOOR'S MEMORY DEMAND, QUALIFIED. The subject is the required-floor PROCESS -- not any
-// function inside it -- which is why the reading is taken by a supervisor from outside rather than
-// by anything the floor itself emits. See `gunbc.floor_memory_demand` for why an in-process
-// observer cannot report the two terminations that matter most.
-fn floor_memory_qualification_label() -> Label {
-  Label {
-    package: instruments_package()
-    target: TargetName { name: "floor-memory-qualification" }
-  }
-}
-
 // THE TYPED GRAPH'S BYTES BY CLASS, LEAVE-ONE-OUT: what removing each class would save, which the
 // floor's sequential attribution cannot say (a late class is credited nodes it shared). A different
-// observation from floor-memory-qualification's demand verdict, over its own subject.
+// observation from the floor's demand verdict, over its own subject.
 fn typed_graph_exclusive_bytes_label() -> Label {
   Label {
     package: instruments_package()
@@ -807,13 +795,6 @@ fn primitive_egress_census_dag_binding() -> TargetBinding {
   TargetBinding { target: primitive_egress_census_dag_label() producer: PrimitiveEgressCensusDagProducer {} }
 }
 
-fn floor_memory_qualification_binding() -> TargetBinding {
-  TargetBinding {
-    target: floor_memory_qualification_label()
-    producer: FloorMemoryQualificationProducer {}
-  }
-}
-
 fn typed_graph_exclusive_bytes_binding() -> TargetBinding {
   TargetBinding {
     target: typed_graph_exclusive_bytes_label()
@@ -903,7 +884,7 @@ fn instrument_targets() -> List<Label> {
     compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(), v2_native_census_scoped_label(), type_declaration_use_census_label(), native_process_memory_census_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
-    primitive_egress_census_seed_label(), floor_memory_qualification_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
+    primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
     self_host_behavioral_equivalence_label(), dependency_demand_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
@@ -922,7 +903,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(), v2_native_census_scoped_binding(), type_declaration_use_census_binding(), native_process_memory_census_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
-    primitive_egress_census_seed_binding(), floor_memory_qualification_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
+    primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
     self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
