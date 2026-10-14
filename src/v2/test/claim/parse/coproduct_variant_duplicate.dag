@@ -20,7 +20,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // parse and normalize their own source in-process, touching no live tree.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// C2 (gunbc#): the Disj (coproduct) fold refuses a type declaration whose children do not carry
+// C2 (gunbc#13999): the Disj (coproduct) fold refuses a type declaration whose children do not carry
 // pairwise distinct AUTHORED names. A coproduct variant is authored by name, so a repeated name IS
 // a repeated variant. The refusal is a TYPED, LOCATED diagnostic -- reason
 // ^sugar_reason_duplicate_variant_name, at a DeclarationLocus naming the enclosing TYPE and the
