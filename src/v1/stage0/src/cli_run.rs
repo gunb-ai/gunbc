@@ -9898,12 +9898,8 @@ mod closure_edge_demand_tests {
                 .join("\n"),
         };
         assert!(
-            err.contains("ghost")
-                || err.contains("not found")
-                || err.contains("unresolved")
-                || err.contains("undefined")
-                || err.contains("blocking"),
-            "missing qualified provider must refuse rather than resolve from fill: {err}"
+            err.contains("ghost.provider"),
+            "missing qualified provider must refuse naming ghost.provider, not a generic failure: {err}"
         );
     }
 
