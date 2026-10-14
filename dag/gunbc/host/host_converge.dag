@@ -818,13 +818,6 @@ fn user_manager_instance_unit() -> String {
   join(["user@", to_string(gunbc_service_uid), ".service"], "")
 }
 
-fn user_manager_backstop_knobs() -> List<ConvergeKnob> {
-  match user_work_pool_slots() {
-    BeltMaxConcurrentNotNatural { authored: _ } => []
-    UserWorkPoolSlotsDerived { slots } => user_manager_backstop_knobs_from_slots(slots: slots)
-  }
-}
-
 fn user_manager_backstop_knobs_from_slots(slots: Nat) -> List<ConvergeKnob> {
   let work_max = user_work_slice_memory_max_of(slots: slots)
   let backstop = user_slice_backstop_memory_max_of(work_slice_max: work_max)
@@ -867,14 +860,6 @@ fn user_manager_backstop_for(host: HostIdentity) -> UserManagerBackstop {
         UserWorkPoolSlotsDerived { slots } =>
           UserManagerBackstopDerived { knobs: user_manager_backstop_knobs_from_slots(slots: slots) }
       }
-  }
-}
-
-fn user_manager_backstop_knobs_for(host: HostIdentity) -> List<ConvergeKnob> {
-  match user_manager_backstop_for(host: host) {
-    UserManagerBackstopNotOwed => []
-    UserManagerBackstopDerived { knobs } => knobs
-    UserManagerBackstopRefused { cause: _ } => []
   }
 }
 

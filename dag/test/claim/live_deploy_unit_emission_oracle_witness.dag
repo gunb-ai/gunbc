@@ -1,7 +1,6 @@
 module test.claim.live_deploy_unit_emission_oracle_witness
 
 import std.types { Bool, String, NonEmptyStr, CommitSha, List, Port }
-import std.optional { Present, Absent }
 import std.measure { ByteSize, byte_size_count, second_count }
 import std.layout { render }
 import gunbc.live_deploy.slice_bounds {
@@ -48,7 +47,6 @@ import gunbc.live_deploy.emit {
   repository_convergence_slice_unit_file,
   emit_repository_convergence_slice_unit_doc,
   user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused,
-  emit_user_work_slice_unit_doc,
   live_deploy_approval_broker_unit_file,
   emit_tree_remote_unit_doc,
   tree_remote_convergence_oneshot,
@@ -112,6 +110,7 @@ import extdeps.systemd.unit_file {
   WantedBy,
   SystemdSliceDirective,
   DirectiveByteCount,
+  serialize_systemd_unit_file,
 }
 import gunbc.host.host_layout { belt_spawn_workdir_env_var, attempt_exit_inbox_dir, publication_answer_dir, publication_refused_dir }
 
@@ -422,16 +421,12 @@ test fn the_user_work_slice_carries_pool_derived_bounds_and_forbids_swap() -> Bo
       match user_work_slice_unit_file() {
         UserWorkSliceUnitFileRefused { cause: _ } => false
         UserWorkSliceUnitFileReady { file } =>
-          match emit_user_work_slice_unit_doc() {
-            Absent => false
-            Present { value: doc } =>
-              match user_work_slice_memory_high_of(memory_max: max) {
-                UserWorkSliceHighGapExceedsMax => false
-                UserWorkSliceHighDerived { bytes: high } =>
-                  slice_has_bytes(file: file, target: max, as_max: true)
-                    && slice_has_bytes(file: file, target: high, as_max: false)
-                    && string_contains(s: render(doc: doc, proto: live_deploy_protocol), pattern: join(["MemorySwapMax=", to_string(byte_size_count(b: user_work_slice_memory_swap_max))], ""))
-              }
+          match user_work_slice_memory_high_of(memory_max: max) {
+            UserWorkSliceHighGapExceedsMax => false
+            UserWorkSliceHighDerived { bytes: high } =>
+              slice_has_bytes(file: file, target: max, as_max: true)
+                && slice_has_bytes(file: file, target: high, as_max: false)
+                && string_contains(s: serialize_systemd_unit_file(file: file), pattern: join(["MemorySwapMax=", to_string(byte_size_count(b: user_work_slice_memory_swap_max))], ""))
           }
       }
     }

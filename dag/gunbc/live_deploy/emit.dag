@@ -1564,13 +1564,6 @@ fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
   }
 }
 
-fn emit_user_work_slice_unit_doc() -> Doc? {
-  match user_work_slice_unit_file() {
-    UserWorkSliceUnitFileRefused { cause: _ } => none
-    UserWorkSliceUnitFileReady { file } => Present { value: doc_text(text: serialize_systemd_unit_file(file: file)) }
-  }
-}
-
 fn apply_user_work_slice_install_steps() -> List<PipelineStep> {
   match user_work_slice_unit_file() {
     UserWorkSliceUnitFileRefused { cause } => [
