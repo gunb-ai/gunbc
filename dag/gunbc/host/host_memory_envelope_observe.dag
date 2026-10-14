@@ -1,7 +1,7 @@
 module gunbc.host.host_memory_envelope_observe
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.measure { ByteSize, byte_size, byte_size_count, kibibyte, kibibyte_to_byte_size }
+import std.measure { ByteSize, byte_size_count, kibibyte, kibibyte_to_byte_size }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.optional { Present }
 import product.host_identity { HostIdentity }
@@ -22,7 +22,7 @@ import gunbc.actions_run_binding {
 }
 import extdeps.linux.procfs
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo, ProcMeminfo }
-import extdeps.systemd { MemoryMax, MemoryHigh, MemoryCurrent, SystemdUnitProperty }
+import extdeps.systemd { MemoryMax, MemoryHigh, MemoryCurrent, MemorySwapMax, SystemdUnitProperty }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
@@ -34,13 +34,21 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 
 data host_memory_envelope_receipt_path: String = "target/host-memory-envelope-observe.txt"
 
-data gunbc_srv1_sleek_owl_397_envelope_readings_note: String = "FIRST TYPED RECEIPTS of this observe shape. 2026-10-14T00:10:39Z is gunbc_srv1_memory_envelope_sleek_owl_397_first: MemTotal/MemAvailable/SwapTotal/SwapFree, 11 active runner units, and MemoryCurrent/High/Max on gunbc.slice, sessions.slice, user.slice, and system-actions-runner.slice, transcribed from sleek-owl-397's sanctioned read-only read (standing TranscribedUncited naming that session and instant). 2026-10-14T00:11:39Z is the second instant (gunbc* leaf slices); its numeric table was named but not supplied in the manager paste, so no leaf currents are authored here (DESIGN 4d)."
+data gunbc_srv1_sleek_owl_397_envelope_readings_note: String = "FIRST TYPED RECEIPTS of this observe shape, transcribed from sleek-owl-397 sanctioned read-only reads on srv1 (standing TranscribedUncited naming that session and instant). 2026-10-14T00:10:39Z is gunbc_srv1_memory_envelope_sleek_owl_397_first (meminfo, 11 runners, four named slices). 2026-10-14T00:11:39Z is gunbc_srv1_memory_envelope_sleek_owl_397_second (gunbc* slice MemoryCurrent/High/Max/SwapMax). Unbounded limits are the systemd show spelling infinity."
 
 type SliceMemoryReading {
   slice_unit: NonEmptyStr
   memory_current_raw: String
   memory_high_raw: String
   memory_max_raw: String
+  memory_swap_max_raw: String
+}
+
+type HostSliceMemoryCensus {
+  host: HostIdentity
+  probed_at: NonEmptyStr
+  slice_readings: List<SliceMemoryReading>
+  standing: CitedFigureStanding
 }
 
 type HostMemoryEnvelopeObservation {
@@ -136,6 +144,22 @@ fn slice_property_raw(unit: NonEmptyStr, property: SystemdUnitProperty) -> Strin
   }
 }
 
+fn slice_memory_reading(
+  slice_unit: NonEmptyStr,
+  memory_current_raw: String,
+  memory_high_raw: String,
+  memory_max_raw: String,
+  memory_swap_max_raw: String,
+) -> SliceMemoryReading {
+  SliceMemoryReading {
+    slice_unit: slice_unit,
+    memory_current_raw: memory_current_raw,
+    memory_high_raw: memory_high_raw,
+    memory_max_raw: memory_max_raw,
+    memory_swap_max_raw: memory_swap_max_raw,
+  }
+}
+
 fn slice_memory_reading_from_unit(unit: NonEmptyStr) -> SliceMemoryReading? {
   match slice_property_raw(unit: unit, property: MemoryCurrent) {
     Absent => none
@@ -146,13 +170,18 @@ fn slice_memory_reading_from_unit(unit: NonEmptyStr) -> SliceMemoryReading? {
           match slice_property_raw(unit: unit, property: MemoryMax) {
             Absent => none
             Present { value: max_raw } =>
-              Present {
-                value: SliceMemoryReading {
-                  slice_unit: unit,
-                  memory_current_raw: current_raw,
-                  memory_high_raw: high_raw,
-                  memory_max_raw: max_raw,
-                }
+              match slice_property_raw(unit: unit, property: MemorySwapMax) {
+                Absent => none
+                Present { value: swap_raw } =>
+                  Present {
+                    value: slice_memory_reading(
+                      slice_unit: unit,
+                      memory_current_raw: current_raw,
+                      memory_high_raw: high_raw,
+                      memory_max_raw: max_raw,
+                      memory_swap_max_raw: swap_raw,
+                    )
+                  }
               }
           }
       }
@@ -329,7 +358,7 @@ data gunbc_srv1_sleek_owl_397_first_standing: CitedFigureStanding = TranscribedU
 }
 
 data gunbc_srv1_sleek_owl_397_second_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "sleek-owl-397 sanctioned read-only gunbc* leaf-slice MemoryCurrent/MemoryHigh/MemoryMax on srv1 at 2026-10-14T00:11:39Z; the manager named that instant and population, and the numeric table was not in the paste that named it" as NonEmptyStr
+  read_obligation: "sleek-owl-397 sanctioned read-only gunbc* slice MemoryCurrent/MemoryHigh/MemoryMax/MemorySwapMax on srv1 at 2026-10-14T00:11:39Z" as NonEmptyStr
 }
 
 data gunbc_srv1_memory_envelope_sleek_owl_397_first: HostMemoryEnvelopeObservation = HostMemoryEnvelopeObservation {
@@ -341,32 +370,33 @@ data gunbc_srv1_memory_envelope_sleek_owl_397_first: HostMemoryEnvelopeObservati
   swap_free: kibibyte_to_byte_size(k: kibibyte(count: 248930848)),
   active_runner_unit_count: 11,
   slice_readings: [
-    SliceMemoryReading {
-      slice_unit: "gunbc.slice" as NonEmptyStr,
-      memory_current_raw: "87153995776",
-      memory_high_raw: "",
-      memory_max_raw: "",
-    },
-    SliceMemoryReading {
-      slice_unit: "sessions.slice" as NonEmptyStr,
-      memory_current_raw: "29314482176",
-      memory_high_raw: "120259084288",
-      memory_max_raw: "137438953472",
-    },
-    SliceMemoryReading {
-      slice_unit: "user.slice" as NonEmptyStr,
-      memory_current_raw: "175093350400",
-      memory_high_raw: "infinity",
-      memory_max_raw: "infinity",
-    },
-    SliceMemoryReading {
-      slice_unit: "system-actions-runner.slice" as NonEmptyStr,
-      memory_current_raw: "129190301696",
-      memory_high_raw: "",
-      memory_max_raw: "",
-    },
+    slice_memory_reading(slice_unit: "gunbc.slice" as NonEmptyStr, memory_current_raw: "87153995776", memory_high_raw: "", memory_max_raw: "", memory_swap_max_raw: ""),
+    slice_memory_reading(slice_unit: "sessions.slice" as NonEmptyStr, memory_current_raw: "29314482176", memory_high_raw: "120259084288", memory_max_raw: "137438953472", memory_swap_max_raw: ""),
+    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current_raw: "175093350400", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: ""),
+    slice_memory_reading(slice_unit: "system-actions-runner.slice" as NonEmptyStr, memory_current_raw: "129190301696", memory_high_raw: "", memory_max_raw: "", memory_swap_max_raw: ""),
   ],
   standing: gunbc_srv1_sleek_owl_397_first_standing,
+}
+
+data gunbc_srv1_memory_envelope_sleek_owl_397_second: HostSliceMemoryCensus = HostSliceMemoryCensus {
+  host: operator_host_srv1,
+  probed_at: gunbc_srv1_memory_envelope_sleek_owl_397_second_probed_at,
+  standing: gunbc_srv1_sleek_owl_397_second_standing,
+  slice_readings: [
+    slice_memory_reading(slice_unit: "gunbc-approval-broker.slice" as NonEmptyStr, memory_current_raw: "11381518336", memory_high_raw: "19327352832", memory_max_raw: "21474836480", memory_swap_max_raw: "0"),
+    slice_memory_reading(slice_unit: "gunbc-approval.slice" as NonEmptyStr, memory_current_raw: "11381784576", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: "infinity"),
+    slice_memory_reading(slice_unit: "gunbc-microvm-controller.slice" as NonEmptyStr, memory_current_raw: "12288", memory_high_raw: "25769803776", memory_max_raw: "25769803776", memory_swap_max_raw: "0"),
+    slice_memory_reading(slice_unit: "gunbc-microvm.slice" as NonEmptyStr, memory_current_raw: "278528", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: "infinity"),
+    slice_memory_reading(slice_unit: "gunbc-repository-convergence.slice" as NonEmptyStr, memory_current_raw: "23638016", memory_high_raw: "21474836480", memory_max_raw: "25769803776", memory_swap_max_raw: "0"),
+    slice_memory_reading(slice_unit: "gunbc-repository.slice" as NonEmptyStr, memory_current_raw: "23904256", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: "infinity"),
+    slice_memory_reading(slice_unit: "gunbc-roadmap.slice" as NonEmptyStr, memory_current_raw: "46256783360", memory_high_raw: "52613349376", memory_max_raw: "56908316672", memory_swap_max_raw: "0"),
+    slice_memory_reading(slice_unit: "gunbc-srv1-lab-codex-feedback-v0.slice" as NonEmptyStr, memory_current_raw: "29943910400", memory_high_raw: "52613349376", memory_max_raw: "56908316672", memory_swap_max_raw: "0"),
+    slice_memory_reading(slice_unit: "gunbc-srv1-lab-codex-feedback.slice" as NonEmptyStr, memory_current_raw: "29944963072", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: "infinity"),
+    slice_memory_reading(slice_unit: "gunbc-srv1-lab-codex.slice" as NonEmptyStr, memory_current_raw: "29945491456", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: "infinity"),
+    slice_memory_reading(slice_unit: "gunbc-srv1-lab.slice" as NonEmptyStr, memory_current_raw: "29946281984", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: "infinity"),
+    slice_memory_reading(slice_unit: "gunbc-srv1.slice" as NonEmptyStr, memory_current_raw: "29948121088", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: "infinity"),
+    slice_memory_reading(slice_unit: "gunbc.slice" as NonEmptyStr, memory_current_raw: "87612194816", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: "infinity"),
+  ],
 }
 
 fn hermetic_envelope_standing() -> CitedFigureStanding {

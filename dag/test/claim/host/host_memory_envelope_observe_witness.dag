@@ -8,18 +8,8 @@ data envelope_meminfo_without_available: String = "MemTotal:       16777216 kB\n
 
 fn hermetic_slice_pair() -> List<SliceMemoryReading> {
   [
-    SliceMemoryReading {
-      slice_unit: "system.slice" as NonEmptyStr,
-      memory_current_raw: "1",
-      memory_high_raw: "infinity",
-      memory_max_raw: "infinity",
-    },
-    SliceMemoryReading {
-      slice_unit: "user.slice" as NonEmptyStr,
-      memory_current_raw: "2",
-      memory_high_raw: "infinity",
-      memory_max_raw: "infinity",
-    },
+    slice_memory_reading(slice_unit: "system.slice" as NonEmptyStr, memory_current_raw: "1", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: "0"),
+    slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current_raw: "2", memory_high_raw: "infinity", memory_max_raw: "infinity", memory_swap_max_raw: "0"),
   ]
 }
 
@@ -130,12 +120,34 @@ test fn witness_sleek_owl_397_first_receipt_carries_the_sanctioned_srv1_values()
     && standing_is_sleek_owl_first(s: obs.standing)
 }
 
-test fn witness_sleek_owl_397_second_instant_names_the_leaf_read_without_invented_currents() -> Bool {
-  match gunbc_srv1_sleek_owl_397_second_standing {
-    TranscribedUncited { read_obligation: o } =>
-      string_contains(s: o as String, pattern: "2026-10-14T00:11:39Z")
-        && string_contains(s: o as String, pattern: "gunbc*")
-    CitedToAuthority { authority: _ } => false
-    ObservedByReceipt { observed: _ } => false
-  }
+test fn witness_sleek_owl_397_second_receipt_carries_the_sanctioned_gunbc_slice_values() -> Bool {
+  let census = gunbc_srv1_memory_envelope_sleek_owl_397_second
+  host_identity_eq(a: census.host, b: operator_host_srv1)
+    && (census.probed_at as String) == "2026-10-14T00:11:39Z"
+    && length(census.slice_readings) == 13
+    && any(census.slice_readings, r =>
+      (r.slice_unit as String) == "gunbc-roadmap.slice"
+        && r.memory_current_raw == "46256783360"
+        && r.memory_high_raw == "52613349376"
+        && r.memory_max_raw == "56908316672"
+        && r.memory_swap_max_raw == "0")
+    && any(census.slice_readings, r =>
+      (r.slice_unit as String) == "gunbc.slice"
+        && r.memory_current_raw == "87612194816"
+        && r.memory_high_raw == "infinity"
+        && r.memory_max_raw == "infinity"
+        && r.memory_swap_max_raw == "infinity")
+    && any(census.slice_readings, r =>
+      (r.slice_unit as String) == "gunbc-approval-broker.slice"
+        && r.memory_current_raw == "11381518336"
+        && r.memory_high_raw == "19327352832"
+        && r.memory_max_raw == "21474836480"
+        && r.memory_swap_max_raw == "0")
+    && match census.standing {
+      TranscribedUncited { read_obligation: o } =>
+        string_contains(s: o as String, pattern: "sleek-owl-397")
+          && string_contains(s: o as String, pattern: "2026-10-14T00:11:39Z")
+      CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { observed: _ } => false
+    }
 }
