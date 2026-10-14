@@ -1,6 +1,6 @@
 module test.claim.materialization_store_witness
 
-import std.judgment_contract { identity_structural_component, identity_digest_component, identity_component_canonical }
+import std.judgment_contract { length_prefixed_encode, identity_structural_component, identity_digest_component, identity_component_canonical }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
@@ -302,13 +302,39 @@ test fn a_corrupted_payload_is_an_integrity_refusal() -> Bool {
     && store_lookup_is_hit(l: lookup_present(req: bundle_req(), object: good))
 }
 
-// the empty diagnostics part is recorded with size 0; claim 1 instead
+// The empty diagnostics part is recorded with size 0, and the object records that size in TWO
+// places: the `part` line and the length-prefixed result_preimage header (result_content_canonical).
+// A size edited in only one is a self-inconsistent object, which the store refuses earlier as
+// malformed (see the companion below). The contract this claim is about -- a part size edited in
+// the manifest against the bytes the payloads actually have -- is reached only when both copies
+// agree on the tampered size, so both are edited.
+fn tampered_diagnostics_part_digest() -> String {
+  payload_part(payload: ArtifactPayload { id: output_module_preparation_diagnostics, content: "" }).digest.digest as String
+}
+
+fn diagnostics_part_line_with_size_0() -> String {
+  join(["part", output_module_preparation_diagnostics as String, tampered_diagnostics_part_digest()], " ")
+}
+
+// digest field, size field "0", then the empty payload field, each length-prefixed
+fn diagnostics_preimage_segment(size: String) -> String {
+  concat(concat(length_prefixed_encode(s: tampered_diagnostics_part_digest()), length_prefixed_encode(s: size)), length_prefixed_encode(s: ""))
+}
+
 test fn a_tampered_part_size_is_an_integrity_refusal() -> Bool {
   let good = prepared_object(req: bundle_req(), payloads: bundle_payloads())
-  let parts_line = join(["part", output_module_preparation_diagnostics as String, payload_part(payload: ArtifactPayload { id: output_module_preparation_diagnostics, content: "" }).digest.digest as String], " ")
-  let tampered = replace(good, concat(parts_line, " 0"), concat(parts_line, " 1"))
+  let part_tampered = replace(good, concat(diagnostics_part_line_with_size_0(), " 0"), concat(diagnostics_part_line_with_size_0(), " 1"))
+  let tampered = replace(part_tampered, diagnostics_preimage_segment(size: "0"), diagnostics_preimage_segment(size: "1"))
   (tampered == good) == false
+    && (tampered == part_tampered) == false
     && store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: tampered)) == "contract_wrong_content"
+}
+
+test fn a_part_size_tampered_in_one_recorded_copy_is_malformed() -> Bool {
+  let good = prepared_object(req: bundle_req(), payloads: bundle_payloads())
+  let tampered = replace(good, concat(diagnostics_part_line_with_size_0(), " 0"), concat(diagnostics_part_line_with_size_0(), " 1"))
+  (tampered == good) == false
+    && store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: tampered)) == "malformed"
 }
 
 test fn a_truncated_object_is_malformed_not_incomplete() -> Bool {

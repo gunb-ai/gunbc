@@ -133,6 +133,23 @@ fn systemctl_daemon_reload_argv() -> List<String> {
   ["systemctl", "daemon-reload"]
 }
 
+// THE USER MANAGER IS A DIFFERENT MANAGER, AND DAEMON-RELOAD IS PER MANAGER. `systemctl daemon-reload`
+// reloads ONLY the system manager. Units under /etc/systemd/user/ are loaded by user@UID.service;
+// --user transients look up Slice= there (gunbc.live_deploy.spec gunbc_user_work_slice_unit_path).
+// Apply runs elevated as root, so bare `systemctl --user daemon-reload` would reload root's user
+// manager -- a different object. `--machine=UID@` is systemctl(1)'s local-user connector: it
+// reaches that UID's user manager without restarting user@UID.service (a restart would kill every
+// --user transient the slice exists to bound). The machine word is one argv element so the `@`
+// cannot re-parse as a separate token.
+fn systemctl_user_daemon_reload_argv(uid: Int) -> List<String> {
+  [
+    "systemctl",
+    "--user",
+    concat("--machine=", concat(to_string(uid), "@")),
+    "daemon-reload",
+  ]
+}
+
 // ENABLE AND START ARE TWO VERBS AND TWO ROWS, AND THE SPELLINGS ARE HOISTED BECAUSE A THIRD
 // CONSUMER ARRIVED. These argv builders spelled their verbs inline while
 // gunbc.executor_privileged_operation needs the same words to build an ABSOLUTE-path argv that a

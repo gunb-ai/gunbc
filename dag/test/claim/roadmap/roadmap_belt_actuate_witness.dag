@@ -11,7 +11,7 @@ import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
-import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessExited, WorkerProcessRunning, WorkerProcessUnobserved }
+import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessExited, WorkerProcessRunning, WorkerProcessSignaled, WorkerProcessUnobserved }
 import std.types { String, Int, List, Bool }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
@@ -220,7 +220,7 @@ import gunbc.roadmap.roadmap_attempt_occurrence {
 import gunbc.roadmap.roadmap_launch_admission { occurrence_census_row }
 
 import gunbc.roadmap.roadmap_belt_actuate {
-  SupervisorConveneGate, ConveneClear, ConveneAlreadyLive, ConveneExitedNoVerdict, ConveneLivenessUnobserved,
+  SupervisorConveneGate, ConveneClear, ConveneAlreadyLive, ConveneExitedNoVerdict, ConveneSignaledNoVerdict, ConveneLivenessUnobserved,
   belt_supervisor_convene_gate, belt_supervisor_checkpoint_lines, belt_supervisor_convene_brief,
   SupervisorConvened,
   BeltSpawnRoute, SpawnRouteWorker, SpawnRouteSupervisor, SpawnRouteNone, belt_spawn_route_for_decision,
@@ -2695,6 +2695,10 @@ test fn the_convene_gate_admits_once_and_never_stacks() -> Bool {
     })
     && (match belt_supervisor_convene_gate(process: WorkerProcessExited { exit_code: 1, last_command: "u" }) {
       ConveneExitedNoVerdict { exit_code } => exit_code == 1
+      _ => false
+    })
+    && (match belt_supervisor_convene_gate(process: WorkerProcessSignaled { signal: 9, last_command: "u" }) {
+      ConveneSignaledNoVerdict { signal } => signal == 9
       _ => false
     })
     && (match belt_supervisor_convene_gate(process: WorkerProcessUnobserved { reason: "systemctl refused" as NonEmptyStr }) {

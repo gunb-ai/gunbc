@@ -1,6 +1,7 @@
 module extdeps.languages.json.grammar
 
 import std.types { String, brand }
+import std.optional { Absent, Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 

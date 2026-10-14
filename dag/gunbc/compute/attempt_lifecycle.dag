@@ -385,15 +385,50 @@ type AttemptTransition
   | AttemptLostRace { expected: String, observed: String }
   | AttemptTransitionRefused { detail: String }
 
-fn attempt_commit_bytes(root: NonEmptyStr, record: AttemptRecord, expected: CasExpectation) -> AttemptTransition
+// ONE SEALED WRITER FOR EVERY PAYLOAD. The bytes are the codec's; the store still keys by the
+// reservation reference and records only the state the transition named. AttemptRecord and
+// CredentialAcquisitionRecord each supply a codec; neither reimplements the CAS.
+type AttemptPayloadCodec<P> {
+  encode: fn(P) -> String
+  decode: fn(String) -> P?
+  reference_of: fn(P) -> String
+  state_of: fn(P) -> AttemptState
+  with_state: fn(P, AttemptState) -> P
+  opened_at: fn(P) -> EpochSecs
+  launch_deadline: fn(P) -> EpochSecs
+}
+
+fn attempt_record_reference(r: AttemptRecord) -> String { r.reference }
+fn attempt_record_state(r: AttemptRecord) -> AttemptState { r.state }
+fn attempt_record_opened_at(r: AttemptRecord) -> EpochSecs { r.opened_at }
+fn attempt_record_launch_deadline(r: AttemptRecord) -> EpochSecs { r.launch_deadline }
+
+fn attempt_record_codec() -> AttemptPayloadCodec<AttemptRecord> {
+  AttemptPayloadCodec {
+    encode: attempt_record_wire,
+    decode: attempt_record_decode,
+    reference_of: attempt_record_reference,
+    state_of: attempt_record_state,
+    with_state: attempt_record_with_state,
+    opened_at: attempt_record_opened_at,
+    launch_deadline: attempt_record_launch_deadline,
+  }
+}
+
+fn attempt_commit_bytes(
+  root: NonEmptyStr,
+  reference: NonEmptyStr,
+  state: AttemptState,
+  payload: NonEmptyStr,
+  expected: CasExpectation,
+) -> AttemptTransition
   admit_callers: [
-    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open"),
-    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_advance"),
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open_payload"),
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_advance_payload"),
   ]
 {
-  let payload = attempt_record_wire(r: record) as NonEmptyStr
   match admit_cas_attempt(attempt: cas_attempt(
-    key: record.reference as NonEmptyStr,
+    key: reference,
     expected: expected,
     proposed: payload,
     proposed_content: content_hash_of_value(value: payload),
@@ -403,7 +438,7 @@ fn attempt_commit_bytes(root: NonEmptyStr, record: AttemptRecord, expected: CasE
     CasAttemptDigestIncomparable { claimed: _, actual: _ } => AttemptTransitionRefused { detail: "the attempt record's digest was incomparable" }
     CasAttemptAdmitted { verified: v } =>
       match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
-        CasCommitted { committed: c } => AttemptAdvanced { state: record.state, generation: c.generation }
+        CasCommitted { committed: c } => AttemptAdvanced { state: state, generation: c.generation }
         CasPreconditionFailed { expected: e, observed: o } =>
           AttemptLostRace {
             expected: match e { ExpectSlotGeneration { generation: g } => join(["generation ", to_string(value: cas_generation_count(g: g))], "")  ExpectSlotAbsent => "an absent slot" },
@@ -445,12 +480,19 @@ fn attempt_commit_bytes(root: NonEmptyStr, record: AttemptRecord, expected: CasE
 // mysterious reclaim.
 data compute_pre_launch_ceiling_seconds: Seconds = 300
 
-fn attempt_advance(
+fn attempt_advance_payload<P>(
   root: NonEmptyStr,
   reference: NonEmptyStr,
   expected: CasGeneration,
   next_state: AttemptState,
-) -> AttemptTransition {
+  codec: AttemptPayloadCodec<P>,
+) -> AttemptTransition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_advance"),
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_begin_launch_payload"),
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_terminate_payload"),
+  ]
+{
   match observe_cas_slot_state(root: root, key: reference) {
     CasObservedUnreadable { cause: c } =>
       AttemptTransitionRefused { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
@@ -459,33 +501,79 @@ fn attempt_advance(
         CasReadableAbsent =>
           AttemptLostRace { expected: join(["generation ", to_string(value: cas_generation_count(g: expected))], ""), observed: "an absent slot" }
         CasReadablePresent { version: v } =>
-          match attempt_record_decode(text: v.value as String) {
+          match codec.decode(v.value as String) {
             Absent =>
               AttemptTransitionRefused {
                 detail: join(["the attempt slot at generation ", to_string(value: cas_generation_count(g: v.generation)), " holds a record this fold cannot decode"], ""),
               }
             Present { value: rec } =>
-              if rec.reference != (reference as String) {
+              if codec.reference_of(rec) != (reference as String) {
                 AttemptTransitionRefused {
-                  detail: join(["the attempt slot keyed ", reference as String, " names reference ", rec.reference], ""),
+                  detail: join(["the attempt slot keyed ", reference as String, " names reference ", codec.reference_of(rec)], ""),
+                }
+              } else if cas_generation_count(g: v.generation) != cas_generation_count(g: expected) {
+                AttemptLostRace {
+                  expected: join(["generation ", to_string(value: cas_generation_count(g: expected))], ""),
+                  observed: join(["generation ", to_string(value: cas_generation_count(g: v.generation))], ""),
                 }
               } else {
-                attempt_commit_bytes(
-                  root: root,
-                  record: attempt_record_with_state(r: rec, state: next_state),
-                  expected: ExpectSlotGeneration { generation: expected })
+                match next_state {
+                  AttemptLaunching =>
+                    match codec.state_of(rec) {
+                      AttemptReserved =>
+                        attempt_commit_bytes(
+                          root: root,
+                          reference: reference,
+                          state: next_state,
+                          payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
+                          expected: ExpectSlotGeneration { generation: expected })
+                      AttemptLaunching =>
+                        AttemptTransitionRefused { detail: "begin_launch requires AttemptReserved" }
+                      AttemptTerminal { verdict: _, detail: _ } =>
+                        AttemptTransitionRefused { detail: "begin_launch requires AttemptReserved" }
+                    }
+                  AttemptReserved =>
+                    AttemptTransitionRefused { detail: "advance will not rewrite a slot back to Reserved" }
+                  AttemptTerminal { verdict: _, detail: _ } =>
+                    attempt_commit_bytes(
+                      root: root,
+                      reference: reference,
+                      state: next_state,
+                      payload: codec.encode(codec.with_state(rec, next_state)) as NonEmptyStr,
+                      expected: ExpectSlotGeneration { generation: expected })
+                }
               }
           }
       }
   }
 }
 
+fn attempt_advance(
+  root: NonEmptyStr,
+  reference: NonEmptyStr,
+  expected: CasGeneration,
+  next_state: AttemptState,
+) -> AttemptTransition {
+  attempt_advance_payload(
+    root: root,
+    reference: reference,
+    expected: expected,
+    next_state: next_state,
+    codec: attempt_record_codec())
+}
+
 // OPENING: the attempt declares itself Reserved, and it must be the FIRST writer of this reference.
 // ExpectSlotAbsent is what makes a duplicated reference a refusal rather than a silent overwrite of
 // somebody else's attempt. Unit and grant are established here and never resupplied on later
 // transitions.
-fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
-  let declared = record.launch_deadline - record.opened_at
+fn attempt_open_payload<P>(root: NonEmptyStr, record: P, codec: AttemptPayloadCodec<P>) -> AttemptTransition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open"),
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_open"),
+  ]
+{
+  let reserved = codec.with_state(record, AttemptReserved)
+  let declared = codec.launch_deadline(reserved) - codec.opened_at(reserved)
   if declared > compute_pre_launch_ceiling_seconds {
     AttemptTransitionRefused {
       detail: join([
@@ -497,35 +585,83 @@ fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
   } else if declared < 0 {
     AttemptTransitionRefused {
       detail: join([
-        "the attempt declared a launch deadline of ", to_string(value: record.launch_deadline),
-        " which precedes the instant it opened, ", to_string(value: record.opened_at),
+        "the attempt declared a launch deadline of ", to_string(value: codec.launch_deadline(reserved)),
+        " which precedes the instant it opened, ", to_string(value: codec.opened_at(reserved)),
         "; a window that has already closed would be reclaimable the moment it is written",
       ], ""),
     }
   } else {
     attempt_commit_bytes(
       root: root,
-      record: attempt_record_with_state(r: record, state: AttemptReserved),
+      reference: codec.reference_of(reserved) as NonEmptyStr,
+      state: AttemptReserved,
+      payload: codec.encode(reserved) as NonEmptyStr,
       expected: ExpectSlotAbsent)
   }
+}
+
+fn attempt_open(root: NonEmptyStr, record: AttemptRecord) -> AttemptTransition {
+  attempt_open_payload(root: root, record: record, codec: attempt_record_codec())
 }
 
 // THE LAUNCH GATE. Called BEFORE the reader is admitted, never after. It reads the current slot,
 // changes only state, and re-encodes the unit and grant the open wrote. A caller cannot hand
 // another unit or grant into this generation.
+fn attempt_begin_launch_payload<P>(
+  root: NonEmptyStr,
+  reference: NonEmptyStr,
+  expected: CasGeneration,
+  codec: AttemptPayloadCodec<P>,
+) -> AttemptTransition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_begin_launch"),
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_begin_launch"),
+  ]
+{
+  attempt_advance_payload(
+    root: root,
+    reference: reference,
+    expected: expected,
+    next_state: AttemptLaunching,
+    codec: codec)
+}
+
 fn attempt_begin_launch(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration) -> AttemptTransition {
-  attempt_advance(root: root, reference: reference, expected: expected, next_state: AttemptLaunching)
+  attempt_begin_launch_payload(root: root, reference: reference, expected: expected, codec: attempt_record_codec())
 }
 
 // THE TERMINAL TRANSITION. Carries the verdict AND why, so the generation that records the end also
 // records the reason -- history the next reader can act on rather than a bare flag. Same read and
 // state-only rewrite as begin_launch: unit and grant are not parameters.
-fn attempt_terminate(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration, verdict: AttemptVerdict, detail: String) -> AttemptTransition {
-  attempt_advance(
+fn attempt_terminate_payload<P>(
+  root: NonEmptyStr,
+  reference: NonEmptyStr,
+  expected: CasGeneration,
+  verdict: AttemptVerdict,
+  detail: String,
+  codec: AttemptPayloadCodec<P>,
+) -> AttemptTransition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_terminate"),
+    decl_ref(module_path: "gunbc.dispatch_credential_acquisition", decl_name: "credential_terminate"),
+  ]
+{
+  attempt_advance_payload(
     root: root,
     reference: reference,
     expected: expected,
-    next_state: AttemptTerminal { verdict: verdict, detail: detail })
+    next_state: AttemptTerminal { verdict: verdict, detail: detail },
+    codec: codec)
+}
+
+fn attempt_terminate(root: NonEmptyStr, reference: NonEmptyStr, expected: CasGeneration, verdict: AttemptVerdict, detail: String) -> AttemptTransition {
+  attempt_terminate_payload(
+    root: root,
+    reference: reference,
+    expected: expected,
+    verdict: verdict,
+    detail: detail,
+    codec: attempt_record_codec())
 }
 
 fn attempt_transition_wire(t: AttemptTransition) -> String {

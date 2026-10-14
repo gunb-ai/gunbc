@@ -11,6 +11,8 @@ import v2.workflow.floor_discovery {
   floor_discovery_request_identity,
 }
 import std.optional { Absent, Present }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // The transport is a host-effect boundary, not a second discovery implementation. It sequences the
 // existing typed Git/filesystem observations and hands their results to
@@ -176,3 +178,15 @@ fn floor_discovery_transport_observe(
     TransportReady => TransportReady
   }
 }
+
+data nfr_reason_floor_discovery_transport: String = "typed transport-state projection: the observation coproduct's non-applicable variants share one located refusal arm at each phase; enumerating them would duplicate the same wrong-phase refusal rather than add semantic coverage. Declared with the transport boundary so the ratchet remains armed."
+
+data nfr_dissolve_floor_discovery_transport: DissolutionCondition = unbound_dissolution(description: "generated transport realization derives wrong-phase refusal from the observation-state partition and the shared arms become named total cases; the row deletes with the hand-Rust transport scaffold")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "floor_discovery_transport_observe" },
+      reason: nfr_reason_floor_discovery_transport,
+      dissolution: nfr_dissolve_floor_discovery_transport,
+    },
+]
