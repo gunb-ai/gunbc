@@ -4,7 +4,7 @@ import extdeps.tools.env { env_absolute_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.measure { ByteSize }
 import std.materialization_store_grant {
-  MaterializationStoreRoot, DurableHostVolumeRoot, EphemeralHostVolumeRoot,
+  MaterializationStoreRoot, DurableHostVolume, JobWorkspaceScoped, EphemeralJobWorkspace,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
@@ -957,7 +957,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     toolchain: macbook_local_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: macbook_local_directory_owner,
-    materialization_store_root: DurableHostVolumeRoot { root: dashboard_instance_child(root: macbook_local_instance_root, child: "materialization-store") as String },
+    materialization_store_root: JobWorkspaceScoped,
   }
 }
 
@@ -1059,7 +1059,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
-    materialization_store_root: DurableHostVolumeRoot { root: "/var/lib/gunbc/materialization-store" },
+    materialization_store_root: DurableHostVolume,
   }
 }
 
@@ -1156,7 +1156,7 @@ fn isolated_dashboard_instance(
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
-    materialization_store_root: DurableHostVolumeRoot { root: dashboard_instance_child(root: root, child: "materialization-store") as String },
+    materialization_store_root: JobWorkspaceScoped,
   }
 }
 
@@ -1295,7 +1295,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
-    materialization_store_root: DurableHostVolumeRoot { root: dashboard_instance_child(root: srv2_deploy_instance_root, child: "materialization-store") as String },
+    materialization_store_root: JobWorkspaceScoped,
   }
 }
 
@@ -1426,7 +1426,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, toolchain_h
     toolchain: toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: fleet_compute_hermetic_directory_owner,
-    materialization_store_root: EphemeralHostVolumeRoot { root: dashboard_instance_child(root: instance_root, child: "materialization-store") as String },
+    materialization_store_root: EphemeralJobWorkspace,
   }
 }
 

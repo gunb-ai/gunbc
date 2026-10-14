@@ -87,7 +87,7 @@ test fn a_direct_slot_settle_is_an_admission_refusal() -> Bool {
 // spelled with different budgets, and a clean-sweep proof cannot be spelled for a sweep that never ran.
 data forged_capability_source: String = "module probe_store_forged_capability\nimport extdeps.realization.materialization_store_local { LocalStoreCapability, LocalStorePreOpen }\nfn forged(p: LocalStorePreOpen, c: LocalStoreCapability) -> LocalStoreCapability {\n  LocalStoreCapability { binding: p.binding, sweep: c.sweep }\n}\n"
 
-data forged_binding_source: String = "module probe_store_forged_binding\nimport extdeps.realization.materialization_store_local { LocalStoreBinding, LocalStoreCapability }\nfn forged(c: LocalStoreCapability) -> LocalStoreBinding {\n  LocalStoreBinding { root: c.binding.root, store: c.binding.store, budgets: [] }\n}\n"
+data forged_binding_source: String = "module probe_store_forged_binding\nimport extdeps.realization.materialization_store_local { LocalStoreBinding, LocalStoreCapability }\nfn forged(c: LocalStoreCapability) -> LocalStoreBinding {\n  LocalStoreBinding { root: c.binding.root, scope_root: c.binding.scope_root, store: c.binding.store, budgets: [] }\n}\n"
 
 data forged_clean_sweep_source: String = "module probe_store_forged_clean_sweep\nimport extdeps.realization.materialization_store_local { LocalStoreCleanSweep }\nfn forged() -> LocalStoreCleanSweep {\n  LocalStoreCleanSweep { removed: [], releases: [] }\n}\n"
 

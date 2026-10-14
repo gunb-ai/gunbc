@@ -1267,13 +1267,13 @@ fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
     },
     OwnedDirectoryDeclared {
       member: "materialization-store" as NonEmptyStr,
-      path: materialization_store_root_path(root: store) as NonEmptyStr,
+      path: materialization_store_root_path(root: store, scope_root: "") as NonEmptyStr,
       owner: owner,
       mode: DirectoryOwnerAllEveryoneTraverse,
     },
     OwnedDirectoryDeclared {
       member: "materialization-store-staging" as NonEmptyStr,
-      path: materialization_store_staging_root_path(root: store) as NonEmptyStr,
+      path: materialization_store_staging_root_path(root: store, scope_root: "") as NonEmptyStr,
       owner: owner,
       mode: DirectoryOwnerAllEveryoneTraverse,
     },
