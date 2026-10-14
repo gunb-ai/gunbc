@@ -1,0 +1,65 @@
+module test.claim.declared_type_inhabitance_list_typed_value_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// ReadsLiveTree: compile_dag_diagnostic_census walks the live checkout.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE PRODUCTION SHAPE (srv1, 2026-10-11 / operator plan 2026-10-13): a typed List VALUE whose
+// ELEMENT type disagrees with the formal, passed at a direct-call argument. Confirmed caller:
+// dispatch_worker_unit_properties_for_plan returns List<SystemdRunProperty>;
+// session_placement_record_write declares unit_properties: List<String>. That is not a list
+// LITERAL with a wrong element (already measured in
+// test.claim.declared_type_inhabitance_direct_call_witness
+// w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused). It is list-typed-value
+// compatibility: both sides are List applications, the disagreement is the type argument.
+//
+// PATH SCOPE (DESIGN 4b, minimum across in-scope paths): this file asserts source -> seed
+// acceptance through compile_dag_diagnostic_census, the same infer the `gunbc compile` typecheck
+// uses. An entry compile of this exact pair on main bd509bb84e7 refused
+// DeclaredTypeNotInhabited at PositionGenericTypeArgument
+// (`declared 'Primitive(String)', produced 'Product(RunProp)'`, exit 1). NOT claimed: the
+// emitted v2-native compiler judging authored source (that binary is not in this change's
+// required closure). v2.std.inhabitance declared_type_inhabitance decides the same pair by
+// exact structural equality of Instantiation nodes; that relation is claimed in
+// v2.test.claim.compiler.infer_application_argument_inhabitance_witness, not here.
+//
+// THE LIVE CALLER ALREADY CONVERTS. belt_session_container_create maps each property through
+// systemd_run_property_assignment before the write. The GREEN arm is that conversion, not the
+// raw list.
+
+fn blocking_of_class(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data list_product_at_list_string_source: String = "module probe_list_typed_value_mismatch\nimport std.types { String, List, Int }\ntype RunProp { name: String, value: String }\nfn write(unit_properties: List<String>) -> Int { 1 }\nfn props() -> List<RunProp> { [RunProp { name: \"MemoryMax\", value: \"1\" }] }\nfn probe() -> Int { write(unit_properties: props()) }\n"
+
+data list_product_converted_to_string_source: String = "module probe_list_typed_value_converted\nimport std.types { String, List, Int }\ntype RunProp { name: String, value: String }\nfn write(unit_properties: List<String>) -> Int { 1 }\nfn assignment(p: RunProp) -> String { concat(p.name, concat(\"=\", p.value)) }\nfn props() -> List<RunProp> { [RunProp { name: \"MemoryMax\", value: \"1\" }] }\nfn probe() -> Int { write(unit_properties: map(props(), p => assignment(p))) }\n"
+
+test fn a_list_of_product_at_a_list_of_string_argument_is_refused() -> Bool {
+  blocking_of_class(source: list_product_at_list_string_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+test fn mapping_each_product_to_a_string_at_a_list_of_string_argument_is_accepted() -> Bool {
+  blocking_total(source: list_product_converted_to_string_source) == 0
+}

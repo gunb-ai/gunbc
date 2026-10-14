@@ -3,7 +3,7 @@ import std.coercion { unicode_scalar_unfold }
 import std.types { Char, List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
-import v2.std.algebra_structure_signature { boolean_algebra_node, free_monoid_structure_node, ordered_ring_node }
+import v2.std.algebra_structure_signature { boolean_algebra_node, equivalence_node, free_monoid_structure_node, ordered_ring_node }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured, TargetEmitHostRuntimeRow }
@@ -238,6 +238,7 @@ import v2.extdeps.languages.fidelity {
   FidelityDisposition,
   Modeled
 }
+import v2.extdeps.languages.dag_surface_item_standing { dag_surface_item_standing }
 
 data dag_source_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 
@@ -902,7 +903,6 @@ fn emit_grammar_relation_row(
 }
 }
 
-
 fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   grammar_expr_terminal(token_class: token_class)
 }
@@ -1174,9 +1174,9 @@ fn dag_grammar_generic_param_expr() -> GrammarExpr {
 // of `name: T <tail>` before `name: T`, both led by the same binding name. The tail is a refinement
 // (optionally followed by a default) or a default; the two start with `where` and `=`, so that inner
 // choice is disjoint. A plain parameter captures `name: (T, <empty>)`, which
-// v2.compiler.body_lowering_fold body_lower_typed_param_optional reads. A refinement does not lower:
-// the fn refuses at the clause (body_lowering_reason_parameter_refinement_unmodeled). A default lowers
-// onto the parameter's binder (XL-2 PR2c-ii).
+// v2.compiler.body_lowering_fold body_lower_typed_param_optional reads. A where clause is the
+// parameter's lowered type through body_lower_kept_where_clause (the type-variant reader). A default
+// lowers onto the parameter's binder (XL-2 PR2c-ii).
 fn dag_grammar_typed_param_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_value_name_before(follow: dag_grammar_terminal(token_class: ^dag_token_colon)),
@@ -1418,8 +1418,8 @@ fn dag_grammar_field_decl_expr() -> GrammarExpr {
 }
 
 // A FIELD MAY REFINE ITS TYPE WITH A WHERE CLAUSE (`n: Int where range(min: 0)`), in v1 parse_field's
-// order: type, refinement, wire key, default. It PARSES, and every lowering of a field REFUSES at the
-// clause (body_lowering_reason_field_refinement_unmodeled), the parameter precedent
+// order: type, refinement, wire key, default. It PARSES, and lowering carries the clause on the
+// field's type through body_lower_kept_where_clause (the type-variant reader).
 // (dag_grammar_typed_param_expr): the clause is the first slot of the tail, optional and led by `where`,
 // which neither `from` nor `=` can begin, so the three optional slots are disjoint and left-factored.
 // A field: the general field plus v1 parse_field's `[from "key"] [= default]` tail, which v1 admits on
@@ -1892,16 +1892,25 @@ fn dag_grammar_postfix_as_suffix_expr() -> GrammarExpr {
 // An index suffix `[e]` is a postfix step beside the dotted and cast ones, so `xs[i]` is ONE
 // postfix expression. Before it the suffix did not exist and `xs[i]` parsed as `xs` followed by the
 // list literal `[i]`, two juxtaposed expressions that lowering read as the first alone or as a
-// second statement -- a silent misread (DESIGN section 5). v1 reads a `[` after any complete
-// operand as an index (02_parse parse_postfix, ExprIndex), so the juxtaposition this production
-// claims was never a program v1 accepted; the only reading it removes is that one. A slice `[a..b]`
-// has no production and refuses at parse, as it did.
+// second statement -- a silent misread (DESIGN section 5). A slice `[a..b]` has no production and
+// refuses at parse, as it did.
+//
+// THE `[` IS ON THE OPERAND'S LINE. v1 reads a `[` as an index only when it is the very next token
+// after a complete operand (02_parse parse_postfix, ExprIndex), and v1's token stream carries the
+// newline, so a `[` that opens the next line is not an index there: it begins the next statement, a
+// list literal. `let wire = f(value: value)` followed on the next line by `[a, b]` is a binding and
+// the block's value (src/v2/std/integer.dag integer_int_to_signed_i32_le_bytes). Without this
+// predicate the suffix read across the line break and parsed it as `f(..)[a, b]` with no body after
+// the let -- a different program, which normalize then refused for the missing body.
 fn dag_grammar_postfix_index_suffix_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
+    left: grammar_expr_not_predicate(element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_lbracket))),
     right: dag_grammar_sequence(
-      left: dag_grammar_expr_list_helper(),
-      right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
+      left: dag_grammar_terminal(token_class: ^dag_token_lbracket),
+      right: dag_grammar_sequence(
+        left: dag_grammar_expr_list_helper(),
+        right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
+      )
     )
   )
 }
@@ -4864,12 +4873,35 @@ fn dag_host_text_free_monoid_inhabitance() -> AlgebraInhabitanceDecl {
   }
 }
 
+// Int and Symbol inhabit Equivalence: `==` and `!=` over them are judged through eq, whose result is Bool. Int's
+// eq is v2.std.integer int_eq, decided by its total order; Symbol's is v2.std.node symbol_eq, identity of the
+// interned symbol. A carrier with no such row has no equality to judge, and a comparison over it is refused
+// as an operand mismatch (v2.compiler.infer infer_transform_binary_infix).
+fn dag_int_equivalence_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = integer_int_type_node()
+  AlgebraInhabitanceDecl {
+    algebra: equivalence_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.std.integer.int_eq"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_symbol_equivalence_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = symbol_type_node()
+  AlgebraInhabitanceDecl {
+    algebra: equivalence_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.std.node.symbol_eq"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
 fn dag_algebra_inhabitance_row_type_params() -> List<Symbol> {
   [^dag_free_monoid_row_element]
 }
 
 fn dag_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance(), dag_free_monoid_free_monoid_inhabitance(), dag_host_text_free_monoid_inhabitance()]
+  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance(), dag_free_monoid_free_monoid_inhabitance(), dag_host_text_free_monoid_inhabitance(),
+   dag_int_equivalence_inhabitance(), dag_symbol_equivalence_inhabitance()]
 }
 
 fn dag_kernel_value_type_binding(row: KernelValueType) -> Optional<Symbol> {
@@ -5440,8 +5472,8 @@ fn dag_string_text_decoded(token_class: Symbol, body: Optional<List<Int>>, occur
   let escape_refusal = dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
   match body {
     Absent => dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
-    Present { value: body } =>
-      match fold(body, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
+    Present { value: scalars } =>
+      match fold(scalars, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
         DagStringDecodeText { text: value } => outcome_accepted(value: value)
         DagStringDecodeEscape { text: _ } => escape_refusal
         DagStringDecodeHex { text: _, digits: _, value: _ } => escape_refusal
@@ -7209,7 +7241,28 @@ fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_import_decl) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_alias_decl) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_data_decl) &&
-  grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_fn_decl)
+  grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_fn_decl) &&
+  dag_grammar_top_level_item_standing_join()
+}
+
+// Every top-level item production's emitted identity has a standing row
+// (`v2.extdeps.languages.dag_surface_item_standing` `dag_surface_item_standing`). A new item
+// production without a row is a join miss, never a silent PlainTypeDecl.
+fn dag_grammar_top_level_item_standing_join() -> Bool {
+  fold_list(
+    xs: dag_grammar_top_level_item_productions(),
+    empty: true,
+    cons: fn(acc, production) {
+      acc && match node_atom_identity_optional(node: production.emitted) {
+        Present { value: id } =>
+          match dag_surface_item_standing(id: id) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
+      }
+    }
+  )
 }
 
 fn dag_round_trip_trivia_fidelity_resolved() -> Bool {
@@ -7224,7 +7277,6 @@ fn dag_round_trip_authorities_ready() -> Bool {
   dag_round_trip_grammar_ready(lm: lm) &&
   dag_round_trip_trivia_fidelity_resolved()
 }
-
 
 fn dag_surface_identity_is_top_level_item(id: Symbol) -> Bool {
   fold_list(

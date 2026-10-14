@@ -3033,31 +3033,6 @@ fn population_parsed_count(report: &str) -> Option<usize> {
         .ok()
 }
 
-/// How many `.dag` files lie under a governed tree directory, walked on disk: the referent the parse
-/// verb's population is joined to. The verb walks the namespaces the layout declares and parses each
-/// module; this reads the directory, so a verb that walked fewer modules than the tree holds cannot
-/// satisfy the join by agreeing with itself.
-fn count_dag_files(root: &Path) -> Result<usize, String> {
-    let mut count = 0;
-    let mut pending = vec![root.to_path_buf()];
-    while let Some(directory) = pending.pop() {
-        let entries = std::fs::read_dir(&directory)
-            .map_err(|e| format!("reading {}: {e}", directory.display()))?;
-        for entry in entries {
-            let entry = entry.map_err(|e| format!("reading {}: {e}", directory.display()))?;
-            let kind = entry
-                .file_type()
-                .map_err(|e| format!("reading {}: {e}", entry.path().display()))?;
-            if kind.is_dir() {
-                pending.push(entry.path());
-            } else if entry.path().extension().is_some_and(|ext| ext == "dag") {
-                count += 1;
-            }
-        }
-    }
-    Ok(count)
-}
-
 /// The number of declared refusals a held parse report says it met, or `None` when it carries no tally,
 /// which the verb never does: it prints the tally even when nothing is declared, so a report without one
 /// is a verb that stopped reporting what it judged. A held report meets EVERY declared refusal, so this
@@ -3110,8 +3085,9 @@ fn population_refusal_framed(stderr: &str, parts: &[&str]) -> bool {
 /// (`v2.cli.population_verbs`) are folds over what the host handed them; claims over those folds
 /// supply the observations, so these walks are the inhabitance that the BUILT binary reads real
 /// directories and decides with the real verdicts -- deleting the integration makes a control here
-/// fail. Both verbs hold over the live governed roots (`dag` and `src/v2`), which is the job these
-/// verbs have on `witnesses`; every other control differs from a holding one in a single fact:
+/// fail. `check-layout` holds over the live governed roots (`dag` and `src/v2`); `parse-population` is
+/// walked over fixture roots only (`gunbc.rung_drop.required_live_root_parse_population_withdrawn`).
+/// Every other control differs from a holding one in a single fact:
 ///
 /// - `parse-population` over the door fixture's root refuses every declared refusal the root does not
 ///   hold (the declaration is an obligation on the walk) and nothing else, and over the materialized
@@ -3171,8 +3147,8 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
         )
     };
 
-    // THE JOB THE VERBS HAVE ON `witnesses`: both hold over the live governed roots.
-    eprintln!("v2-native-cli: population controls — check-layout and parse-population over the live roots");
+    // `check-layout` holds over the live governed roots.
+    eprintln!("v2-native-cli: population controls — check-layout over the live roots");
     let live = [live_dag.as_path(), live_v2.as_path()];
     let layout_live = run_cli_door(binary, &population_argv("check-layout", &live))?;
     if layout_live.status != Some(0)
@@ -3183,33 +3159,12 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
             &layout_live,
         ));
     }
-    let parse_live = run_cli_door(binary, &population_argv("parse-population", &live))?;
-    // THE VERDICT IS THE VERB'S (`v2.cli.population_verbs` `population_parse_report`): a declared refusal
-    // the walk did not meet is a located red the verb reports itself, so the list cannot outlive its files
-    // there. THIS JOIN IS ONLY REDUNDANT EVIDENCE THAT THE VERB JUDGED THE POPULATION IT NAMES: a held
-    // report without its tally, or one whose modules (parsed outright plus refused as declared) are not
-    // the `.dag` files the two trees hold on disk, did not walk the repository, whatever it printed.
-    let walked_files = count_dag_files(&live_dag)? + count_dag_files(&live_v2)?;
-    let declared_live = population_declared_met(&parse_live.stdout);
-    let population_unjudged = match (population_parsed_count(&parse_live.stdout), declared_live) {
-        (Some(parsed), Some(met)) => parsed + met != walked_files,
-        _ => true,
-    };
-    if parse_live.status != Some(0)
-        || !parse_live.stdout.starts_with(POPULATION_PARSES_HEAD)
-        || population_unjudged
-    {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=NativePopulationParseDoesNotHoldOverTheLiveRoots — status={:?} stdout={} stderr={}",
-            parse_live.status,
-            population_excerpt_lines(&parse_live.stdout, 2000),
-            population_excerpt(&parse_live.stderr)
-        ));
-    }
-    eprintln!(
-        "v2-native-cli: live roots — check-layout held; parse-population: {}",
-        parse_live.stdout.trim()
-    );
+    // PARSE-POPULATION IS NOT WALKED OVER THE LIVE ROOTS ON `witnesses`: the whole-population parse cost
+    // ~18 minutes of every run and pushed the required job past its 90-minute cap. A module's parse
+    // verdict outside the two emitted closures is not judged on the required path, which is the loss
+    // `gunbc.rung_drop.required_live_root_parse_population_withdrawn` declares; the fixture roots below still
+    // walk the verb on real directories, so deleting the integration keeps a control red.
+    eprintln!("v2-native-cli: live roots — check-layout held; parse-population not walked over the live roots");
 
     // PARSE: the door root is refused for the declaration alone, the malformed specimen is refused by file.
     let door = run_cli_door(
@@ -3218,8 +3173,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     )?;
     // THE DOOR ROOT HOLDS ONE CLEAN MODULE AND NONE OF THE DECLARED ONES, so the declaration is the only
     // thing that can refuse it: every declared refusal is a module this root does not have, one located
-    // line each, and nothing else is reported (the module it holds parses). The line count is the live
-    // report's own count of met refusals, a join of two runs of the verb on the size of the declaration.
+    // line each, and nothing else is reported (the module it holds parses).
     let door_text = door.stdout.trim();
     let door_declared_unmet = door_text
         .lines()
@@ -3228,16 +3182,14 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     let door_is_only_the_unmet_declaration = !door_text.is_empty()
         && door_text
             .lines()
-            .all(|line| line.contains(POPULATION_UNMET_MARKER))
-        && declared_live == Some(door_declared_unmet);
+            .all(|line| line.contains(POPULATION_UNMET_MARKER));
     // WITH NO DECLARED REFUSAL THE DECLARATION CANNOT REFUSE THE DOOR ROOT: there is no unmet class to
     // report, so the root's one clean module parses and the verb holds with its zero tally. That is the
-    // only reading consistent with the live report (`declared_live == Some(0)`); the unmet-declaration
+    // only reading in which the door root holds; the unmet-declaration
     // arm below runs whenever a class is declared; its discriminating case with a SUPPLIED roster is the claim suite
     // `v2.test.claim.cli.population_verbs` `a_walk_that_never_met_a_declared_refusal_does_not_hold`, since the built
     // binary reads only the compiled roster.
-    let door_holds_with_nothing_declared = declared_live == Some(0)
-        && door.status == Some(0)
+    let door_holds_with_nothing_declared = door.status == Some(0)
         && population_parsed_count(&door.stdout) == Some(1)
         && population_declared_met(&door.stdout) == Some(0);
     if !door_holds_with_nothing_declared
@@ -4198,45 +4150,8 @@ fn run_relaying_as_it_runs(mut command: Command) -> std::io::Result<std::process
 /// printed `accepted_file_advisories` rows do not match refuses, so a receipt saved from this
 /// stdout cannot claim an advisory population it does not carry.
 fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<NativeCensusRun, String> {
-    let terminal = stdout
-        .lines()
-        .rev()
-        .find_map(|line| {
-            serde_json::from_str::<serde_json::Value>(line)
-                .ok()
-                .filter(|v| v.get("_terminal").is_some())
-        })
-        .ok_or_else(|| {
-            format!(
-                "V2-NATIVE-CENSUS REFUSAL cause=NoTerminalMarker — the census run (exit {exit:?}) printed no terminal marker"
-            )
-        })?;
-    if terminal.get("_terminal").and_then(|t| t.as_str()) != Some("complete")
-        || terminal.get("mode").and_then(|m| m.as_str()) != Some("census-infer")
-    {
-        return Err(format!(
-            "V2-NATIVE-CENSUS REFUSAL cause=TerminalNotComplete — {terminal}"
-        ));
-    }
-    let need_u64 = |key: &str| -> Result<u64, String> {
-        terminal.get(key).and_then(|v| v.as_u64()).ok_or_else(|| {
-            format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no {key}: {terminal}")
-        })
-    };
-    let advised_files = need_u64("advised_files")?;
-    let mut advisory_rows = Vec::new();
-    for line in stdout.lines() {
-        if let Some(advised) = serde_json::from_str::<serde_json::Value>(line)
-            .ok()
-            .and_then(|v| v.get("accepted_file_advisories").cloned())
-        {
-            advisory_rows.push(decode_file_advisories_row(&advised, line).map_err(|c| {
-                format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowMalformed — {c}")
-            })?);
-        }
-    }
-    advised_files_agree(advised_files, &advisory_rows)
-        .map_err(|c| format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowsDisagree — {c}"))?;
+    let terminal = decode_census_terminal(stdout, exit, "census-infer")?;
+    let need_u64 = |key: &str| census_terminal_u64(&terminal, key);
     let type_census = terminal
         .get("type_census")
         .and_then(|v| v.as_str())
@@ -4256,10 +4171,434 @@ fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<Native
         file_refusals: need_u64("file_refusals")?,
         residual_rows: need_u64("residual_rows")?,
         modules: need_u64("modules")?,
-        advised_files,
+        advised_files: need_u64("advised_files")?,
         inferred: need_u64("inferred")?,
         infer_refused: need_u64("infer_refused")?,
         type_census,
+    })
+}
+
+fn census_terminal_u64(terminal: &serde_json::Value, key: &str) -> Result<u64, String> {
+    terminal.get(key).and_then(|v| v.as_u64()).ok_or_else(|| {
+        format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no {key}: {terminal}")
+    })
+}
+
+/// THE TERMINAL BOTH CENSUS-INFER WALKS PRINT, decoded once: the last terminal line, required
+/// complete and of the verb that was spawned, with its `advised_files` count checked against the
+/// printed `accepted_file_advisories` rows. A terminal of the other verb refuses, so a scoped run's
+/// stdout can never be read as a whole-corpus receipt or the other way round.
+fn decode_census_terminal(
+    stdout: &str,
+    exit: Option<i32>,
+    mode: &str,
+) -> Result<serde_json::Value, String> {
+    let terminal = stdout
+        .lines()
+        .rev()
+        .find_map(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
+                .filter(|v| v.get("_terminal").is_some())
+        })
+        .ok_or_else(|| {
+            format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=NoTerminalMarker — the census run (exit {exit:?}) printed no terminal marker"
+            )
+        })?;
+    if terminal.get("_terminal").and_then(|t| t.as_str()) != Some("complete")
+        || terminal.get("mode").and_then(|m| m.as_str()) != Some(mode)
+    {
+        return Err(format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=TerminalNotComplete — {terminal}"
+        ));
+    }
+    let advised_files = census_terminal_u64(&terminal, "advised_files")?;
+    let mut advisory_rows = Vec::new();
+    for line in stdout.lines() {
+        if let Some(advised) = serde_json::from_str::<serde_json::Value>(line)
+            .ok()
+            .and_then(|v| v.get("accepted_file_advisories").cloned())
+        {
+            advisory_rows.push(decode_file_advisories_row(&advised, line).map_err(|c| {
+                format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowMalformed — {c}")
+            })?);
+        }
+    }
+    advised_files_agree(advised_files, &advisory_rows)
+        .map_err(|c| format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowsDisagree — {c}"))?;
+    Ok(terminal)
+}
+
+/// WHETHER THE SCOPED RUN'S POPULATION IS THE SUBJECT'S WHOLE CLOSURE, as the terminal states it:
+/// `v2.compiler.compile` `NativeCensusScope`'s two arms, and nothing else. A blocked population is
+/// carried with its block count, never reported as closed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeCensusScopeWord {
+    Closed,
+    Blocked { blocks: u64 },
+}
+
+/// One `census-scoped` run's terminal, decoded: the subject it acquired, whether that closure is
+/// closed or blocked, and the census counts over the acquired population.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeCensusScopedRun {
+    pub subject: String,
+    /// Where this run's completed record was published (`CensusRunRecordFile`).
+    pub record: PathBuf,
+    pub scope: NativeCensusScopeWord,
+    pub cause_groups: u64,
+    pub roots: u64,
+    pub file_refusals: u64,
+    pub residual_rows: u64,
+    pub modules: u64,
+    pub advised_files: u64,
+    pub inferred: u64,
+    pub infer_refused: u64,
+    /// The terminal's comparison word: `compared` against the baseline, or `none` when there was none.
+    pub diff: String,
+}
+
+/// `gunbc test //gunbc/instruments:v2-native-census-scoped`: the emitted compiler's `census-scoped`
+/// verb over the bound subject's acquired closure (gunbc.plans.census_scoped_run). The rows are
+/// relayed whole, as `run_v2_native_census` relays them; the terminal is decoded and its
+/// `subject_label` must be the label this instrument bound, so a run is never reported as another
+/// subject's.
+pub fn run_v2_native_census_scoped(
+    subject_label: &str,
+    source_roots: &[String],
+) -> Result<NativeCensusScopedRun, String> {
+    eprintln!(
+        "{}",
+        host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution())
+    );
+    // THE RECORD EXISTS, INCOMPLETE, BEFORE ANYTHING IS PREPARED (gunbc.plans.census_scoped_run
+    // section 6): every way this run can end short of a decoded terminal -- a refused preparation,
+    // a killed driver, a malformed terminal -- leaves this run's own file reading incomplete.
+    // THE BASELINE IS THE SUBJECT'S MOST RECENT COMPLETED RECORD, chosen before this run's own record
+    // exists so it can never be this run; the driver compares against it (census_run_diff) and the
+    // record names it. No completed record means no comparison, never an empty one.
+    let root = census_run_record_root();
+    let baseline = latest_complete_census_record(&root, subject_label)?;
+    for unreadable in &baseline.unreadable {
+        eprintln!(
+            "v2-native-census-scoped: baseline candidate unreadable, not compared: {unreadable}"
+        );
+    }
+    let against = baseline.chosen.clone();
+    let record = CensusRunRecordFile::open(
+        &root,
+        subject_label,
+        source_roots,
+        std::env::var("GITHUB_SHA").ok(),
+        against.as_deref(),
+        &baseline.unreadable,
+    )?;
+    eprintln!(
+        "v2-native-census-scoped: run record {} (incomplete until the terminal is decoded)",
+        record.path.display()
+    );
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let mut args = vec!["census-scoped".to_string(), subject_label.to_string()];
+    if let Some(baseline) = &against {
+        args.push("--against".to_string());
+        args.push(baseline.display().to_string());
+    }
+    args.extend(source_roots.iter().cloned());
+    let mut command = Command::new(&preparation.binary_path);
+    command.args(&args);
+    let output = run_relaying_as_it_runs(command).map_err(|e| {
+        format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+            preparation.binary_path.display()
+        )
+    })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("V2-NATIVE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
+    })?;
+    let run = decode_native_census_scoped_output(
+        &stdout,
+        output.status.code(),
+        subject_label,
+        &record.path,
+        against.is_some(),
+    )?;
+    record.complete(
+        serde_json::json!({
+            "binary_identity": preparation.binary_identity,
+            "closure_identity": preparation.closure_identity,
+            "seed_identity": preparation.seed_identity,
+            "rustc_identity": preparation.build.rustc_identity,
+        }),
+        &stdout,
+    )?;
+    Ok(run)
+}
+
+/// WHERE SCOPED RUN RECORDS ARE PUBLISHED: one directory under the workspace's build output, named
+/// once here. Each run writes its own file, so a reader never takes an older run's record for this one.
+fn census_run_record_root() -> PathBuf {
+    super::process_workspace_root()
+        .join("target")
+        .join("census-runs")
+}
+
+/// ONE SCOPED RUN'S RECORD FILE (gunbc.plans.census_scoped_run section 6). It is opened incomplete,
+/// naming the run, its subject, its roots and the revision as CLAIMED (`GITHUB_SHA`, or null when no
+/// one claimed one -- the identity rests on the members' content digests, not on the claim), and
+/// `complete` replaces it atomically with the producer's identity and every JSON row the run printed:
+/// the `census_member` digests of the inputs it read, its scope, its rows and its terminal. Nothing is
+/// ever written into the file in place, so a reader sees the incomplete record or the complete one.
+struct CensusRunRecordFile {
+    path: PathBuf,
+    opening: serde_json::Map<String, serde_json::Value>,
+}
+
+impl CensusRunRecordFile {
+    fn open(
+        root: &Path,
+        subject_label: &str,
+        source_roots: &[String],
+        revision_claimed: Option<String>,
+        against: Option<&Path>,
+        baseline_unreadable: &[String],
+    ) -> Result<Self, String> {
+        std::fs::create_dir_all(root).map_err(|cause| {
+            format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=RunRecordUnwritable — creating {}: {cause}",
+                root.display()
+            )
+        })?;
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let run = format!("{nanos}-{}", std::process::id());
+        let path = root.join(format!(
+            "{}{run}.json",
+            census_run_record_prefix(subject_label)
+        ));
+        let mut opening = serde_json::Map::new();
+        opening.insert("record".into(), "census-scoped-run".into());
+        opening.insert("run".into(), run.into());
+        opening.insert("subject_label".into(), subject_label.into());
+        opening.insert("source_roots".into(), source_roots.into());
+        opening.insert(
+            "revision_claimed".into(),
+            revision_claimed
+                .map(serde_json::Value::from)
+                .unwrap_or(serde_json::Value::Null),
+        );
+        opening.insert(
+            "against".into(),
+            against
+                .map(|p| serde_json::Value::from(p.display().to_string()))
+                .unwrap_or(serde_json::Value::Null),
+        );
+        opening.insert("baseline_unreadable".into(), baseline_unreadable.into());
+        let record = CensusRunRecordFile { path, opening };
+        let mut incomplete = record.opening.clone();
+        incomplete.insert("status".into(), "incomplete".into());
+        write_record_atomically(&record.path, &serde_json::Value::Object(incomplete))?;
+        Ok(record)
+    }
+
+    fn complete(&self, producer: serde_json::Value, stdout: &str) -> Result<(), String> {
+        let rows: Vec<serde_json::Value> = stdout
+            .lines()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .filter(|v| v.is_object())
+            .collect();
+        let mut complete = self.opening.clone();
+        complete.insert("status".into(), "complete".into());
+        complete.insert("producer".into(), producer);
+        complete.insert("rows".into(), rows.into());
+        write_record_atomically(&self.path, &serde_json::Value::Object(complete))
+    }
+}
+
+/// The file-name prefix every record of one subject shares, so its runs are found by name alone.
+fn census_run_record_prefix(subject_label: &str) -> String {
+    let slug: String = subject_label
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    format!("census-scoped{slug}-")
+}
+
+/// THE BASELINE CHOICE, with what it could not read kept beside it: "no completed record" and "a
+/// candidate that could not be read" are different answers, so a corrupt or unreadable record is named
+/// (on stderr and in this run's record as `baseline_unreadable`) rather than read as absence.
+struct CensusBaselineChoice {
+    chosen: Option<PathBuf>,
+    unreadable: Vec<String>,
+}
+
+/// THE SUBJECT'S MOST RECENT COMPLETED RECORD under `root`: its own prefix, `status` complete and the
+/// same `subject_label` inside (a slug can be shared by two labels), latest by the run's start time.
+/// An incomplete record -- an interrupted run -- is never a baseline. A root that does not exist yet
+/// holds no record; a root that exists and cannot be listed refuses the run.
+fn latest_complete_census_record(
+    root: &Path,
+    subject_label: &str,
+) -> Result<CensusBaselineChoice, String> {
+    let prefix = census_run_record_prefix(subject_label);
+    let mut choice = CensusBaselineChoice {
+        chosen: None,
+        unreadable: Vec::new(),
+    };
+    let entries = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(choice),
+        Err(cause) => {
+            return Err(format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=RunRecordRootUnreadable — listing {}: {cause}",
+                root.display()
+            ))
+        }
+    };
+    let mut best: Option<u128> = None;
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(cause) => {
+                choice
+                    .unreadable
+                    .push(format!("{}: {cause}", root.display()));
+                continue;
+            }
+        };
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(run) = name
+            .strip_prefix(&prefix)
+            .and_then(|r| r.strip_suffix(".json"))
+        else {
+            continue;
+        };
+        let path = entry.path();
+        let Some(started) = run.split('-').next().and_then(|n| n.parse::<u128>().ok()) else {
+            choice.unreadable.push(format!(
+                "{}: file name carries no run start",
+                path.display()
+            ));
+            continue;
+        };
+        let read = match std::fs::read_to_string(&path)
+            .map_err(|c| c.to_string())
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).map_err(|c| c.to_string()))
+        {
+            Ok(read) => read,
+            Err(cause) => {
+                choice
+                    .unreadable
+                    .push(format!("{}: {cause}", path.display()));
+                continue;
+            }
+        };
+        if read["status"] != "complete" || read["subject_label"] != subject_label {
+            continue;
+        }
+        // COMPLETE MEANS COMPARABLE (review 79938): a completed record the driver could not compare --
+        // one carrying no census_run_comparable row, as every record published before the row existed --
+        // is named, never chosen, so --against is passed only for a record the diff can read.
+        let carries_record = read["rows"].as_array().is_some_and(|rows| {
+            rows.iter()
+                .any(|row| row.get("census_run_comparable").is_some())
+        });
+        if !carries_record {
+            choice.unreadable.push(format!(
+                "{}: completed, but carries no census_run_comparable row to compare",
+                path.display()
+            ));
+            continue;
+        }
+        if best.map_or(true, |t| started > t) {
+            best = Some(started);
+            choice.chosen = Some(path);
+        }
+    }
+    Ok(choice)
+}
+
+/// A sibling file is written in full and synced, then renamed over the record, so an output failure
+/// leaves the previous state of THIS run's file (its incomplete record), never a torn one.
+fn write_record_atomically(path: &Path, value: &serde_json::Value) -> Result<(), String> {
+    use std::io::Write;
+    let unwritable = |cause: std::io::Error| {
+        format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=RunRecordUnwritable — {}: {cause}",
+            path.display()
+        )
+    };
+    let partial = path.with_extension(format!("json.partial.{}", std::process::id()));
+    let mut file = std::fs::File::create(&partial).map_err(unwritable)?;
+    file.write_all(value.to_string().as_bytes())
+        .map_err(unwritable)?;
+    file.write_all(b"\n").map_err(unwritable)?;
+    file.sync_all().map_err(unwritable)?;
+    std::fs::rename(&partial, path).map_err(unwritable)
+}
+
+fn decode_native_census_scoped_output(
+    stdout: &str,
+    exit: Option<i32>,
+    subject_label: &str,
+    record: &Path,
+    against: bool,
+) -> Result<NativeCensusScopedRun, String> {
+    let terminal = decode_census_terminal(stdout, exit, "census-scoped")?;
+    let need_u64 = |key: &str| census_terminal_u64(&terminal, key);
+    let need_str =
+        |key: &str| -> Result<String, String> {
+            terminal.get(key).and_then(|v| v.as_str()).map(str::to_string).ok_or_else(|| {
+            format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no {key}: {terminal}")
+        })
+        };
+    let observed_label = need_str("subject_label")?;
+    if observed_label != subject_label {
+        return Err(format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=SubjectDisagrees — bound {subject_label:?}, observed {observed_label:?}: {terminal}"
+        ));
+    }
+    let scope = match (need_str("acquisition")?.as_str(), need_u64("blocks")?) {
+        ("closed", 0) => NativeCensusScopeWord::Closed,
+        ("blocked", blocks) if blocks > 0 => NativeCensusScopeWord::Blocked { blocks },
+        (word, blocks) => {
+            return Err(format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=ScopeWordUnknown — acquisition {word:?} with {blocks} blocks is neither closed with none nor blocked with some: {terminal}"
+            ))
+        }
+    };
+    // A RUN GIVEN A BASELINE OWES A COMPARISON (review 79938, plan section 7): its terminal's `diff` word
+    // must be `compared`, or the instrument would green a run whose comparison never happened. A run
+    // given none must say `none`.
+    let diff = need_str("diff")?;
+    match (against, diff.as_str()) {
+        (true, "compared") | (false, "none") => {}
+        (true, word) => {
+            return Err(format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=BaselineNotCompared — a baseline was passed and the run's diff is {word:?}, not compared (its census_diff_unavailable or census_run_diff row above says why): {terminal}"
+            ))
+        }
+        (false, word) => {
+            return Err(format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=DiffWithoutBaseline — no baseline was passed and the run's diff is {word:?}: {terminal}"
+            ))
+        }
+    }
+    Ok(NativeCensusScopedRun {
+        subject: need_str("subject")?,
+        record: record.to_path_buf(),
+        scope,
+        cause_groups: need_u64("cause_groups")?,
+        roots: need_u64("roots")?,
+        file_refusals: need_u64("file_refusals")?,
+        residual_rows: need_u64("residual_rows")?,
+        modules: need_u64("modules")?,
+        advised_files: need_u64("advised_files")?,
+        inferred: need_u64("inferred")?,
+        infer_refused: need_u64("infer_refused")?,
+        diff,
     })
 }
 
@@ -5379,6 +5718,272 @@ mod tests {
             summary.contains("advised a.dag reasons=r,s"),
             "got: {summary}"
         );
+    }
+
+    const SCOPED_TERMINAL: &str = "{\"_terminal\":\"complete\",\"mode\":\"census-scoped\",\
+        \"subject_label\":\"//v2/a:all\",\"subject\":\"v2.a\",\"acquisition\":\"blocked\",\"blocks\":2,\
+        \"modules\":3,\"file_refusals\":1,\"advised_files\":0,\"residual_rows\":0,\"cause_groups\":1,\
+        \"roots\":1,\"inferred\":2,\"infer_refused\":0,\"diff\":\"none\"}\n";
+
+    #[test]
+    fn a_scoped_terminal_decodes_its_subject_and_its_blocked_scope() {
+        let run = decode_native_census_scoped_output(
+            SCOPED_TERMINAL,
+            Some(0),
+            "//v2/a:all",
+            Path::new("r.json"),
+            false,
+        )
+        .expect("a complete scoped terminal of the bound subject decodes");
+        assert_eq!(run.subject, "v2.a");
+        assert_eq!(run.scope, NativeCensusScopeWord::Blocked { blocks: 2 });
+        assert_eq!(run.modules, 3);
+    }
+
+    // DISCRIMINATING: the same terminal read for another bound subject refuses, so a run is never
+    // reported as the subject it was not.
+    #[test]
+    fn a_scoped_terminal_of_another_subject_refuses() {
+        let cause = decode_native_census_scoped_output(
+            SCOPED_TERMINAL,
+            Some(0),
+            "//v2/b:all",
+            Path::new("r.json"),
+            false,
+        )
+        .expect_err("a different bound subject refuses");
+        assert!(cause.contains("SubjectDisagrees"), "got: {cause}");
+    }
+
+    // DISCRIMINATING: each verb's decode refuses the other verb's terminal, and a scope word whose
+    // block count contradicts it refuses rather than being read as either arm.
+    #[test]
+    fn the_scoped_and_whole_corpus_terminals_are_not_interchangeable() {
+        assert!(decode_native_census_output(SCOPED_TERMINAL, Some(0)).is_err());
+        let infer = SCOPED_TERMINAL.replace("census-scoped", "census-infer");
+        assert!(decode_native_census_scoped_output(
+            &infer,
+            Some(0),
+            "//v2/a:all",
+            Path::new("r.json"),
+            false
+        )
+        .is_err());
+        let closed_with_blocks = SCOPED_TERMINAL.replace("\"blocked\"", "\"closed\"");
+        let cause = decode_native_census_scoped_output(
+            &closed_with_blocks,
+            Some(0),
+            "//v2/a:all",
+            Path::new("r.json"),
+            false,
+        )
+        .expect_err("closed with blocks refuses");
+        assert!(cause.contains("ScopeWordUnknown"), "got: {cause}");
+    }
+
+    // DISCRIMINATING (review 79938): given a baseline, a run whose diff is not `compared` refuses, and a
+    // run given none must say `none`.
+    #[test]
+    fn a_run_given_a_baseline_refuses_without_a_comparison() {
+        let unavailable = SCOPED_TERMINAL.replace("\"diff\":\"none\"", "\"diff\":\"unavailable\"");
+        let cause = decode_native_census_scoped_output(
+            &unavailable,
+            Some(0),
+            "//v2/a:all",
+            Path::new("r.json"),
+            true,
+        )
+        .expect_err("an unavailable comparison refuses");
+        assert!(cause.contains("BaselineNotCompared"), "got: {cause}");
+        let compared = SCOPED_TERMINAL.replace("\"diff\":\"none\"", "\"diff\":\"compared\"");
+        let run = decode_native_census_scoped_output(
+            &compared,
+            Some(0),
+            "//v2/a:all",
+            Path::new("r.json"),
+            true,
+        )
+        .expect("a compared run decodes");
+        assert_eq!(run.diff, "compared");
+        assert!(decode_native_census_scoped_output(
+            &compared,
+            Some(0),
+            "//v2/a:all",
+            Path::new("r.json"),
+            false
+        )
+        .is_err());
+    }
+
+    // DISCRIMINATING (review 79938): a completed record with no census_run_comparable row is named and not
+    // chosen, so --against is never passed for a record the driver cannot compare.
+    #[test]
+    fn a_completed_record_without_a_record_row_is_not_a_baseline() {
+        let root = scratch_record_root("rowless");
+        let rowless =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("rowless");
+        rowless
+            .complete(serde_json::json!({}), SCOPED_TERMINAL)
+            .expect("rowless completes");
+        let choice = latest_complete_census_record(&root, "//v2/a:all").expect("root lists");
+        assert!(choice.chosen.is_none());
+        assert_eq!(choice.unreadable.len(), 1, "got: {:?}", choice.unreadable);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn scratch_record_root(tag: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("census-run-record-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        root
+    }
+
+    fn read_record(path: &Path) -> serde_json::Value {
+        serde_json::from_str(&std::fs::read_to_string(path).expect("record readable"))
+            .expect("record is one JSON value")
+    }
+
+    // INTERRUPTION BEFORE PUBLICATION (plan section 8): a run that never reaches `complete` -- its
+    // driver killed, its preparation refused -- leaves its own record reading incomplete, with no
+    // rows and no producer to be mistaken for an observation.
+    #[test]
+    fn a_run_record_opened_and_never_completed_reads_incomplete() {
+        let root = scratch_record_root("interrupted");
+        let record =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &["dag".into()], None, None, &[])
+                .expect("record opens");
+        let read = read_record(&record.path);
+        assert_eq!(read["status"], "incomplete");
+        assert_eq!(read["subject_label"], "//v2/a:all");
+        assert!(read["revision_claimed"].is_null());
+        assert!(
+            read.get("rows").is_none() && read.get("producer").is_none(),
+            "got: {read}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // DISCRIMINATING: completion replaces the same run's file whole -- status, producer and every JSON
+    // row the run printed, member digests included -- and leaves no partial sibling behind.
+    #[test]
+    fn a_completed_run_record_replaces_its_incomplete_one_whole() {
+        let root = scratch_record_root("completed");
+        let record = CensusRunRecordFile::open(
+            &root,
+            "//v2/a:all",
+            &["dag".into()],
+            Some("abc".into()),
+            None,
+            &[],
+        )
+        .expect("record opens");
+        let stdout = format!(
+            "{{\"census_member\":{{\"compilation_unit\":\"a.dag\",\"bytes\":3,\"fnv1a64\":\"00\"}}}}\nnot json\n{SCOPED_TERMINAL}"
+        );
+        record
+            .complete(serde_json::json!({ "binary_identity": "b" }), &stdout)
+            .expect("record completes");
+        let read = read_record(&record.path);
+        assert_eq!(read["status"], "complete");
+        assert_eq!(read["revision_claimed"], "abc");
+        assert_eq!(read["producer"]["binary_identity"], "b");
+        let rows = read["rows"].as_array().expect("rows");
+        assert_eq!(rows.len(), 2, "the non-JSON line is not a row: {read}");
+        assert_eq!(rows[0]["census_member"]["compilation_unit"], "a.dag");
+        assert_eq!(rows[1]["_terminal"], "complete");
+        let names: Vec<_> = std::fs::read_dir(&root)
+            .expect("root lists")
+            .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names.len(), 1, "no partial file survives: {names:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // DISCRIMINATING: two runs of one subject publish two files, so neither run's record can be read
+    // as the other's.
+    #[test]
+    fn two_runs_of_one_subject_publish_two_records() {
+        let root = scratch_record_root("two");
+        let first =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("first");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let second =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("second");
+        assert_ne!(first.path, second.path);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // THE BASELINE (plan section 7): the subject's latest COMPLETED record. An interrupted later run and
+    // another subject's record are never chosen, and a run with nothing completed before it has none.
+    #[test]
+    fn the_baseline_is_the_subjects_latest_completed_record() {
+        let root = scratch_record_root("baseline");
+        let none = latest_complete_census_record(&root, "//v2/a:all")
+            .expect("a missing root is no record");
+        assert!(none.chosen.is_none() && none.unreadable.is_empty());
+        let older =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("older");
+        older
+            .complete(
+                serde_json::json!({}),
+                &format!("{{\"census_run_comparable\":{{}}}}\n{SCOPED_TERMINAL}"),
+            )
+            .expect("older completes");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let newer =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("newer");
+        newer
+            .complete(
+                serde_json::json!({}),
+                &format!("{{\"census_run_comparable\":{{}}}}\n{SCOPED_TERMINAL}"),
+            )
+            .expect("newer completes");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let _interrupted = CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[])
+            .expect("interrupted");
+        let other =
+            CensusRunRecordFile::open(&root, "//v2/b:all", &[], None, None, &[]).expect("other");
+        other
+            .complete(
+                serde_json::json!({}),
+                &format!("{{\"census_run_comparable\":{{}}}}\n{SCOPED_TERMINAL}"),
+            )
+            .expect("other completes");
+        let chosen = latest_complete_census_record(&root, "//v2/a:all").expect("root lists");
+        assert_eq!(chosen.chosen, Some(newer.path.clone()));
+        assert!(chosen.unreadable.is_empty());
+        let next =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, Some(&newer.path), &[])
+                .expect("next");
+        assert_eq!(
+            read_record(&next.path)["against"],
+            newer.path.display().to_string()
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // DISCRIMINATING (review 79904): a corrupt candidate is NAMED, not read as "never completed", and the
+    // completed record beside it is still chosen.
+    #[test]
+    fn an_unreadable_baseline_candidate_is_named_not_read_as_absence() {
+        let root = scratch_record_root("corrupt");
+        let done =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("done");
+        done.complete(
+            serde_json::json!({}),
+            &format!("{{\"census_run_comparable\":{{}}}}\n{SCOPED_TERMINAL}"),
+        )
+        .expect("done completes");
+        let corrupt = root.join(format!(
+            "{}99999999999999999999-1.json",
+            census_run_record_prefix("//v2/a:all")
+        ));
+        std::fs::write(&corrupt, "{not json").expect("corrupt written");
+        let choice = latest_complete_census_record(&root, "//v2/a:all").expect("root lists");
+        assert_eq!(choice.chosen, Some(done.path.clone()));
+        assert_eq!(choice.unreadable.len(), 1, "got: {:?}", choice.unreadable);
+        assert!(choice.unreadable[0].contains("99999999999999999999-1.json"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

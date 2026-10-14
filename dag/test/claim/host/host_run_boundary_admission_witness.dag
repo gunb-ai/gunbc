@@ -4,7 +4,6 @@ import std.types { Bool, String, List }
 import std.effect_grant {
   NamespaceTree, UriTree, FilesystemPathTree,
   LifecycleByConstruction, LifecycleByConvention,
-  namespace_tree_eq,
 }
 import std.frame_boundary { BoundaryClosure, BoundaryMaterialization }
 import extdeps.realization.frame_boundary_simulated { simulated_boundary }
@@ -46,7 +45,7 @@ fn is_under_constructed_convention(a: HostRunBoundaryAdmission) -> Bool {
 
 fn is_refused_for(a: HostRunBoundaryAdmission, tree: NamespaceTree) -> Bool {
   match a {
-    HostRunBoundaryRefused { tree: t } => namespace_tree_eq(a: t, b: tree)
+    HostRunBoundaryRefused { tree: t } => t == tree
     HostRunBoundaryAdmitted => false
     HostRunBoundaryUnderConstructed { grade: g } => false
   }

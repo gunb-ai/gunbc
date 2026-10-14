@@ -48,6 +48,7 @@ data larger_hbm_gpu: GpuModelCatalogRow = GpuModelCatalogRow {
   vendor: nvidia_gh200_480gb_catalog.gpu.vendor,
   model: nvidia_gh200_480gb_catalog.gpu.model,
   microarchitecture: nvidia_gh200_480gb_catalog.gpu.microarchitecture,
+  package: nvidia_gh200_480gb_catalog.gpu.package,
   execution_lane_count: nvidia_gh200_480gb_catalog.gpu.execution_lane_count,
   memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 144)), memory_kind: Hbm },
   memory_bandwidth: nvidia_gh200_480gb_catalog.gpu.memory_bandwidth,

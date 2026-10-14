@@ -1,7 +1,9 @@
 module test.claim.provider_standing_probe_bridge_witness
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
-import std.algebra { list_head, HeadFound, HeadAbsent }
+import std.algebra { list_head }
 import extdeps.llm.cli_lifecycle {
   CodexCliProvider,
   ProviderInstance,
@@ -146,9 +148,9 @@ test fn witness_bridge_codex_successful_probes_map_authenticated_not_entitled() 
       _ => false
     }
     && match list_head(xs: bundle.limits) {
-      HeadFound { value: LimitObservationUnobserved { reason } } =>
+      Present { value: LimitObservationUnobserved { reason } } =>
         reason == provider_standing_probe_bridge_limit_unobserved_reason
-      HeadAbsent => false
+      Absent => false
     }
 }
 

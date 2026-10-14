@@ -87,6 +87,7 @@ mod active_workset;
 mod census_heads;
 mod checker_dependency;
 pub use checker_dependency::write_checker_inputs_record;
+mod claim_execution;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
@@ -95,6 +96,7 @@ mod native_lane_runner;
 mod native_product_cache;
 pub mod reach_base_standings;
 pub mod required_ci_measurement;
+pub use claim_execution::*;
 mod required_floor_runner;
 mod required_lane_roster;
 pub mod rostered_row_join;
@@ -106,19 +108,16 @@ pub use native_lane_runner::{
     emitted_build_not_clean_cause, measured_spawn_route, measured_spawn_trampoline,
     run_native_claim_program, run_native_process_memory_runs, run_native_serve_program,
     run_required_v2_native, run_self_host, run_type_declaration_use_census_runs,
-    run_v2_demand_census, run_v2_native_census, run_v2_native_cli, run_v2_native_frontier,
-    CensusInferRun, MeasuredSpawnRoute, NativeCensusRun, NativeChildMeasured,
-    NativeClaimProgramAttempt, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
-    NativeProcessMemoryRuns, NativeRouteOutcome, NativeServeProgramRun, SelfHostHeld,
-    TypeDeclarationUseRuns, V2NativeCliHeld, MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND,
-    MEASURED_SPAWN_RECEIPT_ENV,
+    run_v2_demand_census, run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli,
+    run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
+    NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
+    NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
+    NativeServeProgramRun, SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
+    MEASURED_SPAWN_DIR, MEASURED_SPAWN_OPERAND, MEASURED_SPAWN_RECEIPT_ENV,
 };
 pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
+pub use required_floor_runner::floor_seam;
 pub(crate) use required_floor_runner::*;
-pub use required_floor_runner::{
-    floor_seam, make_eval_context, make_eval_context_with_runtime_options, run_claim_measured,
-    run_required_floor,
-};
 pub use required_lane_roster::{authority_lane_phase_rows, LanePhaseRow};
 mod entry_resolve;
 pub mod pre_entry_phase;
@@ -213,7 +212,9 @@ mod required_regen_host;
 // `gunbc.target_invocation_seed_growth`.
 #[path = "behavioral_receipt_host.rs"]
 pub mod behavioral_receipt_host;
+pub mod cgroup_memory;
 pub mod floor_memory_supervisor;
+pub mod user_work_scope;
 
 #[path = "target_invocation_host.rs"]
 pub mod target_invocation_host;
@@ -2559,6 +2560,7 @@ impl WorkspaceRootBasis {
 pub fn bind_process_workspace_root(
     source_roots: &[String],
 ) -> Result<(PathBuf, WorkspaceRootBasis), String> {
+    user_work_scope::reexec_into_user_work_slice_if_owed();
     if let Some((root, basis)) = PROCESS_WORKSPACE_ROOT.get() {
         return Ok((root.clone(), *basis));
     }
@@ -7150,7 +7152,6 @@ pub struct CompileRun {
     /// Bytes of the resolved closure's sources: the byte half of the population a run measured,
     /// read by the root demand measurement's census.
     pub closure_source_bytes: u64,
-    pub census_modules: usize,
     pub blocking_diagnostics: usize,
     pub advisory_diagnostics: usize,
     pub wall_ms: u128,
@@ -7170,11 +7171,10 @@ impl CompileRun {
     /// state inferable only from the presence of a neighbour.
     pub fn measurement_line(&self, prefix: &str) -> String {
         format!(
-            "{prefix}: {} subject={} closure={} census={} emitted={} blocking={} advisory={} wall_ms={}",
+            "{prefix}: {} subject={} closure={} emitted={} blocking={} advisory={} wall_ms={}",
             self.disposition.tag(),
             self.subject.receipt(),
             self.closure_modules,
-            self.census_modules,
             match &self.disposition {
                 CompileDisposition::Completed { emitted_count } => emitted_count.to_string(),
                 // NOT "0": a transaction that never ran has no emitted count, and a zero
@@ -7190,13 +7190,11 @@ impl CompileRun {
                 CompileDisposition::NotExecuted { .. } => "n/a".to_string(),
             },
             match self.disposition {
-                CompileDisposition::NotExecuted { .. } =>
-                    "n/a".to_string(),
+                CompileDisposition::NotExecuted { .. } => "n/a".to_string(),
                 _ => self.blocking_diagnostics.to_string(),
             },
             match self.disposition {
-                CompileDisposition::NotExecuted { .. } =>
-                    "n/a".to_string(),
+                CompileDisposition::NotExecuted { .. } => "n/a".to_string(),
                 _ => self.advisory_diagnostics.to_string(),
             },
             self.wall_ms,
@@ -7541,7 +7539,6 @@ fn compile_not_executed(
         subject: subject.clone(),
         closure_modules: 0,
         closure_source_bytes: 0,
-        census_modules: 0,
         blocking_diagnostics: 0,
         advisory_diagnostics: 0,
         wall_ms: started.elapsed().as_millis(),
@@ -7870,8 +7867,8 @@ pub fn compile_entry_emission(
 
 /// THE ONE COMPILATION TRANSACTION, parameterized by subject.
 ///
-/// It owns source-root indexing and precedence, subject source-set construction, census-only
-/// fill, memory admission, resolution and compilation, blocking/advisory classification,
+/// It owns source-root indexing and precedence, subject source-set construction,
+/// memory admission, resolution and compilation, blocking/advisory classification,
 /// and the completion/refusal disposition. It formerly also owned silent-pick capture; that
 /// capture and the gate it fed were deleted as permanently green, and the sentence is
 /// corrected here because this is a public contract every modern compile goes through. A caller decodes argv, realizes
@@ -8160,15 +8157,7 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
             }
         }
     };
-    // Everything indexed and outside the closure enters the NAME CENSUS only. This is
-    // what makes the transaction see a parse break anywhere under the source roots. ONE
-    // derivation, shared with the required floor and the XL-1 tap:
-    // compile_clean_census_only_sources_for_compiled keys membership on MODULE PATH
-    // because the closure loader and the index normalize paths differently (review 67039
-    // on gunbc#11461: this arm and the tap each carried a copy, and the copies had already
-    // drifted from the helper in sort order).
-    let options = compile_clean_pipeline_options_for_sources(Some(&index), &closure);
-    let census_modules = options.census_only_sources.len();
+    let options = v1_compiler_compile::default_compile_pipeline_options();
 
     // RESOLVE ONCE, EMIT N TIMES. `compile_sources_with_options` is literally
     // `emit_resolved_for_target ∘ compile_to_resolved_with_options`, so the single-target
@@ -8264,7 +8253,6 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
             .iter()
             .map(|source| source.content.len() as u64)
             .sum(),
-        census_modules,
         blocking_diagnostics: blocking,
         // Derived from one population rather than scanned twice, so the two counts cannot
         // disagree with the total.
@@ -11266,11 +11254,11 @@ pub(crate) struct FloorRouteGapExpectation {
 /// against, not which figure exists.
 ///
 /// Named `RequiredFloorCostBasis`, not the bare `WitnessCostBasis` the ruling's prose uses,
-/// because `std_realization_schedule.rs` already declares a `WitnessCostBasis` for an
-/// unrelated concept (`MeasuredAtExactSubject | EstimatedFromSiblingClass`, a realization
-/// schedule's provenance for a cost figure, not a policy choice of which clock judges a
-/// completed claim). Two same-named public enums in one crate is the exact citation ambiguity
-/// DESIGN.md §3 rules against, so this type is scoped to the one lane that declares it.
+/// because `std.realization_schedule` already names `WitnessCostBasis` for an unrelated
+/// concept (`MeasuredAtExactSubject | EstimatedFromSiblingClass`, a realization schedule's
+/// provenance for a cost figure, not a policy choice of which clock judges a completed
+/// claim). Reusing that name here would be the citation ambiguity DESIGN.md §3 rules
+/// against, so this type is scoped to the one lane that declares it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequiredFloorCostBasis {
     CpuCost,
@@ -15637,7 +15625,7 @@ fn finish_resolved_graph_assembly(
     let effect_analysis =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry);
     // ONE AUTHORITY FOR THE CAUSE-TO-DIAGNOSTIC MAPPING, called rather than mirrored by hand. This
-    // block used to hand-copy `typecheck_with_census_extra`'s five-arm `EffectIncompleteness` match,
+    // block used to hand-copy `typecheck`'s five-arm `EffectIncompleteness` match,
     // three of its message strings verbatim included -- two sources for one fact, which DESIGN §2
     // calls the forked-logic trap and §3 an authority fork, and whose failure is silent: a message
     // edited on one side, or a sixth arm added on one side and defaulted on the other, disagrees
@@ -30293,38 +30281,55 @@ mod nfr_tests {
 
     #[test]
     fn nfr_frontier_reader_follows_synthetic_authority() {
-        let synthetic = "module gunbc.non_fold_residue\n\n\
+        let synthetic = "module a\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow {\n\
-                 subject: PathSubject { path: \"synthetic/a.dag::f\" },\n\
+                 subject: PathSubject { path: \"f\" },\n\
                  reason: shared_reason,\n\
-                 trigger: TriggerProse { text: \"synthetic trigger\" }\n\
+                 dissolution: shared_dissolve\n\
                },\n\
                FrontierRow {\n\
-                 subject: PathSubject { path: \"synthetic/b.dag::g\" },\n\
-                 reason: \"inline reason\",\n\
-                 trigger: TriggerProse { text: shared_trigger }\n\
+                 subject: PathSubject { path: \"g\" },\n\
+                 reason: inline_reason,\n\
+                 dissolution: unbound_dissolution(description: \"d\")\n\
                }\n\
              ]\n";
+        let triples = super::non_fold_residue_triples_from_module_source_with(
+            "a.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        );
         assert_eq!(
-            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic),
-            vec![
-                "synthetic/a.dag::f".to_string(),
-                "synthetic/b.dag::g".to_string()
-            ],
+            triples.iter().map(|t| t.path.as_str()).collect::<Vec<_>>(),
+            vec!["a.dag::f", "a.dag::g"],
             "the frontier reader must FOLLOW the authority, not a hardcoded copy"
+        );
+        assert_eq!(
+            triples
+                .iter()
+                .map(super::nfr_identity_join_line)
+                .collect::<Vec<_>>(),
+            vec![
+                "a.dag::f\tshared_reason\tshared_dissolve".to_string(),
+                "a.dag::g\tinline_reason\tunbound_dissolution".to_string(),
+            ],
+            "the reader must emit the (path, reason ident, dissolution ident) triples the identity join prints"
         );
     }
 
     #[test]
     fn nfr_frontier_reader_refuses_duplicate_unit() {
-        let synthetic = "module gunbc.non_fold_residue\n\n\
+        let synthetic = "module a\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r\", trigger: TriggerProse { text: \"d\" } },\n\
-               FrontierRow { subject: PathSubject { path: \"synthetic/a.dag::f\" }, reason: \"r2\", trigger: TriggerProse { text: \"d2\" } }\n\
+               FrontierRow { subject: PathSubject { path: \"f\" }, reason: r, dissolution: d },\n\
+               FrontierRow { subject: PathSubject { path: \"f\" }, reason: r2, dissolution: d2 }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
+            super::non_fold_residue_units_from_module_source_with(
+                "a.dag",
+                synthetic,
+                super::NfrHomeCheck::Require,
+            )
         }))
         .is_err();
         assert!(
@@ -30335,12 +30340,16 @@ mod nfr_tests {
 
     #[test]
     fn nfr_frontier_reader_refuses_missing_unit_field() {
-        let synthetic = "module gunbc.non_fold_residue\n\n\
+        let synthetic = "module a\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
+               FrontierRow { reason: r, dissolution: d }\n\
              ]\n";
         let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
+            super::non_fold_residue_units_from_module_source_with(
+                "a.dag",
+                synthetic,
+                super::NfrHomeCheck::Require,
+            )
         }))
         .is_err();
         assert!(
@@ -30351,12 +30360,16 @@ mod nfr_tests {
 
     #[test]
     fn nfr_frontier_reader_locates_path_subject_without_path() {
-        let synthetic = "module gunbc.non_fold_residue\n\n\
+        let synthetic = "module a\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
-               FrontierRow { subject: PathSubject { }, reason: \"r\", trigger: TriggerProse { text: \"d\" } }\n\
+               FrontierRow { subject: PathSubject { }, reason: r, dissolution: d }\n\
              ]\n";
         let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            super::non_fold_residue_units_from_module_source("synthetic.dag", synthetic)
+            super::non_fold_residue_units_from_module_source_with(
+                "a.dag",
+                synthetic,
+                super::NfrHomeCheck::Require,
+            )
         }))
         .expect_err("a PathSubject carrying no `path` field must refuse loudly (fail-closed)");
         let message = refusal
@@ -30369,6 +30382,207 @@ mod nfr_tests {
             "the refusal must LOCATE the missing `path` inside the present PathSubject, not \
              report the row as having no `subject` field; got: {message}"
         );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_refuses_row_not_at_home() {
+        let synthetic = "module a\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"b.dag::f\" }, reason: r, dissolution: d }\n\
+             ]\n";
+        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::non_fold_residue_units_from_module_source_with(
+                "a.dag",
+                synthetic,
+                super::NfrHomeCheck::Require,
+            )
+        }))
+        .expect_err("a row whose subject file is not the hosting module must refuse");
+        let message = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default();
+        assert!(
+            message.contains("not at home")
+                && message.contains("a.dag")
+                && message.contains("b.dag::f"),
+            "the refusal must LOCATE the hosting file and the row path; got: {message}"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_accepts_row_at_home() {
+        let synthetic = "module a\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"f\" }, reason: r, dissolution: d }\n\
+             ]\n";
+        let triples = super::non_fold_residue_triples_from_module_source_with(
+            "a.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        );
+        assert_eq!(
+            triples
+                .iter()
+                .map(super::nfr_identity_join_line)
+                .collect::<Vec<_>>(),
+            vec!["a.dag::f\tr\td".to_string()],
+            "a co-located row names only the symbol; the host file supplies the path prefix"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_refuses_coverage_in_extdeps_module() {
+        let synthetic = "module extdeps.git\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"f\" }, reason: r, dissolution: d }\n\
+             ]\n";
+        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::non_fold_residue_units_from_module_source_with(
+                "dag/extdeps/git.dag",
+                synthetic,
+                super::NfrHomeCheck::Require,
+            )
+        }))
+        .expect_err("an upstream module must not host repository coverage rows");
+        let message = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default();
+        assert!(
+            message.contains("coverage state in an upstream module")
+                && message.contains("dag/extdeps/git.dag"),
+            "the refusal must LOCATE the upstream host; got: {message}"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_accepts_extdeps_row_on_observing_host() {
+        let synthetic = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"dag/extdeps/git.dag::f\" }, reason: r, dissolution: d }\n\
+             ]\n";
+        let triples = super::non_fold_residue_triples_from_module_source_with(
+            "dag/gunbc/non_fold_residue.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        );
+        assert_eq!(
+            triples
+                .iter()
+                .map(super::nfr_identity_join_line)
+                .collect::<Vec<_>>(),
+            vec!["dag/extdeps/git.dag::f\tr\td".to_string()],
+            "extdeps coverage receipts live on gunbc.non_fold_residue"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_accepts_seed_mirror_exception_host() {
+        let synthetic = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"dag/std/effects.dag::key_source_eq\" }, reason: r, dissolution: d }\n\
+             ]\n";
+        let triples = super::non_fold_residue_triples_from_module_source_with(
+            "dag/gunbc/non_fold_residue.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        );
+        assert_eq!(
+            triples
+                .iter()
+                .map(super::nfr_identity_join_line)
+                .collect::<Vec<_>>(),
+            vec!["dag/std/effects.dag::key_source_eq\tr\td".to_string()],
+            "seed-mirrored subject paths may be hosted on gunbc.non_fold_residue"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_skips_comment_or_string_mention_without_a_decl() {
+        let comment = "module m\n// data non_fold_residue_frontier: List<FrontierRow> = []\n";
+        assert!(
+            super::non_fold_residue_units_from_module_source_with(
+                "m.dag",
+                comment,
+                super::NfrHomeCheck::Require,
+            )
+            .is_empty(),
+            "a comment mention must be skipped, not refused"
+        );
+        let similarly_named = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier_discovery_note: String = \"data non_fold_residue_frontier\"\n";
+        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::non_fold_residue_units_from_module_source_with(
+                "dag/gunbc/non_fold_residue.dag",
+                similarly_named,
+                super::NfrHomeCheck::Require,
+            )
+        }))
+        .expect_err("a similarly-named data decl must refuse, not skip");
+        let message = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default();
+        assert!(
+            message.contains("near-miss data decl")
+                && message.contains("non_fold_residue_frontier_discovery_note"),
+            "the refusal must LOCATE the near-miss ident; got: {message}"
+        );
+        let comment_then_decl = "module m\n\
+             // `data non_fold_residue_frontier: List<FrontierRow>` in a comment\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"m.dag::f\" }, reason: r, dissolution: d }\n\
+             ]\n";
+        assert_eq!(
+            super::non_fold_residue_units_from_module_source_with(
+                "m.dag",
+                comment_then_decl,
+                super::NfrHomeCheck::Require,
+            ),
+            vec!["m.dag::f".to_string()],
+            "a comment mention must not hide a later real decl"
+        );
+    }
+
+    #[test]
+    fn nfr_live_union_is_populated_unique_and_tripled() {
+        let entries = super::non_fold_residue_roster_entries();
+        assert!(
+            entries.len() >= 100,
+            "live host union must stay populated (got {})",
+            entries.len()
+        );
+        let mut seen = std::collections::BTreeSet::new();
+        for path in entries {
+            assert!(!path.is_empty(), "live union path must be nonempty");
+            assert!(
+                path.contains("::"),
+                "live union path must be a site (file::decl), got {path}"
+            );
+            assert!(
+                seen.insert(path.as_str()),
+                "live union path must be unique, duplicate {path}"
+            );
+        }
+        let triples = super::non_fold_residue_identity_join_triples();
+        assert_eq!(
+            triples.len(),
+            entries.len(),
+            "identity-join triples must cover every live unit"
+        );
+        for t in triples {
+            assert!(!t.path.is_empty());
+            assert!(!t.reason.is_empty(), "reason ident empty for {}", t.path);
+            assert!(
+                !t.dissolution.is_empty(),
+                "dissolution ident empty for {}",
+                t.path
+            );
+        }
     }
 }
 

@@ -2,6 +2,7 @@ module gunbc.worker_lifecycle
 
 import std.types { String, NonEmptyStr, Timestamp, Int }
 import std.integer { PositiveInt }
+import extdeps.posix.signal { linux_standard_signal_render }
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
   ProviderReadiness,
@@ -67,6 +68,23 @@ type WorkerProcessEvidence
   | WorkerProcessAbsent
   | WorkerProcessRunning { command: NonEmptyStr }
   | WorkerProcessExited { exit_code: Int, last_command: String }
+  | WorkerProcessSignaled { signal: Int, last_command: String }
+
+// The observed command, or a refusal: std's Optional carrier applied to this
+// coproduct's inhabitance (A3/A6 house shape). Only WorkerProcessRunning
+// inhabits a command; Unobserved, Absent, and Exited all refuse one (Exited
+// keeps a LAST command as exit evidence, not the fingerprint of a live pane).
+// The consumer folds over the carrier (Present/none) instead of carrying a
+// wildcard over the variant list.
+fn worker_process_observed_command(process: WorkerProcessEvidence) -> NonEmptyStr? {
+  match process {
+    WorkerProcessRunning { command } => Present { value: command }
+    WorkerProcessUnobserved { reason: _ } => none
+    WorkerProcessAbsent => none
+    WorkerProcessExited { exit_code: _, last_command: _ } => none
+    WorkerProcessSignaled { signal: _, last_command: _ } => none
+  }
+}
 
 fn worker_process_evidence_label(evidence: WorkerProcessEvidence) -> String {
   match evidence {
@@ -74,6 +92,7 @@ fn worker_process_evidence_label(evidence: WorkerProcessEvidence) -> String {
     WorkerProcessAbsent => "process absent"
     WorkerProcessRunning { command: _ } => "process running"
     WorkerProcessExited { exit_code: _, last_command: _ } => "process exited"
+    WorkerProcessSignaled { signal: _, last_command: _ } => "process signaled"
   }
 }
 
@@ -87,6 +106,16 @@ fn worker_process_evidence_detail(evidence: WorkerProcessEvidence) -> String {
       join([
         "exit=",
         to_string(exit_code),
+        if last_command == "" {
+          ""
+        } else {
+          join([" last-command=", last_command], "")
+        },
+      ], "")
+    WorkerProcessSignaled { signal, last_command } =>
+      join([
+        "signal=",
+        linux_standard_signal_render(n: signal),
         if last_command == "" {
           ""
         } else {

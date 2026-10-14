@@ -32,6 +32,7 @@ import gunbc.session_reservation_policy {
   allowance_covers_its_evidence, evidence_floor_bytes,
   sizing_against_present_residency, sizing_against_absent_residency,
   srv1_session_aggregate_epoch_peak, srv1_session_aggregate_citation,
+  OperatorCgroupRead, CollectorRevision,
 }
 import gunbc.session_residency { SessionsObservedAbsent }
 import gunbc.ci.ci_runner_placement {
@@ -55,7 +56,7 @@ data fleet: List<HostIdentity> = [
 test fn the_sizing_table_answers_only_how_much() -> Bool {
   let srv1_allows = match session_reservation_sizing_for(host: operator_host_srv1) {
     ReservationAllowance { bytes: b, evidence_floor: _, operator_reason: _ } =>
-      byte_size_count(b: b) == 55834574848
+      byte_size_count(b: b) == 137438953472
     ReservationUnestablished { evidence: _, cause: _ } => false
     ReservationSizingAbsent => false
   }
@@ -113,7 +114,7 @@ test fn a_session_host_with_no_sizing_row_refuses() -> Bool {
 // Asserting only that neither yields bytes would pass against that collapse, so each arm is named.
 test fn the_two_absences_are_distinguishable() -> Bool {
   let srv1_bytes = match session_reservation_bytes(host: operator_host_srv1) {
-    ReservationBytes { bytes: b } => byte_size_count(b: b) == 55834574848
+    ReservationBytes { bytes: b } => byte_size_count(b: b) == 137438953472
     ReservationBytesNotApplicable => false
     ReservationBytesUnestablished { cause: _ } => false
   }
@@ -209,8 +210,12 @@ test fn an_unestablished_denominator_grounds_no_floor() -> Bool {
 // receipt cannot distinguish one invocation from another, which is exactly the failure that made
 // step 4A necessary.
 test fn the_evidence_names_its_execution() -> Bool {
-  srv1_session_aggregate_citation.run_id == "33007869268"
-    && srv1_session_aggregate_citation.metric == "memory.peak"
+  srv1_session_aggregate_citation.observation_id == "local-cgroup-read-srv1-2026-10-14"
+    && match srv1_session_aggregate_citation.origin {
+      OperatorCgroupRead { session } => session == "sleek-owl-397"
+      CollectorRevision { revision: _ } => false
+    }
+    && srv1_session_aggregate_citation.metric == "memory.peak+memory.current"
     && srv1_session_aggregate_citation.host == "srv1"
 }
 
@@ -230,7 +235,10 @@ test fn the_two_empty_knob_answers_are_distinguishable() -> Bool {
       SessionKnobsNotOwed { cause: _ } => false
     }
     && match session_knob_standing_for(host: operator_host_srv1) {
-      SessionKnobsDerived { knobs: ks } => ks.length() > 0
+      SessionKnobsDerived { knobs: ks } =>
+        ks.length() > 0
+          && any(ks, k => k.name == "slice_max_bytes" && k.desired == "137438953472")
+          && any(ks, k => k.name == "slice_high_bytes" && k.desired == "120259084288")
       SessionKnobsNotOwed { cause: _ } => false
       SessionKnobsUngrounded { cause: _ } => false
     }

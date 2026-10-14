@@ -3,9 +3,11 @@ module extdeps.crypto.sha2
 import std.types { Int, List, String }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.integer { qualified_octets }
-import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_shr, word32_rotr, bitwise_pow2, Word64, word64_and, word64_xor, word64_not, word64_add, word64_shr, word64_rotr }
+import std.power_of_two { bitwise_pow2 }
+import std.bitwise { word32_and, word32_xor, word32_not, word32_add, word32_shr, word32_rotr, Word64, word64_and, word64_xor, word64_not, word64_add, word64_shr, word64_rotr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.crypto.md_padding { md_append_octets, md_blocks_64, md_length_octets, md_zero_octets }
 import extdeps.numeric.base16 { base16_encode_lower }
 
 // SHA-256 and SHA-384 per FIPS 180-4 (Secure Hash Standard), computed in the substrate.
@@ -159,39 +161,8 @@ fn sha256_compress(h: Sha256State, block: List<Int>) -> Sha256State {
 // The message, 0x80, the fewest zero octets that leave the length ≡ 56 (mod 64), then the bit length
 // as a 64-bit big-endian integer. Messages are bounded well below 2^53 bits here, so the length's
 // high octets are computed from an Int without overflow.
-fn sha256_zero_octets(n: Int, acc: List<Int>) -> List<Int> {
-  if n <= 0 { acc } else { sha256_zero_octets(n: n - 1, acc: acc |> list_push(0)) }
-}
-
-fn sha256_length_octets(bits: Int) -> List<Int> {
-  [0, 7, 6, 5, 4, 3, 2, 1] |> map(i => if i == 0 { 0 } else { (bits / bitwise_pow2(n: 8 * (i - 1))) % 256 })
-}
-
-fn sha256_padded(message: List<Int>) -> List<Int> {
-  let len = count(message)
-  let zeros = (119 - len % 64) % 64
-  list_append_octets(left: list_append_octets(left: message |> list_push(128), right: sha256_zero_octets(n: zeros, acc: [])), right: sha256_length_octets(bits: len * 8))
-}
-
-fn list_append_octets(left: List<Int>, right: List<Int>) -> List<Int> {
-  fold(right, init: left, f: (acc, o) => acc |> list_push(o))
-}
-
-type Sha256BlockFold {
-  state: Sha256State
-  block: List<Int>
-}
-
-// Compress each full 64-octet block as it completes.
 fn sha256_state_of(message: List<Int>) -> Sha256State {
-  fold(sha256_padded(message: message), init: Sha256BlockFold { state: sha256_initial_state, block: [] }, f: (acc, octet) => {
-    let block = acc.block |> list_push(octet)
-    if count(block) == 64 {
-      Sha256BlockFold { state: sha256_compress(h: acc.state, block: block), block: [] }
-    } else {
-      Sha256BlockFold { state: acc.state, block: block }
-    }
-  }).state
+  fold(md_blocks_64(message: message), init: sha256_initial_state, f: (state, block) => sha256_compress(h: state, block: block))
 }
 
 fn sha256_word_octets(w: Int) -> List<Int> {
@@ -201,7 +172,7 @@ fn sha256_word_octets(w: Int) -> List<Int> {
 // The 32-octet digest, big-endian words a..h.
 fn sha256(message: List<Int>) -> List<Int> {
   let s = sha256_state_of(message: message)
-  fold([s.a, s.b, s.c, s.d, s.e, s.f, s.g, s.h], init: [], f: (acc, w) => list_append_octets(left: acc, right: sha256_word_octets(w: w)))
+  fold([s.a, s.b, s.c, s.d, s.e, s.f, s.g, s.h], init: [], f: (acc, w) => md_append_octets(left: acc, right: sha256_word_octets(w: w)))
 }
 
 // The lowercase hex rendering extdeps.crypto.hash Digest.hex carries.
@@ -397,9 +368,9 @@ fn sha512_compress(h: Sha512State, block: List<Int>) -> Sha512State {
 fn sha512_padded(message: List<Int>) -> List<Int> {
   let len = count(message)
   let zeros = (239 - len % 128) % 128
-  list_append_octets(
-    left: list_append_octets(left: message |> list_push(128), right: sha256_zero_octets(n: zeros + 8, acc: [])),
-    right: sha256_length_octets(bits: len * 8),
+  md_append_octets(
+    left: md_append_octets(left: message |> list_push(128), right: md_zero_octets(n: zeros + 8, acc: [])),
+    right: md_length_octets(bits: len * 8),
   )
 }
 
@@ -420,12 +391,12 @@ fn sha384_state_of(message: List<Int>) -> Sha512State {
 }
 
 fn word64_octets(w: Word64) -> List<Int> {
-  list_append_octets(left: sha256_word_octets(w: w.hi), right: sha256_word_octets(w: w.lo))
+  md_append_octets(left: sha256_word_octets(w: w.hi), right: sha256_word_octets(w: w.lo))
 }
 
 // The 48-octet digest: the leftmost six words a..f of the final state (§6.5 step 3).
 fn sha384(message: List<Int>) -> List<Int> {
   let s = sha384_state_of(message: message)
-  fold([s.a, s.b, s.c, s.d, s.e, s.f], init: [], f: (acc, w) => list_append_octets(left: acc, right: word64_octets(w: w)))
+  fold([s.a, s.b, s.c, s.d, s.e, s.f], init: [], f: (acc, w) => md_append_octets(left: acc, right: word64_octets(w: w)))
 }
 

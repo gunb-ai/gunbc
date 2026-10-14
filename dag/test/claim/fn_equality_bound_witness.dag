@@ -47,7 +47,7 @@ test fn concrete_only_comparison_leaves_generic_param_bare() -> Bool {
 }
 
 // Executing floor witness for the CALL-FORWARDING half of the same trigger (v1.compiler.emit_rust
-// v1_call_forwarding_equality_bound_param_names). The seed synthesized the bound only on the fn
+// v1_call_forwarding_bound_param_names, EqualityForwarded). The seed synthesized the bound only on the fn
 // whose OWN body compares, which is a program that does not typecheck one hop up: a caller
 // instantiating that fn's K with its own generic param is obliged by rustc to prove a bound it
 // never states, and rustc refuses with E0277. MEASURED, not assumed: the real specimen is

@@ -14,7 +14,10 @@ import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_command_with_words,
   bash_build_assign, bash_build_exit, bash_build_or_else, bash_build_command_from_lits,
+  bash_build_and_then, bash_build_with_redir_from_file, bash_build_with_redir_to_file,
+  bash_build_word_concat_from_nodes,
 }
+import extdeps.tools.stat { stat_program }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -135,9 +138,56 @@ data posix_sh_export_from_file_unreadable_exit: Int = 78
 // launch ran again with the same value. So the removal carries its own failure arm and a snapshot
 // that cannot be consumed refuses the launch with exit 79 -- distinct from 78 (unreadable).
 data posix_sh_export_from_file_unremovable_exit: Int = 79
+
 type PosixShFileDisposition
   = PosixShKeepFile
   | PosixShRemoveFileAfterRead
+  | PosixShReplaceFileAfterRead { body: String }
+
+fn posix_sh_export_replace_statements(body: String) -> List<Node> {
+  [
+    bash_build_or_else(
+      left: bash_build_assign(
+        name: "t",
+        value: bash_build_word_cmdsubst(
+          body: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "mktemp"),
+            bash_build_word_lit(text: "--"),
+            bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "0"), bash_build_word_lit(text: ".XXXXXX")]),
+          ]),
+        ),
+      ),
+      right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unremovable_exit)),
+    ),
+    bash_build_or_else(
+      left: bash_build_with_redir_to_file(
+        inner: bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "printf"),
+          bash_build_word_lit(text: "%s"),
+          bash_build_word_lit(text: body),
+        ]),
+        path: bash_build_word_var(name: "t"),
+      ),
+      right: bash_build_and_then(
+        left: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "t")]),
+        right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unremovable_exit)),
+      ),
+    ),
+    bash_build_or_else(
+      left: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "mv"),
+        bash_build_word_lit(text: "-f"),
+        bash_build_word_lit(text: "--"),
+        bash_build_word_var(name: "t"),
+        bash_build_word_var(name: "0"),
+      ]),
+      right: bash_build_and_then(
+        left: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "t")]),
+        right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unremovable_exit)),
+      ),
+    ),
+  ]
+}
 
 fn posix_sh_export_remove_statements(disposition: PosixShFileDisposition) -> List<Node> {
   match disposition {
@@ -149,6 +199,7 @@ fn posix_sh_export_remove_statements(disposition: PosixShFileDisposition) -> Lis
           right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unremovable_exit)),
         ),
       ]
+    PosixShReplaceFileAfterRead { body } => posix_sh_export_replace_statements(body: body)
   }
 }
 
@@ -194,5 +245,54 @@ fn posix_sh_export_from_file_then_exec_command(
         ),
       }
     Rejected { diagnostics: _ } => PosixShExportExecEmitRefused { name: name.spelling }
+  }
+}
+
+// SAME OPEN OBJECT FOR METADATA AND BYTES. Stats `/dev/stdin` (the wrapper's descriptor, GNU `-L`)
+// and cats it. Built once; the wrapper prepends `exec < "$0"`, and the replacement / character-device
+// REDs emit this body alone so `$0` is the held path.
+fn posix_sh_receipt_object_body_stmt() -> Node {
+  bash_build_and_then(
+    left: bash_build_command_with_words(words: [
+      bash_build_word_lit(text: stat_program().invocation as String),
+      bash_build_word_lit(text: "-L"),
+      bash_build_word_lit(text: "-c"),
+      bash_build_word_lit(text: "%F|%U|%a"),
+      bash_build_word_lit(text: "/dev/stdin"),
+    ]),
+    right: bash_build_command_from_lits(lits: ["cat"]),
+  )
+}
+
+fn posix_sh_receipt_object_body_program() -> Outcome<String> {
+  bash_emit_stmts(statements: [posix_sh_receipt_object_body_stmt()], set_e: false)
+}
+
+// THE WRAPPER IS A GRAMMAR ROW, NOT A DATA SPLICE. `bash_build_with_redir_from_file` emits
+// `exec < "$0"`: `$0` is an argv word, never concatenated into the program text.
+fn posix_sh_receipt_object_program() -> Outcome<String> {
+  bash_emit_stmts(statements: [
+    bash_build_with_redir_from_file(
+      inner: bash_build_command_from_lits(lits: ["exec"]),
+      path: bash_build_word_var(name: "0"),
+    ),
+    posix_sh_receipt_object_body_stmt(),
+  ], set_e: false)
+}
+
+type PosixShReceiptObjectCommand
+  = PosixShReceiptObjectReady { command: ArgvCommand }
+  | PosixShReceiptObjectEmitRefused
+
+fn posix_sh_receipt_object_command(path: NonEmptyStr) -> PosixShReceiptObjectCommand {
+  match posix_sh_receipt_object_program() {
+    Accepted { value: program, diagnostics: _ } =>
+      PosixShReceiptObjectReady {
+        command: argv_command(
+          program: posix_sh_program(),
+          arguments: ["-c", program, path as String],
+        ),
+      }
+    Rejected { diagnostics: _ } => PosixShReceiptObjectEmitRefused
   }
 }

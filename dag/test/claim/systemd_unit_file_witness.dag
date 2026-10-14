@@ -14,6 +14,8 @@ import extdeps.systemd.unit_file {
   Description,
   After,
   Wants,
+  OnSuccess,
+  OnFailure,
   SystemdServiceDirective,
   ServiceType, NotifyMode, OneshotMode, SimpleMode,
   ExecStart,
@@ -164,6 +166,8 @@ test fn each_unit_directive_renders_its_own_systemd_name() -> Bool {
   systemd_unit_directive_line(directive: Description { text: "a" as NonEmptyStr }) == "Description=a"
     && systemd_unit_directive_line(directive: After { target: "b" as NonEmptyStr }) == "After=b"
     && systemd_unit_directive_line(directive: Wants { target: "c" as NonEmptyStr }) == "Wants=c"
+    && systemd_unit_directive_line(directive: OnSuccess { unit: "d.service" as NonEmptyStr }) == "OnSuccess=d.service"
+    && systemd_unit_directive_line(directive: OnFailure { unit: "d.service" as NonEmptyStr }) == "OnFailure=d.service"
 }
 
 test fn each_service_directive_renders_its_own_systemd_name() -> Bool {

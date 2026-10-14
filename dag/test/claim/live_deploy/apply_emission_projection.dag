@@ -1,12 +1,11 @@
 module test.claim.live_deploy.apply_emission_projection
-import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
-
-
 import std.types { String, List }
 import std.measure { Second }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentStep }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
-import gunbc.live_deploy.emit { apply_step_effects }
+import gunbc.live_deploy.emit { apply_intent_fragments, compose_host_script_mutate_steps }
+import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
+import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch }
 import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove }
 import v2.std.orchestration {
@@ -30,28 +29,33 @@ import std.optional { Present, Absent }
 // alternative to one shared projection is the same fold copied into two files.
 //
 // WHAT IS MOCKED IS EXACTLY ONE INPUT: the membership effects, which in production come from
-// observing the host. Everything downstream is the production path unchanged -- this calls
-// `apply_step_effects`, the same function `apply_intent_from_effects` flat-maps over `spec.steps`,
-// so the DISPATCH is production's. That distinction is the whole reason this module is shaped the
-// way it is, and the first version of it got the shape wrong: it folded `emit_artifact_upsert` over
-// every step, which is the producer for the artifacts `identity_member_of_step` answers `none` for
-// -- the belt units, the tailscale mapping, the converge timer. For GunbcSourceTree, ServeBinary
-// and SystemdUnit the apply goes through `emit_release_member_effects` instead, so three of the
-// claims below would have been asserting on a producer their subject does not use, and they would
-// have PASSED, because the two arms emit similar text. Green over the wrong producer is worse than
-// red, and it is the exact substitution this repository's failure-mode list names.
+// observing the host. Everything downstream is the production compose path -- this calls
+// `compose_host_script_mutate_steps(apply_intent_fragments(...))`, the mutate half of the same
+// fragments `apply_intent_from_effects` hands to `compose_host_script`. A per-step
+// `apply_step_effects` flat-map is not that path: compose drops every Mutate when any Decide is
+// HostScriptRefused, and the flat-map would keep sibling mutates. That distinction is the whole
+// reason this module is shaped the way it is, and the first version of it got the shape wrong: it
+// folded `emit_artifact_upsert` over every step, which is the producer for the artifacts
+// `identity_member_of_step` answers `none` for -- the belt units, the tailscale mapping, the
+// converge timer. For GunbcSourceTree, ServeBinary and SystemdUnit the apply goes through
+// `emit_release_member_effects` instead, so three of the claims below would have been asserting on
+// a producer their subject does not use, and they would have PASSED, because the two arms emit
+// similar text. Green over the wrong producer is worse than red, and it is the exact substitution
+// this repository's failure-mode list names.
 //
 // WHAT THE MOCK ASSERTS, so that it is a stated fixture rather than a convenient value: an EMPTY
 // HOST. Every step is an addition, which is what the reconcile derives against a machine that holds
 // none of them, and is the condition the emit witnesses have always described themselves as
 // pinning ("the complete installation of an empty host"). Steps whose member is an identity member
-// never consult this list at all -- `apply_step_effects` routes those to the plan instead -- so the
-// rows for them are inert rather than wrong; the rows that are READ are the ones for the
+// never consult this list at all -- `apply_step_fragments` routes those to the plan instead -- so
+// the rows for them are inert rather than wrong; the rows that are READ are the ones for the
 // directory roots and for every artifact the reconcile actually owns.
 //
-// WHAT IS NOT CARRIED is the program FRAME: the shell options line, the generated-by comments, the
-// stage directory and its trap, the sudoers preamble, the memory-cap step and the closing receipt.
-// Those are separate subjects and no consumer of this projection asserts anything about them.
+// WHAT IS NOT CARRIED is the Decide half of the frame (shell options, generated-by comments).
+// Compose-mutate does carry Mutate frame, preamble, owned-directory, withheld-cap report, helper
+// grant and receipt, because those ride the same drop as spec-step mutates. Access and cap are
+// the CI apply constants (`ci_deploy_srv1_access`, `CapConvergeWithheld`) so the projection does
+// not invent a second authorization.
 fn apply_empty_host_effects(spec: DeploymentSpec) -> List<MemberEffect<DeploymentStep>> {
   map(spec.steps, st => EffectAdd { to: st })
 }
@@ -142,10 +146,17 @@ fn claim_oidc_now() -> Second? {
   tracker_web_test_console_readback_observed_at_epoch
 }
 
+fn apply_emitted_steps_text_at(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?) -> String {
+  pipeline_steps_text(steps: compose_host_script_mutate_steps(fragments: apply_intent_fragments(
+    spec: spec,
+    effects: apply_empty_host_effects(spec: spec),
+    access: ci_deploy_srv1_access,
+    plan: plan,
+    cap_authorization: CapConvergeWithheld { cause: "apply emission projection" },
+    oidc_now: oidc_now,
+  )))
+}
+
 fn apply_emitted_steps_text(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> String {
-  let effects = apply_empty_host_effects(spec: spec)
-  pipeline_steps_text(steps: flat_map(
-    spec.steps,
-    st => apply_step_effects(principal: fleet_posix_ci_runner_principal(), step: st, effects: effects, spec: spec, plan: plan, oidc_now: claim_oidc_now()),
-  ))
+  apply_emitted_steps_text_at(spec: spec, plan: plan, oidc_now: claim_oidc_now())
 }

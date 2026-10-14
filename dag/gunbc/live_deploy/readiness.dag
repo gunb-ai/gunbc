@@ -85,6 +85,8 @@ import gunbc.serve_liveness {
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_liveness_url }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type ServiceReadyEvidence {
   body: String
@@ -879,3 +881,15 @@ fn live_deploy_poll_until_service_ready(
     access: access,
   )
 }
+
+data nfr_reason_release_identity_absent_split: String = "one-special-variant split over RunningReleaseUnidentifiedCause: ReleaseRevisionAbsent answers ProcessIdentityAbsent because a process predating the identity channel is a MIGRATION state, and the other nine causes answer ProcessIdentityMalformed because a live channel carrying something that is not an identity is a DEFECT in the deploying machinery. The nine share one arm because they already differ where it matters — running_release_unidentified_detail names each cause before the match runs, so the arm carries the distinction rather than erasing it, and enumerating the nine would clone one arm nine times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with Phase A release-identity readiness; declared at landing so the ratchet arms with the code."
+
+data nfr_dissolve_release_identity_absent_split: DissolutionCondition = unbound_dissolution(description: "the migration arm becomes unreachable once the identity-publishing release is deployed everywhere routed, at which point ReleaseRevisionAbsent is the executing RED control rather than a live arm; the split then folds into a derived migration-vs-defect partition over RunningReleaseUnidentifiedCause (the same derived-from-inhabitance move that clears the terminal-absorption rows) and this row deletes with it.")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "healthz_release_identity_refusal" },
+      reason: nfr_reason_release_identity_absent_split,
+      dissolution: nfr_dissolve_release_identity_absent_split,
+    },
+]

@@ -2,6 +2,7 @@ module gunbc.recurring_failure_mode.a_payload_admits_a_variant_its_producer_neve
 
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data a_payload_admits_a_variant_its_producer_never_makes: RecurringFailureMode = RecurringFailureMode {
   identity: "a_payload_admits_a_variant_its_producer_never_makes" as NonEmptyStr,
@@ -14,7 +15,12 @@ data a_payload_admits_a_variant_its_producer_never_makes: RecurringFailureMode =
     "THE REPAIR IS THE NARROWING AND NOT THE GUARD, which is the whole point of filing this separately from an ordinary wrong-arm defect. Making the unreachable arm answer correctly leaves the invalid pairing constructible and adds a check that no run executes: validation standing exactly where construction was available (DESIGN section 5). Narrowing the payload to the variants that can inhabit it DELETES the arm, so the fold has no case to answer wrongly and the invalid state loses its constructor. The repair moves the class from mitigatable to structurally impossible in one edit, and the edit is smaller than the guard.",
     "WHAT THE REPAIR CANNOT CARRY, stated because this is where the class invites a fabricated green. There is no discriminating RED for a narrowing of this kind: the old arm was unreachable in production, so a claim over it would have been permanently green, which DESIGN section 4b names as worse than absent because it is cited as coverage. What changed is REPRESENTABILITY, a compile-level fact, and exercising it needs a harness that hands invalid source to the compiler. Where no such harness exists for the subject, that MISSING HARNESS is the class's next-rung trigger rather than a permanent ceiling, and the honest evidence is the narrower type plus the existing claims over the arms that remain.",
     "THE NEIGHBOURING CLASS THIS IS NOT. gunbc.recurring_failure_mode.a_constant_enforces_a_law_narrower_than_its_own_annotation is a carrier too NARROW for the law its author stated -- a scalar where a relation belongs, enforcing something wider than the prose. This is the mirror: a carrier too WIDE for the fact it transports, admitting a state the world does not produce. The shared root is a carrier chosen for convenience rather than derived from what can actually inhabit it; they are kept apart because the tells differ (an annotation naming a qualifier the type cannot express, versus an arm count exceeding the producer's outcomes) and because the repairs differ (introduce the relation, versus delete the variant).",
+    "CLIMB, 2026-10-13, gunbc#13875 (DESIGN section 4b: dissolution on climb is production handling only, never the evidence). The named instance is already narrowed on main. The missing harness is now enrolled: test.claim.a_payload_surplus_variant_wall hands CgroupStillHolding { holding: CgroupSubtreeEmpty } to compile_dag_diagnostic_census and requires exactly one blocking TypeMismatch at Coproduct(CgroupNotQuiet), with CgroupHoldsTasks as the positive control. That is the representability RED; the next-rung trigger named above is retired for this subject. A corpus-wide construction wall (producer outcomes as a subset of payload variants at infer) stays out of scope -- it would need sugar/infer. BorrowerDeathCapacityDisposition still admits CapacityPreservedByServerReclamation as an intentional dissolve-on; that is not this climb.",
   ],
 
-  evidence: [],
+  evidence: [
+    DeclarationRef { module_path: "test.claim.a_payload_surplus_variant_wall", decl_name: "an_empty_subtree_cannot_inhabit_cgroup_still_holding", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.a_payload_surplus_variant_wall", decl_name: "a_producer_emitted_holding_is_still_admitted", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.a_payload_surplus_variant_wall", decl_name: "the_two_arms_differ_by_exactly_the_target_row", field: WholeDeclaration },
+  ],
 }
