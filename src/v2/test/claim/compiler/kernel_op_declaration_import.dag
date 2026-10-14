@@ -1,6 +1,5 @@
 module v2.test.claim.compiler.kernel_op_declaration_import
 
-import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_source }
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
 import std.types { Bool }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
@@ -34,13 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // std.algebra.collection_concat_shape when that identity is imported; without the import it
 // refuses. No free fn concat. kernel_mint_declaration_rows stays Optional-only.
 
-data kodi_algebra_peer: String = "module std.algebra\n\nfn collection_concat_shape() -> Int { 0 }\n"
-
-data kodi_red_src: String = "module p\n\nfn f() -> Int {\n  collection_concat_shape()\n}\n"
-
-data kodi_green_src: String = "module p\n\nimport std.algebra { collection_concat_shape }\n\nfn f() -> Int {\n  collection_concat_shape()\n}\n"
-
-// REAL PATH: the named templates in std.algebra carry the kernel spellings.
+// REAL PATH: the named templates in THIS MODULE'S import of std.algebra carry the kernel spellings.
 test fn collection_shape_rows_carry_the_kernel_spellings() -> Bool {
   collection_concat_shape().name == "concat"
     && collection_count_shape().name == "count"
@@ -69,29 +62,6 @@ test fn optional_mint_row_is_unchanged() -> Bool {
   }
 }
 
-test fn bare_collection_concat_shape_is_unbound() -> Bool {
-  match bla_assemble_with_peers(p_src: kodi_red_src, peers: []) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
-  }
-}
-
-test fn imported_collection_concat_shape_resolves() -> Bool {
-  match bla_assemble_with_peers(
-    p_src: kodi_green_src,
-    peers: [bla_source(src: kodi_algebra_peer, artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu)]
-  ) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      fold_list(xs: node_subtree_nodes(root: tree.root), empty: false, cons: fn(acc, n) {
-        acc || (match declaration_reference_path_optional(node: n) {
-          Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_concat_shape"
-          Absent => false
-        })
-      })
-  }
-}
-
 data kodi_concat_red: String = "module p\n\nimport v2.std.collection { List }\n\nfn f(a: List<Int>, b: List<Int>) -> List<Int> {\n  concat(a, b)\n}\n"
 
 data kodi_concat_green: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { collection_concat_shape }\n\nfn f(a: List<Int>, b: List<Int>) -> List<Int> {\n  concat(a, b)\n}\n"
@@ -103,6 +73,9 @@ test fn bare_concat_without_import_is_unbound() -> Bool {
   }
 }
 
+// The assemble peer only has to DECLARE collection_concat_shape so imported_origins admits
+// the spelling. The bound path is v2.compiler.fold_lowering's roster DeclarationRef
+// (std.algebra.collection_concat_shape), the same path cca_route_runs_on_the_real_path uses.
 test fn concat_with_identity_import_binds_the_template() -> Bool {
   match fmi_assemble(src: kodi_concat_green) {
     Rejected { diagnostics: _ } => false

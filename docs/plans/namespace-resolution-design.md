@@ -775,11 +775,19 @@ unbound-stays-`UnresolvedType` controls. No subtree is flipped; the flip (step 4
 gates on import→alias transmutation landing with-or-before it.
 
 **No ambient prelude (operator, 2026-10-04 and 2026-10-13; kernel-op ruling B, 2026-10-14).** A
-module sees only its own declarations and its own imports. Kernel collection operations
-(`concat`, `count`, `first`, `map`, `filter`, `join`, `map_get`) are corpus declarations in
-`std.algebra` (`collection_*_shape` rows), imported explicitly; they are not bound at root and
-are not a second implicit spelling. The superseded “builtins bind at root” reading is retired
-here so it cannot license an ambient last-tier bind.
+module sees only its own declarations and its own imports. The superseded “builtins bind at
+root” reading is retired so it cannot license an ambient last-tier bind.
+
+**Declared frontier, not a present wall.** The one declaration for each collection callee is
+the `std.algebra` `collection_*_shape` row (no free `fn concat`; `kernel_mint_declaration_rows`
+stays the Optional mint only). Path (i): a bare authored `concat(a, b)` / `count(xs)` binds
+that row when the module imported the row’s declaration name
+(`collection_concat_shape` / `collection_count_shape`); without the import it refuses. That
+gate is `v2.compiler.resolve` `collection_roster_identity_imported`, and it covers only the
+roster’s primitive-call heads (concat, count). `first`, `map`, `filter`, `join`, `map_get`
+have the named template homes; last-tier does not yet bind those spellings. Trigger: extend
+that import gate to those heads, or path (ii) rewrite callers to the declared form. Until
+then the plan does not claim those spellings are imported-and-bound.
 
 **RULED — the (Y) expected-type filter (operator, 2026-07-22; recorded in §4).** The re-adjudication
 is done: the pool-filter reading of (Y) dies with the `global_bare` tier (there is never a pool
