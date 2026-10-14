@@ -1356,7 +1356,7 @@ fn run_v2_native_census_scoped(subject: &str, source_roots: &[String]) -> Invoca
                 "v2-native-census-scoped: subject={} scope={} modules={} file_refusals={} \
                  advised_files={} residual_rows={} inferred={} infer_refused={} cause_groups={} \
                  roots={}; the population is the subject's acquired closure (census_scope line \
-                 above), its rows grouped by fatal reason in the cause_group lines",
+                 above), its rows grouped by fatal reason in the cause_group lines; run record {}",
                 run.subject,
                 match run.scope {
                     cli_run::NativeCensusScopeWord::Closed => "closed".to_string(),
@@ -1370,7 +1370,8 @@ fn run_v2_native_census_scoped(subject: &str, source_roots: &[String]) -> Invoca
                 run.inferred,
                 run.infer_refused,
                 run.cause_groups,
-                run.roots
+                run.roots,
+                run.record.display()
             ),
         },
         Err(cause) => InvocationOutcome {
