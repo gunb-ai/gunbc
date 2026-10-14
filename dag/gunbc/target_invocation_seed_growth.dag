@@ -406,11 +406,6 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
     },
     DeclarationRef {
       module_path: "v1_compiler.cli_run.cgroup_memory",
-      decl_name: "children_of_cgroup",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "QualificationRefusal",
       field: WholeDeclaration
     },
@@ -422,26 +417,6 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
     DeclarationRef {
       module_path: "v1_compiler.cli_run.cgroup_memory",
       decl_name: "read_cgroup_memory",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.cli_run.cgroup_memory",
-      decl_name: "resolve_measurement_cgroup",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.cli_run.cgroup_memory",
-      decl_name: "strangers_in_cgroup",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.cli_run.cgroup_memory",
-      decl_name: "reset_or_baseline_peak",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
-      decl_name: "run_child_in_own_cgroup",
       field: WholeDeclaration
     },
     DeclarationRef {

@@ -105,7 +105,6 @@ data value_drop_binding_adaptation_seed_growth_justification: SeedGrowthJustific
     DeclarationRef { module_path: "v1_compiler.cli_run.heartbeat_tests", decl_name: "run_seed_heartbeat_line", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.materialization_provider_consumer", decl_name: "lookup_fold_outcome", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.materialization_provider_consumer", decl_name: "wire_content_hash_to_hex", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "floor_required_string", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.claim_execution", decl_name: "run_claim_failure_receipt", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.roadmap_acceptance_history_carrier", decl_name: "handback_to_json", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.test_module_hygiene_bridge", decl_name: "test_decl_names_from_content", field: WholeDeclaration },
