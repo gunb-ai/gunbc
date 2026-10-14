@@ -20,6 +20,11 @@ import gunbc.parse_verdict_publish {
   parse_verdict_publish_save_step,
   parse_verdict_publish_step_name,
   parse_verdict_save_step_name,
+  parse_verdict_publish_cache_key,
+  parse_verdict_publish_restore_keys,
+  parse_verdict_publish_step_id,
+  parse_verdict_compiler_output,
+  parse_verdict_request_family,
 }
 import gunbc.required_ci_contract_epoch {
   required_ci_context_name,
@@ -478,4 +483,14 @@ test fn a_pr_head_run_never_publishes() -> Bool {
     && string_contains(s: guard, pattern: "refs/heads/main")
     && string_contains(s: guard, pattern: "push")
     && (string_contains(s: guard, pattern: "pull_request") == false)
+}
+
+test fn the_gha_object_key_carries_compiler_identity_and_sha() -> Bool {
+  let k = parse_verdict_publish_cache_key()
+  let p = parse_verdict_publish_restore_keys()
+  string_contains(s: k, pattern: join(["gunbc-materialization-", parse_verdict_request_family, "-"], ""))
+    && string_contains(s: k, pattern: join(["steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_compiler_output], ""))
+    && string_contains(s: k, pattern: "github.sha")
+    && string_contains(s: p, pattern: join(["steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_compiler_output], ""))
+    && (string_contains(s: p, pattern: "github.sha") == false)
 }

@@ -35,6 +35,17 @@ fn materialization_gha_cache_key_prefix(family: String) -> String {
   join(["gunbc-materialization-", family, "-"], "")
 }
 
+// THE GHA OBJECT KEY, EXACTLY (not a receipt key). One blob per (family, compiler identity, sha):
+//   gunbc-materialization-<family>-<compiler_identity>-<github.sha>
+// compiler_identity is the emitted v2-native-cli closure digest (the sidecar beside
+// keep_generation_one_executable). Restore is prefix
+//   gunbc-materialization-<family>-<compiler_identity>-
+// so a parser-identity change cannot hit a prior compiler's blob.
+// THE RECEIPT PREIMAGE inside the blob is ParseVerdictRequest { source_digest, compiler }
+// (std.materialization_provider): every stored line is
+//   parse-verdict <TAB> <source_digest> <TAB> <compiler_identity> <TAB> Accepted
+// A line that names only source_digest is not a receipt and is not saved.
+
 data parse_verdict_publish_step_id: String = "publish_parse_verdicts"
 data parse_verdict_publish_step_name: String = "Walk parse-population and publish verdict receipts"
 fn parse_verdict_save_step_name() -> String {
@@ -51,18 +62,14 @@ fn parse_verdict_publish_command() -> String {
       "set -o pipefail",
       "n=0",
       "bin=",
-      join(["for f in \"$RUNNER_TEMP\"/", generation_one_executable_prefix, "*; do"], ""),
-      "  [ -f \"$f\" ] || continue",
-      join(["  case \"$f\" in *", generation_one_closure_identity_suffix, ") continue ;; esac"], ""),
-      "  n=$((n+1))",
-      "  bin=$f",
-      "done",
+      join(["for f in \"$RUNNER_TEMP\"/", generation_one_executable_prefix, "*; do [ -f \"$f\" ] || continue; case \"$f\" in *", generation_one_closure_identity_suffix, ") continue ;; esac; n=$((n+1)); bin=$f; done"], ""),
       "if [ \"$n\" -ne 1 ]; then echo \"::error::IdentityUnknown: expected exactly one generation-one executable under RUNNER_TEMP, found $n\"; exit 1; fi",
       join(["cid=\"$bin", generation_one_closure_identity_suffix, "\""], ""),
       "if [ ! -s \"$cid\" ]; then echo \"::error::IdentityUnknown: missing or empty parser identity beside the generation-one executable\"; exit 1; fi",
       "compiler=$(cat \"$cid\")",
       join(["mkdir -p \"", parse_verdict_receipt_dir, "\""], ""),
       join(["\"$bin\" ", cli_verb_parse_population, source_root_argv(), " | tee \"", parse_verdict_receipt_dir, "/walk.txt\""], ""),
+      join(["while IFS= read -r line; do fam=$(printf %s \"$line\" | cut -f1); digest=$(printf %s \"$line\" | cut -f2); verdict=$(printf %s \"$line\" | cut -f3); if [ \"$fam\" = parse-verdict ] && [ \"$verdict\" = Accepted ]; then printf \"parse-verdict\t%s\t%s\tAccepted\\n\" \"$digest\" \"$compiler\"; fi; done < \"", parse_verdict_receipt_dir, "/walk.txt\" > \"", parse_verdict_receipt_dir, "/receipts.tsv\""], ""),
       join(["echo \"", parse_verdict_compiler_output, "=$compiler\" >> \"$GITHUB_OUTPUT\""], "")
     ],
     "; "
