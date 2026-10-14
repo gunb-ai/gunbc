@@ -3,6 +3,7 @@ module test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.measure { kibibyte }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.filesystem { path_parent_directory }
 import extdeps.shell
 import extdeps.systemd.systemd_run {
   systemd_run_user_wait_command,
@@ -11,32 +12,53 @@ import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWaitRefused,
   SystemdRunProperty,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  dispatch_worker_unit_properties,
+  attempt_state_prepare_argv_for_instance,
+  dispatch_attempt_state_path_for_instance,
+  dispatch_attempt_worker_log_path_for_instance,
+}
 import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
   dashboard_instance_dispatch_worktree_root,
-  dashboard_instance_dispatch_attempt_state_root,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data wet_probe_node: RoadmapNodeId = "writable-probe" as RoadmapNodeId
+data wet_probe_key: String = "wetprobe"
 
 // WET: a real systemd-run user transient with the worker unit's production properties, then one
 // argv `touch -- <path>` per subject. Local recipe: claim_batch --wet --source-root dag
 // --source-root src/v2 --entry dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag
 // Requires a user systemd manager (srv1 lab).
 
+fn prepare_probe_attempt(instance: HostDashboardInstance) -> Bool {
+  let prep = attempt_state_prepare_argv_for_instance(
+    instance: instance,
+    node_id: wet_probe_node,
+    attempt_key: wet_probe_key,
+  )
+  shell.Exec.RunArgv(program: prep.program, arguments: prep.args).exit_code == 0
+}
+
 fn probe_attempt_dir(instance: HostDashboardInstance) -> String {
-  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/.gunbc-writable-probe"], "")
+  dispatch_attempt_state_path_for_instance(
+    instance: instance,
+    node_id: wet_probe_node,
+    attempt_key: wet_probe_key,
+  )
 }
 
 fn probe_worker_dir(instance: HostDashboardInstance) -> String {
-  join([probe_attempt_dir(instance: instance), "/worker"], "")
-}
-
-fn ensure_probe_worker_dir(instance: HostDashboardInstance) -> Int {
-  shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", "--", probe_worker_dir(instance: instance)]).exit_code
+  path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
+    instance: instance,
+    node_id: wet_probe_node,
+    attempt_key: wet_probe_key,
+  ))
 }
 
 fn worker_probe_properties(instance: HostDashboardInstance, worktree: String, scratch: String) -> List<SystemdRunProperty> {
@@ -91,7 +113,7 @@ test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() 
   let wt = dashboard_instance_dispatch_worktree_root(instance: inst) as String
   let scratch = probe_worker_dir(instance: inst)
   let attempt = probe_attempt_dir(instance: inst)
-  ensure_probe_worker_dir(instance: inst) == 0
+  prepare_probe_attempt(instance: inst)
     && sandbox_touch_write_refused(
       instance: inst,
       worktree: wt,
@@ -135,7 +157,7 @@ test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
   let scratch = probe_worker_dir(instance: inst)
   let probe = join([wt, "/.gunbc-worker-write-probe"], "")
   let log_probe = join([scratch, "/worker-stdout.log"], "")
-  ensure_probe_worker_dir(instance: inst) == 0
+  prepare_probe_attempt(instance: inst)
     && sandbox_touch_wrote(
       instance: inst,
       worktree: wt,
