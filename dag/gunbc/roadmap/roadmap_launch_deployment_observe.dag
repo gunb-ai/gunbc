@@ -19,7 +19,7 @@ import gunbc.running_release_identity { RunningReleaseIdentity, observe_running_
 import gunbc.durable_handoff_host {
   HostSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
   HostSpoolHealthEntry, HostSpoolHealthBound, HostSpoolHealthClear, HostSpoolHealthStale, HostSpoolHealthUnobserved,
-  host_spool_health_judge,
+  host_spool_health_judge, host_spool_stage_wire,
 }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
 import gunbc.roadmap.roadmap_belt_actuate {
@@ -358,16 +358,6 @@ fn event_backlog_bound(stage: HostSpoolStage) -> Second? {
   }
 }
 
-fn event_backlog_stage_label(stage: HostSpoolStage) -> String {
-  match stage {
-    AttemptExitInbox => "inbox"
-    AttemptExitQueued => "queued"
-    AttemptExitRunning => "running"
-    AttemptExitDone => "done"
-    AttemptExitRefused => "refused"
-  }
-}
-
 // The stage is the spool's own closed sum (gunbc.roadmap.roadmap_attempt_exit_spool), not a label.
 type EventBacklogEntry {
   stage: HostSpoolStage
@@ -412,7 +402,7 @@ fn event_backlog_judge(entries: List<EventBacklogEntry>) -> EventBacklogFact {
 fn event_backlog_text(f: EventBacklogFact) -> String {
   match f {
     EventBacklogClear { inbox, queued } => join(["clear (", to_string(value: inbox), " in inbox, ", to_string(value: queued), " queued, none past bound)"], "")
-    StaleBacklog { stage, entry, age, bound } => join(["StaleBacklog: ", event_backlog_stage_label(stage: stage), " entry ", entry, " is ", to_string(value: second_count(s: age)), "s old, past the ", to_string(value: second_count(s: bound)), "s bound"], "")
+    StaleBacklog { stage, entry, age, bound } => join(["StaleBacklog: ", host_spool_stage_wire(stage: stage), " entry ", entry, " is ", to_string(value: second_count(s: age)), "s old, past the ", to_string(value: second_count(s: bound)), "s bound"], "")
     EventBacklogUnobserved { detail } => join(["unobserved: ", detail], "")
   }
 }

@@ -45,7 +45,7 @@ import std.content_hash {
   content_hash_combine_structural,
 }
 import std.optional { Present, Absent }
-import std.durable_compare_and_set { cas_generation_following }
+import std.durable_compare_and_set { CasGeneration, cas_generation_following, cas_generation_count }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent, LeaseEpoch, held_lease }
 import extdeps.exec.command { ArgvCommand }
 import v2.extdeps.languages.bash_build {
@@ -725,21 +725,18 @@ fn fleet_converge_scope_matches(planned: FleetConvergeScope, observed: FleetConv
 
 fn fleet_converge_plan_held_lease(
   subject: FleetConvergePlanSubject,
-  prior_generation: Int,
+  generation: CasGeneration,
   owner_fingerprint: ContentHash,
-) -> HeldLease? {
-  match cas_generation_following(prior: prior_generation) {
-    Absent => none
-    Present { value: g } => Present { value: held_lease(
-      epoch: LeaseEpoch {
-        lease_key: fleet_converge_plan_lease_key(host: subject.host),
-        resource_fingerprint: fleet_converge_plan_resource_fingerprint(subject: subject),
-        owner_fingerprint: owner_fingerprint,
-        generation: g,
-      },
-      observed: LeaseAbsent,
-    ) }
-  }
+) -> HeldLease {
+  held_lease(
+    epoch: LeaseEpoch {
+      lease_key: fleet_converge_plan_lease_key(host: subject.host),
+      resource_fingerprint: fleet_converge_plan_resource_fingerprint(subject: subject),
+      owner_fingerprint: owner_fingerprint,
+      generation: generation,
+    },
+    observed: LeaseAbsent,
+  )
 }
 
 fn fleet_converge_apply_generation_admits(prior_generation: Int, store_generation: Int) -> Bool {
@@ -2796,47 +2793,49 @@ fn fleet_converge_plan_artifact_of_request(
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(request: request)
   let baseline = observed_baseline_text(request: request)
-  let planned_generation = prior_generation + 1
-  let planned_terminal = fleet_converge_apply_terminal(request: request)
-  let body = join(
-    concat(
-      concat(
-        [
-          "# fleet-converge plan",
-          concat("subject_host:", subject.host as String),
-          concat(
-            "subject_member_set:",
-            serialize_content_hash(hash: subject.member_set_fingerprint) as String,
-          ),
-          concat("plan_generation:", to_string(planned_generation)),
-          "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
-          concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
-          "observed_baseline:",
-          baseline,
-        ],
-        fleet_converge_plan_axis_lines(request: request),
-      ),
-      fleet_converge_plan_refusal_counter_lines(request: request),
-      [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
-    ),
-    "\n",
-  )
-  let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
-  match fleet_converge_plan_held_lease(
-    subject: subject,
-    prior_generation: prior_generation,
-    owner_fingerprint: owner_fp,
-  ) {
+  match cas_generation_following(prior: prior_generation) {
     Absent => none
-    Present { value: lease } => Present { value: FleetConvergePlanArtifact {
-      subject: subject,
-      prior_generation: prior_generation,
-      plan_lease: lease,
-      apply_terminal: planned_terminal,
-      observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
-      plan_body: body,
-      apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
-    } }
+    Present { value: generation } => {
+      let planned_generation = cas_generation_count(g: generation)
+      let planned_terminal = fleet_converge_apply_terminal(request: request)
+      let body = join(
+        concat(
+          concat(
+            [
+              "# fleet-converge plan",
+              concat("subject_host:", subject.host as String),
+              concat(
+                "subject_member_set:",
+                serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+              ),
+              concat("plan_generation:", to_string(planned_generation)),
+              "# generation-publication: atomic head + immutable receipts; older numeric-only apply readers refuse after this cutover",
+              concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
+              "observed_baseline:",
+              baseline,
+            ],
+            fleet_converge_plan_axis_lines(request: request),
+          ),
+          fleet_converge_plan_refusal_counter_lines(request: request),
+          [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      Present { value: FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: fleet_converge_plan_held_lease(
+          subject: subject,
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: planned_terminal,
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
+      } }
+    }
   }
 }
 
@@ -2873,11 +2872,13 @@ fn fleet_converge_allocation_store_plan_artifact(
   let subject = fleet_converge_plan_subject(request: request)
   let spec = fabric_allocation_store_substrate_spec()
   let baseline = observed_baseline_text(request: request)
-  let planned_generation = prior_generation + 1
-  match runner_host_deploy_for(host: host as HostIdentity) {
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: generation } => match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: _ } => Absent
     RunnerHostDeployRefused { host: _, cause: _ } => Absent
     RunnerHostDeployFound { deploy: deploy } => {
+      let planned_generation = cas_generation_count(g: generation)
       let operations = fabric_allocation_store_effect_operations(
         effect: fabric_allocation_store_ensure_effect(),
         job_user: deploy.job_user,
@@ -2911,22 +2912,20 @@ fn fleet_converge_allocation_store_plan_artifact(
         "\n",
       )
       let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
-      match fleet_converge_plan_held_lease(
+      Present { value: FleetConvergePlanArtifact {
         subject: subject,
         prior_generation: prior_generation,
-        owner_fingerprint: owner_fp,
-      ) {
-        Absent => none
-        Present { value: lease } => Present { value: FleetConvergePlanArtifact {
+        plan_lease: fleet_converge_plan_held_lease(
           subject: subject,
-          prior_generation: prior_generation,
-          plan_lease: lease,
-          apply_terminal: fleet_converge_apply_terminal(request: request),
-          observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
-          plan_body: body,
-          apply_shell: apply_shell,
-        } }
-      }
+          generation: generation,
+          owner_fingerprint: owner_fp,
+        ),
+        apply_terminal: fleet_converge_apply_terminal(request: request),
+        observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+        plan_body: body,
+        apply_shell: apply_shell,
+      } }
+    }
     }
   }
 }
