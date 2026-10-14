@@ -9,7 +9,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ReferenceDerivedCandidateDisposition {
     CandidateSurvived { provider_module: String },
@@ -21,7 +21,7 @@ pub enum ReferenceDerivedCandidateDisposition {
     CandidateExportProofFailed { provider_module: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ReferenceDerivedCandidateRow {
     pub module_name: String,
     pub name: String,

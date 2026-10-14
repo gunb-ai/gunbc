@@ -54,7 +54,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum CostAxis<M> {
     CostAxisMeasured { value: M },
@@ -156,7 +156,16 @@ pub fn cost_account_time_count<S: Clone>(account: Rc<CostAccount<S>>) -> Option<
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum WitnessKind {
@@ -165,7 +174,7 @@ pub enum WitnessKind {
     NativeBundleWitnessKind,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct WitnessSeam {
     pub producer: String,
     pub consumer: String,
@@ -244,7 +253,7 @@ pub fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ScheduleWitnessEntry {
     pub entry: String,
     pub function: String,
@@ -252,7 +261,16 @@ pub struct ScheduleWitnessEntry {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum RunnableMemoryClass {
@@ -260,7 +278,7 @@ pub enum RunnableMemoryClass {
     RunnableMemorySubstantial,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct RunnableResourceProfile {
     pub heavy_whole_tree_resolve: bool,
     pub spawns_host_compiler: bool,
@@ -306,14 +324,23 @@ impl RunnableBatchClampSource {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum FloorWorkerIdentity {
     OrdinaryFloorWorker,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum FloorWorkerTerminalReceipt {
     FloorWorkerTerminalReceiptObserved {
@@ -335,7 +362,7 @@ impl FloorWorkerTerminalReceipt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum FloorWorkerTerminalReport {
     FloorWorkerReportedCompleted { detail: String },
@@ -362,7 +389,7 @@ impl FloorWorkerTerminalReport {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum FloorWorkerObservationOutcome {
     FloorWorkerCompleted,
@@ -388,7 +415,7 @@ impl FloorWorkerObservationOutcome {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct FloorWorkerObservation {
     pub worker: FloorWorkerIdentity,
     pub termination: Rc<ProcessTermination>,
@@ -583,7 +610,7 @@ pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Runnable {
     RunnableSingleClaim {
@@ -605,7 +632,16 @@ pub enum Runnable {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum OnSuccessRunnableDisposition {
@@ -674,14 +710,23 @@ pub fn walk_finalization_note() -> String {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum NoWalkFinalization {
     NoFinalizationDeclared,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum PreWalkExecution {
     NoPreWalkExecution,
@@ -782,9 +827,12 @@ pub fn runnable_step_label(r: Rc<Runnable>) -> String {
 }
 
 pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: String) -> bool {
-    batch.iter().cloned().fold(false, |acc: bool, r: _| {
-        (acc || (runnable_step_label(r.clone()) == target.clone()))
-    })
+    batch
+        .iter()
+        .cloned()
+        .fold(false, |acc: bool, r: Rc<Runnable>| {
+            (acc || (runnable_step_label(r.clone()) == target.clone()))
+        })
 }
 
 pub fn schedule_generates_same_batch_count<S>(

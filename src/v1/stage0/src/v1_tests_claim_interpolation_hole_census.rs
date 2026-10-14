@@ -30,7 +30,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum HoleShape {
     HoleIdentifier,
@@ -49,7 +49,7 @@ impl HoleShape {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum HoleTypeReading {
     HoleTypedString,
@@ -70,7 +70,7 @@ impl HoleTypeReading {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum HoleSite {
     HoleInBody,
@@ -96,7 +96,7 @@ impl HoleSite {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct HoleRow {
     pub file: String,
     pub start: i64,
@@ -110,26 +110,26 @@ pub struct HoleRow {
     pub fused: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct IhcHole {
     pub node: Rc<Node>,
     pub fused: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct HoleWalkContext {
     pub file_decl: String,
     pub si: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub site: Rc<HoleSite>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ObservedTemplate {
     pub file: String,
     pub holes: Rc<Vec<Rc<HoleRow>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct LexicalTemplateCount {
     pub file: String,
     pub templates: i64,
@@ -137,7 +137,7 @@ pub struct LexicalTemplateCount {
     pub hole_starts: Rc<Vec<i64>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct IhcHoleStartScan {
     pub after_opener: bool,
     pub starts: Rc<Vec<i64>>,
@@ -658,13 +658,13 @@ pub fn ihc_number_holes(rows: Rc<Vec<Rc<HoleRow>>>) -> Rc<Vec<Rc<HoleRow>>> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct IhcNumbering {
     pub seen: Rc<HashMap<String, i64>>,
     pub out: Rc<Vec<Rc<HoleRow>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct IhcCensus {
     pub templates: Rc<Vec<Rc<ObservedTemplate>>>,
     pub rows: Rc<Vec<Rc<HoleRow>>>,

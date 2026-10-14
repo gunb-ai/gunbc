@@ -216,7 +216,7 @@ pub fn serde_1_0_228_hash_set_deserialize_authority() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct RustVecSupplementalGenericBoundRow {
     pub derive_trait: RustCapability,
     pub required: RustCapability,
@@ -283,7 +283,7 @@ pub fn rust_btree_set_supplemental_generic_bound_rows(
     CACHED.with(|c: &Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>>| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct RustSupplementalGenericBoundContractCoverageDisposition {
     pub owner: Rc<DeclarationRef>,
     pub lane: Rc<DeclarationRef>,

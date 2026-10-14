@@ -44,7 +44,16 @@ pub fn unicode_scalar_utf8_octet_count(code_point: i64) -> i64 {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum DisplayWidth {
@@ -61,7 +70,7 @@ pub fn display_width_columns(w: DisplayWidth) -> i64 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct UnicodeBlock {
     pub name: String,
     pub start: i64,

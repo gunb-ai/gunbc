@@ -26,14 +26,14 @@ pub fn ancestor_depth(entry: Rc<OccurrenceIndexEntry>) -> i64 {
     (entry.containment.clone().ancestors.clone().len() as i64)
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SweptRegion {
     pub scope: Rc<AnnotationScope>,
     pub extent: Rc<SourceSpan>,
     pub depth: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct RegionSweepAcc {
     pub open: Rc<Vec<Rc<SweptRegion>>>,
     pub regions: Rc<Vec<Rc<AnnotationRegion>>>,
@@ -228,7 +228,7 @@ pub fn annotation_regions(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct RegionKeyIndex {
     pub parent_of: Rc<HashMap<Rc<AnnotationScope>, Rc<AnnotationScope>>>,
     pub step_of: Rc<HashMap<Rc<AnnotationScope>, String>>,
@@ -319,7 +319,7 @@ pub fn region_key_index(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct RegionKeyStepAcc {
     pub seen: Rc<HashMap<Rc<AnnotationScope>, i64>>,
     pub step_of: Rc<HashMap<Rc<AnnotationScope>, String>>,
@@ -420,7 +420,7 @@ pub fn keyed_annotation_rows(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct KeyedAnnotationRegion {
     pub key: String,
     pub extent: Rc<SourceSpan>,

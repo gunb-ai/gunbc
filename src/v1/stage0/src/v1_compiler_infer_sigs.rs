@@ -28,7 +28,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ResolvedFuncSig {
     pub name: String,
     pub params: Rc<Vec<Rc<Node>>>,
@@ -39,7 +39,7 @@ pub struct ResolvedFuncSig {
         Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ResolvedFormals {
     DeclarationBoundFormals {
@@ -62,32 +62,32 @@ impl ResolvedFormals {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ResolvedFuncEnv {
     pub name: String,
     pub local: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
     pub parents: Rc<Vec<Rc<ResolvedFuncEnv>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ResolveFuncSigsResult {
     pub func_env: Rc<ResolvedFuncEnv>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SigsAccum {
     pub signatures: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct CallEdge {
     pub caller: String,
     pub callee: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct FlattenAccum {
     pub seen: Rc<HashMap<String, bool>>,
     pub out: Rc<Vec<Rc<ResolvedFuncEnv>>>,
@@ -128,14 +128,14 @@ pub fn flatten_parent_envs(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ParentSigScan {
     pub sig: Option<Rc<ResolvedFuncSig>>,
     pub match_count: i64,
     pub first_parent: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum CallableIdentity {
     DeclaredCallable {
@@ -146,7 +146,7 @@ pub enum CallableIdentity {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct CallableCandidate {
     pub identity: Rc<CallableIdentity>,
     pub sig: Rc<ResolvedFuncSig>,
@@ -180,7 +180,7 @@ pub fn callable_candidate_labels(candidates: Rc<Vec<Rc<CallableCandidate>>>) -> 
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum FuncSigLookup {
     FuncSigResolved {
@@ -193,7 +193,7 @@ pub enum FuncSigLookup {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum CallTargetOutcome {
     DeclaredCallableResolved {
@@ -264,7 +264,7 @@ pub fn call_target_declared_sig(outcome: Rc<CallTargetOutcome>) -> Option<Rc<Res
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum NoDerivableSigReason {
     DerivationSigUnresolved,
@@ -285,7 +285,7 @@ impl NoDerivableSigReason {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum DerivedCalleeSig {
     DerivedFromSig { sig: Rc<ResolvedFuncSig> },
@@ -386,7 +386,7 @@ pub fn decide_callable_candidates(candidates: Rc<Vec<Rc<CallableCandidate>>>) ->
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ResolvedSigWithOwner {
     pub sig: Rc<ResolvedFuncSig>,
     pub owner_module_path: String,
