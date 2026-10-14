@@ -227,3 +227,18 @@ test fn fse_a_reversed_range_is_impossible_holds() -> Bool {
     _ => false
   }
 }
+
+test fn fse_probe_call_accepted_holds() -> Bool {
+  fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_call_empty"))
+}
+
+test fn fse_probe_call_resolve_refused_holds() -> Bool {
+  match rcf_verdict(resolved: fse_resolve(subject: "v2.test.fse_call_empty")) {
+    RcfResolveRefused => true
+    _ => false
+  }
+}
+
+test fn fse_probe_call_refused_not_inhabit_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_call_empty"), reason: ^application_argument_does_not_inhabit_declared)
+}
