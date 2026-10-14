@@ -29140,7 +29140,18 @@ pub fn emit_rust_fold_method_call(
         {
             "_".to_string()
         } else {
-            acc_type_str.clone()
+            if v1_rt::contains(acc_type_str.clone(), "Present<".to_string()) {
+                v1_rt::concat(
+                    acc_type_str.clone(),
+                    dbg_type_node(
+                        acc_type_node.clone(),
+                        0,
+                        scope.type_env.clone().source_indices.clone(),
+                    ),
+                )
+            } else {
+                acc_type_str.clone()
+            }
         };
         let fold_elem_type_str = if elem_render_has_spurious_generic.clone() {
             "_".to_string()
