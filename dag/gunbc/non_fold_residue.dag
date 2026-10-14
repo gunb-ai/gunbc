@@ -20,10 +20,6 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data non_fold_residue_stale_row_ruling_note: String = "2026-07-20 stale-row-removal receipt (carried over from the Rust const): create_double_init_collapsible and create_effect_is_dedupable were rostered AND declared kernel-permanent in cla_is_kernel_permanent_fn, so the analyzer never reports them as live sites and the rows could only ever count as stale. DESIGN §6 makes the classes mutually exclusive — a non-fold residue is either a named irreducible kernel or un-migrated modeling, there is no third — so a declared kernel must not also carry a burn-down row; the kernel declaration is the authority. Attribution (checked, not assumed): main was already red on non_fold_residue_clean_holds / non_fold_residue_no_unrostered_or_stale before #6848 merged — the scheduled cold falsifier failed exactly those witnesses at 2026-07-20T14:12Z on main at 73eea76dd7 (#6914); per-PR ci stayed green because affected-set selection did not run the corpus-read nfr witnesses for those diffs (the masking class the dated reason strings below describe)."
 
-data nfr_reason_local_tidy: String = "one-special-variant dispatch (LocalTidyCargoFmtCheck special, else the glob fallback), landed with the shell-to-dag bash de-fork (#6751); surfaced by the whole-corpus receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms"
-
-data nfr_dissolve_local_tidy: DissolutionCondition = unbound_dissolution(description: "local_tidy_spec's fold migration totals the dispatch and the row deletes")
-
 data nfr_reason_structural_eq_backfill: String = "structural equality (param scrutinee, off-variant wildcard arm returning false) landed unrostered when per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (masking class receipted on #6530/#6533; sites from the 2026-07-18 backfill, #6857, and #6582); declared so the ratchet re-arms"
 
 data nfr_dissolve_derived_equality: DissolutionCondition = unbound_dissolution(description: "derived equality from inhabitance lands (dag/std/algebra, DESIGN §3/§4) and the hand equality fold deletes with its row")
@@ -161,11 +157,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/roadmap/roadmap_workflow_progress.dag::verification_segment" },
     reason: nfr_reason_verification_producer_absent,
     dissolution: nfr_dissolve_verification_producer_absent,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger" },
-    reason: nfr_reason_local_tidy,
-    dissolution: nfr_dissolve_local_tidy,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/emit_orchestration.dag::orch_emit_let_step" },
