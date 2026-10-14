@@ -1,6 +1,7 @@
 module v2.test.claim.body_lowering.string_literal_value_lowering
 
 import std.types { List }
+import v2.compiler.body_lowering_fold { body_lower_atom_node_lowered_optional }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
@@ -32,6 +33,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // string-literal atom without a value. MUTATION RECEIPTS (both run, see the PR): reverting the
 // parse arm to the payload-less class stamp reds the value claims on the payload list and the
 // bare count; a lowering that rebuilds the literal as a bare atom at its occurrence reds them too.
+//
+// EARLIEST UNJUSTIFIED BOUNDARY (DESIGN section 6b), ON THE NORMALIZE PATH: after #13641,
+// body_lower_operand_raw_read classified a token with its own chain and no string-literal arm.
+// A payload-bearing ^dag_token_string_literal (list element, map key) was a branded atom and
+// rebuilt childless, so the decoded value parse attached through dag_string_literal_node_from_lexeme
+// was gone. That is not a second decoder: unicode_scalar_unfold still walks the lexeme once, at
+// parse. The repair is one classifier (body_lower_atom_node_lowered_optional). The two shapes
+// that tell a dropped payload from a wrong decode are the list-element escape \{\}\\ and the
+// non-ASCII numeric \u{e9}\x41; the_atom_classifier_keeps_an_escape_and_a_non_ascii_decoded_value
+// is the RED on the old chain, and every_normalized_string_literal_keeps_its_decoded_value is
+// the inhabitance that this classifier is the one normalize uses.
 //
 // The fixture's own text, as the tokenizer reads it:
 //   data sv_plain: String = "alpha"
@@ -129,6 +141,30 @@ test fn every_parsed_string_literal_carries_its_decoded_value() -> Bool {
 // THE SURVIVAL: normalize keeps every value, none reduced to a bare atom.
 test fn every_normalized_string_literal_keeps_its_decoded_value() -> Bool {
   slv_carries_expected(v: slv_verdicts().normalized)
+}
+
+// THE RED ON THE OLD TOKEN CLASSIFIER (supplied lexemes, not the module fixture): without the
+// string-literal arm, body_lower_atom_node_lowered_optional's branded-atom successor rebuilds the
+// node childless and both decoded values are Absent. A second decoder that kept the payload but
+// did not run dag_string_literal_decoded_text would disagree on the non-ASCII scalar.
+fn slv_classifier_keeps_decoded(lexeme: String, expected: String) -> Bool {
+  match dag_string_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: OccurrenceSynthetic) {
+    Accepted { value: n, diagnostics: _ } =>
+      match body_lower_atom_node_lowered_optional(stripped: n) {
+        Present { value: lowered } =>
+          match dag_string_literal_value_optional(node: lowered) {
+            Present { value: v } => v == expected
+            Absent => false
+          }
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn the_atom_classifier_keeps_an_escape_and_a_non_ascii_decoded_value() -> Bool {
+  slv_classifier_keeps_decoded(lexeme: "\"\\{\\}\\\\\"", expected: "\{\}\\")
+    && slv_classifier_keeps_decoded(lexeme: "\"\\u\{e9\}\\x41\"", expected: "\u{e9}A")
 }
 
 // ---- the decoder's interface, over supplied lexemes -------------------------------------------
