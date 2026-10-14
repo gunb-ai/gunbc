@@ -55,6 +55,7 @@ import gunbc.target_binding {
   DependencyDemandCensusProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
+  SharedTypeLeafCollisionCensusProducer,
   RegenRoundCostProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
@@ -410,6 +411,17 @@ fn native_materialization_store_closure_entry() -> String {
   "dag/gunbc/instruments/native_materialization_store_closure.dag"
 }
 
+// THE NAMESPACE-CUT XL-2 REHEARSAL: the root deletion executed in a throwaway subject by a
+// NativeClaimDriver program, holding iff the residual is the one control residual. Run by name.
+// `gunbc test //gunbc/instruments:native-xl2-rehearsal`.
+fn native_xl2_rehearsal_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-xl2-rehearsal" } }
+}
+
+fn native_xl2_rehearsal_entry() -> String {
+  "src/v2/workflow/namespace_xl2_rehearsal_native.dag"
+}
+
 // THE NATIVE EMISSION CONTROLS: one carrier per Rust-emitter rule, emitted, built and run by the
 // NativeClaimDriver program gunbc.instruments.native_emission_controls. It is the executing evidence
 // that a rule's emission is a compilable program with the right answers -- the half a textual
@@ -530,6 +542,19 @@ fn interpolation_hole_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "interpolation-hole-census" } }
 }
 
+// THE SHARED-TYPE LEAF-COLLISION CENSUS (gunbc.recurring_failure_mode
+// emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer). v1.tests.claim.shared_type_leaf_collision_census
+// joins type leaves whose declarers are both in one emitted closure and classifies independent
+// sharing (v1.compiler.emit_rust maybe_mark_shared_type per declaration). Different sharing is then
+// rustc-refused (break) or rustc-accepted (silent). The host walks SelfHostProducer and
+// V2NativeCliProducer through instrument_registry (entries from native_lane_runner, witnessed
+// against self_host_entry / v2_native_cli_entry) and every NativeClaimProgramProducer entry.
+// Standing is the fixture controls, not the live population.
+// `gunbc test //gunbc/instruments:shared-type-leaf-collision-census`.
+fn shared_type_leaf_collision_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "shared-type-leaf-collision-census" } }
+}
+
 // ONE STAGE0 REGEN ROUND, PRICED BY PHASE ON TWO CLOCKS (gunbc.regen_round_cost), followed by the
 // one-mirror discriminator: the same producer over the same corpus with exactly one mirror
 // selected, so compile.emit's cost can be attributed to per-module rendering or to closure-wide
@@ -634,6 +659,10 @@ fn interpolation_hole_census_binding() -> TargetBinding {
   TargetBinding { target: interpolation_hole_census_label() producer: InterpolationHoleCensusProducer {} }
 }
 
+fn shared_type_leaf_collision_census_binding() -> TargetBinding {
+  TargetBinding { target: shared_type_leaf_collision_census_label() producer: SharedTypeLeafCollisionCensusProducer {} }
+}
+
 fn regen_round_cost_binding() -> TargetBinding {
   TargetBinding { target: regen_round_cost_label() producer: RegenRoundCostProducer {} }
 }
@@ -674,6 +703,10 @@ fn v2_native_cli_binding() -> TargetBinding {
 
 fn native_app_attest_binding() -> TargetBinding {
   TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn native_xl2_rehearsal_binding() -> TargetBinding {
+  TargetBinding { target: native_xl2_rehearsal_label() producer: NativeClaimProgramProducer { entry: native_xl2_rehearsal_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
 fn native_emission_controls_binding() -> TargetBinding {
@@ -858,11 +891,12 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_seed_label(), floor_memory_qualification_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
     self_host_behavioral_equivalence_label(), dependency_demand_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
+    shared_type_leaf_collision_census_label(),
     regen_round_cost_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), value_position_block_nests_label(), native_serve_label()
+    native_emission_controls_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label()
   ]
 }
 
@@ -876,11 +910,12 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_seed_binding(), floor_memory_qualification_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
     self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
+    shared_type_leaf_collision_census_binding(),
     regen_round_cost_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), value_position_block_nests_binding(), native_serve_binding()
+    native_emission_controls_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding()
   ]
 }
 

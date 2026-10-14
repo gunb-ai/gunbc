@@ -5,7 +5,7 @@ import std.import_statement { ImportStripCoordinateSegment }
 import extdeps.git.object_store { GitObjectId }
 import extdeps.communication.medium { Lossless, Medium }
 import gunbc.instruments.multi_module_compile_fixture { FixtureSource }
-import gunbc.namespace_cut.namespace_step0_strip_producer {
+import v2.workflow.namespace_step0_strip_producer {
   Step0SourceStripped,
   Step0SourceStripRefused,
   Step0StripProductionRefusalCause,
@@ -38,7 +38,7 @@ import std.algebra { Cons, Empty, fold_list }
 // PRODUCTION ROUTE. Every stage is an existing authority composed, not restated: the exact base is
 // supplied by the caller as (source_commit, source_tree, members); acquiring it from a pinned revision
 // (subject read, tree-id recompute) is the NEXT STOP and is not in this module yet, the cut is the typed import strip through
-// gunbc.namespace_cut.namespace_step0_strip_producer, and the observation is v2.compiler.compile's whole-tree
+// v2.workflow.namespace_step0_strip_producer, and the observation is v2.compiler.compile's whole-tree
 // census-resolve (gunbc#11738) over the stripped sources. THE THROWAWAY TREE IS AN INGEST, NOT A
 // DIRECTORY: each stripped member keeps its base path as its artifact path and compilation unit, so
 // the tree is path-faithful without a single write, and the live source tree cannot be touched

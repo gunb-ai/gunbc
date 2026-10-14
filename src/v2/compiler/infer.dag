@@ -95,7 +95,7 @@ import std.optional {
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment }
 import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
-import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_lookup }
+import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
 import v2.std.node { symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, production_edge_label, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
@@ -6500,11 +6500,12 @@ type InferVariantArmConstruct {
 type InferConstructRead
   = ConstructIsRecord { construct: InferRecordConstruct }
   | ConstructIsVariantArm { construct: InferVariantArmConstruct }
+  | ConstructVariantArmIdentityUnavailable
   | ConstructNotARecord
 
 fn infer_record_formals(resolved: ResolvedTree, path: QualifiedName, authored: Node) -> InferRecordFormals {
   match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
-    Present { value: resolved } => RecordFormalsResolved { payload: resolved }
+    Present { value: declaration } => RecordFormalsResolved { payload: declaration }
     Absent => RecordFormalsAuthored { payload: authored }
   }
 }
@@ -6516,30 +6517,60 @@ fn infer_record_formals_payload(formals: InferRecordFormals) -> Node {
   }
 }
 
-// ONE MINT FOR BOTH PATH FORMS. The tag's path is either the variant's declared path (the
-// containment form: `p.Seal.Boxed`) or the module-level unique-variant alias (`p.Boxed`), whose
-// carrier the index carries beside it; by here the path IS the declared path either way, so the
-// construction types by the declaring coproduct, its params, and the variant's own payload.
+// THE COPRODUCT IS THE ARM'S DECLARING IDENTITY, NEVER THE PARENT OF ITS SPELLING. A unique-variant
+// alias `std.process.ExitFailure` has parent `std.process` (a module). `qualified_name_init` of that
+// spelling is not ProcessExit; using it made type_declaration_modifier_row_at look up `std` ×
+// `process` and refuse Uncovered. symbol_index_declaring_path_of answers ProcessExit.ExitFailure
+// when the index holds the alias's claimant. If that identity is not in the index, refuse — never
+// fall back to the spelling's parent.
+fn infer_coproduct_path_of_variant_arm(
+  index: SymbolIndex,
+  arm_path: QualifiedName
+) -> Optional<QualifiedName> {
+  let declaring = symbol_index_declaring_path_of(index: index, target: arm_path)
+  match qualified_name_init(qn: declaring) {
+    Empty => optional_absent()
+    Cons { head: _, tail: _ } =>
+      let coproduct = qualified_name_init(qn: declaring)
+      if symbol_index_is_module_root_at(index: index, qualified_path: coproduct) {
+        optional_absent()
+      } else {
+        match symbol_index_lookup(index: index, qualified_path: coproduct) {
+          Absent => optional_absent()
+          Present { value: _ } => optional_present(value: coproduct)
+        }
+      }
+  }
+}
+
+fn infer_declaration_identity_unavailable_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_reason_declaration_identity_unavailable,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
 fn infer_variant_arm_construct(
   reference: Node,
   resolved: ResolvedTree,
   declared_path: QualifiedName
 ) -> InferConstructRead {
-  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: declared_path) {
-    Absent => ConstructNotARecord
-    Present { value: resolved_decl } =>
-      match qualified_name_init(qn: declared_path) {
-        Empty => ConstructNotARecord
-        Cons { head: _, tail: _ } =>
+  match infer_coproduct_path_of_variant_arm(index: resolved.resolved_declarations, arm_path: declared_path) {
+    Absent => ConstructVariantArmIdentityUnavailable
+    Present { value: coproduct } =>
+      match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: declared_path) {
+        Absent => ConstructVariantArmIdentityUnavailable
+        Present { value: resolved_decl } =>
           ConstructIsVariantArm {
             construct: InferVariantArmConstruct {
               record: reference,
               arm_path: declared_path,
-              variant_path: qualified_name_init(qn: declared_path),
+              variant_path: coproduct,
               formals: infer_record_formals(resolved: resolved, path: declared_path, authored: resolved_decl),
               type_params: symbol_index_declared_type_params_at(
                 index: resolved.resolved_declarations,
-                qualified_path: qualified_name_init(qn: declared_path)
+                qualified_path: coproduct
               )
             }
           }
@@ -6723,7 +6754,7 @@ type InferRecordFieldBinding
 fn infer_record_field_binding(node: Node, record: Node, formals: InferRecordFormals) -> InferRecordFieldBinding {
   match infer_formals_from_domain(domain: infer_record_formals_payload(formals: formals)) {
     Absent => RecordPayloadUnread
-    Present { value: formals } =>
+    Present { value: formal_list } =>
       let actuals = construct_field_edges(n: node)
       match infer_record_first_positional_actual(actuals: actuals) {
         Present { value: unnamed } =>
@@ -6736,20 +6767,20 @@ fn infer_record_field_binding(node: Node, record: Node, formals: InferRecordForm
             )
           }
         Absent =>
-          match application_binding_plan_over(labels: list_map(xs: formals, f: infer_formal_identity_key), actuals: actuals) {
+          match application_binding_plan_over(labels: list_map(xs: formal_list, f: infer_formal_identity_key), actuals: actuals) {
             ApplicationBindingRefused { reason: reason, at: at } =>
               RecordFieldsRefused {
                 diagnostic: infer_record_construct_binding_refusal(
                   node: node,
                   record: record,
-                  formals: formals,
+                  formals: formal_list,
                   actuals: actuals,
                   plan_reason: reason,
                   at: at
                 )
               }
             ApplicationBound { slots: slots } =>
-              RecordFieldsBound { pairs: infer_formal_args_by_plan(formals: formals, slots: slots, actuals: actuals) }
+              RecordFieldsBound { pairs: infer_formal_args_by_plan(formals: formal_list, slots: slots, actuals: actuals) }
           }
       }
   }
@@ -7195,6 +7226,16 @@ fn infer_gather_settled_unannotated_row(
               declarations: resolved.resolved_declarations,
               pending: merged_pending,
               partials: partials
+            )
+          ConstructVariantArmIdentityUnavailable =>
+            infer_gather_fold_acc_failed(
+              node: acc.node,
+              pending: diagnostics_singleton(d: infer_declaration_identity_unavailable_diagnostic(at: acc.node)),
+              await_branch_row: acc.await_branch_row,
+              await_match_row: acc.await_match_row,
+              await_loop_row: acc.await_loop_row,
+              await_transform_row: acc.await_transform_row,
+              children_remaining: acc.children_remaining
             )
           ConstructNotARecord =>
             infer_gather_product_row_on_entries(
@@ -8956,16 +8997,27 @@ fn infer_sole_constructor_node_diags(
           constructing_module: constructing_module,
           tree: tree
         )
+      ConstructVariantArmIdentityUnavailable =>
+        infer_admission_diags_of([
+          infer_declaration_identity_unavailable_diagnostic(at: node)
+        ])
       ConstructNotARecord =>
         match construct_tag_path_optional(n: node) {
           Absent => None
           Present { value: path } =>
-            infer_sole_constructor_path_diags(
-              at: node,
-              type_path: path,
-              constructing_module: constructing_module,
-              tree: tree
-            )
+            match infer_coproduct_path_of_variant_arm(index: tree.resolved_declarations, arm_path: path) {
+              Present { value: coproduct } =>
+                infer_sole_constructor_path_diags(
+                  at: node,
+                  type_path: coproduct,
+                  constructing_module: constructing_module,
+                  tree: tree
+                )
+              Absent =>
+                infer_admission_diags_of([
+                  infer_declaration_identity_unavailable_diagnostic(at: node)
+                ])
+            }
         }
     }
   }

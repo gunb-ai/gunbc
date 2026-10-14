@@ -5463,8 +5463,8 @@ fn dag_string_text_decoded(token_class: Symbol, body: Optional<List<Int>>, occur
   let escape_refusal = dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
   match body {
     Absent => dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
-    Present { value: body } =>
-      match fold(body, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
+    Present { value: scalars } =>
+      match fold(scalars, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
         DagStringDecodeText { text: value } => outcome_accepted(value: value)
         DagStringDecodeEscape { text: _ } => escape_refusal
         DagStringDecodeHex { text: _, digits: _, value: _ } => escape_refusal

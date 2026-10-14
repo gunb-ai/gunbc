@@ -26,7 +26,7 @@ fn zero_width_modal() -> LexRuleModalToken {
   LexRuleModalToken {
     class: ^lex_prefer_longer_witness_modal,
     lexeme: [],
-    remaining: LexCursor { source: [], index: 0 },
+    remaining: LexCursor { source: [], index: 0, truncated: false },
     transition: PopLexMode
   }
 }
@@ -43,7 +43,7 @@ test fn modal_tie_against_equal_length_token_prefers_candidate() -> Bool {
   let candidate = LexRuleToken {
     class: ^lex_prefer_longer_witness_token,
     lexeme: [],
-    remaining: LexCursor { source: [], index: 0 }
+    remaining: LexCursor { source: [], index: 0, truncated: false }
   }
   lex_try_rules_prefer_longer(acc: zero_width_modal(), candidate: candidate) == candidate
 }
@@ -53,7 +53,7 @@ test fn no_match_accumulator_delegates_to_candidate() -> Bool {
   let candidate = LexRuleToken {
     class: ^lex_prefer_longer_witness_token,
     lexeme: [],
-    remaining: LexCursor { source: [], index: 0 }
+    remaining: LexCursor { source: [], index: 0, truncated: false }
   }
   lex_try_rules_prefer_longer(acc: LexRuleNoMatch, candidate: candidate) == candidate
 }

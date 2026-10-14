@@ -79,36 +79,11 @@ fn ownership_witness(tree: InferredTree, dependencies: List<DependencyView>) -> 
   }
 }
 
-fn ownership_mode_eq(a: OwnershipMode, b: OwnershipMode) -> Bool {
-  match a {
-    OwnedContainment => match b {
-      OwnedContainment => true
-      _ => false
-    }
-    SharedRead => match b {
-      SharedRead => true
-      _ => false
-    }
-    RequiresAccessWitness => match b {
-      RequiresAccessWitness => true
-      _ => false
-    }
-    BorrowedDependency => match b {
-      BorrowedDependency => true
-      _ => false
-    }
-    UnknownOwnership => match b {
-      UnknownOwnership => true
-      _ => false
-    }
-  }
-}
-
 fn ownership_classified_eq(
   a: ClassifiedDependencyView<OwnershipMode>,
   b: ClassifiedDependencyView<OwnershipMode>
 ) -> Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: ownership_mode_eq)
+  classified_dependency_view_eq(a: a, b: b, classification_eq: fn(a, b) { a == b })
 }
 
 fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {

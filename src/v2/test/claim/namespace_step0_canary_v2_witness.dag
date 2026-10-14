@@ -1,4 +1,4 @@
-module test.claim.namespace_step0_canary_v2_witness
+module v2.test.claim.namespace_step0_canary_v2_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash {
@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.namespace_cut.namespace_step0_subject_collector { Step0PopulationIdentity, Step0SubjectMember }
-import gunbc.namespace_cut.namespace_step0_candidate_run {
+import v2.workflow.namespace_step0_candidate_run {
   Step0SubjectPartition,
   Step0SubjectPartitionOutcome,
   Step0SubjectPartitioned,
