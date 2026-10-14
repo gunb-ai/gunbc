@@ -21,24 +21,33 @@ type DagSurfaceItemStanding
   = DagSurfaceTypeDeclaration
   | DagSurfaceNonTypeDeclaration
 
+// WHETHER FILL WALKS THE ITEM'S MEMBERS. Keyed on the same emitted carrier as standing, not on
+// node shape. `fn` / `test fn` / `data` / `service` / `resource` declare members (parameters,
+// fields, operations). An import carrier never does: its residual is not a type member spine.
+// Type-declaration carriers are indexed through type_decl_view, not this projection.
+type DagSurfaceIndexMembers
+  = DagSurfaceWalkIndexMembers
+  | DagSurfaceNoIndexMembers
+
 type DagSurfaceItemStandingRow {
   emitted: Symbol
   standing: DagSurfaceItemStanding
+  index_members: DagSurfaceIndexMembers
 }
 
 fn dag_surface_item_standing_rows() -> List<DagSurfaceItemStandingRow> {
   [
-    DagSurfaceItemStandingRow { emitted: ^dag_surface_import_decl, standing: DagSurfaceNonTypeDeclaration },
-    DagSurfaceItemStandingRow { emitted: ^dag_surface_import_block, standing: DagSurfaceNonTypeDeclaration },
-    DagSurfaceItemStandingRow { emitted: ^dag_surface_alias_decl, standing: DagSurfaceTypeDeclaration },
-    DagSurfaceItemStandingRow { emitted: ^dag_surface_type_decl, standing: DagSurfaceTypeDeclaration },
-    DagSurfaceItemStandingRow { emitted: ^dag_surface_data_decl, standing: DagSurfaceNonTypeDeclaration },
-    DagSurfaceItemStandingRow { emitted: ^dag_surface_fn_decl, standing: DagSurfaceNonTypeDeclaration },
-    DagSurfaceItemStandingRow { emitted: ^dag_surface_test_fn_decl, standing: DagSurfaceNonTypeDeclaration },
-    DagSurfaceItemStandingRow { emitted: ^dag_surface_service_decl, standing: DagSurfaceNonTypeDeclaration },
-    DagSurfaceItemStandingRow { emitted: ^dag_surface_resource_decl, standing: DagSurfaceNonTypeDeclaration },
-    DagSurfaceItemStandingRow { emitted: ^dag_surface_module, standing: DagSurfaceNonTypeDeclaration },
-    DagSurfaceItemStandingRow { emitted: ^dag_surface_top_level_item, standing: DagSurfaceNonTypeDeclaration }
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_import_decl, standing: DagSurfaceNonTypeDeclaration, index_members: DagSurfaceNoIndexMembers },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_import_block, standing: DagSurfaceNonTypeDeclaration, index_members: DagSurfaceNoIndexMembers },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_alias_decl, standing: DagSurfaceTypeDeclaration, index_members: DagSurfaceNoIndexMembers },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_type_decl, standing: DagSurfaceTypeDeclaration, index_members: DagSurfaceNoIndexMembers },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_data_decl, standing: DagSurfaceNonTypeDeclaration, index_members: DagSurfaceWalkIndexMembers },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_fn_decl, standing: DagSurfaceNonTypeDeclaration, index_members: DagSurfaceWalkIndexMembers },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_test_fn_decl, standing: DagSurfaceNonTypeDeclaration, index_members: DagSurfaceWalkIndexMembers },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_service_decl, standing: DagSurfaceNonTypeDeclaration, index_members: DagSurfaceWalkIndexMembers },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_resource_decl, standing: DagSurfaceNonTypeDeclaration, index_members: DagSurfaceWalkIndexMembers },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_module, standing: DagSurfaceNonTypeDeclaration, index_members: DagSurfaceNoIndexMembers },
+    DagSurfaceItemStandingRow { emitted: ^dag_surface_top_level_item, standing: DagSurfaceNonTypeDeclaration, index_members: DagSurfaceNoIndexMembers }
   ]
 }
 
@@ -52,6 +61,24 @@ fn dag_surface_item_standing(id: Symbol) -> Optional<DagSurfaceItemStanding> {
         Absent =>
           if row.emitted == id {
             optional_present(value: row.standing)
+          } else {
+            optional_absent()
+          }
+      }
+    }
+  )
+}
+
+fn dag_surface_item_index_members(id: Symbol) -> Optional<DagSurfaceIndexMembers> {
+  fold_list(
+    xs: dag_surface_item_standing_rows(),
+    empty: optional_absent(),
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if row.emitted == id {
+            optional_present(value: row.index_members)
           } else {
             optional_absent()
           }

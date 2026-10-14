@@ -62,7 +62,12 @@ import v2.extdeps.languages.dag {
 }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.compiler.primitive_authority { primitive_authority_row_is_contract_declaration }
-import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view, type_decl_conj_carries_an_arrow_member, type_param_names }
+import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view, type_decl_identity_atom_optional, type_param_names }
+import v2.extdeps.languages.dag_surface_item_standing {
+  DagSurfaceNoIndexMembers,
+  DagSurfaceWalkIndexMembers,
+  dag_surface_item_index_members
+}
 import std.types { List }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
@@ -115,28 +120,28 @@ fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
     NotATypeDecl =>
       SymbolIndexDeclared {
         bound: target,
-        members: symbol_index_callable_members(target: target),
+        members: symbol_index_non_type_members(target: target),
         binders: optional_absent()
       }
     PlainTypeDecl { member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), binders: optional_absent() }
   }
 }
 
-// A CALLABLE IS NOT A TYPE DECLARATION, BUT IT STILL HAS VALUE MEMBERS TO INDEX. type_decl_view
-// NotATypeDecl (an Arrow, or a Conj that carries one) correctly refuses type-member kind; fill still
-// descends so the Arrow arm can mint parameter paths. An import residual is also NotATypeDecl and
-// has no Arrow, so members stay Absent — the descent that treated those Conjs as records.
-fn symbol_index_callable_members(target: Node) -> Optional<Node> {
-  match target.kind {
-    TypeNode { connective: Arrow } => optional_present(value: target)
-    TypeNode { connective: Conj } =>
-      if type_decl_conj_carries_an_arrow_member(n: target) {
-        optional_present(value: target)
-      } else {
-        optional_absent()
+// A NON-TYPE DECLARATION STILL HAS MEMBERS TO INDEX. type_decl_view NotATypeDecl is the kind
+// classifier (the declaring carrier is not a type); fill members are a separate fact of that
+// carrier (v2.extdeps.languages.dag_surface_item_standing dag_surface_item_index_members).
+// fn / test fn / data / service / resource walk; import never. Arrow-shape is not the carrier:
+// data declares fields on a Conj, and fn/service/resource inhabit Arrow without that being the
+// identity of the walk. A nested node with no surface identity keeps the pre-#13832 descent.
+fn symbol_index_non_type_members(target: Node) -> Optional<Node> {
+  match type_decl_identity_atom_optional(n: target) {
+    Present { value: id } =>
+      match dag_surface_item_index_members(id: id) {
+        Present { value: DagSurfaceWalkIndexMembers } => optional_present(value: target)
+        Present { value: DagSurfaceNoIndexMembers } => optional_absent()
+        Absent => optional_present(value: target)
       }
-    TypeNode { connective: _ } => optional_absent()
-    ComputationNode { behavior: _ } => optional_absent()
+    Absent => optional_present(value: target)
   }
 }
 
