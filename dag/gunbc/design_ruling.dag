@@ -182,6 +182,13 @@ data managed_host_mode_names_drop_the_unit: DesignRuling = DesignRuling {
   provenance: "Operator, to session merry-fox-82, approving the managed-host untangle cut-7 names: 'yeah those names sound fine to me, just record it. Please retire that yml if it's hand written'. The eight mtcollins1_* fleet-converge modes drop the unit from their names and take the host as a workflow input: mtcollins1_boot, _boot_admit and _boot_receipt_upload become managed_host_boot, managed_host_boot_admit and managed_host_boot_receipt_upload; the census image publish and member readback modes become managed_host_census_image_publish and managed_host_census_member_readback; the census QEMU host-observe and toolchain-converge modes become executor_host_census_qemu_host_observe and executor_host_census_qemu_toolchain_converge; the fan and KVM observer modes become managed_host_fan_observe, managed_host_kvm_observer_observe and managed_host_kvm_observer_release. A board-family prefix was declined because the bound host's observed identity already decides it. The 2026-10-03 rulings stand: one atomic transition with no aliases, live GCP IAM names byte-identical. The hand-authored mtcollins-canary.yml is retired.",
 }
 
+data one_boot_procedure_for_every_machine: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_boot_procedure_for_every_machine"),
+  decided: "2026-10-14",
+  section: "3",
+  provenance: "Operator, to session merry-fox-82: 'i needed all the srvN boot/convergence aligned with mtcollins ... i just want a unified boot workflow in the end' and 'no matter the machine'. There is one boot and arrival-convergence procedure for every machine, parameterized by the host, never one per unit or per fleet role. The srvN executor hosts are not a separate boot population: dispatching runs (executor) and being booted through a controller (managed) are two roles one host may hold, not two kinds of host. The parallel boot verticals that exist today (gunbc.srv3 boot-once CD and OS install, gunbc.host_reset_return for executor hosts, and the mtcollins1 boot run) are replacement-migration roots to be cut over onto the managed-host boot, following the managed-host untangle.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     job_roster_closed_to_growth,
@@ -206,6 +213,7 @@ fn design_rulings() -> List<DesignRuling> {
     nonemptiness_is_constructed_or_proved,
     native_first_complete_cuts,
     managed_host_mode_names_drop_the_unit,
+    one_boot_procedure_for_every_machine,
   ]
 }
 
