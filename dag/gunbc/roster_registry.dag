@@ -244,11 +244,9 @@ data roster_registry: List<RosterRegistration> = [
       element_decl: "FrontierRow"
     ),
     unit_kind: "non-fold-residue site key (path::fn)",
-    membership: ByDerivation {
-      predicate: roster_decl(
-        module_path: "gunbc.non_fold_residue",
-        decl_name: "non_fold_residue_host_union"
-      )
+    membership: DeclaredFrontier {
+      reason: "closed-coproduct wildcard sites classified un-migrated modeling (DESIGN §6). The union is computed by the seed host reader non_fold_residue_identity_join_triples, because .dag has no compile-graph access.",
+      dissolution: unbound_dissolution(description: "the typed walk and reader fold into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364)")
     }
   },
   RosterRegistration {

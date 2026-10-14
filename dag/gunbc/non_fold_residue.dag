@@ -27,7 +27,3 @@ data nfr_reason_structural_eq_mint: String = "structural equality fold (param sc
 data nfr_reason_typed_census_ca5ed1724b: String = "a top-level wildcard arm over a closed coproduct found by the whole-corpus TYPED census at main ca5ed1724b (#12610's joint landing; nfr_whole_corpus_typed_census, srv1, 2026-10-02). The typed walk keys on the scrutinee's inferred type, so it sees the local-binding, field and call scrutinees the deleted parameter-keyed scan never could; these sites predate the walk and are un-migrated modeling (DESIGN §6), rostered so the ratchet arms at unrostered=0"
 
 data nfr_reason_landed_after_typed_census: String = "a top-level wildcard arm over a closed coproduct that landed on main after the ca5ed1724b typed census, while that census's roster was still in review (#12980); the floor's diff-scoped typed walk named it on the roster PR's own run. Un-migrated modeling (DESIGN §6), rostered so the ratchet stays armed at unrostered=0"
-
-fn non_fold_residue_host_union() -> String {
-  "non_fold_residue_frontier"
-}
