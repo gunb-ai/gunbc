@@ -168,3 +168,27 @@ test fn fb_e_accepted_holds() -> Bool {
     _ => false
   }
 }
+test fn fb_d_resolve_refused_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_d")) {
+    RcfResolveRefused => true
+    _ => false
+  }
+}
+test fn fb_d_infer_refused_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_d")) {
+    RcfInferRefused { diagnostics: _ } => true
+    _ => false
+  }
+}
+test fn fb_e_resolve_refused_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_e")) {
+    RcfResolveRefused => true
+    _ => false
+  }
+}
+test fn fb_e_infer_refused_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_e")) {
+    RcfInferRefused { diagnostics: _ } => true
+    _ => false
+  }
+}
