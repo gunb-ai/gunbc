@@ -1,6 +1,8 @@
 module v2.test.claim.cli.v2_native_cli
+import std.optional { Absent, Optional, Present }
 
-import std.algebra { Cons, Empty, FreeMonoid, length, list_head, HeadAbsent, HeadFound }
+
+import std.algebra { Cons, Empty, FreeMonoid, length, list_head }
 import std.process { ExitFailure, ExitSuccess }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import extdeps.process.posix_exit { exit_code_general_error }
@@ -68,8 +70,8 @@ fn plan_first_root(plan: CliPlan) -> String {
       match verb {
         CliEmitClosure { entry: _, source_roots: roots, target: _ } =>
           match list_head(xs: roots) {
-            HeadAbsent => ""
-            HeadFound { value: first } => first
+            Absent => ""
+            Present { value: first } => first
           }
         CliIfArmReaderDifferential { source_roots: _ } => ""
         CliCheckLayout { source_roots: _ } => ""
@@ -528,8 +530,8 @@ test fn a_population_verb_names_the_roots_it_was_given_holds() -> Bool {
 
 fn plan_first_root_of_roots_verb(plan: CliPlan) -> String {
   match list_head(xs: v2_cli_plan_source_roots(plan: plan)) {
-    HeadAbsent => ""
-    HeadFound { value: first } => first
+    Absent => ""
+    Present { value: first } => first
   }
 }
 

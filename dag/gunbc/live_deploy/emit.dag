@@ -1,4 +1,6 @@
 module gunbc.live_deploy.emit
+import std.optional { Absent, Optional, Present }
+
 
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import gunbc.workspace_image_delivery { workspace_image_staging_root }
@@ -225,7 +227,7 @@ import gunbc.host.host_axis_caps {
   host_axis_caps_author_before_revert_enforced,
 }
 import gunbc.ownership { Ownership }
-import std.algebra { list_tail, TailFound, TailAbsent }
+import std.algebra { list_tail }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberEffect, EffectAdd, EffectReplace, EffectRemove,
@@ -1655,8 +1657,8 @@ fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
 
 fn path_parent_dir(path: String) -> String {
   match list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
-    TailAbsent => "/"
-    TailFound { tail: rest } => join(reverse(rest), "/")
+    Absent => "/"
+    Present { value: rest } => join(reverse(rest), "/")
   }
 }
 // THE 0755 IS A SHARED CONSTANT, NOT A DERIVED FACT, and every member still on it inherits it
