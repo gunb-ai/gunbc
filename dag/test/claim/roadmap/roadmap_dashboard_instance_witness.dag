@@ -64,7 +64,6 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv2_lab_dashboard_instance,
   srv2_deploy_dashboard_instance,
   macbook_local_dashboard_instance,
-  fleet_compute_hermetic_dashboard_instance,
   public_builtin_dashboard_instances,
   dashboard_instance_is_disjoint_from_public_builtins,
   isolated_dashboard_instance,
@@ -995,7 +994,6 @@ test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
     && roster_has_id(id: srv2_lab_dashboard_instance().instance_id)
     && roster_has_id(id: srv2_deploy_dashboard_instance().instance_id)
     && roster_has_id(id: macbook_local_dashboard_instance().instance_id)
-    && roster_has_id(id: fleet_compute_hermetic_dashboard_instance().instance_id)
     && all(
       public_builtin_dashboard_instances(),
       i => match dashboard_instance_for_repo_root(repo_root: i.repo_root as String) {

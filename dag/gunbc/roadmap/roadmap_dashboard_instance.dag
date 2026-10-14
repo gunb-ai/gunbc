@@ -1326,28 +1326,28 @@ fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
 // fork as enumerating production three times.
 // THE FLEET HERMETIC COMPUTE SUBJECT (WAVE-0 B). A declared instance the compute_run_unit
 // instrument binds, not a session cwd and not srv1-live's /opt/gunbc/gunbc. host_identity is
-// ghrunner-hermetic so srv1-live keeps host lookup. Paths sit under /tmp/gunbc_compute_hermetic
-// so they cannot overlap production owned directories. Observe-only: this row names a compute
-// layout, it does not grant dispatch.
+// ghrunner-hermetic so srv1-live keeps host lookup. Roots are ALWAYS under the invoking job
+// workspace (git toplevel): they are not a host-shared path (/tmp, /opt/gunbc). Observe-only:
+// this row names a compute layout, it does not grant dispatch. Not a public_builtin: a
+// workspace-relative root is not a host lookup subject.
 data fleet_compute_hermetic_dashboard_id: NonEmptyStr = "fleet-compute-hermetic" as NonEmptyStr
-data fleet_compute_hermetic_instance_root: FilePath = "/tmp/gunbc_compute_hermetic" as FilePath
-data fleet_compute_hermetic_repo_root: FilePath = "/tmp/gunbc_compute_hermetic/source" as FilePath
-data fleet_compute_hermetic_codex_root: FilePath = "/tmp/gunbc_compute_hermetic-codex" as FilePath
+data fleet_compute_hermetic_workspace_child: String = ".gunbc-compute-hermetic"
 data fleet_compute_hermetic_directory_owner: PosixOwnerNames = PosixOwnerNames {
   user: "ghrunner" as NonEmptyStr,
   group: "ghrunner" as NonEmptyStr,
 }
 
-fn fleet_compute_hermetic_dashboard_instance() -> HostDashboardInstance {
+fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath) -> HostDashboardInstance {
+  let instance_root = dashboard_instance_child(root: workspace, child: fleet_compute_hermetic_workspace_child)
   HostDashboardInstance {
     deployment: fleet_compute_hermetic_deployment,
     instance_id: fleet_compute_hermetic_dashboard_id,
     host_identity: "ghrunner-hermetic" as NonEmptyStr,
-    provision_parent_root: "/tmp" as FilePath,
-    instance_root: fleet_compute_hermetic_instance_root,
-    local_origin_root: fleet_compute_hermetic_repo_root,
+    provision_parent_root: workspace,
+    instance_root: instance_root,
+    local_origin_root: workspace,
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
-    repo_root: fleet_compute_hermetic_repo_root,
+    repo_root: workspace,
     dispatch_base_ref: "origin/main" as NonEmptyStr,
     dispatch_state_scope: DispatchStateInstanceOwned {
       worktree_child: "attempts" as NonEmptyStr,
@@ -1355,17 +1355,17 @@ fn fleet_compute_hermetic_dashboard_instance() -> HostDashboardInstance {
     },
     execution_environment: dashboard_execution_environment_for_toolchain(
       toolchain: srv1_linux_toolchain,
-      serve_binary: dashboard_instance_child(root: fleet_compute_hermetic_instance_root, child: "bin/gunbc"),
+      serve_binary: dashboard_instance_child(root: instance_root, child: "bin/gunbc"),
     ),
     provider_state: DashboardExistingProviderState {
-      root: fleet_compute_hermetic_codex_root,
+      root: dashboard_instance_child(root: workspace, child: ".gunbc-compute-hermetic-codex"),
       executable: none,
       binding: admitted_single_session_binding(
         selection: CodexDefaultAccount,
         evidence: codex_roadmap_account_evidence,
       ),
     },
-    serve_binary: dashboard_instance_child(root: fleet_compute_hermetic_instance_root, child: "bin/gunbc"),
+    serve_binary: dashboard_instance_child(root: instance_root, child: "bin/gunbc"),
     serve_function: "roadmap_serve_handle" as NonEmptyStr,
     listen_host: "127.0.0.1" as NonEmptyStr,
     listen_port: 18084,
@@ -1388,7 +1388,6 @@ fn public_builtin_dashboard_instances() -> List<HostDashboardInstance> {
     srv2_lab_dashboard_instance(),
     srv2_deploy_dashboard_instance(),
     macbook_local_dashboard_instance(),
-    fleet_compute_hermetic_dashboard_instance(),
   ]
 }
 
