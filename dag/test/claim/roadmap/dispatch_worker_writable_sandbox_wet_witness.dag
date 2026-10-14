@@ -4,6 +4,8 @@ import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.measure { kibibyte }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.filesystem { path_parent_directory }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import extdeps.systemd.systemd_run {
   systemd_run_user_wait_command,
@@ -20,11 +22,17 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_worker_log_path_for_instance,
 }
 import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
+import std.optional { Present }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
   dashboard_instance_dispatch_worktree_root,
 }
+import gunbc.roadmap.attempt_system_unit_launch {
+  AttemptSystemUnitStartFacts, attempt_system_unit_encode_start_wait,
+  attempt_system_unit_write_pending, attempt_system_unit_launch_host_argv,
+}
+import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -169,4 +177,103 @@ test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
       path: log_probe,
     )
     && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe]).exit_code == 0
+}
+
+fn sandbox_touch_cli(path: String) -> ProcessExit {
+  if Filesystem.Write(path: path, content: "probe\n").success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "sandbox touch write refused")
+  }
+}
+
+fn launcher_touch_inner_argv(instance: HostDashboardInstance, path: String) -> List<String> {
+  match admit_named_argument(name: "path", value: path) {
+    NamedArgumentNameEmpty => []
+    NamedArgumentNameHoldsSeparator { name: _ } => []
+    NamedArgumentAdmitted { argument: arg } => [
+      instance.serve_binary as String,
+      "run",
+      "--source-root", join([instance.repo_root as String, "/dag"], ""),
+      "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
+      "--entry", join([instance.repo_root as String, "/dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag"], ""),
+      "--function", "sandbox_touch_cli",
+      "--arg", join([arg.name, "=", arg.value], ""),
+    ]
+  }
+}
+
+fn launcher_sandbox_touch(instance: HostDashboardInstance, unit_key: String, path: String) -> SandboxTouch {
+  let inner = launcher_touch_inner_argv(instance: instance, path: path)
+  match inner.first() {
+    Absent => SandboxTouchUnrunnable
+    Present { value: _ } => {
+      let facts = AttemptSystemUnitStartFacts {
+        node_id: wet_probe_node as String,
+        attempt_key: join([wet_probe_key, "-", unit_key], ""),
+        user: instance.directory_owner.user as NonEmptyStr,
+        working_directory: instance.repo_root as String,
+        attempt_worktree: probe_attempt_worktree(instance: instance),
+        stdout_path: join([probe_worker_dir(instance: instance), "/launcher-stdout.log"], ""),
+        stderr_path: join([probe_worker_dir(instance: instance), "/launcher-stderr.log"], ""),
+        granted: kibibyte(count: 65536),
+        exit_hook: "true" as NonEmptyStr,
+        inner_argv: inner,
+      }
+      if !attempt_system_unit_write_pending(
+        instance_root: instance.instance_root as String,
+        body: attempt_system_unit_encode_start_wait(facts: facts),
+      ) {
+        SandboxTouchUnrunnable
+      } else {
+        let cmd = attempt_system_unit_launch_host_argv(instance: instance)
+        SandboxTouchRan {
+          exit_code: shell.Exec.RunArgv(program: cmd.program, arguments: cmd.args).exit_code,
+        }
+      }
+    }
+  }
+}
+
+fn launcher_write_refused(instance: HostDashboardInstance, unit_key: String, path: String) -> Bool {
+  match launcher_sandbox_touch(instance: instance, unit_key: unit_key, path: path) {
+    SandboxTouchUnrunnable => false
+    SandboxTouchRan { exit_code } => exit_code != 0
+  }
+}
+
+fn launcher_wrote(instance: HostDashboardInstance, unit_key: String, path: String) -> Bool {
+  match launcher_sandbox_touch(instance: instance, unit_key: unit_key, path: path) {
+    SandboxTouchUnrunnable => false
+    SandboxTouchRan { exit_code } => exit_code == 0
+  }
+}
+
+test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  prepare_probe_attempt(instance: inst)
+    && launcher_write_refused(
+      instance: inst,
+      unit_key: "bin",
+      path: join([path_parent_directory(path: inst.serve_binary as String), "/.write-probe"], ""),
+    )
+    && launcher_write_refused(
+      instance: inst,
+      unit_key: "hooks",
+      path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""),
+    )
+}
+
+test fn writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  let wt = probe_attempt_worktree(instance: inst)
+  let scratch = probe_worker_dir(instance: inst)
+  let objects = join([inst.repo_root as String, "/.git/objects/.gunbc-worker-write-probe"], "")
+  let probe = join([wt, "/.gunbc-launcher-write-probe"], "")
+  let log_probe = join([scratch, "/.gunbc-launcher-log-probe"], "")
+  prepare_probe_attempt(instance: inst)
+    && launcher_wrote(instance: inst, unit_key: "wt", path: probe)
+    && launcher_wrote(instance: inst, unit_key: "log", path: log_probe)
+    && launcher_wrote(instance: inst, unit_key: "objects", path: objects)
+    && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe, objects]).exit_code == 0
 }

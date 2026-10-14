@@ -3054,6 +3054,8 @@ fn dispatch_worker_path_is_writable(instance: HostDashboardInstance, attempt_wor
 type DispatchWorkerUnitPlan {
   systemd_run_program: FilePath
   unit: NonEmptyStr
+  node_id: String
+  attempt_key: String
   working_directory: String
   attempt_worktree: String
   stdout_path: String
@@ -3075,6 +3077,10 @@ fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, pla
   )
 }
 
+// THE WORKER START IS NOT THIS COMMAND. systemd-run --user drops Protect* on srv1. The one start
+// is gunbc.roadmap.attempt_system_unit_launch through the granted launcher. Belt starts through
+// that launcher. This fold remains the typed property list plus the user-work-slice property
+// wrapper for other transients; it must not be the attempt-worker start.
 fn dispatch_worker_unit_command(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> SystemdRunCommandReading {
   gunbc_user_work_transient_command(
     unit: plan.unit,
@@ -3129,6 +3135,8 @@ fn dispatch_systemd_unit_container_plan(
               plan: DispatchWorkerUnitPlan {
                 systemd_run_program: program,
                 unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
+                node_id: node_id,
+                attempt_key: attempt_key,
                 working_directory: pane_working_directory,
                 attempt_worktree: worktree_path,
                 stdout_path: stdout_path,
@@ -4274,12 +4282,23 @@ type AttemptUnitObservation
 // indirection buys local-vs-ssh dispatch, which this observation does not need: the belt runs on
 // the host whose units it is reading, so the local manager IS the subject.
 fn attempt_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> AttemptUnitObservation {
-  let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: systemd_unit_property_wire(property: property))
-  if read.success {
-    AttemptUnitFinished { exit_status: trim(read.value) }
+  if starts_with(s: unit as String, prefix: "gunbc-attempt-") {
+    let read = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: property))
+    if read.success {
+      AttemptUnitFinished { exit_status: trim(read.value) }
+    } else {
+      AttemptUnitUnreadable {
+        reason: join(["systemctl show refused for ", unit as String], ""),
+      }
+    }
   } else {
-    AttemptUnitUnreadable {
-      reason: join(["systemctl --user show refused for ", unit as String], ""),
+    let read = systemd.Systemctl.ShowUserProperty(unit: unit, property: systemd_unit_property_wire(property: property))
+    if read.success {
+      AttemptUnitFinished { exit_status: trim(read.value) }
+    } else {
+      AttemptUnitUnreadable {
+        reason: join(["systemctl --user show refused for ", unit as String], ""),
+      }
     }
   }
 }

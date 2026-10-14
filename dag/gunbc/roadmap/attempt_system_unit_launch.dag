@@ -1,0 +1,425 @@
+module gunbc.roadmap.attempt_system_unit_launch
+
+// SYSTEM-MANAGER TRANSIENT ATTEMPT UNITS, via a narrow privileged launcher. srv1's user manager
+// drops ProtectSystem/ProtectHome/ReadWritePaths (apparmor_restrict_unprivileged_userns=1). PID 1
+// enforces them. The privileged effect is: start/stop/reset-failed ONE transient system unit named
+// gunbc-attempt-<node>-<key>.service, User= the instance service user, properties from the same
+// typed confinement fold, ExecStart the plan's inner argv. Which authorization pattern performs
+// that effect is gunbc.auth.authorization_pattern_selection, not a call-site choice.
+//
+// THE GRANT IS THE LAUNCHER ARGV. Belt does not sudo systemd-run with caller-chosen -p flags.
+// sudoers matches one exact `gunbc run` of attempt_system_unit_launch_cli with --arg instance_root
+// pinned. The CLI rebuilds systemd-run from the pending request and refuses any other unit name,
+// user, property set, or program. DESIGN §3 replacement: no --user dual path.
+
+import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import std.optional { Present }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { Kibibyte, kibibyte, kibibyte_count }
+import std.human_intervention { EveryProvision }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.systemd { User }
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, ApiSurface, WorkloadIdentityBindable, MintsNoCredential,
+  ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
+}
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  systemd_run_transient_retained_unit_command, systemd_run_transient_wait_unit_command,
+  systemd_run_command_argument_words, systemd_run_option_words_refused_cause_detail,
+}
+import extdeps.systemd.systemctl
+import extdeps.sudo.elevation { sudo_elevate }
+import gunbc.cli_invoke {
+  admit_named_argument, NamedArgumentAdmission, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator,
+}
+import gunbc.executor_privileged_operation {
+  gunbc_entry_run_argv, sudoers_argument_word, executor_sudoers_run_as,
+}
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
+}
+import extdeps.exec.command { ArgvCommand }
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  DispatchWorkerUnitPlan, dispatch_attempt_unit_name, dispatch_worker_unit_properties_for_plan,
+  host_exec_argv, HostExecArgv,
+}
+import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
+
+data attempt_system_unit_launch_entry: String = "dag/gunbc/roadmap/attempt_system_unit_launch.dag"
+data attempt_system_unit_launch_function: String = "attempt_system_unit_launch_cli"
+data attempt_system_unit_pending_child: String = "attempt-unit-spool/pending"
+data attempt_system_unit_name_prefix: String = "gunbc-attempt-"
+data attempt_system_unit_name_suffix: String = ".service"
+data attempt_system_unit_sudoers_path: String = "/etc/sudoers.d/gunbc-attempt-system-unit"
+data attempt_system_unit_source_roots: List<NonEmptyStr> = ["dag" as NonEmptyStr, "src/v2" as NonEmptyStr]
+
+fn attempt_system_unit_privileged_effect_subject() -> NonEmptyStr {
+  "start, stop, or reset-failed one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance service user, with the typed confinement property set and no other unit, user, property, or program" as NonEmptyStr
+}
+
+fn attempt_system_unit_privileged_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: attempt_system_unit_privileged_effect_subject(),
+    frequency: EveryProvision,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityBindable {
+      member: join([
+        srv1_live_dashboard_instance().directory_owner.user as String,
+        " on srv1, the live dashboard service user whose belt starts gunbc-attempt-* system units through this launcher",
+      ], "") as NonEmptyStr,
+    },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn attempt_system_unit_pending_path(instance_root: String) -> String {
+  join([instance_root, "/", attempt_system_unit_pending_child], "")
+}
+
+fn attempt_system_unit_name_admitted(unit: NonEmptyStr) -> Bool {
+  starts_with(s: unit as String, prefix: attempt_system_unit_name_prefix)
+    && string_contains(s: unit as String, pattern: attempt_system_unit_name_suffix)
+    && !string_contains(s: unit as String, pattern: "/")
+    && !string_contains(s: unit as String, pattern: "..")
+}
+
+fn attempt_system_unit_matches_identity(unit: NonEmptyStr, node_id: String, attempt_key: String) -> Bool {
+  (unit as String) == (dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) as String)
+}
+
+type AttemptSystemUnitVerb
+  = AttemptSystemUnitStart
+  | AttemptSystemUnitStop
+  | AttemptSystemUnitResetFailed
+
+type AttemptSystemUnitStartFacts {
+  node_id: String
+  attempt_key: String
+  user: NonEmptyStr
+  working_directory: String
+  attempt_worktree: String
+  stdout_path: String
+  stderr_path: String
+  granted: Kibibyte
+  exit_hook: NonEmptyStr
+  inner_argv: List<String>
+}
+
+type AttemptSystemUnitAdmission
+  = AttemptSystemUnitAdmitted { verb: AttemptSystemUnitVerb, unit: NonEmptyStr, facts: AttemptSystemUnitStartFacts? }
+  | AttemptSystemUnitRefused { reason: String }
+
+fn attempt_system_unit_start_admitted(instance: HostDashboardInstance, facts: AttemptSystemUnitStartFacts) -> AttemptSystemUnitAdmission {
+  let unit = dispatch_attempt_unit_name(node_id: facts.node_id, attempt_key: facts.attempt_key)
+  if !attempt_system_unit_name_admitted(unit: unit) {
+    AttemptSystemUnitRefused { reason: "unit name is not a gunbc-attempt-*.service identity" }
+  } else if (facts.user as String) != (instance.directory_owner.user as String) {
+    AttemptSystemUnitRefused { reason: "User= is not the instance service user" }
+  } else {
+    match facts.inner_argv.first() {
+      Absent => AttemptSystemUnitRefused { reason: "ExecStart argv is empty" }
+      Present { value: program } =>
+        if program != (instance.serve_binary as String) {
+          AttemptSystemUnitRefused { reason: "ExecStart program is not the instance gunbc binary" }
+        } else {
+          AttemptSystemUnitAdmitted { verb: AttemptSystemUnitStart, unit: unit, facts: Present { value: facts } }
+        }
+    }
+  }
+}
+
+fn attempt_system_unit_control_admitted(verb: AttemptSystemUnitVerb, unit: NonEmptyStr) -> AttemptSystemUnitAdmission {
+  if !attempt_system_unit_name_admitted(unit: unit) {
+    AttemptSystemUnitRefused { reason: "unit name is not a gunbc-attempt-*.service identity" }
+  } else {
+    AttemptSystemUnitAdmitted { verb: verb, unit: unit, facts: none }
+  }
+}
+
+fn attempt_system_unit_user_property(user: NonEmptyStr) -> SystemdRunProperty {
+  SystemdRunProperty { property: User, value: user }
+}
+
+fn attempt_system_unit_properties(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, user: NonEmptyStr) -> List<SystemdRunProperty> {
+  concat(
+    [attempt_system_unit_user_property(user: user)],
+    dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: granted, process_bounds: session_process_bounds),
+  )
+}
+
+fn attempt_system_unit_systemd_run_command(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, user: NonEmptyStr) -> SystemdRunCommandReading {
+  systemd_run_transient_retained_unit_command(
+    unit: plan.unit,
+    properties: attempt_system_unit_properties(instance: instance, plan: plan, granted: granted, user: user),
+    command_argv: plan.inner_argv,
+  )
+}
+
+fn attempt_system_unit_encode_start(facts: AttemptSystemUnitStartFacts) -> String {
+  attempt_system_unit_encode_start_tagged(tag: "start", facts: facts)
+}
+
+fn attempt_system_unit_encode_start_wait(facts: AttemptSystemUnitStartFacts) -> String {
+  attempt_system_unit_encode_start_tagged(tag: "start-wait", facts: facts)
+}
+
+fn attempt_system_unit_encode_start_tagged(tag: String, facts: AttemptSystemUnitStartFacts) -> String {
+  join([
+    tag,
+    facts.node_id,
+    facts.attempt_key,
+    facts.user as String,
+    facts.working_directory,
+    facts.attempt_worktree,
+    facts.stdout_path,
+    facts.stderr_path,
+    to_string(value: kibibyte_count(k: facts.granted)),
+    facts.exit_hook as String,
+    join(facts.inner_argv, "\u{1f}"),
+  ], "\n")
+}
+
+fn attempt_system_unit_encode_control(verb: AttemptSystemUnitVerb, unit: NonEmptyStr) -> String {
+  let tag = match verb {
+    AttemptSystemUnitStart => "start"
+    AttemptSystemUnitStop => "stop"
+    AttemptSystemUnitResetFailed => "reset-failed"
+  }
+  join([tag, unit as String], "\n")
+}
+
+fn attempt_system_unit_launch_named_argument(instance_root: String) -> NamedArgumentAdmission {
+  admit_named_argument(name: "instance_root", value: instance_root)
+}
+
+fn attempt_system_unit_launch_gunbc_argv(instance: HostDashboardInstance) -> List<NonEmptyStr> {
+  match attempt_system_unit_launch_named_argument(instance_root: instance.instance_root as String) {
+    NamedArgumentNameEmpty => []
+    NamedArgumentNameHoldsSeparator { name: _ } => []
+    NamedArgumentAdmitted { argument: arg } =>
+      concat(
+        gunbc_entry_run_argv(
+          workspace_root: instance.repo_root as NonEmptyStr,
+          binary: instance.serve_binary as NonEmptyStr,
+          source_roots: attempt_system_unit_source_roots,
+          entry: attempt_system_unit_launch_entry as NonEmptyStr,
+          function: attempt_system_unit_launch_function as NonEmptyStr,
+        ),
+        ["--arg" as NonEmptyStr, join([arg.name, "=", arg.value], "") as NonEmptyStr],
+      )
+  }
+}
+
+fn attempt_system_unit_launch_host_argv(instance: HostDashboardInstance) -> HostExecArgv {
+  let gunbc_argv = attempt_system_unit_launch_gunbc_argv(instance: instance)
+  if count(gunbc_argv) == 0 {
+    host_exec_argv(program: "/usr/bin/false", args: ["attempt-system-unit-launch-argv-refused"])
+  } else {
+    let elevated = sudo_elevate(command: map(gunbc_argv, w => w as String))
+    host_exec_argv(program: elevated.bin_path, args: elevated.args)
+  }
+}
+
+fn attempt_system_unit_sudoers_line(instance: HostDashboardInstance) -> String {
+  join([
+    instance.directory_owner.user as String,
+    " ALL=(",
+    executor_sudoers_run_as as String,
+    ") NOPASSWD: ",
+    join(map(attempt_system_unit_launch_gunbc_argv(instance: instance), w => sudoers_argument_word(w: w as String)), " "),
+  ], "")
+}
+
+fn attempt_system_unit_sudoers_body() -> String {
+  join([
+    "# GENERATED by gunbc.roadmap.attempt_system_unit_launch — do not hand-edit",
+    attempt_system_unit_sudoers_line(instance: srv1_live_dashboard_instance()),
+    attempt_system_unit_sudoers_line(instance: srv1_lab_dashboard_instance()),
+    "",
+  ], "\n")
+}
+
+fn attempt_system_unit_start_facts_from_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, node_id: String, attempt_key: String) -> AttemptSystemUnitStartFacts {
+  AttemptSystemUnitStartFacts {
+    node_id: node_id,
+    attempt_key: attempt_key,
+    user: instance.directory_owner.user as NonEmptyStr,
+    working_directory: plan.working_directory,
+    attempt_worktree: plan.attempt_worktree,
+    stdout_path: plan.stdout_path,
+    stderr_path: plan.stderr_path,
+    granted: granted,
+    exit_hook: plan.exit_hook,
+    inner_argv: plan.inner_argv,
+  }
+}
+
+fn attempt_system_unit_write_pending(instance_root: String, body: String) -> Bool {
+  Filesystem.Write(path: attempt_system_unit_pending_path(instance_root: instance_root), content: body).success
+}
+
+fn attempt_system_unit_instance_for_root(instance_root: String) -> HostDashboardInstance? {
+  if instance_root == (srv1_live_dashboard_instance().instance_root as String) {
+    Present { value: srv1_live_dashboard_instance() }
+  } else if instance_root == (srv1_lab_dashboard_instance().instance_root as String) {
+    Present { value: srv1_lab_dashboard_instance() }
+  } else {
+    none
+  }
+}
+
+fn attempt_system_unit_cli_start(instance: HostDashboardInstance, lines: List<String>, wait: Bool) -> ProcessExit {
+  match lines[1] {
+    Absent => exit_failure(reason: "start request is truncated")
+    Present { value: node_id } =>
+      match lines[2] {
+        Absent => exit_failure(reason: "start request is truncated")
+        Present { value: attempt_key } =>
+          match lines[3] {
+            Absent => exit_failure(reason: "start request is truncated")
+            Present { value: user } =>
+              match lines[4] {
+                Absent => exit_failure(reason: "start request is truncated")
+                Present { value: working_directory } =>
+                  match lines[5] {
+                    Absent => exit_failure(reason: "start request is truncated")
+                    Present { value: attempt_worktree } =>
+                      match lines[6] {
+                        Absent => exit_failure(reason: "start request is truncated")
+                        Present { value: stdout_path } =>
+                          match lines[7] {
+                            Absent => exit_failure(reason: "start request is truncated")
+                            Present { value: stderr_path } =>
+                              match lines[8] {
+                                Absent => exit_failure(reason: "start request is truncated")
+                                Present { value: granted_text } =>
+                                  match parse_int(text: granted_text) {
+                                    Absent => exit_failure(reason: "start request granted kibibyte is not an integer")
+                                    Present { value: granted_n } =>
+                                      match lines[9] {
+                                        Absent => exit_failure(reason: "start request is truncated")
+                                        Present { value: exit_hook } =>
+                                          match lines[10] {
+                                            Absent => exit_failure(reason: "start request is truncated")
+                                            Present { value: inner_joined } => {
+                                              let facts = AttemptSystemUnitStartFacts {
+                                                node_id: node_id,
+                                                attempt_key: attempt_key,
+                                                user: user as NonEmptyStr,
+                                                working_directory: working_directory,
+                                                attempt_worktree: attempt_worktree,
+                                                stdout_path: stdout_path,
+                                                stderr_path: stderr_path,
+                                                granted: kibibyte(count: granted_n),
+                                                exit_hook: exit_hook as NonEmptyStr,
+                                                inner_argv: split(s: inner_joined, delimiter: "\u{1f}"),
+                                              }
+                                              match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
+                                                AttemptSystemUnitRefused { reason: why } => exit_failure(reason: why)
+                                                AttemptSystemUnitAdmitted { verb: _, unit: unit, facts: _ } =>
+                                                  attempt_system_unit_run_admitted_start(instance: instance, facts: facts, unit: unit, wait: wait)
+                                              }
+                                            }
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn attempt_system_unit_plan_from_facts(facts: AttemptSystemUnitStartFacts, unit: NonEmptyStr) -> DispatchWorkerUnitPlan {
+  DispatchWorkerUnitPlan {
+    systemd_run_program: "/usr/bin/systemd-run" as FilePath,
+    unit: unit,
+    node_id: facts.node_id,
+    attempt_key: facts.attempt_key,
+    working_directory: facts.working_directory,
+    attempt_worktree: facts.attempt_worktree,
+    stdout_path: facts.stdout_path,
+    stderr_path: facts.stderr_path,
+    inner_argv: facts.inner_argv,
+    exit_hook: facts.exit_hook,
+  }
+}
+
+fn attempt_system_unit_run_ready(command: ArgvCommand) -> ProcessExit {
+  if systemd.SystemdRun.RunTransient(command_argv: systemd_run_command_argument_words(command: command)).success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "systemd-run system transient refused")
+  }
+}
+
+fn attempt_system_unit_run_admitted_start(instance: HostDashboardInstance, facts: AttemptSystemUnitStartFacts, unit: NonEmptyStr, wait: Bool) -> ProcessExit {
+  let plan = attempt_system_unit_plan_from_facts(facts: facts, unit: unit)
+  if wait {
+    match systemd_run_transient_wait_unit_command(
+      unit: plan.unit,
+      properties: attempt_system_unit_properties(instance: instance, plan: plan, granted: facts.granted, user: facts.user),
+      command_argv: plan.inner_argv,
+    ) {
+      SystemdRunCommandRefused { cause: why } => exit_failure(reason: systemd_run_option_words_refused_cause_detail(cause: why))
+      SystemdRunCommandReady { command: command } => attempt_system_unit_run_ready(command: command)
+    }
+  } else {
+    match attempt_system_unit_systemd_run_command(instance: instance, plan: plan, granted: facts.granted, user: facts.user) {
+      SystemdRunCommandRefused { cause: why } => exit_failure(reason: systemd_run_option_words_refused_cause_detail(cause: why))
+      SystemdRunCommandReady { command: command } => attempt_system_unit_run_ready(command: command)
+    }
+  }
+}
+
+fn attempt_system_unit_launch_cli(instance_root: String) -> ProcessExit {
+  match attempt_system_unit_instance_for_root(instance_root: instance_root) {
+    Absent => exit_failure(reason: "instance_root is not a declared dashboard instance")
+    Present { value: instance } => {
+      let read = Filesystem.Read(path: attempt_system_unit_pending_path(instance_root: instance_root))
+      if !read.success {
+        exit_failure(reason: "pending attempt-system-unit request unreadable")
+      } else {
+        let lines = split(s: read.content, delimiter: "\n")
+        match lines.first() {
+          Absent => exit_failure(reason: "pending request is empty")
+          Present { value: tag } =>
+            if tag == "stop" {
+              match lines[1] {
+                Absent => exit_failure(reason: "control request has no unit")
+                Present { value: unit_s } =>
+                  match attempt_system_unit_control_admitted(verb: AttemptSystemUnitStop, unit: unit_s as NonEmptyStr) {
+                    AttemptSystemUnitRefused { reason: why } => exit_failure(reason: why)
+                    AttemptSystemUnitAdmitted { verb: _, unit: unit, facts: _ } =>
+                      if systemd.Systemctl.Stop(unit: unit).success { ExitSuccess } else { exit_failure(reason: "systemctl stop refused") }
+                  }
+              }
+            } else if tag == "reset-failed" {
+              match lines[1] {
+                Absent => exit_failure(reason: "control request has no unit")
+                Present { value: unit_s } =>
+                  match attempt_system_unit_control_admitted(verb: AttemptSystemUnitResetFailed, unit: unit_s as NonEmptyStr) {
+                    AttemptSystemUnitRefused { reason: why } => exit_failure(reason: why)
+                    AttemptSystemUnitAdmitted { verb: _, unit: unit, facts: _ } =>
+                      if systemd.Systemctl.ResetFailedUnit(unit: unit).success { ExitSuccess } else { exit_failure(reason: "systemctl reset-failed refused") }
+                  }
+              }
+            } else if tag == "start" {
+              attempt_system_unit_cli_start(instance: instance, lines: lines, wait: false)
+            } else if tag == "start-wait" {
+              attempt_system_unit_cli_start(instance: instance, lines: lines, wait: true)
+            } else {
+              exit_failure(reason: "pending request verb is not start, start-wait, stop, or reset-failed")
+            }
+        }
+      }
+    }
+  }
+}

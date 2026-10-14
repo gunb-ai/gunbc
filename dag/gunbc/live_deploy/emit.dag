@@ -164,6 +164,9 @@ import gunbc.owned_directory {
 }
 import gunbc.ensure { EnsurePlanAvailable, EnsurePlanUnavailable }
 import gunbc.roadmap.roadmap_dashboard_instance { dashboard_dispatch_worktree_member, dashboard_attempt_state_member }
+import gunbc.roadmap.attempt_system_unit_launch {
+  attempt_system_unit_sudoers_body, attempt_system_unit_sudoers_path,
+}
 import gunbc.live_deploy.spec {
   HoldsProdRoleSingletons, HoldsNoRoleSingleton, deployment_fabric_storage_door_socket,
   deployment_slice_unit_name, deployment_slice_unit_path,
@@ -1085,6 +1088,43 @@ data publication_spool_request_mode: FileMode = FileMode {
 }
 
 data publication_spool_answer_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
+
+fn attempt_system_unit_grant_steps(spec: DeploymentSpec, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
+  let final_path = attempt_system_unit_sudoers_path
+  let temp_path = join([attempt_system_unit_sudoers_path, ".new"], "")
+  let stage = "gunbc-attempt-system-unit.sudoers"
+  let readback = "gunbc-attempt-system-unit.readback"
+  concat(
+    [
+      deploy_raw(command: install_d_owned_command(
+        spec: spec,
+        path: join([spec.service.instance_root as String, "/attempt-unit-spool"], ""),
+      )),
+    ],
+    [
+      deploy_raw(command: deploy_stage_write_command(stage_name: stage, content: attempt_system_unit_sudoers_body())),
+      deploy_raw(command: deploy_stage_visudo_check_command(stage_name: stage)),
+      deploy_raw(command: deploy_stage_install_owned_command(
+        stage_name: stage,
+        mode: "0440" as NonEmptyStr,
+        owner: approval_broker_helper_root_principal,
+        group: approval_broker_helper_root_principal,
+        dest: temp_path,
+      )),
+      deploy_raw(command: installed_visudo_policy_check_command(path: temp_path)),
+      deploy_raw(command: rename_no_target_directory_command(source: temp_path, dest: final_path)),
+      deploy_raw(command: installed_visudo_policy_check_command(path: final_path)),
+      deploy_raw(command: deploy_stage_install_from_command(
+        source: final_path,
+        mode: "0400" as NonEmptyStr,
+        owner: grounded_posix_principal_name(p: principal),
+        group: grounded_posix_principal_name(p: principal),
+        stage_name: readback,
+      )),
+      deploy_raw(command: deploy_stage_cmp_stages_command(left: stage, right: readback)),
+    ],
+  )
+}
 
 fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [
@@ -3502,6 +3542,18 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
     ])))
+    SystemdUnit => concat(concat([
+      apply_systemd_unit_write_step(spec: spec, revision: revision, oidc_now: oidc_now),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: spec.service.unit_name as String,
+        mode: install_file_shared_mode,
+        dest: art.path as String,
+      )),
+    ], apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision)), concat([
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
+      deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
+    ], concat(approval_broker_lifecycle_steps(spec: spec), attempt_system_unit_grant_steps(spec: spec, principal: principal)))
     PublicationHelperPathUnit => concat(
       concat(
         apply_publication_spool_steps(spec: spec),
