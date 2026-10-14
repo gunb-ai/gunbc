@@ -47,7 +47,7 @@ import gunbc.compute.attempt_lifecycle {
   attempt_state_wire, attempt_record_wire, attempt_record_decode, compute_pre_launch_ceiling_seconds,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
   UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
-  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryStateNotRecoverable,
+  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease,
   recovery_trigger, recovery_trigger_fires, recovery_trigger_wire,
 }
 
@@ -248,7 +248,7 @@ test fn a_launched_attempt_is_recovered_only_on_an_ended_unit() -> Bool {
     && !recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitStillRunning { detail: "populated 1" }, now: 9999))
     && !recovery_trigger_fires(t: recovery_trigger(record: launched, lifecycle: UnitLifecycleUnknown { detail: "the manager could not be read" }, now: 9999))
     && !recovery_trigger_fires(t: recovery_trigger(record: terminal, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999))
-    && string_contains(s: recovery_trigger_wire(t: recovery_trigger(record: terminal, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999)), pattern: "nothing to recover")
+    && string_contains(s: recovery_trigger_wire(t: recovery_trigger(record: terminal, lifecycle: UnitTerminatedSuccess { detail: "exit 0" }, now: 9999)), pattern: "released only once the unit is proven ended")
 }
 
 // CRITERION 4: A SLOT THAT CANNOT BE READ IS NOT AN EMPTY SLOT. The distinction has opposite

@@ -43,7 +43,7 @@ import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptOwner, DispatchOwned, DirectInvocation, OwnerUnrecorded, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptVerdict, AttemptWorkEnded, AttemptRecovered,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
   UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
-  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryStateNotRecoverable,
+  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease,
   recovery_trigger, recovery_trigger_fires, recovery_trigger_wire,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
@@ -152,6 +152,14 @@ fn compute_leases_dir(root: String) -> String {
 
 fn compute_lease_path(leases_dir: String, identity_hex: String) -> String {
   join([leases_dir, "/", identity_hex], "")
+}
+
+// THE LEASE NAMES ITS HOLDER: the first line is the owning attempt's seat directory (compute_seat_dir), which is
+// unique per dispatch attempt. A reservation reference (identity#ordinal) cannot be the holder: the lease is
+// taken BEFORE the ordinal is minted, and two attempts of one identity both mint identity#1 in their own
+// directories. Only the holder may drop the lease; a legacy lease (commit + clock, no holder line) names no one.
+fn compute_lease_holder_line(seat_dir: String) -> String {
+  join(["holder ", seat_dir, "\n"], "")
 }
 
 fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
@@ -2055,7 +2063,7 @@ fn compute_provide_produce(
   if !(compute_ensure_dir(instance: instance, path: layout.work_dir) && compute_ensure_dir(instance: instance, path: layout.leases_dir) && compute_ensure_dir(instance: instance, path: layout.staging_dir) && compute_ensure_dir(instance: instance, path: layout.target_dir) && compute_ensure_dir(instance: instance, path: layout.attempts_dir)) {
     compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: join(["could not create the compute directories under ", layout.root], "") } }, subject: subject, op: op)
   } else {
-    let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
+    let lease = Filesystem.WriteCreateNew(path: layout.lease_path, content: join([compute_lease_holder_line(seat_dir: compute_seat_dir(attempts_dir: layout.attempts_dir, owner: owner) as String), commit, " ", clock_now_probed_at_or_unknown() as String, "\n"], ""))
     if !lease.success {
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: ProducerInFlight { lease_path: layout.lease_path } }, subject: subject, op: op)
     } else {
@@ -2738,7 +2746,7 @@ fn compute_recover_attempt_in(attempts_root: NonEmptyStr, subject: ComputeCapaci
           match recovery_trigger(record: rec, lifecycle: lifecycle, now: now) {
             RecoveryTooEarly { deadline: d, now: n } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryTooEarly { deadline: d, now: n }) }
             RecoveryUnitNotEnded { lifecycle: u } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }) }
-            RecoveryStateNotRecoverable { state: st } => compute_recover_after_terminal(subject: subject, rec: rec, state: st, lifecycle: lifecycle)
+            RecoveryTerminalRecordMayRelease { state: st } => compute_recover_after_terminal(subject: subject, rec: rec, state: st, lifecycle: lifecycle)
             RecoveryMayTerminate { reason: why } =>
               match attempt_terminate(root: attempts_root, record: rec, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
                 AttemptLostRace { expected: e, observed: o } =>
@@ -2757,14 +2765,14 @@ fn compute_recover_attempt_in(attempts_root: NonEmptyStr, subject: ComputeCapaci
 }
 
 // A KILL BETWEEN THE TERMINAL GENERATION AND THE RELEASE LEAVES A SETTLED ATTEMPT THAT STILL HOLDS ITS
-// SEAT, and the trigger answers that state "nothing to recover". Declining there would make the
+// SEAT, and the trigger names that state RecoveryTerminalRecordMayRelease. Declining there would make the
 // settle-then-kill window permanent. THE TERMINATION PROOF is the same one every other arm relies on:
 // the unit's observed lifecycle must be ENDED (unit_lifecycle_ended) at this moment; the terminal
 // record is the reason to look, never the proof. A still-running unit declines and an unknown
 // lifecycle refuses, both keeping the charge. Only then does the door ask the ledger to release. The ledger refuses a reference it is not holding
 // at the proposal, so a seat already returned is reported as declined, never released twice.
 fn compute_recover_after_terminal(subject: ComputeCapacitySubject, rec: AttemptRecord, state: AttemptState, lifecycle: UnitLifecycle) -> ComputeRecovery {
-  let why = recovery_trigger_wire(t: RecoveryStateNotRecoverable { state: state })
+  let why = recovery_trigger_wire(t: RecoveryTerminalRecordMayRelease { state: state })
   if unit_lifecycle_ended(u: lifecycle) {
     match compute_recover_release(subject: subject, reference: rec.reference as NonEmptyStr, reason: why) {
       ComputeReleased { partition: _, reference: _, reason: r } => RecoveryReleased { reference: rec.reference, verdict: why, seat: join(["released (", r as String, ")"], "") }

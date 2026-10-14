@@ -543,7 +543,7 @@ type RecoveryTrigger
   = RecoveryMayTerminate { reason: String }
   | RecoveryTooEarly { deadline: EpochSecs, now: EpochSecs }
   | RecoveryUnitNotEnded { lifecycle: UnitLifecycle }
-  | RecoveryStateNotRecoverable { state: AttemptState }
+  | RecoveryTerminalRecordMayRelease { state: AttemptState }
 
 fn recovery_trigger(record: AttemptRecord, lifecycle: UnitLifecycle, now: EpochSecs) -> RecoveryTrigger {
   match record.state {
@@ -565,7 +565,7 @@ fn recovery_trigger(record: AttemptRecord, lifecycle: UnitLifecycle, now: EpochS
       } else {
         RecoveryUnitNotEnded { lifecycle: lifecycle }
       }
-    AttemptTerminal { verdict: v, detail: d } => RecoveryStateNotRecoverable { state: AttemptTerminal { verdict: v, detail: d } }
+    AttemptTerminal { verdict: v, detail: d } => RecoveryTerminalRecordMayRelease { state: AttemptTerminal { verdict: v, detail: d } }
   }
 }
 
@@ -574,7 +574,7 @@ fn recovery_trigger_fires(t: RecoveryTrigger) -> Bool {
     RecoveryMayTerminate { reason: _ } => true
     RecoveryTooEarly { deadline: _, now: _ } => false
     RecoveryUnitNotEnded { lifecycle: _ } => false
-    RecoveryStateNotRecoverable { state: _ } => false
+    RecoveryTerminalRecordMayRelease { state: _ } => false
   }
 }
 
@@ -584,6 +584,6 @@ fn recovery_trigger_wire(t: RecoveryTrigger) -> String {
     RecoveryTooEarly { deadline: d, now: n } =>
       join(["TOO EARLY: the attempt declared a launch deadline of ", to_string(value: d), " and it is only ", to_string(value: n), "; a producer inside its own declared window is not dead"], "")
     RecoveryUnitNotEnded { lifecycle: u } => join(["the unit has not ended: ", unit_lifecycle_wire(u: u)], "")
-    RecoveryStateNotRecoverable { state: s } => join(["the attempt is already ", attempt_state_wire(s: s), ", so there is nothing to recover"], "")
+    RecoveryTerminalRecordMayRelease { state: s } => join(["the attempt is already ", attempt_state_wire(s: s), ", so there is no transition to make; its seat is released only once the unit is proven ended"], "")
   }
 }

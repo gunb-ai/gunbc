@@ -9,7 +9,7 @@ import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, DispatchOwned, OwnerUnrecorded,
   UnitLifecycle, UnitLifecycleUnknown, UnitStillRunning, unit_lifecycle_ended,
-  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryStateNotRecoverable,
+  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease,
   recovery_trigger,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
 }
@@ -20,7 +20,7 @@ import gunbc.compute.work_provider_local {
   ComputeRecovery, RecoveryReleased, RecoveryNothingHeld, RecoverySettledButHeld, RecoveryDeclined, RecoveryRefused,
   UnitLifecycleSource, unit_lifecycle_from_source, compute_recover_attempt_in, compute_recovery_wire,
   UnitStop, UnitStopped, UnitStopFailed, unit_stop_by_source, unit_source_after_stop,
-  LeaseDrop, LeaseDropped, LeaseNotDropped, compute_drop_lease_at, compute_lease_path, compute_seat_dir,
+  LeaseDrop, LeaseDropped, LeaseNotDropped, compute_drop_lease_at, compute_lease_path, compute_seat_dir, compute_lease_holder_line,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptWorkerRole, attempt_unit_role_token,
@@ -117,7 +117,7 @@ fn seat_classify_by_trigger(rec: AttemptRecord, lifecycle: UnitLifecycle, now: E
         Present { value: t } =>
           match recovery_trigger(record: rec, lifecycle: lifecycle, now: t) {
             RecoveryMayTerminate { reason: _ } => seat_ensure_apply(reference: rec.reference)
-            RecoveryStateNotRecoverable { state: _ } => seat_ensure_apply(reference: rec.reference)
+            RecoveryTerminalRecordMayRelease { state: _ } => seat_ensure_apply(reference: rec.reference)
             RecoveryTooEarly { deadline: _, now: _ } => UpsertClassification { verdict: Converged, decision: Noop }
             RecoveryUnitNotEnded { lifecycle: u } =>
               match u {
@@ -192,31 +192,55 @@ fn seat_lease_presence(leases_dir: String, identity: String) -> LeasePresence {
   }
 }
 
-fn seat_settle_lease(seated: SeatEnsureOutcome, leases_dir: String, rec: AttemptRecord, source: UnitLifecycleSource) -> SeatEnsureOutcome {
+fn seat_settle_lease(seated: SeatEnsureOutcome, seat_dir: String, leases_dir: String, rec: AttemptRecord, source: UnitLifecycleSource) -> SeatEnsureOutcome {
   match seated {
-    SeatEnsureReleased { reference: r, committed_before: _, committed_after: _ } => seat_drop_lease(seated: seated, reference: r, leases_dir: leases_dir, rec: rec, source: source)
-    SeatEnsureNoop { reference: r, why: _ } => seat_drop_lease(seated: seated, reference: r, leases_dir: leases_dir, rec: rec, source: source)
+    SeatEnsureReleased { reference: r, committed_before: _, committed_after: _ } => seat_drop_lease(seated: seated, seat_dir: seat_dir, reference: r, leases_dir: leases_dir, rec: rec, source: source)
+    SeatEnsureNoop { reference: r, why: _ } => seat_drop_lease(seated: seated, seat_dir: seat_dir, reference: r, leases_dir: leases_dir, rec: rec, source: source)
     _ => seated
   }
 }
 
-fn seat_drop_lease(seated: SeatEnsureOutcome, reference: String, leases_dir: String, rec: AttemptRecord, source: UnitLifecycleSource) -> SeatEnsureOutcome {
+fn seat_drop_lease(seated: SeatEnsureOutcome, seat_dir: String, reference: String, leases_dir: String, rec: AttemptRecord, source: UnitLifecycleSource) -> SeatEnsureOutcome {
   if !unit_lifecycle_ended(u: unit_lifecycle_from_source(source: source, unit: rec.unit as NonEmptyStr)) {
     seated
   } else {
     match seat_lease_presence(leases_dir: leases_dir, identity: rec.identity) {
       LeaseAbsent => seated
       LeaseUnreadable { detail: d } => SeatEnsureRed { reference: reference, reason: join(["the producer lease directory could not be read back (", d, ")"], "") }
-      LeasePresent =>
-        match compute_drop_lease_at(lease_path: compute_lease_path(leases_dir: leases_dir, identity_hex: rec.identity)) {
-          LeaseNotDropped { detail: d } => SeatEnsureRed { reference: reference, reason: join(["the seat is returned but the producer lease remains: ", d], "") }
-          LeaseDropped =>
-            match seat_lease_presence(leases_dir: leases_dir, identity: rec.identity) {
-              LeaseAbsent => match seated { SeatEnsureReleased { reference: _, committed_before: _, committed_after: _ } => seated  _ => SeatEnsureLeaseDropped { reference: reference } }
-              _ => SeatEnsureRed { reference: reference, reason: "the lease drop reported success and the lease is still listed" }
-            }
-        }
+      LeasePresent => seat_drop_lease_if_held_by(seated: seated, seat_dir: seat_dir, reference: reference, leases_dir: leases_dir, rec: rec)
     }
+  }
+}
+
+// COMPARE, THEN DELETE -- ONLY FOR THE HOLDER. The lease's first line names the attempt that took it; this
+// pass drops it only when that is the attempt whose record is being discharged. Another attempt's lease is that
+// attempt's and is left alone; a legacy lease (no holder line) is refused and kept, never guessed at (the
+// existing legacy leases are the debris sweep's, slice 4). The read-then-delete is not a CAS: the lease is a
+// plain create-new file, and its window is that the holder's own driver deletes it between our read and our
+// delete AND another attempt re-creates it in that gap. Both need the holder's unit to have ended and its
+// driver to be running its final drop at the instant this pass runs; the alternative (moving the lease into a
+// CAS slot) changes the producer-exclusion store, which is outside this slice.
+fn seat_drop_lease_if_held_by(seated: SeatEnsureOutcome, seat_dir: String, reference: String, leases_dir: String, rec: AttemptRecord) -> SeatEnsureOutcome {
+  let read = Filesystem.Read(path: compute_lease_path(leases_dir: leases_dir, identity_hex: rec.identity))
+  if !read.success {
+    SeatEnsureRefused { reference: reference, reason: join(["the producer lease could not be read to find its holder (", read.error, "); it is kept"], "") }
+  } else if starts_with(s: read.content, prefix: compute_lease_holder_line(seat_dir: seat_dir)) {
+    seat_drop_own_lease(seated: seated, reference: reference, leases_dir: leases_dir, rec: rec)
+  } else if starts_with(s: read.content, prefix: "holder ") {
+    seated
+  } else {
+    SeatEnsureRefused { reference: reference, reason: "the producer lease names no holder (a legacy lease); it is kept for the sweep" }
+  }
+}
+
+fn seat_drop_own_lease(seated: SeatEnsureOutcome, reference: String, leases_dir: String, rec: AttemptRecord) -> SeatEnsureOutcome {
+  match compute_drop_lease_at(lease_path: compute_lease_path(leases_dir: leases_dir, identity_hex: rec.identity)) {
+    LeaseNotDropped { detail: d } => SeatEnsureRed { reference: reference, reason: join(["the seat is returned but the producer lease remains: ", d], "") }
+    LeaseDropped =>
+      match seat_lease_presence(leases_dir: leases_dir, identity: rec.identity) {
+        LeaseAbsent => match seated { SeatEnsureReleased { reference: _, committed_before: _, committed_after: _ } => seated  _ => SeatEnsureLeaseDropped { reference: reference } }
+        _ => SeatEnsureRed { reference: reference, reason: "the lease drop reported success and the lease is still listed" }
+      }
   }
 }
 
@@ -234,6 +258,7 @@ fn seat_apply_plan(attempts_root: NonEmptyStr, leases_dir: String, subject: Comp
         SeatPlanStopThenRelease { reference: _ } => unit_source_after_stop(source: source)
       }
       seat_settle_lease(
+        seat_dir: attempts_root as String,
         seated: seat_apply(attempts_root: attempts_root, subject: subject, reference: reference, source: after, granted: granted),
         leases_dir: leases_dir, rec: rec, source: after)
     }
@@ -364,17 +389,22 @@ fn compute_seat_discharge_owned(attempts_dir: String, leases_dir: String, subjec
 // LIVE ATTEMPTS' SEAT DIRECTORIES, enumerated from the attempts directory's own `dispatch-*` entries (the
 // directories the attempt records were created in) -- not the compute root, not a unit scan. A dispatch
 // directory whose attempt has a worker exit record belongs to the ended set above and is not visited twice.
-fn seat_live_dispatch_dirs(attempts_dir: String, ended: List<SeatOwnerKey>) -> List<String> {
+// A listing that cannot be read is not an empty one: the caller refuses the pass.
+fn seat_live_dispatch_dirs(attempts_dir: String, ended: List<SeatOwnerKey>) -> SeatLiveDirs {
   let listed = Filesystem.List(path: attempts_dir)
   match filesystem_listing_observation(directory: attempts_dir, success: listed.success, entries: listed.entries, error: listed.error) {
     FilesystemDirectoryListed(admitted) =>
-      filesystem_listing_entry_names(listing: admitted)
+      SeatLiveDirsListed { names: filesystem_listing_entry_names(listing: admitted)
         |> filter(n => starts_with(s: n, prefix: "dispatch-"))
-        |> filter(n => !any(ended, o => n == join(["dispatch-", o.attempt_key], "")))
-    FilesystemDirectoryListingRefused { directory: _, error: _ } => [] as List<String>
-    FilesystemDirectorySubjectRefused { directory: _, cause: _ } => [] as List<String>
+        |> filter(n => !any(ended, o => n == join(["dispatch-", o.attempt_key], ""))) }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => SeatLiveDirsUnreadable { reason: join(["the attempts directory could not be listed: ", e], "") }
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => SeatLiveDirsUnreadable { reason: join(["the attempts directory could not be listed: ", c], "") }
   }
 }
+
+type SeatLiveDirs
+  = SeatLiveDirsListed { names: List<String> }
+  | SeatLiveDirsUnreadable { reason: String }
 
 type SeatOwnerKey {
   node_id: String
@@ -408,12 +438,15 @@ fn compute_seat_discharge_all(instance_root: String, attempts_dir: String, lease
   match seat_exit_listings_unreadable(listings: listings).first() {
     Present { value: why } => SeatDischargeRefused { reason: why }
     Absent =>
-      SeatDischargeRan {
-        outcomes: concat(
-          seat_worker_exit_owners(listings: listings)
-            |> flat_map(o => seat_discharge_outcomes(p: compute_seat_discharge_owned(attempts_dir: attempts_dir, leases_dir: leases_dir, subject: subject, node_id: o.node_id, attempt_key: o.attempt_key, source: source))),
-          seat_live_dispatch_dirs(attempts_dir: attempts_dir, ended: seat_worker_exit_owners(listings: listings))
-            |> flat_map(d => seat_discharge_outcomes(p: compute_seat_discharge_dir(seats: join([attempts_dir, "/", d], "") as NonEmptyStr, leases_dir: leases_dir, subject: subject, source: source, owner: SeatOwnerLive)))),
+      match seat_live_dispatch_dirs(attempts_dir: attempts_dir, ended: seat_worker_exit_owners(listings: listings)) {
+        SeatLiveDirsUnreadable { reason: why } => SeatDischargeRefused { reason: why }
+        SeatLiveDirsListed { names: dirs } =>
+          SeatDischargeRan {
+            outcomes: concat(
+              seat_worker_exit_owners(listings: listings)
+                |> flat_map(o => seat_discharge_outcomes(p: compute_seat_discharge_owned(attempts_dir: attempts_dir, leases_dir: leases_dir, subject: subject, node_id: o.node_id, attempt_key: o.attempt_key, source: source))),
+              dirs |> flat_map(d => seat_discharge_outcomes(p: compute_seat_discharge_dir(seats: join([attempts_dir, "/", d], "") as NonEmptyStr, leases_dir: leases_dir, subject: subject, source: source, owner: SeatOwnerLive)))),
+          }
       }
   }
 }

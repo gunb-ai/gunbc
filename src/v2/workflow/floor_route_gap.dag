@@ -1603,12 +1603,21 @@ fn floor_route_gap_expectation_chunk_21() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_lease_is_kept_while_the_unit_is_live", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.another_attempts_lease_survives_this_attempts_discharge", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_legacy_lease_naming_no_holder_is_refused_and_kept", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.compute.attempt_discharge_wet_witness.a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.two_requests_summing_past_the_observed_headroom_cannot_both_admit", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.compute.host_capacity_wet_witness.the_real_reservation_route_admits_exactly_what_the_reading_backs", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+  }
+  }
+  }
   }
   }
   }

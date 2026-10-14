@@ -535,6 +535,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "another_attempts_lease_survives_this_attempts_discharge" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "another_attempts_lease_survives_this_attempts_discharge",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_legacy_lease_naming_no_holder_is_refused_and_kept" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "a_legacy_lease_naming_no_holder_is_refused_and_kept",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "the_reservation_reference_is_the_identity_and_its_ordinal" },
       entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
       function: "the_reservation_reference_is_the_identity_and_its_ordinal",

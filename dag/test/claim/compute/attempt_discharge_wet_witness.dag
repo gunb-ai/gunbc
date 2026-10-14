@@ -17,7 +17,7 @@ import gunbc.compute.attempt_lifecycle {
   AttemptTransition, AttemptAdvanced, attempt_open, attempt_begin_launch, attempt_terminate,
 }
 import gunbc.compute.work_provider_local {
-  UnitLifecycleSource, SuppliedUnitLifecycle, SuppliedStoppableUnit, compute_reservation_reference, compute_seat_dir,
+  UnitLifecycleSource, SuppliedUnitLifecycle, SuppliedStoppableUnit, compute_lease_holder_line, compute_reservation_reference, compute_seat_dir,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
@@ -167,7 +167,11 @@ fn leases_at(root: String) -> String {
 
 // THE PRODUCER LEASE of the fixture record (identity feedfacefeedface), written as the provider writes it.
 fn lease_held(root: String) -> Bool {
-  made(path: leases_at(root: root)) && Filesystem.Write(path: join([leases_at(root: root), "/feedfacefeedface"], ""), content: "held\n").success
+  lease_written(root: root, content: join([compute_lease_holder_line(seat_dir: attempts_at(root: root) as String), "abc 1\n"], ""))
+}
+
+fn lease_written(root: String, content: String) -> Bool {
+  made(path: leases_at(root: root)) && Filesystem.Write(path: join([leases_at(root: root), "/feedfacefeedface"], ""), content: content).success
 }
 
 fn lease_listed(root: String) -> Bool {
@@ -533,4 +537,41 @@ test fn a_lease_is_kept_while_the_unit_is_live() -> Bool {
     && is_noop(o: ensure(root: root, reference: "r-lk", source: running()))
     && lease_listed(root: root)
     && committed(subject: subject) == granted_kib
+}
+
+// ANOTHER ATTEMPT'S LEASE IS NOT THIS ATTEMPT'S TO DROP: A ended with its seat returned, B holds the lease for the
+// same identity. A's pass leaves B's lease standing.
+test fn another_attempts_lease_survives_this_attempts_discharge() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-oa", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-oa")
+    && launching(root: root, reference: "r-oa")
+    && is_released(o: ensure(root: root, reference: "r-oa", source: ended()))
+    && lease_written(root: root, content: join([compute_lease_holder_line(seat_dir: seat_dir_of(root: root, key: "key-b") as String), "abc 1\n"], ""))
+    && is_noop(o: ensure(root: root, reference: "r-oa", source: ended()))
+    && lease_listed(root: root)
+}
+
+// A LEGACY LEASE (commit + clock, no holder) IS REFUSED AND KEPT, never guessed at.
+test fn a_legacy_lease_naming_no_holder_is_refused_and_kept() -> Bool {
+  let root = fresh_root()
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-lg", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-lg")
+    && launching(root: root, reference: "r-lg")
+    && lease_written(root: root, content: "deadbeef 1800\n")
+    && is_refused(o: ensure(root: root, reference: "r-lg", source: ended()))
+    && lease_listed(root: root)
+    && committed(subject: subject) == 0
+}
+
+// A LISTING THAT CANNOT BE READ IS NOT "NO LIVE SEATS": the pass refuses.
+test fn a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed() -> Bool {
+  let root = fresh_root()
+  match compute_seat_discharge_all(instance_root: root, attempts_dir: join([trim(s: root), "/no-such-attempts-dir"], ""), leases_dir: leases_at(root: root), subject: subject_at(root: root), source: ended()) {
+    SeatDischargeRefused { reason: _ } => true
+    SeatDischargeRan { outcomes: _ } => false
+    SeatDischargeSkipped { why: _ } => false
+  }
 }
