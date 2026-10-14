@@ -27,6 +27,13 @@ import gunbc.parse_verdict_publish {
 
 // POLICY: pull_request heads restore a default-branch blob and never save
 // (extdeps.cache.github_actions gha_cache_entry_restorable_by).
+//
+// TRANSITION: PRs based on a main sha older than PR-1's first main publish of
+// gunbc-parse-identity-<sha> refuse BaseIdentityUnobserved (typed, names base.sha)
+// until they merge main. The identity write is PR-1; this module only restores
+// and consumes.
+
+data parse_verdict_pr2_pre_identity_publish_transition: String = "PRs based on a main sha older than the first main publish of gunbc-parse-identity-<sha> (PR-1 landing) refuse BaseIdentityUnobserved until they merge main; the refusal is typed and names base.sha."
 fn materialization_restore_if() -> String {
   join(["github.event_name == '", github_event_name_pull_request, "'"], "")
 }
