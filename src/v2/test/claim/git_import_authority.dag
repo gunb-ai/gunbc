@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import gunbc.git_use_authority
 import gunbc.git_use_census.roster { git_use_rows }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

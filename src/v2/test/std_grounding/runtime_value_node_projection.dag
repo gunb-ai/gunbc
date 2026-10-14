@@ -30,7 +30,7 @@ import v2.std.runtime {
   RuntimeValueNodeUnrepresentable,
   runtime_value_node_projection
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

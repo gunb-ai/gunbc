@@ -13,7 +13,7 @@ import v2.std.service_realization_labels {
   realization_transport_label
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.integer { Int }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List }
@@ -28,14 +28,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // v2.workflow.floor_pure_producer_share), and the claims read the lowered tree: the operation's transport
 // kind, its exit arms (one carrying its doc), its mock arm and its `from "key"` row form its entry under
 // <realization>.s.F.Run, beside the service's config, and the entry passes the realization wall. A
-// transport's fields are not lowered (the declared 3b-ii frontier) and the service stays set aside on the
-// full route, so the census route is the one these claims read.
+// transport's fields lower as Template<OperationInputName> (XL-2 3b-ii) and the full route admits
+// a service whose members have carriers (3c).
 
 data srl_accepted_source: String = "module m\n\nservice s.F {\n  config { endpoint: \"http://x\" }\n  operation Run {\n    output { out: String from \"stdout\" }\n    transport shell { argv: [\"true\"] }\n    exit { 0 => Unit  nonzero => String \"failed\" }\n    mock_response { 0 => { out: \"\" } }\n  }\n}\n"
 data srl_local_source: String = "module m\n\nservice S {\n  operation Run {\n    transport local {}\n  }\n}\n"
 data srl_repeated_exit_source: String = "module m\n\nservice S {\n  operation Run {\n    transport shell { argv: [\"true\"] }\n    exit { 0 => Unit }\n    exit { 1 => Unit }\n  }\n}\n"
 data srl_class_on_shell_source: String = "module m\n\nservice S {\n  operation Run {\n    transport shell { argv: [\"true\"] }\n    exit { 5xx => Unit }\n  }\n}\n"
 data srl_shared_prefix_source: String = "module m\n\nservice s.F {\n  operation Run {\n    transport shell { argv: [\"true\"] }\n    exit { 0 => Unit }\n  }\n}\n\nservice s.E {\n  operation Get {\n    transport shell { argv: [\"true\"] }\n    exit { 0 => Unit }\n  }\n}\n"
+data srl_bound_hole_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport shell { argv: [\"echo\", path] }\n  }\n}\n"
+data srl_undeclared_hole_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport shell { argv: [\"echo\", other] }\n  }\n}\n"
+data srl_template_hole_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport shell { argv: [\"echo\", \"\{path\}\"] }\n  }\n}\n"
+data srl_list_field_bound_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport rest { path: [\"/\", path] }\n  }\n}\n"
+data srl_list_field_undeclared_source: String = "module m\n\nservice S {\n  operation Run {\n    input { path: String }\n    transport rest { path: [\"/\", other] }\n  }\n}\n"
 
 fn srl_census(text: String) -> Outcome<CensusTree> {
   match conservation_subject_of_text(path: "probe_service_realization_lowering.dag", text: text).parsed {
@@ -111,6 +116,7 @@ test fn the_realization_facts_lower_into_the_sibling_holds() -> Bool {
     && (srl_arm_count(n: body, names: [realization_root_label(), ^s, ^F, ^Run, realization_status_arms_label()]) == 2)
     && (srl_arm_count(n: body, names: [realization_root_label(), ^s, ^F, ^Run, realization_mock_arms_label()]) == 1)
     && srl_has(n: body, names: [realization_root_label(), ^s, ^F, ^Run, realization_projection_label(), ^out])
+    && srl_has(n: body, names: [realization_root_label(), ^s, ^F, ^Run, realization_transport_label(), ^argv])
     && srl_has(n: body, names: [^s, ^F, ^Run])
 }
 
@@ -130,10 +136,8 @@ test fn an_unrealizable_realization_refuses_located_holds() -> Bool {
     && srl_refused_as(o: srl_class_on_shell(), reason: ^service_realization_status_pattern_not_of_transport)
 }
 
-// A CONFIG-ONLY REALIZATION IS HELD OFF THE FULL ROUTE TOO (side-chat P1). A service whose only realization
-// fact is its config sets nothing aside, so the full route is held by the realization leaf itself
-// (v2.compiler.body_lowering_fold body_lower_service_held): census normalization carries the sibling with
-// the config, and ordinary normalization of the same source refuses as service_realization_unreachable.
+// A CONFIG-ONLY REALIZATION LOWERS ON BOTH ROUTES (XL-2 3c). The config is a realization fact with a
+// carrier; the sibling is present and the full door no longer holds the service for having a leaf.
 data srl_config_only_source: String = "module m\n\nservice S {\n  config { endpoint: \"http://x\" }\n  operation Run {}\n}\n"
 
 fn srl_config_only_census() -> Outcome<CensusTree> { srl_census(text: srl_config_only_source) }
@@ -142,9 +146,16 @@ fn srl_config_only_full() -> Outcome<NormalizedTree> {
   conservation_subject_of_text(path: "probe_service_realization_lowering.dag", text: srl_config_only_source).normalized
 }
 
-test fn a_config_only_realization_is_held_off_the_full_route_holds() -> Bool {
+test fn a_config_only_realization_lowers_on_the_full_route_holds() -> Bool {
   srl_has(n: srl_body(o: srl_config_only_census()), names: [realization_root_label(), ^S, realization_config_label()])
-    && srl_full_refused_as(o: srl_config_only_full(), reason: ^body_lowering_reason_service_realization_unreachable)
+    && srl_full_accepted(o: srl_config_only_full())
+}
+
+fn srl_full_accepted(o: Outcome<NormalizedTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn srl_full_refused_as(o: Outcome<NormalizedTree>, reason: Symbol) -> Bool {
@@ -152,4 +163,27 @@ fn srl_full_refused_as(o: Outcome<NormalizedTree>, reason: Symbol) -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
   }
+}
+
+fn srl_bound_hole() -> Outcome<CensusTree> { srl_census(text: srl_bound_hole_source) }
+fn srl_undeclared_hole() -> Outcome<CensusTree> { srl_census(text: srl_undeclared_hole_source) }
+fn srl_template_hole() -> Outcome<CensusTree> { srl_census(text: srl_template_hole_source) }
+fn srl_list_field_bound() -> Outcome<CensusTree> { srl_census(text: srl_list_field_bound_source) }
+fn srl_list_field_undeclared() -> Outcome<CensusTree> { srl_census(text: srl_list_field_undeclared_source) }
+
+test fn a_declared_input_hole_lowers_on_argv_holds() -> Bool {
+  srl_has(n: srl_body(o: srl_bound_hole()), names: [realization_root_label(), ^S, ^Run, realization_transport_label(), ^argv])
+    && srl_has(n: srl_body(o: srl_template_hole()), names: [realization_root_label(), ^S, ^Run, realization_transport_label(), ^argv])
+}
+
+test fn an_undeclared_argv_hole_refuses_located_holds() -> Bool {
+  srl_refused_as(o: srl_undeclared_hole(), reason: ^service_realization_argv_refused)
+}
+
+test fn a_declared_input_hole_lowers_on_a_transport_list_field_holds() -> Bool {
+  srl_has(n: srl_body(o: srl_list_field_bound()), names: [realization_root_label(), ^S, ^Run, realization_transport_label(), ^path])
+}
+
+test fn an_undeclared_hole_in_a_transport_list_field_refuses_located_holds() -> Bool {
+  srl_refused_as(o: srl_list_field_undeclared(), reason: ^service_realization_argv_refused)
 }

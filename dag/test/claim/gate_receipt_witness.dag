@@ -8,7 +8,7 @@ import gunbc.ci.ci_gate {
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.types { String, NonEmptyStr, Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

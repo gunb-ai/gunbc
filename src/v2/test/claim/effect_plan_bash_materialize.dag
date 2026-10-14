@@ -11,7 +11,7 @@ import v2.std.effect_plan {
   Retry,
   While
 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.operation_argv {
   ArgvExpressionUnsupported,
   BoundOperationInvocation,
@@ -45,6 +45,8 @@ import v2.std.orchestration {
   StrNonempty
 }
 import v2.workflow.effect_plan_bash_materialize {
+  effect_plan_bash_decimal_digits_ok,
+  effect_plan_bash_decimal_integer_ok,
   ArgumentContainsNul,
   BashBoundOperationInvocation,
   CallCalleeEmpty,
@@ -983,4 +985,33 @@ test fn effect_plan_bash_new_refusal_arms_render_totally() -> Bool {
 
 test fn effect_plan_bash_empty_fail_fast_plan_is_total() -> Bool {
   emitted_source_is(plan: empty_plan(), expected: "")
+}
+
+// The decimal contract walks host text by host operations (length, prefix, slice) plus the alphabet
+// fold, never an Empty/Cons pattern over a kernel String (gunbc.rung_drop text_boundary_identity_wall,
+// match-pattern-over-host-text population). These rows are SEMANTIC-PRESERVATION controls over the
+// repaired walk, not a discriminating RED: the interpreter already answered these inputs correctly, and
+// the original defect was the emitted crate's build. Contract: "" and "-" refuse, "0" and "007"
+// (leading zeros) admit, "-5" admits one leading sign, "12a" and "-5x" refuse a non-digit anywhere,
+// "--5" and "+5" refuse a second or a different sign.
+test fn effect_plan_bash_decimal_digits_contract_holds() -> Bool {
+  effect_plan_bash_decimal_digits_ok(s: "0")
+    && effect_plan_bash_decimal_digits_ok(s: "007")
+    && effect_plan_bash_decimal_digits_ok(s: "1234567890")
+    && !effect_plan_bash_decimal_digits_ok(s: "")
+    && !effect_plan_bash_decimal_digits_ok(s: "12a")
+    && !effect_plan_bash_decimal_digits_ok(s: "-5")
+}
+
+test fn effect_plan_bash_decimal_integer_contract_holds() -> Bool {
+  effect_plan_bash_decimal_integer_ok(s: "0")
+    && effect_plan_bash_decimal_integer_ok(s: "007")
+    && effect_plan_bash_decimal_integer_ok(s: "-5")
+    && effect_plan_bash_decimal_integer_ok(s: "-007")
+    && !effect_plan_bash_decimal_integer_ok(s: "")
+    && !effect_plan_bash_decimal_integer_ok(s: "-")
+    && !effect_plan_bash_decimal_integer_ok(s: "12a")
+    && !effect_plan_bash_decimal_integer_ok(s: "-5x")
+    && !effect_plan_bash_decimal_integer_ok(s: "--5")
+    && !effect_plan_bash_decimal_integer_ok(s: "+5")
 }

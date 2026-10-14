@@ -13,7 +13,9 @@ import v2.compiler.dependency_demand_census {
   DemandCensusReport,
   DemandCensusRow,
   DemandCensusVerdict,
-  UnobservedModuleResolveRefused,
+  UnobservedAliasConflict,
+  UnreadableAtParse,
+  UnreadableAtTokenize,
   demand_census_conserved,
   demand_census_deletable_rows,
   demand_census_out_of_vocabulary_agreeing,
@@ -32,7 +34,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal }
 import v2.std.integer { Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_to_dotted_string }
@@ -43,22 +45,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL (DESIGN section 3). The boundary these claims
 // discriminate is v2.compiler.compile native_demand_census_report over an ingest, so its input --
 // source bytes -- is constructed, and everything above it is the production front end, the real
-// resolver and the D13 reducer. The fixture is a closed four-module closure whose six uses fns are
+// resolver and the D13 reducer. The fixture is a closed ingest whose uses fns are
 // the controlled population the count-conservation claim is grounded in (DESIGN section 5: a literal
 // grounded in a controlled fixture), one fn per verdict the census can reach:
 //   restates      calls an operation declared `requires Network`                 -> equal
 //   transitive    calls `restates`                                               -> equal
 //   over_claims   authors Network and reaches nothing                             -> mismatch
 //   opaque_reach  reaches an operation declared `requires opaque`                -> undecided
+//   via_bare_service  calls an operation declared `requires none`                 -> mismatch
+//                 (a service dependency is not a Network requirement)
 //   fs_only       authors Filesystem and calls a Filesystem capability           -> equal in vocabulary;
 //                 its row is out of vocabulary and counts toward the Filesystem audit
-//   alias_used    its body still names its alias, so with the clause elided the
-//                 module refuses at resolution: not a restatement               -> unobserved
+//   alias_used    its body names the uses alias; resolve does not bind it      -> unobserved
+//   member_collision  calls t.http.H.net (requires none) beside H.Network (requires
+//                 Network); spelling substitution would mint a false Equal     -> mismatch
+//   let_shadows   `let net = p; net` — a local binder, not the uses alias      -> mismatch
+//   duplicate_alias  two uses entries share the alias; first-match is refused   -> unobserved
 data ddc_resources_source: String = "module std.resources\n\nresource Network {\n  kind: Capability\n  mode: Read\n}\n\nresource Filesystem {\n  kind: Capability\n  mode: ReadWrite\n  capability read {}\n}\n"
 
-data ddc_http_source: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires Network\n  }\n  operation Exec {\n    requires opaque\n  }\n}\n"
+data ddc_http_source: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires Network\n  }\n  operation Exec {\n    requires opaque\n  }\n  operation Ping {\n    requires none\n  }\n  operation net {\n    requires none\n  }\n  operation Network {\n    requires Network\n  }\n}\n"
 
-data ddc_app_source: String = "module t.app\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn restates(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  p\n}\n\nfn transitive(p: Bool) -> Bool uses net: Network {\n  restates(p: p)\n}\n\nfn over_claims(p: Bool) -> Bool uses net: Network {\n  p\n}\n\nfn opaque_reach(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Exec()\n  p\n}\n\nfn fs_only(p: Bool) -> Bool uses fs: std.resources.Filesystem {\n  let r = std.resources.Filesystem.read()\n  p\n}\n\nfn mixed(p: Bool) -> Bool uses net: Network, fs: std.resources.Filesystem {\n  let r = t.http.H.Get()\n  let s = std.resources.Filesystem.read()\n  p\n}\n"
+data ddc_app_source: String = "module t.app\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn restates(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  p\n}\n\nfn transitive(p: Bool) -> Bool uses net: Network {\n  restates(p: p)\n}\n\nfn over_claims(p: Bool) -> Bool uses net: Network {\n  p\n}\n\nfn opaque_reach(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Exec()\n  p\n}\n\nfn via_bare_service(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Ping()\n  p\n}\n\nfn fs_only(p: Bool) -> Bool uses fs: std.resources.Filesystem {\n  let r = std.resources.Filesystem.read()\n  p\n}\n\nfn mixed(p: Bool) -> Bool uses net: Network, fs: std.resources.Filesystem {\n  let r = t.http.H.Get()\n  let s = std.resources.Filesystem.read()\n  p\n}\n"
 
 // A CALL THROUGH A FUNCTION VALUE, beside a direct Network call that would otherwise make the fn Equal.
 // Its own module, so a refusal here cannot hide the other fns.
@@ -68,7 +75,9 @@ data ddc_valued_source: String = "module t.valued\n\nimport std.resources { Netw
 // tokenize, so its uses fn is read by nobody and the census population is incomplete.
 data ddc_broken_source: String = "module t.broken\n\nimport std.resources { Network }\n\nfn lost(p: Bool) -> Bool uses net: Network {\n  \"never terminates\n}\n"
 
-data ddc_alias_source: String = "module t.aliasing\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn alias_used(p: Bool) -> Bool uses net: Network {\n  net\n}\n"
+data ddc_alias_source: String = "module t.aliasing\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn member_collision(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.net()\n  p\n}\n\nfn let_shadows(p: Bool) -> Bool uses net: Network {\n  let net = p\n  net\n}\n\nfn duplicate_alias(p: Bool) -> Bool uses net: Network, net: Network {\n  p\n}\n"
+
+data ddc_alias_ref_source: String = "module t.alias_ref\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn alias_used(p: Bool) -> Bool uses net: Network {\n  net\n}\n"
 
 fn ddc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -84,6 +93,7 @@ data ddc_ingest: SourceRootIngest = [
   ddc_read(source: ddc_http_source, id: ^ddc_http_artifact, unit: ^ddc_http_cu, path: "dag/t/http.dag"),
   ddc_read(source: ddc_app_source, id: ^ddc_app_artifact, unit: ^ddc_app_cu, path: "dag/t/app.dag"),
   ddc_read(source: ddc_alias_source, id: ^ddc_alias_artifact, unit: ^ddc_alias_cu, path: "dag/t/aliasing.dag"),
+  ddc_read(source: ddc_alias_ref_source, id: ^ddc_alias_ref_artifact, unit: ^ddc_alias_ref_cu, path: "dag/t/alias_ref.dag"),
   ddc_read(source: ddc_valued_source, id: ^ddc_valued_artifact, unit: ^ddc_valued_cu, path: "dag/t/valued.dag"),
   ddc_read(source: ddc_broken_source, id: ^ddc_broken_artifact, unit: ^ddc_broken_cu, path: "dag/t/broken.dag")
 ]
@@ -117,13 +127,13 @@ fn ddc_is_equal(function: String) -> Bool {
   }
 }
 
-// COUNT CONSERVATION: the strip found six uses fns and the route emitted six rows -- one per fn, from a
+// COUNT CONSERVATION: the strip found the uses fns and the route emitted one row per fn, from a
 // different fold than the one that counted them.
 test fn every_uses_fn_gets_exactly_one_census_row_holds() -> Bool {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } =>
-      (r.uses_functions == 9) && (length(xs: r.rows) == 9) && demand_census_conserved(r: r)
+      (r.uses_functions == 13) && (length(xs: r.rows) == 13) && demand_census_conserved(r: r)
   }
 }
 
@@ -137,6 +147,21 @@ test fn demand_through_a_transparent_callee_is_equal_holds() -> Bool {
 
 test fn a_row_claiming_network_the_body_never_reaches_is_a_mismatch_RED() -> Bool {
   match ddc_verdict(function: "t.app.over_claims") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusMismatch { authored: a, derived: d } => (length(xs: a) == 1) && (length(xs: d) == 0)
+        CensusEqual => false
+        CensusUndecided { cause: _ } => false
+        CensusUnobserved { reason: _ } => false
+      }
+  }
+}
+
+// A SERVICE CALL IS NOT A NETWORK REQUIREMENT. Ping is declared `requires none`; reaching it does
+// not put Network on derived demand, so the authored Network row is a mismatch and is not deletable.
+test fn a_service_call_without_requires_network_does_not_derive_network_RED() -> Bool {
+  match ddc_verdict(function: "t.app.via_bare_service") {
     Absent => false
     Present { value: v } =>
       match v {
@@ -162,12 +187,51 @@ test fn reaching_an_opaque_operation_is_undecided_by_that_cause_RED() -> Bool {
   }
 }
 
-test fn a_body_still_naming_its_alias_is_never_judged_a_restatement_RED() -> Bool {
-  match ddc_verdict(function: "t.aliasing.alias_used") {
+test fn a_body_naming_its_uses_alias_stays_unobserved_until_resolve_binds_it_holds() -> Bool {
+  match ddc_verdict(function: "t.alias_ref.alias_used") {
     Absent => false
     Present { value: v } =>
       match v {
-        CensusUnobserved { reason: UnobservedModuleResolveRefused } => true
+        CensusUnobserved { reason: _ } => true
+        CensusEqual => false
+        CensusMismatch { authored: _, derived: _ } => false
+        CensusUndecided { cause: _ } => false
+      }
+  }
+}
+
+test fn a_qualified_member_sharing_the_alias_spelling_is_not_substituted_RED() -> Bool {
+  match ddc_verdict(function: "t.aliasing.member_collision") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusMismatch { authored: a, derived: d } => (length(xs: a) == 1) && (length(xs: d) == 0)
+        CensusEqual => false
+        CensusUndecided { cause: _ } => false
+        CensusUnobserved { reason: _ } => false
+      }
+  }
+}
+
+test fn a_let_binder_sharing_the_alias_spelling_is_not_substituted_RED() -> Bool {
+  match ddc_verdict(function: "t.aliasing.let_shadows") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusMismatch { authored: a, derived: d } => (length(xs: a) == 1) && (length(xs: d) == 0)
+        CensusEqual => false
+        CensusUndecided { cause: _ } => false
+        CensusUnobserved { reason: _ } => false
+      }
+  }
+}
+
+test fn duplicate_uses_aliases_leave_the_fn_unobserved_RED() -> Bool {
+  match ddc_verdict(function: "t.aliasing.duplicate_alias") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusUnobserved { reason: UnobservedAliasConflict } => true
         CensusUnobserved { reason: _ } => false
         CensusEqual => false
         CensusMismatch { authored: _, derived: _ } => false
@@ -176,8 +240,9 @@ test fn a_body_still_naming_its_alias_is_never_judged_a_restatement_RED() -> Boo
   }
 }
 
-// Only the in-vocabulary rows of Equal fns are deletable: the Network rows of restates, transitive and
-// mixed. The Filesystem rows of fs_only and mixed are out of vocabulary and count only toward that audit.
+// Only the in-vocabulary rows of Equal fns are deletable: the Network rows of restates, transitive
+// and mixed. The Filesystem rows of fs_only and mixed are out of vocabulary and count only
+// toward that audit.
 test fn only_equal_network_rows_are_deletable_and_filesystem_is_counted_apart_holds() -> Bool {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
@@ -266,7 +331,19 @@ test fn a_call_through_a_function_value_is_undecided_on_the_real_route_RED() -> 
 test fn a_uses_file_refused_before_authorship_is_an_incomplete_population_RED() -> Bool {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
-    Accepted { value: r, diagnostics: _ } => (r.unreadable_files == 1) && (demand_census_exit(r: r) == 2)
+    Accepted { value: r, diagnostics: _ } =>
+      (length(xs: r.unreadable) == 1)
+        && (demand_census_exit(r: r) == 2)
+        && match r.unreadable {
+          Cons { head: u, tail: Empty } =>
+            (u.file_path == "dag/t/broken.dag")
+              && match u.stage {
+                UnreadableAtTokenize => true
+                UnreadableAtParse => false
+              }
+          Empty => false
+          Cons { head: _, tail: _ } => false
+        }
   }
 }
 

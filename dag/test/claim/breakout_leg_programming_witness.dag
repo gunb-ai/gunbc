@@ -18,7 +18,7 @@ import product.breakout_leg_programming {
   fs_box_v4_leg_programming, fs_nvidia_eth_leg_coding,
   leg_programming_instruction, vendor_coding_attests, breakout_programming_plan,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // GREEN BY EXECUTION FOR THE ARGUMENT THE DUAL-COMPATIBILITY SKU EXISTS TO WIN: a plant of generic
 // breakouts owes a per-leg hand re-flash, a plant of SKU 145681 owes nothing, and std's own burden

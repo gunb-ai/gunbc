@@ -8,7 +8,7 @@ import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUn
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory }
 import gunbc.live_deploy.emit { install_d_managed_command }
 import gunbc.executor_privileged_operation { runner_slot_install_operations, executor_privileged_operation_argv }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

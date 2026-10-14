@@ -18,7 +18,7 @@ import extdeps.vllm.recipe_deepseek_v4_1_flash {
   extdeps_external_authority_anchor,
 }
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
 fn recipe_decl_key(decl_name: String) -> String {
   declaration_ref_display_key(ref: DeclarationRef {

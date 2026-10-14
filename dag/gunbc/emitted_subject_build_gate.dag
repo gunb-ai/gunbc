@@ -119,7 +119,30 @@ data native_fault_experiment_run_value: String = "run"
 // steps (job-private root, the two federations, the save) left the required job with this ruling;
 // cargo's own dependency reuse inside the job's checkout is untouched.
 data native_product_reuse_env_name: String = "GUNBC_NATIVE_PRODUCT_REUSE"
-data native_product_reuse_fresh_value: String = "fresh"
+
+// THE EXECUTION INPUT THE REQUIRED SUBJECT STEPS PASS. The workflow env is this projection, and
+// the epoch hashes that same value — not Bool names for emit/start the command does not read.
+type EmittedSubjectExecutionContract {
+  build_fresh: Bool
+  fault_experiment_skip: String
+  fault_experiment_run: String
+}
+
+data emitted_subject_execution_contract: EmittedSubjectExecutionContract = EmittedSubjectExecutionContract {
+  build_fresh: true,
+  fault_experiment_skip: native_fault_experiment_skip_value,
+  fault_experiment_run: native_fault_experiment_run_value,
+}
+
+fn native_product_reuse_env_value(contract: EmittedSubjectExecutionContract) -> String {
+  if contract.build_fresh { "fresh" } else { "restored" }
+}
+
+fn emitted_subject_fault_experiment_expression(contract: EmittedSubjectExecutionContract) -> String {
+  join(["${{ github.event_name == 'pull_request' && '", contract.fault_experiment_skip, "' || '", contract.fault_experiment_run, "' }}"], "")
+}
+
+data native_product_reuse_fresh_value: String = native_product_reuse_env_value(contract: emitted_subject_execution_contract)
 
 // THE MEMORY ENVELOPE OF A SUBJECT STEP (operator ruling 2026-10-09: "MemorySwapMax=0 and a fixed
 // hard memory maximum; a lower compiler abort/trip threshold; a peak and swap receipt; no larger-
@@ -178,17 +201,34 @@ type NativeStepMemoryInput {
   env_value: String
 }
 
-// WHICH ENVELOPE INPUTS A SUBJECT STEP PASSES, AS A FUNCTION OF THE FLEET FACT. The fact is a
-// parameter so a claim can exercise both arms by supplying it, and the workflow passes the live
-// row's. A job that owns no bounded cgroup gets the slot requirement alone; a job that does gets
-// the requirement and the bind at the derived trip.
-fn native_step_memory_inputs(ownership: SlotJobCgroupOwnership) -> List<NativeStepMemoryInput> {
-  let required = NativeStepMemoryInput { env_name: native_step_memory_envelope_env_name, env_value: native_step_memory_envelope_slot_value }
-  let bind = NativeStepMemoryInput { env_name: native_step_memory_bind_env_name, env_value: native_step_memory_trip_text() }
+// THE EFFECTIVE PER-STEP TRIP the fleet fact selects: unbound, or MemoryHigh minus headroom.
+// why / staged_by are not this value. native_step_memory_inputs and the contract epoch both
+// consume this.
+type MemoryStepBound
+  = MemoryStepTripUnbound
+  | MemoryStepTripBound { bytes: ByteSize }
+
+fn memory_step_bound(ownership: SlotJobCgroupOwnership) -> MemoryStepBound {
   match ownership {
-    JobOwnsNoBoundedCgroup { why: _ } => [required]
-    JobOwnsBoundedCgroup { staged_by: _ } => [required, bind]
+    JobOwnsNoBoundedCgroup { why: _ } => MemoryStepTripUnbound
+    JobOwnsBoundedCgroup { staged_by: _ } => MemoryStepTripBound { bytes: native_step_memory_trip() }
   }
+}
+
+fn native_step_memory_inputs_for_bound(bound: MemoryStepBound) -> List<NativeStepMemoryInput> {
+  let required = NativeStepMemoryInput { env_name: native_step_memory_envelope_env_name, env_value: native_step_memory_envelope_slot_value }
+  match bound {
+    MemoryStepTripUnbound => [required]
+    MemoryStepTripBound { bytes: bytes } =>
+      [
+        required,
+        NativeStepMemoryInput { env_name: native_step_memory_bind_env_name, env_value: to_string(byte_size_count(b: bytes)) }
+      ]
+  }
+}
+
+fn native_step_memory_inputs(ownership: SlotJobCgroupOwnership) -> List<NativeStepMemoryInput> {
+  native_step_memory_inputs_for_bound(bound: memory_step_bound(ownership: ownership))
 }
 
 // THE LINES THE FAILURE NOTICE CARRIES ABOUT THE ENVELOPE, a function of the same fact so the notice
@@ -313,19 +353,19 @@ data emit_build_standing: NativeEmitBuildStanding = EmitBuildExpectedGreen
 // The retirement condition is PRINTED, so a reader who can see main self-host again knows the row
 // is stale and what edit retires it. Nothing mechanically flips the row when the condition holds:
 // that is review diligence, stated here rather than implied.
-fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding, lane_blocks: Bool) -> List<String> {
-  list_append(left: emit_build_lane_blocking_lines(lane_blocks: lane_blocks), right: emit_build_standing_lines(standing: standing, lane_blocks: lane_blocks))
+fn emit_build_standing_notice_for(standing: NativeEmitBuildStanding, lane_blocks: Bool, required_context: String) -> List<String> {
+  list_append(left: emit_build_lane_blocking_lines(lane_blocks: lane_blocks, required_context: required_context), right: emit_build_standing_lines(standing: standing, lane_blocks: lane_blocks))
 }
 
-fn emit_build_lane_blocking_lines(lane_blocks: Bool) -> List<String> {
+fn emit_build_lane_blocking_lines(lane_blocks: Bool, required_context: String) -> List<String> {
   if lane_blocks {
     [
-      "emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.",
+      join(["emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `", required_context, "`."], ""),
     ]
   } else {
     [
       "emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:",
-      "the required context is `witnesses`, and this job is not an input to it.",
+      join(["the required context is `", required_context, "`, and this job is not an input to it."], ""),
     ]
   }
 }

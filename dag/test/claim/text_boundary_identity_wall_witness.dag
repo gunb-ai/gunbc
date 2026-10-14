@@ -1,7 +1,7 @@
 module test.claim.text_boundary_identity_wall_witness
 
 import std.types { String, Bool, Int, List }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
 }

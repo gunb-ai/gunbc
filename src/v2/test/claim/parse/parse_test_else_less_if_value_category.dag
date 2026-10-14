@@ -11,7 +11,7 @@ import v2.compiler.tokenize { tokenize_prepared }
 
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.diagnostic { Accepted, DeclarationLocus, InvariantPortLocus, Locus, NodeLocus, Rejected, SourcePortLocus, Textual, diagnostics_fatal }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 import std.optional { Absent, Optional, Present }
 

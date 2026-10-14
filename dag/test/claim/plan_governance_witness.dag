@@ -10,7 +10,7 @@ import gunbc.plan_governance {
   GovernanceRefusal, GovernanceRootHasGovernor, GovernanceChildHasMultipleGovernors, GovernanceOrphan, GovernanceCycle,
   admit_plan_governance, governance_is_admitted, graph_all_reach_root, graph_parent_of, graph_children_of,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -30,7 +30,7 @@ import std.change {
   keyed_patch_hunk_count,
 }
 import std.keyed_row { KeyedRow }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

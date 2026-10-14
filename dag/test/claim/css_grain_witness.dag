@@ -7,7 +7,7 @@ import extdeps.languages.css.selectors {
   SelectorSubject, ClassSelector, ElementSelector, PseudoSuffix, RawSelector,
   selector_subject_wire, raw_selector_count,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

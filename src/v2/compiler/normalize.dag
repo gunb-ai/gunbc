@@ -70,6 +70,7 @@ import v2.compiler.body_lowering_fold {
   declared_record_names,
   declared_resource_names
 }
+import v2.std.compilers.body_lowering { Lowered, RawLeaf, RawParse }
 import v2.compiler.normalized_tree {
   CensusTree,
   NormalizedTree,
@@ -676,7 +677,7 @@ fn normalize_census_node(n: Node, under_fn_decl: Bool) -> Outcome<BodyLoweredTre
       } else if emitted == ^dag_surface_service_decl {
         body_lowered_tree_then(
           t: body_lowered_tree_over(node: n, retained: no_wrapper_retentions()),
-          f: fn(shell) { body_lower_service_decl(shell: shell, admit_set_aside: true) }
+          f: fn(shell) { body_lower_service_decl(shell: shell) }
         )
       } else if emitted == ^dag_surface_resource_decl {
         body_lowered_tree_then(

@@ -42,7 +42,7 @@ import std.orthogonal_geometry {
   AxisAlignedSurface3, axis_aligned_surface3, surface3_plane, surface3_frame, surface3_extent,
   OrthogonalPrism3, orthogonal_prism3, prism3_height,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

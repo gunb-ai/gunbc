@@ -2325,6 +2325,10 @@ pub fn trim(s: String) -> String {
     v1_rt::trim(s)
 }
 
+pub fn string_contains(s: String, pattern: String) -> bool {
+    v1_rt::string_contains(&s, pattern)
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(bound(
     serialize = "T: Clone + serde::Serialize",

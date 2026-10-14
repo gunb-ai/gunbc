@@ -1,7 +1,7 @@
 module test.claim.fleet.fleet_site_locale_witness
 
 import std.types { Bool, String, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.iana.time_zone_database { zone_etc_utc, zone_america_new_york }
 import extdeps.posix.locale { locale_en_us_utf8 }
 import extdeps.ietf.language_tag { LanguageTag, language_tag_en_us }

@@ -20,7 +20,7 @@ import extdeps.firmware.types {
   prerequisite_evidence_verdict,
 }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_bios_3_10_openbmc_release, asrock_altrad8ud_bios_310_push_accepted_at_bmc_322, asrock_altrad8ud_bios_310_push_refused_at_bmc_207, asrock_altrad8ud_bios_openbmc_prerequisite_evidence, asrock_altrad8ud_board_authority }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

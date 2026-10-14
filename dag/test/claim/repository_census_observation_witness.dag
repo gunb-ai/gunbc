@@ -26,7 +26,7 @@ import gunbc.repository_census_observation {
   repository_census_observation_identity_eq,
 }
 import gunbc.guarantee_measurement { MeasurementRevision, GitRevision, ContentFingerprint }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -9,7 +9,7 @@ import std.realize_pack {
   RealizeVerdict, PackedWidth, MaturationReserve, BudgetRefused,
   realize_pack_width, realize_verdict_width, realize_fits_budget,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

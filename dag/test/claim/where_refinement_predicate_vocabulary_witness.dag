@@ -2,7 +2,7 @@ module test.claim.where_refinement_predicate_vocabulary_witness
 
 import std.types { String, NonEmptyStr, Bool, Int, List, string_non_empty, gt_zero, range }
 import std.content_hash { lower_hex_16, lower_hex_40, lower_hex_64, lower_hex_128 }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 import gunbc.where_refinement_predicate_vocabulary {
   WherePredicateRow,

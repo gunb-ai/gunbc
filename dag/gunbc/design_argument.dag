@@ -1,22 +1,14 @@
 module gunbc.design_argument
 
 import std.types { String, List }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.syllogism { Argument, Axiom, NonLogicalAxiom, Proposition }
 
-// A NONEMPTY COLLECTION OF DECLARATION REFERENCES. The DAG language has no generic NonEmptyList
-// carrier, so this is the established corpus shape: one required first element plus the remaining
-// list. Used for conformance domain homes (DESIGN section 3b), which must name at least one
-// authority — a domain with no home has nothing to conform to, so this structure guarantees the
-// invariant at the type level rather than through a post-hoc check.
-type ConformanceHomes {
-  first: DeclarationRef
-  rest: List<DeclarationRef>
-}
-
-fn conformance_home_list(h: ConformanceHomes) -> List<DeclarationRef> {
-  concat([h.first], h.rest)
-}
+// A NONEMPTY COLLECTION OF DECLARATION REFERENCES IS FreeSemigroup. A domain with no home has
+// nothing to conform to. Missing-head construction of that carrier is unwritable (MissingField /
+// head). A [] / Empty literal at a FreeSemigroup position is still the inhabitance seam owned by
+// cardinality-vertical-slice, not this first-slice construction wall.
 
 // EACH PROPOSITION CARRIES ITS OWN REVIEW READING, OR NONE. A DesignRow is one proposition of the
 // serial argument plus, where the proposition is checkable on a single change, the question a
@@ -62,12 +54,7 @@ type PropositionReview
 type ConformanceHomeGroup {
   label: String
   purpose: String
-  homes: ConformanceHomes
-}
-
-type ConformanceHomeGroups {
-  first: ConformanceHomeGroup
-  rest: List<ConformanceHomeGroup>
+  homes: FreeSemigroup<DeclarationRef>
 }
 
 type ConformanceDomain {
@@ -77,11 +64,15 @@ type ConformanceDomain {
   tells: List<String>
   owns: String
   boundaries: List<String>
-  home_groups: ConformanceHomeGroups
+  home_groups: FreeSemigroup<ConformanceHomeGroup>
+}
+
+fn conformance_home_list(h: FreeSemigroup<DeclarationRef>) -> List<DeclarationRef> {
+  non_empty_to_list(xs: h)
 }
 
 fn conformance_domain_home_groups(d: ConformanceDomain) -> List<ConformanceHomeGroup> {
-  concat([d.home_groups.first], d.home_groups.rest)
+  non_empty_to_list(xs: d.home_groups)
 }
 
 fn conformance_domain_homes(d: ConformanceDomain) -> List<DeclarationRef> {
@@ -103,16 +94,16 @@ data conformance_domains: List<ConformanceDomain> = [
     boundaries: [
       "Product policy, observations this repository makes, dispatch among upstreams and coverage state belong to the consuming layer, never to extdeps.",
     ],
-    home_groups: ConformanceHomeGroups {
-      first: ConformanceHomeGroup {
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
         label: "Upstream ownership",
         purpose: "what an external model may own",
-        homes: ConformanceHomes {
-          first: decl_ref(module_path: "extdeps.external_authority", decl_name: "ExternalModelScope"),
-          rest: [],
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "extdeps.external_authority", decl_name: "ExternalModelScope"),
+          tail: [],
         },
       },
-      rest: [],
+      tail: [],
     },
   },
   ConformanceDomain {
@@ -128,24 +119,24 @@ data conformance_domains: List<ConformanceDomain> = [
     boundaries: [
       "The key relation itself belongs to keys / hashing; this domain begins once the identity and contract are admitted.",
     ],
-    home_groups: ConformanceHomeGroups {
-      first: ConformanceHomeGroup {
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
         label: "Materialization contract",
         purpose: "what is requested and what result is promised",
-        homes: ConformanceHomes {
-          first: decl_ref(module_path: "std.realization", decl_name: "Materialization"),
-          rest: [
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "std.realization", decl_name: "Materialization"),
+          tail: [
             decl_ref(module_path: "std.materialization_provider", decl_name: "ArtifactRequest"),
           ],
         },
       },
-      rest: [
+      tail: [
         ConformanceHomeGroup {
           label: "Storage contract",
           purpose: "how admitted results are stored and read back",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "std.artifact_store", decl_name: "ArtifactStore"),
-            rest: [
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "std.artifact_store", decl_name: "ArtifactStore"),
+            tail: [
               decl_ref(module_path: "std.cache_interface", decl_name: "StorageSurface"),
             ],
           },
@@ -172,26 +163,26 @@ data conformance_domains: List<ConformanceDomain> = [
       "A slot whose generation line is an audit trail keeps it whole; a slot whose only fact is its head uses the distinct windowed operations, a separate contract rather than a mode.",
       "Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; its census classifies every current site by executing the selection.",
     ],
-    home_groups: ConformanceHomeGroups {
-      first: ConformanceHomeGroup {
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
         label: "Lease and exclusion",
         purpose: "time-bounded possession and atomic updates of shared state",
-        homes: ConformanceHomes {
-          first: decl_ref(module_path: "std.temporal_effect", decl_name: "HeldLease"),
-          rest: [
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "std.temporal_effect", decl_name: "HeldLease"),
+          tail: [
             decl_ref(module_path: "std.durable_compare_and_set", decl_name: "CasExpectation"),
             decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_windowed"),
             decl_ref(module_path: "std.durable_exclusive_hold", decl_name: "DurableHoldState"),
           ],
         },
       },
-      rest: [
+      tail: [
         ConformanceHomeGroup {
           label: "Grant and resource scope",
           purpose: "what may be used, by whom, under what authority",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "std.scoped_authorization", decl_name: "ScopedAuthorization"),
-            rest: [
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "std.scoped_authorization", decl_name: "ScopedAuthorization"),
+            tail: [
               decl_ref(module_path: "std.effect_grant", decl_name: "Grant"),
               decl_ref(module_path: "std.resources", decl_name: "ResourceHandle"),
             ],
@@ -200,9 +191,9 @@ data conformance_domains: List<ConformanceDomain> = [
         ConformanceHomeGroup {
           label: "Authorization-pattern selection",
           purpose: "chooses the admissible mechanism for an effect",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "select_authorization_pattern"),
-            rest: [
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.auth.authorization_pattern_selection", decl_name: "select_authorization_pattern"),
+            tail: [
               decl_ref(module_path: "gunbc.auth.access_token_source", decl_name: "select_access_token_source"),
             ],
           },
@@ -210,9 +201,9 @@ data conformance_domains: List<ConformanceDomain> = [
         ConformanceHomeGroup {
           label: "Recurring automated access",
           purpose: "workload identity and scoped secret access",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "gunbc.auth.github_gcp_federation", decl_name: "github_wif_provider"),
-            rest: [
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.auth.github_gcp_federation", decl_name: "github_wif_provider"),
+            tail: [
               decl_ref(module_path: "gunbc.auth.gcp_secret_access", decl_name: "SecretAccessGrant"),
             ],
           },
@@ -220,9 +211,9 @@ data conformance_domains: List<ConformanceDomain> = [
         ConformanceHomeGroup {
           label: "One-off approved access",
           purpose: "requests, capabilities and redemption",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "gunbc.auth.access_request", decl_name: "AccessRequest"),
-            rest: [
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.auth.access_request", decl_name: "AccessRequest"),
+            tail: [
               decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "ApprovalCapability"),
               decl_ref(module_path: "gunbc.auth.approval_broker", decl_name: "redeem_capability"),
             ],
@@ -231,9 +222,9 @@ data conformance_domains: List<ConformanceDomain> = [
         ConformanceHomeGroup {
           label: "Coverage evidence",
           purpose: "classifies the privileged-effect sites that exist today",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "gunbc.auth.privileged_effect_census", decl_name: "privileged_effect_census"),
-            rest: [],
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.auth.privileged_effect_census", decl_name: "privileged_effect_census"),
+            tail: [],
           },
         },
       ],
@@ -262,13 +253,13 @@ data conformance_domains: List<ConformanceDomain> = [
       "Whether a choice is attributable to its objective, constraints, candidates and evidence belongs to the decision / selection domain and std.decision; this row only checks that a resource choice reaches that authority with the work's declared objective rather than a local one.",
       "Buyer headroom (what a demand will pay minus a supplier's ask) is not margin: product.fabric.contention withdrew that reading, so a matching change may not book it as earned.",
     ],
-    home_groups: ConformanceHomeGroups {
-      first: ConformanceHomeGroup {
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
         label: "Shared demand and supply selection",
         purpose: "what work needs and which supply serves it",
-        homes: ConformanceHomes {
-          first: decl_ref(module_path: "product.fabric.selection", decl_name: "select_supply"),
-          rest: [
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "product.fabric.selection", decl_name: "select_supply"),
+          tail: [
             decl_ref(module_path: "product.fabric.work", decl_name: "ExecutionRequirements"),
             decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOperation"),
             decl_ref(module_path: "product.fabric.contention", decl_name: "select_demand_for_offer"),
@@ -276,13 +267,13 @@ data conformance_domains: List<ConformanceDomain> = [
           ],
         },
       },
-      rest: [
+      tail: [
         ConformanceHomeGroup {
           label: "Compute cells",
           purpose: "layout, reservation and admission",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "ComputeLayout"),
-            rest: [
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "ComputeLayout"),
+            tail: [
               decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "CellReservation"),
               decl_ref(module_path: "gunbc.fabric.fabric_executor_class", decl_name: "CapacityClassAdmission"),
             ],
@@ -291,9 +282,9 @@ data conformance_domains: List<ConformanceDomain> = [
         ConformanceHomeGroup {
           label: "Seats and serving",
           purpose: "seat demand, grants and occupancy",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "product.capacity.lease", decl_name: "LeaseGrant"),
-            rest: [
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "product.capacity.lease", decl_name: "LeaseGrant"),
+            tail: [
               decl_ref(module_path: "product.capacity.pool_events", decl_name: "SeatRequest"),
               decl_ref(module_path: "gunbc.fabric.fabric_event_log", decl_name: "fabric_seat_acquire"),
               decl_ref(module_path: "gunbc.harness.harness_seat", decl_name: "harness_bind_seat"),
@@ -323,26 +314,26 @@ data conformance_domains: List<ConformanceDomain> = [
       "The hard selection laws stay with the section 3d reviewer.",
       "Goal assessment (std.goal_assessment) checks an already chosen state; it is a boundary of this domain, not a member.",
     ],
-    home_groups: ConformanceHomeGroups {
-      first: ConformanceHomeGroup {
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
         label: "Decision subject, result and receipt",
         purpose: "what is decided and the record of the choice",
-        homes: ConformanceHomes {
-          first: decl_ref(module_path: "std.decision", decl_name: "DecisionSubject"),
-          rest: [
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "std.decision", decl_name: "DecisionSubject"),
+          tail: [
             decl_ref(module_path: "std.decision", decl_name: "RealizationSelectionResult"),
             decl_ref(module_path: "std.decision", decl_name: "SelectionReceipt"),
             decl_ref(module_path: "std.decision", decl_name: "select_realization"),
           ],
         },
       },
-      rest: [
+      tail: [
         ConformanceHomeGroup {
           label: "Pareto evidence",
           purpose: "axes, readings and dominance; a frontier, never a winner",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "std.pareto", decl_name: "SelectionAxis"),
-            rest: [
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "std.pareto", decl_name: "SelectionAxis"),
+            tail: [
               decl_ref(module_path: "std.pareto", decl_name: "ParetoEntry"),
               decl_ref(module_path: "std.pareto", decl_name: "DominanceVerdict"),
             ],
@@ -367,24 +358,24 @@ data conformance_domains: List<ConformanceDomain> = [
       "Faithfully realizing an admitted identity belongs to materialization / realization.",
       "Demand identity and the dependency read set are a declared frontier, entering when M1 of `gunbc.plans.demand_engine_program` lands their carriers. The relation model is [keying-relation-design.md](docs/plans/keying-relation-design.md).",
     ],
-    home_groups: ConformanceHomeGroups {
-      first: ConformanceHomeGroup {
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
         label: "Hash family and structural identity",
         purpose: "how a node's identity is computed",
-        homes: ConformanceHomes {
-          first: decl_ref(module_path: "std.content_hash", decl_name: "HashFamily"),
-          rest: [
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "std.content_hash", decl_name: "HashFamily"),
+          tail: [
             decl_ref(module_path: "v2.std.node", decl_name: "content_hash"),
           ],
         },
       },
-      rest: [
+      tail: [
         ConformanceHomeGroup {
           label: "Request, computation and occurrence identity",
           purpose: "the keys materialization and source graphs use",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "std.materialization_provider", decl_name: "request_key"),
-            rest: [
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "std.materialization_provider", decl_name: "request_key"),
+            tail: [
               decl_ref(module_path: "std.computation_identity", decl_name: "ComputationIdentity"),
               decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIdAllocator"),
             ],
@@ -393,9 +384,9 @@ data conformance_domains: List<ConformanceDomain> = [
         ConformanceHomeGroup {
           label: "Equality and cache admissibility",
           purpose: "whether a key type's equality may be relied on (instantiation-blind at this rung)",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "std.algebra", decl_name: "algebra_profile_equality_extensional"),
-            rest: [
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "std.algebra", decl_name: "algebra_profile_equality_extensional"),
+            tail: [
               decl_ref(module_path: "extdeps.realization.cache_purity", decl_name: "CachePurityVerdict"),
             ],
           },
@@ -419,34 +410,96 @@ data conformance_domains: List<ConformanceDomain> = [
       "Producing bytes is not delivery.",
       "A repository population measured at a revision stays with gunbc.repository_census_observation.",
     ],
-    home_groups: ConformanceHomeGroups {
-      first: ConformanceHomeGroup {
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
         label: "Observation and recording",
         purpose: "the occurrence and its record",
-        homes: ConformanceHomes {
-          first: decl_ref(module_path: "std.observation", decl_name: "ObservationEvent"),
-          rest: [
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "std.observation", decl_name: "ObservationEvent"),
+          tail: [
             decl_ref(module_path: "std.observation", decl_name: "RecordedObservation"),
           ],
         },
       },
-      rest: [
+      tail: [
         ConformanceHomeGroup {
           label: "Presentation",
           purpose: "how an observation is shown",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "std.observation", decl_name: "ObservationPresentation"),
-            rest: [],
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "std.observation", decl_name: "ObservationPresentation"),
+            tail: [],
           },
         },
         ConformanceHomeGroup {
           label: "CI encoding",
           purpose: "the rendered CI line",
-          homes: ConformanceHomes {
-            first: decl_ref(module_path: "gunbc.observation_ci_render", decl_name: "ci_event_line"),
-            rest: [
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "gunbc.observation_ci_render", decl_name: "ci_event_line"),
+            tail: [
               decl_ref(module_path: "gunbc.observation_ci_render", decl_name: "ci_render_line"),
             ],
+          },
+        },
+      ],
+    },
+  },
+  ConformanceDomain {
+    key: "conformance-cardinality-absence",
+    label: "Cardinality / absence",
+    question: "Does the change inhabit the existing presence, optional-layer and collection-cardinality authorities at each counted position, preserve their distinctions through its producer-to-consumer path, and state the reason for any departure?",
+    tells: [
+      "none, null or another sentinel answers for DAG absence through a second typing or runtime rule rather than the declared Optional constructor or a named foreign conversion",
+      "a new Absent, Missing or Unset carrier has exactly a zero-or-one-value contract and no independent cause, progress, policy or upstream meaning",
+      "a bare value is implicitly wrapped, or an optional payload is implicitly extracted, without a declared conversion satisfying section 4; the checker and realization insert different conversions",
+      "Option types, constructors, patterns or equality are selected by leaf spelling rather than resolved declaration identity and the admitted realization",
+      "nested optional layers, collection boundaries or absent-versus-empty states are collapsed as normalization rather than changed by an explicit operation",
+      "a new head-and-tail NonEmpty record restates FreeSemigroup, or a validated/nonempty brand can be constructed without establishing its claimed invariant",
+      "a possibly-empty producer enters a nonempty consumer without evidence; an operation preserves a lower bound it can invalidate; or unmeasured cardinality is treated as zero",
+      "a cardinality flag or metadata field independently restates structure already carried by the type and can disagree with it",
+    ],
+    owns: "Presence and absence, optional-layer nesting, collection emptiness and nonemptiness, and the preservation of these facts from source through typing, execution, realization and declared ingestion conversions. Cardinality belongs to a named position and measure within the value's structure. Operator rulings of 2026-10-13, applying to every layer: `gunbc.design_ruling cardinality_one_concept`, `gunbc.design_ruling dag_absence_is_one_meaning`, `gunbc.design_ruling explicit_present_is_the_authoring_policy`, `gunbc.design_ruling optional_sugar_is_declaration_bound`, `gunbc.design_ruling nonemptiness_is_constructed_or_proved`, `gunbc.design_ruling native_first_complete_cuts`.",
+    boundaries: [
+      "Failure causes, search progress, policy states and independently governed upstream null or missing states retain their own meanings. Factor their optional parts without erasing those distinctions; classify by contract, not by a variant-name suffix.",
+      "Conversion legality is section 4's judgment. This domain checks inhabitance and preservation; target realization cannot authorize a conversion, and a stated departure does not waive another design obligation.",
+      "Data cardinality is not evaluation multiplicity or a termination proof. The existing bound witnesses are not a claim that general collection-interval propagation or every acceptance path is implemented.",
+    ],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Presence and sequences",
+        purpose: "the canonical optional, possibly-empty sequence and nonempty sequence carriers",
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "std.optional", decl_name: "Optional"),
+          tail: [
+            decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
+            decl_ref(module_path: "std.algebra", decl_name: "FreeSemigroup"),
+          ],
+        },
+      },
+      tail: [
+        ConformanceHomeGroup {
+          label: "Optional-layer structure",
+          purpose: "read and construct consecutive optional layers without collapsing their depth",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "v2.std.optional_layers", decl_name: "type_node_occupancy_read"),
+            tail: [
+              decl_ref(module_path: "v2.std.optional_layers", decl_name: "wrap_type_node_occupancy"),
+            ],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "Declared-type boundaries",
+          purpose: "the existing producer-versus-declared-type inhabitance judgment",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "v2.std.inhabitance", decl_name: "declared_type_inhabitance"),
+            tail: [],
+          },
+        },
+        ConformanceHomeGroup {
+          label: "Natural bounds",
+          purpose: "the existing natural-order witness from which its two bounds are read",
+          homes: FreeSemigroup {
+            head: decl_ref(module_path: "v2.std.cardinality", decl_name: "NatLeWitness"),
+            tail: [],
           },
         },
       ],

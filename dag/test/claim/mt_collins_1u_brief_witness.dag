@@ -13,7 +13,7 @@ import extdeps.ampere.mt_collins_1u_product_brief.specifications {
   mt_collins_1u_processors, mt_collins_1u_memory, mt_collins_1u_expansion,
   mt_collins_1u_storage, mt_collins_1u_power, mt_collins_1u_dimensions,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

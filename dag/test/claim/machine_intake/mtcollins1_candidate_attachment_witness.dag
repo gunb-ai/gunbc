@@ -23,7 +23,7 @@ import gunbc.machine_intake.mtcollins1_expansion_candidates {
 }
 import gunbc.machine_intake.mtcollins1_connectx4lx_observation { Connectx4LxHostUnobserved, Connectx4LxHostObserved }
 import gunbc.machine_intake.mtcollins1_dimm_connector_observation { observed_unit }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

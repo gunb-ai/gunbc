@@ -57,6 +57,12 @@ pub mod std_emit_model;
 #[path = "../../stage0/src/std_measure.rs"]
 pub mod std_measure;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_decimal.rs"]
+pub mod std_decimal;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_render_repeat_string_bootstrap.rs"]
+pub mod std_render_repeat_string_bootstrap;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_types.rs"]
 pub mod std_types;
 #[rustfmt::skip]

@@ -6,7 +6,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.lens.registry {
-  Bound, LensIdV0, Unbound, lens_registry_v0, lens_id_v0_eq,
+  Bound, LensIdV0, Unbound, lens_registry_v0,
   ComplexityDerivedKernel, ComplexityOptimality, ComplexityAccumulatorCopy, ComplexityLinearityAudit,
   ComplexityLowering, Cost, Coverage, DependencyFidelity, Discrimination, DispositionRedundancy,
   DocReachability, DuplicateComputation, EffectReach, EmittedBinaryEffectConfinement, FallbackArmCensus, MandatoryTag, ExtdepsShapeTransportPolicy,
@@ -30,7 +30,7 @@ import v2.lens.registry.completeness {
 import std.disposition { RealizationDispatch }
 import std.algebra { list_snoc_item, contains, count_where, fold_list, list_head, HeadFound, HeadAbsent }
 import v2.std.integer { Int }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String, string_eq }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -91,7 +91,7 @@ fn lens_module_gate_string_member(xs: List<String>, x: String) -> Bool {
 }
 
 fn lens_module_gate_verdict_remedy_pair_eq(a: VerdictRemedyPair, b: VerdictRemedyPair) -> Bool {
-  lens_id_v0_eq(left: a.lens_id, right: b.lens_id)
+  a.lens_id == b.lens_id
     && (a.verdict_authority == b.verdict_authority)
     && (a.remedy == b.remedy)
 }
