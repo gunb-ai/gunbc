@@ -446,6 +446,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-xl2-rehearsal"),
+            TargetProducer::NativeClaimProgram {
+                entry: "src/v2/workflow/namespace_xl2_rehearsal_native.dag",
+            },
+        ),
+        (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
