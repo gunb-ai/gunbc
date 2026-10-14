@@ -10,6 +10,7 @@ import v2.compiler.census_run_record {
   CensusDiffClearedAndNewlyExposed,
   CensusDiffIncompleteEvidence,
   CensusDiffLocationUpdate,
+  CensusDiffDuplicateObligation,
   CensusDiffMemberAdded,
   CensusDiffMemberRemoved,
   CensusDiffNewlyObservedNotRegression,
@@ -217,6 +218,13 @@ fn is_member_removed(member: String, f: CensusRunDiffFinding) -> Bool {
   }
 }
 
+fn is_duplicate_obligation(f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffDuplicateObligation { module: _, stage: _ } => true
+    _ => false
+  }
+}
+
 fn census_stage_is_front_end(stage: NativeCensusCauseStage) -> Bool {
   match stage {
     NativeCensusCauseFrontEnd => true
@@ -278,6 +286,21 @@ test fn census_diff_refuses_a_different_subject() -> Bool {
     CensusRunDiffSubjectRefused { before: b, after: a } => b == census_diff_subject && a == "v2.other"
     CensusRunDiffCompared { diff: _ } => false
   }
+}
+
+test fn census_diff_duplicate_module_stage_row_is_not_silently_overwritten() -> Bool {
+  let dup = list_append(
+    passed_module(module: "a"),
+    census_three_stage_rows(
+      module: "a",
+      front_end: CensusObligationPassed,
+      resolve: CensusObligationPassed,
+      infer: planted_refused(reason: ^infer_mismatch, at: planted_at(line: 6), occurrence: occ(n: 2))
+    )
+  )
+  let before = closed_complete(population: ["a"], obligations: dup, revision: rev_a())
+  let after = closed_complete(population: ["a"], obligations: passed_module(module: "a"), revision: rev_a())
+  findings_contain(findings: findings_of(result: census_run_diff(before: before, after: after)), predicate: is_duplicate_obligation)
 }
 
 test fn census_diff_records_a_different_revision() -> Bool {

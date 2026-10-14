@@ -142,6 +142,11 @@ type CensusRunDiffFinding
   | CensusDiffLocationUpdate { before: CensusObligationRow, after: CensusObligationRow }
   | CensusDiffMemberAdded { member: String }
   | CensusDiffMemberRemoved { member: String }
+  | CensusDiffDuplicateObligation { module: String, stage: NativeCensusCauseStage }
+
+type CensusObligationIndex
+  = CensusObligationIndexReady { by_module: Map<String, CensusModuleObligations> }
+  | CensusObligationIndexDuplicate { module: String, stage: NativeCensusCauseStage }
 
 type CensusRunDiff {
   revision_changed: Bool
@@ -329,7 +334,8 @@ fn census_member_block_front_end(refusal: CensusMemberRefusal) -> CensusObligati
 }
 
 // A CensusMemberBlock is observed as FrontEnd refused; later stages are unobserved behind that
-// block. An edge block is not a module row: it is the record's Blocked-scope incompleteness.
+// block. An edge block is not a module row: descendants behind it are NativeCensusScopeBlocked,
+// not CensusRunIncomplete (that arm is only "no terminal was observed", plan §6–§7).
 fn census_obligation_rows_from_member_block(block: CensusBlock) -> Optional<List<CensusObligationRow>> {
   match block {
     CensusEdgeBlock { refusal: _ } => optional_absent()
@@ -376,11 +382,29 @@ fn census_put_obligation(triple: CensusModuleObligations, row: CensusObligationR
   }
 }
 
-fn census_obligation_index(rows: List<CensusObligationRow>) -> Map<String, CensusModuleObligations> {
-  fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
-    match map_lookup(m: acc, key: row.module) {
-      Absent => map_insert(m: acc, key: row.module, value: census_put_obligation(triple: census_empty_module_obligations(), row: row))
-      Present { value: triple } => map_insert(m: acc, key: row.module, value: census_put_obligation(triple: triple, row: row))
+fn census_obligation_index(rows: List<CensusObligationRow>) -> CensusObligationIndex {
+  fold_list(xs: rows, empty: CensusObligationIndexReady { by_module: empty_map() }, cons: fn(acc, row) {
+    match acc {
+      CensusObligationIndexDuplicate { module: _, stage: _ } => acc
+      CensusObligationIndexReady { by_module: by_module } =>
+        match map_lookup(m: by_module, key: row.module) {
+          Absent =>
+            CensusObligationIndexReady {
+              by_module: map_insert(
+                m: by_module,
+                key: row.module,
+                value: census_put_obligation(triple: census_empty_module_obligations(), row: row)
+              )
+            }
+          Present { value: triple } =>
+            match census_index_stage(triple: triple, stage: row.stage) {
+              Present { value: _ } => CensusObligationIndexDuplicate { module: row.module, stage: row.stage }
+              Absent =>
+                CensusObligationIndexReady {
+                  by_module: map_insert(m: by_module, key: row.module, value: census_put_obligation(triple: triple, row: row))
+                }
+            }
+        }
     }
   })
 }
@@ -704,37 +728,58 @@ fn census_run_diff(before: CensusRunRecord, after: CensusRunRecord) -> CensusRun
     let after_set = census_name_set(names: after.population)
     let added = census_names_only_in(left: after.population, right: before_set)
     let removed = census_names_only_in(left: before.population, right: after_set)
-    let digest_changed = !content_hash_eq_structural(left: before.population_digest, right: after.population_digest)
     let before_index = census_obligation_index(rows: before.obligations)
     let after_index = census_obligation_index(rows: after.obligations)
-    let added_findings = if digest_changed {
-      fold_list(xs: added, empty: Empty, cons: fn(acc, m) {
-        list_append(acc, census_diff_added_member_findings(member: m, after_index: after_index))
-      })
-    } else {
-      Empty
-    }
-    let removed_findings = if digest_changed {
-      fold_list(xs: removed, empty: Empty, cons: fn(acc, m) {
-        list_append(acc, census_diff_absent_member_findings(member: m, after: after))
-      })
-    } else {
-      Empty
-    }
-    let common = fold_list(xs: before.population, empty: Empty, cons: fn(acc, m) {
-      if map_contains_key(m: after_set, key: m) {
-        match map_lookup(m: before_index, key: m) {
-          Absent => list_snoc_item(xs: acc, item: CensusDiffIncompleteEvidence { member: optional_present(value: m) })
-          Present { value: before_t } =>
-            match map_lookup(m: after_index, key: m) {
-              Absent => list_snoc_item(xs: acc, item: CensusDiffIncompleteEvidence { member: optional_present(value: m) })
-              Present { value: after_t } => list_append(acc, census_diff_common_member(module: m, before_t: before_t, after_t: after_t))
-            }
+    let duplicate_findings = match before_index {
+      CensusObligationIndexDuplicate { module: m, stage: s } =>
+        [CensusDiffDuplicateObligation { module: m, stage: s }]
+      CensusObligationIndexReady { by_module: _ } =>
+        match after_index {
+          CensusObligationIndexDuplicate { module: m, stage: s } =>
+            [CensusDiffDuplicateObligation { module: m, stage: s }]
+          CensusObligationIndexReady { by_module: _ } => Empty
         }
-      } else {
-        acc
-      }
-    })
+    }
+    let added_findings = match added {
+      Empty => Empty
+      Cons { head: _, tail: _ } =>
+        match after_index {
+          CensusObligationIndexDuplicate { module: _, stage: _ } => Empty
+          CensusObligationIndexReady { by_module: after_map } =>
+            fold_list(xs: added, empty: Empty, cons: fn(acc, m) {
+              list_append(acc, census_diff_added_member_findings(member: m, after_index: after_map))
+            })
+        }
+    }
+    let removed_findings = match removed {
+      Empty => Empty
+      Cons { head: _, tail: _ } =>
+        fold_list(xs: removed, empty: Empty, cons: fn(acc, m) {
+          list_append(acc, census_diff_absent_member_findings(member: m, after: after))
+        })
+    }
+    let common = match before_index {
+      CensusObligationIndexDuplicate { module: _, stage: _ } => Empty
+      CensusObligationIndexReady { by_module: before_map } =>
+        match after_index {
+          CensusObligationIndexDuplicate { module: _, stage: _ } => Empty
+          CensusObligationIndexReady { by_module: after_map } =>
+            fold_list(xs: before.population, empty: Empty, cons: fn(acc, m) {
+              if map_contains_key(m: after_set, key: m) {
+                match map_lookup(m: before_map, key: m) {
+                  Absent => list_snoc_item(xs: acc, item: CensusDiffIncompleteEvidence { member: optional_present(value: m) })
+                  Present { value: before_t } =>
+                    match map_lookup(m: after_map, key: m) {
+                      Absent => list_snoc_item(xs: acc, item: CensusDiffIncompleteEvidence { member: optional_present(value: m) })
+                      Present { value: after_t } => list_append(acc, census_diff_common_member(module: m, before_t: before_t, after_t: after_t))
+                    }
+                }
+              } else {
+                acc
+              }
+            })
+        }
+    }
     let incomplete = match before.completion {
       CensusRunIncomplete => [CensusDiffIncompleteEvidence { member: optional_absent() }]
       CensusRunComplete =>
@@ -750,7 +795,7 @@ fn census_run_diff(before: CensusRunRecord, after: CensusRunRecord) -> CensusRun
         after_revision: after.revision,
         members_added: added,
         members_removed: removed,
-        findings: list_append(incomplete, list_append(added_findings, list_append(removed_findings, common)))
+        findings: list_append(duplicate_findings, list_append(incomplete, list_append(added_findings, list_append(removed_findings, common))))
       }
     }
   }
