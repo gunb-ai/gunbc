@@ -1,5 +1,6 @@
 module v2.compiler.parse
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List, SourceSpan }
 import std.optional {
   Absent,
@@ -148,6 +149,8 @@ import v2.std.grammar {
   grammar_named_edge,
   grammar_to_node
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE PARSE'S PROVENANCE IS ONE PATH'S STATE. Every backtracking construct restores the whole
 // value on a failed attempt, so the allocator and the span index describe exactly the surviving
@@ -220,7 +223,6 @@ type AuthoredRegionWalk {
   regions: List<AnnotationRegion>
   unrepresentable: List<OccurrenceId>
 }
-
 
 // A SOURCE REGION IS A CONSTRUCT THE GRAMMAR NAMED, recognised by STRUCTURE rather than by what its
 // marker holds: a production wrapper (it carries the production-identity edge, whatever node the
@@ -1069,7 +1071,6 @@ fn parse_composite_extent(index: SpanIndex, id: OccurrenceId, children: List<Nod
     ParseExtentUnreadable => span_index_record_extent_unrepresentable(index: index, id: id)
   }
 }
-
 
 // THE FOLD OVER A COMPOSITE'S CHILDREN, as a closed sum: nothing read yet, a same-file byte range,
 // or a child whose extent this cannot compose. A child in another file, a WholeFile locus or a
@@ -5317,3 +5318,7 @@ fn parse(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseTree> {
       Rejected { diagnostics: r }
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "parse_sequence_capture" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

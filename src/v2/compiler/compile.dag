@@ -1,5 +1,6 @@
 module v2.compiler.compile
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.compiler_entry { CompilerEntryDriver, SourceRootEvalDriver }
 import gunbc.witness.v2_native_route {
   NativeRouteEmittedBuild,
@@ -315,6 +316,7 @@ import std.process { ExitFailure, ExitSuccess, ProcessExit }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import v2.std.witness { Holds, Violates, Witness, witness_violates }
 import v2.compiler.refinement_discharge { infer_and_discharge }
+import std.roster_frontier { FrontierRow, PathSubject }
 
 // THIS MODULE IS THE COMPILER PIPELINE ENTRY. It carries the fact rather than being recognised
 // by name: the emitter selected its entry-point arm by matching "v1.compiler.compile", a
@@ -1226,7 +1228,6 @@ fn compile_ingest_with_admission(
     }
   )
 }
-
 
 // THE ENTRY A COMMAND LINE CAN BE WIRED TO, MODELLED HERE RATHER THAN AUTHORED IN THE EMITTER.
 //
@@ -6178,7 +6179,6 @@ fn native_demand_observation_complete(run: NativeDemandRun) -> Bool {
     && (r.classified == length(xs: run.transitions))
 }
 
-
 // A CLOCK THAT NEVER ADVANCES PASSES EVERY CHECK ABOVE, WHICH IS WHY PROGRESS IS ITS OWN FACT.
 // elapsed_observation admits finish == start as ElapsedObserved { nanos: 0 }, so a realization whose
 // body returns a constant zero yields a run in which every transition is CLASSIFIED and VALIDLY
@@ -7245,3 +7245,11 @@ fn census_obligation_modules(rows: List<CensusObligationRow>) -> List<String> {
     }
   })
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "native_demand_occurrence_census_rows" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "native_demand_preparation_standing" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "native_demand_prepared" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "native_demand_resolved_tree" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "native_demand_rollup_step" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]
