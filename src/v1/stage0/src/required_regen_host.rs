@@ -4642,7 +4642,7 @@ fn convergence_surface_roles(
             _ => {}
         }
     }
-    let host_shell_modules = super::emitted_closure_compile_host::closure_modules(
+    let host_shell_modules = super::emitted_closure_compile_host::binary_modules(
         &workspace.join("src/v1/stage0/src/lib.rs"),
     )?
     .into_iter()
