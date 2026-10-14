@@ -12,7 +12,7 @@ import v2.std.collection {
   map_insert,
   map_lookup
 }
-import std.optional { Absent, Present, optional_absent, optional_present, Optional }
+import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
