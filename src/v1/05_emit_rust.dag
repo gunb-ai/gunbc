@@ -1625,7 +1625,12 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
 }
 
 fn render_rust_shared_type_if_needed(type_name: String, rendered: String, shared_types: Set<String>) -> String {
-  let may_wrap_leaf = is_container_type(name: type_name) || contains(type_name, ".")
+  // Unique-owner user leaves are in the shared set (build_shared_types dual key) and must wrap.
+  // Restricting wrap to containers / dotted names left FinitePowerSet and every other shared
+  // struct at the value layer in fn-parameter position -- E0308 against the seed field types
+  // (self-host first_error at std_algebra.rs FinitePowerSet.contains). Kernel leaves stay out:
+  // machine-scalar realization is already refused in render_rust_shared_type_with_optional.
+  let may_wrap_leaf = is_container_type(name: type_name) || contains(type_name, ".") || (type_name != "" && !is_kernel_type(name: type_name))
   if may_wrap_leaf && set_contains(shared_types, type_name) && !rust_type_is_rc_wrapped(type_name: rendered) {
     wrap_shared_type(target: Rust, inner: rendered)
   } else { rendered }

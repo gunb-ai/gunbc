@@ -2504,7 +2504,9 @@ pub fn render_rust_shared_type_if_needed(
     shared_types: Rc<BTreeSet<String>>,
 ) -> String {
     let may_wrap_leaf = (crate::std_types::is_container_type(type_name.clone())
-        || v1_rt::string_contains(&type_name, ".".to_string()));
+        || v1_rt::string_contains(&type_name, ".".to_string())
+        || (type_name.clone() != "".to_string()
+            && !crate::std_types::is_kernel_type(type_name.clone())));
     if ((may_wrap_leaf && v1_rt::set_contains(&shared_types, type_name.clone()))
         && !rust_type_is_rc_wrapped(rendered.clone()))
     {
