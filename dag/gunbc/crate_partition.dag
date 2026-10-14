@@ -1,6 +1,7 @@
 module gunbc.crate_partition
 
-import std.algebra { collection_concat_shape, collection_map_shape, collection_map_get_shape }
+import v2.std.collection { map_lookup }
+import std.algebra { collection_concat_shape, collection_map_shape }
 import std.types { Bool, Int, List, NonEmptyStr, String, brand }
 import std.optional { Absent, Optional, Present, optional_present }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -161,7 +162,7 @@ fn module_dag_edge_key(from: String, to: String) -> String {
 }
 
 fn string_member(set: Map<String, Bool>, key: String) -> Bool {
-  match map_get(set, key) {
+  match map_lookup(set, key) {
     Present { value: _ } => true
     Absent => false
   }
@@ -183,7 +184,7 @@ fn emitted_target_reach(modules: List<ModuleId>, edges: List<ModuleDagEdge>, emi
     match edge.to {
       EmittedCrateRootTarget => acc
       EmittedModuleTarget { module: target } =>
-        match map_get(acc, target) {
+        match map_lookup(acc, target) {
           Present { value: _ } => acc
           Absent => map_insert(acc, target, reached_set(names: names, graph: forward_as_reverse, start: target))
         }
@@ -212,7 +213,7 @@ fn emitted_edge_merge_step(
               refusal: optional_present(value: EmittedEdgeEndpointOutsideDag { from: edge.from, to: target })
             }
           } else {
-            let target_reaches_source = match map_get(reach, target) {
+            let target_reaches_source = match map_lookup(reach, target) {
               Present { value: reached } => string_member(set: reached, key: edge.from)
               Absent => false
             }
@@ -355,7 +356,7 @@ fn assignment_owner(
   assignment: Map<ModuleId, CompilationUnitId>,
   module_id: ModuleId
 ) -> Optional<CompilationUnitId> {
-  map_get(assignment, module_id)
+  map_lookup(assignment, module_id)
 }
 
 fn assignment_first_omitted_module(
@@ -383,7 +384,7 @@ fn assignment_first_stranger(
     match acc {
       Present { value: _ } => acc
       Absent =>
-        match map_get(known, module_id) {
+        match map_lookup(known, module_id) {
           Present { value: _ } => Absent
           Absent => Present { value: module_id }
         }
