@@ -323,7 +323,7 @@ pub fn map_from_entries<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
     entries: Rc<FreeMonoid<Rc<MapIntroductionEntry<K, V>>>>,
 ) -> Rc<HashMap<K, V>> {
     entries.iter().cloned().fold(
-        v1_rt::rc_empty_map::<_, _>(),
+        v1_rt::rc_empty_map::<K, V>(),
         |acc: _, entry: Rc<MapIntroductionEntry<K, V>>| {
             v1_rt::rc_map_insert(acc, entry.key.clone(), entry.value.clone())
         },
