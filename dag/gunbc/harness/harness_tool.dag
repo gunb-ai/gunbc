@@ -1,7 +1,8 @@
 module gunbc.harness.harness_tool
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
-import std.measure { CharacterCount, character_count, character_count_value, Second, second, second_count }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { CharacterCount, character_count, character_count_value, Second, second, second_count, minute }
 import extdeps.languages.json.emit {
   JsonValue, JsonString, JsonObject, JsonArray,
   json_kv, json_string, json_array, json_object,
@@ -20,7 +21,8 @@ import gunbc.harness.harness_tool_kind {
 }
 import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, HarnessWaitPace, WaitPaceReset, WaitPaceAfterWait,
-  HarnessWaitRequest, WaitUseDefault, WaitRequestedMinutes, WaitMalformedMinutes, WaitAdmitted, WaitRefusedNotADuration,
+  HarnessWaitRequest, WaitUseDefault, WaitRequestedMinutes, WaitMalformedMinutes,
+  WaitNonPositiveMinutes, WaitAdmitted, WaitRefusedNotADuration,
   harness_shell_job_schedule, harness_admit_wait, schedule_seconds,
   harness_pace_after_window_change, harness_pace_after_expired_wait,
 }
@@ -442,14 +444,14 @@ fn harness_wait_jobs_scheduled(
     pace: environment.wait_pace,
     request: request,
   ) {
-    WaitRefusedNotADuration { minutes, cause } =>
+    WaitRefusedNotADuration { asked_wire, cause } =>
       HarnessToolStep {
         environment: environment,
         outcome: ToolRefused {
           disposition: ToolEffectRefused {
             detail: join([
               "wait minutes must be a positive duration, got ",
-              to_string(value: minutes),
+              to_string(value: asked_wire),
               " (",
               cause,
               ")",
@@ -637,7 +639,16 @@ fn harness_wait_request_from_block(block: HarnessWireBlock) -> HarnessWaitReques
   match block {
     WireToolUseBlock { id: _, name: _, input: input } =>
       match json_field_int(obj: input, key: "minutes") {
-        FieldRead { value: n } => WaitRequestedMinutes { minutes: n }
+        FieldRead { value: n } =>
+          match checked_int_to_nat(n: n) {
+            Absent => WaitNonPositiveMinutes { asked_wire: n }
+            Present { value: count } =>
+              if count == 0 {
+                WaitNonPositiveMinutes { asked_wire: n }
+              } else {
+                WaitRequestedMinutes { minutes: minute(count: count) }
+              }
+          }
         FieldAbsent => WaitUseDefault
         FieldMalformed { cause } => WaitMalformedMinutes { cause: cause }
       }

@@ -1,9 +1,9 @@
 module test.claim.harness_shell_job
 
 import std.types { Bool, String, List, FilePath, NonEmptyStr, Int, Timestamp }
-import std.measure { second }
+import std.measure { second, minute, minute_count }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.languages.json.emit { json_object, json_kv, json_string }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int }
 import gunbc.harness.harness_wire { WireToolUseBlock }
 import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellJobState, JobRunning, JobFinished, JobExitedOutcome,
@@ -11,7 +11,9 @@ import gunbc.harness.harness_shell_job {
   HarnessTerminateProcessGroup, harness_kill_signal_note,
   harness_exit_is_harness_backstop, harness_command_table_exit_label,
 }
-import gunbc.harness.harness_shell_job_policy { WaitRequestedMinutes, WaitMalformedMinutes, WaitUseDefault, WaitPaceReset }
+import gunbc.harness.harness_shell_job_policy {
+  WaitRequestedMinutes, WaitMalformedMinutes, WaitNonPositiveMinutes, WaitUseDefault, WaitPaceReset,
+}
 import gunbc.harness.harness_tool {
   harness_wait_request_from_block, harness_kill_job, harness_tool_environment,
   harness_env_with_jobs, harness_outcome_text, harness_job_output_for_state,
@@ -76,7 +78,41 @@ test fn a_malformed_wait_minutes_member_keeps_the_parse_cause() -> Bool {
     WaitMalformedMinutes { cause } => cause.contains("string where a number")
     WaitUseDefault => false
     WaitRequestedMinutes { minutes: _ } => false
+    WaitNonPositiveMinutes { asked_wire: _ } => false
   }
+}
+
+test fn wait_minutes_from_the_wire_are_a_minute_carrier() -> Bool {
+  match harness_wait_request_from_block(block: WireToolUseBlock {
+    id: "u1",
+    name: "wait",
+    input: json_object([json_kv(key: "minutes", value: json_int(n: 5))]),
+  }) {
+    WaitRequestedMinutes { minutes } => minute_count(m: minutes) == 5
+    WaitUseDefault => false
+    WaitMalformedMinutes { cause: _ } => false
+    WaitNonPositiveMinutes { asked_wire: _ } => false
+  }
+    && (match harness_wait_request_from_block(block: WireToolUseBlock {
+      id: "u2",
+      name: "wait",
+      input: json_object([json_kv(key: "minutes", value: json_int(n: 0))]),
+    }) {
+      WaitNonPositiveMinutes { asked_wire } => asked_wire == 0
+      WaitUseDefault => false
+      WaitMalformedMinutes { cause: _ } => false
+      WaitRequestedMinutes { minutes: _ } => false
+    })
+    && (match harness_wait_request_from_block(block: WireToolUseBlock {
+      id: "u3",
+      name: "wait",
+      input: json_object([json_kv(key: "minutes", value: json_int(n: 0 - 3))]),
+    }) {
+      WaitNonPositiveMinutes { asked_wire } => asked_wire == 0 - 3
+      WaitUseDefault => false
+      WaitMalformedMinutes { cause: _ } => false
+      WaitRequestedMinutes { minutes: _ } => false
+    })
 }
 
 test fn an_unconfirmed_kill_carries_the_terminate_stderr() -> Bool {
