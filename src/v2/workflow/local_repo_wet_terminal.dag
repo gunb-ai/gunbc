@@ -553,6 +553,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "a_refused_pass_is_its_own_standing_not_a_seat_refusal" },
+      entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
+      function: "a_refused_pass_is_its_own_standing_not_a_seat_refusal",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.attempt_discharge_wet_witness", function: "the_reservation_reference_is_the_identity_and_its_ordinal" },
       entry: "dag/test/claim/compute/attempt_discharge_wet_witness.dag",
       function: "the_reservation_reference_is_the_identity_and_its_ordinal",

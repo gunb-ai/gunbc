@@ -28,6 +28,7 @@ import gunbc.compute.compute_seat_ensure {
   SeatOwnerStanding, SeatOwnerEnded, SeatOwnerLive,
   compute_seat_ensure_in,
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRan, SeatDischargeRefused, compute_seat_discharge_all,
+  SeatDischargeStanding, SeatDischargePassRefused, seat_discharge_pass_standing,
 }
 
 // KILL-AT-EACH-TRANSITION CONTROLS FOR THE COMPUTE SEAT (gunbc.recurring_failure_mode
@@ -723,5 +724,13 @@ fn a_driver_refuses_the_pass_when_the_attempts_directory_cannot_be_listed_cell(r
     SeatDischargeRefused { reason: _ } => true
     SeatDischargeRan { outcomes: _ } => false
     SeatDischargeSkipped { why: _ } => false
+  }
+}
+
+// A WHOLE-PASS REFUSAL IS NOT A REFUSAL OF ONE UNNAMED SEAT: it keeps its own standing and its cause.
+test fn a_refused_pass_is_its_own_standing_not_a_seat_refusal() -> Bool {
+  match seat_discharge_pass_standing(p: SeatDischargeRefused { reason: "attempts unreadable" }) {
+    SeatDischargePassRefused { reason: r } => r == "attempts unreadable"
+    _ => false
   }
 }

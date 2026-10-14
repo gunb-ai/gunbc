@@ -330,7 +330,7 @@ import gunbc.compute.attempt_lifecycle { DispatchOwned }
 import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved }
 import gunbc.compute.compute_seat_ensure {
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, compute_seat_discharge_all,
-  SeatDischargeStanding, SeatDischargeClean, SeatDischargeHasRefusals, SeatDischargeHasReds, seat_discharge_pass_standing,
+  SeatDischargeStanding, SeatDischargeClean, SeatDischargePassRefused, SeatDischargeHasRefusals, SeatDischargeHasReds, seat_discharge_pass_standing,
 }
 import gunbc.compute.work_provider_local {
   compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
@@ -4122,6 +4122,7 @@ fn belt_seat_discharge_pass_outcome_from(pass: SeatDischargePass) -> BeltPassOut
   match seat_discharge_pass_standing(p: pass) {
     SeatDischargeHasReds { reds: n, first: why } => BeltPassFailed { reason: join([to_string(value: n), " seat discharge red(s); first: ", why], "") }
     SeatDischargeHasRefusals { refused: n, first: why } => BeltPassRefused { reason: join([to_string(value: n), " seat discharge refusal(s), charge kept; first: ", why], "") }
+    SeatDischargePassRefused { reason: why } => BeltPassRefused { reason: join(["the seat discharge pass could not run, every charge kept: ", why], "") }
     SeatDischargeClean => BeltPassRecorded
   }
 }

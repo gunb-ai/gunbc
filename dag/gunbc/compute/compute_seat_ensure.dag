@@ -298,11 +298,13 @@ type SeatDischargePass
   | SeatDischargeRan { outcomes: List<SeatEnsureOutcome> }
   | SeatDischargeRefused { reason: String }
 
-fn seat_discharge_outcomes(p: SeatDischargePass) -> List<SeatEnsureOutcome> {
+// A pass-level refusal that occurs inside a per-seat fan-out is located by the directory it refused on;
+// the top-level pass refusal never becomes a seat outcome (seat_discharge_pass_standing carries it as its own arm).
+fn seat_discharge_outcomes(p: SeatDischargePass, located: String) -> List<SeatEnsureOutcome> {
   match p {
     SeatDischargeRan { outcomes: os } => os
     SeatDischargeSkipped { why: _ } => [] as List<SeatEnsureOutcome>
-    SeatDischargeRefused { reason: r } => [SeatEnsureRefused { reference: "", reason: r }]
+    SeatDischargeRefused { reason: r } => [SeatEnsureRefused { reference: located, reason: r }]
   }
 }
 
@@ -336,9 +338,17 @@ type SeatDischargeStanding
   = SeatDischargeClean
   | SeatDischargeHasRefusals { refused: Int, first: String }
   | SeatDischargeHasReds { reds: Int, first: String }
+  | SeatDischargePassRefused { reason: String }
 
 fn seat_discharge_pass_standing(p: SeatDischargePass) -> SeatDischargeStanding {
-  let outcomes = seat_discharge_outcomes(p: p)
+  match p {
+    SeatDischargeRefused { reason: why } => SeatDischargePassRefused { reason: why }
+    _ => seat_discharge_outcomes_standing(p: p)
+  }
+}
+
+fn seat_discharge_outcomes_standing(p: SeatDischargePass) -> SeatDischargeStanding {
+  let outcomes = seat_discharge_outcomes(p: p, located: "")
   let reds = outcomes |> filter(o => seat_outcome_is_red(o: o))
   let refused = outcomes |> filter(o => seat_outcome_is_refused(o: o))
   match reds.first() {
@@ -444,8 +454,8 @@ fn compute_seat_discharge_all(instance_root: String, attempts_dir: String, lease
           SeatDischargeRan {
             outcomes: concat(
               seat_worker_exit_owners(listings: listings)
-                |> flat_map(o => seat_discharge_outcomes(p: compute_seat_discharge_owned(attempts_dir: attempts_dir, leases_dir: leases_dir, subject: subject, node_id: o.node_id, attempt_key: o.attempt_key, source: source))),
-              dirs |> flat_map(d => seat_discharge_outcomes(p: compute_seat_discharge_dir(seats: join([attempts_dir, "/", d], "") as NonEmptyStr, leases_dir: leases_dir, subject: subject, source: source, owner: SeatOwnerLive)))),
+                |> flat_map(o => seat_discharge_outcomes(p: compute_seat_discharge_owned(attempts_dir: attempts_dir, leases_dir: leases_dir, subject: subject, node_id: o.node_id, attempt_key: o.attempt_key, source: source), located: join(["dispatch-", o.attempt_key], ""))),
+              dirs |> flat_map(d => seat_discharge_outcomes(p: compute_seat_discharge_dir(seats: join([attempts_dir, "/", d], "") as NonEmptyStr, leases_dir: leases_dir, subject: subject, source: source, owner: SeatOwnerLive), located: d))),
           }
       }
   }
