@@ -26,6 +26,8 @@ import v2.compiler.staged_front_end {
   FrontEndResolvedModule,
   FrontEndBoundReached,
   FrontEndRefused,
+  front_end_stage_index,
+  front_end_full_depth,
   run_front_end_to
 }
 import std.algebra { FreeSemigroup, list_snoc_item }
@@ -149,6 +151,38 @@ fn obligation_prerequisites(obligation: DagStageObligation) -> List<DagStageObli
     EvalStage { claim: _ } => [InferStage]
     TranslateStage { claim: _ } => [InferStage]
     TargetCompileStage { claim: c } => [TranslateStage { claim: c.translation }]
+  }
+}
+
+// The obligation partition is the single authority for WHICH SIDE of the acceptance
+// fold an obligation belongs to. It is a hand-authored total projection over
+// DagStageObligation (DagStageObligation stays the authority; the partition names
+// all eight of its arms with no wildcard and is built only from it): the four
+// front-end obligations project to the staged_front_end.FrontEndStage they run, the
+// four back-end obligations to the DagBackEndStage that executes them. The three
+// partition matches (is_front_end_obligation, obligation_front_end_depth,
+// execute_obligation) fold over this projection rather than the variant list, so
+// their wildcard fallback arms become named cases.
+type DagBackEndStage
+  = BackEndInfer
+  | BackEndEval { claim: EvalClaim }
+  | BackEndTranslate { claim: TranslationClaim }
+  | BackEndTargetCompile { claim: TargetCompileClaim }
+
+type DagObligationPartition
+  = FrontEndObligation { stage: FrontEndStage }
+  | BackEndObligation { stage: DagBackEndStage }
+
+fn obligation_partition(obligation: DagStageObligation) -> DagObligationPartition {
+  match obligation {
+    TokenizeStage => FrontEndObligation { stage: FrontEndTokenize }
+    ParseStage => FrontEndObligation { stage: FrontEndParse }
+    NormalizeStage => FrontEndObligation { stage: FrontEndNormalize }
+    ResolveStage => FrontEndObligation { stage: FrontEndResolve }
+    InferStage => BackEndObligation { stage: BackEndInfer }
+    EvalStage { claim: c } => BackEndObligation { stage: BackEndEval { claim: c } }
+    TranslateStage { claim: c } => BackEndObligation { stage: BackEndTranslate { claim: c } }
+    TargetCompileStage { claim: c } => BackEndObligation { stage: BackEndTargetCompile { claim: c } }
   }
 }
 
@@ -403,11 +437,9 @@ fn effective_obligations(contract: DagAcceptanceContract) -> List<DagStageObliga
 }
 
 fn obligation_front_end_depth(obligation: DagStageObligation) -> Int {
-  match obligation {
-    TokenizeStage => 1
-    ParseStage => 2
-    NormalizeStage => 3
-    _ => 4
+  match obligation_partition(obligation: obligation) {
+    FrontEndObligation { stage: stage } => front_end_stage_index(stage: stage)
+    BackEndObligation { stage: _ } => front_end_full_depth
   }
 }
 
@@ -1034,12 +1066,8 @@ fn execute_obligation(
   env: AcceptanceEnvironment,
   obligation: DagStageObligation
 ) -> AcceptanceRunState {
-  match obligation {
-    InferStage => infer_execution(state: state)
-    EvalStage { claim: c } => eval_execution(state: state, claim: c)
-    TranslateStage { claim: c } => translate_execution(state: state, claim: c)
-    TargetCompileStage { claim: c } => target_compile_execution(state: state, env: env, claim: c)
-    _ =>
+  match obligation_partition(obligation: obligation) {
+    FrontEndObligation { stage: _ } =>
       state_with_row(
         state: state,
         row: StageNotRun {
@@ -1047,6 +1075,13 @@ fn execute_obligation(
           reason: ExecutorUnavailable { cause: "front-end obligations execute inside the staged front-end fold" }
         }
       )
+    BackEndObligation { stage: stage } =>
+      match stage {
+        BackEndInfer => infer_execution(state: state)
+        BackEndEval { claim: c } => eval_execution(state: state, claim: c)
+        BackEndTranslate { claim: c } => translate_execution(state: state, claim: c)
+        BackEndTargetCompile { claim: c } => target_compile_execution(state: state, env: env, claim: c)
+      }
   }
 }
 
@@ -1075,12 +1110,9 @@ fn attempt_obligation(
 }
 
 fn is_front_end_obligation(obligation: DagStageObligation) -> Bool {
-  match obligation {
-    TokenizeStage => true
-    ParseStage => true
-    NormalizeStage => true
-    ResolveStage => true
-    _ => false
+  match obligation_partition(obligation: obligation) {
+    FrontEndObligation { stage: _ } => true
+    BackEndObligation { stage: _ } => false
   }
 }
 
@@ -1356,34 +1388,15 @@ fn acceptance_verdict(receipt: DagAcceptanceReceipt) -> DagAcceptanceVerdict {
 
 data nfr_reason_acceptance_obligation_eq: String = "structural equality over DagStageObligation (obligation_eq): the three claim-carrying arms compare their claim identities through nested matches with off-variant wildcard false arms, and the outer wildcard compares discriminants for the five unit arms — the eq-row class the structural-equality rows above name, landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
-data nfr_reason_acceptance_obligation_partition: String = "front-end-vs-back-end partition over DagStageObligation (eight arms): execute_obligation names the four back-end stages and routes the four front-end obligations through one wildcard StageNotRun/ExecutorUnavailable arm because they execute inside the staged front-end fold; is_front_end_obligation is the subset predicate (off-variant wildcard false); obligation_front_end_depth gives ResolveStage and every back-end obligation one shared depth. Each wildcard is the OTHER half of one partition, so enumerating it would clone one arm four or five times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
 data nfr_reason_acceptance_verdict_append: String = "one-variant append over DagAcceptanceVerdict (three arms): verdict_with_further_rejection extends AcceptanceContractRejected and verdict_with_further_unfinished extends AcceptanceContractIncomplete, each returning the other two verdicts unchanged through one wildcard identity arm. Landed with the .dag acceptance harness (#8821, 2026-08-21) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
-
-data nfr_dissolve_acceptance_obligation_partition: DissolutionCondition = unbound_dissolution(description: "DagStageObligation carries a derived front-end/back-end partition from inhabitance — a total projection onto staged_front_end.FrontEndStage? that is the single authority for which obligations the front-end fold owns — so the three matches fold over the partition rather than the variant list, the wildcard arms become named cases, and the rows delete")
 
 data nfr_dissolve_acceptance_verdict_append: DissolutionCondition = unbound_dissolution(description: "the verdict is assembled once from the receipt's derived outcome partition (first and further labels computed together) rather than appended one label at a time, so the two append fns have no caller and delete with their rows — or the two matches become total over the three verdict arms")
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
-      subject: PathSubject { path: "execute_obligation" },
-      reason: nfr_reason_acceptance_obligation_partition,
-      dissolution: nfr_dissolve_acceptance_obligation_partition,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "is_front_end_obligation" },
-      reason: nfr_reason_acceptance_obligation_partition,
-      dissolution: nfr_dissolve_acceptance_obligation_partition,
-    },
-  FrontierRow {
       subject: PathSubject { path: "obligation_eq" },
       reason: nfr_reason_acceptance_obligation_eq,
       dissolution: nfr_dissolve_derived_equality,
-    },
-  FrontierRow {
-      subject: PathSubject { path: "obligation_front_end_depth" },
-      reason: nfr_reason_acceptance_obligation_partition,
-      dissolution: nfr_dissolve_acceptance_obligation_partition,
     },
   FrontierRow {
       subject: PathSubject { path: "verdict_with_further_rejection" },
