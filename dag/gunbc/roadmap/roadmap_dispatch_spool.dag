@@ -275,10 +275,13 @@ fn dispatch_spool_outcome_key(o: DispatchSpoolOutcome) -> String {
   }
 }
 
+// DispatchSpoolRequestRefused STOPS THE LINE, same as publication_helper HelperRequestRefused.
+// Quarantine already moved the bytes out of DirectoryNotEmpty, so this is not a retrigger storm;
+// it is the oneshot exit that makes a decode / human-only / misaddressed document visible once.
 fn dispatch_spool_outcome_disposition(o: DispatchSpoolOutcome) -> DispatchSpoolDisposition {
   match o {
     DispatchSpoolDispatched { entry: _, spawn: _ } => OutcomeRecorded
-    DispatchSpoolRequestRefused { entry: _, detail: _ } => OutcomeRecorded
+    DispatchSpoolRequestRefused { entry: _, detail: d } => OutcomeStopsTheLine { detail: d }
     DispatchSpoolAnswerWriteFailed { entry: _, detail: d } => OutcomeStopsTheLine { detail: d }
     DispatchSpoolRequestNotConsumed { entry: _, detail: d } => OutcomeStopsTheLine { detail: d }
     DispatchSpoolRequestUnreadable { entry: _, detail: d } => OutcomeStopsTheLine { detail: d }

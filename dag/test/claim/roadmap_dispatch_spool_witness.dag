@@ -154,6 +154,13 @@ test fn an_unreadable_request_is_named_apart_from_a_refused_one_and_stops_the_li
     }
 }
 
+test fn a_refused_request_stops_the_line_the_way_the_publication_peer_does() -> Bool {
+  match dispatch_spool_outcome_disposition(o: DispatchSpoolRequestRefused { entry: "e", detail: "d" }) {
+    OutcomeStopsTheLine { detail: _ } => true
+    OutcomeRecorded => false
+  }
+}
+
 test fn the_dispatch_spool_path_wakes_the_drain_on_a_non_empty_request_directory() -> Bool {
   let spec = live_spec()
   let lines = systemd_unit_file_lines(file: live_deploy_belt_dispatch_spool_path_unit_file(spec: spec))
