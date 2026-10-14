@@ -5,7 +5,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.encoding { Encoding, is_text_encoding }
 import std.types { FilePath, MimeType, String }
 import std.filesystem.types { EntryKind, SymlinkTarget }
-import std.algebra { list_tail, TailFound, TailAbsent, list_head, HeadFound, HeadAbsent }
+import std.optional { Absent, Present }
+import std.algebra { list_tail, list_head }
 
 type FileEntry {
   path: FilePath
@@ -71,8 +72,8 @@ data filesystem_is_text_encoding_dissolve_on: DissolutionCondition = unbound_dis
 // separators. An empty remainder of an absolute path is `/`; of a relative basename, `.` (POSIX dirname).
 fn path_parent_directory(path: String) -> String {
   match list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
-    TailAbsent => path_parent_when_no_remaining_segments(path: path)
-    TailFound { tail: rest } => {
+    Absent => path_parent_when_no_remaining_segments(path: path)
+    Present { value: rest } => {
       let joined = join(reverse(rest), "/")
       if joined == "" {
         path_parent_when_no_remaining_segments(path: path)
@@ -88,8 +89,8 @@ fn path_parent_when_no_remaining_segments(path: String) -> String {
     "."
   } else {
     match list_head(xs: split(s: path, delimiter: "/")) {
-      HeadAbsent => "."
-      HeadFound { value: first } =>
+      Absent => "."
+      Present { value: first } =>
         if first == "" {
           "/"
         } else {
