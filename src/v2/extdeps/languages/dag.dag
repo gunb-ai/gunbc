@@ -1233,10 +1233,11 @@ fn dag_grammar_qualified_type_expr() -> GrammarExpr {
 }
 
 // A generic argument is a type or a natural-number literal: `Compose<Int, MachineWidth<8>>`
-// (std.integer), the one axis DESIGN section 2 cites. v1.compiler.parse admits it because its
-// lexer gives a digit run the identifier shape, so parse_type_expr reads `8` as a leaf type named
-// "8"; the literal is lexeme-stamped here so it carries that same spelling as its atom. It is
-// admitted in the argument list only -- a bare `type T = 8` is not a type here.
+// (std.integer), the one axis DESIGN section 2 cites. The literal is lexeme-stamped here, so v2 parse
+// keeps it as an integer-literal atom carrying its spelling; the value is NOT lost at parse (held by
+// type_application_kind int_literal_generic_argument_is_a_literal_value_node_holds), and a kinded
+// parameter's body read takes it from the application's solved instance (A0-1). It is admitted in the
+// argument list only -- a bare `type T = 8` is not a type here.
 fn dag_grammar_generic_arg_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
