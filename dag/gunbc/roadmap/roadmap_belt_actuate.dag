@@ -37,7 +37,7 @@ import gunbc.dispatch_credential_snapshot {
   CredentialSnapshotRemoved,
   CredentialSnapshotRemovalFailed,
 }
-import gunbc.dispatch.credential_acquisition {
+import gunbc.dispatch_credential_acquisition {
   credential_admit_reader_or_discard,
   LaunchAdmitted, LaunchLostSnapshotDiscarded, LaunchLostDiscardFailed,
 }

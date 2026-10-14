@@ -258,7 +258,7 @@ import gunbc.dispatch_credential_snapshot {
   credential_snapshot_tombstone_body,
   credential_snapshot_after_read_disposition,
 }
-import gunbc.dispatch.credential_acquisition { credential_register_then_take }
+import gunbc.dispatch_credential_acquisition { credential_register_then_take }
 import gunbc.host_custody_export_receipt { SnapshotCustodyDeclaration }
 import gunbc.worker_turn_snapshot_custody {
   claude_worker_turn_snapshot_custody,

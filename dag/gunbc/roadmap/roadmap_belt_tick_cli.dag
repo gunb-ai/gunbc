@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_belt_tick_cli
 
 import std.types { String, NonEmptyStr }
-import gunbc.dispatch.credential_acquisition {
+import gunbc.dispatch_credential_acquisition {
   credential_acquisition_slots_root,
   credential_recover_root,
   credential_root_recovery_report,
