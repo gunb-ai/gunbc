@@ -4277,13 +4277,20 @@ pub fn run_v2_native_census_scoped(
     // exists so it can never be this run; the driver compares against it (census_run_diff) and the
     // record names it. No completed record means no comparison, never an empty one.
     let root = census_run_record_root();
-    let against = latest_complete_census_record(&root, subject_label);
+    let baseline = latest_complete_census_record(&root, subject_label)?;
+    for unreadable in &baseline.unreadable {
+        eprintln!(
+            "v2-native-census-scoped: baseline candidate unreadable, not compared: {unreadable}"
+        );
+    }
+    let against = baseline.chosen.clone();
     let record = CensusRunRecordFile::open(
         &root,
         subject_label,
         source_roots,
         std::env::var("GITHUB_SHA").ok(),
         against.as_deref(),
+        &baseline.unreadable,
     )?;
     eprintln!(
         "v2-native-census-scoped: run record {} (incomplete until the terminal is decoded)",
@@ -4351,6 +4358,7 @@ impl CensusRunRecordFile {
         source_roots: &[String],
         revision_claimed: Option<String>,
         against: Option<&Path>,
+        baseline_unreadable: &[String],
     ) -> Result<Self, String> {
         std::fs::create_dir_all(root).map_err(|cause| {
             format!(
@@ -4384,6 +4392,7 @@ impl CensusRunRecordFile {
                 .map(|p| serde_json::Value::from(p.display().to_string()))
                 .unwrap_or(serde_json::Value::Null),
         );
+        opening.insert("baseline_unreadable".into(), baseline_unreadable.into());
         let record = CensusRunRecordFile { path, opening };
         let mut incomplete = record.opening.clone();
         incomplete.insert("status".into(), "incomplete".into());
@@ -4414,13 +4423,48 @@ fn census_run_record_prefix(subject_label: &str) -> String {
     format!("census-scoped{slug}-")
 }
 
+/// THE BASELINE CHOICE, with what it could not read kept beside it: "no completed record" and "a
+/// candidate that could not be read" are different answers, so a corrupt or unreadable record is named
+/// (on stderr and in this run's record as `baseline_unreadable`) rather than read as absence.
+struct CensusBaselineChoice {
+    chosen: Option<PathBuf>,
+    unreadable: Vec<String>,
+}
+
 /// THE SUBJECT'S MOST RECENT COMPLETED RECORD under `root`: its own prefix, `status` complete and the
 /// same `subject_label` inside (a slug can be shared by two labels), latest by the run's start time.
-/// An incomplete record -- an interrupted run -- is never a baseline.
-fn latest_complete_census_record(root: &Path, subject_label: &str) -> Option<PathBuf> {
+/// An incomplete record -- an interrupted run -- is never a baseline. A root that does not exist yet
+/// holds no record; a root that exists and cannot be listed refuses the run.
+fn latest_complete_census_record(
+    root: &Path,
+    subject_label: &str,
+) -> Result<CensusBaselineChoice, String> {
     let prefix = census_run_record_prefix(subject_label);
-    let mut best: Option<(u128, PathBuf)> = None;
-    for entry in std::fs::read_dir(root).ok()?.flatten() {
+    let mut choice = CensusBaselineChoice {
+        chosen: None,
+        unreadable: Vec::new(),
+    };
+    let entries = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(choice),
+        Err(cause) => {
+            return Err(format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=RunRecordRootUnreadable — listing {}: {cause}",
+                root.display()
+            ))
+        }
+    };
+    let mut best: Option<u128> = None;
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(cause) => {
+                choice
+                    .unreadable
+                    .push(format!("{}: {cause}", root.display()));
+                continue;
+            }
+        };
         let name = entry.file_name().to_string_lossy().into_owned();
         let Some(run) = name
             .strip_prefix(&prefix)
@@ -4428,23 +4472,35 @@ fn latest_complete_census_record(root: &Path, subject_label: &str) -> Option<Pat
         else {
             continue;
         };
+        let path = entry.path();
         let Some(started) = run.split('-').next().and_then(|n| n.parse::<u128>().ok()) else {
+            choice.unreadable.push(format!(
+                "{}: file name carries no run start",
+                path.display()
+            ));
             continue;
         };
-        let Some(read) = std::fs::read_to_string(entry.path())
-            .ok()
-            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-        else {
-            continue;
+        let read = match std::fs::read_to_string(&path)
+            .map_err(|c| c.to_string())
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).map_err(|c| c.to_string()))
+        {
+            Ok(read) => read,
+            Err(cause) => {
+                choice
+                    .unreadable
+                    .push(format!("{}: {cause}", path.display()));
+                continue;
+            }
         };
         if read["status"] != "complete" || read["subject_label"] != subject_label {
             continue;
         }
-        if best.as_ref().map_or(true, |(t, _)| started > *t) {
-            best = Some((started, entry.path()));
+        if best.map_or(true, |t| started > t) {
+            best = Some(started);
+            choice.chosen = Some(path);
         }
     }
-    best.map(|(_, path)| path)
+    Ok(choice)
 }
 
 /// A sibling file is written in full and synced, then renamed over the record, so an output failure
@@ -5703,8 +5759,9 @@ mod tests {
     #[test]
     fn a_run_record_opened_and_never_completed_reads_incomplete() {
         let root = scratch_record_root("interrupted");
-        let record = CensusRunRecordFile::open(&root, "//v2/a:all", &["dag".into()], None, None)
-            .expect("record opens");
+        let record =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &["dag".into()], None, None, &[])
+                .expect("record opens");
         let read = read_record(&record.path);
         assert_eq!(read["status"], "incomplete");
         assert_eq!(read["subject_label"], "//v2/a:all");
@@ -5727,6 +5784,7 @@ mod tests {
             &["dag".into()],
             Some("abc".into()),
             None,
+            &[],
         )
         .expect("record opens");
         let stdout = format!(
@@ -5756,10 +5814,11 @@ mod tests {
     #[test]
     fn two_runs_of_one_subject_publish_two_records() {
         let root = scratch_record_root("two");
-        let first = CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None).expect("first");
+        let first =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("first");
         std::thread::sleep(std::time::Duration::from_millis(2));
         let second =
-            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None).expect("second");
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("second");
         assert_ne!(first.path, second.path);
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -5769,33 +5828,59 @@ mod tests {
     #[test]
     fn the_baseline_is_the_subjects_latest_completed_record() {
         let root = scratch_record_root("baseline");
-        assert!(latest_complete_census_record(&root, "//v2/a:all").is_none());
-        let older = CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None).expect("older");
+        let none = latest_complete_census_record(&root, "//v2/a:all")
+            .expect("a missing root is no record");
+        assert!(none.chosen.is_none() && none.unreadable.is_empty());
+        let older =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("older");
         older
             .complete(serde_json::json!({}), SCOPED_TERMINAL)
             .expect("older completes");
         std::thread::sleep(std::time::Duration::from_millis(2));
-        let newer = CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None).expect("newer");
+        let newer =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("newer");
         newer
             .complete(serde_json::json!({}), SCOPED_TERMINAL)
             .expect("newer completes");
         std::thread::sleep(std::time::Duration::from_millis(2));
-        let _interrupted =
-            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None).expect("interrupted");
-        let other = CensusRunRecordFile::open(&root, "//v2/b:all", &[], None, None).expect("other");
+        let _interrupted = CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[])
+            .expect("interrupted");
+        let other =
+            CensusRunRecordFile::open(&root, "//v2/b:all", &[], None, None, &[]).expect("other");
         other
             .complete(serde_json::json!({}), SCOPED_TERMINAL)
             .expect("other completes");
-        assert_eq!(
-            latest_complete_census_record(&root, "//v2/a:all"),
-            Some(newer.path.clone())
-        );
-        let next = CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, Some(&newer.path))
-            .expect("next");
+        let chosen = latest_complete_census_record(&root, "//v2/a:all").expect("root lists");
+        assert_eq!(chosen.chosen, Some(newer.path.clone()));
+        assert!(chosen.unreadable.is_empty());
+        let next =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, Some(&newer.path), &[])
+                .expect("next");
         assert_eq!(
             read_record(&next.path)["against"],
             newer.path.display().to_string()
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // DISCRIMINATING (review 79904): a corrupt candidate is NAMED, not read as "never completed", and the
+    // completed record beside it is still chosen.
+    #[test]
+    fn an_unreadable_baseline_candidate_is_named_not_read_as_absence() {
+        let root = scratch_record_root("corrupt");
+        let done =
+            CensusRunRecordFile::open(&root, "//v2/a:all", &[], None, None, &[]).expect("done");
+        done.complete(serde_json::json!({}), SCOPED_TERMINAL)
+            .expect("done completes");
+        let corrupt = root.join(format!(
+            "{}99999999999999999999-1.json",
+            census_run_record_prefix("//v2/a:all")
+        ));
+        std::fs::write(&corrupt, "{not json").expect("corrupt written");
+        let choice = latest_complete_census_record(&root, "//v2/a:all").expect("root lists");
+        assert_eq!(choice.chosen, Some(done.path.clone()));
+        assert_eq!(choice.unreadable.len(), 1, "got: {:?}", choice.unreadable);
+        assert!(choice.unreadable[0].contains("99999999999999999999-1.json"));
         let _ = std::fs::remove_dir_all(&root);
     }
 

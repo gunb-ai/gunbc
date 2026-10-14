@@ -2290,15 +2290,6 @@ data native_driver_census_scoped_against_flag: String = "--against"
 
 data native_driver_census_scoped_needs_against: String = "REFUSED: census-scoped --against takes the path of a previous run record"
 
-// THE BASELINE AS THE DRIVER READS IT: none or one path, as a list the host loop can take the first
-// of without matching an optional across the emitted boundary.
-fn native_driver_census_scoped_against_paths(against: Optional<String>) -> List<String> {
-  match against {
-    Present { value: path } => [path]
-    Absent => []
-  }
-}
-
 data native_driver_verb_adjudicate: String = "adjudicate"
 
 data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>..."
