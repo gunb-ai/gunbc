@@ -1,6 +1,7 @@
 module gunbc.harness.harness_shell_job
 
-import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr, Timestamp }
+import std.algebra { trim }
 import extdeps.posix.process
 import extdeps.posix.signal
 import extdeps.tools.sleep
@@ -8,6 +9,7 @@ import extdeps.filesystem.filesystem_io
 import extdeps.exec.command { ArgvCommand, argv_command, env_prefixed_command_in }
 import extdeps.exec.program { uncataloged_program }
 import extdeps.shell
+import extdeps.clock { Clock }
 import std.measure { Second, second, measure_le, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, schedule_seconds,
@@ -40,7 +42,44 @@ type HarnessShellJob {
   stdout_file: FilePath
   stderr_file: FilePath
   stdio_note: String
+  started_at: Timestamp
+  backstop: Second
   state: HarnessShellJobState
+}
+
+// GNU timeout exits 124 when it kills the child. A command may also exit 124 itself, so 124 is
+// DurationExceeded only when elapsed time from started_at has reached this job's backstop.
+data harness_gnu_timeout_killed_exit: Int = 124
+
+fn harness_exit_is_harness_backstop(code: Int, elapsed: Second, backstop: Second) -> Bool {
+  code == harness_gnu_timeout_killed_exit && measure_le(a: backstop, b: elapsed)
+}
+
+fn harness_job_elapsed_seconds(job: HarnessShellJob) -> Second? {
+  let now = Clock.Now()
+  let start = Clock.TimestampToUnixSecs(timestamp: job.started_at)
+  let end = Clock.TimestampToUnixSecs(timestamp: now.timestamp)
+  match parse_int(s: trim(s: start.unix_secs)) {
+    Absent => none
+    Present { value: t0 } =>
+      match parse_int(s: trim(s: end.unix_secs)) {
+        Absent => none
+        Present { value: t1 } =>
+          if t1 < t0 {
+            none
+          } else {
+            Present { value: second(count: t1 - t0) }
+          }
+      }
+  }
+}
+
+fn harness_job_exit_is_harness_backstop(job: HarnessShellJob, code: Int) -> Bool {
+  match harness_job_elapsed_seconds(job: job) {
+    Absent => false
+    Present { value: elapsed } =>
+      harness_exit_is_harness_backstop(code: code, elapsed: elapsed, backstop: job.backstop)
+  }
 }
 
 type HarnessShellJobObservation
@@ -57,6 +96,8 @@ fn harness_job_with_state(job: HarnessShellJob, state: HarnessShellJobState) -> 
     stdout_file: job.stdout_file,
     stderr_file: job.stderr_file,
     stdio_note: job.stdio_note,
+    started_at: job.started_at,
+    backstop: job.backstop,
     state: state,
   }
 }
@@ -110,12 +151,24 @@ fn harness_observe_job(job: HarnessShellJob) -> HarnessShellJobObservation {
   harness_observe_standing(job: harness_refresh_job(job: job))
 }
 
+fn harness_command_table_exit_label(job: HarnessShellJob, code: Int, backstop_hit: Bool) -> String {
+  if backstop_hit {
+    join(["  ", job.id, "  duration exceeded  $ ", job.command], "")
+  } else {
+    join(["  ", job.id, "  exit ", to_string(value: code), "  $ ", job.command], "")
+  }
+}
+
 fn harness_command_table_line(obs: HarnessShellJobObservation) -> String {
   match obs {
     JobStillRunning { job } =>
       join(["  ", job.id, "  running  $ ", job.command], "")
     JobExited { job, code } =>
-      join(["  ", job.id, "  exit ", to_string(value: code), "  $ ", job.command], "")
+      harness_command_table_exit_label(
+        job: job,
+        code: code,
+        backstop_hit: harness_job_exit_is_harness_backstop(job: job, code: code),
+      )
     JobSignaled { job, signal } =>
       join(["  ", job.id, "  signaled ", to_string(value: signal), "  $ ", job.command], "")
     JobReapRefused { job, cause } =>
@@ -330,6 +383,8 @@ fn harness_start_shell_job(
               pending_out: pending_out.path,
               pending_err: pending_err.path,
             ),
+            started_at: Clock.Now().timestamp,
+            backstop: schedule.backstop,
             state: JobRunning,
           },
         }

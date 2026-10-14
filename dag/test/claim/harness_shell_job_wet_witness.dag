@@ -1,6 +1,6 @@
 module test.claim.harness_shell_job_wet_witness
 
-import std.types { Bool, String, List, FilePath, NonEmptyStr }
+import std.types { Bool, String, List, FilePath, NonEmptyStr, Timestamp }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { second }
 import std.algebra { trim }
@@ -228,6 +228,63 @@ test fn wait_result_over_a_job_that_exited_1_does_not_say_exit_0() -> Bool {
   dir.success && text.contains("exit 1") && !text.contains("[exit 0]")
 }
 
+test fn job_output_after_the_backstop_is_duration_exceeded() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let tight = ShellJobSchedule {
+    inline_hold: second(count: 1),
+    wait_base: second(count: 6),
+    wait_factor: 2,
+    wait_request_cap_factor: 4,
+    wait_minimum: second(count: 1),
+    backstop: second(count: 2),
+  }
+  let started = harness_run_command_scheduled(
+    environment: env_at(worktree: dir.path, output: out.path),
+    command: "sleep 20",
+    schedule: tight,
+  )
+  let waited = harness_wait_jobs_scheduled(
+    environment: started.environment,
+    schedule: tight,
+    request: WaitUseDefault,
+  )
+  let read = match waited.environment.jobs.first() {
+    Absent => waited
+    Present { value: j } => harness_read_job_output(environment: waited.environment, id: j.id)
+  }
+  let _stop = fold(read.environment.jobs, init: read, f: (acc, j) =>
+    if harness_job_is_running(job: j) {
+      harness_kill_job(environment: acc.environment, id: j.id)
+    } else {
+      acc
+    })
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success && is_duration_exceeded(outcome: read.outcome)
+}
+
+test fn a_command_exit_124_inside_the_backstop_is_not_duration_exceeded() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let step = harness_run_command_scheduled(
+    environment: env_at(worktree: dir.path, output: out.path),
+    command: "exit 124",
+    schedule: fixture_schedule(),
+  )
+  let text = harness_outcome_text(outcome: step.outcome)
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success
+    && !is_duration_exceeded(outcome: step.outcome)
+    && match step.outcome {
+      ToolCompleted { text: _, exit_code, standing: _ } => exit_code == 124 && text.contains("[exit 124]")
+      ToolJob { id: _, text: _ } => false
+      ToolReport { text: _, standing: _ } => false
+      ToolRefused { disposition: _ } => false
+    }
+}
+
 test fn the_backstop_kills_the_process_group() -> Bool {
   let dir = shell.Mktemp.Dir()
   let out = shell.Mktemp.Dir()
@@ -250,16 +307,13 @@ test fn the_backstop_kills_the_process_group() -> Bool {
     schedule: tight,
     request: WaitUseDefault,
   )
-  let timeout_dead = match waited.environment.jobs.first() {
-    Absent => is_duration_exceeded(outcome: started.outcome) || is_duration_exceeded(outcome: waited.outcome)
-    Present { value: j } =>
-      match harness_observe_job(job: j) {
-        JobStillRunning { job: _ } => false
-        JobExited { job: _, code } => code == 124
-        JobSignaled { job: _, signal: _ } => false
-        JobReapRefused { job: _, cause: _ } => false
-      }
+  let read = match waited.environment.jobs.first() {
+    Absent => waited
+    Present { value: j } => harness_read_job_output(environment: waited.environment, id: j.id)
   }
+  let timeout_dead = is_duration_exceeded(outcome: started.outcome)
+    || is_duration_exceeded(outcome: waited.outcome)
+    || is_duration_exceeded(outcome: read.outcome)
   let grandchild = Filesystem.Read(path: marker)
   let grandchild_gone = if grandchild.success && grandchild.content.length() > 0 {
     !posix.Signal.TerminateProcess(pid: grandchild.content as NonEmptyStr).success
@@ -346,6 +400,8 @@ test fn unread_job_output_is_typed_unreadable_not_empty() -> Bool {
     stdout_file: missing as FilePath,
     stderr_file: missing as FilePath,
     stdio_note: "",
+    started_at: "1970-01-01T00:00:00Z" as Timestamp,
+    backstop: second(count: 20),
     state: JobFinished { outcome: JobExitedOutcome { code: 0 } },
   }
   let step = harness_read_job_output(

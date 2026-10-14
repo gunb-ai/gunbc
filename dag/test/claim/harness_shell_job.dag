@@ -1,6 +1,7 @@
 module test.claim.harness_shell_job
 
-import std.types { Bool, String, List, FilePath, NonEmptyStr, Int }
+import std.types { Bool, String, List, FilePath, NonEmptyStr, Int, Timestamp }
+import std.measure { second }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.json.emit { json_object, json_kv, json_string }
 import gunbc.harness.harness_wire { WireToolUseBlock }
@@ -8,6 +9,7 @@ import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellJobState, JobRunning, JobFinished, JobExitedOutcome,
   harness_hand_in_blocked_by_running_jobs, harness_kept_stdio_path, harness_stdio_move_note,
   HarnessTerminateProcessGroup, harness_kill_signal_note,
+  harness_exit_is_harness_backstop, harness_command_table_exit_label,
 }
 import gunbc.harness.harness_shell_job_policy { WaitRequestedMinutes, WaitMalformedMinutes, WaitUseDefault, WaitPaceReset }
 import gunbc.harness.harness_tool {
@@ -26,6 +28,8 @@ fn fixture_job(state: HarnessShellJobState) -> HarnessShellJob {
     stdout_file: "/tmp/job-42.out" as FilePath,
     stderr_file: "/tmp/job-42.err" as FilePath,
     stdio_note: "",
+    started_at: "1970-01-01T00:00:00Z" as Timestamp,
+    backstop: second(count: 20),
     state: state,
   }
 }
@@ -117,6 +121,16 @@ test fn wait_result_over_a_job_that_exited_1_does_not_say_exit_0() -> Bool {
     jobs: [job],
   ))
   text.contains("exit 1") && !text.contains("[exit 0]") && !text.contains("[exit 1]")
+}
+
+test fn a_124_at_the_backstop_is_duration_exceeded_and_a_124_inside_it_is_not() -> Bool {
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 } })
+  harness_exit_is_harness_backstop(code: 124, elapsed: second(count: 20), backstop: second(count: 20))
+    && !harness_exit_is_harness_backstop(code: 124, elapsed: second(count: 1), backstop: second(count: 20))
+    && !harness_exit_is_harness_backstop(code: 0, elapsed: second(count: 20), backstop: second(count: 20))
+    && harness_command_table_exit_label(job: job, code: 124, backstop_hit: true).contains("duration exceeded")
+    && !harness_command_table_exit_label(job: job, code: 124, backstop_hit: true).contains("exit 124")
+    && harness_command_table_exit_label(job: job, code: 124, backstop_hit: false).contains("exit 124")
 }
 
 test fn a_failed_stdio_rename_keeps_the_mktemp_path_and_says_so() -> Bool {

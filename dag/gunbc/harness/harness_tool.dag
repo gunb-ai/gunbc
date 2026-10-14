@@ -34,6 +34,7 @@ import gunbc.harness.harness_shell_job {
   WaitLoopFinished, WaitLoopExpired, WaitLoopNoRunningJob, harness_kill_running_job,
   JobKillConfirmed, JobKillUnconfirmed,
   harness_refresh_job, harness_job_is_running, harness_hand_in_blocked_by_running_jobs,
+  harness_job_exit_is_harness_backstop, harness_gnu_timeout_killed_exit,
 }
 
 // THE HARNESS TOOL SURFACE, and the rule every disposition below is one instance of:
@@ -190,7 +191,7 @@ fn harness_tool_environment(
 // GNU timeout exits 124 when it kills its child, which is what makes "the harness stopped this" a
 // DECIDABLE fact rather than a guess from a nonzero exit. Cited to coreutils' documented behaviour
 // and executed against /opt/homebrew/bin/gtimeout 9.11 on 2026-09-02, which returned exactly 124.
-data harness_timeout_kill_exit_code: Int = 124
+data harness_timeout_kill_exit_code: Int = harness_gnu_timeout_killed_exit
 
 // THE TOOL RESULT CARRIES A DECLARED CAP, AND STDOUT IS THE CHANNEL THAT NEEDED ONE. extdeps.gunbc
 // WitnessBin.Run declares stderr_capture: BoundedTail{16384} and reports stderr_truncated with its
@@ -291,10 +292,16 @@ fn harness_job_output_for_state(
     JobFinished { outcome } =>
       match outcome {
         JobExitedOutcome { code } =>
-          ToolCompleted {
-            text: bounded.text,
-            exit_code: code,
-            standing: bounded.standing,
+          if harness_job_exit_is_harness_backstop(job: job, code: code) {
+            ToolRefused {
+              disposition: DurationExceeded { limit_seconds: schedule_seconds(s: job.backstop) },
+            }
+          } else {
+            ToolCompleted {
+              text: bounded.text,
+              exit_code: code,
+              standing: bounded.standing,
+            }
           }
         JobSignaledOutcome { signal } =>
           ToolRefused {
@@ -381,32 +388,19 @@ fn harness_run_command_scheduled(
           }
         }
         Exited { code } =>
-          if code == harness_timeout_kill_exit_code {
-            HarnessToolStep {
-              environment: harness_env_with_jobs(
-                environment: environment,
-                jobs: environment.jobs,
-                wait_pace: harness_pace_after_window_change(),
+          HarnessToolStep {
+            environment: harness_env_with_jobs(
+              environment: environment,
+              jobs: environment.jobs,
+              wait_pace: harness_pace_after_window_change(),
+            ),
+            outcome: harness_job_output_outcome(
+              job: harness_job_with_state(
+                job: job,
+                state: JobFinished { outcome: JobExitedOutcome { code: code } },
               ),
-              outcome: ToolRefused {
-                disposition: DurationExceeded { limit_seconds: schedule_seconds(s: schedule.backstop) },
-              },
-            }
-          } else {
-            HarnessToolStep {
-              environment: harness_env_with_jobs(
-                environment: environment,
-                jobs: environment.jobs,
-                wait_pace: harness_pace_after_window_change(),
-              ),
-              outcome: harness_job_output_outcome(
-                job: harness_job_with_state(
-                  job: job,
-                  state: JobFinished { outcome: JobExitedOutcome { code: code } },
-                ),
-                jobs: environment.jobs,
-              ),
-            }
+              jobs: environment.jobs,
+            ),
           }
         Signaled { signal } =>
           HarnessToolStep {
