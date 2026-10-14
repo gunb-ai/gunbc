@@ -70,7 +70,7 @@ import gunbc.live_deploy.spec {
   deployment_publication_path_unit_name,
   deployment_publication_service_unit_name,
 }
-import gunbc.live_deploy.desired { prod_role_actuated_realization, deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.desired { prod_role_actuated_realization, deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec, srv2_deploy_desired_deployment }
 import gunbc.host.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var, srv1_attempt_state_directory }
 import gunbc.managed_directory {
   managed_directory_mode_octal,
@@ -164,6 +164,7 @@ import gunbc.live_deploy.emit {
   compose_host_script_mutate_steps,
   host_script_step_marker,
   host_script_trace_steps,
+  HostScriptProceed,
   HostScriptRefused,
   HostScriptFragment,
   Decide, Mutate,
@@ -181,6 +182,8 @@ import gunbc.live_deploy.emit {
   live_deploy_publication_path_unit_file,
   deploy_memory_cap_apply_steps,
   apply_slice_control_converge_steps,
+  apply_slice_control_converge_fragments,
+  compose_host_script_standing,
   approval_broker_helper_sudoers_stage_name,
   approval_broker_helper_sudoers_readback_stage_name,
 }
@@ -638,13 +641,32 @@ test fn witness_apply_script_converges_sessions_and_broker_slice_control() -> Bo
   let script = deploy_slice_control_converge_script(host: host)
   let steps = pipeline_steps_text(steps: apply_slice_control_converge_steps(spec: deployment_spec_srv1()))
   let apply = witness_apply_script()
-  string_contains(s: steps, pattern: script)
-    && string_contains(s: apply, pattern: script)
-    && string_contains(s: script, pattern: "sessions.slice")
-    && string_contains(s: script, pattern: "gunbc-approval-broker.slice")
-    && string_contains(s: script, pattern: "17179869184")
-    && string_contains(s: script, pattern: "15032385536")
-    && string_contains(s: script, pattern: "137438953472")
+  match compose_host_script_standing(fragments: apply_slice_control_converge_fragments(spec: deployment_spec_srv1())) {
+    HostScriptRefused { cause: _ } => false
+    HostScriptProceed =>
+      string_contains(s: steps, pattern: script)
+        && string_contains(s: apply, pattern: script)
+        && string_contains(s: script, pattern: "sessions.slice")
+        && string_contains(s: script, pattern: "gunbc-approval-broker.slice")
+        && string_contains(s: script, pattern: "17179869184")
+        && string_contains(s: script, pattern: "15032385536")
+        && string_contains(s: script, pattern: "137438953472")
+  }
+}
+
+test fn a_refused_slice_control_drops_prior_mutate_from_the_composed_plan() -> Bool {
+  let planted = Mutate { member: "planted-prior" as NonEmptyStr, steps: deploy_apply_frame_steps(spec: deployment_spec_srv1()) }
+  let frags = concat([planted], apply_slice_control_converge_fragments(spec: selected_deployment_spec(row: srv2_deploy_desired_deployment())))
+  match compose_host_script_standing(fragments: frags) {
+    HostScriptProceed => false
+    HostScriptRefused { cause: _ } =>
+      compose_host_script_mutate_steps(fragments: frags).length() == 0
+        && !string_contains(s: pipeline_steps_text(steps: compose_host_script(fragments: frags).steps), pattern: "mktemp")
+        && string_contains(
+          s: pipeline_steps_text(steps: compose_host_script_decide_steps(fragments: frags)),
+          pattern: "__GUNBC_DEPLOY_REFUSED__ slice-control",
+        )
+  }
 }
 
 data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. Working-byte rsync and repository convergence must instead ride the service-user oneshot unit (principal User=briansrls), and every mutation outside it must be one of the roster-granted sudo -n commands (fleet_posix_ci_runner_sudo_grants). Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (carried by the annotation on gunbc.live_deploy.emit install_d_owned_command)."

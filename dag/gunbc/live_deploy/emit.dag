@@ -230,6 +230,10 @@ import gunbc.host.host_layout {
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
 }
 import product.host_identity { HostIdentity }
+import gunbc.host.host_converge {
+  slice_control_caps_for,
+  SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
+}
 import gunbc.host.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
   CapAuthorizedForThisHost,
@@ -2292,24 +2296,37 @@ fn deploy_memory_cap_apply_steps(
   })
 }
 
+fn slice_control_refused_command(host: HostIdentity, cause: String) -> String {
+  concat(
+    concat("__GUNBC_DEPLOY_REFUSED__ slice-control cannot be derived: ", cause),
+    concat(" host=", host as String),
+  )
+}
+
 fn apply_slice_control_converge_steps(spec: DeploymentSpec) -> List<PipelineStep> {
-  let stmts = slice_control_converge_stmts(host: spec.target.host.identity)
-  if stmts.length() == 0 {
-    []
-  } else {
-    [deploy_raw(command: deploy_slice_control_converge_script(host: spec.target.host.identity))]
+  match slice_control_caps_for(host: spec.target.host.identity) {
+    SliceControlDerived { caps: _ } =>
+      [deploy_raw(command: deploy_slice_control_converge_script(host: spec.target.host.identity))]
+    SliceControlNotOwed => []
+    SliceControlRefused { cause: _ } => []
   }
 }
 
 fn apply_slice_control_converge_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
-  let steps = apply_slice_control_converge_steps(spec: spec)
-  if steps.length() == 0 {
-    []
-  } else {
-    host_script_member_proceed(
-      member: "slice-control" as NonEmptyStr,
-      mutate_steps: steps,
-    )
+  let host = spec.target.host.identity
+  match slice_control_caps_for(host: host) {
+    SliceControlNotOwed => []
+    SliceControlDerived { caps: _ } =>
+      host_script_member_proceed(
+        member: "slice-control" as NonEmptyStr,
+        mutate_steps: apply_slice_control_converge_steps(spec: spec),
+      )
+    SliceControlRefused { cause } =>
+      host_script_member_refused(
+        member: "slice-control" as NonEmptyStr,
+        cause: cause,
+        command: slice_control_refused_command(host: host, cause: cause),
+      )
   }
 }
 
@@ -4528,16 +4545,19 @@ fn approval_broker_dark_install_body_fragments(
     approval_device_store_fragments(),
     concat(
       approval_broker_helper_grant_fragments(revision: revision, principal: principal),
-      [Mutate {
-        member: "dark-install" as NonEmptyStr,
-        steps: concat(
-          apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
-          concat(
-            concat([deploy_effect(inv: systemctl_daemon_reload_effect())], apply_slice_control_converge_steps(spec: spec)),
-            approval_broker_lifecycle_steps(spec: spec),
+      concat(
+        [Mutate {
+          member: "dark-install" as NonEmptyStr,
+          steps: concat(
+            apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
+            concat(
+              [deploy_effect(inv: systemctl_daemon_reload_effect())],
+              approval_broker_lifecycle_steps(spec: spec),
+            ),
           ),
-        ),
-      }],
+        }],
+        apply_slice_control_converge_fragments(spec: spec),
+      ),
     ),
   )
 }

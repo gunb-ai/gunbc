@@ -922,39 +922,83 @@ type SliceControlCaps {
   memory_high: ByteSize
 }
 
-fn slice_control_caps_for(host: HostIdentity) -> List<SliceControlCaps> {
-  concat(
-    match session_knob_standing_for(host: host) {
-      SessionKnobsNotOwed { cause: _ } => []
-      SessionKnobsUngrounded { cause: _ } => []
-      SessionKnobsDerived { knobs: _ } =>
-        match session_reservation_bytes(host: host) {
-          ReservationBytesNotApplicable => []
-          ReservationBytesUnestablished { cause: _ } => []
-          ReservationBytes { bytes: max } =>
-            match session_slice_memory_high_for(host: host) {
-              Absent => []
-              Present { value: high } => [
-                SliceControlCaps {
-                  unit: gunbc_oomd_sessions_slice,
-                  memory_max: max,
-                  memory_high: high,
-                },
-              ]
-            }
-        }
-    },
-    match approval_broker_runtime_caps_for(host: host) {
-      ApprovalBrokerRuntimeCapsNotOwed => []
-      ApprovalBrokerRuntimeCapsRefused { cause: _ } => []
-      ApprovalBrokerRuntimeCapsDerived { knobs: _ } => [
-        SliceControlCaps {
-          unit: gunbc_approval_broker_slice_unit_name,
-          memory_max: approval_broker_slice_memory_max,
-          memory_high: approval_broker_slice_memory_high,
-        },
-      ]
-    },
+// ONE STANDING FOR THE LIVE_DEPLOY SLICE-CONTROL MEMBER. Mapping Ungrounded / Unestablished /
+// missing High / ApprovalBrokerRuntimeCapsRefused to [] made "cannot derive" look like "not
+// owed", so apply_slice_control_converge_steps emitted no steps and live_deploy kept mutating
+// other members (review 80054 side-chat / clever-crane-830). Only a genuine absent placement
+// is NotOwed. A refused half refuses the whole member: converging one slice while leaving the
+// other hand drop-in would be a second authority.
+type SliceControl
+  = SliceControlNotOwed
+  | SliceControlDerived { caps: List<SliceControlCaps> }
+  | SliceControlRefused { cause: String }
+
+fn join_slice_control(left: SliceControl, right: SliceControl) -> SliceControl {
+  match left {
+    SliceControlRefused { cause: c } => SliceControlRefused { cause: c }
+    SliceControlNotOwed => right
+    SliceControlDerived { caps: a } =>
+      match right {
+        SliceControlRefused { cause: c } => SliceControlRefused { cause: c }
+        SliceControlNotOwed => SliceControlDerived { caps: a }
+        SliceControlDerived { caps: b } => SliceControlDerived { caps: concat(a, b) }
+      }
+  }
+}
+
+fn session_slice_control_for(host: HostIdentity) -> SliceControl {
+  match session_knob_standing_for(host: host) {
+    SessionKnobsNotOwed { cause: _ } => SliceControlNotOwed
+    SessionKnobsUngrounded { cause } => SliceControlRefused { cause: cause }
+    SessionKnobsDerived { knobs: _ } =>
+      match session_reservation_bytes(host: host) {
+        ReservationBytesNotApplicable =>
+          SliceControlRefused {
+            cause: "session knobs derived but session reservation is not applicable",
+          }
+        ReservationBytesUnestablished { cause } => SliceControlRefused { cause: cause }
+        ReservationBytes { bytes: max } =>
+          match session_slice_memory_high_for(host: host) {
+            Absent =>
+              SliceControlRefused {
+                cause: "sessions.slice MemoryHigh is not authored for this host, so a Max-only converge would leave the live High as a second authority",
+              }
+            Present { value: high } =>
+              SliceControlDerived {
+                caps: [
+                  SliceControlCaps {
+                    unit: gunbc_oomd_sessions_slice,
+                    memory_max: max,
+                    memory_high: high,
+                  },
+                ]
+              }
+          }
+      }
+  }
+}
+
+fn approval_broker_slice_control_for(host: HostIdentity) -> SliceControl {
+  match approval_broker_runtime_caps_for(host: host) {
+    ApprovalBrokerRuntimeCapsNotOwed => SliceControlNotOwed
+    ApprovalBrokerRuntimeCapsRefused { cause } => SliceControlRefused { cause: cause }
+    ApprovalBrokerRuntimeCapsDerived { knobs: _ } =>
+      SliceControlDerived {
+        caps: [
+          SliceControlCaps {
+            unit: gunbc_approval_broker_slice_unit_name,
+            memory_max: approval_broker_slice_memory_max,
+            memory_high: approval_broker_slice_memory_high,
+          },
+        ]
+      }
+  }
+}
+
+fn slice_control_caps_for(host: HostIdentity) -> SliceControl {
+  join_slice_control(
+    left: session_slice_control_for(host: host),
+    right: approval_broker_slice_control_for(host: host),
   )
 }
 

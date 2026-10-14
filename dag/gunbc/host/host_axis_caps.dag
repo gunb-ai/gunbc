@@ -25,6 +25,7 @@ import gunbc.host.host_converge {
   gunbc_runner_control_dropin_dir_prefix,
   slice_control_caps_for,
   SliceControlCaps,
+  SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
 }
 import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
@@ -673,9 +674,12 @@ fn slice_control_converge_stmts_for_caps(caps: SliceControlCaps) -> List<Node> {
 }
 
 fn slice_control_converge_stmts(host: HostIdentity) -> List<Node> {
-  fold(slice_control_caps_for(host: host), init: [], f: (acc, caps) =>
-    concat(acc, slice_control_converge_stmts_for_caps(caps: caps))
-  )
+  match slice_control_caps_for(host: host) {
+    SliceControlNotOwed => []
+    SliceControlRefused { cause: _ } => []
+    SliceControlDerived { caps } =>
+      fold(caps, init: [], f: (acc, c) => concat(acc, slice_control_converge_stmts_for_caps(caps: c)))
+  }
 }
 
 fn deploy_slice_control_converge_script(host: HostIdentity) -> String {
