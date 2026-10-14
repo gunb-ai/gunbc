@@ -495,7 +495,7 @@ pub fn phantom_opaque_carrier_derive_traits() -> Rc<Vec<RustCapability>> {
     })
 }
 
-pub fn eq_hash_capability_derive_traits() -> Rc<Vec<RustCapability>> {
+pub fn map_key_required_derive_traits() -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __cons_v = (*Rc::new({
             let mut __cons_v = (*Rc::new(vec![])).clone();

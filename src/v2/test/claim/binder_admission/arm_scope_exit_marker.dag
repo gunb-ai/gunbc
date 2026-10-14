@@ -1,5 +1,6 @@
 module v2.test.claim.binder_admission.arm_scope_exit_marker
 
+import std.occurrence_identity { LexicalValueOccurrence }
 import v2.compiler.resolve {
   LexicalBinding,
   LexicalUntyped,
@@ -68,7 +69,8 @@ fn asem_ctx() -> ResolveContext {
     position: Empty,
     lm: void_language_model(identity: ^asem_void_language),
     under_module_root: false,
-    declaring: NotDeclaring
+    declaring: NotDeclaring,
+    reference_category: LexicalValueOccurrence
   }
 }
 

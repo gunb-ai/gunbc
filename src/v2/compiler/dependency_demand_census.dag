@@ -447,7 +447,7 @@ fn demand_census_resource_prefix(index: SymbolIndex, path: QualifiedName) -> Opt
 
 // The edge a core contract marker names, through v2.std.node edge_is_core. v2.std.node
 // arrow_signature_edges_conform admits at most one of each on an Arrow, so the first is the only one.
-// (v2.std.node core_edge_target_lookup answers the same question; its third arm is spelled Absent,
+// (v2.std.node core_edge_target_lookup answers the same question; its miss arm is NotFound,
 // which this module's Optional matches already bind.)
 fn demand_census_edge_target(children: List<Edge>, marker: CoreEdgeLabel) -> Optional<Node> {
   fold(children, init: optional_absent(), f: fn(acc, e) {

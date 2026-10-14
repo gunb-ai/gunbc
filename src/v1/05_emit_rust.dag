@@ -682,11 +682,19 @@ fn render_rust_diagnostics_carrier_applied(shared_types: Set<String>) -> String 
   concat("Option<", render_rust_shared_type_if_needed(type_name: "NonEmptyDiagnostics", rendered: "NonEmptyDiagnostics", shared_types: shared_types), ">")
 }
 
+// A MISSING PAYLOAD IS A REFUSAL, NEVER `()`. The carrier's payload is its first declared child; when a
+// declared type node carries none, the payload may live only on `.inferred` (an Optional nested under an
+// Optional-wrapped collection: `Optional<List<Optional<Int>>>` reached here as `Option<Rc<Vec<Option<()>>>>`,
+// a wrong type that compiled for `[Absent]` and failed E0308 for `[Absent, Present{value: 5}]`). Rendering
+// `()` fabricated a payload type the declaration never named (DESIGN section 5). The refusal is the located
+// compile_error! this renderer already uses for missing identity evidence. Whether this
+// renderer should read `.inferred` for the payload is decided when the infer-side stamping of the nested
+// collection lands, not here.
 fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   match n.children |> first {
     Present { value: elem } =>
       render_rust_applied_type_arg(n: elem, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-    Absent => "()"
+    Absent => emit_rust_compile_error_expr(message: concat("optional carrier payload type node absent for ", n.name, " at ", n.span.file, ":", to_string(n.span.start)))
   }
 }
 
