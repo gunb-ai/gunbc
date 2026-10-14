@@ -79,6 +79,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 use std::time::Instant;
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// One filled shared computation.
 struct Fill {
     /// Declared input the cache is keyed on, so two fills of one cache under different roots
@@ -151,6 +152,7 @@ fn close_fill(inclusive: u64) -> u64 {
     })
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Name the claim now executing. Called once per claim by the required-floor fold; cleared when
 /// the fold ends so that later gate work cannot be charged to the last witness that ran.
 pub(crate) fn set_current_claim(qualified: Option<&str>) {
@@ -257,6 +259,7 @@ pub(crate) fn once<T>(
     value
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// The module a qualified claim name belongs to (`module.function` -> `module`).
 fn module_of(qualified: &str) -> &str {
     match qualified.rfind('.') {
@@ -265,6 +268,7 @@ fn module_of(qualified: &str) -> &str {
     }
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Mirror of `gunbc.observation_ci_render` `ci_shared_fill_row_text`. The authority for how the
 /// line READS — and for the disposition it carries — is the `.dag`; this transports the numbers.
 pub(crate) fn render_shared_fill_row_text_mirror(
@@ -286,6 +290,7 @@ pub(crate) fn render_shared_fill_row_text_mirror(
     )
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Mirror of `gunbc.observation_ci_render` `ci_shared_fill_total_text`.
 pub(crate) fn render_shared_fill_total_text_mirror(
     fills: usize,
@@ -307,6 +312,7 @@ pub(crate) enum SharedFillUnattributedFrame {
     InClaimWithoutFill,
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Mirror of `gunbc.observation_ci_render` `shared_fill_unattributed_frame_tag`.
 fn shared_fill_unattributed_frame_tag(frame: SharedFillUnattributedFrame) -> &'static str {
     match frame {
@@ -315,6 +321,7 @@ fn shared_fill_unattributed_frame_tag(frame: SharedFillUnattributedFrame) -> &'s
     }
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Mirror of `gunbc.observation_ci_render` `ci_shared_fill_unattributed_text`.
 pub(crate) fn render_shared_fill_unattributed_text_mirror(
     frame: SharedFillUnattributedFrame,
@@ -330,6 +337,7 @@ pub(crate) fn render_shared_fill_unattributed_text_mirror(
     )
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Mirror of `gunbc.witness.witness_row_cost` `shared_fill_disposition` composed with its tag. Three
 /// states because three remedies: preparation cost no witness can be pared to recover, a fill
 /// one module owns and loses with itself, and a fill that outlives the removal of any single
@@ -344,6 +352,7 @@ fn shared_fill_disposition_tag(paid_inside_fold: bool, consumer_modules: usize) 
     }
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// The observed consumer-module set of every fill recorded under one cache, keyed by the
 /// ledger key, with the sets of fills sharing a key UNIONED.
 ///
@@ -366,6 +375,7 @@ pub(crate) fn consumer_modules_by_key(cache: &'static str) -> Vec<(String, BTree
     })
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Render the ledger as `[floor-shared-fill]` lines.
 ///
 /// One line per fill, then one total. The per-fill line is what a paring decision reads:
