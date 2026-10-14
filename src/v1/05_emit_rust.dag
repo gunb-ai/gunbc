@@ -187,7 +187,7 @@ import std.types { is_container_type, is_kernel_type, container_template_algebra
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -15852,14 +15852,28 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
 
 // The operand's declaration is the one inference stamped on the node (std.operator_realization
 // OperandDeclaration); the rt-shape read below is the residue for a node that carries none.
+//
+// AN ALIAS IS THE DECLARATION IT NAMES (identity, not a second type). Inference stamps
+// OperandDeclaration with the authored alias (std.integer.NonNegativeInt, type NonEmptyStr =
+// String where …). Judging that ref as StructuralOperand without hopping skipped the hop
+// rust_operand_realization_of_type already performs, so Mul/Ge on NonNegativeInt refused as
+// "no host realization" while Nat on the same operators is HostOperator. The hop is keyed on
+// the stamped DeclarationRef (symbol_index_lookup of module_path.decl_name, the same key
+// symbol_index_insert_decl writes) and then the existing of_type fold — not a name roster.
+fn rust_operand_realization_of_stamped_declaration(od: OperandDeclaration, scope: InferScope) -> OperandRealization {
+  if declaration_realizes_natively_on_rust(declaration: od.declaration, spelling_decision: type_realization_decision(target: Rust, dag_name: od.declaration.decl_name as String, provenance: od.provenance)) {
+    HostNumericOperand
+  } else {
+    match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: concat(od.declaration.module_path as String, ".", od.declaration.decl_name as String)) {
+      Present { value: resolved } => rust_operand_realization_of_type(rt: resolved, scope: scope, fuel: 8)
+      Absent => StructuralOperand { declaration: od.declaration }
+    }
+  }
+}
+
 fn binop_operator_realization(op: BinOp, operand: OperandDeclaration?, left: Node, scope: InferScope) -> OperatorRealization {
   let realization = match operand {
-    Present { value: od } =>
-      if declaration_realizes_natively_on_rust(declaration: od.declaration, spelling_decision: type_realization_decision(target: Rust, dag_name: od.declaration.decl_name as String, provenance: od.provenance)) {
-        HostNumericOperand
-      } else {
-        StructuralOperand { declaration: od.declaration }
-      }
+    Present { value: od } => rust_operand_realization_of_stamped_declaration(od: od, scope: scope)
     Absent => rust_operand_realization(operand: left, scope: scope)
   }
   operator_realization_for(op: op, operand: realization, ordering_rows: structural_ordering_rows)

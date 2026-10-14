@@ -67,7 +67,7 @@ pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, TypeDeclIndex, TypeSurfaceOccurrence, TypeRepr, TypeDeclResolution};
 pub use crate::v1_compiler_infer_emit_info::{type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences};
 pub use crate::v1_compiler_infer_env::{TypeEnv, TypeBinding, GlobalBareLookupState, BareOccurrenceBinding, UnitVariantPhantomLookup};
-pub use crate::v1_compiler_infer_env::{lookup_unit_variant_phantom_type, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, binding_declares_span, type_reference_declaration_ref};
+pub use crate::v1_compiler_infer_env::{lookup_unit_variant_phantom_type, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup};
 pub use crate::v1_compiler_infer_items::{ItemLookup, ResolvedGraph, TypedModule, ItemInfo, ItemKind};
 pub use crate::v1_compiler_infer_items::{item_kind, item_is_effectful_callee};
 pub use crate::v1_compiler_infer_method::{infer_builtin_call_type};
@@ -35132,6 +35132,35 @@ continue;
     }
 }
 
+pub fn rust_operand_realization_of_stamped_declaration(
+    od: Rc<OperandDeclaration>,
+    scope: Rc<InferScope>,
+) -> Rc<OperandRealization> {
+    if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(
+        od.declaration.clone(),
+        crate::v1_compiler_coercion::type_realization_decision(
+            RenderTarget::Rust,
+            od.declaration.clone().decl_name.clone(),
+            od.provenance.clone(),
+        ),
+    ) {
+        Rc::new(OperandRealization::HostNumericOperand)
+    } else {
+        match crate::v1_compiler_infer_env::symbol_index_lookup(
+            scope.type_env.clone().symbol_index.clone(),
+            v1_rt::concat(
+                v1_rt::concat(od.declaration.clone().module_path.clone(), ".".to_string()),
+                od.declaration.clone().decl_name.clone(),
+            ),
+        ) {
+            Some(resolved) => rust_operand_realization_of_type(resolved.clone(), scope.clone(), 8),
+            std::option::Option::None => Rc::new(OperandRealization::StructuralOperand {
+                declaration: od.declaration.clone(),
+            }),
+        }
+    }
+}
+
 pub fn binop_operator_realization(
     op: BinOp,
     operand: Option<Rc<OperandDeclaration>>,
@@ -35140,22 +35169,7 @@ pub fn binop_operator_realization(
 ) -> Rc<OperatorRealization> {
     {
         let realization = match operand.clone() {
-            Some(od) => {
-                if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(
-                    od.declaration.clone(),
-                    crate::v1_compiler_coercion::type_realization_decision(
-                        RenderTarget::Rust,
-                        od.declaration.clone().decl_name.clone(),
-                        od.provenance.clone(),
-                    ),
-                ) {
-                    Rc::new(OperandRealization::HostNumericOperand)
-                } else {
-                    Rc::new(OperandRealization::StructuralOperand {
-                        declaration: od.declaration.clone(),
-                    })
-                }
-            }
+            Some(od) => rust_operand_realization_of_stamped_declaration(od.clone(), scope.clone()),
             std::option::Option::None => rust_operand_realization(left.clone(), scope.clone()),
         };
         crate::std_operator_realization::operator_realization_for(

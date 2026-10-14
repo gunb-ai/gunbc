@@ -148,3 +148,26 @@ test fn w_native_nat_declaration_keeps_direct_literal_and_host_operator() -> Boo
     ["Succ", "nat_compare", "compile_error!"]
   )
 }
+
+// A TYPE ALIAS IS THE DECLARATION IT NAMES. Inference stamps OperandDeclaration with the alias
+// (std.integer.NonNegativeInt, or a local `type Count = Nat`). binop_operator_realization hops that
+// stamped identity through symbol_index_lookup and rust_operand_realization_of_type, so Mul on the
+// alias is the host token — the same decision as Nat — not a structural refusal. The Peano `/` row
+// above stays the RED: hopping must not turn a structural coproduct into host arithmetic.
+test fn w_arithmetic_on_a_nat_alias_keeps_the_host_operator() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.nat_alias_mul_probe\nimport std.types { Bool }\nimport std.nat { Nat }\ntype Count = Nat\nfn probe(n: Count) -> Bool { n * 2 == 0 }\n",
+    "src/test_claim_nat_alias_mul_probe.rs",
+    [" * "],
+    ["no host realization", "compile_error!"]
+  )
+}
+
+test fn w_arithmetic_on_std_integer_non_negative_int_keeps_the_host_operator() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.non_negative_int_mul_probe\nimport std.types { Bool }\nimport std.integer { NonNegativeInt }\nfn probe(n: NonNegativeInt) -> Bool { n * 2 == 0 }\n",
+    "src/test_claim_non_negative_int_mul_probe.rs",
+    [" * "],
+    ["no host realization", "compile_error!"]
+  )
+}
