@@ -9,9 +9,10 @@ import extdeps.exec.command { argv_words }
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_user_scope_command,
+  SystemdSummaryPrintingWaitReady, SystemdSummaryPrintingWaitRefused, systemd_summary_printing_wait_argv,
 }
 import gunbc.live_deploy.slice_bounds {
-  user_work_slice_unit_name, user_work_slice_memory_swap_max,
+  user_work_slice_unit_name,
   user_work_slice_memory_max_of, user_work_slice_memory_high_of,
   user_slice_backstop_memory_max_of, user_manager_remainder,
 }
@@ -23,6 +24,7 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.compute.host_capacity { compute_pool_slots }
 import gunbc.compute.unit_bounds {
   compute_grant_unit_properties, gunbc_user_work_scope_command,
+  gunbc_user_work_wait_command, gunbc_user_work_transient_command,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_properties }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
@@ -35,6 +37,14 @@ fn property_words(props: List<SystemdRunProperty>) -> List<String> {
 
 fn has_property(props: List<SystemdRunProperty>, needle: String) -> Bool {
   any(property_words(props: props), p => string_contains(s: p, pattern: needle))
+}
+
+fn slice_needle() -> String {
+  join(["Slice=", user_work_slice_unit_name as String], "")
+}
+
+fn slice_hits(words: List<String>) -> Int {
+  filter(words, w => string_contains(s: w, pattern: slice_needle())).length()
 }
 
 test fn user_work_slice_max_is_pool_slots_times_the_runner_ceiling() -> Bool {
@@ -63,18 +73,28 @@ test fn user_manager_backstop_is_work_slice_plus_remainder() -> Bool {
     == byte_size_count(b: work) + byte_size_count(b: user_manager_remainder)
 }
 
-test fn the_grant_fold_binds_the_declared_slice_and_forbids_swap() -> Bool {
+test fn the_grant_launch_binds_the_declared_slice_once() -> Bool {
   let props = compute_grant_unit_properties(granted: kibibyte(count: 1024), working_directory: "/wt", process_bounds: none)
-  has_property(props: props, needle: join(["Slice=", user_work_slice_unit_name as String], ""))
-    && has_property(props: props, needle: join(["MemorySwapMax=", to_string(value: byte_size_count(b: user_work_slice_memory_swap_max))], ""))
+  !has_property(props: props, needle: slice_needle())
     && has_property(props: props, needle: "MemoryMax=1048576")
+    && match gunbc_user_work_wait_command(unit: "gunbc-compute-t" as NonEmptyStr, properties: props, setenv_bindings: [], command_argv: ["true"]) {
+      SystemdSummaryPrintingWaitRefused { cause: _ } => false
+      SystemdSummaryPrintingWaitReady { wait } =>
+        slice_hits(words: systemd_summary_printing_wait_argv(w: wait)) == 1
+          && filter(systemd_summary_printing_wait_argv(w: wait), w => string_contains(s: w, pattern: "MemorySwapMax=0")).length() == 1
+    }
 }
 
-test fn the_reviewer_unit_binds_the_declared_slice() -> Bool {
+test fn the_reviewer_launch_binds_the_declared_slice_once() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
   let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: none)
-  has_property(props: props, needle: join(["Slice=", user_work_slice_unit_name as String], ""))
-    && has_property(props: props, needle: "MemorySwapMax=0")
+  !has_property(props: props, needle: slice_needle())
+    && match gunbc_user_work_transient_command(unit: "gunbc-review-t.service" as NonEmptyStr, properties: props, setenv_bindings: [], command_argv: ["true"]) {
+      SystemdRunCommandRefused { cause: _ } => false
+      SystemdRunCommandReady { command } =>
+        slice_hits(words: argv_words(command: command)) == 1
+          && filter(argv_words(command: command), w => string_contains(s: w, pattern: "MemorySwapMax=0")).length() == 1
+    }
 }
 
 test fn the_ad_hoc_scope_wrap_injects_the_slice_the_raw_builder_omits() -> Bool {
@@ -87,8 +107,8 @@ test fn the_ad_hoc_scope_wrap_injects_the_slice_the_raw_builder_omits() -> Bool 
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command } =>
       raw_ok
-        && any(argv_words(command: command), w => string_contains(s: w, pattern: join(["Slice=", user_work_slice_unit_name as String], "")))
-        && any(argv_words(command: command), w => string_contains(s: w, pattern: "MemorySwapMax=0"))
+        && slice_hits(words: argv_words(command: command)) == 1
+        && filter(argv_words(command: command), w => string_contains(s: w, pattern: "MemorySwapMax=0")).length() == 1
         && any(argv_words(command: command), w => w == "--user")
         && any(argv_words(command: command), w => w == "--scope")
   }

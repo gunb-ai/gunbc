@@ -242,7 +242,7 @@ import gunbc.dispatch_selection { default_provider_selection_request, SizingProf
 import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import extdeps.systemd.systemd_run { SystemdRunProperty, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
-import gunbc.compute.unit_bounds { user_work_run_properties, gunbc_user_work_transient_command }
+import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
 import std.measure { byte_size_count }
 import gunbc.deploy_transition {
   ActuationAdmission,
@@ -14329,7 +14329,7 @@ fn belt_obligation_unit_command(
   let repo = instance.repo_root as String
   gunbc_user_work_transient_command(
     unit: unit,
-    properties: user_work_run_properties(rest: concat([
+    properties: concat([
       SystemdRunProperty { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },
       SystemdRunProperty { property: RuntimeMaxSecProperty, value: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
       SystemdRunProperty { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
@@ -14337,7 +14337,7 @@ fn belt_obligation_unit_command(
     ], match stop_hook {
       Present { value: hook } => [SystemdRunProperty { property: ExecStopPostProperty, value: hook }]
       Absent => [] as List<SystemdRunProperty>
-    })),
+    }),
     setenv_bindings: [SystemdSetenvBinding { name: belt_spawn_workdir_env_var, value: repo as NonEmptyStr }],
     command_argv: concat([
       instance.serve_binary as String,
