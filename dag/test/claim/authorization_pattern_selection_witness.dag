@@ -281,6 +281,18 @@ test fn no_reasoned_divergence_has_a_fired_trigger() -> Bool {
 // run through the real fold: its characteristics select per-effect operator approval, and it
 // realizes exactly that, so its verdict is Conforms with no stated reason -- the census's first
 // conforming exemplar of the approval pattern.
+test fn the_publication_helper_selects_federation_and_states_the_host_key_divergence() -> Bool {
+  any(census_verdicts(), v =>
+    declaration_ref_display_key(ref: v.site) == "gunbc.roadmap.roadmap_publication_helper::publication_helper_publish_if_unpublished"
+      && selected_federated(s: v.selection)
+      && match v.conformance {
+        DivergesWithReason { reason: _ } => true
+        Conforms => false
+        Diverges => false
+        SiteNotDecidable { standing: _ } => false
+      })
+}
+
 test fn the_runner_group_create_selects_and_realizes_operator_approval() -> Bool {
   any(census_verdicts(), v =>
     declaration_ref_display_key(ref: v.site) == "gunbc.runner.runner_group_restriction_ensure_run::microvm_runner_group_after_gate"
@@ -440,8 +452,12 @@ test fn the_dispatch_is_federated_only_while_the_scope_ruling_names_it() -> Bool
     ],
   }
   (runner_lifecycle_scope_ruling.decided_through as String) == "escalation msg_5756a200-fcb5-470a-87eb-40867bfe9cdb"
-    && (runner_lifecycle_operator_ruling.interlock.decl_name as String) == "UnitHoldProof"
-    && (runner_lifecycle_operator_ruling.interlock.module_path as String) == "gunbc.host.managed_host_unit_hold"
+    && match runner_lifecycle_operator_ruling.interlock {
+      InterlockedBy { hold } =>
+        (hold.decl_name as String) == "UnitHoldProof"
+          && (hold.module_path as String) == "gunbc.host.managed_host_unit_hold"
+      InterlockPending { obligation: _ } => false
+    }
     && match row {
       Present { value: r } =>
         selected_federated(s: select_authorization_pattern(e: r.effect))

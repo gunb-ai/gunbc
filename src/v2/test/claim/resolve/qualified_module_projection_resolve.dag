@@ -1,6 +1,6 @@
 module v2.test.claim.resolve.qualified_module_projection_resolve
 
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { LexicalValueOccurrence, OccurrenceSynthetic }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.compiler.resolve {
   NotDeclaring,
@@ -101,7 +101,8 @@ fn qmpr_namespace(index: SymbolIndex) -> Namespace {
     module_qn: qmpr_consumer_qn,
     test_code: test_code_index_empty(),
     declared_in: qmpr_consumer_qn,
-    imported_origins: empty_map()
+    imported_origins: empty_map(),
+    unavailable_providers: []
   }
 }
 
@@ -116,7 +117,8 @@ test fn witness_qualified_name_node_resolves_holds() -> Bool {
       position: qualified_name_snoc(qn: qmpr_consumer_qn, segment: ^LocalAlias),
       lm: dag_language_model(),
       under_module_root: false,
-      declaring: NotDeclaring
+      declaring: NotDeclaring,
+      reference_category: LexicalValueOccurrence
     },
     n: qmpr_qualified_ref
   ) {
@@ -136,7 +138,8 @@ test fn witness_qualified_name_node_miss_red_holds() -> Bool {
       position: qmpr_consumer_qn,
       lm: dag_language_model(),
       under_module_root: false,
-      declaring: NotDeclaring
+      declaring: NotDeclaring,
+      reference_category: LexicalValueOccurrence
     },
     n: qmpr_qualified_ref
   ) {

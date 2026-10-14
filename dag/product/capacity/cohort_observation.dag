@@ -7,6 +7,8 @@ import std.interval { OrderedClosedInterval, IntervalReady, IntervalRefused, clo
 import std.list { first_duplicate_by_key }
 import std.observation { OccurrenceId }
 import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.roster_frontier { FrontierRow, PathSubject }
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
 // A CONCURRENT COHORT IS N SEATS SHOWN TO HAVE BEEN ACTIVE AT ONCE, NOT N RUNS THAT HAPPENED NEARBY.
 //
@@ -308,3 +310,7 @@ fn cohort_refusal_wire<K>(r: CohortRefusal<K>, seat_key: fn(K) -> String) -> Str
       join(["the seats were never all active at once: ", seat_key(a), " started after ", seat_key(b), " had ended"], "")
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "instants_comparable" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

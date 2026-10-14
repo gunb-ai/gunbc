@@ -1,11 +1,17 @@
 module v2.std.type_binder
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
 import std.algebra { Cons, Empty, list_snoc_item, zip_map }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.arrow_contract { arrow_contract_conforms }
 import v2.std.arrow_signature { signature_order_edge, arrow_signature_order_head_is_list_introduction }
-import v2.std.node_query { binder_node_parts }
+import v2.std.node_query { binder_node_parts, named_child_lookup, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }
+import v2.extdeps.languages.dag_surface_item_standing {
+  DagSurfaceNonTypeDeclaration,
+  DagSurfaceTypeDeclaration,
+  dag_surface_item_standing
+}
 import v2.std.node {
   MatchArmScopeExitEdge,
   arrow_named_edge_is_non_binder,
@@ -54,6 +60,8 @@ import v2.std.node {
   edge_is_core,
   is_positional,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE EDGE THAT CARRIES A DECLARATION'S TYPE PARAMETERS. One label for one concept: `fn f<T>` carries
 // its binder Conj on its Arrow under this label, and `type Box<T>` / `type R<T> { .. }` carry theirs
@@ -106,15 +114,19 @@ fn type_decl_wrapper(binders: Node, member: Node) -> Node {
   )
 }
 
-// THE ONE UNWRAP, TYPED. A reader of a declaration target has four cases, and this function is the
+// THE ONE UNWRAP, TYPED. A reader of a declaration target has five cases, and this function is the
 // only place they are told apart: no reader pattern-matches the raw wrapper. Consumed by
 // v2.compiler.symbol_index_fill (which indexes a member, never a wrapper) and
 // v2.std.compilers.semantic_decl_emission (which renders a plain member and refuses the rest).
 //
-// FOUR SHAPES, TOLD APART BY EDGE LABEL AND NEVER BY A TARGET'S KIND: a generic member
+// FOUR TYPE SHAPES, TOLD APART BY EDGE LABEL AND NEVER BY A TARGET'S KIND: a generic member
 // (<type-body>, type_decl_wrapper), an aliased type expression (<type-alias>, type_alias_wrapper), a
 // bodyless declaration carrying its binders alone (type_opaque_wrapper), and a non-generic member --
-// a record or coproduct -- which is its own target. THE ALIAS AND OPAQUE ARMS ARE CARDINALITY-NEUTRAL:
+// a record or coproduct -- which is its own target. THE FIFTH ARM IS NOT A TYPE DECLARATION: an
+// import, fn, data, or module item is a Conj too, and classifying it as PlainTypeDecl because it
+// is a Conj made every consumer of the view treat imported value names as type members (DESIGN
+// section 6b). That arm is decided by the declaring carrier's production identity, never by
+// connective. THE ALIAS AND OPAQUE ARMS ARE CARDINALITY-NEUTRAL:
 // every alias and every bodyless declaration is wrapped, and its binder Conj may be empty
 // (v2.compiler.body_lowering_fold body_lower_decl_binders), so `TypeAlias` means "this name aliases
 // that type expression", never "this declaration is generic". A reader that needs to know whether a
@@ -126,6 +138,7 @@ type TypeDeclView
   | TypeAlias { binders: Node, aliased: Node }
   | OpaqueTypeDecl { binders: Node }
   | PlainTypeDecl { member: Node }
+  | NotATypeDecl
 
 // `type List<T> = std.algebra.FreeMonoid<T>` lowers its declaration edge to
 // Conj { <type-parameters>: Conj { T: T }, <type-alias>: <the lowered type expression> }. THE ONE
@@ -184,7 +197,20 @@ fn type_opaque_wrapper_is(n: Node) -> Bool {
   type_decl_wrapper_params_once(n: n) && (count(n.children) == 1)
 }
 
-fn type_decl_view(target: Node) -> TypeDeclView {
+fn type_decl_identity_atom_optional(n: Node) -> Optional<Symbol> {
+  match named_child_lookup(root: n, name: ^grammar_production_identity_node_projection) {
+    NamedChildFound { target: id_node } =>
+      match id_node.kind {
+        TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+        TypeNode { connective: _ } => optional_absent()
+        ComputationNode { behavior: _ } => optional_absent()
+      }
+    NamedChildMissing => optional_absent()
+    NamedChildAmbiguous => optional_absent()
+  }
+}
+
+fn type_decl_view_by_wrapper(target: Node) -> TypeDeclView {
   if type_decl_wrapper_is(n: target) {
     GenericTypeDecl {
       binders: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_params(e: e) }),
@@ -200,7 +226,60 @@ fn type_decl_view(target: Node) -> TypeDeclView {
       binders: type_decl_wrapper_target(wrapper: target, pick: fn(e) { edge_is_type_params(e: e) })
     }
   } else {
-    PlainTypeDecl { member: target }
+    match target.kind {
+      TypeNode { connective: Arrow } => NotATypeDecl
+      TypeNode { connective: Conj } =>
+        if type_decl_conj_carries_an_arrow_member(n: target) {
+          NotATypeDecl
+        } else {
+          PlainTypeDecl { member: target }
+        }
+      ComputationNode { behavior: _ } => NotATypeDecl
+      TypeNode { connective: _ } => PlainTypeDecl { member: target }
+    }
+  }
+}
+
+fn type_decl_conj_carries_an_arrow_member(n: Node) -> Bool {
+  fold(n.children, init: false, f: fn(found, e) {
+    found || match e.target.kind {
+      TypeNode { connective: Arrow } => true
+      TypeNode { connective: _ } => false
+      ComputationNode { behavior: _ } => false
+    }
+  })
+}
+
+fn type_decl_node_carries_parse_projection(n: Node) -> Bool {
+  fold(n.children, init: false, f: fn(found, e) {
+    found || match e.label {
+      Authored { name: name } =>
+        (name == ^grammar_production_identity_node_projection)
+          || (name == ^grammar_production_captured_node_projection)
+      StructuralLabel { label: _ } => false
+      Positional => false
+    }
+  })
+}
+
+fn type_decl_view(target: Node) -> TypeDeclView {
+  if type_decl_wrapper_is(n: target) || type_alias_wrapper_is(n: target) || type_opaque_wrapper_is(n: target) {
+    type_decl_view_by_wrapper(target: target)
+  } else {
+    match type_decl_identity_atom_optional(n: target) {
+      Present { value: id } =>
+        match dag_surface_item_standing(id: id) {
+          Present { value: DagSurfaceNonTypeDeclaration { index_members: _ } } => NotATypeDecl
+          Present { value: DagSurfaceTypeDeclaration } => type_decl_view_by_wrapper(target: target)
+          Absent => NotATypeDecl
+        }
+      Absent =>
+        if type_decl_node_carries_parse_projection(n: target) {
+          NotATypeDecl
+        } else {
+          type_decl_view_by_wrapper(target: target)
+        }
+    }
   }
 }
 
@@ -212,6 +291,7 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
   edge_is_type_params(e: edge)
     && match type_decl_view(target: parent) {
       PlainTypeDecl { member: _ } => false
+      NotATypeDecl => false
       GenericTypeDecl { binders: _, member: _ } => true
       TypeAlias { binders: _, aliased: _ } => true
       OpaqueTypeDecl { binders: _ } => true
@@ -603,6 +683,7 @@ fn type_binder_node_conforms(n: Node) -> Bool {
 fn type_binder_node_conforms_otherwise(n: Node, params: Int, bodies: Int, params_ok: Bool) -> Bool {
   match type_decl_view(target: n) {
     PlainTypeDecl { member: _ } => (params == 0) && (bodies == 0)
+    NotATypeDecl => (params == 0) && (bodies == 0)
     GenericTypeDecl { binders: _, member: _ } => params_ok
     TypeAlias { binders: _, aliased: _ } => params_ok
     OpaqueTypeDecl { binders: _ } => params_ok
@@ -728,3 +809,10 @@ fn type_binder_atom_identity_optional(n: Node) -> Optional<Symbol> {
     _ => optional_absent()
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "type_alias_renaming" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "type_alias_renaming_of" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "type_binder_atom_identity_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "type_binder_instantiation_scan" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]
