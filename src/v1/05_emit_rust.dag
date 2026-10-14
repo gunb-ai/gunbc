@@ -15773,6 +15773,34 @@ fn rust_operand_realization(operand: Node, scope: InferScope) -> OperandRealizat
   rust_operand_realization_of_type(rt: resolved_type(n: operand), scope: scope, fuel: 8)
 }
 
+// THE ONE ALIAS / REFINEMENT HOP. Continuation is the next type node to judge; absence means
+// this declaration is the structural residue. Fuel is the remaining chain budget; this fold
+// does not recurse — rust_operand_realization_of_type is the only recursive reader.
+fn rust_operand_alias_or_refinement_continue(rt: Node, scope: InferScope, fuel: Int) -> Node? {
+  if fuel <= 0 {
+    none
+  } else if is_where_refinement_type(ty: rt) {
+    match rt.children |> first {
+      Present { value: base } =>
+        match lookup_type_for(env: scope.type_env, node: base) {
+          Present { value: r } => Present { value: r }
+          Absent => Present { value: base }
+        }
+      Absent => none
+    }
+  } else {
+    let decl = match rt.inferred {
+      Present { value: Resolved { node: r } } => r
+      _ => rt
+    }
+    if is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) {
+      Present { value: resolved_type(n: decl) }
+    } else {
+      none
+    }
+  }
+}
+
 // AN ALIAS OR REFINEMENT DECLARATION REALIZES AS ITS TARGET. `type NonEmptyStr = String where
 // non_empty`, `type Char = Int where unicode_scalar, brand("Char")` and their like are alias items
 // (is_type_alias_item: a bare-leaf item whose resolved type is a type-alias return node) whose Rust
@@ -15824,24 +15852,9 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
       if declaration_realizes_natively_on_rust(declaration: d, spelling_decision: type_realization_decision(target: Rust, dag_name: d.decl_name as String, provenance: provenance)) {
         HostNumericOperand
       } else {
-        let decl = match rt.inferred {
-          Present { value: Resolved { node: r } } => r
-          _ => rt
-        }
-        if fuel > 0 && is_where_refinement_type(ty: rt) {
-          match rt.children |> first {
-            Present { value: base } =>
-              let base_resolved = match lookup_type_for(env: scope.type_env, node: base) {
-                Present { value: r } => r
-                Absent => base
-              }
-              rust_operand_realization_of_type(rt: base_resolved, scope: scope, fuel: fuel - 1)
-            Absent => StructuralOperand { declaration: d }
-          }
-        } else if fuel > 0 && is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) {
-          rust_operand_realization_of_type(rt: resolved_type(n: decl), scope: scope, fuel: fuel - 1)
-        } else {
-          StructuralOperand { declaration: d }
+        match rust_operand_alias_or_refinement_continue(rt: rt, scope: scope, fuel: fuel) {
+          Present { value: next } => rust_operand_realization_of_type(rt: next, scope: scope, fuel: fuel - 1)
+          Absent => StructuralOperand { declaration: d }
         }
       }
   }
@@ -15849,25 +15862,15 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
   }
 }
 
-
-// The operand's declaration is the one inference stamped on the node (std.operator_realization
+// The operand's declaration is the one inference stamped on the node (std.operator_realization)
 // OperandDeclaration); the rt-shape read below is the residue for a node that carries none.
-//
-// AN ALIAS IS THE DECLARATION IT NAMES (identity, not a second type). Inference stamps
-// OperandDeclaration with the authored alias (std.integer.NonNegativeInt, type NonEmptyStr =
-// String where …). Judging that ref as StructuralOperand without hopping skipped the hop
-// rust_operand_realization_of_type already performs, so Mul/Ge on NonNegativeInt refused as
-// "no host realization" while Nat on the same operators is HostOperator. The hop is keyed on
-// the stamped DeclarationRef (symbol_index_lookup of module_path.decl_name, the same key
-// symbol_index_insert_decl writes) and then the existing of_type fold — not a name roster.
+// Recover the declaration's type node by identity (symbol_index_lookup of module_path.decl_name)
+// and judge it with rust_operand_realization_of_type — the only hop is
+// rust_operand_alias_or_refinement_continue.
 fn rust_operand_realization_of_stamped_declaration(od: OperandDeclaration, scope: InferScope) -> OperandRealization {
-  if declaration_realizes_natively_on_rust(declaration: od.declaration, spelling_decision: type_realization_decision(target: Rust, dag_name: od.declaration.decl_name as String, provenance: od.provenance)) {
-    HostNumericOperand
-  } else {
-    match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: concat(od.declaration.module_path as String, ".", od.declaration.decl_name as String)) {
-      Present { value: resolved } => rust_operand_realization_of_type(rt: resolved, scope: scope, fuel: 8)
-      Absent => StructuralOperand { declaration: od.declaration }
-    }
+  match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: concat(od.declaration.module_path as String, ".", od.declaration.decl_name as String)) {
+    Present { value: resolved } => rust_operand_realization_of_type(rt: resolved, scope: scope, fuel: 8)
+    Absent => StructuralOperand { declaration: od.declaration }
   }
 }
 

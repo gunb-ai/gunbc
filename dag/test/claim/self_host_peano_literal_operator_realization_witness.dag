@@ -171,3 +171,21 @@ test fn w_arithmetic_on_std_integer_non_negative_int_keeps_the_host_operator() -
     ["no host realization", "compile_error!"]
   )
 }
+
+test fn w_ordering_on_std_integer_non_negative_int_keeps_the_host_operator() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.non_negative_int_ge_probe\nimport std.types { Bool }\nimport std.integer { NonNegativeInt }\nfn probe(n: NonNegativeInt) -> Bool { n >= 2 }\n",
+    "src/test_claim_non_negative_int_ge_probe.rs",
+    [" >= "],
+    ["no host realization", "compile_error!"]
+  )
+}
+
+test fn w_alias_of_a_structural_coproduct_still_refuses_host_arithmetic() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.peano_alias_div_probe\nimport test.fixture.structural_peano_nat { StructuralNat }\ntype Count = StructuralNat\nfn probe(a: Count, b: Count) -> Count { a / b }\n",
+    "src/test_claim_peano_alias_div_probe.rs",
+    ["compile_error!(\"operator realization: host operator `/` on structural operand test.fixture.structural_peano_nat.StructuralNat"],
+    [" / "]
+  )
+}

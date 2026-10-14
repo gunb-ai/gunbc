@@ -35004,6 +35004,42 @@ pub fn emit_rust_demanded_host_bin_op(
     }
 }
 
+pub fn rust_operand_alias_or_refinement_continue(
+    rt: Rc<Node>,
+    scope: Rc<InferScope>,
+    fuel: i64,
+) -> Option<Rc<Node>> {
+    if (fuel.clone() <= 0) {
+        std::option::Option::None
+    } else if crate::v1_compiler_infer::is_where_refinement_type(rt.clone()) {
+        match rt.children.clone().first().cloned() {
+            Some(base) => Some(
+                match crate::v1_compiler_infer_env::lookup_type_for(
+                    scope.type_env.clone(),
+                    base.clone(),
+                ) {
+                    Some(r) => r.clone(),
+                    std::option::Option::None => base.clone(),
+                },
+            ),
+            std::option::Option::None => std::option::Option::None,
+        }
+    } else {
+        let decl = match rt.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
+            _ => rt.clone(),
+        };
+        if crate::v1_compiler_emit_core_support::is_type_alias_item(
+            decl.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        ) {
+            Some(crate::v1_compiler_infer_types::resolved_type(decl.clone()))
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
 pub fn rust_operand_realization(
     operand: Rc<Node>,
     scope: Rc<InferScope>,
@@ -35081,47 +35117,22 @@ pub fn rust_operand_realization_of_type(
     Some(d) => { if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(d.clone(), crate::v1_compiler_coercion::type_realization_decision(RenderTarget::Rust, d.decl_name.clone(), provenance.clone())) {
                             break Rc::new(OperandRealization::HostNumericOperand);
 } else {
-                            let decl = match rt.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
-    _ => rt.clone(),
-};
-if ((fuel.clone() > 0) && crate::v1_compiler_infer::is_where_refinement_type(rt.clone())) {
-                                match rt.children.clone().first().cloned() {
-    Some(base) => { let base_resolved = match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), base.clone()) {
-    Some(r) => r.clone(),
-    std::option::Option::None => base.clone(),
-};
-{
-                                    let __tco_0 = base_resolved.clone();
+                            match rust_operand_alias_or_refinement_continue(rt.clone(), scope.clone(), fuel.clone()) {
+    Some(next) => {
+                                    let __tco_0 = next.clone();
 let __tco_1 = scope;
 let __tco_2 = v1_rt::int_sub(fuel, 1);
 __tco_loop_rt = __tco_0;
 __tco_loop_scope = __tco_1;
 __tco_loop_fuel = __tco_2;
 continue;
-} },
+},
     std::option::Option::None => { break Rc::new(OperandRealization::StructuralOperand {
     declaration: d.clone(),
 }); },
 }
-} else {
-                                if ((fuel.clone() > 0) && crate::v1_compiler_emit_core_support::is_type_alias_item(decl.clone(), scope.type_env.clone().source_indices.clone())) {
-                                    {
-                                        let __tco_0 = crate::v1_compiler_infer_types::resolved_type(decl.clone());
-let __tco_1 = scope;
-let __tco_2 = v1_rt::int_sub(fuel, 1);
-__tco_loop_rt = __tco_0;
-__tco_loop_scope = __tco_1;
-__tco_loop_fuel = __tco_2;
-continue;
 }
-} else {
-                                    break Rc::new(OperandRealization::StructuralOperand {
-    declaration: d.clone(),
-});
-}
-}
-} },
+},
 }
                             }
                         }
@@ -35136,28 +35147,17 @@ pub fn rust_operand_realization_of_stamped_declaration(
     od: Rc<OperandDeclaration>,
     scope: Rc<InferScope>,
 ) -> Rc<OperandRealization> {
-    if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(
-        od.declaration.clone(),
-        crate::v1_compiler_coercion::type_realization_decision(
-            RenderTarget::Rust,
+    match crate::v1_compiler_infer_env::symbol_index_lookup(
+        scope.type_env.clone().symbol_index.clone(),
+        v1_rt::concat(
+            v1_rt::concat(od.declaration.clone().module_path.clone(), ".".to_string()),
             od.declaration.clone().decl_name.clone(),
-            od.provenance.clone(),
         ),
     ) {
-        Rc::new(OperandRealization::HostNumericOperand)
-    } else {
-        match crate::v1_compiler_infer_env::symbol_index_lookup(
-            scope.type_env.clone().symbol_index.clone(),
-            v1_rt::concat(
-                v1_rt::concat(od.declaration.clone().module_path.clone(), ".".to_string()),
-                od.declaration.clone().decl_name.clone(),
-            ),
-        ) {
-            Some(resolved) => rust_operand_realization_of_type(resolved.clone(), scope.clone(), 8),
-            std::option::Option::None => Rc::new(OperandRealization::StructuralOperand {
-                declaration: od.declaration.clone(),
-            }),
-        }
+        Some(resolved) => rust_operand_realization_of_type(resolved.clone(), scope.clone(), 8),
+        std::option::Option::None => Rc::new(OperandRealization::StructuralOperand {
+            declaration: od.declaration.clone(),
+        }),
     }
 }
 
