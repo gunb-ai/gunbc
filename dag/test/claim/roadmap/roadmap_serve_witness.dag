@@ -1127,56 +1127,95 @@ fn cross_site_headers() -> List<ServeRequestHeader> {
   [ServeRequestHeader { name: "sec-fetch-site", value: "cross-site" }]
 }
 
-fn dispatch_probe_request(
+fn belt_write_probe_request(
+  path: String,
   authentication: RequestAuthenticationEvidence,
   headers: List<ServeRequestHeader>,
 ) -> ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence> {
   ServeHttpRequest {
     method: POST,
-    path: "/dispatch/some-node",
+    path: path,
     body: "",
     headers: headers,
     security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: authentication },
   }
 }
 
-fn dispatch_probe_params() -> List<PathParamBinding> {
+fn belt_write_probe_params() -> List<PathParamBinding> {
   [PathParamBinding { name: "node_id", value: "some-node" }]
 }
 
-test fn an_unauthenticated_dispatch_post_refuses_before_actuation() -> Bool {
+fn belt_write_handler_refuses(
+  handler: RoadmapServeHandler,
+  path: String,
+  authentication: RequestAuthenticationEvidence,
+  headers: List<ServeRequestHeader>,
+  body_pattern: String,
+) -> Bool {
   let r = roadmap_serve_invoke(
-    handler: BeltDispatchHandler,
-    params: dispatch_probe_params(),
-    request: dispatch_probe_request(authentication: AuthAbsent, headers: same_origin_headers()),
+    handler: handler,
+    params: belt_write_probe_params(),
+    request: belt_write_probe_request(path: path, authentication: authentication, headers: headers),
     release_revision: deploy_witness_release_revision,
   )
-  r.status == 403
-    && string_contains(s: r.body, pattern: "no authenticated session")
+  r.status == 403 && string_contains(s: r.body, pattern: body_pattern)
+}
+
+test fn an_unauthenticated_dispatch_post_refuses_before_actuation() -> Bool {
+  belt_write_handler_refuses(
+    handler: BeltDispatchHandler,
+    path: "/dispatch/some-node",
+    authentication: AuthAbsent,
+    headers: same_origin_headers(),
+    body_pattern: "no authenticated session",
+  )
+    && belt_write_handler_refuses(
+      handler: BeltStopHandler,
+      path: "/cleanup/some-node",
+      authentication: AuthAbsent,
+      headers: same_origin_headers(),
+      body_pattern: "no authenticated session",
+    )
+    && belt_write_handler_refuses(
+      handler: BeltPublishHandler,
+      path: "/publish/some-node",
+      authentication: AuthAbsent,
+      headers: same_origin_headers(),
+      body_pattern: "no authenticated session",
+    )
 }
 
 test fn a_cross_site_dispatch_post_refuses_before_actuation() -> Bool {
-  match belt_actuation_admission(
-    route_path: "/dispatch/some-node" as NonEmptyStr,
-    action: ServeActionDispatchNode,
-    request: dispatch_probe_request(
-      authentication: GoogleOidcSession { session: witness_auth_session() },
+  let session = GoogleOidcSession { session: witness_auth_session() }
+  belt_write_handler_refuses(
+    handler: BeltDispatchHandler,
+    path: "/dispatch/some-node",
+    authentication: session,
+    headers: cross_site_headers(),
+    body_pattern: "cross-site",
+  )
+    && belt_write_handler_refuses(
+      handler: BeltStopHandler,
+      path: "/cleanup/some-node",
+      authentication: session,
       headers: cross_site_headers(),
-    ),
-    authorization_policy: tracker_write_authorization_policy,
-    deployment_policy: roadmap_deployment_access_policy,
-    observed_at: "2026-09-27T01:00:00Z",
-  ) {
-    Deny { refusal } => string_contains(s: access_refusal_reason(refusal: refusal), pattern: "cross-site")
-    Permit => false
-  }
+      body_pattern: "cross-site",
+    )
+    && belt_write_handler_refuses(
+      handler: BeltPublishHandler,
+      path: "/publish/some-node",
+      authentication: session,
+      headers: cross_site_headers(),
+      body_pattern: "cross-site",
+    )
 }
 
 test fn a_same_origin_authenticated_dispatch_is_admitted() -> Bool {
   belt_actuation_admission(
     route_path: "/dispatch/some-node" as NonEmptyStr,
     action: ServeActionDispatchNode,
-    request: dispatch_probe_request(
+    request: belt_write_probe_request(
+      path: "/dispatch/some-node",
       authentication: GoogleOidcSession { session: witness_auth_session() },
       headers: same_origin_headers(),
     ),
