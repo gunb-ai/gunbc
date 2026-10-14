@@ -177,32 +177,42 @@ Consequence for the caller graph:
     its only remaining CI-era caller (the dropped `fabric-evidence` job) is gone.
   - Their target-language subjects `gunbc.instruments.fabric_control_plane_live_probe` and
     `gunbc.instruments.fabric_ci_evidence` are not members of `emitted_subject_build_rows`.
-- **INSIDE the required gate (registration/provenance only, not the scripts):**
+- **COMPILED into the required corpus, but not judged as a required verdict:**
   - `gunbc.generated_artifact` registers `Fci1BoundedExecutionContextArtifact`
     (`tools/fabric_ci_fci1_bounded_execution_context.env`).
   - `gunbc.fabric.fci1_bounded_execution_context_emit` is the emitter.
-  - `src/v2.compiler.reference_conservation_census` (a required-context compiler build step) lists
-    the *witness* `dag/test/claim/fabric/fci1_bounded_execution_context_emit_witness.dag` in its
-    stratified sample paths.
+  - `src/v2.compiler.reference_conservation_census` (a compiler module the required path compiles)
+    lists the *witness* `dag/test/claim/fabric/fci1_bounded_execution_context_emit_witness.dag` in
+    its stratified sample paths.
 
-**Critical for retirement — the four shell files are gate-invisible, the `.env` is not.**
+  None of these is a *verdict* the required job runs: the required job on origin/main
+  (`.github/workflows/witnesses.yml`) carries no generated-artifact drift step, and the required
+  path compares no generated artifact (`gunbc.rung_drop v1_required_lanes_withdrawn`, DESIGN.md).
+  The `GeneratedArtifactPhase` drift phase named in the `ci_spec.dag` roster model is **not
+  executed by v2-bootstrap**.
+
+**Critical for retirement — no required verdict catches a stray registration; enumerate consumers.**
 
 - `reference_conservation_stratified_sample_paths` contains only `.dag` blobs; none of the five
   files is a census subject, so the reference-conservation claim is untouched by deleting any of
   them.
 - The four shell files (`live_instrument.sh`, `bounded_execution_controls.sh`, `evidence_driver.sh`,
-  `evidence_calibration.sh`) are **not** registered in `gunbc.generated_artifact`, so the required
-  `GeneratedArtifactPhase` (the in-gate drift phase, `gunbc.required_ci_phase_roster`, running in
-  the BuildLane of the required merge context) never sees them. Deleting them is invisible to that
-  phase.
+  `evidence_calibration.sh`) are **not** registered in `gunbc.generated_artifact`, and no required
+  verdict reads them. Deleting them is invisible to the required path.
 - The `.env` **is** registered: `Fci1BoundedExecutionContextArtifact` is
-  `CommitRequired { consumer: HostReconciler }` (`generated_artifact.dag:260`), so it is in the
-  committed drift population that the phase adjudicates against `artifact_generate`, "refusing on
-  any Drifted or **Absent** verdict" (`ci_spec.dag`). **Deleting the `.env` while it stays
-  registered goes RED in the required gate.** Retirement must delete the file together with the
+  `CommitRequired { consumer: HostReconciler }` (`generated_artifact.dag:260`). But the required job
+  runs **no** generated-artifact drift step, and the required path compares no generated artifact
+  (`gunbc.rung_drop v1_required_lanes_withdrawn`; the `GeneratedArtifactPhase` drift phase is in
+  the `ci_spec.dag` roster model and is not executed by v2-bootstrap). **Deleting the `.env` while
+  it stays registered would NOT go red — it passes silently.** That is exactly why the brief
+  requires enumerating every consumer of the `.env`: a dangling registration arm, a stale
+  producer decl_ref, a lingering `.gitattributes` merge line, or an orphaned census entry all
+  survive the required gate unnoticed.
+- Retirement must therefore remove the `.env` **and** its provenance in the **same** change: the
   registration arm (`generated_artifact.dag`), the producer decl_ref
   (`expected_fci1_bounded_execution_context_env`), the `.gitattributes` merge line, and the
-  witness-dag census entry — or the drift phase stays red on an `Absent` verdict.
+  witness-dag census entry. Nothing on the required path refuses a merge if any one of them is left
+  behind.
 
 The in-gate conservation claim itself checks only the *emit dag's emitted content* (the expected
 `.env` text) and the conservation of the witness dag — **not** the shell scripts. The only in-gate
