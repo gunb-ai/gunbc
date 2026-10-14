@@ -3,7 +3,7 @@ module gunbc.compute.compute_seat_ensure
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, UpsertClassification, ObservationVerdict, Converged, Drifted, Inaccessible, UnknownRefused }
 import std.list { distinct_by_key }
-import std.measure { Kibibyte, kibibyte_count }
+import std.measure { Kibibyte, kibibyte, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import gunbc.durable_cas_file_store { cas_slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.compute.attempt_lifecycle {
@@ -136,14 +136,21 @@ fn seat_committed(subject: ComputeCapacitySubject) -> Kibibyte? {
   }
 }
 
-fn seat_granted_of(reading: AttemptSlotReading) -> Int {
+fn seat_granted_of(reading: AttemptSlotReading) -> Kibibyte {
   match reading {
-    AttemptSlotHeld { record: rec, generation: _ } => kibibyte_count(k: rec.granted)
-    _ => 0
+    AttemptSlotHeld { record: rec, generation: _ } => rec.granted
+    _ => kibibyte(count: 0)
   }
 }
 
-fn seat_apply(attempts_root: NonEmptyStr, subject: ComputeCapacitySubject, reference: NonEmptyStr, source: UnitLifecycleSource, granted: Int) -> SeatEnsureOutcome {
+fn seat_fell_by(before: Kibibyte, after: Kibibyte, granted: Kibibyte) -> Bool {
+  match measure_sub(a: before, b: after) {
+    MeasureDifference { value: d } => d == granted
+    MeasureSubtrahendExceedsMinuend => false
+  }
+}
+
+fn seat_apply(attempts_root: NonEmptyStr, subject: ComputeCapacitySubject, reference: NonEmptyStr, source: UnitLifecycleSource, granted: Kibibyte) -> SeatEnsureOutcome {
   match seat_committed(subject: subject) {
     Absent => SeatEnsureRefused { reference: reference as String, reason: "the capacity ledger could not be read before the release; nothing was released" }
     Present { value: before } =>
@@ -155,7 +162,7 @@ fn seat_apply(attempts_root: NonEmptyStr, subject: ComputeCapacitySubject, refer
           match seat_committed(subject: subject) {
             Absent => SeatEnsureRed { reference: r, reason: "the door reported nothing held but the ledger could not be read back" }
             Present { value: after } =>
-              if kibibyte_count(k: before) == kibibyte_count(k: after) {
+              if before == after {
                 SeatEnsureNoop { reference: r, why: join(["the ledger reported it held nothing for this reference, and the committed figure did not move: ", d], "") }
               } else {
                 SeatEnsureRed { reference: r, reason: "the ledger reported it held nothing but the committed figure moved during the ensure" }
@@ -165,7 +172,7 @@ fn seat_apply(attempts_root: NonEmptyStr, subject: ComputeCapacitySubject, refer
           match seat_committed(subject: subject) {
             Absent => SeatEnsureRed { reference: r, reason: "the door reported a release but the ledger could not be read back" }
             Present { value: after } =>
-              if kibibyte_count(k: before) - kibibyte_count(k: after) == granted {
+              if seat_fell_by(before: before, after: after, granted: granted) {
                 SeatEnsureReleased { reference: r, committed_before: before, committed_after: after }
               } else {
                 SeatEnsureRed { reference: r, reason: "the door reported a release and the ledger's committed figure did not fall by the attempt's grant" }
@@ -244,7 +251,7 @@ fn seat_drop_own_lease(seated: SeatEnsureOutcome, reference: String, leases_dir:
   }
 }
 
-fn seat_apply_plan(attempts_root: NonEmptyStr, leases_dir: String, subject: ComputeCapacitySubject, rec: AttemptRecord, plan: SeatPlan, source: UnitLifecycleSource, granted: Int) -> SeatEnsureOutcome {
+fn seat_apply_plan(attempts_root: NonEmptyStr, leases_dir: String, subject: ComputeCapacitySubject, rec: AttemptRecord, plan: SeatPlan, source: UnitLifecycleSource, granted: Kibibyte) -> SeatEnsureOutcome {
   let reference = rec.reference as NonEmptyStr
   let stop = match plan {
     SeatPlanRelease { reference: _ } => UnitStopped
