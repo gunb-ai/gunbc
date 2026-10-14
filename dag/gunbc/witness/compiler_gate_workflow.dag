@@ -405,7 +405,9 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // default, and the `gunbc` binary the instruments are invoked through. NO NATIVE PRODUCT STORE STEP:
 // the job-private store root, the read and write federations and the save left with the 2026-10-09
 // ruling (header), because a job that may serve a restored final product cannot claim to have
-// emitted and built it.
+// emitted and built it. The parse-verdict publisher after the subject steps is a different store
+// (extdeps.cache.github_actions): it saves ParseVerdictRequest receipts after a passing live
+// parse-population on main only, and never restores a compiler product.
 //
 // THE CARGO CACHE IS ORDINARY CARGO REUSE, which the same ruling leaves in place: the isolation step
 // wipes the job's CARGO_HOME on every run, so without it the seed build downloads the registry and
