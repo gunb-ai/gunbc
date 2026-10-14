@@ -184,8 +184,8 @@ test fn witness_neither_family_asserts_a_failsafe_duty() -> Bool {
   }
 }
 
-// THE MEGARAC CONVERGE SURFACE IS UNBOUND AND ITS PROTOCOL FLOOR IS IPMI. The second half matters as
-// much as the first: an unbound surface that answered Redfish would be taking a per-build fact from
+// THE MEGARAC CONVERGE SURFACE IS BOUND AND ITS PROTOCOL FLOOR STAYS IPMI. BmcProtocol has no
+// REST arm, so a bound surface that answered Redfish would still be taking a per-build fact from
 // a family row.
 test fn witness_megarac_fan_mode_surface_is_bound_with_ipmi_floor() -> Bool {
   match megarac_fan_mode_surface_read_obligation(surface: megarac_fan_mode_surface) {
