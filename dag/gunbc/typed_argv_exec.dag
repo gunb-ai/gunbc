@@ -1,7 +1,9 @@
 module gunbc.typed_argv_exec
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { String, List, NonEmptyStr }
-import std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { list_head, list_tail }
 import extdeps.ssh.session {
   ssh_session_exec_result_from_service,
   ssh_session_exec_portable_words,
@@ -98,16 +100,16 @@ fn typed_argv_shell_safe_refusal_token(token: String) -> String? {
 
 fn typed_argv_shell_safe_refusal_argv(argv: List<String>) -> String? {
   match list_head(xs: argv) {
-    HeadFound { value: token } =>
+    Present { value: token } =>
       match typed_argv_shell_safe_refusal_token(token: token) {
         Present { value: why } => Present { value: why }
         Absent =>
           match list_tail(xs: argv) {
-            TailFound { tail: rest } => typed_argv_shell_safe_refusal_argv(argv: rest)
-            TailAbsent => none
+            Present { value: rest } => typed_argv_shell_safe_refusal_argv(argv: rest)
+            Absent => none
           }
       }
-    HeadAbsent => none
+    Absent => none
   }
 }
 

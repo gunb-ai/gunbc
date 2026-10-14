@@ -12,7 +12,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, HeadAbsent, HeadFound, fold_list, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.optional {
@@ -113,8 +113,8 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                   match child_qn {
                     Cons { head: sym, tail: child_tail } =>
                       match list_head(xs: child_tail) {
-                        HeadAbsent => QnFoldHeadSeen { sym: sym }
-                        HeadFound { value: _ } => QnFoldError { diag: Diagnostic {
+                        Absent => QnFoldHeadSeen { sym: sym }
+                        Present { value: _ } => QnFoldError { diag: Diagnostic {
                           reason: ^qualified_name_structure_invalid,
                           at: node_locus(node: edge.target),
                           correction: Unavailable { reason: ExternalContractUnknown }
@@ -215,8 +215,8 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                   match child_qn {
                     Cons { head: sym, tail: child_tail } =>
                       match list_head(xs: child_tail) {
-                        HeadAbsent => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
-                        HeadFound { value: _ } => QnFoldError { diag: Diagnostic {
+                        Absent => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
+                        Present { value: _ } => QnFoldError { diag: Diagnostic {
                           reason: ^qualified_name_structure_invalid,
                           at: node_locus(node: edge.target),
                           correction: Unavailable { reason: ExternalContractUnknown }
