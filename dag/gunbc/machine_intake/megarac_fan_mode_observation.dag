@@ -1,9 +1,17 @@
 module gunbc.machine_intake.megarac_fan_mode_observation
 
-import std.types { Int, List, NonEmptyStr }
-import std.measure { Percent, percent }
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.measure { Celsius, Percent, RevolutionsPerMinute, celsius, percent, rpm }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import extdeps.bmc.megarac_fan_policy {
+  CoolingManagerAutomatic,
+  CoolingManagerDisabledManual,
+  MegaRacFanManagerStanding,
+  MegaRacSdrFanPresence,
+  MegaRacSdrFanPresenceAbsent,
+  MegaRacSdrFanRotatingInBand,
+}
 
 // GROUNDED READ OF THE MEGARAC FAN-MODE SURFACE (Foxconn Mt. Collins, 2026-10-14 ~21:50Z).
 // Executor: operator credential, POST /api/session, GET these two paths, DELETE /api/session.
@@ -12,16 +20,17 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 //
 // manager_disabled 0 at this instant is AUTOMATIC Cooling Manager. A later operator hand-set
 // (disable manager, manual PWM) is out-of-band drift: the next live GET records it; this row is
-// not overwritten. Missing socket-1 fans (SDR FAN0-3 present-absent, UI fans 1-4 pwm 0) is a
-// chassis fact the wiring model must carry, not a controller fault invented here.
-
-type MegaRacFanManagerStanding
-  = CoolingManagerAutomatic
-  | CoolingManagerDisabledManual
+// not overwritten. Missing socket-1 fans (SDR FAN0-3 presence-absent, UI fans 1-4 pwm 0) is a
+// chassis fact joined through megarac_fan_slot_standing, not a controller fault invented here.
 
 type MegaRacFanInfoRow {
   fan_number: Int
   fan_pwm: Percent
+}
+
+type MegaRacSdrFanRow {
+  header: NonEmptyStr
+  presence: MegaRacSdrFanPresence
 }
 
 type MegaRacFanModeObservation {
@@ -29,14 +38,7 @@ type MegaRacFanModeObservation {
   observed_at: NonEmptyStr
   manager: MegaRacFanManagerStanding
   fans: List<MegaRacFanInfoRow>
-}
-
-fn megarac_manager_standing_of_wire(manager_disabled: Int) -> MegaRacFanManagerStanding {
-  if manager_disabled == 0 {
-    CoolingManagerAutomatic
-  } else {
-    CoolingManagerDisabledManual
-  }
+  sdr_fans: List<MegaRacSdrFanRow>
 }
 
 data mtcollins1_megarac_fan_mode_observation_2026_10_14: MegaRacFanModeObservation = MegaRacFanModeObservation {
@@ -51,13 +53,57 @@ data mtcollins1_megarac_fan_mode_observation_2026_10_14: MegaRacFanModeObservati
     MegaRacFanInfoRow { fan_number: 5, fan_pwm: percent(20) },
     MegaRacFanInfoRow { fan_number: 6, fan_pwm: percent(20) },
   ],
+  sdr_fans: [
+    MegaRacSdrFanRow { header: "FAN0_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN0_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN1_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN1_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN2_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN2_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN3_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN3_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow {
+      header: "FAN4_0",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5800) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN4_1",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5800) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN5_0",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5800) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN5_1",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5800) },
+    },
+  ],
+}
+
+// THERMALS FROM THE SAME READ, KEPT HERE BECAUSE THEY ARE NOT MEGARAC FAN-POLICY DOCUMENTATION.
+// System_Inlet at 2C is marked suspect; it is not a failsafe input.
+type MegaRacThermalSnapshot {
+  cpu0_soc: Celsius
+  outlet_min: Celsius
+  outlet_max: Celsius
+  system_inlet: Celsius
+  system_inlet_suspect: Bool
+}
+
+data mtcollins1_megarac_thermal_snapshot_2026_10_14: MegaRacThermalSnapshot = MegaRacThermalSnapshot {
+  cpu0_soc: celsius(36),
+  outlet_min: celsius(33),
+  outlet_max: celsius(35),
+  system_inlet: celsius(2),
+  system_inlet_suspect: true,
 }
 
 // DESIRED PHASES OF THE ONE PHYSICAL-MACHINE CONVERGE (no new workflow mode).
 // Boot (power-on through boot terminal): Cooling Manager disabled, PWM in [20,30].
 // Bringup and after: Cooling Manager automatic. A run that exits mid-boot restores the
 // phase's declared policy; a thermal-guard trip or unreadable temperature re-enables the
-// manager. PWM write members are unread, so apply of these rows refuses until that bind.
+// manager.
 type FanPolicyPhase
   = BootThroughTerminal
   | HostBringupAndAfter

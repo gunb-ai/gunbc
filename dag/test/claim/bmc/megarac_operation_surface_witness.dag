@@ -2,23 +2,33 @@ module test.claim.bmc.megarac_operation_surface_witness
 
 import std.types { Bool }
 import std.optional { Present, Absent }
-import std.measure { percent, percent_count }
+import std.measure { percent, percent_count, rpm }
 import extdeps.bmc.megarac_fan_policy {
+  CoolingManagerAutomatic,
+  CoolingManagerDisabledManual,
   MegaRacFanPwmAllAdmitted,
   MegaRacFanPwmAllRefused,
+  MegaRacFanSlotDriven,
+  MegaRacFanSlotJoinUnexplained,
+  MegaRacFanSlotPhysicallyAbsent,
+  MegaRacManagerDisabledAdmitted,
+  MegaRacManagerDisabledRefused,
+  MegaRacSdrFanPresenceAbsent,
+  MegaRacSdrFanRotatingInBand,
   megarac_fan_boot_pwm_admitted,
   megarac_fan_pwm_all_body,
   megarac_fan_pwm_all_of,
+  megarac_fan_slot_standing,
+  megarac_manager_disabled_of_wire,
+  megarac_set_manager_status_body,
 }
 import gunbc.machine_intake.megarac_fan_mode_observation {
   BootThroughTerminal,
-  CoolingManagerAutomatic,
-  CoolingManagerDisabledManual,
   HostBringupAndAfter,
   megarac_fan_boot_phase_desire,
   megarac_fan_bringup_phase_desire,
-  megarac_manager_standing_of_wire,
   mtcollins1_megarac_fan_mode_observation_2026_10_14,
+  mtcollins1_megarac_thermal_snapshot_2026_10_14,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac }
@@ -83,12 +93,16 @@ test fn mtcollins1_grounded_read_is_automatic_with_two_live_pairs() -> Bool {
           Present { value: row } => percent_count(p: row.fan_pwm) == 20
           Absent => false
         }
-        && match megarac_manager_standing_of_wire(manager_disabled: 1) {
-          CoolingManagerDisabledManual =>
-            megarac_fan_boot_phase_desire.phase == BootThroughTerminal
+        && match megarac_manager_disabled_of_wire(manager_disabled: 1) {
+          MegaRacManagerDisabledAdmitted { standing: s } =>
+            s == CoolingManagerDisabledManual
+              && megarac_fan_boot_phase_desire.phase == BootThroughTerminal
               && megarac_fan_bringup_phase_desire.phase == HostBringupAndAfter
               && megarac_fan_bringup_phase_desire.manager == CoolingManagerAutomatic
-          CoolingManagerAutomatic => false
+              && (megarac_set_manager_status_body(standing: CoolingManagerAutomatic) as String)
+                == "{\"manager_disabled\":0}"
+              && mtcollins1_megarac_thermal_snapshot_2026_10_14.system_inlet_suspect
+          MegaRacManagerDisabledRefused { wire: _ } => false
         }
     CoolingManagerDisabledManual => false
   }
@@ -101,6 +115,28 @@ test fn fan_control_paths_are_the_served_ui_routes() -> Bool {
     && (megarac_op_fan_set_fan_speed.path as String) == "/api/fan_control/set_fan_speed"
     && (megarac_op_fan_get_manager_status.http_method as String) == "GET"
     && (megarac_op_fan_set_fan_speed.http_method as String) == "POST"
+}
+
+test fn missing_socket1_fans_are_physically_absent_not_zero_duty() -> Bool {
+  match megarac_fan_slot_standing(pwm: percent(0), sdr: MegaRacSdrFanPresenceAbsent) {
+    MegaRacFanSlotPhysicallyAbsent =>
+      match megarac_fan_slot_standing(
+        pwm: percent(20),
+        sdr: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5800) },
+      ) {
+        MegaRacFanSlotDriven { pwm: p, min_rpm: _, max_rpm: _ } =>
+          percent_count(p: p) == 20
+            && match megarac_fan_slot_standing(pwm: percent(20), sdr: MegaRacSdrFanPresenceAbsent) {
+              MegaRacFanSlotJoinUnexplained { pwm: _, sdr: _ } => true
+              MegaRacFanSlotPhysicallyAbsent => false
+              MegaRacFanSlotDriven { pwm: _, min_rpm: _, max_rpm: _ } => false
+            }
+        MegaRacFanSlotPhysicallyAbsent => false
+        MegaRacFanSlotJoinUnexplained { pwm: _, sdr: _ } => false
+      }
+    MegaRacFanSlotDriven { pwm: _, min_rpm: _, max_rpm: _ } => false
+    MegaRacFanSlotJoinUnexplained { pwm: _, sdr: _ } => false
+  }
 }
 
 test fn set_fan_speed_body_is_fan_pwm_all_as_a_string() -> Bool {

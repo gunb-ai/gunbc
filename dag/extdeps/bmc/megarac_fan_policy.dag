@@ -2,7 +2,7 @@ module extdeps.bmc.megarac_fan_policy
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.optional { Present, Absent }
-import std.measure { Percent, percent_count }
+import std.measure { Percent, RevolutionsPerMinute, percent_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
 import extdeps.external_authority {
@@ -43,12 +43,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // which takes the family's authority as a REFERENCE rather than enumerating families.
 //
 // IT IS A SEPARATE FILE FROM extdeps.bmc.megarac for the reason that module's own header gives:
-// rows there are the SP-X REST operation shapes this repository has executed, with one declared
-// subject. Fan policy is a different subject with a different evidentiary standing - nothing here
-// has been executed at all - and mixing an unexecuted policy claim into a module of executed
-// operation shapes is how an unexecuted claim gets read as an executed one.
-
-// WHAT THIS REPOSITORY HAS ACTUALLY READ ABOUT MEGARAC FAN POLICY: NOTHING, AND THAT IS THE ROW.
+// rows there are the SP-X REST operation shapes this repository has executed. Fan policy is a
+// different subject: the REST surface is bound and executed; AMI's failsafe document is still
+// uncited. Mixing those two standings in the operation-shape module is how an uncited failsafe
+// claim gets read as an executed one.
 //
 // This is the §4d instrument used for exactly its purpose. It would be easy to write a plausible
 // family row here - 'MegaRAC runs a vendor thermal loop that reaches full duty when host sensors are
@@ -62,7 +60,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // state at all, (b) what enters and leaves it, and (c) the duty it holds. Until one of those is
 // read, the answer to 'why does Mt. Collins not sit at failsafe' may not be sourced from this
 // module - it comes from the observation producer in the observing layer.
-data megarac_fan_policy_standing: CitedFigureStanding = TranscribedUncited { read_obligation: "AMI MegaRAC fan/thermal control documentation for the build under test: whether a failsafe state exists, what enters and leaves it, and the duty held in it. No arm of this module may be read as established until that document is cited here." }
+data megarac_fan_policy_standing: CitedFigureStanding = TranscribedUncited { read_obligation: "AMI MegaRAC fan/thermal control documentation for the build under test: whether a failsafe state exists, what enters and leaves it, and the duty held in it. The REST fan-mode surface is a separate executed bind and does not discharge this obligation." }
 
 fn megarac_fan_policy_read_obligation() -> NonEmptyStr? {
   cited_figure_read_obligation(standing: megarac_fan_policy_standing)
@@ -78,7 +76,58 @@ type MegaRacFanModeSurface
 
 data megarac_fan_mode_surface: MegaRacFanModeSurface = MegaRacFanModeSurfaceBound {
   protocol: Ipmi,
-  contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). READ: GET /api/fan_control/get_manager_status {manager_disabled:0|1} and GET /api/fan_control/get_fan_info [{id,fan_number,fan_speed,fan_pwm}]. WRITE manager: POST /api/fan_control/set_manager_status {manager_disabled:r}. WRITE PWM: POST /api/fan_control/set_fan_speed JSON {fan_pwm_all: r} with r a STRING from select#fan_all_speed (20..100 step 5); no per-fan write; only while manager_disabled is 1; readback is get_fan_info. BmcProtocol has no SP-X REST arm; this field stays the family IPMI floor used for SDR tach.",
+  contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). Executed read-only 2026-10-14 ~21:50Z: POST /api/session, GET these two, DELETE /api/session. READ: GET /api/fan_control/get_manager_status {manager_disabled:0|1} and GET /api/fan_control/get_fan_info [{id,fan_number,fan_speed,fan_pwm}] (UI labels speed as PWM percentage). WRITE manager: POST /api/fan_control/set_manager_status {manager_disabled:r}; UI confirms both directions. WRITE PWM: POST /api/fan_control/set_fan_speed JSON {fan_pwm_all: r} with r a STRING from select#fan_all_speed (20..100 step 5); no per-fan write; only while manager_disabled is 1; readback is get_fan_info. Instance values of that read (automatic, UI fans 1-4 pwm 0 / 5-6 pwm 20, SDR FAN0-3 presence-absent, FAN4_0/1 and FAN5_0/1 5700-5800 rpm) live in gunbc.machine_intake.megarac_fan_mode_observation, never as AMI documentation. BmcProtocol has no SP-X REST arm; this field stays the family IPMI floor used for SDR tach.",
+}
+
+// A REST FAN_INFO ROW IS NOT A ROTOR. get_fan_info still lists a slot at pwm 0 after the
+// operator removes the fans; the SDR reports presence-absent and 0 rpm on those headers. Folding
+// pwm 0 into "controller holding zero duty" would treat missing socket-1 fans as a thermal
+// policy and hide that the remaining pairs are the ones the Cooling Manager is actually driving.
+type MegaRacFanManagerStanding
+  = CoolingManagerAutomatic
+  | CoolingManagerDisabledManual
+
+type MegaRacManagerDisabledWire
+  = MegaRacManagerDisabledAdmitted { standing: MegaRacFanManagerStanding }
+  | MegaRacManagerDisabledRefused { wire: Int }
+
+fn megarac_manager_disabled_of_wire(manager_disabled: Int) -> MegaRacManagerDisabledWire {
+  if manager_disabled == 0 {
+    MegaRacManagerDisabledAdmitted { standing: CoolingManagerAutomatic }
+  } else if manager_disabled == 1 {
+    MegaRacManagerDisabledAdmitted { standing: CoolingManagerDisabledManual }
+  } else {
+    MegaRacManagerDisabledRefused { wire: manager_disabled }
+  }
+}
+
+fn megarac_set_manager_status_body(standing: MegaRacFanManagerStanding) -> NonEmptyStr {
+  match standing {
+    CoolingManagerAutomatic => "{\"manager_disabled\":0}" as NonEmptyStr
+    CoolingManagerDisabledManual => "{\"manager_disabled\":1}" as NonEmptyStr
+  }
+}
+
+type MegaRacSdrFanPresence
+  = MegaRacSdrFanRotatingInBand { min_rpm: RevolutionsPerMinute, max_rpm: RevolutionsPerMinute }
+  | MegaRacSdrFanPresenceAbsent
+
+type MegaRacFanSlotStanding
+  = MegaRacFanSlotDriven { pwm: Percent, min_rpm: RevolutionsPerMinute, max_rpm: RevolutionsPerMinute }
+  | MegaRacFanSlotPhysicallyAbsent
+  | MegaRacFanSlotJoinUnexplained { pwm: Percent, sdr: MegaRacSdrFanPresence }
+
+fn megarac_fan_slot_standing(pwm: Percent, sdr: MegaRacSdrFanPresence) -> MegaRacFanSlotStanding {
+  match sdr {
+    MegaRacSdrFanPresenceAbsent =>
+      if percent_count(p: pwm) == 0 {
+        MegaRacFanSlotPhysicallyAbsent
+      } else {
+        MegaRacFanSlotJoinUnexplained { pwm: pwm, sdr: sdr }
+      }
+    MegaRacSdrFanRotatingInBand { min_rpm: lo, max_rpm: hi } =>
+      MegaRacFanSlotDriven { pwm: pwm, min_rpm: lo, max_rpm: hi }
+  }
 }
 
 data megarac_fan_pwm_all_admitted_wires: List<Int> = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]
