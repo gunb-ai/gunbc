@@ -3,6 +3,7 @@ module extdeps.cloud.vast_ai
 import std.resources { Network }
 import std.types { Int, Bool, NonEmptyStr, String, Secret, List }
 import std.nat { Nat }
+import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.decimal { ExactDecimal }
 import std.measure {
