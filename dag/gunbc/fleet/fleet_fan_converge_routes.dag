@@ -40,18 +40,17 @@ data openbmc_fan_converge_route: FanDutyConvergeRoute = ConvergeRouteBound {
   readback: decl_ref("extdeps.bmc.openbmc_fan_control", "openbmc_fan_config_verify"),
 }
 
-// THE MEGARAC ROUTE IS BOUND TO THE SERVED-UI FAN_PWM_ALL WRITE. Session login is the transport
-// (cookie + CSRF). Where tach fidelity is unestablished, duty readback is get_fan_info pwm echo
-// plus a thermal-guard dwell, reported as MegaRacDutyConvergedEchoTachUnfaithful. Tach-unmoved
-// is a refusal only after fidelity is established. Duty is the closed 20..100 step-5 set; the
-// write is a no-op while the Cooling Manager is enabled.
-data megarac_fan_converge_route: FanDutyConvergeRoute = ConvergeRouteBound {
+// THE MEGARAC CONVERGE ROUTE IS UNBOUND UNTIL A WET WRITE EXISTS. megarac_fan_mode_surface is
+// Bound for the executed GET (get_manager_status / get_fan_info). set_fan_speed and
+// set_manager_status are UI-cited shape rows, not yet executed by this repository, and no wet
+// caller runs them. Binding those catalog names as ConvergeRouteBound would make a ceiling
+// look enforceable. Duty is still the closed 20..100 step-5 set; get_fan_info pwm echo plus
+// thermal-guard dwell is the readback once a wet write exists.
+data megarac_fan_converge_route: FanDutyConvergeRoute = ConvergeRouteUnbound {
   authority: FanPolicyAuthority {
     declaration: decl_ref("extdeps.bmc.megarac_fan_policy", "megarac_fan_mode_surface"),
   },
-  write_operation: decl_ref("extdeps.bmc.megarac", "megarac_op_fan_set_fan_speed"),
-  transport: decl_ref("extdeps.bmc.megarac", "megarac_op_session_login"),
-  readback: decl_ref("extdeps.bmc.megarac", "megarac_op_fan_get_fan_info"),
+  read_obligation: "bind extdeps.bmc.megarac_fan_policy megarac_fan_mode_surface to a wet write/readback fold that POSTs set_fan_speed (fan_pwm_all) and set_manager_status and reads get_fan_info pwm echo plus thermal-guard dwell; catalog rows megarac_op_fan_set_fan_speed and megarac_op_session_login are shape, not that fold",
 }
 
 fn fan_converge_route_for_family(family: BmcFirmwareFamily) -> FanDutyConvergeRoute {
@@ -68,8 +67,9 @@ fn fan_converge_route_for_family(family: BmcFirmwareFamily) -> FanDutyConvergeRo
 // peripheral realization as the route dispatch above, and for the same reason it is not in either
 // extdeps module or in product.fan_policy_standing. The two rows differ from the routes' on purpose:
 // an observation is read against the family's POLICY (what holds a failsafe and when), while a converge
-// route names the WRITE surface; OpenBMC's phosphor zone contract is both, MegaRAC's policy and its
-// unbound fan-mode surface are two declarations.
+// route names the WRITE surface; OpenBMC's phosphor zone contract is both, MegaRAC's policy standing
+// and its Bound GET surface (megarac_fan_mode_surface) are two declarations, and the converge route
+// stays Unbound until a wet write fold exists.
 data megarac_fan_observation_authority: FanPolicyAuthority = FanPolicyAuthority {
   declaration: decl_ref("extdeps.bmc.megarac_fan_policy", "megarac_fan_policy_standing"),
 }
