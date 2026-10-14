@@ -3,7 +3,7 @@ module gunbc.parse_verdict_publish
 import std.types { String, List }
 import std.optional { Present }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
-import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_push }
+import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_push, github_event_name_pull_request }
 import gunbc.action_use_admission { cache_save_action }
 import v2.cli.population_verb_names { cli_verb_parse_population }
 import gunbc.instrument_targets { v2_native_cli_source_roots }

@@ -31,6 +31,11 @@ import gunbc.parse_verdict_schema {
   parse_verdict_request_family,
   parse_compiler_sha_identity_cache_prefix,
 }
+import gunbc.parse_verdict_restore {
+  materialization_restore_if,
+  parse_verdict_restore_step,
+  parse_verdict_restore_consume_step,
+}
 import gunbc.required_ci_contract_epoch {
   required_ci_context_name,
   required_ci_emitted_subject_obligations,
@@ -591,6 +596,15 @@ test fn the_committed_witnesses_yml_binds_the_sha_identity_save() -> Bool {
 test fn the_seed_keep_uses_the_publisher_basename() -> Bool {
   let runner = Filesystem.Read(path: native_lane_runner_source_path, expect: ExpectSuccess).content
   string_contains(s: runner, pattern: parse_verdict_generation_one_basename)
+}
+
+test fn a_pr_head_restores_and_never_saves() -> Bool {
+  let restore_if = materialization_restore_if()
+  (step_if_condition(step: parse_verdict_restore_step()) == restore_if)
+    && (step_if_condition(step: parse_verdict_restore_consume_step()) == restore_if)
+    && string_contains(s: restore_if, pattern: "pull_request")
+    && (string_contains(s: restore_if, pattern: "push") == false)
+    && any(step_with_keys(step: parse_verdict_restore_step()), k => k == "restore-keys")
 }
 
 test fn the_gha_object_key_carries_compiler_identity_and_sha() -> Bool {
