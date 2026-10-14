@@ -4,10 +4,11 @@ import std.types { Bool, NonEmptyStr, List, String }
 import gunbc.host.host_effect { LocalShell }
 import gunbc.runner.runner_host_deploy { runner_index_seq }
 import extdeps.systemd { systemd_memory_max_property, MemoryMax, systemd_tasks_max_property, parse_systemd_task_limit_show }
-import gunbc.host.host_converge { ConvergeVerdict, Drifted, PerSlotMemoryCap, VerdictAbsent, VerdictConverged }
+import gunbc.host.host_converge { fleet_converge_policy, ConvergeVerdict, Drifted, PerSlotMemoryCap, VerdictAbsent, VerdictConverged }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.runner.runner_unit_live_read {
   gunbc_srv1_runner_unit_live_read_fixture,
+  RunnerUnitLiveReadRow,
   runner_unit_live_read_typed,
 }
 import gunbc.fleet.fleet_show_effective_read {
@@ -27,6 +28,8 @@ import gunbc.systemctl_list_units {
   systemctl_list_units_line_as_unit,
 }
 import gunbc.host.host_converge_slice1 {
+  host_converge_from_policy,
+  converge_knob_by_name,
   host_converge_slice1_probe_unit,
   host_converge_slice1_knob_name,
   host_converge_slice1_srv1_per_slot_memory_max_knob,
@@ -330,3 +333,45 @@ test fn witness_tasks_guard_boundary_equality_refuses() -> Bool {
     && !host_converge_slice1_tasks_headroom_refuses(current: 16383, target: 16384)
 }
 
+
+data slice1_swap_knob_name: String = "per_slot_memory_swap_max_bytes"
+
+fn slice1_swap_read(swap_raw: String) -> RunnerUnitLiveReadRow {
+  RunnerUnitLiveReadRow {
+    unit: "actions-runner@srv1-01.service",
+    memory_max_raw: "23622320128",
+    memory_swap_max_raw: swap_raw,
+    memory_high_raw: "22548578304",
+    memory_current_raw: "",
+    probed_at: "2026-10-14",
+  }
+}
+
+// THE SLOT THAT DIFFERS MUST NOT READ CONVERGED. srv1's real swap knob (authored from
+// runner_slot_desired: swap 0) judged against an effective read of 32 GiB -- what the fleet
+// actually carried -- is Drifted; the same knob against 0 is Converged. Max and high are held at
+// their desired values in both reads, so only the swap ceiling discriminates.
+test fn witness_swap_ceiling_32_gib_against_desired_zero_is_drifted() -> Bool {
+  match host_converge_from_policy(policy: fleet_converge_policy(), host: operator_host_srv1) {
+    Present { value: hc } =>
+      match converge_knob_by_name(host: hc, name: slice1_swap_knob_name) {
+        Present { value: knob } =>
+          match per_slot_memory_cap_verdict_from_unit_read(
+            read: runner_unit_live_read_typed(row: slice1_swap_read(swap_raw: "34359738368")),
+            target: knob.target,
+          ) {
+            Present { value: Drifted } =>
+              match per_slot_memory_cap_verdict_from_unit_read(
+                read: runner_unit_live_read_typed(row: slice1_swap_read(swap_raw: "0")),
+                target: knob.target,
+              ) {
+                Present { value: VerdictConverged } => true
+                _ => false
+              }
+            _ => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}

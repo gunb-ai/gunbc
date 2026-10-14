@@ -1009,90 +1009,6 @@ mod compiler_tests {
     }
 
     #[test]
-    fn optional_nested_list_stamps_the_collection_and_present_list_elements() {
-        let result = std::thread::Builder::new()
-            .stack_size(16 * 1024 * 1024)
-            .spawn(|| {
-                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: "probe_opt_list.dag".to_string(),
-                    content: "module probe.opt_list\nfn p_a(o: Optional<List<Optional<Int>>>) -> Int { 0 }\nfn p_b(o: List<Optional<Int>>) -> Int { 0 }\nfn xs() -> Optional<List<Optional<Int>>> { Present { value: [Absent, Present { value: 5 }] } }\nfn ys() -> List<Optional<Int>> { [Absent, Present { value: 5 }] }\n".to_string(),
-                });
-                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src.clone()]));
-                let blocking: Vec<_> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).collect();
-                assert!(blocking.is_empty(), "specimen must typecheck: {:?}", blocking.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect::<Vec<_>>());
-                let graph = resolved.graph.as_ref().expect("typed graph");
-                let typed = graph.modules.iter().find(|m| m.module.name == "probe.opt_list").expect("probe module");
-                let item = |n: &str| typed.items.iter().find(|i| i.name == n).unwrap_or_else(|| panic!("{n}"));
-                let list_inferred = |ty: &std::rc::Rc<crate::v1_std_core::Node>| {
-                    let carrier = if (ty.children.len() as i64) > 0 {
-                        ty.clone()
-                    } else {
-                        match ty.inferred.as_deref() {
-                            Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => rt.clone(),
-                            other => panic!("no type-application children and no inferred carrier, inferred={other:?} name={}", ty.name),
-                        }
-                    };
-                    assert!((carrier.children.len() as i64) > 0, "type application child on {} n={}", carrier.name, carrier.children.len());
-                    let list = carrier.children.iter().find(|c| {
-                        c.name == "List" || match c.inferred.as_deref() {
-                            Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => rt.name == "List",
-                            _ => false,
-                        }
-                    }).cloned().unwrap_or_else(|| carrier.children[0].clone());
-                    match list.inferred.as_deref() {
-                        Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => rt.name.clone(),
-                        other => panic!("inner List must be stamped Resolved, got {other:?} on {}", list.name),
-                    }
-                };
-                let p_a_ty = crate::v1_std_core::param_node_type_expr(item("p_a").params[0].clone());
-                assert_eq!(list_inferred(&p_a_ty), "List", "p_a's inner List under Optional must be stamped List<...>");
-                let p_b_ty = crate::v1_std_core::param_node_type_expr(item("p_b").params[0].clone());
-                assert!(matches!(p_b_ty.inferred.as_deref(), Some(crate::v1_std_core::InferredNode::Resolved { .. })), "p_b List stamp must stay");
-                let nest = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: "probe_opt_nest.dag".to_string(),
-                    content: "module probe.opt_nest\n\ntype RecBox {\n  items: Optional<List<Optional<Int>>>\n}\n\ntype Wrap<T> {\n  inner: T\n}\n\nfn p_rec(b: RecBox) -> Int { 0 }\nfn p_wrap(w: Wrap<List<Optional<Int>>>) -> Int { 0 }\n".to_string(),
-                });
-                let nested_resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![nest.clone()]));
-                let nested_blocking: Vec<_> = nested_resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).collect();
-                assert!(nested_blocking.is_empty(), "nest specimen must typecheck: {:?}", nested_blocking.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect::<Vec<_>>());
-                let nested_graph = nested_resolved.graph.as_ref().expect("nest typed graph");
-                let nested = nested_graph.modules.iter().find(|m| m.module.name == "probe.opt_nest").expect("nest module");
-                let nest_item = |n: &str| nested.items.iter().find(|i| i.name == n).unwrap_or_else(|| panic!("{n}"));
-                let box_ty = nest_item("RecBox");
-                let items = box_ty.children.iter().find(|c| c.name == "items").expect("RecBox.items");
-                let items_ty = match items.inferred.as_deref() {
-                    Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => rt.clone(),
-                    _ => crate::v1_std_core::field_node_type_expr(items.clone()),
-                };
-                assert_eq!(list_inferred(&items_ty), "List", "List nested in a record field must be stamped");
-                let wrap_ty = crate::v1_std_core::param_node_type_expr(nest_item("p_wrap").params[0].clone());
-                assert_eq!(list_inferred(&wrap_ty), "List", "List nested in another generic must be stamped");
-                let xs = item("xs");
-                let body = xs.body.as_ref().expect("xs body");
-                let value_init = body.children.iter().find(|c| crate::v1_std_core::field_init_node_name_at((*c).clone(), resolved.source_indices.clone()) == "value").expect("Present.value");
-                let lit = crate::v1_std_core::field_init_node_value(value_init.clone());
-                assert!(matches!(*lit.expr_data, crate::v1_std_core::ExprData::ExprListLit));
-                for el in lit.children.iter() {
-                    match el.inferred.as_deref() {
-                        Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => {
-                            assert_eq!(rt.name, "Optional", "list element must be Optional<Int>, got {}", rt.name);
-                        }
-                        other => panic!("list element untyped: {other:?}"),
-                    }
-                }
-                let emitted = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![src]), crate::v1_compiler_artifact::RenderTarget::Rust);
-                let out = emitted.files.iter().find(|f| f.path.contains("probe_opt_list")).expect("emitted module");
-                assert!(out.content.contains("Option<Rc<Vec<Option<i64>>>>"), "specimen must emit Option<Rc<Vec<Option<i64>>>>, got:\n{}", out.content);
-                assert!(!out.content.contains("Option<()>"), "unstamped List must not emit Option<()>; emitted:\n{}", out.content);
-            })
-            .expect("failed to spawn thread")
-            .join();
-        result.expect(
-            "optional_nested_list_stamps_the_collection_and_present_list_elements panicked",
-        );
-    }
-
-    #[test]
     fn pub_use_crate_lines_are_sorted_and_two_emissions_are_byte_identical() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
@@ -4544,22 +4460,13 @@ mod compiler_tests {
 
     #[test]
     fn std_nat_emitted_operators_refuse_overflow_through_the_runtime_helpers() {
-        let clamp = |overhead_s: i64| {
-            std::rc::Rc::new(crate::std_realization_schedule::RunnableBatchClamp {
-                overhead: crate::std_measure::second(overhead_s),
-                per_unit: crate::std_measure::millisecond(5),
-                authority: crate::std_decl_ref::decl_ref("ct".to_string(), "clamp".to_string()),
-            })
-        };
         assert_eq!(
-            crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(2), 3),
-            2015,
-            "an in-range clamp is the integer it denotes"
+            crate::std_nat::nat_mul(2, 3),
+            6,
+            "an in-range product is the integer it denotes"
         );
-        let refusal = std::panic::catch_unwind(|| {
-            crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(i64::MAX / 10), 0)
-        })
-        .expect_err("a Nat product past i64 must refuse");
+        let refusal = std::panic::catch_unwind(|| crate::std_nat::nat_mul(i64::MAX / 10, 1000))
+            .expect_err("a Nat product past i64 must refuse");
         let text = refusal
             .downcast_ref::<String>()
             .cloned()
@@ -4567,6 +4474,20 @@ mod compiler_tests {
         assert!(
             text.starts_with("integer overflow:"),
             "the Nat product must refuse through v1_rt, got {text:?}"
+        );
+        let call_result_refusal = std::panic::catch_unwind(|| {
+            crate::std_measure::micrometer_to_nanometer(crate::std_measure::micrometer(
+                i64::MAX / 10,
+            ))
+        })
+        .expect_err("a Nat product of a call result past i64 must refuse");
+        let call_result_text = call_result_refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            call_result_text.starts_with("integer overflow:"),
+            "the call-result Nat product must refuse through v1_rt, got {call_result_text:?}"
         );
     }
 

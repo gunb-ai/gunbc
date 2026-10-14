@@ -1,4 +1,6 @@
 module v2.lens.enforcement.inventory
+import std.optional { Absent, Optional, Present }
+
 
 // Phase 0B derived inventory (operator acceptance 2026-08-02): every row is computed from
 // lens_contract_registry, standing_intent_registry, enrollment discovery receipts, and
@@ -534,8 +536,8 @@ type InventoryRowLookup = InventoryRowFound { value: LensEnforcementInventoryRow
 
 fn find_inventory_row(inventory: List<LensEnforcementInventoryRow>, id: LensIdV0) -> InventoryRowLookup {
   match list_head(xs: filter(xs: inventory, predicate: fn(row) { lens_id_eq_inventory_row(row: row, id: id) })) {
-    HeadFound { value: row } => InventoryRowFound { value: row }
-    HeadAbsent => InventoryRowAbsent
+    Present { value: row } => InventoryRowFound { value: row }
+    Absent => InventoryRowAbsent
   }
 }
 
@@ -634,8 +636,8 @@ fn find_witness_admission_row_for_pattern(
   pattern: String
 ) -> WitnessAdmissionRowLookup {
   match list_head(xs: filter(xs: inventory, predicate: fn(row) { witness_admission_row_matches_pattern(row: row, pattern: pattern) })) {
-    HeadFound { value: row } => WitnessAdmissionRowFound { value: row }
-    HeadAbsent => WitnessAdmissionRowAbsent
+    Present { value: row } => WitnessAdmissionRowFound { value: row }
+    Absent => WitnessAdmissionRowAbsent
   }
 }
 
@@ -688,21 +690,21 @@ fn scheduling_disposition_is_excluded(disposition: SchedulingDisposition) -> Boo
 
 fn cadence_disposition_for_pr_floor(rows: List<CadenceSchedulingRow>) -> SchedulingDisposition {
   match list_head(xs: filter(xs: rows, predicate: fn(r) { cadence_row_is_pr_floor_discovery(row: r) })) {
-    HeadFound { value: row } => row.disposition
-    HeadAbsent => SchedulingExcluded
+    Present { value: row } => row.disposition
+    Absent => SchedulingExcluded
   }
 }
 
 fn cadence_disposition_for_main_push(rows: List<CadenceSchedulingRow>) -> SchedulingDisposition {
   match list_head(xs: filter(xs: rows, predicate: fn(r) { cadence_row_is_main_push_floor(row: r) })) {
-    HeadFound { value: row } => row.disposition
-    HeadAbsent => SchedulingExcluded
+    Present { value: row } => row.disposition
+    Absent => SchedulingExcluded
   }
 }
 
 fn cadence_disposition_for_offline_recipe(rows: List<CadenceSchedulingRow>) -> SchedulingDisposition {
   match list_head(xs: filter(xs: rows, predicate: fn(r) { cadence_row_is_offline_local_recipe(row: r) })) {
-    HeadFound { value: row } => row.disposition
-    HeadAbsent => SchedulingExcluded
+    Present { value: row } => row.disposition
+    Absent => SchedulingExcluded
   }
 }

@@ -19,6 +19,7 @@ import std.content_hash {
 import std.interface_summary { InterfaceHash, module_key, typed_module_key }
 import std.cache_identity {
   parse_source_artifact_kind,
+  parse_verdict_artifact_kind,
   typed_module_artifact_kind,
   resolved_graph_artifact_kind,
   native_compiler_artifact_kind,
@@ -39,7 +40,7 @@ import std.materialization_provider {
   ParsedArtifact, TypedModuleArtifact, ResolvedGraphArtifact, LegacyIncompleteArtifact,
   artifact_content_digest, artifact_bytes, artifact_carried_outputs, artifact_kind,
   ProviderProbe, ProbeAbsent,
-  ParseModuleRequest, TypecheckModuleRequest, ResolveClosureRequest,
+  ParseModuleRequest, ParseVerdictRequest, TypecheckModuleRequest, ResolveClosureRequest,
   NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
   NativeModuleVerdictBundleSubject,
   request_key, request_kind, request_required_outputs,
@@ -63,7 +64,7 @@ import std.materialization_provider {
   provider_serve, provider_admit, artifact_completeness, admission_fold,
   compiler_identity_input, in_process_materialization,
   in_process_fnv_producer_observation_frontier,
-  output_parse_tree, output_typed_module_interface,
+  output_parse_tree, output_parse_verdict, output_parse_diagnostics, output_typed_module_interface,
   output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union,
   output_list_contains,
   lookup_is_hit, lookup_is_miss,
@@ -272,6 +273,42 @@ test fn request_kinds_ground_on_cache_identity_rows() -> Bool {
   (request_kind(req: parse_req) == parse_source_artifact_kind)
     && (request_kind(req: witness_typecheck_request()) == typed_module_artifact_kind)
     && (request_kind(req: witness_closure_request()) == resolved_graph_artifact_kind)
+}
+
+// THE VERDICT REQUEST IS THE PARSE REQUEST PROJECTED, NOT A SECOND IDENTITY: subject and declared inputs are
+// read from the parse contract, so they cannot disagree; only the kind and the required parts differ, so
+// the two keys are apart (a verdict is never served as a tree) and the verdict carries no tree part.
+fn witness_parse_tree_request() -> ArtifactRequest {
+  ParseModuleRequest { source_digest: content_hash_atom(value: "module-source-1"), compiler: witness_compiler() }
+}
+
+fn witness_parse_verdict_request() -> ArtifactRequest {
+  ParseVerdictRequest { source_digest: content_hash_atom(value: "module-source-1"), compiler: witness_compiler() }
+}
+
+test fn a_parse_verdict_request_shares_the_parse_requests_subject_and_inputs() -> Bool {
+  (request_declared_inputs(req: witness_parse_tree_request()) == request_declared_inputs(req: witness_parse_verdict_request()))
+    && (request_kind(req: witness_parse_verdict_request()) == parse_verdict_artifact_kind)
+    && (request_kind(req: witness_parse_tree_request()) == parse_source_artifact_kind)
+    && (request_judgment_contract(req: witness_parse_tree_request()).demand_identity.subject == request_judgment_contract(req: witness_parse_verdict_request()).demand_identity.subject)
+}
+
+test fn a_parse_verdict_requires_the_verdict_and_diagnostics_and_no_tree() -> Bool {
+  let outs = request_required_outputs(req: witness_parse_verdict_request())
+  output_list_contains(xs: outs, wanted: output_parse_verdict)
+    && output_list_contains(xs: outs, wanted: output_parse_diagnostics)
+    && (output_list_contains(xs: outs, wanted: output_parse_tree) == false)
+    && output_list_contains(xs: request_required_outputs(req: witness_parse_tree_request()), wanted: output_parse_tree)
+}
+
+test fn a_parse_verdict_request_keys_apart_from_the_parse_request() -> Bool {
+  (request_key(req: witness_parse_tree_request()) == request_key(req: witness_parse_verdict_request())) == false
+}
+
+test fn a_parse_verdict_changes_key_when_the_parser_input_changes() -> Bool {
+  let a = ParseVerdictRequest { source_digest: content_hash_atom(value: "module-source-1"), compiler: witness_compiler() }
+  let b = ParseVerdictRequest { source_digest: content_hash_atom(value: "module-source-2"), compiler: witness_compiler() }
+  (request_key(req: a) == request_key(req: b)) == false
 }
 
 test fn request_key_is_deterministic() -> Bool {
