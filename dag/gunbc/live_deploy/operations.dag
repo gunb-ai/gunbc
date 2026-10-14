@@ -1,8 +1,9 @@
 module gunbc.live_deploy.operations
 
-import std.types { String, List, NonEmptyStr }
+import std.types { String, List, NonEmptyStr, Int }
 import extdeps.systemd.systemctl {
   systemctl_daemon_reload_argv,
+  systemctl_user_daemon_reload_argv,
   systemctl_enable_argv,
   systemctl_restart_argv,
   systemctl_disable_now_argv,
@@ -54,6 +55,14 @@ fn systemctl_daemon_reload_command(privileged: Bool) -> String {
     shell_privileged_command_text_of_argv(argv: systemctl_daemon_reload_argv())
   } else {
     shell_command_text_of_argv(argv: systemctl_daemon_reload_argv())
+  }
+}
+
+fn systemctl_user_daemon_reload_command(uid: Int, privileged: Bool) -> String {
+  if privileged {
+    shell_privileged_command_text_of_argv(argv: systemctl_user_daemon_reload_argv(uid: uid))
+  } else {
+    shell_command_text_of_argv(argv: systemctl_user_daemon_reload_argv(uid: uid))
   }
 }
 
