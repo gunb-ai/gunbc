@@ -73,6 +73,14 @@ data dag_non_name_keywords: Map<String, Bool> = {
   "acquire": true, "release": true
 }
 
+// Name-admissible keywords that still may not bind as pattern names.
+// keyword_may_bind_as_pattern_name refuses if the spelling is in dag_non_name_keywords
+// (true/false/none/null/acquire/release) OR in this row. This row is only the
+// name-admissible residue; acquire/release are not repeated here.
+data dag_non_pattern_binder_keywords: Map<String, Bool> = {
+  "match": true
+}
+
 data dag_operators: List<OperatorSpec> = [
   OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: Or, algebra_field: none },
   OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: And, algebra_field: none },
@@ -115,6 +123,7 @@ data dag_syntax_spec: SyntaxSpec = SyntaxSpec {
 data dag_parse_environment: ParseEnvironment = ParseEnvironment {
   syntax_spec: dag_syntax_spec,
   non_name_keywords: dag_non_name_keywords,
+  non_pattern_binder_keywords: dag_non_pattern_binder_keywords,
 }
 
 // THE .dag ANNOTATION SPELLING: the `//` delimiter stripped and rendered, once, for every realization that captures .dag comments -- v1.compiler.annotation_bind and v2.compiler.parse attach through it. render_annotation_block's consumer is the round trip in v1.tests.claim.annotation_gap_round_trip_test, which renders a parsed graph back into source and re-parses it. No production .dag-source renderer exists yet; one that rewrites authored .dag from the semantic graph must write prose back through this spelling or it drops it.
