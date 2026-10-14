@@ -1896,10 +1896,10 @@ fn native_claim_child_deadline_from_binding(
 /// THE CARDINALITY REALIZATION INSTRUMENT (`gunbc.cardinality_realization_seed_growth`). The plan,
 /// the join to the coverage rows and the exit are `v2.test.claim.cardinality_realization_coverage`
 /// (`instrument_plan`, `cardinality_realization_standing`); this host only runs what the plan names
-/// and reports each outcome as a typed record: `realized` (the program printed `tag=<n>`), `refused`
-/// (the seed emit or the native entry module refused, with its cause), `red` (the emitted program
-/// failed to build or run), `unreached` (no observation could be taken). Emission is never read as
-/// execution: a native module that emitted is `emitted`.
+/// and reports each outcome as a typed `ObservationKind` record: `ObservedRealized` (the program printed `tag=<n>`), `ObservedRefused`
+/// (the seed emit or the native entry module refused, with its cause), `ObservedRed` (the emitted program
+/// failed to build or run), `ObservedUnreached` (no observation could be taken). Emission is never read as
+/// execution: a native module that emitted is `ObservedEmitted`.
 fn run_cardinality_realization() -> InvocationOutcome {
     use crate::v1_interpreter::{list_value, str_value, Value};
     let label_name = "cardinality-realization";
@@ -1934,30 +1934,81 @@ fn run_cardinality_realization() -> InvocationOutcome {
             "instrument_plan returned {plan_value:?}, not a list"
         ));
     };
-    // (mode, entry, target key, specimen key)
-    let mut lines: Vec<[String; 4]> = Vec::new();
+    // One planned pair: the route (read from the typed variant), and the target and specimen
+    // references, kept as the plan's own values so the outcome echoes them back unchanged.
+    struct Planned {
+        seed_entry: Option<String>,
+        native_module: Option<String>,
+        target: Value,
+        specimen: Value,
+    }
+    let field = |fields: &[(crate::v1_interpreter::Symbol, Value)], name: &str| {
+        let want = ctx.sym(name);
+        fields
+            .iter()
+            .find(|(k, _)| *k == want)
+            .map(|(_, v)| v.clone())
+    };
+    let mut planned: Vec<Planned> = Vec::new();
     for item in plan.iter() {
-        let Value::Str(line) = item else {
-            return unreached(format!("instrument_plan row {item:?} is not text"));
-        };
-        let parts: Vec<&str> = line.split('|').collect();
-        if parts.len() != 4 {
+        let Value::Record { fields, .. } = item else {
             return unreached(format!(
-                "instrument_plan row `{line}` is not mode|entry|target|specimen"
+                "instrument_plan row {item:?} is not a PlannedObservation"
+            ));
+        };
+        let (Some(route), Some(target), Some(specimen)) = (
+            field(fields, "route"),
+            field(fields, "target"),
+            field(fields, "specimen"),
+        ) else {
+            return unreached(format!(
+                "instrument_plan row {item:?} lacks route, target or specimen"
+            ));
+        };
+        let Value::Variant {
+            variant_name,
+            fields: route_fields,
+            ..
+        } = &route
+        else {
+            return unreached(format!(
+                "instrument_plan route {route:?} is not a PlannedRoute"
+            ));
+        };
+        let text = |name: &str| {
+            let found = field(route_fields, name);
+            match &found {
+                Some(Value::Str(s)) => Some(s.to_string()),
+                _ => None,
+            }
+        };
+        let (seed_entry, native_module) = if *variant_name == ctx.sym("SeedRoute") {
+            (text("entry"), None)
+        } else if *variant_name == ctx.sym("NativeRoute") {
+            (None, text("module"))
+        } else {
+            return unreached(format!(
+                "instrument_plan route {route:?} is neither SeedRoute nor NativeRoute"
+            ));
+        };
+        if seed_entry.is_none() && native_module.is_none() {
+            return unreached(format!(
+                "instrument_plan route {route:?} names no entry or module"
             ));
         }
-        lines.push([
-            parts[0].into(),
-            parts[1].into(),
-            parts[2].into(),
-            parts[3].into(),
-        ]);
+        planned.push(Planned {
+            seed_entry,
+            native_module,
+            target,
+            specimen,
+        });
     }
     let deadline = std::time::Duration::from_secs(1800);
-    let mut records: Vec<[String; 4]> = Vec::new(); // target, specimen, kind, detail
-    for [mode, entry, target, specimen] in lines.iter().filter(|l| l[0] == "seed") {
-        let _ = mode;
-        let (kind, detail) = match cli_run::run_native_claim_program(&roots, entry, deadline) {
+    // (planned index, ObservationKind variant name, its one field name, its text)
+    let mut outcomes: Vec<(usize, &'static str, &'static str, String)> = Vec::new();
+    for (i, p) in planned.iter().enumerate() {
+        let Some(entry) = &p.seed_entry else { continue };
+        let outcome = match cli_run::run_native_claim_program(&roots, entry, deadline) {
             Ok(cli_run::NativeClaimProgramAttempt::Completed(run)) => {
                 let tag = run
                     .stdout
@@ -1965,29 +2016,52 @@ fn run_cardinality_realization() -> InvocationOutcome {
                     .find_map(|l| l.strip_prefix("tag="))
                     .map(str::to_string);
                 match (run.status, tag) {
-                    (Some(0), Some(tag)) => ("realized", tag),
-                    (status, _) => ("red", format!("exit {status:?}: {}", run.stderr.trim_end())),
+                    (Some(0), Some(tag)) => ("ObservedRealized", "tag", tag),
+                    (status, _) => (
+                        "ObservedRed",
+                        "detail",
+                        format!("exit {status:?}: {}", run.stderr.trim_end()),
+                    ),
                 }
             }
-            Ok(cli_run::NativeClaimProgramAttempt::DeadlineExceeded { .. }) => {
-                ("unreached", format!("{entry} exceeded its deadline"))
+            Ok(cli_run::NativeClaimProgramAttempt::DeadlineExceeded { .. }) => (
+                "ObservedUnreached",
+                "detail",
+                format!("{entry} exceeded its deadline"),
+            ),
+            Err(cause) if cause.contains("cause=EmissionRefused") => {
+                ("ObservedRefused", "cause", cause)
             }
-            Err(cause) if cause.contains("cause=EmissionRefused") => ("refused", cause),
-            Err(cause) if cause.contains("cause=EmittedCompilerBuildFailed") => ("red", cause),
-            Err(cause) => ("unreached", cause),
+            Err(cause) if cause.contains("cause=EmittedCompilerBuildFailed") => {
+                ("ObservedRed", "detail", cause)
+            }
+            Err(cause) => ("ObservedUnreached", "detail", cause),
         };
-        records.push([target.clone(), specimen.clone(), kind.into(), detail]);
+        outcomes.push((i, outcome.0, outcome.1, outcome.2));
     }
-    let native: Vec<&[String; 4]> = lines.iter().filter(|l| l[0] == "native").collect();
-    let mut modules: Vec<String> = native.iter().map(|l| l[1].clone()).collect();
+    let mut modules: Vec<String> = planned
+        .iter()
+        .filter_map(|p| p.native_module.clone())
+        .collect();
     modules.sort();
     modules.dedup();
-    let emitted = cli_run::run_v2_native_cli_emit(&roots, &modules);
-    for [_, entry, target, specimen] in native {
-        let (kind, detail) = match &emitted {
-            Err(cause) => ("unreached", cause.clone()),
+    let emitted = if modules.is_empty() {
+        Ok(Vec::new())
+    } else {
+        cli_run::run_v2_native_cli_emit(&roots, &modules)
+    };
+    for (i, p) in planned.iter().enumerate() {
+        let Some(entry) = &p.native_module else {
+            continue;
+        };
+        let outcome = match &emitted {
+            Err(cause) => ("ObservedUnreached", "detail", cause.clone()),
             Ok(runs) => match runs.iter().find(|r| &r.0 == entry) {
-                None => ("unreached", format!("no native emit run for {entry}")),
+                None => (
+                    "ObservedUnreached",
+                    "detail",
+                    format!("no native emit run for {entry}"),
+                ),
                 Some((_, status, stdout, stderr)) => {
                     let own = serde_json::from_str::<serde_json::Value>(stdout)
                         .ok()
@@ -2001,10 +2075,11 @@ fn run_cardinality_realization() -> InvocationOutcome {
                             })
                         });
                     match (own, status) {
-                        (Some(Some(cause)), _) => ("refused", cause),
-                        (Some(None), Some(0)) => ("emitted", String::new()),
+                        (Some(Some(cause)), _) => ("ObservedRefused", "cause", cause),
+                        (Some(None), Some(0)) => ("ObservedEmitted", "", String::new()),
                         _ => (
-                            "unreached",
+                            "ObservedUnreached",
+                            "detail",
                             format!(
                                 "native emit of {entry}: status {status:?} {}",
                                 stderr.lines().next().unwrap_or("")
@@ -2014,31 +2089,45 @@ fn run_cardinality_realization() -> InvocationOutcome {
                 }
             },
         };
-        records.push([target.clone(), specimen.clone(), kind.into(), detail]);
+        outcomes.push((i, outcome.0, outcome.1, outcome.2));
     }
-    let rendered: Vec<String> = records
+    let rendered: Vec<String> = outcomes
         .iter()
-        .map(|r| {
+        .map(|(i, variant, _, text)| {
+            let p = &planned[*i];
+            let entry = p.seed_entry.as_ref().or(p.native_module.as_ref());
             format!(
-                "{} | {} | {} | {}",
-                r[0],
-                r[1],
-                r[2],
-                r[3].lines().next().unwrap_or("")
+                "{} | {variant} | {}",
+                entry.map(String::as_str).unwrap_or(""),
+                text.lines().next().unwrap_or("")
             )
         })
         .collect();
     let observations = list_value(
-        records
+        outcomes
             .iter()
-            .map(|r| Value::Record {
-                type_name: ctx.sym("ObservationRecord"),
-                fields: std::rc::Rc::new(vec![
-                    (ctx.sym("target"), str_value(&r[0])),
-                    (ctx.sym("specimen"), str_value(&r[1])),
-                    (ctx.sym("kind"), str_value(&r[2])),
-                    (ctx.sym("detail"), str_value(&r[3])),
-                ]),
+            .map(|(i, variant, field_name, text)| {
+                let p = &planned[*i];
+                let outcome_fields = if field_name.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![(ctx.sym(field_name), str_value(text))]
+                };
+                Value::Record {
+                    type_name: ctx.sym("ObservationRecord"),
+                    fields: std::rc::Rc::new(vec![
+                        (ctx.sym("target"), p.target.clone()),
+                        (ctx.sym("specimen"), p.specimen.clone()),
+                        (
+                            ctx.sym("outcome"),
+                            Value::Variant {
+                                type_name: ctx.sym("ObservationKind"),
+                                variant_name: ctx.sym(variant),
+                                fields: std::rc::Rc::new(outcome_fields),
+                            },
+                        ),
+                    ]),
+                }
             })
             .collect::<Vec<_>>(),
     );
