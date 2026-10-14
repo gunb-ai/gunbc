@@ -1,6 +1,7 @@
 module v2.test.claim.parse.population_grammar_gaps
 
-import v2.compiler.infer { infer, refinement_declaration_of_node }
+import v2.compiler.infer { infer }
+import v2.std.type_binder { refinement_declaration_of_node }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
