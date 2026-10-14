@@ -16,15 +16,15 @@ import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_
 
 // THE STORE ROOT IS A COPRODUCT SO DURABILITY IS CONSTRUCTED, NOT INFERRED FROM A PATH.
 //
-// DurableHostVolume is fieldless: the live host volume is one declared path. A consumer that asks
-// for that durability cannot be handed /tmp (DESIGN section 4b, structurally impossible).
+// DurableHostVolume is the only DurableAcrossRuns constructor: fieldless, the live host volume is
+// one declared path. A consumer that asks for that durability cannot be handed /tmp, and the arm
+// has no unconstrained path operand (DESIGN section 4b, structurally impossible).
 //
-// JobWorkspaceScoped is the other durable arm: the store is the declared leaf
-// `materialization-store` under a caller-supplied scope root. The arm has no String. Macbook,
-// srv2-deploy, isolated labs, and their witness copies collapse here -- their store was already
-// instance_root/materialization-store; that instance_root IS the declared workspace of that
-// instance. A per-run CI job workspace is EphemeralJobWorkspace, same leaf rule, durability
-// EphemeralToFrame, so wrapping a job directory as DurableAcrossRuns has no constructor.
+// JobWorkspaceScoped is the leaf `materialization-store` under a caller-supplied scope root. The
+// arm has no String, but the scope root is an arbitrary instance_root, so the store is
+// EphemeralToFrame -- macbook, srv2-deploy, isolated labs, and their witness copies collapse here
+// as workspace-scoped, not as durable-across-runs. A per-run CI job workspace is
+// EphemeralJobWorkspace, same leaf rule, same durability.
 //
 // WitnessScratchRoot is the only arm that takes a path; it admits only /tmp/gunbc_* scratch.
 //
@@ -72,7 +72,7 @@ fn materialization_store_staging_root_path(root: MaterializationStoreRoot, scope
 fn materialization_store_durability(root: MaterializationStoreRoot) -> MaterializationStoreDurability {
   match root {
     DurableHostVolume => DurableAcrossRuns
-    JobWorkspaceScoped => DurableAcrossRuns
+    JobWorkspaceScoped => EphemeralToFrame
     EphemeralJobWorkspace => EphemeralToFrame
     WitnessScratchRoot { root: _ } => EphemeralToFrame
   }
