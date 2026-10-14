@@ -1,0 +1,56 @@
+module test.claim.keyed_roster_build_scaling_baseline
+
+import std.keyed_row { KeyedRow }
+import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey, keyed_roster_build }
+import std.types { Bool, Int, String, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// BASELINE INSTRUMENT for std.keyed_roster keyed_roster_build (indexed-keyed-rosters lane, K3).
+// Read eval_steps from each test fn's [witness] line, not the verdict: every fn here is green by
+// construction and the reading is the point. 256, 512 and 1024 DISTINCT keys are built by binary
+// doubling (a linear map + concat per level), so the key generation costs O(n) and the build is
+// the only quadratic term. The *_keys_only control fns generate the same keys and fold nothing,
+// so (build - keys_only) at each n isolates keyed_roster_build; successive ratios read 4.0 for
+// quadratic and 2.0 for linear. The post-regrounding build must land near 2.0 per doubling.
+// Run: claim_batch --source-root dag --source-root src/v2 --entry
+// dag/test/claim/keyed_roster_build_scaling_baseline.dag --functions <fns>.
+
+fn doubled_keys(keys: List<String>) -> List<String> {
+  concat(map(keys, fn(k) { k + "0" }), map(keys, fn(k) { k + "1" }))
+}
+
+fn keys_256() -> List<String> {
+  doubled_keys(keys: doubled_keys(keys: doubled_keys(keys: doubled_keys(keys: doubled_keys(keys: doubled_keys(keys: doubled_keys(keys: doubled_keys(keys: [""]))))))))
+}
+
+fn keys_512() -> List<String> {
+  doubled_keys(keys: keys_256())
+}
+
+fn keys_1024() -> List<String> {
+  doubled_keys(keys: keys_512())
+}
+
+fn rows_of(keys: List<String>) -> List<KeyedRow<String, Int>> {
+  map(keys, fn(k) { KeyedRow { row_key: k, value: 0 } })
+}
+
+fn key_eq_string(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn builds(keys: List<String>) -> Bool {
+  match keyed_roster_build(incomings: rows_of(keys: keys), key_eq: key_eq_string) {
+    KeyedRosterBuilt { rows: rows } => count(rows) == count(keys)
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+test fn keyed_roster_build_keys_only_256() -> Bool { count(rows_of(keys: keys_256())) == 256 }
+test fn keyed_roster_build_keys_only_512() -> Bool { count(rows_of(keys: keys_512())) == 512 }
+test fn keyed_roster_build_keys_only_1024() -> Bool { count(rows_of(keys: keys_1024())) == 1024 }
+test fn keyed_roster_build_256() -> Bool { builds(keys: keys_256()) }
+test fn keyed_roster_build_512() -> Bool { builds(keys: keys_512()) }
+test fn keyed_roster_build_1024() -> Bool { builds(keys: keys_1024()) }
