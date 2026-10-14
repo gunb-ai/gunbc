@@ -1,4 +1,6 @@
 module v2.lens.fallback_arm_census
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { List }
 import v2.lens.common.construction_justification {
@@ -6,7 +8,7 @@ import v2.lens.common.construction_justification {
   WallAfterGrounding
 }
 import std.disposition { RealizationDispatch }
-import std.algebra { Empty, list_snoc_item, fold_list, list_tail, length, TailFound, TailAbsent }
+import std.algebra { Empty, list_snoc_item, fold_list, skip, length }
 import v2.std.collection { Absent, Optional, Present }
 import v2.std.integer { Int }
 import v2.std.text { String }
@@ -178,10 +180,7 @@ fn planted_match_with_wildcard_opaque() -> Node {
 fn match_positional_arms(match_node: Node) -> List<Node> {
   match match_node.kind {
     ComputationNode { behavior: Match } =>
-      match list_tail(xs: node_positional_child_targets(node: match_node)) {
-        TailFound { tail: arms } => arms
-        TailAbsent => Empty
-      }
+      skip(xs: node_positional_child_targets(node: match_node), n: 1)
     TypeNode { connective: _ } => Empty
     ComputationNode { behavior: _ } => Empty
   }
