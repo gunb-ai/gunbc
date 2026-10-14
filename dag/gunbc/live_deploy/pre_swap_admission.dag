@@ -3,7 +3,6 @@ module gunbc.live_deploy.pre_swap_admission
 import std.types { String, Bool, Int, NonEmptyStr }
 import std.algebra { trim }
 import std.integer { int_to_decimal_string }
-import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CensusObserved,
@@ -14,12 +13,11 @@ import gunbc.compile_diagnostic_census {
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   selected_deployment_spec,
-  srv1_production_selected_identity,
-  srv1_lab_selected_identity,
 }
 import gunbc.live_deploy.spec { DeploymentSpec }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
+import extdeps.shell
 
 // PRE-MUTATION ADMISSION FOR A LIVE SWAP. Two observed holes, one decision, used by the CI
 // transaction, the operator-local converge deploy, and the desired-instance apply. Nothing here
@@ -35,16 +33,9 @@ import extdeps.git
 //
 // (2) TARGET-BOUND BRANCH. Operator 2026-10-09 let an empty --candidate-branch admit any nonempty
 // checkout (fleet_converge_deploy_branch_admits). Operator 2026-10-13 (gunbc.design_ruling
-// production_is_main_only_lab_admits_integration) narrows that: production admits only main;
-// the lab target admits the integration branch lab-dev. The CLI flag check remains a second,
-// optional equality; it does not widen production.
-
-data production_admitted_branch: String = "main"
-data lab_integration_branch: String = "lab-dev"
-
-type DeployTargetClass
-  = ProductionTarget
-  | LabTarget
+// production_is_main_only_lab_admits_integration) narrows that: each DesiredDeployment row
+// carries the branch it admits. An empty admitted_branch refuses; there is no class default.
+// The CLI flag check remains a second, optional equality; it does not widen the row.
 
 type TargetBranchAdmission
   = TargetBranchAdmitted
@@ -59,33 +50,14 @@ type PreSwapAdmission
   = PreSwapAdmitted
   | PreSwapRefused { reason: String }
 
-fn deploy_target_class(selected: DeclarationRef) -> DeployTargetClass {
-  if declaration_ref_eq(a: selected, b: srv1_lab_selected_identity()) {
-    LabTarget
-  } else {
-    ProductionTarget
-  }
-}
-
-fn admitted_branch_for(class: DeployTargetClass) -> String {
-  match class {
-    ProductionTarget => production_admitted_branch
-    LabTarget => lab_integration_branch
-  }
-}
-
-fn target_class_label(class: DeployTargetClass) -> String {
-  match class {
-    ProductionTarget => "production"
-    LabTarget => "lab"
-  }
-}
-
-fn target_branch_admission(selected: DeclarationRef, observed: String) -> TargetBranchAdmission {
-  let class = deploy_target_class(selected: selected)
-  let required = admitted_branch_for(class: class)
+fn target_branch_admission(admitted: String, observed: String) -> TargetBranchAdmission {
+  let required = trim(s: admitted)
   let seen = trim(s: observed)
-  if seen != "" && seen == required {
+  if required == "" {
+    TargetBranchRefused {
+      reason: "live_deploy: DeployTargetBranchUndeclared — the desired row carries no admitted branch; refuse rather than invent a class",
+    }
+  } else if seen != "" && seen == required {
     TargetBranchAdmitted
   } else {
     TargetBranchRefused {
@@ -94,8 +66,7 @@ fn target_branch_admission(selected: DeclarationRef, observed: String) -> Target
         seen,
         "' is not the admitted branch '",
         required,
-        "' for ",
-        target_class_label(class: class),
+        "'",
       ], ""),
     }
   }
@@ -133,12 +104,29 @@ fn observe_spec_serve_entry_compile(spec: DeploymentSpec) -> ServeEntryCompileVe
   observe_serve_entry_file_compile(entry: spec.service.serve_entry as String)
 }
 
+// Named checkout first. A sha checkout (Actions `ref: github.sha`) reports CurrentBranch HEAD;
+// then GITHUB_REF_NAME is the event branch, not a fabricated production class.
+fn observe_checkout_branch() -> String {
+  let named = trim(s: git.Core.CurrentBranch().branch)
+  if named != "" && named != "HEAD" {
+    named
+  } else {
+    match shell.Env.Get(name: "GITHUB_REF_NAME" as NonEmptyStr).value {
+      Absent => named
+      Present { value: v } => {
+        let event = trim(s: v)
+        if event == "" { named } else { event }
+      }
+    }
+  }
+}
+
 fn live_deploy_pre_swap_admission(
-  selected: DeclarationRef,
+  admitted: String,
   observed_branch: String,
   compile: ServeEntryCompileVerdict,
 ) -> PreSwapAdmission {
-  match target_branch_admission(selected: selected, observed: observed_branch) {
+  match target_branch_admission(admitted: admitted, observed: observed_branch) {
     TargetBranchRefused { reason } => PreSwapRefused { reason: reason }
     TargetBranchAdmitted =>
       match compile {
@@ -165,8 +153,8 @@ fn live_deploy_pre_swap_admission(
 
 fn live_deploy_pre_swap_for_deployment(deployment: DesiredDeployment) -> PreSwapAdmission {
   live_deploy_pre_swap_admission(
-    selected: deployment.selected_identity,
-    observed_branch: trim(s: git.Core.CurrentBranch().branch),
+    admitted: deployment.admitted_branch,
+    observed_branch: observe_checkout_branch(),
     compile: observe_spec_serve_entry_compile(spec: selected_deployment_spec(row: deployment)),
   )
 }

@@ -59,11 +59,17 @@ import gunbc.live_deploy.spec {
 // selected_identity IS THE SELECTION RECEIPT FIELD (std.decision SelectionReceipt), carried
 // on the row it admits against. Convergence does not re-derive which declaration was
 // selected. The LiveDeploy FleetConvergeRequest arm binds admission to this field.
+// admitted_branch is a fact of the row. An empty string is undeclared and must refuse
+// at target_branch_admission; there is no class default for an unclassified identity.
+data production_admitted_branch: String = "main"
+data lab_integration_branch: String = "lab-dev"
+
 type DesiredDeployment {
   instance: HostDashboardInstance
   target: DeploymentHostTarget
   names: DeploymentNames
   selected_identity: DeclarationRef
+  admitted_branch: String
 }
 
 fn desired_module_path() -> String {
@@ -98,6 +104,7 @@ fn srv1_production_desired_deployment() -> DesiredDeployment {
     target: deployment_srv1_target(),
     names: srv1_live_deployment_names(instance: instance),
     selected_identity: srv1_production_selected_identity(),
+    admitted_branch: production_admitted_branch,
   }
 }
 
@@ -108,6 +115,7 @@ fn srv1_lab_desired_deployment() -> DesiredDeployment {
     target: deployment_srv1_target(),
     names: srv1_lab_deployment_names(instance: instance),
     selected_identity: srv1_lab_selected_identity(),
+    admitted_branch: lab_integration_branch,
   }
 }
 
@@ -136,6 +144,7 @@ fn srv2_deploy_desired_deployment() -> DesiredDeployment {
     target: deployment_srv2_target(),
     names: derived_deployment_names(instance: instance),
     selected_identity: srv2_deploy_selected_identity(),
+    admitted_branch: production_admitted_branch,
   }
 }
 
