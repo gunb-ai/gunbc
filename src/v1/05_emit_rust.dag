@@ -187,7 +187,7 @@ import std.types { is_container_type, is_kernel_type, container_template_algebra
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name_local, binding_declares_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name_local, binding_declares_name, listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -2229,6 +2229,8 @@ fn rust_fold_rendered_type_has_any_spurious_generic(type_str: String, generic_pa
 fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List<String>, env: TypeEnv) -> Bool {
   if type_var_in_fn_generic_scope(id: name, generic_param_names: generic_param_names) {
     false
+  } else if listed_import_required_bare_call_blocked(env: env, name: name) {
+    true
   } else {
     match lookup_binding_by_name_local(env: env, name: name) {
       Present { value: binding } =>
