@@ -7,7 +7,7 @@ import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_strin
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsObserved, RoundsUnobserved, RoundObservation, round_changed_path_count_rise,
 }
-import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool }
+import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance, ProviderRunning,
   ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,
@@ -31,7 +31,7 @@ import gunbc.roadmap.roadmap_workflow_command { attempt_key_short_form }
 import gunbc.roadmap.roadmap_event_log { EventPrincipal, event_principal_is_fabric }
 import gunbc.roadmap.roadmap_issue_location { issue_work_path, issue_work_event_path }
 import gunbc.site.element.build_meter {
-  BuildMeterView, BuildMeterRound, BuildMeterMark, BuildMeterRun, BuildMeterWrite, BuildMeterRead, BuildMeterEdit, BuildMeterKind,
+  BuildMeterView, BuildMeterRound, BuildMeterMark, BuildMeterRun, BuildMeterWrite, BuildMeterRead, BuildMeterEdit, BuildMeterReport, BuildMeterKind,
   BuildMeterEvidence, BuildMeterTypedOperation, BuildMeterToolCallCount, BuildMeterChangedPathCountRise,
   BuildMeterCoverage, BuildMeterNoRoundYet, BuildMeterRoundsRecorded, BuildMeterRoundsNotRecorded,
   BuildMeterPose, BuildMeterWorking, BuildMeterWaitingForSeat, BuildMeterStopped, BuildMeterDone, BuildMeterIdle,
@@ -227,6 +227,7 @@ fn build_meter_tool_kind(tool: HarnessTool) -> BuildMeterKind {
     ReadFileTool => BuildMeterRead
     WriteFileTool => BuildMeterWrite
     EditFileTool => BuildMeterEdit
+    HandInTool => BuildMeterReport
   }
 }
 

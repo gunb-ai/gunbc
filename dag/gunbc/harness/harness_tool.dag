@@ -12,7 +12,7 @@ import extdeps.languages.json.parse {
 import extdeps.gunbc
 import gunbc.harness.harness_wire { HarnessWireBlock, WireToolUseBlock }
 import gunbc.harness.harness_tool_kind {
-  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool,
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
   harness_tool_wire_name,
   HarnessToolRecognized, HarnessToolUnrecognized, harness_tool_of_wire_name,
 }
@@ -286,6 +286,12 @@ fn harness_execute_tool_use(
                   detail: harness_unimplemented_tool_detail(tool: EditFileTool),
                 },
               }
+            HandInTool =>
+              ToolRefused {
+                disposition: ToolEffectRefused {
+                  detail: "hand_in is realized by the turn, which binds the candidate and waits for its outcome; this dispatcher does not run it",
+                },
+              }
           }
       }
     WireTextBlock { text: _ } => ToolRefused { disposition: ToolEffectRefused { detail: "block is not a tool use" } }
@@ -305,4 +311,11 @@ fn harness_unimplemented_tool_detail(tool: HarnessTool) -> String {
     " is declared in the harness tool surface but has no realization yet; it is deliberately not ",
     "advertised to the model, so reaching this arm means a caller invoked a tool it was never offered",
   ], "")
+}
+
+// OFFERED TOOLS ARE THE ONES THAT RUN. run_command is the shell; hand_in is the typed acceptance
+// wait (operator ruling 2026-10-14: trusted operations may block to their own budget). The three
+// file tools stay declared and unadvertised until they have a realization.
+fn harness_offered_tools() -> List<HarnessTool> {
+  [RunCommandTool, HandInTool]
 }

@@ -15,7 +15,7 @@ import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnStoppedBySupervision, TurnSupervisionUnavailable, TurnAcceptanceUnavailable, HarnessSupervision, Unsupervised, SupervisedRounds, HarnessAcceptanceRoute, harness_tool_contract_wire,
   CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
-  harness_outcome_detail, harness_event_placement_waiting,
+  harness_outcome_detail, harness_event_placement_waiting, KeepBindingAlive, FleetSeatHeld, HarnessAcceptanceCapacity,
 }
 import gunbc.harness.harness_guidance {
   harness_worker_guidance_at, harness_guidance_prose, harness_probe_guidance,
@@ -258,6 +258,7 @@ fn harness_macbook_config(backend: HarnessBoundBackend) -> HarnessTurnConfig {
     environment: harness_macbook_environment(),
     completion: CompletesOnProviderStop,
     backend_access: backend.access,
+    acceptance_capacity: KeepBindingAlive,
   }
 }
 
@@ -679,6 +680,7 @@ fn harness_worker_config(
   backend: HarnessBoundBackend,
   system_prompt: String,
   supervision: HarnessSupervision,
+  acceptance_capacity: HarnessAcceptanceCapacity,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend.url,
@@ -700,6 +702,18 @@ fn harness_worker_config(
     },
     completion: CompletesOnProviderStop,
     backend_access: backend.access,
+    acceptance_capacity: acceptance_capacity,
+  }
+}
+
+fn harness_acceptance_capacity_of(binding: HarnessSeatBinding) -> HarnessAcceptanceCapacity {
+  match binding {
+    HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } =>
+      FleetSeatHeld { binding: binding }
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => KeepBindingAlive
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => KeepBindingAlive
+    HarnessSeatPending { detail: _ } => KeepBindingAlive
+    HarnessSeatRefused { detail: _ } => KeepBindingAlive
   }
 }
 
@@ -831,6 +845,7 @@ fn harness_worker_cli(
                 check_directory: supervision_dir,
                 acceptance: HarnessAcceptanceRoute { inbox: handin_inbox, node_id: node_id, attempt_key: attempt_key },
               ),
+              acceptance_capacity: harness_acceptance_capacity_of(binding: binding),
             ),
             prompt: brief,
             step_budget: harness_worker_step_budget,
@@ -891,6 +906,7 @@ fn harness_reviewer_config(
     },
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
+    acceptance_capacity: KeepBindingAlive,
   }
 }
 
@@ -975,6 +991,7 @@ fn harness_auditor_config(
     },
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
+    acceptance_capacity: KeepBindingAlive,
   }
 }
 
@@ -1119,6 +1136,7 @@ fn harness_hosted_probe_cli(worktree: String, timeout_program: String, request_s
                 backend: backend,
                 system_prompt: harness_default_system_prompt,
                 supervision: Unsupervised,
+                acceptance_capacity: KeepBindingAlive,
               ),
               prompt: harness_probe_prompt,
               step_budget: harness_default_step_budget,

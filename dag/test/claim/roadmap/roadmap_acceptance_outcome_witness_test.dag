@@ -12,12 +12,16 @@ import gunbc.roadmap.roadmap_acceptance_outcome {
   AcceptanceOutcome, AcceptanceAccepted, AcceptanceChangesRequested, AcceptanceUnavailable,
   AcceptanceOutcomeRecord, AcceptanceOutcomeDecoded, AcceptanceOutcomeUndecodable,
   acceptance_outcome_of_stages, acceptance_outcome_record_text, acceptance_outcome_decode, acceptance_outcome_key,
+  handin_identity, acceptance_outcome_addresses,
+}
+import gunbc.harness.harness_turn {
+  harness_acceptance_outcome_tool_text, harness_acceptance_wait_expired_cause, harness_acceptance_outcome_for,
 }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderAwaitingAcceptance, ProviderCompleted, ProviderRunning,
 }
 import gunbc.roadmap.roadmap_belt_obligation {
-  belt_attempt_obligation_outstanding, CaptureObligation, AcceptanceOutcomeObligation,
+  belt_attempt_obligation_outstanding, CaptureObligation, VerifyObligation, AcceptanceOutcomeObligation,
   belt_provider_candidate_ready, belt_provider_handed_in,
 }
 
@@ -90,4 +94,37 @@ test fn a_handed_in_worker_is_captured_and_owed_an_outcome() -> Bool {
     && belt_attempt_obligation_outstanding(kind: CaptureObligation, provider: handed, segments: [WorkflowSegment { kind: SubmissionWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting capture" }])
     && belt_attempt_obligation_outstanding(kind: AcceptanceOutcomeObligation, provider: handed, segments: [])
     && !belt_attempt_obligation_outstanding(kind: AcceptanceOutcomeObligation, provider: ended, segments: [])
+    && belt_attempt_obligation_outstanding(
+      kind: VerifyObligation,
+      provider: handed,
+      segments: [
+        WorkflowSegment { kind: SubmissionWorkflowSegment, state: WorkflowSegmentComplete, detail: "captured" },
+        WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "owed" },
+      ],
+    )
+}
+
+// SAME WORDING AND A DIFFERENT HEAD ARE DIFFERENT HAND-INS: the digest of the readiness text is not
+// the identity, so an outcome written for the first candidate cannot complete the second.
+test fn same_wording_and_changed_code_is_a_fresh_hand_in() -> Bool {
+  let first = handin_identity(attempt_key: "a1", ordinal: 1, head: "aaa", scm_root: "root-a")
+  let revised = handin_identity(attempt_key: "a1", ordinal: 1, head: "bbb", scm_root: "root-a")
+  let stale = AcceptanceOutcomeRecord { handin: first, head: "aaa", outcome: AcceptanceAccepted }
+  first != revised
+    && acceptance_outcome_addresses(record: stale, handin: first)
+    && !acceptance_outcome_addresses(record: stale, handin: revised)
+}
+
+test fn the_tool_result_is_the_outcome() -> Bool {
+  harness_acceptance_outcome_tool_text(o: AcceptanceAccepted) == "accepted"
+    && harness_acceptance_outcome_tool_text(o: AcceptanceChangesRequested { stage: "verification", findings: "red" }).contains("changes-requested")
+    && harness_acceptance_outcome_tool_text(o: AcceptanceChangesRequested { stage: "verification", findings: "red" }).contains("red")
+    && harness_acceptance_outcome_tool_text(o: AcceptanceUnavailable { cause: "timeout" }).contains("unavailable")
+    && harness_acceptance_outcome_tool_text(o: AcceptanceUnavailable { cause: "timeout" }).contains("timeout")
+}
+
+test fn a_bounded_wait_expires_to_unavailable() -> Bool {
+  harness_acceptance_wait_expired_cause(handin: "h9").contains("h9")
+    && harness_acceptance_wait_expired_cause(handin: "h9").contains(" s")
+    && (match harness_acceptance_outcome_for(text: Absent, handin: "h9") { Absent => true  Present { value: _ } => false })
 }
