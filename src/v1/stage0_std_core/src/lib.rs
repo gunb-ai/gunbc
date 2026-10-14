@@ -36,6 +36,9 @@ pub mod std_decl_ref;
 #[path = "../../stage0/src/std_keyed_row.rs"]
 pub mod std_keyed_row;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_key_relation.rs"]
+pub mod std_key_relation;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_keyed_roster.rs"]
 pub mod std_keyed_roster;
 #[rustfmt::skip]
