@@ -127,7 +127,8 @@ test fn fn_field_record_as_map_key_refuses() -> Bool {
 //
 // w_generic_nested_in_a_key_type_argument_earns_eq_and_hash: `Map<Wrapper<K>, V>` keys on
 // `Wrapper<K>`, whose derived Hash holds only when K: Hash, so K owes the bound at any depth.
-// w_generic_caller_reaching_the_map_only_through_a_callee_earns_it: the wrapper never names a Map; it
+// w_generic_caller_reaching_the_map_only_through_a_callee_earns_it: the wrapper's SIGNATURE names no Map (only the callee's does), so signature
+// derivation alone cannot bound A and only forwarding can green it; it
 // owes K the bound because the callee DECLARES it on the parameter K is passed to (propagated, not
 // re-derived at the call site).
 // w_generic_outside_every_key_position_stays_unbounded: K is a plain parameter and the map is keyed by
@@ -143,7 +144,7 @@ fn w_generic_nested_in_a_key_type_argument_earns_eq_and_hash() -> Bool {
 
 fn w_generic_caller_reaching_the_map_only_through_a_callee_earns_it() -> Bool {
   compile_dag_rust_emit_check(
-    "module map_key_witness.callee_forwarded\nimport v2.std.collection { Map, map_lookup }\nimport std.optional { Optional }\ntype Wrapper<K> {\n  subject: K\n}\nfn inner_probe<K, V>(m: Map<Wrapper<K>, V>, key: Wrapper<K>) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\nfn outer_probe<A, B>(table: Map<Wrapper<A>, B>, key: Wrapper<A>) -> Optional<B> {\n  inner_probe(m: table, key: key)\n}\n",
+    "module map_key_witness.callee_forwarded\nimport v2.std.collection { Map, map_lookup, empty_map }\nimport std.optional { Optional }\ntype Wrapper<K> {\n  subject: K\n}\nfn inner_probe<K, V>(m: Map<Wrapper<K>, V>, key: Wrapper<K>) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\nfn outer_probe<A, B>(key: Wrapper<A>) -> Optional<B> {\n  inner_probe(m: empty_map(), key: key)\n}\n",
     "src/map_key_witness_callee_forwarded.rs",
     ["pub fn outer_probe<A: Clone + std::cmp::Eq + std::hash::Hash, B"],
     ["pub fn outer_probe<A: Clone, B", "pub fn outer_probe<A, B"]
