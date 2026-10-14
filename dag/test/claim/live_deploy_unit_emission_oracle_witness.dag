@@ -32,6 +32,7 @@ import gunbc.live_deploy.emit {
   live_deploy_belt_service_unit_file,
   live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file,
   live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file,
+  live_deploy_belt_dispatch_spool_path_unit_file, live_deploy_belt_dispatch_spool_drain_service_unit_file,
   live_deploy_serve_unit_emission,
   LiveDeployServeUnitEmitted,
   LiveDeployServeUnitOidcReadbackRefused,
@@ -57,6 +58,7 @@ import gunbc.live_deploy.spec {
   deployment_slice_unit_name,
   deployment_belt_service_unit_name,
   deployment_belt_exit_drain_service_unit_name, deployment_belt_exit_drain_service_unit_path, deployment_belt_unit_install_target, deployment_belt_discovery_service_unit_name,
+  deployment_belt_dispatch_spool_drain_service_unit_name,
   gunbc_approval_broker_slice_unit_name,
   gunbc_repository_convergence_slice_unit_name,
   gunbc_approval_broker_unit_name,
@@ -107,7 +109,7 @@ import extdeps.systemd.unit_file {
   SystemdSliceDirective,
   DirectiveByteCount,
 }
-import gunbc.host.host_layout { belt_spawn_workdir_env_var, attempt_exit_inbox_dir, publication_answer_dir, publication_refused_dir }
+import gunbc.host.host_layout { belt_spawn_workdir_env_var, attempt_exit_inbox_dir, publication_answer_dir, publication_refused_dir, dispatch_request_dir }
 
 // A DATED, INDEPENDENTLY TRANSCRIBED REALIZATION FIXTURE — NOT LIVE DRIFT DETECTION.
 //
@@ -618,6 +620,23 @@ test fn the_event_services_run_their_entries_as_the_belt_service_does() -> Bool 
   for_all(shared, predicate: fn(l) { any(drain, d => d == l) && any(discovery, d => d == l) && any(belt, d => d == l) })
     && any(drain, l => string_contains(s: l, pattern: "--function belt_exit_drain_cli"))
     && any(discovery, l => string_contains(s: l, pattern: "--function belt_discover_once_cli"))
+}
+
+test fn the_dispatch_spool_path_wakes_the_drain_on_a_non_empty_request_directory() -> Bool {
+  let spec = live_spec()
+  let f = live_deploy_belt_dispatch_spool_path_unit_file(spec: spec)
+  path_has_line(file: f, line: join(["Unit=", deployment_belt_dispatch_spool_drain_service_unit_name(names: spec.names) as String], ""))
+    && path_has_line(file: f, line: join(["DirectoryNotEmpty=", dispatch_request_dir(instance_root: spec.service.instance_root as String)], ""))
+    && path_has_line(file: f, line: "WantedBy=paths.target")
+}
+
+test fn the_dispatch_spool_drain_runs_as_the_belt_service_does() -> Bool {
+  let spec = live_spec()
+  let drain = systemd_unit_file_lines(file: live_deploy_belt_dispatch_spool_drain_service_unit_file(spec: spec))
+  let belt = systemd_unit_file_lines(file: live_deploy_belt_service_unit_file(spec: spec))
+  let shared = ["Type=oneshot", "User=briansrls", "Slice=gunbc-roadmap.slice", "Environment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc"]
+  for_all(shared, predicate: fn(l) { any(drain, d => d == l) && any(belt, d => d == l) })
+    && any(drain, l => string_contains(s: l, pattern: "--function belt_dispatch_spool_drain_cli"))
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

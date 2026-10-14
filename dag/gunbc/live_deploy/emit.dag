@@ -180,7 +180,9 @@ import gunbc.live_deploy.spec {
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_exit_path_unit_name, deployment_belt_exit_drain_service_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_discovery_service_unit_name,
+  deployment_belt_dispatch_spool_path_unit_name, deployment_belt_dispatch_spool_drain_service_unit_name,
   deployment_belt_exit_drain_service_unit_path, deployment_belt_answer_path_unit_path, deployment_belt_discovery_service_unit_path,
+  deployment_belt_dispatch_spool_path_unit_path, deployment_belt_dispatch_spool_drain_service_unit_path,
   deployment_belt_service_unit_path, deployment_belt_unit_install_target,
   deployment_publication_service_unit_name,
   deployment_publication_path_unit_name,
@@ -218,6 +220,11 @@ import gunbc.host.host_layout {
   publication_answer_dir,
   publication_refused_dir,
   publication_bare_mirror_path,
+  dispatch_spool_root,
+  dispatch_request_dir,
+  dispatch_request_staging_dir,
+  dispatch_answer_dir,
+  dispatch_refused_dir,
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
 }
 import product.host_identity { HostIdentity }
@@ -1056,7 +1063,11 @@ fn leftover_timer_not_found_readback_intent() -> Node {
 // verbs on it. These two are the first members in this emitter whose modes are NOT the shared 0755
 // constant, and they are stated here with the dependents that force them written above -- which is
 // the input that derivation will eventually consume, not a second convention beside it.
-data publication_spool_request_mode: FileMode = FileMode {
+//
+// spool_inbox_directory_mode is the one group-write / other-closed inbox bits. Publication and
+// dispatch each cite it under their own name so a later derivation can split them without moving
+// the publication apply off a name it already owns.
+data spool_inbox_directory_mode: FileMode = FileMode {
   owner: PermissionBits { read: true, write: true, execute: true },
   group: PermissionBits { read: false, write: true, execute: true },
   other: PermissionBits { read: false, write: false, execute: false },
@@ -1065,7 +1076,48 @@ data publication_spool_request_mode: FileMode = FileMode {
   sticky: false,
 }
 
+data publication_spool_request_mode: FileMode = spool_inbox_directory_mode
+
+data dispatch_spool_request_mode: FileMode = spool_inbox_directory_mode
+
 data publication_spool_answer_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
+
+data dispatch_spool_answer_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
+
+fn apply_dispatch_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  [
+    deploy_raw(command: install_directory_owned_command(
+      mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse),
+      owner: spec.service.service_user,
+      group: spec.service.service_user,
+      path: dispatch_spool_root(instance_root: spec.service.instance_root as String),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: dispatch_spool_request_mode,
+      owner: spec.service.service_user,
+      group: spec.service.service_user,
+      path: dispatch_request_dir(instance_root: spec.service.instance_root as String),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: dispatch_spool_request_mode,
+      owner: spec.service.service_user,
+      group: spec.service.service_user,
+      path: dispatch_request_staging_dir(instance_root: spec.service.instance_root as String),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: dispatch_spool_answer_mode,
+      owner: spec.service.service_user,
+      group: spec.service.service_user,
+      path: dispatch_answer_dir(instance_root: spec.service.instance_root as String),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: dispatch_spool_answer_mode,
+      owner: spec.service.service_user,
+      group: spec.service.service_user,
+      path: dispatch_refused_dir(instance_root: spec.service.instance_root as String),
+    )),
+  ]
+}
 
 fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [
@@ -1182,6 +1234,32 @@ fn live_deploy_belt_answer_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFi
       PathUnit { target: deployment_belt_discovery_service_unit_name(names: spec.names) },
       PathChanged { path: publication_answer_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
       PathChanged { path: publication_refused_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
+  }
+}
+
+fn live_deploy_belt_dispatch_spool_drain_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_belt_event_service_unit_file(
+    spec: spec,
+    description: "gunbc roadmap belt dispatch spool drain (OS-principal automation dispatch)",
+    function: "belt_dispatch_spool_drain_cli",
+    install: Installable { directives: [WantedBy { target: deployment_belt_unit_install_target(names: spec.names) }] },
+  )
+}
+
+fn live_deploy_belt_dispatch_spool_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  PathUnitFile {
+    unit: [
+      Description { text: "gunbc roadmap belt: a dispatch spool request was written" as NonEmptyStr },
+      StartLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+      StartLimitBurst { count: "2" as NonEmptyStr },
+    ],
+    path: [
+      PathUnit { target: deployment_belt_dispatch_spool_drain_service_unit_name(names: spec.names) },
+      DirectoryNotEmpty { path: dispatch_request_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+      TriggerLimitBurst { count: "2" as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
   }
@@ -3403,7 +3481,7 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
       )
     )
     BeltEventPathUnit => concat(
-      [
+      concat(apply_dispatch_spool_steps(spec: spec), [
         deploy_raw(command: install_d_owned_command(
           spec: spec,
           path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
@@ -3419,6 +3497,8 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         apply_belt_unit_file_write_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), file: live_deploy_belt_discovery_service_unit_file(spec: spec)),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), file: live_deploy_belt_exit_path_unit_file(spec: spec)),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
+        apply_belt_unit_file_write_step(stage_name: deployment_belt_dispatch_spool_drain_service_unit_name(names: spec.names), file: live_deploy_belt_dispatch_spool_drain_service_unit_file(spec: spec)),
+        apply_belt_unit_file_write_step(stage_name: deployment_belt_dispatch_spool_path_unit_name(names: spec.names), file: live_deploy_belt_dispatch_spool_path_unit_file(spec: spec)),
         deploy_raw(command: deploy_stage_install_command(
           stage_name: deployment_belt_service_unit_name(names: spec.names) as String,
           mode: install_file_shared_mode,
@@ -3428,13 +3508,18 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         apply_belt_unit_file_install_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), dest: deployment_belt_discovery_service_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), dest: deployment_belt_answer_path_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: path),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_dispatch_spool_drain_service_unit_name(names: spec.names), dest: deployment_belt_dispatch_spool_drain_service_unit_path(names: spec.names)),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_dispatch_spool_path_unit_name(names: spec.names), dest: deployment_belt_dispatch_spool_path_unit_path(names: spec.names)),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
         deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_drain_service_unit_name(names: spec.names))),
         deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
         deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
         deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
         deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
-      ],
+        deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_dispatch_spool_drain_service_unit_name(names: spec.names))),
+        deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_dispatch_spool_path_unit_name(names: spec.names))),
+        deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_dispatch_spool_path_unit_name(names: spec.names))),
+      ]),
       leftover_systemd_timer_retire_steps(
         unit: deployment_retired_belt_timer_unit_name(names: spec.names),
         path: deployment_retired_belt_timer_unit_path(names: spec.names),
@@ -3530,8 +3615,14 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     UpsertOwned { kind: BeltEventPathUnit } => concat(
       concat(
         concat(
-          systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
-          systemctl_disable_now_if_present_steps(unit: deployment_belt_answer_path_unit_name(names: spec.names), privileged: true),
+          concat(
+            systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
+            systemctl_disable_now_if_present_steps(unit: deployment_belt_answer_path_unit_name(names: spec.names), privileged: true),
+          ),
+          concat(
+            systemctl_disable_now_if_present_steps(unit: deployment_belt_dispatch_spool_path_unit_name(names: spec.names), privileged: true),
+            systemctl_disable_now_if_present_steps(unit: deployment_belt_dispatch_spool_drain_service_unit_name(names: spec.names), privileged: true),
+          ),
         ),
         leftover_systemd_timer_retire_steps(
           unit: deployment_retired_belt_timer_unit_name(names: spec.names),
@@ -3545,6 +3636,8 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
           deployment_belt_exit_drain_service_unit_path(names: spec.names) as String,
           deployment_belt_discovery_service_unit_path(names: spec.names) as String,
           deployment_belt_service_unit_path(names: spec.names) as String,
+          deployment_belt_dispatch_spool_path_unit_path(names: spec.names) as String,
+          deployment_belt_dispatch_spool_drain_service_unit_path(names: spec.names) as String,
         ])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
