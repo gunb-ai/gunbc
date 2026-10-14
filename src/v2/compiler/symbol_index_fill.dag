@@ -20,6 +20,7 @@ import std.optional {
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node {
   Arrow,
+  ComputationNode,
   Conj,
   Disj,
   Edge,
@@ -61,7 +62,14 @@ import v2.extdeps.languages.dag {
 }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.compiler.primitive_authority { primitive_authority_row_is_contract_declaration }
-import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view, type_param_names }
+import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view, type_decl_identity_atom_optional, type_param_names }
+import v2.extdeps.languages.dag_surface_item_standing {
+  DagSurfaceNoIndexMembers,
+  DagSurfaceNonTypeDeclaration,
+  DagSurfaceTypeDeclaration,
+  DagSurfaceWalkIndexMembers,
+  dag_surface_item_row
+}
 import std.types { List }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
@@ -111,8 +119,34 @@ fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
     GenericTypeDecl { binders: b, member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), binders: optional_present(value: b) }
     TypeAlias { binders: b, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent(), binders: optional_present(value: b) }
     OpaqueTypeDecl { binders: b } => SymbolIndexDeclared { bound: target, members: optional_absent(), binders: optional_present(value: b) }
-    NotATypeDecl => SymbolIndexDeclared { bound: target, members: optional_absent(), binders: optional_absent() }
+    NotATypeDecl =>
+      SymbolIndexDeclared {
+        bound: target,
+        members: symbol_index_non_type_members(target: target),
+        binders: optional_absent()
+      }
     PlainTypeDecl { member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), binders: optional_absent() }
+  }
+}
+
+// A NON-TYPE DECLARATION STILL HAS MEMBERS TO INDEX. type_decl_view NotATypeDecl is the kind
+// classifier (the declaring carrier is not a type); fill members are the payload on that
+// carrier's DagSurfaceNonTypeDeclaration arm (v2.extdeps.languages.dag_surface_item_standing
+// dag_surface_item_row). fn / test fn / data / service / resource walk; import never.
+// Nested nodes with no surface identity keep the pre-#13832 descent.
+fn symbol_index_non_type_members(target: Node) -> Optional<Node> {
+  match type_decl_identity_atom_optional(n: target) {
+    Present { value: id } =>
+      match dag_surface_item_row(id: id) {
+        Present { value: row } =>
+          match row.standing {
+            DagSurfaceTypeDeclaration => optional_absent()
+            DagSurfaceNonTypeDeclaration { index_members: DagSurfaceWalkIndexMembers } => optional_present(value: target)
+            DagSurfaceNonTypeDeclaration { index_members: DagSurfaceNoIndexMembers } => optional_absent()
+          }
+        Absent => optional_present(value: target)
+      }
+    Absent => optional_present(value: target)
   }
 }
 

@@ -1,5 +1,7 @@
 module gunbc.accelerator_demo.accelerator_demo_gpu
 
+import std.optional { Present, Absent }
+import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_bandwidth_count }
 
 fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity {
   match contract {
@@ -80,6 +82,10 @@ type GpuDemoTriptychView {
 }
 
 fn render_device_sketch(device: GpuModelCatalogRow) -> String {
+  let lanes = match device.execution_lane_count {
+    Absent => "unstated"
+    Present { value: t } => to_string(std.measure.hardware_thread_count_value(t: t))
+  }
   concat(
     device.vendor.legal_name,
     concat(
@@ -90,10 +96,7 @@ fn render_device_sketch(device: GpuModelCatalogRow) -> String {
           " [",
           concat(
             device.microarchitecture,
-            concat(
-              ", lanes=",
-              concat(to_string(std.measure.hardware_thread_count_value(t: device.execution_lane_count)), "]")
-            )
+            concat(", lanes=", concat(lanes, "]"))
           )
         )
       )
@@ -131,19 +134,31 @@ fn render_gpu_triptych_text(view: GpuDemoTriptychView) -> String {
 }
 
 fn witness_m5_gpu_execution_lane_count_grounded() -> Bool {
-  std.measure.hardware_thread_count_value(t: extdeps.gpu.apple.apple_m5_gpu_catalog.execution_lane_count) == 10
+  match extdeps.gpu.apple.apple_m5_gpu_catalog.execution_lane_count {
+    Present { value: t } => std.measure.hardware_thread_count_value(t: t) == 10
+    Absent => false
+  }
 }
 
 fn witness_rtx5090_execution_lane_count_grounded() -> Bool {
-  std.measure.hardware_thread_count_value(t: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.execution_lane_count) == 21760
+  match extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.execution_lane_count {
+    Present { value: t } => std.measure.hardware_thread_count_value(t: t) == 21760
+    Absent => false
+  }
 }
 
 fn witness_rtx5090_memory_bandwidth_grounded() -> Bool {
-  std.measure.bandwidth_count(b: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.memory_bandwidth) == 1792000000000
+  match gpu_catalog_bandwidth_count(row: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog) {
+    Present { value: n } => n == 1792000000000
+    Absent => false
+  }
 }
 
 fn witness_m5_memory_bandwidth_grounded() -> Bool {
-  std.measure.bandwidth_count(b: extdeps.gpu.apple.apple_m5_gpu_catalog.memory_bandwidth) == 153000000000
+  match gpu_catalog_bandwidth_count(row: extdeps.gpu.apple.apple_m5_gpu_catalog) {
+    Present { value: n } => n == 153000000000
+    Absent => false
+  }
 }
 
 fn witness_rtx5090_compute_capability_grounded() -> Bool {
