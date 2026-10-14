@@ -72,6 +72,7 @@ import extdeps.tailscale.serve {
 import extdeps.systemd.systemctl {
   systemctl_disable_now_argv,
   systemctl_show_load_state_argv,
+  systemctl_user_daemon_reload_argv,
 }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire, systemd_time_span_of_seconds }
 import gunbc.live_deploy.repository_convergence_placement {
@@ -172,6 +173,7 @@ import gunbc.live_deploy.spec {
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
   gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
   gunbc_user_work_slice_unit_path,
+  gunbc_service_uid,
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
@@ -1579,6 +1581,9 @@ fn apply_user_work_slice_install_steps() -> List<PipelineStep> {
         stage_name: user_work_slice_unit_name as String,
         mode: install_file_shared_mode,
         dest: gunbc_user_work_slice_unit_path() as String,
+      )),
+      deploy_raw(command: shell_privileged_command_text_of_argv(
+        argv: systemctl_user_daemon_reload_argv(uid: gunbc_service_uid),
       )),
     ]
   }
