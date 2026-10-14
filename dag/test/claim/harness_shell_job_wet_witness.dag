@@ -1,6 +1,7 @@
 module test.claim.harness_shell_job_wet_witness
 
 import std.types { Bool, String, List, FilePath, NonEmptyStr, Timestamp }
+import std.optional { Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { second }
 import std.algebra { trim }
@@ -402,7 +403,7 @@ test fn unread_job_output_is_typed_unreadable_not_empty() -> Bool {
     stdio_note: "",
     started_at: "1970-01-01T00:00:00Z" as Timestamp,
     backstop: second(count: 20),
-    state: JobFinished { outcome: JobExitedOutcome { code: 0 } },
+    state: JobFinished { outcome: JobExitedOutcome { code: 0 }, elapsed: Present { value: second(count: 0) } },
   }
   let step = harness_read_job_output(
     environment: harness_env_with_jobs(

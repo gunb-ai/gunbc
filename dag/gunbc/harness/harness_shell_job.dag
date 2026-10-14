@@ -33,7 +33,7 @@ type HarnessShellJobOutcome
 
 type HarnessShellJobState
   = JobRunning
-  | JobFinished { outcome: HarnessShellJobOutcome }
+  | JobFinished { outcome: HarnessShellJobOutcome, elapsed: Second? }
 
 type HarnessShellJob {
   id: String
@@ -81,9 +81,9 @@ fn harness_elapsed_in_backstop_clock_grain(elapsed: Second, backstop: Second) ->
   }
 }
 
-fn harness_job_elapsed_seconds(job: HarnessShellJob) -> Second? {
+fn harness_elapsed_from_started_at(started_at: Timestamp) -> Second? {
   let now = Clock.Now()
-  let start = Clock.TimestampToUnixSecs(timestamp: job.started_at)
+  let start = Clock.TimestampToUnixSecs(timestamp: started_at)
   let end = Clock.TimestampToUnixSecs(timestamp: now.timestamp)
   match parse_int(s: trim(s: start.unix_secs)) {
     Absent => none
@@ -97,6 +97,23 @@ fn harness_job_elapsed_seconds(job: HarnessShellJob) -> Second? {
             Present { value: second(count: t1 - t0) }
           }
       }
+  }
+}
+
+fn harness_finish_job(job: HarnessShellJob, outcome: HarnessShellJobOutcome) -> HarnessShellJob {
+  harness_job_with_state(
+    job: job,
+    state: JobFinished {
+      outcome: outcome,
+      elapsed: harness_elapsed_from_started_at(started_at: job.started_at),
+    },
+  )
+}
+
+fn harness_job_recorded_elapsed(job: HarnessShellJob) -> Second? {
+  match job.state {
+    JobRunning => none
+    JobFinished { outcome: _, elapsed } => elapsed
   }
 }
 
@@ -123,7 +140,7 @@ fn harness_backstop_standing(code: Int, elapsed: Second?, backstop: Second) -> H
 fn harness_job_backstop_standing(job: HarnessShellJob, code: Int) -> HarnessJobBackstopStanding {
   harness_backstop_standing(
     code: code,
-    elapsed: harness_job_elapsed_seconds(job: job),
+    elapsed: harness_job_recorded_elapsed(job: job),
     backstop: job.backstop,
   )
 }
@@ -150,22 +167,16 @@ fn harness_job_with_state(job: HarnessShellJob, state: HarnessShellJobState) -> 
 
 fn harness_refresh_job(job: HarnessShellJob) -> HarnessShellJob {
   match job.state {
-    JobFinished { outcome: _ } => job
+    JobFinished { outcome: _, elapsed: _ } => job
     JobRunning =>
       match posix.Process.Reap(pid: job.pid).reaped {
         StillRunning => job
         Exited { code } =>
-          harness_job_with_state(job: job, state: JobFinished { outcome: JobExitedOutcome { code: code } })
+          harness_finish_job(job: job, outcome: JobExitedOutcome { code: code })
         Signaled { signal } =>
-          harness_job_with_state(
-            job: job,
-            state: JobFinished { outcome: JobSignaledOutcome { signal: signal } },
-          )
+          harness_finish_job(job: job, outcome: JobSignaledOutcome { signal: signal })
         ReapRefused { cause } =>
-          harness_job_with_state(
-            job: job,
-            state: JobFinished { outcome: JobReapRefusedOutcome { cause: cause } },
-          )
+          harness_finish_job(job: job, outcome: JobReapRefusedOutcome { cause: cause })
       }
   }
 }
@@ -177,14 +188,14 @@ fn harness_refresh_jobs(jobs: List<HarnessShellJob>) -> List<HarnessShellJob> {
 fn harness_job_is_running(job: HarnessShellJob) -> Bool {
   match job.state {
     JobRunning => true
-    JobFinished { outcome: _ } => false
+    JobFinished { outcome: _, elapsed: _ } => false
   }
 }
 
 fn harness_observe_standing(job: HarnessShellJob) -> HarnessShellJobObservation {
   match job.state {
     JobRunning => JobStillRunning { job: job }
-    JobFinished { outcome } =>
+    JobFinished { outcome, elapsed: _ } =>
       match outcome {
         JobExitedOutcome { code } => JobExited { job: job, code: code }
         JobSignaledOutcome { signal } => JobSignaled { job: job, signal: signal }
@@ -480,17 +491,11 @@ fn harness_kill_running_job(job: HarnessShellJob) -> HarnessJobKill {
   match harness_await_pid(pid: job.pid, remaining: second(count: 5)) {
     Exited { code } =>
       JobKillConfirmed {
-        job: harness_job_with_state(
-          job: job,
-          state: JobFinished { outcome: JobExitedOutcome { code: code } },
-        ),
+        job: harness_finish_job(job: job, outcome: JobExitedOutcome { code: code }),
       }
     Signaled { signal } =>
       JobKillConfirmed {
-        job: harness_job_with_state(
-          job: job,
-          state: JobFinished { outcome: JobSignaledOutcome { signal: signal } },
-        ),
+        job: harness_finish_job(job: job, outcome: JobSignaledOutcome { signal: signal }),
       }
     StillRunning =>
       JobKillUnconfirmed {

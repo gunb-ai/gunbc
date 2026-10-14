@@ -29,8 +29,9 @@ import gunbc.harness.harness_shell_job_policy {
 import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellSpawn, ShellSpawned, ShellSpawnFailed,
   JobRunning, JobFinished, JobExitedOutcome, JobSignaledOutcome,
-  JobReapRefusedOutcome, harness_job_with_state,
+  JobReapRefusedOutcome,
   harness_start_shell_job, harness_await_pid, harness_command_table, harness_read_job_text,
+  harness_finish_job,
   JobTextRead, JobTextUnreadable,
   harness_replace_job, harness_find_job, harness_wait_until_any,
   WaitLoopFinished, WaitLoopExpired, WaitLoopNoRunningJob, harness_kill_running_job,
@@ -318,7 +319,7 @@ fn harness_job_output_for_state(
   match job.state {
     JobRunning =>
       ToolJob { id: job.id, text: bounded.text }
-    JobFinished { outcome } =>
+    JobFinished { outcome, elapsed: _ } =>
       match outcome {
         JobExitedOutcome { code } =>
           harness_job_backstop_exit_outcome(
@@ -423,10 +424,7 @@ fn harness_run_command_scheduled(
               wait_pace: harness_pace_after_window_change(),
             ),
             outcome: harness_job_output_outcome(
-              job: harness_job_with_state(
-                job: job,
-                state: JobFinished { outcome: JobExitedOutcome { code: code } },
-              ),
+              job: harness_finish_job(job: job, outcome: JobExitedOutcome { code: code }),
               jobs: environment.jobs,
             ),
           }

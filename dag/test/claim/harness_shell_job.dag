@@ -46,13 +46,24 @@ fn fixture_job(state: HarnessShellJobState) -> HarnessShellJob {
   }
 }
 
+fn fixture_finished(code: Int, elapsed: Second?) -> HarnessShellJob {
+  fixture_job(state: JobFinished {
+    outcome: JobExitedOutcome { code: code },
+    elapsed: elapsed,
+  })
+}
+
+fn fixture_own_exit(code: Int) -> HarnessShellJob {
+  fixture_finished(code: code, elapsed: Present { value: second(count: 0) })
+}
+
 test fn hand_in_refuses_while_a_job_is_running() -> Bool {
   match harness_hand_in_blocked_by_running_jobs(jobs: [fixture_job(state: JobRunning)]) {
     Absent => false
     Present { value: text } => text.contains("wait or job_kill")
   }
     && (match harness_hand_in_blocked_by_running_jobs(
-      jobs: [fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 0 } })],
+      jobs: [fixture_own_exit(code: 0)],
     ) {
       Absent => true
       Present { value: _ } => false
@@ -67,7 +78,7 @@ test fn job_kill_refuses_a_finished_job_by_name() -> Bool {
   )
   let with_job = harness_env_with_jobs(
     environment: env,
-    jobs: [fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 0 } })],
+    jobs: [fixture_own_exit(code: 0)],
     wait_pace: WaitPaceReset,
   )
   let step = harness_kill_job(environment: with_job, id: "42")
@@ -138,7 +149,7 @@ test fn an_unconfirmed_kill_carries_the_terminate_stderr() -> Bool {
 }
 
 test fn job_output_of_a_finished_exit_3_job_does_not_say_exit_0() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 3 } })
+  let job = fixture_own_exit(code: 3)
   let outcome = harness_job_output_for_state(job: job, jobs: [job], text: "from-job")
   let text = harness_outcome_text(outcome: outcome)
   match outcome {
@@ -161,7 +172,7 @@ test fn job_output_of_a_running_job_is_not_an_exit() -> Bool {
 }
 
 test fn wait_result_over_a_job_that_exited_1_does_not_say_exit_0() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 1 } })
+  let job = fixture_own_exit(code: 1)
   let text = harness_outcome_text(outcome: harness_text_with_table(
     text: "a job finished before the wait elapsed",
     jobs: [job],
@@ -170,7 +181,7 @@ test fn wait_result_over_a_job_that_exited_1_does_not_say_exit_0() -> Bool {
 }
 
 test fn a_124_at_the_backstop_is_duration_exceeded_and_a_124_inside_it_is_not() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 } })
+  let job = fixture_finished(code: 124, elapsed: Present { value: second(count: 20) })
   harness_exit_is_harness_backstop(code: 124, elapsed: second(count: 20), backstop: second(count: 20))
     && !harness_exit_is_harness_backstop(code: 124, elapsed: second(count: 1), backstop: second(count: 20))
     && !harness_exit_is_harness_backstop(code: 0, elapsed: second(count: 20), backstop: second(count: 20))
@@ -185,7 +196,7 @@ test fn a_124_whose_elapsed_time_is_unknown_refuses_rather_than_guessing() -> Bo
     elapsed: unknown_elapsed(),
     backstop: second(count: 20),
   )
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 } })
+  let job = fixture_finished(code: 124, elapsed: Present { value: second(count: 20) })
   let outcome = harness_job_backstop_exit_outcome(
     job: job,
     code: 124,
