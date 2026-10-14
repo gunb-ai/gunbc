@@ -2984,17 +2984,33 @@ fn dispatch_worker_unit_stream_properties(
 // not (attempt_worker_unit_observation), and a unit that is gone with NO record is reported as
 // exactly that -- never as a worker that did not run.
 
-// THE WORKER MAY WRITE ONLY UNDER THE INSTANCE ROOT: its worktree, its attempt state, the spool. The
-// second belt-dispatched attempt (2026-09-04) edited the deploy tree instead of its worktree, having
-// inferred the tree from the one absolute path it was shown; ProtectHome=read-only with these paths
-// carved out makes that a refused write rather than a dirty release tree. The repository's own
-// .git/worktrees directory is writable because the attempt worktree's git metadata lives there.
+// THE WORKER'S WRITABLE SET IS THE ATTEMPT'S DECLARED RESOURCES, NOT THE INSTANCE ROOT.
+// ProtectSystem=strict makes /usr /boot /etc /opt read-only except ReadWritePaths. Spelling
+// instance_root as that carve-out on srv1_live (instance_root=/opt/gunbc) reopened /opt/gunbc/bin
+// and the deployed checkout, so a worker with --dangerously-skip-permissions could write the
+// release tree — the annotation that claimed a refused write was false (smart-gull-336 item c).
+// The set is derived from the instance's dispatch-state declaration (worktree root, attempt-state
+// root — logs and scratch live there) plus the repo's .git/worktrees (git metadata for the
+// attempt worktree). That is the existing resource roster; AttemptResourceSet is not consumed
+// here because it is not in this tree (Manager B). The deployed binary and source tree are not
+// members. A path is writable only when it is one of those roots or strictly under one.
+fn dispatch_worker_writable_path_list(instance: HostDashboardInstance) -> List<String> {
+  [
+    dashboard_instance_dispatch_worktree_root(instance: instance) as String,
+    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
+    join([instance.repo_root as String, "/.git/worktrees"], ""),
+  ]
+}
+
 fn dispatch_worker_writable_paths(instance: HostDashboardInstance) -> String {
-  join([
-    instance.instance_root as String,
-    " ",
-    instance.repo_root as String, "/.git/worktrees",
-  ], "")
+  join(dispatch_worker_writable_path_list(instance: instance), separator: " ")
+}
+
+fn dispatch_worker_path_is_writable(instance: HostDashboardInstance, path: String) -> Bool {
+  any(
+    dispatch_worker_writable_path_list(instance: instance),
+    root => path == root || starts_with(s: path, prefix: join([root, "/"], "")),
+  )
 }
 
 // THE WORKER UNIT IS PLANNED WITHOUT ITS BOUNDS AND STARTED WITH THEM. Everything about the unit

@@ -1,0 +1,74 @@
+module test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.measure { kibibyte }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.systemd.systemd_run {
+  systemd_run_user_wait_command,
+  systemd_run_command_argument_words,
+  SystemdSummaryPrintingWaitReady,
+  SystemdSummaryPrintingWaitRefused,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
+import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  srv1_live_dashboard_instance,
+  dashboard_instance_dispatch_worktree_root,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WET: a real systemd-run user transient with the worker unit's production properties, then a
+// real touch of the deployed binary directory, the deployed tree, and the worktree. Local recipe:
+// claim_batch --wet --source-root dag --source-root src/v2
+// --entry dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag
+// Requires a user systemd manager (srv1 lab). This session container has neither systemd-run nor
+// /opt/gunbc; bright-moth-475 proves the probe live after deploy.
+
+fn probe_script(bin_path: String, tree_path: String, worktree_path: String) -> String {
+  join([
+    "if touch -- ", bin_path, "; then rm -f -- ", bin_path, "; echo BIN:0; else echo BIN:1; fi; ",
+    "if touch -- ", tree_path, "; then rm -f -- ", tree_path, "; echo TREE:0; else echo TREE:1; fi; ",
+    "if touch -- ", worktree_path, "; then rm -f -- ", worktree_path, "; echo WT:0; else echo WT:1; fi",
+  ], "")
+}
+
+test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  let wt = dashboard_instance_dispatch_worktree_root(instance: inst) as String
+  let props = dispatch_worker_unit_properties(
+    instance: inst,
+    working_directory: wt,
+    worker_log_path: join([wt, "/.gunbc-writable-probe.log"], ""),
+    granted: kibibyte(count: 65536),
+    process_bounds: session_process_bounds,
+    exit_hook: "true" as NonEmptyStr,
+  )
+  let script = probe_script(
+    bin_path: join([inst.serve_binary as String, ".write-probe"], ""),
+    tree_path: join([inst.repo_root as String, "/.gunbc-worker-write-probe"], ""),
+    worktree_path: join([wt, "/.gunbc-worker-write-probe"], ""),
+  )
+  match systemd_run_user_wait_command(
+    unit: "gunbc-writable-probe-bold-dove.service" as NonEmptyStr,
+    properties: props,
+    setenv_bindings: [],
+    command_argv: ["/bin/sh", "-c", script],
+  ) {
+    SystemdSummaryPrintingWaitRefused { cause: _ } => false
+    SystemdSummaryPrintingWaitReady { wait: wait } => {
+      let run = shell.Exec.RunArgv(
+        program: "systemd-run",
+        arguments: systemd_run_command_argument_words(command: wait.command),
+      )
+      let out = run.stdout
+      string_contains(s: out, pattern: "BIN:1")
+        && string_contains(s: out, pattern: "TREE:1")
+        && string_contains(s: out, pattern: "WT:0")
+        && !string_contains(s: out, pattern: "BIN:0")
+        && !string_contains(s: out, pattern: "TREE:0")
+        && !string_contains(s: out, pattern: "WT:1")
+    }
+  }
+}
