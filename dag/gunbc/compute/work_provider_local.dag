@@ -6,7 +6,10 @@ import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, Epoch
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import std.measure { byte_size_count }
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_listing_names_entry, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_listing_observation, filesystem_listing_entry_names,
+}
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.git_diff_change_window { gunbc_diff_window_path_env }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, json_array, serialize_json }
@@ -1530,7 +1533,7 @@ fn compute_unreleased_record(
 // WHAT KEEPS IT FAIL-CLOSED MEANWHILE: every arm that cannot prove the unit is gone keeps the
 // charge, so the host UNDER-admits. Nothing is over-promised; the pool simply shrinks until an
 // operator clears the partition by hand. That is the direction a capacity ledger must fail in.
-data compute_stuck_reservation_remedy: String = "THE REMEDY IS compute_recover_cli, run with this reservation reference: it reads the attempt slot, observes the unit through the manager and its cgroup, and releases the seat ONLY if the unit has ended -- refusing, and saying why, if it has not. What is still NOT safe is clearing the capacity partition by hand under live admission: that removes the record the admission arithmetic is computed from, so the next requests would be admitted against memory this one still holds, trading a host that under-admits for one that over-promises. If the door declines, the seat is meant to stay charged; a manual intervention over its refusal requires compute admission STOPPED on this host and every gunbc-compute unit PROVEN gone, in that order. Until the door is run this host under-admits, which is the fail-closed direction and is not an incident."
+data compute_stuck_reservation_remedy: String = "THE REMEDY IS compute_recover_cli, run with this reservation reference: it finds the attempt slot (at the attempts root or under a dispatch attempt's own directory), observes the unit through the manager and its cgroup, and releases the seat ONLY if the unit has ended -- refusing, and saying why, if it has not. What is still NOT safe is clearing the capacity partition by hand under live admission: that removes the record the admission arithmetic is computed from, so the next requests would be admitted against memory this one still holds, trading a host that under-admits for one that over-promises. If the door declines, the seat is meant to stay charged; a manual intervention over its refusal requires compute admission STOPPED on this host and every gunbc-compute unit PROVEN gone, in that order. Until the door is run this host under-admits, which is the fail-closed direction and is not an incident."
 
 // THE ORDER THE TWO HOLDS ARE TAKEN IN, and they are two facts rather than one. The producer lease
 // excludes a SECOND PRODUCER OF THIS IDENTITY and is a NAME, so an exclusive create settles it; the
@@ -2737,11 +2740,58 @@ fn compute_recover_attempt(instance: HostDashboardInstance, reference: NonEmptyS
   match compute_capacity_subject(instance: instance, request: kibibyte(count: 0)) {
     ComputeSubjectHostUnresolved { host: h } => RecoveryRefused { detail: join(["no capacity subject resolves for host ", h as String], "") }
     ComputeSubjectResolved { subject: subj } =>
-      compute_recover_attempt_in(
-        attempts_root: compute_attempts_root(instance: instance),
+      compute_recover_attempt_resolved(
+        flat: compute_attempts_root(instance: instance) as String,
         subject: subj,
-        reference: reference,
-        source: ObserveUnitLifecycle)
+        reference: reference)
+  }
+}
+
+fn compute_recover_attempt_resolved(flat: String, subject: ComputeCapacitySubject, reference: NonEmptyStr) -> ComputeRecovery {
+  match compute_recover_roots(attempts_root: flat, reference: reference) {
+    RecoverRootsUnreadable { reason: r } => RecoveryRefused { detail: r }
+    RecoverRootsFound { at_flat: f, dispatch_roots: rs } => compute_recover_attempt_at(flat: flat, at_flat: f, found: rs, subject: subject, reference: reference)
+  }
+}
+
+fn compute_recover_attempt_at(flat: String, at_flat: Bool, found: List<String>, subject: ComputeCapacitySubject, reference: NonEmptyStr) -> ComputeRecovery {
+  let holders = count(found) + (if at_flat { 1 } else { 0 })
+  if holders > 1 {
+    RecoveryRefused { detail: join(["the reference ", reference as String, " has an attempt slot in ", to_string(value: holders), " seat directories, and a reference names exactly one hold; nothing was released"], "") }
+  } else {
+    let chosen = found |> fold(init: flat, f: (acc, r) => r)
+    compute_recover_attempt_in(attempts_root: chosen as NonEmptyStr, subject: subject, reference: reference, source: ObserveUnitLifecycle)
+  }
+}
+
+// THE OPERATOR DOOR FINDS THE SEAT WHEREVER ITS OWNER PUT IT. A DispatchOwned seat lives under
+// attempts/dispatch-<key>/ and a DirectInvocation or unrecorded one at the attempts root
+// (compute_seat_dir), so a door that read only the flat root could not see the primary population.
+// The roots holding a slot for the reference are collected; a listing that cannot be read refuses
+// rather than reading as "no dispatch seats".
+type ComputeRecoverRoots
+  = RecoverRootsFound { at_flat: Bool, dispatch_roots: List<String> }
+  | RecoverRootsUnreadable { reason: String }
+
+fn compute_recover_slot_present(root: String, reference: NonEmptyStr) -> Bool {
+  match attempt_slot_read(root: root as NonEmptyStr, reference: reference) {
+    AttemptSlotAbsent => false
+    AttemptSlotHeld { record: _, generation: _ } => true
+    AttemptSlotUnreadable { detail: _ } => true
+  }
+}
+
+fn compute_recover_roots(attempts_root: String, reference: NonEmptyStr) -> ComputeRecoverRoots {
+  let listed = Filesystem.List(path: attempts_root)
+  match filesystem_listing_observation(directory: attempts_root, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(admitted) => {
+      let dispatch = filesystem_listing_entry_names(listing: admitted)
+        |> filter(n => starts_with(s: n, prefix: "dispatch-"))
+        |> map(n => join([attempts_root, "/", n], ""))
+      RecoverRootsFound { at_flat: compute_recover_slot_present(root: attempts_root, reference: reference), dispatch_roots: dispatch |> filter(r => compute_recover_slot_present(root: r, reference: reference)) }
+    }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => RecoverRootsUnreadable { reason: join(["the attempts directory could not be listed: ", e], "") }
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => RecoverRootsUnreadable { reason: join(["the attempts directory could not be listed: ", c], "") }
   }
 }
 

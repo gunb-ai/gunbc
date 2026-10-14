@@ -20,7 +20,7 @@ import gunbc.compute.attempt_lifecycle {
 }
 import gunbc.compute.work_provider_local {
   UnitLifecycleSource, SuppliedUnitLifecycle, SuppliedStoppableUnit, compute_lease_holder_line, compute_reservation_reference, compute_seat_dir,
-  compute_open_attempt_minted, ComputeLayout, AttemptGate, AttemptGateReady, AttemptGateRefused, compute_open_retry_attempt,
+  compute_open_attempt_minted, ComputeLayout, ComputeRecoverRoots, RecoverRootsFound, RecoverRootsUnreadable, compute_recover_roots, AttemptGate, AttemptGateReady, AttemptGateRefused, compute_open_retry_attempt,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
@@ -811,4 +811,38 @@ fn a_second_dispatch_attempt_of_one_work_identity_is_admitted_after_the_first_re
   let a = minted_reference(root: root, key: "key-a")
   let b = minted_reference(root: root, key: "key-b")
   ref_a && a != "" && b != "" && reserved_and_released(subject: subject, reference: a) && reserved_and_released(subject: subject, reference: b) && a != b
+}
+
+// THE OPERATOR DOOR FINDS A DISPATCH-OWNED SEAT. The belt's seats live under attempts/dispatch-<key>/;
+// a door that read only the flat attempts root could not see them. The resolver returns exactly the
+// directory holding a slot for the reference, nothing for a reference no slot names, and REFUSES (does
+// not read as "none") when the attempts directory cannot be listed.
+test fn the_operator_door_resolves_a_dispatch_owned_seat_and_refuses_an_unreadable_attempts_directory() -> Bool {
+  let root = fresh_root()
+  let ok = the_operator_door_resolves_a_dispatch_owned_seat_and_refuses_an_unreadable_attempts_directory_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn the_operator_door_resolves_a_dispatch_owned_seat_and_refuses_an_unreadable_attempts_directory_cell(root: String) -> Bool {
+  let made_dirs = made(path: seat_dir_of(root: root, key: "key-a") as String) && made(path: seat_dir_of(root: root, key: "key-b") as String)
+  let a = minted_reference(root: root, key: "key-a")
+  let want = seat_dir_of(root: root, key: "key-a") as String
+  let found = made_dirs && a != "" && match compute_recover_roots(attempts_root: root, reference: a as NonEmptyStr) {
+    RecoverRootsFound { at_flat: f, dispatch_roots: rs } => !f && count(rs) == 1 && any(rs, r => r == want)
+    RecoverRootsUnreadable { reason: _ } => false
+  }
+  let nothing = match compute_recover_roots(attempts_root: root, reference: "no-such#1" as NonEmptyStr) {
+    RecoverRootsFound { at_flat: f, dispatch_roots: rs } => !f && count(rs) == 0
+    RecoverRootsUnreadable { reason: _ } => false
+  }
+  let refused = match compute_recover_roots(attempts_root: absent_of(root: root), reference: a as NonEmptyStr) {
+    RecoverRootsUnreadable { reason: _ } => true
+    RecoverRootsFound { at_flat: _, dispatch_roots: _ } => false
+  }
+  found && nothing && refused
+}
+
+fn absent_of(root: String) -> String {
+  join([root, "/absent"], "")
 }
