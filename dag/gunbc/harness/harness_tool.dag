@@ -10,9 +10,11 @@ import extdeps.languages.json.parse {
   JsonMemberFound, json_object_unique_member,
 }
 import extdeps.gunbc
-import gunbc.harness.harness_wire { HarnessWireBlock, WireToolUseBlock }
+import gunbc.harness.harness_wire {
+  HarnessWireBlock, WireToolUseBlock, HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape,
+}
 import gunbc.harness.harness_tool_kind {
-  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool,
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
   harness_tool_wire_name,
   HarnessToolRecognized, HarnessToolUnrecognized, harness_tool_of_wire_name,
 }
@@ -286,6 +288,12 @@ fn harness_execute_tool_use(
                   detail: harness_unimplemented_tool_detail(tool: EditFileTool),
                 },
               }
+            HandInTool =>
+              ToolRefused {
+                disposition: ToolEffectRefused {
+                  detail: "hand_in is realized by the turn, which binds the candidate and waits for its outcome; this dispatcher does not run it",
+                },
+              }
           }
       }
     WireTextBlock { text: _ } => ToolRefused { disposition: ToolEffectRefused { detail: "block is not a tool use" } }
@@ -305,4 +313,77 @@ fn harness_unimplemented_tool_detail(tool: HarnessTool) -> String {
     " is declared in the harness tool surface but has no realization yet; it is deliberately not ",
     "advertised to the model, so reaching this arm means a caller invoked a tool it was never offered",
   ], "")
+}
+
+// OFFERED TOOLS ARE THE ONES THAT RUN. run_command is the shell; hand_in is the typed acceptance
+// wait (operator ruling 2026-10-14: trusted operations may block to their own budget). The three
+// file tools stay declared and unadvertised until they have a realization.
+type OfferedHarnessTool
+  = OfferedRunCommandTool
+  | OfferedHandInTool
+
+fn harness_offered_tool_kind(tool: OfferedHarnessTool) -> HarnessTool {
+  match tool {
+    OfferedRunCommandTool => RunCommandTool
+    OfferedHandInTool => HandInTool
+  }
+}
+
+fn harness_offered_tool_rows() -> List<OfferedHarnessTool> {
+  [OfferedRunCommandTool, OfferedHandInTool]
+}
+
+fn harness_offered_tools() -> List<HarnessTool> {
+  map(harness_offered_tool_rows(), t => harness_offered_tool_kind(tool: t))
+}
+
+data harness_run_command_description: String = "Run a shell command in the attempt's working directory and return its combined output and exit code."
+
+data harness_hand_in_description: String = "Hand in the ready candidate written to .gunbc-submission.json. This call blocks until acceptance returns; the tool result is Accepted, ChangesRequested with evidence, or Unavailable with its cause. Do not run the node's acceptance witness yourself."
+
+fn harness_hand_in_schema() -> JsonValue {
+  json_object([
+    json_kv(key: "type", value: json_string(s: "object")),
+    json_kv(key: "properties", value: json_object([])),
+    json_kv(key: "required", value: json_array(elements: [])),
+  ])
+}
+
+fn harness_offered_tool_schema(tool: OfferedHarnessTool) -> JsonValue {
+  match tool {
+    OfferedRunCommandTool => harness_run_command_schema()
+    OfferedHandInTool => harness_hand_in_schema()
+  }
+}
+
+fn harness_offered_tool_description(tool: OfferedHarnessTool) -> String {
+  match tool {
+    OfferedRunCommandTool => harness_run_command_description
+    OfferedHandInTool => harness_hand_in_description
+  }
+}
+
+fn harness_offered_tool_json(shape: HarnessWireShape, tool: OfferedHarnessTool) -> JsonValue {
+  let kind = harness_offered_tool_kind(tool: tool)
+  match shape {
+    AnthropicMessagesShape =>
+      json_object([
+        json_kv(key: "name", value: json_string(s: harness_tool_wire_name(tool: kind))),
+        json_kv(key: "description", value: json_string(s: harness_offered_tool_description(tool: tool))),
+        json_kv(key: "input_schema", value: harness_offered_tool_schema(tool: tool)),
+      ])
+    OpenAiChatCompletionsShape =>
+      json_object([
+        json_kv(key: "type", value: json_string(s: "function")),
+        json_kv(key: "function", value: json_object([
+          json_kv(key: "name", value: json_string(s: harness_tool_wire_name(tool: kind))),
+          json_kv(key: "description", value: json_string(s: harness_offered_tool_description(tool: tool))),
+          json_kv(key: "parameters", value: harness_offered_tool_schema(tool: tool)),
+        ])),
+      ])
+  }
+}
+
+fn harness_offered_tools_json(shape: HarnessWireShape) -> JsonValue {
+  json_array(elements: map(harness_offered_tool_rows(), t => harness_offered_tool_json(shape: shape, tool: t)))
 }

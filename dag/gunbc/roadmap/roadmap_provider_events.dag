@@ -16,7 +16,7 @@ import extdeps.languages.json.grammar {
   json_text_starts_with_at,
 }
 import gunbc.harness.harness_tool_kind {
-  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool,
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
   ItemIsHarnessToolUse, ItemIsUnrecognizedToolUse, ItemIsNotAHarnessToolUse,
   harness_tool_item_read,
 }
@@ -56,6 +56,7 @@ type ProviderItemActivity
   | HarnessReadingFile
   | HarnessWritingFile
   | HarnessEditingFile
+  | HarnessHandingIn
   | HarnessRefusingUnrecognizedTool
   | UnclassifiedItem
 
@@ -416,6 +417,7 @@ fn harness_tool_item_activity(tool: HarnessTool) -> ProviderItemActivity {
     ReadFileTool => HarnessReadingFile
     WriteFileTool => HarnessWritingFile
     EditFileTool => HarnessEditingFile
+    HandInTool => HarnessHandingIn
   }
 }
 
@@ -464,6 +466,7 @@ fn provider_item_activity_label(activity: ProviderItemActivity) -> String {
     HarnessReadingFile => "reading file"
     HarnessWritingFile => "writing file"
     HarnessEditingFile => "editing file"
+    HarnessHandingIn => "handing in"
     HarnessRefusingUnrecognizedTool => "refusing an undeclared tool"
     UnclassifiedItem => "provider item"
   }

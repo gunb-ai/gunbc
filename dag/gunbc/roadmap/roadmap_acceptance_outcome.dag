@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_acceptance_outcome
 
-import std.types { String, List, Bool, NonEmptyStr }
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.content_hash { content_hash_atom }
 import std.optional { Present, Absent }
 import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonString, JsonNumber, JsonArray, JsonObject,
@@ -35,6 +36,20 @@ type AcceptanceOutcomeRecord {
   handin: String
   head: String
   outcome: AcceptanceOutcome
+}
+
+// THE HAND-IN IDENTITY NAMES THE CANDIDATE, NOT THE READINESS TEXT. submission_digest hashes only
+// the declaration's wording, so a revision that keeps the wording and changes the tree would collide
+// with the candidate it revises. The identity is scoped to the attempt and binds the worktree head
+// plus the SCM root locator the capture records; the ordinal makes two hand-ins of one tree distinct.
+fn handin_identity(attempt_key: String, ordinal: Int, head: String, scm_root: String) -> String {
+  content_hash_atom(
+    value: join(["handin|", attempt_key, "|", to_string(value: ordinal), "|", head, "|", scm_root], "") as NonEmptyStr,
+  ).digest as String
+}
+
+fn acceptance_outcome_addresses(record: AcceptanceOutcomeRecord, handin: String) -> Bool {
+  record.handin == handin
 }
 
 data acceptance_outcome_schema: NonEmptyStr = "roadmap-acceptance-outcome/v1" as NonEmptyStr

@@ -2,7 +2,7 @@ module test.claim.harness_tool_kind
 
 import std.types { Bool, String }
 import gunbc.harness.harness_tool_kind {
-  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool,
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
   HarnessToolRead, HarnessToolRecognized, HarnessToolUnrecognized,
   harness_tool_wire_name, harness_tool_of_wire_name,
   harness_tool_item_type, harness_tool_read_item_type, harness_unrecognized_tool_item_type,
@@ -20,6 +20,7 @@ fn item_read_tag(item_type: String) -> String {
         ReadFileTool => "read"
         WriteFileTool => "write"
         EditFileTool => "edit"
+        HandInTool => "handin"
       }
     ItemIsUnrecognizedToolUse => "undeclared"
     ItemIsNotAHarnessToolUse => "not-a-tool-use"
@@ -35,6 +36,7 @@ test fn each_harness_tool_item_kind_reads_back_as_its_own_tool() -> Bool {
     && tool_round_trip_tag(tool: ReadFileTool) == "read"
     && tool_round_trip_tag(tool: WriteFileTool) == "write"
     && tool_round_trip_tag(tool: EditFileTool) == "edit"
+    && tool_round_trip_tag(tool: HandInTool) == "handin"
 }
 
 test fn an_unrecognized_tool_name_is_written_as_the_undeclared_kind_never_a_tool_kind() -> Bool {
@@ -62,6 +64,7 @@ fn wire_read_tag(read: HarnessToolRead) -> String {
         ReadFileTool => "read"
         WriteFileTool => "write"
         EditFileTool => "edit"
+        HandInTool => "handin"
       }
     HarnessToolUnrecognized { name: n } => "refused:" + n
   }
@@ -76,6 +79,7 @@ test fn each_harness_tool_wire_name_reads_back_as_its_own_tool() -> Bool {
     && wire_round_trip_tag(tool: ReadFileTool) == "read"
     && wire_round_trip_tag(tool: WriteFileTool) == "write"
     && wire_round_trip_tag(tool: EditFileTool) == "edit"
+    && wire_round_trip_tag(tool: HandInTool) == "handin"
 }
 
 test fn a_wire_name_no_tool_spells_is_refused_with_that_name() -> Bool {

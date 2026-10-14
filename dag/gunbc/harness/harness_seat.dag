@@ -66,8 +66,9 @@ import product.fabric.selection {
 }
 import product.fabric.demand {
   ObservationReceiptRef, AdmissionTerms, demand_delay_valuation,
+  BuyTerms, admission_terms, DemandObjective, debt_payoff_objective,
 }
-import extdeps.currency.currency { CurrencyCode }
+import extdeps.currency.currency { CurrencyCode, Usd }
 import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding }
 import std.algebra { trim }
 import gunbc.serving.turn_admission {
@@ -1028,6 +1029,8 @@ fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass
             }
           HarnessSeatReleaseRefused { detail: why } =>
             AcquisitionRefused { detail: seat_bind_detail(replica: candidate.replica, text: join(["the engine was replaced between selection and acquisition and the seat could NOT be released, so this turn is not placed elsewhere while that seat may still be held: ", why], "")) }
+          HarnessSeatReleaseNotApplicable { why } =>
+            AcquisitionRefused { detail: seat_bind_detail(replica: candidate.replica, text: join(["the engine was replaced between selection and acquisition and the standing pool no longer holds this seat: ", why], "")) }
         }
     EndpointProcessUnchanged { endpoint: _, launch: _, observed_at: _, receipt: _ } =>
         AcquisitionGranted {
@@ -1172,6 +1175,21 @@ data harness_placement_rounds: Nat = 3
 // the Work carries and the one the candidate screen applies are one value with one source. A caller
 // that constructed the request itself could hand in a request naming one requirement beside a
 // screen argument naming another.
+data harness_cli_demand_objective: DemandObjective = debt_payoff_objective
+
+fn harness_cli_admission() -> AdmissionTerms {
+  admission_terms(
+    buy: BuyTerms {
+      budget_account: "harness-cli",
+      currency: Usd,
+      reservation_price: money_amount_micro(count: 0),
+      maximum_buy_order: money_amount_micro(count: 0),
+    },
+    deadline: none,
+    objective: harness_cli_demand_objective,
+  )
+}
+
 fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, session: ServingSessionEntry?, admission: AdmissionTerms) -> HarnessSeatBinding {
   match harness_requirement_placement(requirement: requirement, class: class) {
     LeasedFromHostedQuota => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }
@@ -1268,6 +1286,7 @@ fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass,
 type HarnessSeatRelease
   = HarnessSeatReleased { partition: PartitionId }
   | HarnessHostedCredentialRemoved
+  | HarnessSeatReleaseNotApplicable { why: String }
   | HarnessSeatReleaseRefused { detail: String }
 
 type ReleaseFold {
@@ -1303,7 +1322,7 @@ fn release_append(store: FabricStorageBinding, partition: PartitionId, ceiling: 
             PoolFolded { pool: p, generation: _ } =>
               match release_proposal(pool: p, reference: reference, reason: reason, now: now) {
                 Present { value: why } =>
-                  Present { value: HarnessSeatReleaseRefused { detail: join(["this release does not apply to the standing pool: ", why], "") } }
+                  Present { value: HarnessSeatReleaseNotApplicable { why: why } }
                 Absent => {
                   let event = ChainEvent {
                     partition: partition,
@@ -1550,6 +1569,7 @@ fn harness_seat_release_wire(r: HarnessSeatRelease) -> String {
   match r {
     HarnessSeatReleased { partition: p } => join(["released on ", p as String], "")
     HarnessHostedCredentialRemoved => "hosted credential removed"
+    HarnessSeatReleaseNotApplicable { why } => join(["release does not apply: ", why], "")
     HarnessSeatReleaseRefused { detail: d } => join(["release refused: ", d], "")
   }
 }
@@ -1690,6 +1710,7 @@ fn harness_hosted_inflight_release(quota: HarnessHostedQuota, hold: HostedInflig
           match release_retry(store: store, partition: hosted_inflight_partition(quota: quota), ceiling: hosted_inflight_ceiling(quota: quota), reference: r, reason: reason, now: now) {
             HarnessSeatReleased { partition: _ } => none
             HarnessHostedCredentialRemoved => Present { value: join(["the in-flight seat ", r as String, " release answered as a credential removal"], "") }
+            HarnessSeatReleaseNotApplicable { why } => Present { value: join(["the in-flight seat ", r as String, " is not held: ", why], "") }
             HarnessSeatReleaseRefused { detail: d } => Present { value: join(["the in-flight seat ", r as String, " could not be released: ", d], "") }
           }
       }

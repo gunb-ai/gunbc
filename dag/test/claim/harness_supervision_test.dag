@@ -232,5 +232,5 @@ test fn only_this_hand_ins_outcome_is_acted_on() -> Bool {
 // A REQUESTED CHANGE IS ONE MESSAGE naming the hand-in, the stage and its findings, and how to hand in again.
 test fn a_revision_message_carries_the_findings_once() -> Bool {
   let t = harness_revision_text(handin: "h1", stage: "review", findings: "dag/a.dag: the arm is missing")
-  t.contains("h1") && t.contains("(review)") && t.contains("dag/a.dag: the arm is missing") && t.contains(".gunbc-submission.json")
+  t.contains("h1") && t.contains("(review)") && t.contains("dag/a.dag: the arm is missing") && t.contains(".gunbc-submission.json") && t.contains("call hand_in")
 }

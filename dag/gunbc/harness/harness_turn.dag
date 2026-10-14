@@ -1,6 +1,6 @@
 module gunbc.harness.harness_turn
 
-import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr, GitRef }
 import std.measure { TokenCount, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
@@ -33,7 +33,13 @@ import gunbc.harness.hosted_failure {
 import gunbc.harness.harness_seat {
   HostedInflightRead, HostedInflightUnread, HostedInflightHeld, HostedInflightRefused, harness_hosted_inflight_read,
   harness_hosted_inflight_acquire, harness_hosted_inflight_release, hosted_inflight_carried,
+  HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, HarnessOperatorBound,
+  harness_release_seat, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseNotApplicable, HarnessSeatReleaseRefused,
+  harness_bind_seat, AnyAdmittedModel,
 }
+import product.fabric.demand { AdmissionTerms }
+import product.capacity.lease { LeasePolicy, QuiescenceRequired }
+import extdeps.tools.hostname
 import gunbc.fabric.fabric_quota { quota_window_start }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding
@@ -68,7 +74,8 @@ import gunbc.roadmap.roadmap_submission {
 import gunbc.roadmap.roadmap_acceptance_outcome {
   AcceptanceOutcome, AcceptanceAccepted, AcceptanceChangesRequested, AcceptanceUnavailable,
   AcceptanceOutcomeRead, AcceptanceOutcomeDecoded, AcceptanceOutcomeUndecodable,
-  acceptance_outcome_decode, acceptance_outcome_basename, acceptance_outcome_key,
+  acceptance_outcome_decode, acceptance_outcome_basename,
+  handin_identity, acceptance_outcome_addresses,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_handin_entry_name }
 import gunbc.harness.harness_guidance {
@@ -81,13 +88,17 @@ import gunbc.harness.harness_wire {
   HarnessResponseRead, HarnessResponseParsed, HarnessResponseUnreadable,
   HarnessUsageRead, UsageRead, UsageUnreadable,
   harness_decode_response, harness_stop_reason_wire, harness_tool_result_block,
+  harness_context_budget_for,
 }
 import gunbc.harness.harness_tool {
   HarnessToolEnvironment, HarnessToolOutcome, ToolCompleted, ToolRefused,
   harness_execute_tool_use, harness_outcome_text, harness_outcome_is_error,
-  harness_run_command_schema,
+  harness_offered_tools_json,
 }
-import gunbc.harness.harness_tool_kind { harness_tool_of_wire_name, harness_tool_read_item_type }
+import gunbc.harness.harness_tool_kind {
+  harness_tool_of_wire_name, harness_tool_read_item_type, harness_tool_wire_name,
+  HarnessToolRecognized, HarnessToolUnrecognized, HandInTool,
+}
 import extdeps.llm.anthropic_messages_api {
   AnthropicStopReason, EndTurn, MaxTokens, StopSequence, ToolUse, PauseTurn, Refusal,
   ModelContextWindowExceeded,
@@ -299,7 +310,15 @@ type HarnessTurnConfig {
   environment: HarnessToolEnvironment
   completion: HarnessTurnCompletion
   backend_access: HarnessBackendAccess
+  acceptance_capacity: HarnessAcceptanceCapacity
 }
+
+// THE WAITING PROCESS STAYS ON THE OPERATOR-ENDPOINT ROUTE. A fleet seat is capacity acceptance
+// itself needs, so a quiescent hand-in releases it and the process keeps polling the outcome file.
+type HarnessAcceptanceCapacity
+  = KeepBindingAlive
+  | FleetSeatHeld { binding: HarnessSeatBinding, admission: AdmissionTerms }
+  | FleetSeatReleasedForAcceptance { binding: HarnessSeatBinding, admission: AdmissionTerms }
 
 // THE WINDOW THE HARNESS WORKS IN AND THE WINDOW THE ENGINE ADMITS ARE ONE NUMBER, and this field
 // is how the second reaches the first. gunbc.spark.serving_desired declares the roster ceiling the
@@ -756,30 +775,8 @@ fn harness_chat_request_json(
 // harness_model_request_inputs), so the identity cannot drift from what the model is actually
 // offered. One schema, two envelopes.
 fn harness_tool_contract_json(shape: HarnessWireShape) -> JsonValue {
-  match shape {
-    AnthropicMessagesShape =>
-      json_array(elements: [
-        json_object([
-          json_kv(key: "name", value: json_string(s: "run_command")),
-          json_kv(key: "description", value: json_string(s: harness_run_command_description)),
-          json_kv(key: "input_schema", value: harness_run_command_schema()),
-        ]),
-      ])
-    OpenAiChatCompletionsShape =>
-      json_array(elements: [
-        json_object([
-          json_kv(key: "type", value: json_string(s: "function")),
-          json_kv(key: "function", value: json_object([
-            json_kv(key: "name", value: json_string(s: "run_command")),
-            json_kv(key: "description", value: json_string(s: harness_run_command_description)),
-            json_kv(key: "parameters", value: harness_run_command_schema()),
-          ])),
-        ]),
-      ])
-  }
+  harness_offered_tools_json(shape: shape)
 }
-
-data harness_run_command_description: String = "Run a shell command in the attempt's working directory and return its combined output and exit code."
 
 fn harness_tool_contract_wire(shape: HarnessWireShape) -> String {
   serialize_json(v: harness_tool_contract_json(shape: shape))
@@ -1809,6 +1806,11 @@ fn harness_turn_round(
                         stop_reason: stop_reason,
                         input_tokens: input_tokens,
                         output_tokens: output_tokens,
+                        tool_use_id: none,
+                        prior_results: [],
+                        steps_remaining: steps_remaining,
+                        repairs_used: repairs_used,
+                        blocks: blocks,
                       )
                   }
                 GateRepair { reason } => {
@@ -1881,6 +1883,25 @@ fn harness_turn_round(
               }
           }
         } else {
+          match harness_hand_in_block(uses: uses) {
+            Present { value: hand_block } =>
+              harness_turn_execute_hand_in(
+                config: config,
+                messages: messages,
+                blocks: blocks,
+                uses: uses,
+                hand_block: hand_block,
+                events: events,
+                steps_taken: steps_taken,
+                steps_remaining: steps_remaining,
+                input_tokens: input_tokens,
+                output_tokens: output_tokens,
+                clock: clock,
+                repairs_used: repairs_used,
+                text: harness_blocks_text(blocks: blocks),
+                stop_reason: stop_reason,
+              )
+            Absent => {
           let results = map(uses, u => harness_execute_tool(
             environment: config.environment,
             block: u,
@@ -1916,6 +1937,8 @@ fn harness_turn_round(
                 events: stepped,
                 repairs_used: repairs_used,
               )
+            }
+          }
             }
           }
         }
@@ -2093,6 +2116,7 @@ fn harness_supervision_nested_config(
       name: harness_supervision_verdict_name(kind: kind, steps_taken: steps_taken),
     },
     backend_access: config.backend_access,
+    acceptance_capacity: KeepBindingAlive,
   }
 }
 
@@ -2502,10 +2526,235 @@ fn harness_handin_route(supervision: HarnessSupervision, observed: SubmissionGat
   }
 }
 
-// THE HAND-IN ID IS FRESH PER HAND-IN: h1, h2, ... counted from this session's own record of them, so
-// a revision handed in with unchanged wording is still a new hand-in with its own outcome.
+fn harness_handin_ordinal(events: List<String>) -> Int {
+  1 + list_length(items: events |> filter(e => e.contains("\"session.handed_in\"")))
+}
+
+// THE HAND-IN ID BINDS THE SAME TWO FACTS CAPTURE WILL RECORD: git head_sha and the tree object
+// (%T) as the content half of the candidate. The SCM envelope locator does not exist until the
+// belt mints capture, so the tree sha is the root binding observable at hand-in. A refused git
+// read is Unreadable, never an empty string treated as a head.
+type HandInWorktreeObservation
+  = HandInWorktreeObserved { head_sha: String, tree_sha: String }
+  | HandInWorktreeUnreadable { cause: String }
+
+fn harness_handin_candidate_from_observations(
+  worktree: String,
+  head_success: Bool,
+  head_sha: String,
+  head_stderr: String,
+  tree_success: Bool,
+  tree_sha: String,
+  tree_stderr: String,
+) -> HandInWorktreeObservation {
+  if !head_success {
+    HandInWorktreeUnreadable { cause: join(["git.Inspect.HeadCommitIn refused in ", worktree, ": ", head_stderr], "") }
+  } else if !tree_success {
+    HandInWorktreeUnreadable { cause: join(["git.Inspect.ShowTreeIn refused in ", worktree, ": ", tree_stderr], "") }
+  } else {
+    HandInWorktreeObserved { head_sha: trim(head_sha), tree_sha: trim(tree_sha) }
+  }
+}
+
+fn harness_observe_handin_candidate(worktree: String) -> HandInWorktreeObservation {
+  let head = git.Inspect.HeadCommitIn(repository_path: worktree)
+  let tree = git.Inspect.ShowTreeIn(repository_path: worktree, ref: "HEAD" as GitRef)
+  harness_handin_candidate_from_observations(
+    worktree: worktree,
+    head_success: head.success,
+    head_sha: head.sha,
+    head_stderr: head.stderr,
+    tree_success: tree.success,
+    tree_sha: tree.tree,
+    tree_stderr: tree.stderr,
+  )
+}
+
+fn harness_mint_handin_id(events: List<String>, attempt_key: String, head_sha: String, tree_sha: String) -> String {
+  handin_identity(attempt_key: attempt_key, ordinal: harness_handin_ordinal(events: events), head: head_sha, scm_root: tree_sha)
+}
+
 fn harness_next_handin_id(events: List<String>) -> String {
-  join(["h", to_string(value: 1 + list_length(items: events |> filter(e => e.contains("\"session.handed_in\""))))], "")
+  join(["h", to_string(value: harness_handin_ordinal(events: events))], "")
+}
+
+fn harness_block_is_hand_in(block: HarnessWireBlock) -> Bool {
+  match block {
+    WireToolUseBlock { id: _, name: n, input: _ } =>
+      match harness_tool_of_wire_name(name: n) {
+        HarnessToolRecognized { tool: HandInTool } => true
+        HarnessToolRecognized { tool: _ } => false
+        HarnessToolUnrecognized { name: _ } => false
+      }
+    WireTextBlock { text: _ } => false
+    WireThinkingBlock { thinking: _ } => false
+  }
+}
+
+fn harness_hand_in_block(uses: List<HarnessWireBlock>) -> HarnessWireBlock? {
+  (uses |> filter(u => harness_block_is_hand_in(block: u))).first()
+}
+
+fn harness_acceptance_outcome_tool_text(o: AcceptanceOutcome) -> String {
+  match o {
+    AcceptanceAccepted => "accepted"
+    AcceptanceChangesRequested { stage, findings } =>
+      join(["changes-requested\nstage: ", stage, "\n", findings], "")
+    AcceptanceUnavailable { cause } => join(["unavailable\n", cause], "")
+  }
+}
+
+type HarnessHandInSeat
+  = HandInSeatReady { config: HarnessTurnConfig }
+  | HandInSeatReleaseRefused { detail: String }
+
+fn harness_turn_config_with_capacity(config: HarnessTurnConfig, acceptance_capacity: HarnessAcceptanceCapacity) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: config.backend_url,
+    model: config.model,
+    max_tokens: config.max_tokens,
+    serving_unit: config.serving_unit,
+    reasoning_mode: config.reasoning_mode,
+    wire_shape: config.wire_shape,
+    system_prompt: config.system_prompt,
+    supervision: config.supervision,
+    request_scratch_path: config.request_scratch_path,
+    events_path: config.events_path,
+    context_budget: config.context_budget,
+    request_deadline: config.request_deadline,
+    environment: config.environment,
+    completion: config.completion,
+    backend_access: config.backend_access,
+    acceptance_capacity: acceptance_capacity,
+  }
+}
+
+fn harness_release_fleet_seat_for_handin(config: HarnessTurnConfig) -> HarnessHandInSeat {
+  match config.acceptance_capacity {
+    KeepBindingAlive => HandInSeatReady { config: config }
+    FleetSeatReleasedForAcceptance { binding: _, admission: _ } => HandInSeatReady { config: config }
+    FleetSeatHeld { binding, admission } =>
+      match harness_release_seat(binding: binding, reason: "awaiting acceptance" as NonEmptyStr) {
+        HarnessSeatReleased { partition: _ } =>
+          HandInSeatReady { config: harness_turn_config_with_capacity(config: config, acceptance_capacity: FleetSeatReleasedForAcceptance { binding: binding, admission: admission }) }
+        HarnessHostedCredentialRemoved =>
+          HandInSeatReleaseRefused { detail: "a fleet seat release answered as a hosted credential removal; the seat may still be held" }
+        HarnessSeatReleaseRefused { detail } => HandInSeatReleaseRefused { detail: detail }
+        HarnessSeatReleaseNotApplicable { why } => HandInSeatReleaseRefused { detail: why }
+      }
+  }
+}
+
+fn harness_rebind_fleet_for_revision(config: HarnessTurnConfig, prior: HarnessSeatBinding, admission: AdmissionTerms, handin: String) -> HarnessHandInSeat {
+  match prior {
+    HarnessSeatRefused { detail: d } => HandInSeatReleaseRefused { detail: d }
+    HarnessSeatPending { detail: d } => HandInSeatReleaseRefused { detail: d }
+    HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => HandInSeatReleaseRefused { detail: "a hosted binding cannot be rebound as a fleet seat after acceptance" }
+    HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => HandInSeatReady { config: config }
+    HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: _, unit: _, class: class, seat: seat } => {
+      let host = os.Hostname.ReadShort()
+      if !host.success {
+        HandInSeatReleaseRefused { detail: "the executor hostname could not be read, so a fleet seat cannot be rebound after acceptance" }
+      } else {
+        let worktree = config.environment.working_directory as String
+        let attempt = join([seat.attempt as String, "+rev+", handin], "") as NonEmptyStr
+        let rebound = harness_bind_seat(
+          short_hostname: host.value,
+          class: class,
+          requirement: AnyAdmittedModel,
+          shape: config.wire_shape,
+          inputs: [config.system_prompt, handin],
+          actor: join(["worker:", worktree], "") as NonEmptyStr,
+          attempt: attempt,
+          policy: LeasePolicy {
+            maximum_duration_seconds: second_count(s: config.request_deadline) + 60,
+            release_law: QuiescenceRequired,
+          },
+          session: none,
+          admission: admission,
+        )
+        match rebound {
+          HarnessSeatRefused { detail: d } => HandInSeatReleaseRefused { detail: d }
+          HarnessSeatPending { detail: d } => HandInSeatReleaseRefused { detail: join(["fleet seat pending after acceptance, so revision cannot continue on a released seat: ", d], "") }
+          HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => HandInSeatReleaseRefused { detail: "revision rebind answered as a hosted quota binding" }
+          HarnessOperatorBound { url: _, model: _, unit: _, header_dir: _, header_file: _ } => HandInSeatReleaseRefused { detail: "revision rebind answered as an operator endpoint" }
+          HarnessSeatBound { url: u, grant: _, partition: _, ceiling: _, replica_wire: _, launch: _, store: _, model: m, unit: un, class: _, seat: _ } =>
+            HandInSeatReady {
+              config: HarnessTurnConfig {
+                backend_url: u,
+                model: m as String,
+                max_tokens: config.max_tokens,
+                serving_unit: un,
+                reasoning_mode: config.reasoning_mode,
+                wire_shape: config.wire_shape,
+                system_prompt: config.system_prompt,
+                supervision: config.supervision,
+                request_scratch_path: config.request_scratch_path,
+                events_path: config.events_path,
+                context_budget: harness_context_budget_for(unit: un),
+                request_deadline: config.request_deadline,
+                environment: config.environment,
+                completion: config.completion,
+                backend_access: BackendAdmittedBySeat,
+                acceptance_capacity: FleetSeatHeld { binding: rebound, admission: admission },
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn harness_resume_after_acceptance_wait(config: HarnessTurnConfig, handin: String) -> HarnessHandInSeat {
+  match config.acceptance_capacity {
+    KeepBindingAlive => HandInSeatReady { config: config }
+    FleetSeatHeld { binding: _, admission: _ } => HandInSeatReady { config: config }
+    FleetSeatReleasedForAcceptance { binding, admission } => harness_rebind_fleet_for_revision(config: config, prior: binding, admission: admission, handin: handin)
+  }
+}
+
+fn harness_outcome_steps_taken(outcome: HarnessTurnOutcome) -> Int {
+  match outcome {
+    TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: n, input_tokens: _, output_tokens: _ } => n
+    TurnCompletedByArtifact { path: _, steps_taken: n } => n
+    TurnStepBudgetExhausted { steps_taken: n } => n
+    TurnTransportRefused { detail: _ } => 0
+    TurnResponseUnreadable { cause: _ } => 0
+    TurnRequestUnwritable { path: _, detail: _ } => 0
+    TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: n } => n
+    TurnTruncatedMidToolCall { output_tokens: _, ceiling: _, steps_taken: n } => n
+    TurnThinkingFormatInvalid { cause: _, steps_taken: n } => n
+    TurnUsageUnavailable { cause: _, steps_taken: n } => n
+    TurnSubmissionUndecodable { reason: _, steps_taken: n } => n
+    TurnStoppedBySupervision { verdict: _, detail: _, steps_taken: n } => n
+    TurnSupervisionUnavailable { cause: _, steps_taken: n } => n
+    TurnAcceptanceUnavailable { cause: _, steps_taken: n } => n
+    TurnHostedQuotaFull { wire: _, steps_taken: n } => n
+    TurnHostedQuotaUnleasable { detail: _, steps_taken: n } => n
+    TurnHostedFailure { failure: _, steps_taken: n } => n
+  }
+}
+
+fn harness_release_capacity_if_held(config: HarnessTurnConfig, outcome: HarnessTurnOutcome) -> HarnessTurnOutcome {
+  match config.acceptance_capacity {
+    KeepBindingAlive => outcome
+    FleetSeatReleasedForAcceptance { binding: _, admission: _ } => outcome
+    FleetSeatHeld { binding, admission: _ } =>
+      match harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr) {
+        HarnessSeatReleased { partition: _ } => outcome
+        HarnessSeatReleaseNotApplicable { why: _ } => outcome
+        HarnessHostedCredentialRemoved =>
+          TurnAcceptanceUnavailable {
+            cause: "the rebound fleet seat release answered as a hosted credential removal; the seat may still be held",
+            steps_taken: harness_outcome_steps_taken(outcome: outcome),
+          }
+        HarnessSeatReleaseRefused { detail } =>
+          TurnAcceptanceUnavailable {
+            cause: join(["the rebound fleet seat could not be released after revision: ", detail], ""),
+            steps_taken: harness_outcome_steps_taken(outcome: outcome),
+          }
+      }
+  }
 }
 
 fn harness_event_handed_in(handin: String) -> String {
@@ -2523,8 +2772,86 @@ fn harness_event_session_outcome(event_type: String, handin: String, detail: Str
   ]))
 }
 
-fn harness_turn_acceptance_unavailable(config: HarnessTurnConfig, handin: String, cause: String, steps_taken: Int, events: List<String>) -> HarnessTurnOutcome {
-  match harness_write_events(config: config, events: concat(events, [harness_event_session_outcome(event_type: "turn.acceptance_unavailable", handin: handin, detail: cause)])) {
+fn harness_turn_execute_hand_in(
+  config: HarnessTurnConfig,
+  messages: List<JsonValue>,
+  blocks: List<HarnessWireBlock>,
+  uses: List<HarnessWireBlock>,
+  hand_block: HarnessWireBlock,
+  events: List<String>,
+  steps_taken: Int,
+  steps_remaining: Int,
+  input_tokens: TokenCount,
+  output_tokens: TokenCount,
+  clock: ClockUnixMillisRead,
+  repairs_used: Int,
+  text: String,
+  stop_reason: AnthropicStopReason,
+) -> HarnessTurnOutcome {
+  let others = uses |> filter(u => !harness_block_is_hand_in(block: u))
+  let other_results = map(others, u => harness_execute_tool(environment: config.environment, block: u))
+  let usage_after = harness_event_round_usage(
+    step: steps_taken + 1,
+    input_tokens: input_tokens,
+    output_tokens: output_tokens,
+    clock: clock,
+    tool_calls: list_length(items: uses),
+    files_changed: harness_worktree_files_changed(environment: config.environment),
+  )
+  let stepped = concat(concat(events, [usage_after]), harness_tool_round_events(uses: uses))
+  match harness_write_events(config: config, events: stepped) {
+    HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+    HarnessEventsWritten => {
+      let observed = harness_submission_gate_observe(environment: config.environment)
+      match harness_handin_route(supervision: config.supervision, observed: observed) {
+        Absent => {
+          let refused = HarnessToolResult {
+            tool_use_id: harness_tool_use_id(block: hand_block),
+            text: "hand_in refused: the submission is not a ready candidate, or this session is not on the hand-in route",
+            is_error: true,
+          }
+          harness_turn_continue(
+            config: config, messages: messages, blocks: blocks,
+            results: concat(other_results, [refused]),
+            steps_remaining: steps_remaining, steps_taken: steps_taken, input_tokens: input_tokens,
+            events: stepped, repairs_used: repairs_used,
+          )
+        }
+        Present { value: route } =>
+          harness_turn_hand_in(
+            config: config,
+            route: route,
+            messages: messages,
+            events: stepped,
+            steps_taken: steps_taken + 1,
+            text: text,
+            stop_reason: stop_reason,
+            input_tokens: input_tokens,
+            output_tokens: output_tokens,
+            tool_use_id: Present { value: harness_tool_use_id(block: hand_block) },
+            prior_results: other_results,
+            steps_remaining: steps_remaining,
+            repairs_used: repairs_used,
+            blocks: blocks,
+          )
+      }
+    }
+  }
+}
+
+fn harness_event_acceptance_unavailable(handin: String?, cause: String) -> String {
+  match handin {
+    Absent =>
+      serialize_json(v: json_object([
+        json_kv(key: "type", value: json_string(s: "turn.acceptance_unavailable")),
+        json_kv(key: "detail", value: json_string(s: cause)),
+      ]))
+    Present { value: h } => harness_event_session_outcome(event_type: "turn.acceptance_unavailable", handin: h, detail: cause)
+  }
+}
+
+fn harness_turn_acceptance_unavailable(config: HarnessTurnConfig, handin: String?, cause: String, steps_taken: Int, events: List<String>) -> HarnessTurnOutcome {
+  match harness_write_events(config: config, events: concat(events, [harness_event_acceptance_unavailable(handin: handin, cause: cause)])) {
     HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
     HarnessEventsWritten => TurnAcceptanceUnavailable { cause: cause, steps_taken: steps_taken }
   }
@@ -2540,22 +2867,59 @@ fn harness_turn_hand_in(
   stop_reason: AnthropicStopReason,
   input_tokens: TokenCount,
   output_tokens: TokenCount,
+  tool_use_id: String?,
+  prior_results: List<HarnessToolResult>,
+  steps_remaining: Int,
+  repairs_used: Int,
+  blocks: List<HarnessWireBlock>,
 ) -> HarnessTurnOutcome {
-  let handin = harness_next_handin_id(events: events)
-  let recorded = concat(events, [harness_event_handed_in(handin: handin)])
-  match harness_write_events(config: config, events: recorded) {
-    HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-    HarnessEventsWritten => {
-      let entry = join([route.route.inbox, "/", attempt_handin_entry_name(node_id: route.route.node_id, attempt_key: route.route.attempt_key, handin: handin)], "")
-      let woke = Filesystem.Write(path: entry, content: "")
-      if !woke.success {
-        harness_turn_acceptance_unavailable(config: config, handin: handin, cause: join(["the hand-in could not be recorded in the event spool at ", entry, ": ", woke.error], ""), steps_taken: steps_taken, events: recorded)
-      } else {
-        harness_await_acceptance(
-          config: config, route: route, handin: handin, polls_left: harness_acceptance_deadline_polls,
-          messages: messages, events: recorded, steps_taken: steps_taken,
-          text: text, stop_reason: stop_reason, input_tokens: input_tokens, output_tokens: output_tokens,
-        )
+  let worktree = config.environment.working_directory as String
+  match harness_observe_handin_candidate(worktree: worktree) {
+    HandInWorktreeUnreadable { cause } =>
+      harness_turn_acceptance_unavailable(
+        config: config,
+        handin: none,
+        cause: cause,
+        steps_taken: steps_taken,
+        events: events,
+      )
+    HandInWorktreeObserved { head_sha, tree_sha } => {
+      let handin = harness_mint_handin_id(
+        events: events,
+        attempt_key: route.route.attempt_key,
+        head_sha: head_sha,
+        tree_sha: tree_sha,
+      )
+      let recorded = concat(events, [harness_event_handed_in(handin: handin)])
+      match harness_write_events(config: config, events: recorded) {
+        HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+        HarnessEventsWritten => {
+          let entry = join([route.route.inbox, "/", attempt_handin_entry_name(node_id: route.route.node_id, attempt_key: route.route.attempt_key, handin: handin)], "")
+          let woke = Filesystem.Write(path: entry, content: "")
+          if !woke.success {
+            harness_turn_acceptance_unavailable(config: config, handin: Present { value: handin }, cause: join(["the hand-in could not be recorded in the event spool at ", entry, ": ", woke.error], ""), steps_taken: steps_taken, events: recorded)
+          } else {
+            match harness_release_fleet_seat_for_handin(config: config) {
+              HandInSeatReleaseRefused { detail } =>
+                harness_turn_acceptance_unavailable(
+                  config: config,
+                  handin: Present { value: handin },
+                  cause: join(["fleet seat could not be released at a quiescent hand-in: ", detail], ""),
+                  steps_taken: steps_taken,
+                  events: recorded,
+                )
+              HandInSeatReady { config: waiting } =>
+                harness_await_acceptance(
+                  config: waiting,
+                  route: route, handin: handin, polls_left: harness_acceptance_deadline_polls,
+                  messages: messages, events: recorded, steps_taken: steps_taken,
+                  text: text, stop_reason: stop_reason, input_tokens: input_tokens, output_tokens: output_tokens,
+                  tool_use_id: tool_use_id, prior_results: prior_results, steps_remaining: steps_remaining,
+                  repairs_used: repairs_used, blocks: blocks,
+                )
+            }
+          }
+        }
       }
     }
   }
@@ -2569,9 +2933,14 @@ fn harness_acceptance_outcome_for(text: String?, handin: String) -> AcceptanceOu
     Present { value: t } =>
       match acceptance_outcome_decode(text: t) {
         AcceptanceOutcomeUndecodable { reason: _ } => none
-        AcceptanceOutcomeDecoded { record } => if record.handin == handin { Present { value: record.outcome } } else { none }
+        AcceptanceOutcomeDecoded { record } =>
+          if acceptance_outcome_addresses(record: record, handin: handin) { Present { value: record.outcome } } else { none }
       }
   }
+}
+
+fn harness_acceptance_wait_expired_cause(handin: String) -> String {
+  join(["no acceptance outcome named hand-in ", handin, " within ", to_string(value: harness_acceptance_deadline_polls * harness_acceptance_poll_seconds), " s"], "")
 }
 
 fn harness_await_acceptance(
@@ -2586,6 +2955,11 @@ fn harness_await_acceptance(
   stop_reason: AnthropicStopReason,
   input_tokens: TokenCount,
   output_tokens: TokenCount,
+  tool_use_id: String?,
+  prior_results: List<HarnessToolResult>,
+  steps_remaining: Int,
+  repairs_used: Int,
+  blocks: List<HarnessWireBlock>,
 ) -> HarnessTurnOutcome {
   let read = Filesystem.Read(path: join([route.check_directory, "/", acceptance_outcome_basename as String], ""))
   match harness_acceptance_outcome_for(text: if read.success { Present { value: read.content } } else { none }, handin: handin) {
@@ -2593,12 +2967,14 @@ fn harness_await_acceptance(
       harness_apply_acceptance(
         config: config, route: route, handin: handin, outcome: outcome, messages: messages, events: events,
         steps_taken: steps_taken, text: text, stop_reason: stop_reason, input_tokens: input_tokens, output_tokens: output_tokens,
+        tool_use_id: tool_use_id, prior_results: prior_results, steps_remaining: steps_remaining,
+        repairs_used: repairs_used, blocks: blocks,
       )
     Absent =>
       if polls_left <= 0 {
         harness_turn_acceptance_unavailable(
-          config: config, handin: handin,
-          cause: join(["no acceptance outcome named hand-in ", handin, " within ", to_string(value: harness_acceptance_deadline_polls * harness_acceptance_poll_seconds), " s"], ""),
+          config: config, handin: Present { value: handin },
+          cause: harness_acceptance_wait_expired_cause(handin: handin),
           steps_taken: steps_taken, events: events,
         )
       } else {
@@ -2607,6 +2983,8 @@ fn harness_await_acceptance(
           config: config, route: route, handin: handin, polls_left: polls_left - 1,
           messages: messages, events: events, steps_taken: steps_taken,
           text: text, stop_reason: stop_reason, input_tokens: input_tokens, output_tokens: output_tokens,
+          tool_use_id: tool_use_id, prior_results: prior_results, steps_remaining: steps_remaining,
+          repairs_used: repairs_used, blocks: blocks,
         )
       }
   }
@@ -2618,7 +2996,7 @@ fn harness_await_acceptance(
 fn harness_revision_text(handin: String, stage: String, findings: String) -> String {
   join([
     "Acceptance of your hand-in ", handin, " requested changes (", stage, "):\n", findings,
-    "\nMake the changes, then hand in again: write a new ", submission_artifact_name as String, " and stop.",
+    "\nMake the changes, then call hand_in again after writing a new ", submission_artifact_name as String, ".",
   ], "")
 }
 
@@ -2634,6 +3012,11 @@ fn harness_apply_acceptance(
   stop_reason: AnthropicStopReason,
   input_tokens: TokenCount,
   output_tokens: TokenCount,
+  tool_use_id: String?,
+  prior_results: List<HarnessToolResult>,
+  steps_remaining: Int,
+  repairs_used: Int,
+  blocks: List<HarnessWireBlock>,
 ) -> HarnessTurnOutcome {
   match outcome {
     AcceptanceAccepted => {
@@ -2646,7 +3029,7 @@ fn harness_apply_acceptance(
         HarnessEventsWritten =>
           TurnProviderStopped {
             wire_stop_reason: harness_stop_reason_wire(reason: stop_reason),
-            assistant_text: text,
+            assistant_text: harness_acceptance_outcome_tool_text(o: AcceptanceAccepted),
             steps_taken: steps_taken,
             input_tokens: token_count_value(t: input_tokens),
             output_tokens: token_count_value(t: output_tokens),
@@ -2654,27 +3037,60 @@ fn harness_apply_acceptance(
       }
     }
     AcceptanceUnavailable { cause } =>
-      harness_turn_acceptance_unavailable(config: config, handin: handin, cause: cause, steps_taken: steps_taken, events: events)
+      harness_turn_acceptance_unavailable(config: config, handin: Present { value: handin }, cause: cause, steps_taken: steps_taken, events: events)
     AcceptanceChangesRequested { stage, findings } => {
       let dir = config.environment.working_directory as String
       let submitted = join([dir, "/", submission_artifact_name as String], "")
       let kept = join([dir, "/.gunbc-submission.", handin, ".json"], "")
       let moved = shell.Move.File(source: submitted as FilePath, destination: kept as FilePath)
       if !moved.success {
-        harness_turn_acceptance_unavailable(config: config, handin: handin, cause: join(["changes were requested, but the handed-in submission could not be moved aside to ", kept], ""), steps_taken: steps_taken, events: events)
+        harness_turn_acceptance_unavailable(config: config, handin: Present { value: handin }, cause: join(["changes were requested, but the handed-in submission could not be moved aside to ", kept], ""), steps_taken: steps_taken, events: events)
       } else {
         let revising = concat(events, [harness_event_session_outcome(event_type: "session.revision_started", handin: handin, detail: stage)])
         match harness_write_events(config: config, events: revising) {
           HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
           HarnessEventsWritten =>
-            harness_turn_loop(
-              config: config,
-              messages: harness_messages_with_steer(shape: config.wire_shape, messages: messages, steer: harness_revision_text(handin: handin, stage: stage, findings: findings)),
-              steps_remaining: route.round_steps,
-              steps_taken: steps_taken,
-              events: revising,
-              repairs_used: 0,
-            )
+            match harness_resume_after_acceptance_wait(config: config, handin: handin) {
+              HandInSeatReleaseRefused { detail } =>
+                harness_turn_acceptance_unavailable(
+                  config: config,
+                  handin: Present { value: handin },
+                  cause: join(["changes were requested, but a fleet seat could not be rebound for revision: ", detail], ""),
+                  steps_taken: steps_taken,
+                  events: revising,
+                )
+              HandInSeatReady { config: resumed } =>
+                harness_release_capacity_if_held(
+                  config: resumed,
+                  outcome: match tool_use_id {
+                    Present { value: id } =>
+                      harness_turn_continue(
+                        config: resumed,
+                        messages: messages,
+                        blocks: blocks,
+                        results: concat(prior_results, [HarnessToolResult {
+                          tool_use_id: id,
+                          text: harness_acceptance_outcome_tool_text(o: outcome),
+                          is_error: false,
+                        }]),
+                        steps_remaining: steps_remaining,
+                        steps_taken: steps_taken,
+                        input_tokens: input_tokens,
+                        events: revising,
+                        repairs_used: 0,
+                      )
+                    Absent =>
+                      harness_turn_loop(
+                        config: resumed,
+                        messages: harness_messages_with_steer(shape: config.wire_shape, messages: messages, steer: harness_revision_text(handin: handin, stage: stage, findings: findings)),
+                        steps_remaining: route.round_steps,
+                        steps_taken: steps_taken,
+                        events: revising,
+                        repairs_used: 0,
+                      )
+                  },
+                )
+            }
         }
       }
     }

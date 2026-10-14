@@ -2,7 +2,7 @@ module gunbc.harness.harness_guidance
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.harness.harness_tool_kind { HarnessTool, RunCommandTool, harness_tool_wire_name }
+import gunbc.harness.harness_tool_kind { HarnessTool, RunCommandTool, HandInTool, harness_tool_wire_name }
 import gunbc.roadmap.roadmap_submission {
   submission_artifact_name, submission_schema, submission_text, submission_readiness_key,
   WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
@@ -223,7 +223,7 @@ fn harness_conclusion_text(c: HarnessConclusion) -> String {
     ChangeTheTreeWithTheTool =>
       "So to complete this task you must change files with that tool, not only read them."
     VerifyWithTheTool =>
-      "So run the acceptance command with that tool before you finish."
+      "So call the hand_in tool when the candidate is ready; do not run the node's acceptance witness yourself — the controller runs that oracle and returns Accepted, ChangesRequested, or Unavailable as the tool result."
     ReadingAloneCompletesNothing => "Reading alone completes nothing."
     ActBeforeTheRoundsRun { rounds: n } =>
       join([
@@ -238,7 +238,7 @@ fn harness_conclusion_text(c: HarnessConclusion) -> String {
     IterateNarrowThenAccept { iterate } =>
       join([
         "So iterate with `", iterate,
-        "` using the narrowest pattern that covers the witness modules for the declarations you changed and for the modules that import them (find those with grep -rln 'import <your.module>' dag src/v2). Run one pattern at a time, never //dag/test/claim/..., and batch your edits before each run because every run after an edit rebuilds. Read each receipt and fix what it names. Run the acceptance check named in your brief last, once, when the narrow runs are green.",
+        "` using the narrowest pattern that covers the witness modules for the declarations you changed and for the modules that import them (find those with grep -rln 'import <your.module>' dag src/v2). Run one pattern at a time, never //dag/test/claim/..., and batch your edits before each run because every run after an edit rebuilds. Read each receipt and fix what it names. When the narrow runs are green, write the submission artifact and call hand_in; the controller runs the node's own acceptance oracle — do not run a package glob or the pinned witness yourself.",
       ], "")
   }
 }
@@ -582,6 +582,8 @@ fn harness_worker_guidance() -> List<HarnessGroundedPremise> {
     grounded(premise: ActingAs { role: CodingWorkerInWorktree },
              module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "gunbc_harness_spawn_argv"),
     grounded(premise: ToolIs { tool: RunCommandTool },
+             module_path: "gunbc.harness.harness_tool", decl_name: "harness_offered_tools"),
+    grounded(premise: ToolIs { tool: HandInTool },
              module_path: "gunbc.harness.harness_tool", decl_name: "harness_offered_tools"),
     grounded(premise: ToolRunsIn { locus: TheAttemptWorktree },
              module_path: "gunbc.harness.harness_tool", decl_name: "HarnessToolEnvironment"),

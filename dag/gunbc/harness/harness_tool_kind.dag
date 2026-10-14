@@ -16,6 +16,7 @@ type HarnessTool
   | ReadFileTool
   | WriteFileTool
   | EditFileTool
+  | HandInTool
 
 fn harness_tool_wire_name(tool: HarnessTool) -> String {
   match tool {
@@ -23,14 +24,15 @@ fn harness_tool_wire_name(tool: HarnessTool) -> String {
     ReadFileTool => "read_file"
     WriteFileTool => "write_file"
     EditFileTool => "edit_file"
+    HandInTool => "hand_in"
   }
 }
 
-// THE CLOSED VARIANT LIST, the one place the four tools are enumerated as values. Both inverses
+// THE CLOSED VARIANT LIST, the one place the tools are enumerated as values. Both inverses
 // below fold over it and compare against the forward function, so a spelling lives only in the
 // forward match and adding a tool is one variant, one match arm, and one entry here.
 fn all_harness_tools() -> List<HarnessTool> {
-  [RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool]
+  [RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool]
 }
 
 type HarnessToolRead
@@ -63,6 +65,7 @@ fn harness_tool_item_type(tool: HarnessTool) -> String {
     ReadFileTool => "file_read"
     WriteFileTool => "file_write"
     EditFileTool => "file_edit"
+    HandInTool => "session_hand_in"
   }
 }
 
