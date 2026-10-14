@@ -26,6 +26,6 @@ data required_live_root_parse_population_withdrawn: RungDrop = RungDrop {
     population: [
     "the parse verdict of every module under dag/ or src/v2/ outside the import closures of the subjects of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (modules inside them are still parsed by the emission they feed): a change can make such a module unparseable with the required context green",
     ],
-    restoration_trigger: "THE CAPABILITY: on every pull request, a binary built from an emission of v2 parses on the required path every governed module the change touched, and the whole governed population when the change touched the parser closure (tokenize, parse, module acquisition and their emitted runtime), with coverage joined by module identity, not by count, inside the job's time budget.",
+    restoration_trigger: "THE CAPABILITY: on every pull request, a binary built from an emission of v2 judges on the required path, under the declared-refusal contract of `v2.cli.population_verbs` `parse_population`, the parse verdict of every governed module the change touched, and of the whole governed population when the change touched the parser closure (tokenize, parse, module acquisition and their emitted runtime), with coverage joined by module identity, not by count, inside the job's time budget.",
   }
 }

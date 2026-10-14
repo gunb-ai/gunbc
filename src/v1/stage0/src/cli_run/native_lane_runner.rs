@@ -3147,7 +3147,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
         )
     };
 
-    // THE JOB THE VERBS HAVE ON `witnesses`: both hold over the live governed roots.
+    // `check-layout` holds over the live governed roots.
     eprintln!("v2-native-cli: population controls — check-layout over the live roots");
     let live = [live_dag.as_path(), live_v2.as_path()];
     let layout_live = run_cli_door(binary, &population_argv("check-layout", &live))?;
