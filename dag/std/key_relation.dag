@@ -35,13 +35,13 @@ type SubjectKey<K> {
   subject: K
 }
 
-type ScopedKey<Relation, Scope, Key> {
-  scope: Scope
+type ScopedKey<Relation, ScopeId, Key> {
+  scope: ScopeId
   key: Key
 }
 
-type KeyRelation<Relation, Subject, Scope, Key> {
-  scope_of: fn(Subject) -> Scope
+type KeyRelation<Relation, Subject, ScopeId, Key> {
+  scope_of: fn(Subject) -> ScopeId
   key_of: fn(Subject) -> Key
 }
 
@@ -57,13 +57,13 @@ fn key_relation_global_scope_of<Subject>(_subject: Subject) -> GlobalKeyScope {
   global_key_scope()
 }
 
-fn key_relation_scoped_key<Relation, Subject, Scope, Key>(
-  relation: KeyRelation<Relation, Subject, Scope, Key>,
+fn key_relation_scoped_key<Relation, Subject, ScopeId, Key>(
+  relation: KeyRelation<Relation, Subject, ScopeId, Key>,
   subject: Subject,
-) -> ScopedKey<Relation, Scope, Key> {
-  let scope_of = relation.scope_of
-  let key_of = relation.key_of
-  ScopedKey { scope: scope_of(subject), key: key_of(subject) }
+) -> ScopedKey<Relation, ScopeId, Key> {
+  let project_scope = relation.scope_of
+  let project_key = relation.key_of
+  ScopedKey { scope: project_scope(subject), key: project_key(subject) }
 }
 
 fn key_relation_global<Relation, Subject, Key>(
@@ -80,13 +80,13 @@ type StateRelation<Relation, Subject, State> {
   state_eq: fn(State, State) -> Bool
 }
 
-type KeyedResourceRelation<Relation, Subject, Scope, Key, State> {
-  key: KeyRelation<Relation, Subject, Scope, Key>
+type KeyedResourceRelation<Relation, Subject, ScopeId, Key, State> {
+  key: KeyRelation<Relation, Subject, ScopeId, Key>
   state: StateRelation<Relation, Subject, State>
 }
 
-fn keyed_resource_subject_value_eq<M, Relation, Scope, Key, State>(
-  resource: KeyedResourceRelation<Relation, M, Scope, Key, State>,
+fn keyed_resource_subject_value_eq<M, Relation, ScopeId, Key, State>(
+  resource: KeyedResourceRelation<Relation, M, ScopeId, Key, State>,
 ) -> fn(M, M) -> Bool {
   let state_of = resource.state.state_of
   let state_eq = resource.state.state_eq
