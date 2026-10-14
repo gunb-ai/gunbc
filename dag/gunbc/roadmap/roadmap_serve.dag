@@ -138,7 +138,6 @@ import gunbc.roadmap.roadmap_launch_admission {
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
   launch_refusal_label, launch_refusal_reason,
-  launch_observe_only_reason,
 }
 import gunbc.roadmap.roadmap_page { issue_detail_not_found_page, issue_create_page,
   roadmap_fleet_page,
@@ -216,7 +215,6 @@ import gunbc.roadmap.dashboard_provider_readiness { dashboard_provider_readiness
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_health_schema,
   HostDashboardInstance,
-  DashboardObserveOnly, DashboardActuating,
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
   macbook_local_dashboard_instance,
@@ -684,24 +682,10 @@ fn serve_dispatch_handler_response_over(
             body: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", "), "\n"], ""),
           )
         DispatchExecutorRequestDecoded { request: executor } =>
-          match instance.actuation {
-            DashboardObserveOnly =>
-              serve_dispatch_with_follow_ups(
-                instance: instance,
-                r: SpawnNotAdmitted {
-                  node_id: node_id,
-                  refusal: LaunchInstanceActuationRefused {
-                    instance_id: instance.instance_id as String,
-                    reason: launch_observe_only_reason,
-                  },
-                },
-              )
-            DashboardActuating =>
-              serve_dispatch_with_follow_ups(
-                instance: instance,
-                r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan(), node_id: node_id, request: LaunchAutonomous, executor: executor),
-              )
-          }
+          serve_dispatch_with_follow_ups(
+            instance: instance,
+            r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
+          )
       }
     }
   })
@@ -1224,7 +1208,7 @@ fn serve_assignment_launch_follow_through_over(
       event_id: event_id,
       outcome: belt_dispatch_node_for_instance_over(
         instance: instance,
-        plan: plan,
+        plan: fn() { plan },
         node_id: node_id,
         request: LaunchForClaim { node: node_id as NonEmptyStr as RoadmapNodeId, claim: event_id as NonEmptyStr as RoadmapEventId },
         executor: ExecutorDefault,
