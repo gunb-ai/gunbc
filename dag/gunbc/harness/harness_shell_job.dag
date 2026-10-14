@@ -5,6 +5,7 @@ import extdeps.posix.process
 import extdeps.posix.signal
 import extdeps.tools.sleep
 import extdeps.filesystem.filesystem_io
+import std.measure { Second, second, measure_le, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, schedule_seconds,
 }
@@ -82,15 +83,18 @@ fn harness_read_job_text(job: HarnessShellJob) -> String {
   join([stdout, stderr], "")
 }
 
-fn harness_await_pid(pid: Int, seconds_left: Int) -> ProcessReapOutcome {
+fn harness_await_pid(pid: Int, remaining: Second) -> ProcessReapOutcome {
   let reaped = posix.Process.Reap(pid: pid)
   match reaped.reaped {
     StillRunning =>
-      if seconds_left <= 0 {
+      if measure_le(a: remaining, b: second(count: 0)) {
         StillRunning
       } else {
         let _pause = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
-        harness_await_pid(pid: pid, seconds_left: seconds_left - 1)
+        match measure_sub(a: remaining, b: second(count: 1)) {
+          MeasureDifference { value: next } => harness_await_pid(pid: pid, remaining: next)
+          MeasureSubtrahendExceedsMinuend => StillRunning
+        }
       }
     Exited { code } => Exited { code: code }
     Signaled { signal } => Signaled { signal: signal }
@@ -134,15 +138,18 @@ type HarnessWaitLoop
   = WaitLoopFinished { observation: HarnessShellJobObservation }
   | WaitLoopExpired
 
-fn harness_wait_until_any(jobs: List<HarnessShellJob>, seconds_left: Int) -> HarnessWaitLoop {
+fn harness_wait_until_any(jobs: List<HarnessShellJob>, remaining: Second) -> HarnessWaitLoop {
   match harness_first_finished_observation(jobs: jobs) {
     Present { value: obs } => WaitLoopFinished { observation: obs }
     Absent =>
-      if seconds_left <= 0 {
+      if measure_le(a: remaining, b: second(count: 0)) {
         WaitLoopExpired
       } else {
         let _pause = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
-        harness_wait_until_any(jobs: jobs, seconds_left: seconds_left - 1)
+        match measure_sub(a: remaining, b: second(count: 1)) {
+          MeasureDifference { value: next } => harness_wait_until_any(jobs: jobs, remaining: next)
+          MeasureSubtrahendExceedsMinuend => WaitLoopExpired
+        }
       }
   }
 }

@@ -1,7 +1,7 @@
 module gunbc.harness.harness_tool
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
-import std.measure { CharacterCount, character_count, character_count_value }
+import std.measure { CharacterCount, character_count, character_count_value, Second, second, second_count }
 import extdeps.languages.json.emit {
   JsonValue, JsonString, JsonObject, JsonArray,
   json_kv, json_string, json_array, json_object,
@@ -229,19 +229,19 @@ fn harness_env_with_jobs(
   }
 }
 
-fn harness_wait_note(seconds: Int, clamped: Bool, raised_to_minimum: Bool, asked_seconds: Int) -> String {
+fn harness_wait_note(seconds: Second, clamped: Bool, raised_to_minimum: Bool, asked_seconds: Second) -> String {
   let clamped_note = if clamped {
     join([
-      " [wait clamped from ", to_string(value: asked_seconds),
-      "s to ", to_string(value: seconds), "s (request above 4x previous)]",
+      " [wait clamped from ", to_string(value: second_count(s: asked_seconds) as Int),
+      "s to ", to_string(value: second_count(s: seconds) as Int), "s (request above 4x previous)]",
     ], "")
   } else {
     ""
   }
   let raised_note = if raised_to_minimum {
     join([
-      " [wait raised from ", to_string(value: asked_seconds),
-      "s to the minimum ", to_string(value: seconds), "s; polling is refused]",
+      " [wait raised from ", to_string(value: second_count(s: asked_seconds) as Int),
+      "s to the minimum ", to_string(value: second_count(s: seconds) as Int), "s; polling is refused]",
     ], "")
   } else {
     ""
@@ -281,7 +281,7 @@ fn harness_run_command_scheduled(
         },
       }
     ShellSpawned { job } => {
-      let hold = harness_await_pid(pid: job.pid, seconds_left: schedule_seconds(s: schedule.inline_hold))
+      let hold = harness_await_pid(pid: job.pid, remaining: schedule.inline_hold)
       match hold {
         StillRunning => {
           let jobs = harness_replace_job(jobs: environment.jobs, job: job)
@@ -386,7 +386,7 @@ fn harness_wait_jobs_scheduled(
         raised_to_minimum: raised_to_minimum,
         asked_seconds: asked_seconds,
       )
-      match harness_wait_until_any(jobs: environment.jobs, seconds_left: seconds) {
+      match harness_wait_until_any(jobs: environment.jobs, remaining: seconds) {
         WaitLoopFinished { observation: _ } =>
           HarnessToolStep {
             environment: harness_env_with_jobs(
@@ -461,7 +461,7 @@ fn harness_kill_job(environment: HarnessToolEnvironment, id: String) -> HarnessT
       }
     Present { value: job } => {
       let _killed = harness_kill_process_group(pid: job.pid)
-      let _reap = harness_await_pid(pid: job.pid, seconds_left: 5)
+      let _reap = harness_await_pid(pid: job.pid, remaining: second(count: 5))
       let jobs = harness_drop_job(jobs: environment.jobs, id: id)
       HarnessToolStep {
         environment: harness_env_with_jobs(

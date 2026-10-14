@@ -1,7 +1,12 @@
 module gunbc.harness.harness_shell_job_policy
 
 import std.types { Int, Bool }
-import std.measure { Second, second, second_count }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure {
+  Second, second, second_count, minute, minute_to_second,
+  measure_scale_fraction_floor, measure_le,
+}
 
 // ── HOW LONG AN ARBITRARY SHELL MAY HOLD, WAIT, OR LIVE: the schedule, kept apart ─────────────
 //
@@ -17,8 +22,8 @@ import std.measure { Second, second, second_count }
 type ShellJobSchedule {
   inline_hold: Second
   wait_base: Second
-  wait_factor: Int
-  wait_request_cap_factor: Int
+  wait_factor: Nat
+  wait_request_cap_factor: Nat
   wait_minimum: Second
   backstop: Second
 }
@@ -37,7 +42,7 @@ data harness_shell_job_schedule: ShellJobSchedule = ShellJobSchedule {
 
 type HarnessWaitPace
   = WaitPaceReset
-  | WaitPaceAfterWait { seconds: Int }
+  | WaitPaceAfterWait { seconds: Second }
 
 type HarnessWaitRequest
   = WaitUseDefault
@@ -45,10 +50,10 @@ type HarnessWaitRequest
 
 type HarnessWaitAdmission
   = WaitAdmitted {
-      seconds: Int
+      seconds: Second
       clamped: Bool
       raised_to_minimum: Bool
-      asked_seconds: Int
+      asked_seconds: Second
     }
   | WaitRefusedNotADuration { minutes: Int }
 
@@ -56,17 +61,18 @@ fn schedule_seconds(s: Second) -> Int {
   second_count(s: s) as Int
 }
 
-fn harness_wait_basis_seconds(schedule: ShellJobSchedule, pace: HarnessWaitPace) -> Int {
+fn harness_wait_basis(schedule: ShellJobSchedule, pace: HarnessWaitPace) -> Second {
   match pace {
-    WaitPaceReset => schedule_seconds(s: schedule.wait_base)
+    WaitPaceReset => schedule.wait_base
     WaitPaceAfterWait { seconds } => seconds
   }
 }
 
-fn harness_wait_fallback_seconds(schedule: ShellJobSchedule, pace: HarnessWaitPace) -> Int {
+fn harness_wait_fallback(schedule: ShellJobSchedule, pace: HarnessWaitPace) -> Second {
   match pace {
-    WaitPaceReset => schedule_seconds(s: schedule.wait_base)
-    WaitPaceAfterWait { seconds } => seconds * schedule.wait_factor
+    WaitPaceReset => schedule.wait_base
+    WaitPaceAfterWait { seconds } =>
+      measure_scale_fraction_floor(m: seconds, num: schedule.wait_factor, den: 1)
   }
 }
 
@@ -74,16 +80,20 @@ fn harness_wait_fallback_seconds(schedule: ShellJobSchedule, pace: HarnessWaitPa
 // Otherwise the default doubles. A requested length in minutes is held to
 // [wait_minimum, wait_request_cap_factor × basis]. Below the minimum is RAISED, never a poll.
 // Above the cap is CLAMPED, and both departures are carried on the admission so the tool result
-// can say so. Zero or negative minutes are not a duration.
+// can say so. Zero or negative minutes are not a duration. Counts exist only at argv/sleep/text.
 fn harness_admit_wait(
   schedule: ShellJobSchedule,
   pace: HarnessWaitPace,
   request: HarnessWaitRequest,
 ) -> HarnessWaitAdmission {
-  let basis = harness_wait_basis_seconds(schedule: schedule, pace: pace)
-  let fallback = harness_wait_fallback_seconds(schedule: schedule, pace: pace)
-  let cap = basis * schedule.wait_request_cap_factor
-  let minimum = schedule_seconds(s: schedule.wait_minimum)
+  let basis = harness_wait_basis(schedule: schedule, pace: pace)
+  let fallback = harness_wait_fallback(schedule: schedule, pace: pace)
+  let cap = measure_scale_fraction_floor(
+    m: basis,
+    num: schedule.wait_request_cap_factor,
+    den: 1,
+  )
+  let minimum = schedule.wait_minimum
   match request {
     WaitUseDefault =>
       WaitAdmitted {
@@ -93,32 +103,36 @@ fn harness_admit_wait(
         asked_seconds: fallback,
       }
     WaitRequestedMinutes { minutes } =>
-      if minutes <= 0 {
-        WaitRefusedNotADuration { minutes: minutes }
-      } else {
-        let want = minutes * 60
-        if want < minimum {
-          WaitAdmitted {
-            seconds: minimum,
-            clamped: false,
-            raised_to_minimum: true,
-            asked_seconds: want,
+      match checked_int_to_nat(n: minutes) {
+        Absent => WaitRefusedNotADuration { minutes: minutes }
+        Present { value: n } =>
+          if n == 0 {
+            WaitRefusedNotADuration { minutes: minutes }
+          } else {
+            let want = minute_to_second(m: minute(count: n))
+            if !measure_le(a: minimum, b: want) {
+              WaitAdmitted {
+                seconds: minimum,
+                clamped: false,
+                raised_to_minimum: true,
+                asked_seconds: want,
+              }
+            } else if !measure_le(a: want, b: cap) {
+              WaitAdmitted {
+                seconds: cap,
+                clamped: true,
+                raised_to_minimum: false,
+                asked_seconds: want,
+              }
+            } else {
+              WaitAdmitted {
+                seconds: want,
+                clamped: false,
+                raised_to_minimum: false,
+                asked_seconds: want,
+              }
+            }
           }
-        } else if want > cap {
-          WaitAdmitted {
-            seconds: cap,
-            clamped: true,
-            raised_to_minimum: false,
-            asked_seconds: want,
-          }
-        } else {
-          WaitAdmitted {
-            seconds: want,
-            clamped: false,
-            raised_to_minimum: false,
-            asked_seconds: want,
-          }
-        }
       }
   }
 }
@@ -127,6 +141,6 @@ fn harness_pace_after_window_change() -> HarnessWaitPace {
   WaitPaceReset
 }
 
-fn harness_pace_after_expired_wait(seconds: Int) -> HarnessWaitPace {
+fn harness_pace_after_expired_wait(seconds: Second) -> HarnessWaitPace {
   WaitPaceAfterWait { seconds: seconds }
 }
