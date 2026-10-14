@@ -4,27 +4,21 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Executing floor witness for the USAGE-DERIVED half of v1.compiler.trait_derive_emit derive selection
-// (v1.compiler.trait_derive_emit v1_with_map_key_requirement). compile_dag_rust_emit_check is the
-// enrolled consumer: it
-// compiles an inline fixture through the real emit path and asserts emitted Rust spellings, so a claim
-// here is green by execution rather than by declaration. THE SUBJECT: a type that reaches a keyed-
-// collection key position must derive Eq + Hash, because the container Map lowers to im::HashMap whose
-// key parameter is bounded K: Hash + Eq — a fact about the type's USE that no shape classification
-// produces. Every positive row is paired with a control that must stay silent, because the failure
-// mode this mechanism can have is not missing the requirement (rustc refuses loudly) but fabricating
-// it on a type no one keys by, which nothing downstream would ever report.
-// w_non_key_record_derives_no_hash is that control at record grain and
-// w_map_value_position_does_not_seed is the sharper one: it puts the SAME type in the VALUE position
-// of the same container, so a rule that keyed on 'mentioned by a Map' rather than 'occupies the key
-// slot' goes red on it while every other row here stays green.
-// w_map_key_requirement_propagates_to_field_types pins the fixpoint rather than a one-hop read, and
-// w_nullary_coproduct_key_gains_only_hash pins the union's idempotence — a nullary coproduct already
-// deriving Eq and Ord from its shape roster must gain Hash alone, which is the asymmetry a wider
-// constant roster cannot express and the reason the union is append-only.
-// w_fn_field_record_as_map_key_refuses pins the fail-closed arm: Rc<dyn Fn> is neither Eq nor Hash, so
-// a callable-field record in a key position is refused with compile_error! rather than emitted with a
-// derive that cannot hold.
+// Executing floor witness for the Eq + Hash CAPABILITY derive of v1.compiler.trait_derive_emit
+// (v1_eq_hash_capable_type_names). compile_dag_rust_emit_check is the enrolled consumer: it compiles an
+// inline fixture through the real emit path and asserts emitted Rust spellings. THE SUBJECT: a declared
+// type derives Eq + Hash exactly when its OWN shape admits it, so a module's emitted bytes do not
+// depend on whether some other module of the closure keys a map on it (closure_dependent_module_emission).
+// The container Map lowers to im::HashMap, bounded K: Hash + Eq, so a keyed capable type is covered.
+// Each row is paired with the control that goes red if the rule is read the old way:
+// w_non_key_record_derives_eq_and_hash is the closure-independence claim itself (an UNKEYED capable record
+// derives, where it used to stay silent) and w_map_value_position_derives_too the same at the value slot.
+// w_float_record_derives_no_hash and w_incapability_propagates_to_holders are the discriminating reds:
+// Float has no Eq or Hash row, so the capability fixpoint must refuse to derive on it and on everything
+// that reaches it, or an unkeyed record with a float field would stop compiling.
+// w_unknown_leaf_is_incapable pins the default: a leaf with no capability row (Json) is incapable, not
+// assumed capable. w_fn_field_record_derives_no_hash pins the function-value arm: Rc<dyn Fn> is neither
+// Eq nor Hash. A keyed use of an incapable type is a loud rustc E0277 at that leaf, not a derive.
 fn w_map_key_record_earns_eq_and_hash() -> Bool {
   compile_dag_rust_emit_check(
     "module map_key_witness.keyed\n\ntype PositionKey {\n  position: Int\n}\n\ntype MemoTable {\n  entries: Map<PositionKey, Int>\n}\n",
@@ -34,21 +28,21 @@ fn w_map_key_record_earns_eq_and_hash() -> Bool {
   )
 }
 
-fn w_non_key_record_derives_no_hash() -> Bool {
+fn w_non_key_record_derives_eq_and_hash() -> Bool {
   compile_dag_rust_emit_check(
     "module map_key_witness.unkeyed\n\ntype PlainRecord {\n  position: Int\n}\n\ntype PlainHolder {\n  held: PlainRecord\n}\n",
     "src/map_key_witness_unkeyed.rs",
-    ["pub struct PlainRecord"],
-    ["std::hash::Hash"]
+    ["Eq, std::hash::Hash)]\npub struct PlainRecord"],
+    []
   )
 }
 
-fn w_map_value_position_does_not_seed() -> Bool {
+fn w_map_value_position_derives_too() -> Bool {
   compile_dag_rust_emit_check(
     "module map_key_witness.valued\n\ntype ValueOnly {\n  payload: Int\n}\n\ntype ValueTable {\n  entries: Map<String, ValueOnly>\n}\n",
     "src/map_key_witness_valued.rs",
-    ["pub struct ValueOnly"],
-    ["std::hash::Hash"]
+    ["Eq, std::hash::Hash)]\npub struct ValueOnly"],
+    []
   )
 }
 
@@ -82,12 +76,39 @@ fn w_nullary_coproduct_key_gains_only_hash() -> Bool {
   )
 }
 
-fn w_fn_field_record_as_map_key_refuses() -> Bool {
+fn w_fn_field_record_derives_no_hash() -> Bool {
   compile_dag_rust_emit_check(
-    "module map_key_witness.callable\n\ntype CallableKey {\n  step: fn(Int) -> Int\n}\n\ntype CallableTable {\n  entries: Map<CallableKey, Int>\n}\n",
+    "module map_key_witness.callable\n\ntype CallableKey {\n  step: fn(Int) -> Int\n}\n",
     "src/map_key_witness_callable.rs",
-    ["compile_error!"],
-    ["std::hash::Hash)]\npub struct CallableKey"]
+    ["pub struct CallableKey"],
+    ["std::hash::Hash"]
+  )
+}
+
+fn w_float_record_derives_no_hash() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.floaty\n\ntype FloatRecord {\n  weight: Float\n}\n",
+    "src/map_key_witness_floaty.rs",
+    ["pub struct FloatRecord"],
+    ["std::hash::Hash"]
+  )
+}
+
+fn w_incapability_propagates_to_holders() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.holder\n\ntype HeldFloat {\n  weight: Float\n}\n\ntype FloatHolder {\n  held: HeldFloat\n}\n",
+    "src/map_key_witness_holder.rs",
+    ["pub struct FloatHolder"],
+    ["std::hash::Hash"]
+  )
+}
+
+fn w_unknown_leaf_is_incapable() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.json\n\ntype JsonRecord {\n  payload: Json\n}\n",
+    "src/map_key_witness_json.rs",
+    ["pub struct JsonRecord"],
+    ["std::hash::Hash"]
   )
 }
 
@@ -95,12 +116,12 @@ test fn map_key_record_earns_eq_and_hash() -> Bool {
   w_map_key_record_earns_eq_and_hash()
 }
 
-test fn non_key_record_derives_no_hash() -> Bool {
-  w_non_key_record_derives_no_hash()
+test fn non_key_record_derives_eq_and_hash() -> Bool {
+  w_non_key_record_derives_eq_and_hash()
 }
 
-test fn map_value_position_does_not_seed() -> Bool {
-  w_map_value_position_does_not_seed()
+test fn map_value_position_derives_too() -> Bool {
+  w_map_value_position_derives_too()
 }
 
 test fn map_key_requirement_propagates_to_field_types() -> Bool {
@@ -115,6 +136,18 @@ test fn nullary_coproduct_key_gains_only_hash() -> Bool {
   w_nullary_coproduct_key_gains_only_hash()
 }
 
-test fn fn_field_record_as_map_key_refuses() -> Bool {
-  w_fn_field_record_as_map_key_refuses()
+test fn fn_field_record_derives_no_hash() -> Bool {
+  w_fn_field_record_derives_no_hash()
+}
+
+test fn float_record_derives_no_hash() -> Bool {
+  w_float_record_derives_no_hash()
+}
+
+test fn incapability_propagates_to_holders() -> Bool {
+  w_incapability_propagates_to_holders()
+}
+
+test fn unknown_leaf_is_incapable() -> Bool {
+  w_unknown_leaf_is_incapable()
 }

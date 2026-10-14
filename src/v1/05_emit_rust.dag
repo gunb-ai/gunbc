@@ -170,7 +170,7 @@ import v1.compiler.trait_derive_emit {
   v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds,
   v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
   v1_item_wf_propagated_clone_bounded_param_names,
-  v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
+  v1_eq_hash_capable_type_names, v1_item_field_type_exprs, v1_with_eq_hash_capability,
   v1_map_key_head_names_in_type_expr,
   v1_clone_impl_required_type_params,
   v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal,
@@ -2221,13 +2221,18 @@ fn rust_fold_rendered_type_has_any_spurious_generic(type_str: String, generic_pa
   rust_fold_rendered_type_has_spurious_from_pos(type_str: type_str, search_from: 0, generic_param_names: generic_param_names)
 }
 
+// THE QUESTION IS MODULE-SCOPED, SO THE ANSWER AUTHORITY IS THE MODULE'S OWN SCOPE. This asked
+// lookup_type_by_name, whose bare-name arm falls through to lookup_binding_after_global_bare -- the
+// whole-pool map -- so a leaf M can spell answered by which OTHER modules the emission closure held
+// (`|acc: Rc<PairAcc>` in one closure, `|acc: _` in another). Emission of a module is a function of
+// that module and its dependencies only; the scope chain and interned bindings are that.
 fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List<String>, env: TypeEnv) -> Bool {
   if type_var_in_fn_generic_scope(id: name, generic_param_names: generic_param_names) {
     false
   } else {
-    match lookup_type_by_name(env: env, name: name) {
-      Present { value: resolved_node } =>
-        if resolved_node.inferred != none && is_type_variable(inferred: resolved_node.inferred.value) { true } else { false }
+    match lookup_binding_by_name_local(env: env, name: name) {
+      Present { value: binding } =>
+        if binding.resolved.inferred != none && is_type_variable(inferred: binding.resolved.inferred.value) { true } else { false }
       Absent => true
     }
   }
@@ -2240,6 +2245,38 @@ fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List
 // applied binding but never `params`, so a declaration node with no applied binding answered
 // "bound" and the closure annotation was written. With no applied binding, a formal outside the
 // fn's generic scope is as unbound as any other atom, and the annotation defers to `_`.
+// A DECLARATION CONTRIBUTES WHAT THE RENDERER SPELLS FOR IT, NOT ITS ARMS. render_rust_type writes a
+// declaration as its name plus its applied args (or, with none, its own formals, which the
+// bare-constructor accumulator above needs) and never reads its variants or fields. A declaration node
+// (connective Disj or Conj) reaches this walk both through `Resolved` and as a type child itself
+// (`Map<String, Bool>` holds the kernel Bool declaration as its second child), and its children are
+// variants, never type arguments. Walking them judged atoms the annotation never spells: for
+// `FirstDuplicateScan<T>` the kernel Bool's `True` arm, which type_leaf_is_unbound_in_closure_scope
+// answers "unbound" when lookup_type_by_name("True") is Absent, as it is once more than one module of
+// the closure declares that variant (std.list with std.logic; std.list alone keeps the annotation).
+// The annotation erased to `_`, rustc E0282. A declaration is checked by its spelled atoms only.
+fn type_node_is_nominal(n: Node) -> Bool {
+  match n.connective {
+    Disj => true
+    Conj => true
+    _ => false
+  }
+}
+
+fn type_node_has_applied_binding(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn type_node_spelled_atoms_unbound(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+    Present { value: applied } => applied.children |> any(c => type_node_has_closure_unbound_generic_atom(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
+    Absent => n.params |> any(p => !type_var_in_fn_generic_scope(id: generic_param_name_at(n: p, source_indices: source_indices), generic_param_names: generic_param_names))
+  }
+}
+
 fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let leaf_name = authored_name_at(source_indices: source_indices, node: n)
   if n.children |> count == 0 && leaf_name != "" {
@@ -2250,17 +2287,21 @@ fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List
       TypeVariable { id: tv } =>
         if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
       Resolved { node: rt } =>
-        if type_node_has_closure_unbound_generic_atom(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
+        if type_node_is_nominal(n: rt) {
+          if !type_node_has_applied_binding(n: n, source_indices: source_indices) && type_node_spelled_atoms_unbound(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
+        } else {
+          if type_node_has_closure_unbound_generic_atom(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
+        }
       _ => ()
     }
+  }
+  if type_node_is_nominal(n: n) {
+    return type_node_spelled_atoms_unbound(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices)
   }
   if n.children |> any(c => type_node_has_closure_unbound_generic_atom(n: child_type_node(ch: c), generic_param_names: generic_param_names, env: env, source_indices: source_indices)) {
     true
   } else {
-    match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
-      Present { value: applied } => applied.children |> any(c => type_node_has_closure_unbound_generic_atom(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
-      Absent => n.params |> any(p => !type_var_in_fn_generic_scope(id: generic_param_name_at(n: p, source_indices: source_indices), generic_param_names: generic_param_names))
-    }
+    type_node_spelled_atoms_unbound(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices)
   }
 }
 
@@ -3457,17 +3498,6 @@ fn v1_item_signature_type_exprs(item: Node) -> List<Node> {
   )
 }
 
-fn v1_map_key_seed_type_exprs(modules: List<TypedModule>, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>) -> List<Node> {
-  let declaration_field_exprs = map_keys(type_decl_items.by_identity) |> flat_map(type_name =>
-    match map_get(type_decl_items.by_identity, type_name) {
-      Present { value: item } => v1_item_field_type_exprs(item: item, source_indices: source_indices)
-      Absent => []
-    }
-  )
-  let signature_exprs = modules |> flat_map(m => m.items |> flat_map(item => v1_item_signature_type_exprs(item: item)))
-  concat(declaration_field_exprs, signature_exprs)
-}
-
 fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, NewlineIndex> {
   modules |> fold(init: empty_map(), f: (acc, m) => map_merge(acc, m.type_env.source_indices))
 }
@@ -3584,10 +3614,9 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     type_decl_items: base_info.type_decl_items,
     source_indices: closure_source_indices
   )
-  let map_key_required = v1_map_key_required_type_names(
-    seed_type_exprs: v1_map_key_seed_type_exprs(modules: typed.modules, type_decl_items: base_info.type_decl_items, source_indices: closure_source_indices),
-    extra_seed_names: hand_maintained_map_key_required_type_names,
+  let eq_hash_capable = v1_eq_hash_capable_type_names(
     type_decl_items: base_info.type_decl_items,
+    type_summaries: base_info.type_summaries,
     source_indices: closure_source_indices
   )
   let clone_impl_required = v1_clone_impl_required_type_params(
@@ -3613,7 +3642,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     read_only_params_index: ownership.read_only_params_index,
     read_only_params: empty_set(),
     clone_bounded_type_params: clone_bounded,
-    map_key_required_type_names: map_key_required,
+    eq_hash_capable_type_names: eq_hash_capable,
     clone_impl_required_type_params: clone_impl_required,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
@@ -4055,19 +4084,6 @@ fn lib_rs_mod_name_from_path(path: String) -> String {
   substring(s: path, start: src_prefix_len, end: path_len - ext_len)
 }
 
-// v1_map_key_required_type_names discovers a declared type's map-key Hash+Eq requirement by
-// scanning .dag-source-visible type-expression positions (declared fields, fn params/returns, alias
-// right-hand sides) — a type used as a map key only inside HAND-MAINTAINED Rust is invisible to
-// that scan by construction. src/v1/stage0/src/coproduct_reflection.rs declares
-// `StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>`, a map keyed on a tuple
-// containing ItemKind, requiring ItemKind: Hash + Eq — no .dag declaration anywhere positions
-// ItemKind as a map key, so the scan alone drops the derive on every regen. This roster is the
-// declared complement: caller-supplied extra roots fed into the SAME fixpoint the scan seeds, not a
-// derive override or a special case inside the generic mechanism. Grows only when a new
-// hand-maintained consumer requires it, cited here at the point of use.
-
-data hand_maintained_map_key_required_type_names: List<String> = ["ItemKind"]
-
 // ONE AUTHORITY FOR THE LINT RELAXATION GENERATED RUST NEEDS, TWO RENDERINGS. Mechanically
 // derived Rust carries artifacts no lint can inform an authoring decision about: parentheses
 // the lowering adds to keep precedence safe, imports the emitter cannot know a body will not
@@ -4284,10 +4300,9 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
-  let map_key_required = v1_map_key_required_type_names(
-    seed_type_exprs: v1_map_key_seed_type_exprs(modules: [typed_module], type_decl_items: base_info.type_decl_items, source_indices: merged_module_source_indices(modules: [typed_module])),
-    extra_seed_names: hand_maintained_map_key_required_type_names,
+  let eq_hash_capable = v1_eq_hash_capable_type_names(
     type_decl_items: base_info.type_decl_items,
+    type_summaries: base_info.type_summaries,
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
   let clone_impl_required = v1_clone_impl_required_type_params(
@@ -4313,7 +4328,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     read_only_params_index: base_info.read_only_params_index,
     read_only_params: empty_set(),
     clone_bounded_type_params: clone_bounded,
-    map_key_required_type_names: map_key_required,
+    eq_hash_capable_type_names: eq_hash_capable,
     clone_impl_required_type_params: clone_impl_required,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
@@ -5766,7 +5781,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     read_only_params_index: emit_info.read_only_params_index,
     read_only_params: emit_info.read_only_params,
     clone_bounded_type_params: emit_info.clone_bounded_type_params,
-    map_key_required_type_names: emit_info.map_key_required_type_names,
+    eq_hash_capable_type_names: emit_info.eq_hash_capable_type_names,
     clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
     fn_generic_param_names: emit_info.fn_generic_param_names,
     fn_type_env: scope.type_env,
@@ -6717,22 +6732,22 @@ fn is_parametric_opaque_type_decl_item(item: Node, source_indices: Map<String, N
     )
 }
 
-fn emit_zero_param_phantom_opaque_struct(item: Node, map_key_required: Bool, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_zero_param_phantom_opaque_struct(item: Node, eq_hash_capable: Bool, source_indices: Map<String, NewlineIndex>) -> String {
   let item_text = authored_name_at(source_indices: source_indices, node: item)
   concat(
-    concat(rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: phantom_opaque_carrier_derive_traits(), map_key_required: map_key_required)), "\n"),
+    concat(rust_trait_derive_attr_from_traits(v1_with_eq_hash_capability(base: phantom_opaque_carrier_derive_traits(), eq_hash_capable: eq_hash_capable)), "\n"),
     rust_visibility_prefix(),
     rust_items().struct_keyword, " ", item_text, "(pub std::marker::PhantomData<()>);"
   )
 }
 
-fn emit_parametric_phantom_opaque_struct(item: Node, map_key_required: Bool, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_parametric_phantom_opaque_struct(item: Node, eq_hash_capable: Bool, source_indices: Map<String, NewlineIndex>) -> String {
   let item_text = authored_name_at(source_indices: source_indices, node: item)
   let type_params = emit_type_params(params: item.params, source_indices: source_indices)
   let generic_names = item_generic_param_names(item: item, source_indices: source_indices)
   let marker_ty = concat("std::marker::PhantomData<", rust_phantom_marker_inner(unused: generic_names), ">")
   concat(
-    concat(rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: phantom_opaque_carrier_derive_traits(), map_key_required: map_key_required)), "\n"),
+    concat(rust_trait_derive_attr_from_traits(v1_with_eq_hash_capability(base: phantom_opaque_carrier_derive_traits(), eq_hash_capable: eq_hash_capable)), "\n"),
     rust_visibility_prefix(),
     rust_items().struct_keyword, " ", item_text, type_params, "(pub ", marker_ty, ");"
   )
@@ -7653,7 +7668,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
-          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), source_indices: env.source_indices)
+          emit_zero_param_phantom_opaque_struct(item: item, eq_hash_capable: set_contains(emit_info.eq_hash_capable_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), source_indices: env.source_indices)
         } else {
           match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
             Present { value: host } =>
@@ -7729,7 +7744,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
                   ";"
                 )
               } else if is_parametric_opaque_type_decl_item(item: item, source_indices: env.source_indices) {
-                emit_parametric_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), source_indices: env.source_indices)
+                emit_parametric_phantom_opaque_struct(item: item, eq_hash_capable: set_contains(emit_info.eq_hash_capable_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), source_indices: env.source_indices)
               } else {
                 ""
               }
@@ -7769,7 +7784,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             read_only_params_index: emit_info.read_only_params_index,
             read_only_params: fn_read_only,
             clone_bounded_type_params: emit_info.clone_bounded_type_params,
-            map_key_required_type_names: emit_info.map_key_required_type_names,
+            eq_hash_capable_type_names: emit_info.eq_hash_capable_type_names,
             clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
             fn_generic_param_names: emit_info.fn_generic_param_names,
             fn_type_env: emit_info.fn_type_env,
@@ -8227,7 +8242,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     children: children,
     shared_types: shared_types,
     has_fn_fields: has_fn_fields,
-    map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: name)),
+    eq_hash_capable: set_contains(emit_info.eq_hash_capable_type_names, type_decl_identity(owner_module: env.module_path, decl_name: name)),
     generic_param_names: generic_param_names,
     source_indices: env.source_indices,
     header_clone_param_names: header_clone_param_names,
@@ -8409,7 +8424,7 @@ fn enum_derives(module_path: String, name: String, children: List<Node>, has_fn_
   v1_emit_enum_derives(
     children: children,
     has_fn_fields: has_fn_fields,
-    map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: module_path, decl_name: name)),
+    eq_hash_capable: set_contains(emit_info.eq_hash_capable_type_names, type_decl_identity(owner_module: module_path, decl_name: name)),
     deserialize_forbidden: deserialize_forbidden,
     generic_param_names: generic_param_names,
     source_indices: source_indices
@@ -13528,7 +13543,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params,
               clone_bounded_type_params: emit_info.clone_bounded_type_params,
-              map_key_required_type_names: emit_info.map_key_required_type_names,
+              eq_hash_capable_type_names: emit_info.eq_hash_capable_type_names,
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
@@ -13562,7 +13577,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params,
               clone_bounded_type_params: emit_info.clone_bounded_type_params,
-              map_key_required_type_names: emit_info.map_key_required_type_names,
+              eq_hash_capable_type_names: emit_info.eq_hash_capable_type_names,
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,

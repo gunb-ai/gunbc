@@ -7,12 +7,12 @@ import std.dissolution {
 
 import v1.compiler.emit { to_pascal, emit_ident }
 import v1.compiler.artifact { Rust }
-import v1.compiler.infer_types { child_type_node, is_coproduct_type, resolved_type }
+import v1.compiler.infer_types { child_type_node, is_coproduct_type, resolved_type, is_declared_container_alias_spelling }
 import v1.compiler.emit_core_support { unique_strings, is_type_alias_item }
 import v1.compiler.coercion { realized_checkpoint, declaration_realization }
 import v1.compiler.infer_emit_info {
   TypeDeclIndex, TypeDeclResolution, TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared,
-  resolve_type_decl_reference, resolve_type_decl_leaf, type_decl_identities_of_leaf
+  resolve_type_decl_reference, resolve_type_decl_leaf, type_decl_identities_of_leaf, TypeSummaryIndex
 }
 import extdeps.languages.rust.derive_contracts {
   RustVecSupplementalGenericBoundRow,
@@ -54,7 +54,7 @@ import extdeps.languages.rust.capabilities {
   derive_traits_union,
   fn_field_derive_traits,
   kernel_int_arithmetic_traits,
-  map_key_required_derive_traits,
+  eq_hash_capability_derive_traits,
   nullary_coproduct_derive_traits,
   payload_coproduct_derive_traits,
   record_derive_traits_copy,
@@ -180,9 +180,9 @@ fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
 // type reaching a keyed-collection key position needed Eq + Hash that no shape classification would
 // ever produce — and std.trait_derive_shape could not even name Hash until this landed, which is why
 // the gap was structural rather than an oversight in the table. The requirement is one row,
-// map_key_required_derive_traits, grounded on im 15.1.0 HashMap<K, V> declaring K: Hash + Eq (the
+// eq_hash_capability_derive_traits, grounded on im 15.1.0 HashMap<K, V> declaring K: Hash + Eq (the
 // container Map lowers to, via std.types container_template_algebra FinitelySupportedFunction).
-// v1_map_key_required_type_names computes the subject population as a LEAST FIXPOINT over the
+// v1_eq_hash_capable_type_names computes the subject population as a LEAST FIXPOINT over the
 // declared-type graph, the same shape as the Clone-bound fixpoint above and for the same reason:
 // derive(Hash) on a record emits an impl requiring every FIELD type to be Hash, so a required type
 // propagates the requirement to every declared type its fields mention, and a recursive type saturates
@@ -197,12 +197,12 @@ fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
 // (rust_btree_set_element_ord_eligible) rather than by propagating to the declaration; folding that
 // onto this fixpoint is the named next step and is deliberately not taken here, because it would move
 // emitted bytes for a population this change has not measured.
-fn v1_with_map_key_requirement(
+fn v1_with_eq_hash_capability(
   base: List<RustCapability>,
-  map_key_required: Bool
+  eq_hash_capable: Bool
 ) -> List<RustCapability> {
-  if map_key_required {
-    derive_traits_union(base: base, extra: map_key_required_derive_traits())
+  if eq_hash_capable {
+    derive_traits_union(base: base, extra: eq_hash_capability_derive_traits())
   } else {
     base
   }
@@ -239,7 +239,7 @@ fn v1_type_expr_keyed_map_verdict(type_expr: Node, source_indices: Map<String, N
 // to "PartialFunction"; it now resolves to "FinitelySupportedFunction", the finite half that
 // actually realizes as `im::HashMap<K, V>` and therefore actually imposes `K: Hash + Eq`. Testing
 // the old name alone would classify every `Map` field NotKeyedMap and drop the key derives that
-// `map_key_required_derive_traits` exists to add -- a silent loss of a required bound, not a
+// `eq_hash_capability_derive_traits` exists to add -- a silent loss of a required bound, not a
 // diagnostic. `PartialFunction` stays in the test because a declaration may now name the open
 // carrier directly, and a keyed lookup is what both carriers are for.
 fn v1_keyed_map_verdict_from_algebra(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> KeyedMapVerdict {
@@ -343,46 +343,110 @@ fn v1_type_expr_head_declared_identities(
   )
 }
 
-type MapKeyRequirementRound {
+// THE EQ + HASH CAPABILITY OF A DECLARED TYPE IS A FACT OF THAT TYPE AND ITS FIELD DEPENDENCIES.
+// This replaced a map-key REQUIREMENT fixpoint seeded by every keyed-map position in the whole
+// emission closure, so one declaration derived `Eq, Hash` in a closure where another module keyed a
+// map on it and did not in a closure where none did: a module's emitted bytes varied with modules it
+// does not import (gunbc.recurring_failure_mode closure_dependent_module_emission, std_content_hash).
+// The propagation was already downward through the fields; only the seeds were consumer-side. Now a
+// type is capable unless something in its OWN shape forbids it: a function value reachable through a
+// field (the summaries' closed has_fn_fields), a leaf that is neither a generic parameter of the
+// type, a declared type, a container, nor a kernel leaf with an Eq + Hash row (Float, Json and every
+// unrecognized leaf are INCAPABLE by default -- assuming capable would fabricate a default, DESIGN
+// section 5), or a generic parameter taking the hand-written freemonoid / set / ord-propagated impl
+// path, which exists because that shape cannot derive. A keyed use of an incapable type stays a loud
+// rustc E0277 at the exact leaf; the repair for a keyed type that this turns off is a declared
+// capability row for that LEAF, never a broad assumption.
+data eq_hash_capable_kernel_leaf_names: List<String> = ["Int", "Bool", "Unit", "String", "Bytes", "Secret"]
+
+fn v1_type_expr_has_eq_hash_incapable_leaf(
+  type_expr: Node,
+  generic_names: List<String>,
+  type_decl_items: TypeDeclIndex,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  if type_expr.connective == Arrow {
+    return true
+  }
+  let name = authored_name_at(source_indices: source_indices, node: type_expr)
+  let own = if name == "" || (generic_names |> any(g => g == name)) {
+    false
+  } else {
+    match resolve_type_decl_reference(index: type_decl_items, type_expr: type_expr, source_indices: source_indices) {
+      TypeDeclResolved { identity: _, decl: _ } => false
+      TypeDeclLeafAmbiguous { leaf: _ } => false
+      TypeDeclKernelSpellingUndecided { leaf: _ } => false
+      TypeDeclNotDeclared =>
+        !(is_declared_container_alias_spelling(name: name) || (eq_hash_capable_kernel_leaf_names |> any(k => k == name)))
+    }
+  }
+  own || type_expr.children |> any(ch =>
+    v1_type_expr_has_eq_hash_incapable_leaf(type_expr: child_type_node(ch: ch), generic_names: generic_names, type_decl_items: type_decl_items, source_indices: source_indices)
+  )
+}
+
+fn v1_item_is_eq_hash_incapable_locally(
+  item: Node,
+  identity: String,
+  type_summaries: TypeSummaryIndex,
+  type_decl_items: TypeDeclIndex,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let reaches_fn = match map_get(type_summaries.by_key, identity) {
+    Present { value: summary } => summary.has_fn_fields
+    Absent => false
+  }
+  if reaches_fn {
+    return true
+  }
+  let generic_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+  let field_type_exprs = v1_item_field_type_exprs(item: item, source_indices: source_indices)
+  let hand_path = (v1_freemonoid_element_params(generic_param_names: generic_names, field_type_exprs: field_type_exprs, source_indices: source_indices) |> count) > 0
+    || (v1_set_element_params(generic_param_names: generic_names, field_type_exprs: field_type_exprs, source_indices: source_indices) |> count) > 0
+    || (v1_item_ord_propagated_param_names(generic_param_names: generic_names, field_type_exprs: field_type_exprs, type_decl_items: type_decl_items, source_indices: source_indices) |> count) > 0
+  hand_path || field_type_exprs |> any(te =>
+    v1_type_expr_has_eq_hash_incapable_leaf(type_expr: te, generic_names: generic_names, type_decl_items: type_decl_items, source_indices: source_indices)
+  )
+}
+
+type EqHashIncapableRound {
   names: Set<String>
   added: Int
 }
 
-fn v1_map_key_round_add(round: MapKeyRequirementRound, name: String) -> MapKeyRequirementRound {
-  if name == "" || set_contains(round.names, name) {
+fn v1_eq_hash_incapable_round_add(round: EqHashIncapableRound, identity: String) -> EqHashIncapableRound {
+  if set_contains(round.names, identity) {
     round
   } else {
-    MapKeyRequirementRound { names: set_insert(round.names, name), added: round.added + 1 }
+    EqHashIncapableRound { names: set_insert(round.names, identity), added: round.added + 1 }
   }
 }
 
-data map_key_alias_hop_gap_note: String = "LANDED. The gap this note originally recorded (see git history for the full pre-landing account) was that map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields -- it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child -- so `type Hash = Fnv1a64Structural` in v2.std.node terminated the walk, Fnv1a64Structural was emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure failed to compile at four sites. The DISSOLVE-ON trigger named at the time -- declaration identity reaching the type renderer, the same threading the identity-keyed lookup_checkpoint cut (T7, #8537) was blocked on -- landed as v1.compiler.coercion lookup_checkpoint/decl_identity_file, so the fix reuses that authority rather than inventing the DeclarationRef binding the earlier attempt lacked (DESIGN section 2/3, single authority). v1_item_alias_hop_type_exprs (below v1_item_field_type_exprs) follows a bare-leaf alias item's resolved right-hand side into the walk ONLY when lookup_checkpoint(target: Rust, dag_name, decl_file) returns Absent for the alias's own (dag_name, decl_file) -- i.e. only when the emitter has no native realization and renders the alias structurally. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` both have Rust checkpoint rows (realize as i64), so lookup_checkpoint returns Present and the alias arm contributes nothing for them -- the previously measured false positive (AbelianGroup/CommutativeSemiring reaching map-key position via Rc<dyn Fn> fields) does not recur, because the gate is keyed on realization rather than on bare-alias shape. Folded into the single shared v1_item_field_type_exprs (see v1_item_field_type_exprs_alias_hop_note) rather than a map-key-only variant, since is_leaf_type_item forces params.count == 0 on every alias item, so no alias ever enters the generic-only clone-bound fixpoints that are this function's other callers."
-
-data map_key_alias_hop_reconciliation_note: String = "RECONCILED (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, merging gunbc#8736 into this branch's own review-54323-finding-3 work): this branch independently developed a map-key-only alias-hop arm (v1_map_key_propagate_alias, gated on is_type_alias_item in v1_map_key_propagate_round) that called v1.compiler.coercion type_realization_decision directly, concurrently with gunbc#8736 landing the fold-in above on main. DROPPED IN FAVOR OF THE LANDED VERSION, not run alongside it: this branch's own v1.compiler.coercion lookup_checkpoint was separately refactored in the same review cycle into a thin derivation of type_realization_decision for every decl_file != \"\" caller (coercion.dag's own note beside lookup_checkpoint records this), so v1_item_alias_hop_type_exprs's call to lookup_checkpoint already answers from type_realization_decision as the underlying authority -- a second, map-key-only function asking the same decision through a different name would be exactly the forked second copy DESIGN section 2/3 forbids and v1_item_field_type_exprs_alias_hop_note's own reasoning (below) already argues against. The two implementations are not merely similar, they are behaviorally identical for every case this fold-in covers: lookup_checkpoint(target, dag_name, decl_file) for decl_file != \"\" maps Realized -> Present, Unrealized -> Absent, Refused -> Absent, so the guard 'lookup_checkpoint == Absent' used above is the same predicate as 'type_realization_decision answers Unrealized or Refused' this branch's dropped arm matched separately. coercion.dag's DECLARED RESIDUE note, written before this reconciliation, named this arm as a caller required to use type_realization_decision directly; that requirement is satisfied indirectly, through lookup_checkpoint, and is corrected there rather than left standing."
-
-fn v1_map_key_propagate_round(
-  round: MapKeyRequirementRound,
+fn v1_eq_hash_incapable_propagate_round(
+  round: EqHashIncapableRound,
   declared_type_names: List<String>,
   type_decl_items: TypeDeclIndex,
   source_indices: Map<String, NewlineIndex>
-) -> MapKeyRequirementRound {
-  declared_type_names |> fold(init: round, f: (acc, type_name) =>
-    if !set_contains(acc.names, type_name) { acc }
-    else {
-      match map_get(type_decl_items.by_identity, type_name) {
+) -> EqHashIncapableRound {
+  declared_type_names |> fold(init: round, f: (acc, identity) =>
+    if set_contains(acc.names, identity) {
+      acc
+    } else {
+      match map_get(type_decl_items.by_identity, identity) {
         Present { value: item } =>
-          v1_item_field_type_exprs(item: item, source_indices: source_indices) |> fold(init: acc, f: (inner, te) =>
+          let reaches_incapable = v1_item_field_type_exprs(item: item, source_indices: source_indices) |> any(te =>
             v1_type_expr_head_declared_identities(type_expr: te, type_decl_items: type_decl_items, source_indices: source_indices)
-              |> fold(init: inner, f: (deep, head) => v1_map_key_round_add(round: deep, name: head))
+              |> any(head => set_contains(acc.names, head))
           )
+          if reaches_incapable { v1_eq_hash_incapable_round_add(round: acc, identity: identity) } else { acc }
         Absent => acc
       }
     }
   )
 }
 
-fn v1_map_key_fixpoint_loop(
-  round: MapKeyRequirementRound,
+fn v1_eq_hash_incapable_fixpoint_loop(
+  round: EqHashIncapableRound,
   declared_type_names: List<String>,
   type_decl_items: TypeDeclIndex,
   remaining: Int,
@@ -391,8 +455,8 @@ fn v1_map_key_fixpoint_loop(
   if remaining <= 0 {
     round.names
   } else {
-    let next = v1_map_key_propagate_round(
-      round: MapKeyRequirementRound { names: round.names, added: 0 },
+    let next = v1_eq_hash_incapable_propagate_round(
+      round: EqHashIncapableRound { names: round.names, added: 0 },
       declared_type_names: declared_type_names,
       type_decl_items: type_decl_items,
       source_indices: source_indices
@@ -400,52 +464,37 @@ fn v1_map_key_fixpoint_loop(
     if next.added == 0 {
       next.names
     } else {
-      v1_map_key_fixpoint_loop(
-        round: next,
-        declared_type_names: declared_type_names,
-        type_decl_items: type_decl_items,
-        remaining: remaining - 1,
-        source_indices: source_indices
-      )
+      v1_eq_hash_incapable_fixpoint_loop(round: next, declared_type_names: declared_type_names, type_decl_items: type_decl_items, remaining: remaining - 1, source_indices: source_indices)
     }
   }
 }
 
-// extra_seed_names is the fixpoint's declared complement to the type-expression-position scan
-// above: a caller-supplied population of names known to reach a map-key position OUTSIDE any
-// .dag field/signature type expression (the residue the comment above names as loud-not-silent).
-// Each name is seeded exactly like a scan-discovered one — same fixpoint, same propagation, same
-// derive_traits_union — so it is not a derive override, it is an additional root the same closed
-// computation grows from. An unknown-to-this-corpus name is silently dropped by
-// v1_map_key_round_add's declared-type guard inside the fixpoint loop, never inserted bare.
-fn v1_map_key_required_type_names(
-  seed_type_exprs: List<Node>,
-  extra_seed_names: List<String>,
+// The identities that DERIVE Eq + Hash: every declared type that is not incapable. Consumed by the
+// struct and enum capability emitters through EmitGraphInfo.eq_hash_capable_type_names.
+fn v1_eq_hash_capable_type_names(
   type_decl_items: TypeDeclIndex,
+  type_summaries: TypeSummaryIndex,
   source_indices: Map<String, NewlineIndex>
 ) -> Set<String> {
   let declared_type_names = map_keys(type_decl_items.by_identity)
-  let scanned = seed_type_exprs |> fold(init: MapKeyRequirementRound { names: empty_set(), added: 0 }, f: (acc, te) =>
-    v1_map_key_head_type_exprs(type_expr: te, source_indices: source_indices)
-      |> fold(init: acc, f: (inner, key) =>
-        v1_type_expr_map_key_declared_identities(type_expr: key, type_decl_items: type_decl_items, source_indices: source_indices)
-          |> fold(init: inner, f: (deep, identity) => v1_map_key_round_add(round: deep, name: identity))
-      )
-  )
-  let seeded = extra_seed_names |> fold(init: scanned, f: (acc, key_name) =>
-    match resolve_type_decl_leaf(index: type_decl_items, leaf: key_name) {
-      TypeDeclResolved { identity: identity, decl: _ } => v1_map_key_round_add(round: acc, name: identity)
-      TypeDeclLeafAmbiguous { leaf: leaf } => type_decl_identities_of_leaf(index: type_decl_items, leaf: leaf) |> fold(init: acc, f: (inner, identity) => v1_map_key_round_add(round: inner, name: identity))
-      TypeDeclKernelSpellingUndecided { leaf: leaf } => type_decl_identities_of_leaf(index: type_decl_items, leaf: leaf) |> fold(init: acc, f: (inner, identity) => v1_map_key_round_add(round: inner, name: identity))
-      TypeDeclNotDeclared => acc
+  let seeded = declared_type_names |> fold(init: EqHashIncapableRound { names: empty_set(), added: 0 }, f: (acc, identity) =>
+    match map_get(type_decl_items.by_identity, identity) {
+      Present { value: item } =>
+        if v1_item_is_eq_hash_incapable_locally(item: item, identity: identity, type_summaries: type_summaries, type_decl_items: type_decl_items, source_indices: source_indices) {
+          v1_eq_hash_incapable_round_add(round: acc, identity: identity)
+        } else { acc }
+      Absent => acc
     }
   )
-  v1_map_key_fixpoint_loop(
+  let incapable = v1_eq_hash_incapable_fixpoint_loop(
     round: seeded,
     declared_type_names: declared_type_names,
     type_decl_items: type_decl_items,
     remaining: (declared_type_names |> count) + 1,
     source_indices: source_indices
+  )
+  declared_type_names |> fold(init: empty_set(), f: (acc, identity) =>
+    if set_contains(incapable, identity) { acc } else { set_insert(acc, identity) }
   )
 }
 
@@ -1145,19 +1194,19 @@ fn v1_emit_struct_derives(
   children: List<Node>,
   shared_types: Set<String>,
   has_fn_fields: Bool,
-  map_key_required: Bool,
+  eq_hash_capable: Bool,
   deserialize_forbidden: Bool,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
   if has_fn_fields {
-    if map_key_required {
+    if eq_hash_capable {
       v1_trait_derive_refuse(concat("trait_derive_emit: '", name, "' reaches a map-key position and so requires Eq + Hash, but it carries function fields whose only derivable trait is Clone — Rc<dyn Fn> is neither Eq nor Hash, so the key position is the defect, not the roster"))
     } else {
       rust_trait_derive_attr_from_traits(fn_field_derive_traits())
     }
   } else if rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices) {
     let shape = v1_repr_grounding_derive_elem_shape_for_ord_carrier(children: children, source_indices: source_indices)
-    let traits = v1_with_map_key_requirement(base: symbol_wrapped_ord_carrier_derive_traits(), map_key_required: map_key_required)
+    let traits = v1_with_eq_hash_capability(base: symbol_wrapped_ord_carrier_derive_traits(), eq_hash_capable: eq_hash_capable)
     if repr_grounding_derive_completeness_predicate(rust_capability_shape_table(), traits, shape) {
       rust_trait_derive_attr_from_traits(traits)
     } else {
@@ -1165,9 +1214,9 @@ fn v1_emit_struct_derives(
     }
   } else {
     if set_contains(shared_types, name) {
-      rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden), map_key_required: map_key_required))
+      rust_trait_derive_attr_from_traits(v1_with_eq_hash_capability(base: v1_record_derive_traits_heap_for_construction(deserialize_forbidden: deserialize_forbidden), eq_hash_capable: eq_hash_capable))
     } else {
-      rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden), map_key_required: map_key_required))
+      rust_trait_derive_attr_from_traits(v1_with_eq_hash_capability(base: v1_record_derive_traits_copy_for_construction(deserialize_forbidden: deserialize_forbidden), eq_hash_capable: eq_hash_capable))
     }
   }
 }
@@ -1192,18 +1241,18 @@ fn v1_emit_struct_derives(
 fn v1_emit_enum_derives(
   children: List<Node>,
   has_fn_fields: Bool,
-  map_key_required: Bool,
+  eq_hash_capable: Bool,
   deserialize_forbidden: Bool,
   generic_param_names: List<String>,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
   if has_fn_fields {
-    if map_key_required {
+    if eq_hash_capable {
       return v1_trait_derive_refuse("trait_derive_emit: coproduct reaches a map-key position and so requires Eq + Hash, but a variant payload carries a function value whose only derivable trait is Clone — the key position is the defect, not the roster")
     }
     return rust_trait_derive_attr_from_traits(fn_field_derive_traits())
   }
-  let fm_params = if map_key_required { [] } else {
+  let fm_params = if eq_hash_capable { [] } else {
     v1_freemonoid_element_params(
       generic_param_names: generic_param_names,
       field_type_exprs: v1_enum_variant_field_type_exprs(children: children),
@@ -1218,7 +1267,7 @@ fn v1_emit_enum_derives(
       v1_freemonoid_serde_bound_attr(generic_param_names: generic_param_names, fm_params: fm_params)
     )
   }
-  let set_params = if map_key_required { [] } else {
+  let set_params = if eq_hash_capable { [] } else {
     v1_set_element_params(
       generic_param_names: generic_param_names,
       field_type_exprs: v1_enum_variant_field_type_exprs(children: children),
@@ -1226,8 +1275,8 @@ fn v1_emit_enum_derives(
     )
   }
   let shape = v1_repr_grounding_derive_elem_shape_from_coproduct_children(children: children, source_indices: source_indices)
-  let nullary_traits = rust_traits_for_construction_contract(traits: v1_with_map_key_requirement(base: nullary_coproduct_derive_traits(), map_key_required: map_key_required), deserialize_forbidden: deserialize_forbidden)
-  let payload_traits = rust_traits_for_construction_contract(traits: v1_with_map_key_requirement(base: payload_coproduct_derive_traits(), map_key_required: map_key_required), deserialize_forbidden: deserialize_forbidden)
+  let nullary_traits = rust_traits_for_construction_contract(traits: v1_with_eq_hash_capability(base: nullary_coproduct_derive_traits(), eq_hash_capable: eq_hash_capable), deserialize_forbidden: deserialize_forbidden)
+  let payload_traits = rust_traits_for_construction_contract(traits: v1_with_eq_hash_capability(base: payload_coproduct_derive_traits(), eq_hash_capable: eq_hash_capable), deserialize_forbidden: deserialize_forbidden)
   let set_row_refusal = if (set_params |> count) > 0 { v1_set_unroutable_row_refusal() } else { "" }
   match shape {
     ReprDeriveElemNullaryEnumCopy =>
@@ -2068,7 +2117,7 @@ fn v1_type_expr_wf_needs_clone_param(
 
 // Threads declaration identity into the field-type-expression walk so a type ALIAS's right-hand
 // side is followed exactly as far as the emitter renders it structurally, per
-// map_key_alias_hop_gap_note's DISSOLVE-ON: the alias arm below fires only when the alias's own
+// DISSOLVE-ON (carried from the removed map_key_alias_hop_gap_note): the alias arm below fires only when the alias's own
 // (dag_name, decl_file) resolves to no Rust checkpoint (lookup_checkpoint == Absent), meaning the
 // emitter has no native realization for it and renders its declared structure. `type Hash =
 // Fnv1a64Structural` in v2.std.node has no checkpoint row, so its RHS is the walk's one field type
@@ -2586,7 +2635,7 @@ fn v1_emit_struct_from_capability_table(
   children: List<Node>,
   shared_types: Set<String>,
   has_fn_fields: Bool,
-  map_key_required: Bool,
+  eq_hash_capable: Bool,
   generic_param_names: List<String>,
   source_indices: Map<String, NewlineIndex>,
   header_clone_param_names: List<String>,
@@ -2594,7 +2643,7 @@ fn v1_emit_struct_from_capability_table(
   type_decl_items: TypeDeclIndex
 ) -> StructCapabilityEmit {
   let field_type_exprs = children |> map(f => child_type_node(ch: f))
-  let fm_params = if has_fn_fields || map_key_required
+  let fm_params = if has_fn_fields || eq_hash_capable
     || rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices)
     || repr_grounding_group_completion_carrier(module_path: module_path, name: name) {
     []
@@ -2617,7 +2666,7 @@ fn v1_emit_struct_from_capability_table(
     )
     StructCapabilityEmit { derive_attr: derive_attr, impl_bodies: impl_bodies }
   } else {
-    let ord_propagated_params = if has_fn_fields || map_key_required
+    let ord_propagated_params = if has_fn_fields || eq_hash_capable
       || rust_symbol_wrapped_ord_carrier_shape_eligible(children: children, source_indices: source_indices)
       || repr_grounding_group_completion_carrier(module_path: module_path, name: name) {
       []
@@ -2646,7 +2695,7 @@ fn v1_emit_struct_from_capability_table(
         children: children,
         shared_types: shared_types,
         has_fn_fields: has_fn_fields,
-        map_key_required: map_key_required,
+        eq_hash_capable: eq_hash_capable,
         deserialize_forbidden: deserialize_forbidden,
         source_indices: source_indices
       )

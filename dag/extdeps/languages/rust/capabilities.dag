@@ -361,7 +361,7 @@ fn payload_coproduct_derive_traits() -> List<RustCapability> {
 // USAGE-DERIVED half of the roster, distinct from the SHAPE-derived rosters above and additive to
 // them. The rosters above answer what a type's own structure can support; they cannot answer what a
 // type's USE demands, so a record reaching a keyed-collection key position carries a requirement no
-// shape classification produces. map_key_required_derive_traits names that requirement once: a keyed
+// shape classification produces. eq_hash_capability_derive_traits names that requirement once: a keyed
 // collection realized as a hash map bounds its key parameter by Hash + Eq (im 15.1.0 HashMap<K, V>
 // declares K: Hash + Eq, matching std::collections::HashMap), so the key type must derive both. The
 // requirement is target-agnostic here and spelled per target in extdeps.languages.rust.emit. Union is
@@ -394,7 +394,7 @@ fn phantom_opaque_carrier_derive_traits() -> List<RustCapability> {
   }
 }
 
-fn map_key_required_derive_traits() -> List<RustCapability> {
+fn eq_hash_capability_derive_traits() -> List<RustCapability> {
   Cons { head: RustEq, tail: Cons { head: RustHash, tail: Empty } }
 }
 
@@ -426,7 +426,7 @@ fn kernel_int_arithmetic_traits() -> List<RustCapability> {
 // derive_traits_contain and derive_traits_union live HERE, typed on the closed RustCapability
 // alphabet, and not in std.trait_derive_shape. They arrived in this migration by relocation rather
 // than by authoring: in std they were typed on the OPEN TargetCapabilityKey brand while their only
-// consumer, v1.compiler.trait_derive_emit v1_with_map_key_requirement, threads RustCapability end
+// consumer, v1.compiler.trait_derive_emit v1_with_eq_hash_capability, threads RustCapability end
 // to end -- so the signature laundered the closed alphabet into the open key space, which is
 // exactly the guarantee the alphabet exists to hold (DESIGN section 4b). Caught in review, not by
 // the compiler. THE ALTERNATIVE REPAIR WAS WORSE AND IS RECORDED SO IT IS NOT RETRIED: keeping them

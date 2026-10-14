@@ -284,7 +284,7 @@ fn provenance_host_numeric_alias(name: String, p: TypeDeclarationProvenance) -> 
 // the declared module path v1.compiler.infer_env global_bare_fallback_invariant names as the key.
 
 // The DeclarationRef -> target-realization query the map-key-alias-hop and derive-set-narrowing
-// lanes are both blocked on (v1.compiler.trait_derive_emit map_key_alias_hop_gap_note):
+// lanes are both blocked on:
 // generalizes decl_file_declares_structurally's single Hash row into one derived decision any
 // declaration-identity-aware consumer can call directly, instead of re-deriving Present/Absent and
 // re-discovering the structural gate per call site. Keyed on (dag_name, decl_file) rather than a
@@ -316,7 +316,7 @@ fn provenance_host_numeric_alias(name: String, p: TypeDeclarationProvenance) -> 
 // (checkpoint_table_bypasses_identity_note, v1.compiler.emit_rust). emit_rust now imports
 // rust_seed_host_numeric_alias back from here, one direction, no cycle; see
 // numeric_realization_relocation_note there for the fuller account. This decision's Realized
-// branch is exercised by test.claim.map_key_alias_hop_witness's negative case (a locally-declared
+// branch WAS exercised by test.claim.map_key_alias_hop_witness's earlier negative case (a locally-declared
 // alias reusing a checkpoint dag_name, so this decision answers Realized rather than Unrealized,
 // and the aliased record correctly does not gain a derive) -- that fixture demonstrates the
 // mechanism generically rather than naming Nat/Int specifically, because dag/test/claim witnesses
@@ -414,7 +414,7 @@ fn type_realization_decision(
 // refuses on unknown identity and is the authority every NEW caller must answer from, directly or
 // through lookup_checkpoint's decl_file != "" arm (a thin derivation of this same decision, not a
 // second one -- v1.compiler.trait_derive_emit's alias-hop arm, gunbc#8736, reaches it this way,
-// per map_key_alias_hop_reconciliation_note there); and lookup_checkpoint's
+// as reconciled when that arm landed); and lookup_checkpoint's
 // decl_file=="" arm, which still answers from the bare-name table alone for every EXISTING caller
 // across v1.compiler.emit_rust and v1.compiler.emit that has never supplied identity. The residue
 // population is exactly those existing call sites, not counted here (a corpus-wide count is a
