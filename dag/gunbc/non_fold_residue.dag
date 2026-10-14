@@ -81,10 +81,6 @@ data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBinding
 
 data nfr_dissolve_binding_outcome_resolution_wildcard: DissolutionCondition = unbound_dissolution(description: "assess_reference_binding_observation routes each StructuralBindingResolution variant to a distinct capability assessment without Absent collapse — total match lands with P0-2 factual carrier recut and the wildcard arm deletes with its row")
 
-data nfr_reason_content_hash_structural_refusal: String = "ContentHash family structural filter at SourceRef list digest boundary (PR #7762): only Fnv1a64Structural participates in population digest; other family arms refuse as SourceRefContentHashStructuralNonFnv1a64 rather than silently coercing cross-family hashes. Declared at landing so the ratchet re-arms."
-
-data nfr_dissolve_content_hash_structural_refusal: DissolutionCondition = unbound_dissolution(description: "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)")
-
 data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
 
 data nfr_reason_release_identity_absent_split: String = "one-special-variant split over RunningReleaseUnidentifiedCause: ReleaseRevisionAbsent answers ProcessIdentityAbsent because a process predating the identity channel is a MIGRATION state, and the other nine causes answer ProcessIdentityMalformed because a live channel carrying something that is not an identity is a DEFECT in the deploying machinery. The nine share one arm because they already differ where it matters — running_release_unidentified_detail names each cause before the match runs, so the arm carries the distinction rather than erasing it, and enumerating the nine would clone one arm nine times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with Phase A release-identity readiness; declared at landing so the ratchet arms with the code."
@@ -170,11 +166,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger" },
     reason: nfr_reason_local_tidy,
     dissolution: nfr_dissolve_local_tidy,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/compiler/source_authority.dag::source_ref_content_hash_structural" },
-    reason: nfr_reason_content_hash_structural_refusal,
-    dissolution: nfr_dissolve_content_hash_structural_refusal,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/compiler/emit_orchestration.dag::orch_emit_let_step" },
