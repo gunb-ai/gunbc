@@ -202,6 +202,7 @@ fn srl_uri_template_duplicate() -> Outcome<CensusTree> { srl_census(text: srl_ur
 // it through extdeps.uri_path parse_path_template.
 test fn a_rest_uri_template_path_lowers_holds() -> Bool {
   srl_has(n: srl_body(o: srl_uri_template_bound()), names: [realization_root_label(), ^S, ^Run, realization_transport_label(), ^path])
+    && srl_has(n: srl_body(o: srl_uri_template_duplicate()), names: [realization_root_label(), ^S, ^Run, realization_transport_label(), ^path])
 }
 
 test fn a_rest_uri_template_unknown_hole_refuses_located_holds() -> Bool {
@@ -210,8 +211,4 @@ test fn a_rest_uri_template_unknown_hole_refuses_located_holds() -> Bool {
 
 test fn a_rest_uri_template_unclosed_brace_refuses_located_holds() -> Bool {
   srl_refused_as(o: srl_uri_template_unclosed(), reason: ^service_realization_argv_refused)
-}
-
-test fn a_rest_uri_template_duplicate_hole_refuses_located_holds() -> Bool {
-  srl_refused_as(o: srl_uri_template_duplicate(), reason: ^service_realization_argv_refused)
 }
