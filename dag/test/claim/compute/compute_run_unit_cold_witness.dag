@@ -1,7 +1,6 @@
 module test.claim.compute.compute_run_unit_cold_witness
 
 import std.types { Bool, FilePath }
-import std.algebra { all, starts_with }
 import gunbc.roadmap.roadmap_dashboard_instance {
   fleet_compute_hermetic_dashboard_instance_at, srv1_live_dashboard_instance,
 }
@@ -36,12 +35,12 @@ test fn the_hermetic_compute_root_is_inside_the_job_workspace_not_opt_gunbc() ->
   let root = compute_root(instance: h) as String
   let live_root = srv1_live_dashboard_instance().instance_root as String
   ((h.instance_root as String) == workspace)
-    && starts_with(s: root, prefix: join([workspace, "/"], ""))
+    && root.starts_with(prefix: join([workspace, "/"], ""))
     && (root != "/opt/gunbc")
-    && !starts_with(s: root, prefix: "/opt/gunbc/")
-    && !starts_with(s: h.instance_root as String, prefix: "/opt/gunbc/")
-    && !starts_with(s: root, prefix: live_root)
-    && !starts_with(s: live_root, prefix: root)
+    && !root.starts_with(prefix: "/opt/gunbc/")
+    && !(h.instance_root as String).starts_with(prefix: "/opt/gunbc/")
+    && !root.starts_with(prefix: live_root)
+    && !live_root.starts_with(prefix: root)
 }
 
 test fn the_hermetic_store_root_is_the_instance_field_and_not_srv1_live() -> Bool {

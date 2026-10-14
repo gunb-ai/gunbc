@@ -1,7 +1,7 @@
 module gunbc.instruments.compute_run_unit_cold
 
 import std.types { String, Bool, Int, List, FilePath, GitRef, NonEmptyStr }
-import std.algebra { trim, starts_with }
+import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.measure {
   ByteSize, Kibibyte, gibibyte, gibibyte_to_byte_size,
@@ -59,7 +59,7 @@ type HermeticUserSessionRuntime
   | HermeticUserSessionRuntimeAbsent
 
 fn path_is_under_opt_gunbc(path: String) -> Bool {
-  (path == "/opt/gunbc") || starts_with(s: path, prefix: "/opt/gunbc/")
+  (path == "/opt/gunbc") || path.starts_with(prefix: "/opt/gunbc/")
 }
 
 fn observe_workspace(instance: HostDashboardInstance) -> String {
