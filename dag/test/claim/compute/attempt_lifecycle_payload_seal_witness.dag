@@ -1,0 +1,24 @@
+module test.claim.compute.attempt_lifecycle_payload_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
+
+// begin_launch and terminate take no payload. A fixture that hands an AttemptRecord into
+// attempt_begin_launch is refused at compile: that argument is not on the function.
+
+data payload_resupply_source: String = "module probe_begin_launch_payload\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.compute.attempt_lifecycle { AttemptRecord, AttemptTransition, attempt_begin_launch }\nfn resupply(root: NonEmptyStr, rec: AttemptRecord, g: CasGeneration) -> AttemptTransition {\n  attempt_begin_launch(root: root, record: rec, expected: g)\n}\n"
+
+data lawful_begin_launch_source: String = "module probe_begin_launch_lawful\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.compute.attempt_lifecycle { AttemptTransition, attempt_begin_launch }\nfn lawful(root: NonEmptyStr, reference: NonEmptyStr, g: CasGeneration) -> AttemptTransition {\n  attempt_begin_launch(root: root, reference: reference, expected: g)\n}\n"
+
+data closure_baseline_source: String = "module probe_begin_launch_baseline\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration }\nfn baseline(root: NonEmptyStr, reference: NonEmptyStr, g: CasGeneration) -> NonEmptyStr {\n  reference\n}\n"
+
+test fn handing_a_payload_to_begin_launch_is_refused_at_compile() -> Bool {
+  total_blocking_count_for(source: payload_resupply_source) >= 1
+}
+
+test fn a_begin_launch_that_names_only_the_slot_is_not_refused() -> Bool {
+  let baseline = total_blocking_count_for(source: closure_baseline_source)
+  baseline >= 0
+    && total_blocking_count_for(source: lawful_begin_launch_source) == baseline
+    && blocking_subject_count_for(source: lawful_begin_launch_source, wanted_class: "SoleConstructorViolation", wanted_subject: "AttemptRecord") == 0
+}

@@ -114,9 +114,9 @@ test fn a_terminal_transition_refuses_a_launch_that_had_not_spawned_yet() -> Boo
   let record = record_for(reference: "attempt-terminate-first")
   let opened = attempt_open(root: root, record: record)
   let after_open = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
-  let terminated = attempt_terminate(root: root, record: record, expected: generation_of(r: after_open), verdict: AttemptRecovered, detail: "the producer never launched")
+  let terminated = attempt_terminate(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open), verdict: AttemptRecovered, detail: "the producer never launched")
   let after_terminal = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
-  let late_launch = attempt_begin_launch(root: root, record: record, expected: generation_of(r: after_open))
+  let late_launch = attempt_begin_launch(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open))
   let final_read = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
   attempt_transition_advanced(t: opened)
     && generation_of(r: after_open) == 1
@@ -140,9 +140,9 @@ test fn a_launch_that_won_refuses_a_recovery_arriving_behind_it() -> Bool {
   let record = record_for(reference: "attempt-launch-first")
   let opened = attempt_open(root: root, record: record)
   let after_open = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
-  let launched = attempt_begin_launch(root: root, record: record, expected: generation_of(r: after_open))
+  let launched = attempt_begin_launch(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open))
   let after_launch = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
-  let late_recovery = attempt_terminate(root: root, record: record, expected: generation_of(r: after_open), verdict: AttemptRecovered, detail: "arrived after the launch")
+  let late_recovery = attempt_terminate(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: after_open), verdict: AttemptRecovered, detail: "arrived after the launch")
   let final_read = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
   attempt_transition_advanced(t: opened)
     && attempt_transition_advanced(t: launched)
@@ -179,13 +179,15 @@ test fn settling_records_why_and_does_not_erase_what_it_settled() -> Bool {
   let record = record_for(reference: "attempt-history")
   let opened = attempt_open(root: root, record: record)
   let g1 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
-  let launched = attempt_begin_launch(root: root, record: record, expected: generation_of(r: g1))
+  let launched = attempt_begin_launch(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: g1))
   let g2 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
-  let settled = attempt_terminate(root: root, record: record, expected: generation_of(r: g2), verdict: AttemptWorkEnded { ending: WorkEndedFailed }, detail: "unit terminated-failure, exit 101")
+  let settled = attempt_terminate(root: root, reference: record.reference as NonEmptyStr, expected: generation_of(r: g2), verdict: AttemptWorkEnded { ending: WorkEndedFailed }, detail: "unit terminated-failure, exit 101")
   let g3 = attempt_slot_read(root: root, reference: record.reference as NonEmptyStr)
   let terminal = held_record(r: g3)
   attempt_transition_advanced(t: opened) && attempt_transition_advanced(t: launched) && attempt_transition_advanced(t: settled)
     && generation_of(r: g1) == 1 && generation_of(r: g2) == 2 && generation_of(r: g3) == 3
+    && kibibyte_count(k: held_record(r: g2).granted) == 27262976
+    && held_record(r: g2).unit == record.unit
     && (match terminal.state { AttemptTerminal { verdict: v, detail: d } => attempt_verdict_wire(v: v) == "failed" && string_contains(s: d, pattern: "exit 101")  AttemptReserved => false  AttemptLaunching => false })
     && Filesystem.Read(path: join([root as String, "/", record.reference, ".1"], "")).success
     && Filesystem.Read(path: join([root as String, "/", record.reference, ".2"], "")).success
