@@ -35,6 +35,7 @@ import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_events_path,
   CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
 }
+import extdeps.cache.cargo { cargo_target_dir }
 import extdeps.cache.sccache { sccache_installed_binary_path }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
@@ -147,7 +148,8 @@ type ComputeLayout {
 
 fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
   let root = compute_root(instance: instance) as String
-  let work_dir = join([root, "/work/", identity_hex], "")
+  let work_root = join([root, "/work"], "")
+  let work_dir = join([work_root, "/", identity_hex], "")
   ComputeLayout {
     root: root,
     work_dir: work_dir,
@@ -156,7 +158,18 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
     leases_dir: join([root, "/leases"], ""),
     lease_path: join([root, "/leases/", identity_hex], ""),
     staging_dir: compute_staging_dir(),
-    target_dir: join([root, "/target"], ""),
+    // The writable target belongs to THIS IDENTITY (C4), not to the host: it is the owned cargo
+    // target partition extdeps.cache.cargo.cargo_target_dir applied to the compute work root and
+    // this identity -- <root>/work/<identity>/target, under the identity's own work_dir (the same
+    // per-identity home that holds its checkout), a sibling of src, instead of one host-wide
+    // target shared by every identity. Two identities can therefore never write to, or capture
+    // from, one another's target. Per-identity is what the lease makes safe: the lease is keyed
+    // by the same identity and is taken create-if-absent, so no two attempts of one identity can
+    // overlap and the target the build writes is exactly the one compute_return_outputs hashes
+    // from (TargetRoot). A memoized identity keeps one stable work_dir across requests, so its
+    // target is still reused warm; only the cross-identity sharing is gone. sccache stays the
+    // shared wrapper.
+    target_dir: cargo_target_dir(base_root: work_root, owner: identity_hex),
     log_path: join([work_dir, "/log"], ""),
     consumption_path: join([work_dir, "/consumption"], ""),
     attempts_dir: join([root, "/attempts"], ""),
@@ -420,8 +433,9 @@ fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<Sys
 
 // Run the operation as a transient user unit and wait for it: the unit carries THE MEMORY THE POOL
 // GRANTED -- not a ceiling read independently from the instance, which would let the reservation and
-// the enforcement drift apart -- the checkout as working directory, the shared per-host target
-// directory and the sccache wrapper.
+// the enforcement drift apart -- the checkout as working directory, the run-owned target directory
+// (under this run's work_dir, so the lease's single identity bounds what the build writes and what
+// capture reads) and the shared sccache wrapper.
 // WHO OWES THE READ, AND WHY A TRUNCATION CANNOT UNDER-REPORT A PEAK HERE. A truncated stderr is the
 // worst-directed hazard in this mechanism: it makes the number SMALLER -- "Memory peak: 11G" cut to
 // "Memory peak: 1G" parses cleanly as a tenth of the real figure -- and under-reporting is the
