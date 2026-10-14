@@ -27,7 +27,7 @@ fn is_kernel_type(name: String) -> Bool {
 // It is the one hand-authored row left in this map, and it is the reason the memberships in
 // `std.algebra` are declared rather than derived from the profile -- grounding `Witness` as a
 // carrier is that class's next-rung trigger.
-data container_type_arity: Map<String, Int> = v2.std.collection.map_insert(carrier_container_arity_rows(), "Witness", 1)
+data container_type_arity: Map<String, Int> = map_insert(carrier_container_arity_rows(), "Witness", 1)
 
 fn is_container_type(name: String) -> Bool {
   match container_expected_arity(name: name) {
@@ -64,7 +64,7 @@ data ordered_element_collections: Map<String, Bool> = {
 }
 
 fn is_ordered_element_collection(name: String) -> Bool {
-  v2.std.collection.map_contains_key(ordered_element_collections, name)
+  map_contains_key(ordered_element_collections, name)
 }
 
 // BOTH MAPS ARE DERIVED FROM THE CARRIER ROSTER in `std.algebra`. What stood here was two
@@ -99,7 +99,7 @@ fn container_template_alias_algebra(name: String) -> String? {
 // `sorted_map_keys` gives the same ASCII order the hand-written literal held, and `Witness` is
 // appended for the reason `container_type_arity` above states: it is not an algebra carrier.
 fn canonical_container_names() -> List<String> {
-  sorted_map_keys(v2.std.collection.map_insert(carrier_container_roster_map(), "Witness", true))
+  sorted_map_keys(map_insert(carrier_container_roster_map(), "Witness", true))
 }
 
 type Bool = True | False
