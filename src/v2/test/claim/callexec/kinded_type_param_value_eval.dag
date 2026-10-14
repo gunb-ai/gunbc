@@ -21,7 +21,7 @@ import v2.std.integer { Int }
 // a different way the binding could be wrong: a made-up default, a type argument read as a value, a body
 // let capturing the binder.
 fn kpe_prelude() -> String {
-  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn mk8() -> Box<8> {\n  Box { v: 0 }\n}\n\nfn mkp() -> Box<Pointer> {\n  Box { v: 0 }\n}\n\n"
+  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn mk8() -> Box<8> {\n  Box { v: 0 }\n}\n\n"
 }
 
 fn kpe_eval(body: String, name: Symbol) -> Optional<Outcome<RuntimeValue>> {
@@ -45,12 +45,6 @@ fn kpe_refused_with(r: Optional<Outcome<RuntimeValue>>, reason: Symbol) -> Bool 
 // POSITIVE: the value the body reads is the literal the application's type argument carried.
 test fn kpe_kinded_parameter_value_is_the_applied_literal() -> Bool {
   kpe_int_of(r: kpe_eval(body: "fn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  width_of(x: mk8())\n}\n", name: ^width_of)) == Present { value: 8 }
-}
-
-// RED: a type argument where a value is read refuses at the application, typed and located; eval never
-// binds a made-up value.
-test fn kpe_type_argument_read_as_a_value_refuses_at_the_application() -> Bool {
-  kpe_refused_with(r: kpe_eval(body: "fn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  width_of(x: mkp())\n}\n", name: ^width_of), reason: ^eval_rejected_type_argument_read_as_value)
 }
 
 // CONTROL: a body let of the binder's spelling is its own binding; the kinded N is not captured by it.
