@@ -106,20 +106,30 @@ data gunbc_service_uid: Int = 1000
 // the roots that were Owned were removed by an empty-directory rmdir, and that teardown is not carried
 // forward -- a retract leaves directories exactly as it found them.
 
-type OwnedArtifactKind =
+// Nested by realization route so each variant name exists once. Compose-owned
+// kinds are unwritable at emit_artifact_upsert; that function takes
+// UpsertArtifactKind only. The one apply/retract dispatch matches ComposeOwned
+// vs UpsertOwned totally — no mapping function.
+type ComposeOwnedArtifactKind =
+    SystemdUnit
+  | FleetConvergeTimerUnit
+  | FabricStorageServeUnit
+  | FabricStorageServeMapping
+  | TailnetDoorServeUnit
+  | OidcConfigArtifact
+
+type UpsertArtifactKind =
     ServeBinary
   | GunbcSourceTree
-  | SystemdUnit
   | BeltEventPathUnit
-  | FleetConvergeTimerUnit
   | TailscaleServeMapping
   | DeployedTreeRemoteUnit
   | PublicationHelperPathUnit
-  | FabricStorageServeUnit
-  | FabricStorageServeMapping
   | ApprovalBrokerFrontDoor
-  | TailnetDoorServeUnit
-  | OidcConfigArtifact
+
+type OwnedArtifactKind
+  = ComposeOwned { kind: ComposeOwnedArtifactKind }
+  | UpsertOwned { kind: UpsertArtifactKind }
 
 // AN ENSURED HOST RESOURCE: converged on every apply, never torn down, TeardownRefuses{
 // TeardownOutsideOwnership}. Only packages remain; the directory arms became owned-directory targets.
@@ -189,19 +199,23 @@ type TeardownDisposition
 
 fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDisposition {
   match kind {
-    ServeBinary => TeardownActs
-    DeployedTreeRemoteUnit => TeardownActs
-    GunbcSourceTree => TeardownActs
-    SystemdUnit => TeardownActs
-    BeltEventPathUnit => TeardownActs
-    FleetConvergeTimerUnit => TeardownActs
-    TailscaleServeMapping => TeardownActs
-    PublicationHelperPathUnit => TeardownActs
-    FabricStorageServeUnit => TeardownActs
-    FabricStorageServeMapping => TeardownActs
-    ApprovalBrokerFrontDoor => TeardownActs
-    TailnetDoorServeUnit => TeardownActs
-    OidcConfigArtifact => TeardownActs
+    ComposeOwned { kind: ck } => match ck {
+      SystemdUnit => TeardownActs
+      FleetConvergeTimerUnit => TeardownActs
+      FabricStorageServeUnit => TeardownActs
+      FabricStorageServeMapping => TeardownActs
+      TailnetDoorServeUnit => TeardownActs
+      OidcConfigArtifact => TeardownActs
+    }
+    UpsertOwned { kind: uk } => match uk {
+      ServeBinary => TeardownActs
+      GunbcSourceTree => TeardownActs
+      BeltEventPathUnit => TeardownActs
+      TailscaleServeMapping => TeardownActs
+      DeployedTreeRemoteUnit => TeardownActs
+      PublicationHelperPathUnit => TeardownActs
+      ApprovalBrokerFrontDoor => TeardownActs
+    }
   }
 }
 
@@ -688,7 +702,7 @@ data deployment_tailnet_door_function_suffix: String = "_door"
 fn deployment_tailnet_door_steps(names: DeploymentNames) -> List<DeploymentArtifactStep> {
   match deployment_tailnet_door_socket(names: names) {
     Absent => []
-    Present { value: _ } => [DeploymentArtifactStep { kind: TailnetDoorServeUnit, path: deployment_tailnet_door_unit_path(names: names) }]
+    Present { value: _ } => [DeploymentArtifactStep { kind: ComposeOwned { kind: TailnetDoorServeUnit }, path: deployment_tailnet_door_unit_path(names: names) }]
   }
 }
 
@@ -771,58 +785,6 @@ fn deployment_publication_timer_unit_path(names: DeploymentNames) -> NonEmptyStr
 
 fn deployment_retired_belt_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_retired_belt_timer_unit_name(names: names) as String], "") as NonEmptyStr
-}
-
-// THE INSTANCE'S CREDENTIAL FILE IS A PATH THIS GRAPH NAMES AND A SECRET THIS GRAPH NEVER HOLDS,
-// AND IT IS NOW BOUND INTO EXACTLY ONE UNIT: the publication helper's.
-//
-// WHAT THIS ROW USED TO SAY, kept because the argument is what selected the shape that landed. An
-// earlier cut bound this file into BOTH multipurpose units via EnvironmentFileIfPresent, which does
-// deliver the credential and grants far more than it names, and it was withdrawn on two grounds. A
-// service-wide environment source reaches the whole process AND every child, and the belt spawns
-// providers through `env -C <workdir> <program>` with neither -i nor -u, so the token would reach
-// git, tmux and the dispatched provider session -- where `gh` consults GH_TOKEN then GITHUB_TOKEN
-// and those OVERRIDE credentials stored by `gh auth login`, so an ambient publication token does
-// not merely leak into a worker, it SILENTLY REPLACES the identity that worker was supposed to act
-// as. And file-backed delivery ALONE would not have fixed it: both units ran as the deployment
-// service user and the worker is spawned beneath that process, so a file readable by that principal
-// is readable by the worker. The transport changed; the set of principals that could read it did
-// not.
-//
-// BOTH OBJECTIONS ARE ABOUT WHO CAN READ, AND NEITHER SURVIVES A SEPARATE PRINCIPAL. The file is
-// owned by names.publication_principal and readable by nobody else, so the service user cannot read
-// it however its own units are bound; and the only process that resolves it -- the publication
-// helper -- spawns no provider, tmux or worker session, so there is nothing for the token to be
-// inherited INTO. That is stated more weakly than `spawns nothing` on purpose: the helper does
-// spawn `printenv` and `git`, and the sentence that is TRUE is the one that is also sufficient.
-// The withdrawal is therefore lifted for one unit and stands for the other two: the serve unit and
-// the belt unit bind no credential and contain no function that could name one, because
-// gunbc.roadmap.roadmap_belt_actuate's probe was DELETED rather than merely unbound.
-//
-// FILE-BACKED DELIVERY IS NOT MERELY INSUFFICIENT, IT IS UNNECESSARY, and this correction matters
-// more than the row it sits in. The earlier ruling said a file was not ENOUGH, which reads as
-// though a file plus something else were the required next step -- and a reader taking that reading
-// would build a carrier nobody needs. Both objections above are about WHO CAN READ, so the boundary
-// is the principal and the transport was never the defect; under a dedicated principal an
-// environment variable leaks nowhere a file would not. That is why this change adds no file-backed
-// std.credentials.CredentialSource variant, and the absence is a decision rather than an omission
-// (gunbc.roadmap.roadmap_publication_helper's header carries the second reason, which is that the v1 seed
-// resolves an auth source as an environment variable and nothing else).
-//
-// IT IS STILL ONE FILE FOR THE INSTANCE, and the reason is unchanged: TWO ingress paths reach
-// publication -- the belt tick, and POST /publish/{node_id} through gunbc.roadmap.roadmap_serve
-// serve_publish_handler_response_for_instance -> belt_publish_node_for_instance. They now reach it
-// by writing the same request document into the same spool, so they share the helper rather than
-// sharing a token, and fixing one without the other is no longer expressible.
-//
-// THE HOST OWNS THE FILE AND THE GRAPH OWNS ONLY ITS NAME. gunbc-tree-sync.env is written by the
-// apply because its content is a RUNNER PATH the deploy knows; a token is not derivable from
-// anything in this graph and must not become one. So a fresh instance whose file is absent gets a
-// located refusal naming the variable -- the helper writes an answer recording exactly that, and
-// the belt reports it -- rather than a helper that dies. See EnvironmentFileIfPresent in
-// extdeps.systemd.unit_file for why the optional form is the one that preserves that refusal.
-fn deployment_credential_env_path(names: DeploymentNames) -> NonEmptyStr {
-  join(["/etc/", deployment_belt_unit_stem(names: names), "-publication-credentials.env"], "") as NonEmptyStr
 }
 
 // THE DEPLOYED TREE'S REMOTE IS A MEMBER, and it needs a unit of its own for an ordering reason
@@ -1154,22 +1116,22 @@ fn deployment_owned_steps(
   holding: RoleSingletonHolding,
 ) -> List<DeploymentArtifactStep> {
   concat([
-    DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr },
-    DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: UpsertOwned { kind: ServeBinary }, path: instance.serve_binary as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: UpsertOwned { kind: GunbcSourceTree }, path: instance.repo_root as String as NonEmptyStr },
     DeploymentArtifactStep {
-      kind: DeployedTreeRemoteUnit,
+      kind: UpsertOwned { kind: DeployedTreeRemoteUnit },
       path: deployment_tree_remote_unit_path(names: names),
     },
   ], concat(deployment_oidc_config_steps(instance: instance), concat([
-    DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
+    DeploymentArtifactStep { kind: ComposeOwned { kind: SystemdUnit }, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep {
-      kind: PublicationHelperPathUnit,
+      kind: UpsertOwned { kind: PublicationHelperPathUnit },
       path: deployment_publication_path_unit_path(names: names),
     },
-    DeploymentArtifactStep { kind: BeltEventPathUnit, path: deployment_belt_exit_path_unit_path(names: names) },
+    DeploymentArtifactStep { kind: UpsertOwned { kind: BeltEventPathUnit }, path: deployment_belt_exit_path_unit_path(names: names) },
   ], concat(deployment_tailnet_door_steps(names: names), concat([
     DeploymentArtifactStep {
-      kind: TailscaleServeMapping,
+      kind: UpsertOwned { kind: TailscaleServeMapping },
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
     },
   ], concat(
@@ -1188,7 +1150,7 @@ fn deployment_owned_steps(
 fn deployment_oidc_config_steps(instance: HostDashboardInstance) -> List<DeploymentArtifactStep> {
   match tracker_web_oidc_serve_placement(instance_id: instance.instance_id) {
     TrackerWebOidcServeReady { config: cfg } => [
-      DeploymentArtifactStep { kind: OidcConfigArtifact, path: cfg.config_path },
+      DeploymentArtifactStep { kind: ComposeOwned { kind: OidcConfigArtifact }, path: cfg.config_path },
     ]
     TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
     TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
@@ -1223,7 +1185,7 @@ fn deployment_approval_broker_front_door_steps(holding: RoleSingletonHolding) ->
   if holds && approval_front_door_mounts_installed() {
     [
       DeploymentArtifactStep {
-        kind: ApprovalBrokerFrontDoor,
+        kind: UpsertOwned { kind: ApprovalBrokerFrontDoor },
         path: tailscale_serve_route_member_path(endpoint: approval_broker_confirm_front_door(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)),
       },
     ]
@@ -1239,8 +1201,8 @@ fn deployment_approval_broker_front_door_steps(holding: RoleSingletonHolding) ->
 fn deployment_fabric_storage_steps(holding: RoleSingletonHolding, names: DeploymentNames) -> List<DeploymentArtifactStep> {
   match holding {
     HoldsProdRoleSingletons { holder } => [
-      DeploymentArtifactStep { kind: FabricStorageServeUnit, path: deployment_fabric_storage_unit_path(names: names) },
-      DeploymentArtifactStep { kind: FabricStorageServeMapping, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: holder.instance))) },
+      DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeUnit }, path: deployment_fabric_storage_unit_path(names: names) },
+      DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeMapping }, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: holder.instance))) },
     ]
     HoldsNoRoleSingleton => []
   }

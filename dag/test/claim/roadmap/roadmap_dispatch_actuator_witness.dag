@@ -48,6 +48,9 @@ import extdeps.tmux {
   TmuxAttemptPaneAlive,
   TmuxAttemptPaneExited,
   parse_tmux_attempt_panes_output,
+  TmuxAttemptPaneAlive,
+  TmuxAttemptPaneExited,
+  TmuxAttemptPaneSignaled,
 }
 import extdeps.llm.cli {
   shape_claude_invoke_argv,
@@ -615,6 +618,19 @@ test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool {
       count(panes) == 2
         && (match panes.first().standing { TmuxAttemptPaneAlive => true  _ => false })
         && (match panes.skip(n: 1).first().standing { TmuxAttemptPaneExited { status } => status == 7  _ => false })
+    AttemptPanesParseRefused { line_number: _, raw: _, reason: _ } => false
+  }
+}
+
+test fn witness_tmux_attempt_panes_parse_signal_dead() -> Bool {
+  match parse_tmux_attempt_panes_output(
+    output: "gunbc-dispatch-a\t1\t\t9\tsleep\n",
+  ) {
+    AttemptPanesParsed { panes } =>
+      match panes.first().standing {
+        TmuxAttemptPaneSignaled { signal } => signal == 9
+        _ => false
+      }
     AttemptPanesParseRefused { line_number: _, raw: _, reason: _ } => false
   }
 }

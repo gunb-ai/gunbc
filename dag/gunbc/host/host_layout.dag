@@ -417,6 +417,21 @@ fn publication_refused_dir(instance_root: String) -> String {
   join([publication_spool_root(instance_root: instance_root), "/requests-refused"], "")
 }
 
+// THE HELPER KEEPS ITS OWN BARE MIRROR UNDER THE SPOOL ROOT. A fresh mktemp mirror packs the whole
+// reachable history on every publish; this path persists so a later fetch is a delta. The spool
+// root is installed owned by the publication principal (apply_publication_spool_steps); the helper
+// cannot mkdir under /opt/gunbc (root:root 755) or a lab instance root owned by the worker.
+//
+// A MIRROR THE WORKER SWAPS IN IS REFUSED. The push runs in this directory with the netrc on disk.
+// GIT_CONFIG_GLOBAL=/dev/null and GIT_CONFIG_NOSYSTEM=1 do not null the repository's own config or
+// hooks (core.hooksPath, hooks/pre-push). What refuses a worker-owned substitute today is git's
+// ownership check: the push's nulled global config carries no safe.directory, and the worker cannot
+// create a directory owned by gunbc-publication. The install step therefore uses owner and group
+// publication_principal at mode 0700, and only requests/ is group-writable for the belt.
+fn publication_bare_mirror_path(instance_root: String) -> FilePath {
+  join([publication_spool_root(instance_root: instance_root), "/mirror.git"], "") as FilePath
+}
+
 // srv1 observation (2026-08-13, parent eager-koi-458): directory already briansrls-owned;
 // EACCES was a root-owned STALE FILE from the pre-b1 unit user, not the directory.
 // Publication authority is atomic rename in gunbc.fleet.fleet_converge_cli — NOT live_deploy

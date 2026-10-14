@@ -1,8 +1,9 @@
 module gunbc.auth.github_apps
 
 import std.types { NonEmptyStr, String, EpochSecs, HttpStatus }
-import extdeps.auth.jws { JwsSigningKeyRef }
+import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.uri { Uri, uri_https }
 import extdeps.github.app {
@@ -84,6 +85,18 @@ data gunbai_bot_app_pem_secret: SecretRef = SecretRef {
   secret: "agent-github-app-private-key",
   version: "latest",
   hash_state: HashPending,
+}
+
+// TEMPORARY: every environment, including the srv1 lab, mints with the PROD App gunbai-bot
+// (operator 2026-10-13: "we can repoint later"). The host copy is the same Secret Manager
+// payload fleet-converge places; the blast radius of that file is the installation's full
+// grant, not the narrowed token a mint requests. Dissolve when each environment has its own App.
+data publication_environments_share_prod_gunbai_bot: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CAPABILITY: each environment mints with a GitHub App installed and keyed for that environment alone, so a lab host cannot mint a token the PROD installation would accept. SUFFICIENT FOR deleting this row and repointing gunbc.auth.github_apps gunbai_bot_host_signing_key / the publication helper's mint at that App. NOT satisfied by adding a second installation id on gunbai-bot, nor by narrowing the minted token (the host key can still request any permission the installation holds)." as NonEmptyStr
+)
+
+data gunbai_bot_host_signing_key: JwsSigningKeyRef = HostKeyFile {
+  path: "/etc/gunbc/publication/gunbai-bot.pem",
 }
 
 

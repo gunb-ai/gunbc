@@ -142,7 +142,7 @@ fn derive_copied_port_index_from_arrow(arrow: Node) -> Optional<Int> {
         _ => Absent
       }
     Ambiguous => Absent
-    Absent => Absent
+    NotFound => Absent
   }
 }
 

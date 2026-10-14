@@ -15,7 +15,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_provider_inner_argv_for_launch,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
-import gunbc.dispatch_attempt_launch { PreparedAttemptLaunch, SnapshotFreeLaunch, CodexWithoutSnapshot }
+import gunbc.dispatch_attempt_launch { PreparedAttemptLaunch, SnapshotFreeLaunch, CodexWithoutSnapshot, HarnessWithoutSnapshot }
 import extdeps.llm.cli { ReasoningMedium, ProviderAccountDefaultModel }
 import gunbc.codex_harness_credential { codex_harness_turn_lock_path, codex_worker_turn_codex_home }
 import gunbc.host.host_layout { srv2_roadmap_codex_home }
@@ -117,6 +117,35 @@ test fn a_codex_turn_off_its_custody_host_refuses() -> Bool {
         CodexProviderExecutableAbsent { reason: _ } => false
         CursorProviderOffCustodyHost { reason: _ } => false
         CursorProviderCredentialUnbound { reason: _ } => false
+        ClaudeProviderCredentialUnbound { reason: _ } => false
+      }
+  }
+}
+
+// THE BELT ENTRY IS UNACTIVATED (operator ruling, flex 7): the production spawn fold passes no durable turn, so a
+// belt worker keeps the operator-route behaviour and claims no durability. Activation is a fleet-seat placement
+// for BatchQualityTolerant belt work (gunbc.serving.caller_retry_contract serving_route_caller_retry_rows). Passing
+// a dispatch node, turn ordinal or state root from the belt before then reads RED here.
+test fn the_emitted_worker_argv_passes_no_durable_turn() -> Bool {
+  let attempt = worker_turn_attempt(instance: srv2_lab_dashboard_instance())
+  match fx_prepared_launch(
+    requested: attempt,
+    launch: SnapshotFreeLaunch { attempt: attempt, executor: HarnessWithoutSnapshot },
+    effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
+  ) {
+    none => false
+    Present { value: prepared } =>
+      match inner_for_launch(prepared: prepared) {
+        DispatchProviderInnerArgvReady { argv } =>
+          string_contains(s: join(argv, separator: "\0"), pattern: "alignment_chain_fingerprint=")
+            && !string_contains(s: join(argv, separator: "\0"), pattern: "dispatch_node=")
+            && !string_contains(s: join(argv, separator: "\0"), pattern: "turn_ordinal=")
+            && !string_contains(s: join(argv, separator: "\0"), pattern: "state_root=")
+        CodexProviderExecutableAbsent { reason: _ } => false
+        CursorProviderOffCustodyHost { reason: _ } => false
+        CursorProviderCredentialUnbound { reason: _ } => false
+        CodexProviderOffCustodyHost { reason: _ } => false
         ClaudeProviderCredentialUnbound { reason: _ } => false
       }
   }

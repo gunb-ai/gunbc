@@ -1,6 +1,6 @@
 module test.claim.fabric.flex_bid_admission_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, List, Bool }
 import std.nat { Nat }
 import std.decl_ref { decl_ref }
@@ -36,7 +36,7 @@ import product.fabric.selection {
   OperatingCostBorneBySupplier, NoFeasibleAlternativeUse,
 }
 import product.fabric.budget { MoneyAccount }
-import std.rational { NonzeroNatFraction, nonzero_nat_fraction_field }
+import std.rational { NonzeroNatFraction }
 import product.fabric.flex_policy {
   FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
   FlexScreenedCandidate, FlexBidAdmission, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused, FlexNoAcquisitionRemaining,
@@ -45,12 +45,18 @@ import product.fabric.flex_policy {
   FlexReservedBidCandidacyRefused, FlexTargetNotRevocable,
   FlexTargetAvailabilityUnobserved, FlexOnDemandRelativeCeilingExceeded,
   FlexCurrencyMismatch, FlexDecimalConversionRefused, FlexCandidateMachineMismatch,
-  FlexNewAcquisition, FlexExistingAcquisition, AcquisitionActive,
+  FlexNewAcquisition, FlexExistingAcquisition, AcquisitionActive, AcquisitionPending,
+  occupancy_sum, FlexOccupancySummed,
   FlexOnDemandReference, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
   FlexOnDemandReferenceMissing, FlexActuationDry,
-  FlexReservationCeilingChosen, FlexReservationCeilingCurrencyMismatch,
   FlexHorizonPriced, FlexHorizonUnobserved, FlexHorizonRefused,
-  flex_floor_buffer, flex_bid_admission, flex_buffered_min, policy_reservation_ceiling, flex_price_offer,
+  FlexMarketPriceUnobserved, FlexMarketQuoteCurrencyMismatch, FlexCandidateConsequencesUnestablished,
+  flex_bid_admission, flex_price_offer,
+}
+import product.fabric.flex_market {
+  FlexMarketQuote, FlexMarketQuoted, FlexMarketUnobserved, FlexBidLevelMarket,
+  FlexOwnerLabel, flex_owner_label_gunbc_flex,
+  flex_quoted_bid, FlexBidPriced, FlexBidMarketUnobserved, FlexBidQuoteCurrencyMismatch,
 }
 import extdeps.cloud.vast_ai {
   VastAiOffer, vast_ai_min_bid_money_per_hour, vast_ai_dph_total_money_per_hour,
@@ -159,9 +165,9 @@ fn t_machine(id: NonEmptyStr) -> FlexMachineKey {
 fn t_policy(cap: MoneyPerHour) -> FlexPolicy {
   FlexPolicy {
     fleet_rate_cap: cap,
-    floor_buffer: flex_floor_buffer,
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
+    owner: flex_owner_label_gunbc_flex,
     actuation: FlexActuationDry,
   }
 }
@@ -173,9 +179,9 @@ fn eur_hour(amount: MoneyAmountMicro) -> MoneyPerHour {
 fn t_policy_eur(cap: MoneyPerHour) -> FlexPolicy {
   FlexPolicy {
     fleet_rate_cap: cap,
-    floor_buffer: flex_floor_buffer,
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
+    owner: flex_owner_label_gunbc_flex,
     actuation: FlexActuationDry,
   }
 }
@@ -194,6 +200,13 @@ fn t_account(ceiling: MoneyAmountMicro) -> MoneyAccount {
 
 fn t_window(remaining: Nat) -> FlexAcquisitionWindow {
   FlexAcquisitionWindow { remaining: remaining }
+}
+
+fn t_default_market() -> FlexMarketQuote {
+  FlexMarketQuoted {
+    median: usd_hour(amount: money_amount_micro(count: 1100000)),
+    level: FlexBidLevelMarket,
+  }
 }
 
 fn t_on_demand_ref(rate: MoneyPerHour, key: OfferKey) -> FlexOnDemandReference<NonEmptyStr> {
@@ -236,6 +249,7 @@ fn t_attempt(
     delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
     tie: StableRosterOrder,
     affinity: "test.flex" as PlacementAffinityKey,
+    market: t_default_market(),
   }
 }
 
@@ -266,6 +280,7 @@ fn t_attempt_ref(
     delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
     tie: StableRosterOrder,
     affinity: "test.flex" as PlacementAffinityKey,
+    market: t_default_market(),
   }
 }
 
@@ -370,6 +385,9 @@ fn refusal_label(o: FlexBidAdmission) -> NonEmptyStr {
         FlexSupplyNotSelected { selection: _ } => "supply"
         FlexCandidateMachineMismatch { named: _, observed: _ } => "machine-mismatch"
         FlexMoneyRefused { refusal: _ } => "money"
+        FlexMarketPriceUnobserved => "market-unobserved"
+        FlexMarketQuoteCurrencyMismatch { left: _, right: _ } => "market-currency"
+        FlexCandidateConsequencesUnestablished { offer_key: _, missing: _ } => "candidate-unestablished"
       }
   }
 }
@@ -391,6 +409,7 @@ fn vast_min_sample() -> VastAiOffer {
     inet_up_cost: ExactDecimal { units: 1, fraction_digits: 3 },
     inet_down_cost: ExactDecimal { units: 1, fraction_digits: 3 },
     gpu_ram: 24576,
+    driver_version: Present { value: "580.65.06" },
   }
 }
 
@@ -559,7 +578,7 @@ test fn repeated_outbid_and_rediscovery_never_admits_above_the_policy_ceiling() 
 test fn the_fleet_rate_cap_is_the_sum_of_standing_plus_the_proposed_bid() -> Bool {
   let policy = t_policy(cap: usd_hour(amount: money_amount_micro(count: 1500000)))
   let occupied = FlexFleetOccupancy {
-    standing: [AcquisitionActive { rate: usd_hour(amount: money_amount_micro(count: 1497000)) }],
+    standing: [AcquisitionActive { owner: flex_owner_label_gunbc_flex, rate: usd_hour(amount: money_amount_micro(count: 1497000)) }],
   }
   let proposed = flex_bid_admission(
     policy: policy,
@@ -577,6 +596,36 @@ test fn the_fleet_rate_cap_is_the_sum_of_standing_plus_the_proposed_bid() -> Boo
     ),
   )
   refusal_label(o: proposed) == "rate-cap-occupied"
+}
+
+test fn ctrl_labels_on_the_same_account_do_not_count_against_the_cap() -> Bool {
+  let policy = t_policy(cap: usd_hour(amount: money_amount_micro(count: 1500000)))
+  let mixed = FlexFleetOccupancy {
+    standing: [
+      AcquisitionActive { owner: "ctrl-bidder" as FlexOwnerLabel, rate: usd_hour(amount: money_amount_micro(count: 1497000)) },
+      AcquisitionPending { owner: "ctrl-pool" as FlexOwnerLabel, rate: usd_hour(amount: money_amount_micro(count: 1497000)) },
+    ],
+  }
+  match occupancy_sum(occupancy: mixed, currency: Usd, ours: flex_owner_label_gunbc_flex) {
+    FlexOccupancyCurrencyMismatch { left: _, right: _ } => false
+    FlexOccupancySummed { rate: occupied } =>
+      (money_per_hour_micros(q: occupied) == 0)
+        && (refusal_label(o: flex_bid_admission(
+          policy: policy,
+          occupancy: mixed,
+          window: t_window(remaining: 1),
+          account: t_account(ceiling: money_amount_micro(count: 10000000)),
+          attempt: t_attempt(
+            machine: t_machine(id: "machine-ours"),
+            min_bid: one_dollar_wire(),
+            quote: one_ten(),
+            key: "offer-beside-ctrl",
+            reservation: "res-beside-ctrl",
+            revocation: RevocationAccepted,
+            revocable: true,
+          ),
+        )) == "admitted")
+  }
 }
 
 test fn an_existing_acquisition_bid_is_never_raised() -> Bool {
@@ -605,6 +654,7 @@ test fn an_existing_acquisition_bid_is_never_raised() -> Bool {
       delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
       tie: StableRosterOrder,
       affinity: "test.flex" as PlacementAffinityKey,
+      market: t_default_market(),
     },
   )
   refusal_label(o: o) == "existing-would-rise"
@@ -663,12 +713,6 @@ test fn a_revocable_offer_is_refused_for_warm_residency() -> Bool {
   refusal_label(o: o) == "supply"
 }
 
-test fn floor_buffer_is_the_exact_tenth_ratio() -> Bool {
-  flex_floor_buffer.num == 1
-    && nonzero_nat_fraction_field(r: flex_floor_buffer).denom == 10
-    && money_per_hour_micros(q: flex_buffered_min(min_bid: one_dollar(), buffer: flex_floor_buffer)) == 1100000
-}
-
 test fn a_currency_mismatch_is_refused_not_compared() -> Bool {
   let eur_account = MoneyAccount {
     account: "flex-eur",
@@ -722,6 +766,7 @@ test fn a_candidate_tagged_for_another_machine_is_refused() -> Bool {
       delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
       tie: StableRosterOrder,
       affinity: "test.flex" as PlacementAffinityKey,
+      market: t_default_market(),
     },
   )) == "machine-mismatch"
 }
@@ -834,15 +879,46 @@ test fn a_stale_on_demand_reference_refuses() -> Bool {
   }
 }
 
-test fn a_reservation_ceiling_currency_mismatch_is_refused() -> Bool {
-  match policy_reservation_ceiling(
-    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
-    min_bid: eur_hour(amount: money_amount_micro(count: 1100000)),
+test fn a_market_quote_currency_mismatch_is_refused() -> Bool {
+  match flex_quoted_bid(
+    quote: FlexMarketQuoted { median: eur_hour(amount: money_amount_micro(count: 1100000)), level: FlexBidLevelMarket },
+    floor: one_dollar(),
   ) {
-    FlexReservationCeilingCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
+    FlexBidQuoteCurrencyMismatch { left: mismatch_left, right: mismatch_right } =>
       mismatch_left == Eur && mismatch_right == Usd
-    FlexReservationCeilingChosen { rate: _ } => false
+    FlexBidPriced { rate: _ } => false
+    FlexBidMarketUnobserved => false
   }
+}
+
+test fn an_unobserved_market_quote_refuses_new_admission() -> Bool {
+  let machine = t_machine(id: "machine-a")
+  let bound = t_bound(offer: t_offer(key: "offer-no-market", rate: one_ten()), revocable: true)
+  refusal_label(o: flex_bid_admission(
+    policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
+    occupancy: empty_occupancy(),
+    window: t_window(remaining: 1),
+    account: t_account(ceiling: money_amount_micro(count: 10000000)),
+    attempt: FlexBidAttempt {
+      machine: machine,
+      min_bid: one_dollar_wire(),
+      quote_currency: vast_ai_quote_currency,
+      candidates: fold(
+        bound,
+        init: [],
+        f: (acc, c) => concat(acc, [FlexScreenedCandidate { machine: machine, candidate: c }]),
+      ),
+      subject: FlexNewAcquisition,
+      on_demand_reference: t_on_demand_ref(rate: usd_hour(amount: money_amount_micro(count: 2000000)), key: "od-no-market"),
+      requirements: t_reqs(revocation: RevocationAccepted),
+      reservation: "res-no-market",
+      generation: 1,
+      delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      tie: StableRosterOrder,
+      affinity: "test.flex" as PlacementAffinityKey,
+      market: FlexMarketUnobserved,
+    },
+  )) == "market-unobserved"
 }
 
 test fn an_unobserved_on_demand_availability_refuses() -> Bool {
@@ -979,6 +1055,7 @@ test fn an_unobserved_target_is_refused() -> Bool {
       delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
       tie: StableRosterOrder,
       affinity: "test.flex" as PlacementAffinityKey,
+      market: t_default_market(),
     },
   )) == "target-unobserved"
 }
@@ -1008,6 +1085,7 @@ test fn an_existing_current_bid_over_the_cap_is_refused() -> Bool {
       delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
       tie: StableRosterOrder,
       affinity: "test.flex" as PlacementAffinityKey,
+      market: t_default_market(),
     },
   )) == "rate-cap"
 }
@@ -1018,7 +1096,7 @@ test fn an_existing_acquisition_does_not_admit_when_aggregate_is_over_cap() -> B
   refusal_label(o: flex_bid_admission(
     policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 1500000))),
     occupancy: FlexFleetOccupancy {
-      standing: [AcquisitionActive { rate: usd_hour(amount: money_amount_micro(count: 2000000)) }],
+      standing: [AcquisitionActive { owner: flex_owner_label_gunbc_flex, rate: usd_hour(amount: money_amount_micro(count: 2000000)) }],
     },
     window: t_window(remaining: 1),
     account: t_account(ceiling: money_amount_micro(count: 10000000)),
@@ -1039,6 +1117,7 @@ test fn an_existing_acquisition_does_not_admit_when_aggregate_is_over_cap() -> B
       delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
       tie: StableRosterOrder,
       affinity: "test.flex" as PlacementAffinityKey,
+      market: t_default_market(),
     },
   )) == "rate-cap-occupied"
 }
@@ -1068,6 +1147,7 @@ test fn an_unchanged_existing_acquisition_does_not_consume_the_window() -> Bool 
       delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
       tie: StableRosterOrder,
       affinity: "test.flex" as PlacementAffinityKey,
+      market: t_default_market(),
     },
   ) {
     FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: _ } => false
@@ -1102,6 +1182,7 @@ test fn a_zero_window_existing_acquisition_is_still_unchanged() -> Bool {
       delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
       tie: StableRosterOrder,
       affinity: "test.flex" as PlacementAffinityKey,
+      market: t_default_market(),
     },
   ) {
     FlexBidAdmitted { bid: _, selection: _, account: _, occupancy: _, window: _ } => false
@@ -1140,6 +1221,7 @@ test fn a_nonzero_setup_hold_covers_the_projected_liability() -> Bool {
       delay_valuation: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
       tie: StableRosterOrder,
       affinity: "test.flex" as PlacementAffinityKey,
+      market: t_default_market(),
     },
   ) {
     FlexBidRefused { cause: _ } => false
@@ -1266,7 +1348,6 @@ test fn admission_converts_the_vast_wire_min_bid() -> Bool {
   match vast_ai_min_bid_money_per_hour(offer: offer) {
     DecimalMoneyPerHourRefused { conversion: _ } => false
     DecimalMoneyPerHourConverted { rate: converted } => {
-      let buffered = flex_buffered_min(min_bid: converted, buffer: flex_floor_buffer)
       match flex_bid_admission(
         policy: t_policy(cap: usd_hour(amount: money_amount_micro(count: 5000000))),
         occupancy: empty_occupancy(),
@@ -1275,7 +1356,7 @@ test fn admission_converts_the_vast_wire_min_bid() -> Bool {
         attempt: t_attempt(
           machine: t_machine(id: "machine-a"),
           min_bid: offer.min_bid,
-          quote: buffered,
+          quote: converted,
           key: "offer-wire",
           reservation: "res-wire",
           revocation: RevocationAccepted,
@@ -1285,7 +1366,12 @@ test fn admission_converts_the_vast_wire_min_bid() -> Bool {
         FlexBidRefused { cause: _ } => false
         FlexBidUnchanged { bid: _, account: _, occupancy: _, window: _ } => false
         FlexBidAdmitted { bid: b, selection: _, account: _, occupancy: _, window: _ } =>
-          money_per_hour_micros(q: b) == money_per_hour_micros(q: buffered)
+          match flex_quoted_bid(quote: t_default_market(), floor: converted) {
+            FlexBidMarketUnobserved => false
+            FlexBidQuoteCurrencyMismatch { left: _, right: _ } => false
+            FlexBidPriced { rate: priced } =>
+              money_per_hour_micros(q: b) == money_per_hour_micros(q: priced)
+          }
       }
     }
   }

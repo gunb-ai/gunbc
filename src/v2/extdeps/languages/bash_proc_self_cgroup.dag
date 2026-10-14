@@ -19,7 +19,6 @@ import extdeps.linux.proc_self_cgroup {
   OutcomeTagMalformed,
   OutcomeTagObserved,
   unified_membership_outcome_tag,
-  unified_membership_outcome_tag_eq,
   proc_self_cgroup_mount_root_text,
   proc_self_cgroup_absolute_path_from_relative,
 }
@@ -120,16 +119,15 @@ fn bash_membership_cross_realization_law_holds(
   stdout: String,
   mount_root: FilePathParts,
 ) -> Bool {
-  unified_membership_outcome_tag_eq(
-    a: unified_membership_outcome_tag(
-      record: read_unified_cgroup_membership(content: content)
-    ),
-    b: bash_membership_outcome_tag_from_execution(
-      success: success,
-      stderr: stderr,
-      stdout: stdout,
-      mount_root: mount_root,
-    ),
+  unified_membership_outcome_tag(
+    record: read_unified_cgroup_membership(content: content)
+  )
+  ==
+  bash_membership_outcome_tag_from_execution(
+    success: success,
+    stderr: stderr,
+    stdout: stdout,
+    mount_root: mount_root,
   )
 }
 

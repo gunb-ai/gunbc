@@ -55,6 +55,11 @@ import v2.std.declaration_marker {
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.occurrence_identity {
+  LexicalValueOccurrence,
+  OccurrenceCategory,
+  TypeOccurrence
+}
 import v2.extdeps.languages.dag {
   dag_kernel_string_type_spelling,
   dag_string_literal_value_optional,
@@ -108,6 +113,7 @@ import v2.std.diagnostic {
   Unavailable,
   Accepted,
   None,
+  Some,
   diagnostics_merge,
   diagnostics_fatal_reason,
   diagnostics_singleton,
@@ -145,6 +151,7 @@ import v2.std.symbol_index {
   LexicalAmbiguous,
   LexicalBindingCandidate,
   LexicalHit,
+  LexicalLookup,
   LexicalUnbound,
   SymbolIndex,
   empty_symbol_index,
@@ -158,12 +165,22 @@ import v2.std.symbol_index {
   symbol_index_declares_resource_at,
   symbol_index_global_unique_lookup,
   symbol_index_declaring_path_of,
+  symbol_index_lexical_eligible,
+  symbol_index_lexical_eligible_declared_payload,
   symbol_index_lexical_lookup,
+  symbol_index_lexical_lookup_for,
+  symbol_index_lexical_lookup_for_declared_payload,
   symbol_index_declared_binders_at,
   symbol_index_declared_type_params_at,
   symbol_index_declares_primitive_contract_at,
   symbol_index_lookup,
-  symbol_index_renaming_alias_at
+  symbol_index_renaming_alias_at,
+  type_decl_member_shape,
+  type_decl_member_child_walk,
+  TypeDeclChildrenInherited,
+  TypeDeclChildrenTypeOccurrence,
+  TypeDeclChildWalk,
+  symbol_index_owning_module_of
 }
 import v2.std.node {
   BinderTypeEdge,
@@ -226,7 +243,7 @@ import v2.std.node {
   ArrowBodyEdge,
   BinderDefaultEdge,
 }
-import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
+import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
   field_projection_edge_field_optional,
   field_projection_optional,
@@ -313,30 +330,42 @@ type ClosureProviderRefusal {
   refusal: NonEmptyDiagnostics
 }
 
-// THE ONE READ every closure-index miss consults: the refused provider whose module path is a prefix of
-// the missed declaration's path, if any. A miss with no refused provider over it stays the bare miss.
-fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  fold(tree.unavailable_providers, init: optional_absent(), f: fn(acc, p) {
+// THE ONE READ every closure-index miss consults: the refused provider whose module IS the
+// declaration's fill-time owning module (`v2.std.symbol_index` `symbol_index_owning_module_of`),
+// if any. A proper-prefix join would attribute v2.p.child.R to refused parent v2.p. A miss
+// with no refused owning module stays the bare miss.
+fn unavailable_provider_for_path(
+  index: SymbolIndex,
+  providers: List<ClosureProviderRefusal>,
+  path: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  match symbol_index_owning_module_of(index: index, path: path) {
+    Present { value: owner } => unavailable_provider_for_module(providers: providers, module: owner)
+    Absent => optional_absent()
+  }
+}
+
+fn unavailable_provider_for_module(providers: List<ClosureProviderRefusal>, module: QualifiedName) -> Optional<ClosureProviderRefusal> {
+  fold(providers, init: optional_absent(), f: fn(acc, p) {
     match acc {
       Present { value: _ } => acc
-      Absent => if qualified_name_is_proper_prefix(prefix: p.module, path: path) { optional_present(value: p) } else { acc }
+      Absent => if p.module == module { optional_present(value: p) } else { acc }
     }
   })
 }
 
-fn qualified_name_is_proper_prefix(prefix: QualifiedName, path: QualifiedName) -> Bool {
-  match prefix {
-    Empty =>
-      match path {
-        Empty => false
-        Cons { head: _, tail: _ } => true
-      }
-    Cons { head: ph, tail: pt } =>
-      match path {
-        Empty => false
-        Cons { head: h, tail: t } => ph == h && qualified_name_is_proper_prefix(prefix: pt, path: t)
-      }
-  }
+fn unavailable_providers_except_subject(providers: List<ClosureProviderRefusal>, subject: QualifiedName) -> List<ClosureProviderRefusal> {
+  fold_list(xs: providers, empty: [], cons: fn(acc, p) {
+    if p.module == subject {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: p)
+    }
+  })
+}
+
+fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
+  unavailable_provider_for_path(index: tree.symbol_index, providers: tree.unavailable_providers, path: path)
 }
 
 // The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
@@ -511,6 +540,24 @@ type Namespace {
   test_code: TestCodeIndex
   declared_in: QualifiedName
   imported_origins: Map<Symbol, QualifiedName>
+  // THE CLOSURE'S REFUSED PROVIDERS, OVERLAID FOR THIS SUBJECT WALK. Empty until
+  // closure_declarations_demand has run; never the subject's own row (that walk is how
+  // the row was recorded). An imported name whose declaring module is here refuses with
+  // that chain, not as unbound (resolve_reason_declarer_refused).
+  unavailable_providers: List<ClosureProviderRefusal>
+}
+
+fn namespace_with_unavailable_providers(namespace: Namespace, providers: List<ClosureProviderRefusal>) -> Namespace {
+  Namespace {
+    bindings: namespace.bindings,
+    canonical_symbols: namespace.canonical_symbols,
+    symbol_index: namespace.symbol_index,
+    module_qn: namespace.module_qn,
+    test_code: namespace.test_code,
+    declared_in: namespace.declared_in,
+    imported_origins: namespace.imported_origins,
+    unavailable_providers: providers
+  }
 }
 
 type Scope
@@ -589,6 +636,14 @@ type ResolveContext {
   lm: LanguageModel
   under_module_root: Bool
   declaring: DeclaringPosition
+  // WHICH KIND THE REFERENCE AT THIS WALK OWES, before none/one/many. Type-role walks
+  // (resolve_type_role_target, arrow domain/codomain types, type-declaration members) carry
+  // TypeOccurrence; value walks
+  // carry LexicalValueOccurrence, which the kernel also admits for constructors and callables.
+  // Eligibility is v2.std.symbol_index symbol_index_lexical_lookup_for, which applies
+  // std.occurrence_binding_resolve occurrence_category_binding_verdict to the collected
+  // population before symbol_index_lexical_selection.
+  reference_category: OccurrenceCategory
 }
 
 // WHERE THE WALK STANDS IN THE CONTAINMENT TREE, IN THE PATH v2.compiler.symbol_index_fill KEYS
@@ -617,7 +672,8 @@ fn empty_namespace() -> Namespace {
     module_qn: Empty,
     test_code: test_code_index_empty(),
     declared_in: Empty,
-    imported_origins: empty_map()
+    imported_origins: empty_map(),
+    unavailable_providers: []
   }
 }
 
@@ -927,7 +983,8 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
       channel: tree.test_markers
     ),
     declared_in: declared_in,
-    imported_origins: empty_map()
+    imported_origins: empty_map(),
+    unavailable_providers: []
   }
 }
 
@@ -965,7 +1022,8 @@ fn resolve_ctx_init(
     position: namespace.module_qn,
     lm: lm,
     under_module_root: false,
-    declaring: resolve_declaring_root(namespace: namespace)
+    declaring: resolve_declaring_root(namespace: namespace),
+    reference_category: LexicalValueOccurrence
   }
 }
 
@@ -978,7 +1036,8 @@ fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    reference_category: ctx.reference_category
   }
 }
 
@@ -991,16 +1050,66 @@ fn resolve_ctx_with_type_scope(ctx: ResolveContext, type_scope: Scope) -> Resolv
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    reference_category: ctx.reference_category
+  }
+}
+
+fn resolve_ctx_with_reference_category(ctx: ResolveContext, category: OccurrenceCategory) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    type_scope: ctx.type_scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root,
+    declaring: ctx.declaring,
+    reference_category: category
+  }
+}
+
+fn resolve_ctx_type_role(ctx: ResolveContext, scope: Scope) -> ResolveContext {
+  resolve_ctx_with_reference_category(
+    ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope),
+    category: TypeOccurrence
+  )
+}
+
+// A MODULE-LEVEL TYPE DECLARATION'S CHILDREN WALK AS TypeOccurrence when
+// type_decl_member_child_walk says so (v2.std.symbol_index, the same TypeDeclMemberShape
+// symbol_index_candidate_category projects lookup kind from). Applied only at the
+// declaration edge (DeclaringAt the module qn): type_decl_view's PlainTypeDecl arm is
+// a type member, and NotATypeDecl (import/fn/data carriers) inherits, so using the view
+// on every Authored child would still walk construct field atoms as TypeOccurrence if
+// they were PlainTypeDecl. TypeBodyEdge / TypeAliasEdge cover generic members and alias
+// RHS. Nested walks inherit the category.
+fn resolve_type_decl_member_child_walk(ctx: ResolveContext, e: Edge) -> TypeDeclChildWalk {
+  match ctx.declaring {
+    DeclaringAt { path: path } =>
+      if path == ctx.namespace.module_qn {
+        type_decl_member_child_walk(
+          shape: type_decl_member_shape(
+            index: ctx.namespace.symbol_index,
+            path: qualified_name_snoc(qn: path, segment: label_sort_key(label: e.label)),
+            node: e.target
+          )
+        )
+      } else {
+        TypeDeclChildrenInherited
+      }
+    DeclaringInSpine { path: _, body: _ } => TypeDeclChildrenInherited
+    NotDeclaring => TypeDeclChildrenInherited
   }
 }
 
 // THE ONE TYPE-ROLE ENTRY. A type expression carried in a body -- a cast's target
 // (v2.std.type_binder <cast-target>) or a let's annotation (<type-annotation>) -- resolves here: in the type-role
 // frame, so the enclosing fn's <T> binds it and no value binder can, and an undeclared name refuses
-// located at that name.
+// located at that name. The walk's required kind is TypeOccurrence so a colliding constructor of
+// the same spelling is not a candidate (namespace-binding-kernel eligibility before 0/1/many).
 fn resolve_type_role_target(ctx: ResolveContext, target: Node) -> ResolveNodeWalk {
-  resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: ctx.type_scope), n: target)
+  resolve_node_walk(ctx: resolve_ctx_type_role(ctx: ctx, scope: ctx.type_scope), n: target)
 }
 
 fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveContext {
@@ -1012,7 +1121,8 @@ fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveCon
     position: qualified_name_snoc(qn: ctx.position, segment: segment),
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    reference_category: ctx.reference_category
   }
 }
 
@@ -1025,7 +1135,8 @@ fn resolve_ctx_leaving_containment(ctx: ResolveContext) -> ResolveContext {
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: NotDeclaring
+    declaring: NotDeclaring,
+    reference_category: ctx.reference_category
   }
 }
 
@@ -1050,7 +1161,8 @@ fn resolve_ctx_with_declaring(ctx: ResolveContext, declaring: DeclaringPosition)
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
-    declaring: declaring
+    declaring: declaring,
+    reference_category: ctx.reference_category
   }
 }
 
@@ -1108,7 +1220,8 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
     position: ctx.position,
     lm: ctx.lm,
     under_module_root: under_module_root,
-    declaring: ctx.declaring
+    declaring: ctx.declaring,
+    reference_category: ctx.reference_category
   }
 }
 
@@ -1172,6 +1285,7 @@ type ResolveRefusalReason
   | ResolveKernelTypeSpellingNamesAForeignDeclaration
   | ResolveObservationIncomplete
   | ResolveTypeParameterShadowsVisibleName
+  | ResolveDeclarerRefused
 
 // The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
 fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
@@ -1186,6 +1300,7 @@ fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
     ResolveKernelTypeSpellingNamesAForeignDeclaration => ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration
     ResolveObservationIncomplete => ^resolve_reason_observation_incomplete
     ResolveTypeParameterShadowsVisibleName => ^resolve_reason_type_parameter_shadows_visible_name
+    ResolveDeclarerRefused => ^resolve_reason_declarer_refused
   }
 }
 
@@ -1203,6 +1318,21 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
     at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
+}
+
+fn declarer_refused_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_declarer_refused,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn declarer_refused_diagnostics(n: Node, provider: ClosureProviderRefusal) -> NonEmptyDiagnostics {
+  rejected_with_pending(
+    pending: Some { diagnostics: provider.refusal },
+    rejected: diagnostics_singleton(d: declarer_refused_diagnostic(n: n))
+  )
 }
 
 // A `_` IN VALUE POSITION NAMES NOTHING, AND THE REFUSAL SAYS WHY. An anonymous parameter slot is
@@ -1443,10 +1573,11 @@ fn lookup_symbol_index_atom_identity(
   ctx: ResolveContext,
   name: Symbol
 ) -> SymbolIndexAtomLookup {
-  match symbol_index_lexical_lookup(
+  match symbol_index_lexical_lookup_for(
     index: ctx.namespace.symbol_index,
     position: symbol_index_lookup_position(ctx: ctx),
-    name: name
+    name: name,
+    required: ctx.reference_category
   ) {
     LexicalHit { node: _, path: path } => SymbolIndexAtomHit { path: path }
     LexicalAmbiguous { candidates: candidates } =>
@@ -1783,16 +1914,44 @@ fn resolve_declared_path_reading(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path) {
-    Empty =>
+  match symbol_index_lexical_eligible(
+    index: ctx.namespace.symbol_index,
+    required: ctx.reference_category,
+    candidates: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path)
+  ) {
+    Empty => resolve_reference_path_miss(ctx: ctx, n: n, path: path, pending: pending)
+    Cons { head: candidate, tail: rest } =>
+      resolve_declared_path_candidates(ctx: ctx, n: n, candidate: candidate, rest: rest, pending: pending)
+  }
+}
+
+// A QUALIFIED PATH THAT NAMES NO INDEXED CANDIDATE. If the path's fill-time owning module
+// (`symbol_index_owning_module_of`) is in the refused-provider roster, that chain is the cause.
+// Otherwise the path refuses unbound at its own locus — never a last-segment reread (that would
+// accept foo.bar.Int as canonical Int, and would attribute declarer-refused from an unrelated
+// imported leaf) and never a proper-prefix of the path (that would attribute v2.p.child.R to
+// refused parent v2.p).
+fn resolve_reference_path_miss(
+  ctx: ResolveContext,
+  n: Node,
+  path: QualifiedName,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.unavailable_providers, path: path) {
+    Present { value: provider } =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: declarer_refused_diagnostics(n: n, provider: provider)
+        )
+      }
+    Absent =>
       Rejected {
         diagnostics: rejected_with_pending(
           pending: pending,
           rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
         )
       }
-    Cons { head: candidate, tail: rest } =>
-      resolve_declared_path_candidates(ctx: ctx, n: n, candidate: candidate, rest: rest, pending: pending)
   }
 }
 
@@ -1857,6 +2016,15 @@ fn resolve_atom_bound(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.unavailable_providers, path: path) {
+    Present { value: provider } =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: declarer_refused_diagnostics(n: n, provider: provider)
+        )
+      }
+    Absent =>
   match test_code_reach(index: ctx.namespace.test_code, path: path) {
     ReachesNoTestCode =>
       Accepted {
@@ -1873,6 +2041,7 @@ fn resolve_atom_bound(
           rejected: diagnostics_singleton(d: test_code_referenced_diagnostic(reason: ^resolve_reason_test_code_referenced, n: n))
         )
       }
+  }
   }
 }
 
@@ -2005,6 +2174,23 @@ fn resolve_kernel_type_atom_optional(n: Node, identity: Symbol) -> Optional<Node
 }
 
 fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
+  match map_lookup(m: ctx.namespace.imported_origins, key: identity) {
+    Present { value: origin } =>
+      match unavailable_provider_for_module(providers: ctx.namespace.unavailable_providers, module: origin) {
+        Present { value: provider } =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: pending,
+              rejected: declarer_refused_diagnostics(n: n, provider: provider)
+            )
+          }
+        Absent => resolve_atom_unbound_after_declarer(ctx: ctx, n: n, identity: identity, pending: pending)
+      }
+    Absent => resolve_atom_unbound_after_declarer(ctx: ctx, n: n, identity: identity, pending: pending)
+  }
+}
+
+fn resolve_atom_unbound_after_declarer(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
   if namespace_has_canonical_symbol(
     namespace: ctx.namespace,
     name: identity
@@ -2677,6 +2863,11 @@ fn resolve_path_is_declared_payload(ctx: ResolveContext, path: QualifiedName) ->
   }
 }
 
+// PAYLOAD CENSUS, NOT A BIND. This answers "does this atom name a declared payload" so a pattern
+// chooses binder vs constructor; it is not lookup_symbol_index_atom_identity. Kind-filtering with
+// one OccurrenceCategory would drop RecordTypePayload (TypeOccurrence) or VariantArmPayload
+// (ConstructorOccurrence). The payload map is the filter; symbol_index_lexical_lookup stays
+// kind-blind here on purpose.
 fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bool {
   match symbol_index_lexical_lookup(
     index: ctx.namespace.symbol_index,
@@ -2830,6 +3021,8 @@ fn resolve_qualified_tag_declared_payload(ctx: ResolveContext, path: List<Symbol
   }
 }
 
+// Same payload census as resolve_pattern_atom_names_constructor: collect, then keep declared
+// payloads. Not a type/value bind door (those use symbol_index_lexical_lookup_for).
 fn resolve_declared_payload_path_lookup(ctx: ResolveContext, name: Symbol) -> Optional<QualifiedName> {
   match symbol_index_lexical_lookup(
     index: ctx.namespace.symbol_index,
@@ -3037,7 +3230,12 @@ fn resolve_expected_rename_chain(ctx: ResolveContext, path: QualifiedName, visit
     match symbol_index_renaming_alias_at(index: ctx.namespace.symbol_index, qualified_path: path) {
       Absent => ExpectedHeadAt { path: path }
       Present { value: head } =>
-        match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: path, name: head) {
+        match symbol_index_lexical_lookup_for(
+          index: ctx.namespace.symbol_index,
+          position: path,
+          name: head,
+          required: TypeOccurrence
+        ) {
           LexicalHit { node: _, path: renamed } =>
             resolve_expected_rename_chain(ctx: ctx, path: renamed, visited: list_snoc_item(xs: visited, item: path))
           _ => ExpectedHeadAbsent
@@ -3053,12 +3251,21 @@ fn resolve_expected_head_path_as_written(ctx: ResolveContext, x: ResolveExpectat
       match head.kind {
         TypeNode { connective: Atom { identity: id } } =>
           if x.at_use_site {
-            match resolve_atom(ctx: resolve_ctx_with_scope(ctx: ctx, scope: ctx.type_scope), n: head, identity: id) {
+            match resolve_atom(
+              ctx: resolve_ctx_type_role(ctx: ctx, scope: ctx.type_scope),
+              n: head,
+              identity: id
+            ) {
               Accepted { value: resolved, diagnostics: _ } => declaration_reference_path_optional(node: resolved)
               Rejected { diagnostics: _ } => optional_absent()
             }
           } else {
-            match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: x.position, name: id) {
+            match symbol_index_lexical_lookup_for(
+              index: ctx.namespace.symbol_index,
+              position: x.position,
+              name: id,
+              required: TypeOccurrence
+            ) {
               LexicalHit { node: _, path: path } => optional_present(value: path)
               _ => optional_absent()
             }
@@ -3196,7 +3403,12 @@ fn resolve_map_first_name_keyed_item(items: List<Edge>) -> Optional<Node> {
 fn resolve_map_key_type_is_string_literal_type(ctx: ResolveContext, position: QualifiedName, t: Node) -> Bool {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: position, name: id) {
+      match symbol_index_lexical_lookup_for(
+        index: ctx.namespace.symbol_index,
+        position: position,
+        name: id,
+        required: TypeOccurrence
+      ) {
         LexicalUnbound =>
           dag_kernel_string_type_spelling(sym: id) && match dag_kernel_type_binding_optional(sym: id) {
             Present { value: _ } => true
@@ -3440,6 +3652,11 @@ fn resolve_list_elements_expected(ctx: ResolveContext, n: Node, x: ResolveExpect
 // other answer -- a field projection, if the qualified door reads the first segment as a local value
 // (whether a dotted path is a name or a projection is decided in that door, by the first segment's
 // scope, and nowhere here) -- is not a constructor and refuses the same way.
+// Construct tags name declared payloads (RecordTypePayload | VariantArmPayload), not one
+// OccurrenceCategory. Kind-filtering ConstructorOccurrence drops records; TypeOccurrence drops
+// variants. The door is v2.std.symbol_index symbol_index_lexical_lookup_for_declared_payload
+// (payload map, then none/one/many), the same DeclaredPayloadKind
+// resolve_construct_tag_names_constructor joins.
 fn resolve_construct_tag_walk(ctx: ResolveContext, reference: Node) -> ResolveNodeWalk {
   match qualified_name_from_node(root: reference) {
     Rejected { diagnostics: r } => resolve_walk_of_outcome(o: Rejected { diagnostics: r })
@@ -3451,16 +3668,119 @@ fn resolve_construct_tag_walk(ctx: ResolveContext, reference: Node) -> ResolveNo
   }
 }
 
+fn resolve_construct_tag_from_payload_lookup(
+  ctx: ResolveContext,
+  reference: Node,
+  identity: Symbol,
+  lookup: LexicalLookup
+) -> Outcome<Node> {
+  match lookup {
+    LexicalHit { node: _, path: path } => resolve_atom_bound(ctx: ctx, n: reference, path: path, pending: None)
+    LexicalAmbiguous { candidates: candidates } =>
+      Rejected {
+        diagnostics: ambiguous_symbol_diagnostics(
+          n: reference,
+          class: AmbiguousOnLexicalChain { candidates: candidates }
+        )
+      }
+    LexicalUnbound => resolve_atom_unbound(ctx: ctx, n: reference, identity: identity, pending: None)
+  }
+}
+
 fn resolve_construct_tag_reference(ctx: ResolveContext, reference: Node, path: QualifiedName) -> Outcome<Node> {
   match path {
     Cons { head: only, tail: Empty } =>
-      resolve_atom(ctx: ctx, n: reference, identity: only)
+      resolve_construct_tag_from_payload_lookup(
+        ctx: ctx,
+        reference: reference,
+        identity: only,
+        lookup: symbol_index_lexical_lookup_for_declared_payload(
+          index: ctx.namespace.symbol_index,
+          position: symbol_index_lookup_position(ctx: ctx),
+          name: only
+        )
+      )
     Cons { head: _, tail: Cons { head: _, tail: _ } } =>
-      match try_resolve_qualified_name_node(ctx: ctx, n: reference) {
-        Present { value: outcome } => resolved_atom_node(o: outcome)
-        Absent => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
+      match qualified_head_scope_binding(ctx: ctx, path: path) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: head_binding, diagnostics: chain_pending } =>
+          resolve_construct_tag_dotted_reading(
+            ctx: ctx,
+            reference: reference,
+            path: path,
+            head_binding: head_binding,
+            pending: chain_pending
+          )
       }
     Empty => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
+  }
+}
+
+// THE WRONG LINK WAS COMMITTING TO PROJECTION FROM THE FIRST SEGMENT ALONE.
+// qualified_head_scope_binding only looks up that segment (lookup_chain). An unshadowed
+// module-qualified tag (`v2.test.kab.m.R`, more than two segments) must take the
+// declared-payload door even if that first segment is BoundInFrame or BoundAtRoot — otherwise
+// the path is read as a projection off `v2` and the constructor is refused. A two-segment
+// BoundInFrame path (`m.R` with a frame binder `m`) still always projects, so absolute
+// candidates cannot select a global record over the binder. BoundAtRoot on a two-segment
+// path projects only when the binding names a value and the path names no declared payload.
+fn resolve_construct_tag_dotted_reading(
+  ctx: ResolveContext,
+  reference: Node,
+  path: QualifiedName,
+  head_binding: ScopeBinding,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match head_binding {
+    BoundInFrame { canonical: _, kind: _ } =>
+      if length(xs: path) > 2 {
+        resolve_construct_tag_declared_payload_path(ctx: ctx, reference: reference, path: path, pending: pending)
+      } else {
+        resolve_construct_tag_projection(ctx: ctx, reference: reference, pending: pending)
+      }
+    BoundAtRoot { canonical: canonical } =>
+      match construct_tag_absolute_payload_candidates(ctx: ctx, path: path) {
+        Cons { head: _, tail: _ } =>
+          resolve_construct_tag_declared_payload_path(ctx: ctx, reference: reference, path: path, pending: pending)
+        Empty =>
+          if root_binding_names_value(namespace: ctx.namespace, canonical: canonical) {
+            resolve_construct_tag_projection(ctx: ctx, reference: reference, pending: pending)
+          } else {
+            resolve_construct_tag_declared_payload_path(ctx: ctx, reference: reference, path: path, pending: pending)
+          }
+      }
+    ScopeUnbound =>
+      resolve_construct_tag_declared_payload_path(ctx: ctx, reference: reference, path: path, pending: pending)
+  }
+}
+
+fn construct_tag_absolute_payload_candidates(ctx: ResolveContext, path: QualifiedName) -> FreeMonoid<LexicalBindingCandidate> {
+  symbol_index_lexical_eligible_declared_payload(
+    index: ctx.namespace.symbol_index,
+    candidates: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path)
+  )
+}
+
+fn resolve_construct_tag_projection(ctx: ResolveContext, reference: Node, pending: Diagnostics) -> Outcome<Node> {
+  match resolve_bound_head_projection(ctx: ctx, n: reference, pending: pending) {
+    Accepted { value: atom, diagnostics: d } => Accepted { value: atom.node, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn resolve_construct_tag_declared_payload_path(
+  ctx: ResolveContext,
+  reference: Node,
+  path: QualifiedName,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match symbol_index_lexical_eligible_declared_payload(
+    index: ctx.namespace.symbol_index,
+    candidates: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path)
+  ) {
+    Empty => resolve_reference_path_miss(ctx: ctx, n: reference, path: path, pending: pending)
+    Cons { head: candidate, tail: rest } =>
+      resolve_declared_path_candidates(ctx: ctx, n: reference, candidate: candidate, rest: rest, pending: pending)
   }
 }
 
@@ -3805,7 +4125,12 @@ fn resolve_kind_variant_paths_optional(ctx: ResolveContext, declaration: Qualifi
   match type_binder_atom_identity_optional(n: kind) {
     Absent => optional_absent()
     Present { value: kind_name } =>
-      match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: declaration, name: kind_name) {
+      match symbol_index_lexical_lookup_for(
+        index: ctx.namespace.symbol_index,
+        position: declaration,
+        name: kind_name,
+        required: TypeOccurrence
+      ) {
         LexicalHit { node: kind_decl, path: kind_binding } =>
           let kind_path = symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: kind_binding)
           match kind_decl.kind {
@@ -4095,8 +4420,13 @@ fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
     } else {
       ctx
     }
+    let walk_ctx = match resolve_type_decl_member_child_walk(ctx: ctx, e: e) {
+      TypeDeclChildrenTypeOccurrence =>
+        resolve_ctx_with_reference_category(ctx: child_ctx, category: TypeOccurrence)
+      TypeDeclChildrenInherited => child_ctx
+    }
     resolve_node_walk(
-      ctx: resolve_ctx_with_declaring(ctx: child_ctx, declaring: resolve_declaring_across_named_edge(declaring: ctx.declaring, e: e)),
+      ctx: resolve_ctx_with_declaring(ctx: walk_ctx, declaring: resolve_declaring_across_named_edge(declaring: ctx.declaring, e: e)),
       n: e.target
     )
   }
@@ -4148,7 +4478,12 @@ fn resolve_children_homogeneous_scope(
     if edge_is_type_params(e: e) {
       child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: ctx, conj: e.target))
     } else {
-      child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: child_ctx, e: e))
+      let edge_ctx = if edge_is_type_body(e: e) || edge_is_type_alias(e: e) {
+        resolve_ctx_with_reference_category(ctx: child_ctx, category: TypeOccurrence)
+      } else {
+        child_ctx
+      }
+      child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: edge_ctx, e: e))
     }
   }))
 }
@@ -4403,7 +4738,7 @@ fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n
           w: acc,
           e: e,
           r: resolve_arrow_domain_walk(
-            type_ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: slot_scope),
+            type_ctx: resolve_ctx_type_role(ctx: inner_ctx, scope: slot_scope),
             default_ctx: inner_ctx,
             domain: e.target
           )
@@ -4412,7 +4747,7 @@ fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n
         child_walk_step(
           w: acc,
           e: e,
-          r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: slot_scope), n: e.target)
+          r: resolve_node_walk(ctx: resolve_ctx_type_role(ctx: inner_ctx, scope: slot_scope), n: e.target)
         )
     }
   }))

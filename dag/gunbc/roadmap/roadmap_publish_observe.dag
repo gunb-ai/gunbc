@@ -1,7 +1,6 @@
 module gunbc.roadmap.roadmap_publish_observe
 
-import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha }
-import std.credentials { CredentialSource }
+import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha, Secret }
 import extdeps.git
 import extdeps.git {
   AdvertisedRef,
@@ -235,7 +234,7 @@ data open_state_is_supplied_not_defaulted_note: String ="THE STATE IS PASSED, NO
 // transport would push the ignorance-as-answer conflation back into every other producer.
 
 type PublicationCredentialSource
-  = CredentialSourceConfigured { source: CredentialSource }
+  = CredentialSourceConfigured { token: Secret }
   | CredentialSourceAbsent { reason: String }
 
 fn observe_pull_requests(
@@ -250,7 +249,7 @@ fn observe_pull_requests(
           reason: reason,
         },
       }
-    CredentialSourceConfigured { source } => {
+    CredentialSourceConfigured { token } => {
       let host = os.Hostname.ReadShort()
       let lease = fabric_quota_lease(short_hostname: if host.success { trim(s: host.value) } else { "" }, limit: github_core_rate_limit, amount: 1, actor: "belt:publish-observe" as NonEmptyStr, term_seconds: 120)
       match lease {
@@ -258,7 +257,7 @@ fn observe_pull_requests(
         QuotaLeaseRefused { detail: d } => PullRequestsUnreadable { cause: PullRequestQuotaWithheld { repository: repo.full_name, detail: d } }
         QuotaLeased { grant: _, partition: _, store: _, limit: _ } => {
       let result = github.Pulls.List(
-        auth_token: source,
+        auth_token: token,
         owner: repo.owner,
         repo: repo.name,
         state: Open,

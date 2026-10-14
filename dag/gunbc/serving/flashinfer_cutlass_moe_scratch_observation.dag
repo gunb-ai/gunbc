@@ -1,0 +1,62 @@
+module gunbc.serving.flashinfer_cutlass_moe_scratch_observation
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { ByteSize, byte_size, BasisPoint, basis_point, TokenCount, token_count }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_workstation_catalog }
+
+data flashinfer_moe_scratch_read_obligation: NonEmptyStr = "Re-read the pinned vLLM launch log for Flash-Next NVFP4 on RTX PRO 6000 at TP2+EP: FlashInfer CUTLASS MoE scratch GiB at max_num_batched_tokens 32768 versus the profiled budget at gpu_memory_utilization 0.85, and the 8192 value that started. Until a P3 receipt fold derives those bytes from committed raw text, this row is an observation transcribed from that launch, not an upstream vLLM or FlashInfer law." as NonEmptyStr
+
+// Weight quant is not a field: this observation is the Flash-Next NVFP4 launch named by the row.
+// NinferNvfp4 is that engine's artifact quant; ModeloptNvfp4Config is GLM ModelOpt; KvNvfp4 is a
+// KV-cache request. None of those is this scratch figure, so this module does not mint a fourth NVFP4.
+type FlashInferCutlassMoeScratchObservation {
+  max_num_batched_tokens: TokenCount
+  gpu_memory_utilization: BasisPoint
+  tensor_parallel: Nat
+  expert_parallel: Bool
+  accelerator: GpuModelCatalogRow
+  scratch: ByteSize
+  started_at_tokens: TokenCount
+  standing: CitedFigureStanding
+}
+
+fn flashinfer_cutlass_moe_scratch_observation(
+  max_num_batched_tokens: TokenCount,
+  gpu_memory_utilization: BasisPoint,
+  tensor_parallel: Nat,
+  expert_parallel: Bool,
+  accelerator: GpuModelCatalogRow,
+  scratch: ByteSize,
+  started_at_tokens: TokenCount,
+  standing: CitedFigureStanding,
+) -> FlashInferCutlassMoeScratchObservation {
+  FlashInferCutlassMoeScratchObservation {
+    max_num_batched_tokens: max_num_batched_tokens,
+    gpu_memory_utilization: gpu_memory_utilization,
+    tensor_parallel: tensor_parallel,
+    expert_parallel: expert_parallel,
+    accelerator: accelerator,
+    scratch: scratch,
+    started_at_tokens: started_at_tokens,
+    standing: standing,
+  }
+}
+
+data flash_next_nvfp4_pro6000_tp2_ep_moe_scratch_p4_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c declared frontier: flash_next_nvfp4_pro6000_tp2_ep_moe_scratch is consumed by P4 home-serving selection as a TranscribedUncited scratch observation on the named Flash-Next NVFP4 PRO 6000 TP2+EP launch, not as a general FlashInfer law. Trigger: that fold reads this row's scratch bytes (or a later receipt fold replaces the transcription). A witness that only asserts the row exists does not close this frontier." as NonEmptyStr
+)
+
+data flash_next_nvfp4_pro6000_tp2_ep_moe_scratch: FlashInferCutlassMoeScratchObservation = flashinfer_cutlass_moe_scratch_observation(
+  max_num_batched_tokens: token_count(count: 32768),
+  gpu_memory_utilization: basis_point(count: 8500),
+  tensor_parallel: 2,
+  expert_parallel: true,
+  accelerator: nvidia_rtx_pro_6000_workstation_catalog,
+  scratch: byte_size(count: 3457466670),
+  started_at_tokens: token_count(count: 8192),
+  standing: TranscribedUncited { read_obligation: flashinfer_moe_scratch_read_obligation },
+)
