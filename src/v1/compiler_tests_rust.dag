@@ -5401,10 +5401,6 @@ fn ct_test_marker_item_kind_test() -> String {
   )
 }
 
-fn ct_test_reference_wall_test() -> String {
-  ""
-}
-
 // THE IMPORT-ALL ROUTE'S ONLY RED, AND WHY IT IS NOT ON THE FLOOR. The floor's census probe
 // (gunbc.compile_census_probe) compiles one fixture module against the corpus and loads the corpus
 // modules it imports for name lookup only, never typed, so no floor fixture can hold both a
@@ -5448,10 +5444,6 @@ fn ct_test_reference_import_all_test() -> String {
   )
 }
 
-fn ct_test_reference_orphan_row_test() -> String {
-  ""
-}
-
 fn compiler_tests_source() -> String {
   concat(
     ct_module_header(),
@@ -5461,9 +5453,7 @@ fn compiler_tests_source() -> String {
     ct_tokenizer_tests(),
     ct_parse_tests(),
     ct_test_marker_item_kind_test(),
-    ct_test_reference_wall_test(),
     ct_test_reference_import_all_test(),
-    ct_test_reference_orphan_row_test(),
     ct_tco_tail_call_assigns_every_loop_slot_test(),
     ct_pipeline_test(),
     ct_entry_point_absent_refusal_test(),
