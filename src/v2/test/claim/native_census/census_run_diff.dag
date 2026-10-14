@@ -6,11 +6,11 @@ import std.optional { Absent, Optional, Present }
 import std.types { Bool, CommitSha, Int, List, String }
 import gunbc.guarantee_measurement { GitRevision, MeasurementRevision }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.compiler.census_run_record {
+import v2.compiler.compile {
   CensusDiffClearedAndNewlyExposed,
+  CensusDiffDuplicateObligation,
   CensusDiffIncompleteEvidence,
   CensusDiffLocationUpdate,
-  CensusDiffDuplicateObligation,
   CensusDiffMemberAdded,
   CensusDiffMemberRemoved,
   CensusDiffNewlyObservedNotRegression,
@@ -33,13 +33,6 @@ import v2.compiler.census_run_record {
   CensusRunDiffSubjectRefused,
   CensusRunIncomplete,
   CensusRunRecord,
-  census_obligation_rows_from_infer,
-  census_obligation_rows_from_member_block,
-  census_run_diff,
-  census_run_record,
-  census_three_stage_rows
-}
-import v2.compiler.compile {
   NativeCensusCauseFrontEnd,
   NativeCensusCauseInfer,
   NativeCensusCauseResolve,
@@ -48,7 +41,12 @@ import v2.compiler.compile {
   NativeCensusScopeBlocked,
   NativeCensusScopeClosed,
   NativeInferCensusFileRefused,
-  NativeInferCensusResolveRefused
+  NativeInferCensusResolveRefused,
+  census_obligation_rows_from_infer,
+  census_obligation_rows_from_member_block,
+  census_run_diff,
+  census_run_record,
+  census_three_stage_rows
 }
 import v2.compiler.module_acquisition {
   AcquireImportedModule,
