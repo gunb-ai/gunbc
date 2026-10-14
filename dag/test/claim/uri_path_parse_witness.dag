@@ -92,3 +92,29 @@ test fn witness_render_path_template_binds_params() -> Bool {
   ) == "/vm/0/0"
 }
 
+test fn witness_query_template_parses_holes() -> Bool {
+  match parse_query_template(raw: "/identity?audience=\{audience\}") {
+    ParsedPathTemplate { template: t } =>
+      has_path_params(template: t)
+        && match last_path_param(template: t) {
+          Present { value: n } => n == "audience"
+          Absent => false
+        }
+    MalformedPathTemplate => false
+  }
+}
+
+test fn witness_query_template_absent_when_no_query() -> Bool {
+  match parse_query_template(raw: "/users/\{uid\}") {
+    ParsedPathTemplate { template: t } => t.tokens.length() == 0
+    MalformedPathTemplate => false
+  }
+}
+
+test fn witness_query_template_unclosed_rejects() -> Bool {
+  match parse_query_template(raw: "/identity?audience=\{x") {
+    MalformedPathTemplate => true
+    ParsedPathTemplate => false
+  }
+}
+

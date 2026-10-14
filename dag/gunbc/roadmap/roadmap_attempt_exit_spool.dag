@@ -10,7 +10,9 @@ import extdeps.systemd.service_exec {
   ExecCommandLineRendering, ExecCommandLineRendered, ExecCommandLineRefused, exec_command_line,
   exec_command_line_full_privileges,
 }
-import extdeps.posix.signal { LinuxStandardSignal, linux_standard_signal_of_name }
+import extdeps.posix.signal {
+  LinuxStandardSignal, linux_standard_signal_of_name,
+}
 import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
 import extdeps.filesystem.filesystem_io {
   Filesystem,

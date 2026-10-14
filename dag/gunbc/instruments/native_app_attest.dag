@@ -22,6 +22,8 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_client_data,
   sample_team_identifier, sample_bundle_identifier, sample_assertion_counter,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE NATIVE APP ATTEST PROGRAM: extdeps.apple.app_attest verify_attestation and verify_assertion --
 // the folds #11989 authored, not a second fold -- executed over Apple's published iOS 14.4 sample
@@ -481,3 +483,12 @@ fn native_claim_report() -> NativeClaimReport {
   let terminal = if (failed |> count) == 0 { held_terminal() } else { not_held_terminal(reason: concat("not held: ", failed |> join(separator: ","))) }
   NativeClaimReport { stdout: concat(roster, cases |> map(c => case_row(c: c)) |> join(separator: "")), terminal: terminal }
 }
+
+data nfr_reason_native_app_attest_arm_equal: String = "same-constructor equality over AttestationRefusal / AssertionRefusal: the outer match on the owed refusal is exhaustive (a new refusal constructor must be placed there), and each inner off-constructor wildcard answers false; enumerating it is the n-squared cross product (169 arms for AttestationRefusal) cloning one false arm, and comparing the name projections instead is wrong because those names carry payload text"
+
+data nfr_dissolve_native_app_attest_arm_equal: DissolutionCondition = unbound_dissolution(description: "a typed constructor-equality capability (derived from inhabitance, dag/std/algebra) can compare AttestationRefusal and AssertionRefusal by arm without cross-product arms, then these rows delete")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "same_assertion_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
+  FrontierRow { subject: PathSubject { path: "same_attestation_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
+]

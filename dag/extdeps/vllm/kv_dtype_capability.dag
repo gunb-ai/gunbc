@@ -3,7 +3,7 @@ module extdeps.vllm.kv_dtype_capability
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Present, Absent }
-import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read, vllm_source_revision }
 import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
 import extdeps.vllm.engine_args {
   VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvFp8E4m3, KvBf16, KvFp8DsMla, vllm_kv_cache_dtype_wire,
@@ -33,11 +33,13 @@ import extdeps.vllm.engine_args {
 type VllmKvBackend
   = DeepseekV4FlashInferMlaSparse
   | FlashInferMlaSparseSm120
+  | Qwen4ExpNvidiaQsa
 
 fn vllm_kv_backend_wire(b: VllmKvBackend) -> NonEmptyStr {
   match b {
     DeepseekV4FlashInferMlaSparse => "vllm.models.deepseek_v4_1.nvidia.flashinfer_sparse.DeepseekV4FlashInferMLASparseBackend" as NonEmptyStr
     FlashInferMlaSparseSm120 => "FLASHINFER_MLA_SPARSE_SM120" as NonEmptyStr
+    Qwen4ExpNvidiaQsa => "vllm.models.qwen4_exp.nvidia.qsa" as NonEmptyStr
   }
 }
 
@@ -116,7 +118,33 @@ data deepseek_v4_sparse_mla_sm10_row: KvMainDtypeRow = kv_main_dtype_row(
   basis: KvBasisUpstreamSource { revision: vllm_deepseek_v4_1_sm12_revision, locator: v41_flashinfer_sparse_locator },
 )
 
-data upstream_kv_main_dtype_rows: List<KvMainDtypeRow> = [deepseek_v4_sparse_mla_sm12_row, deepseek_v4_sparse_mla_sm10_row]
+// NVIDIA Qwen4Exp QSA backend admits main KV "auto" and "bfloat16"
+// (vllm/models/qwen4_exp/nvidia/qsa.py supported_kv_cache_dtypes at ced6857).
+// auto resolves to BF16 storage; values outside that pair are refused.
+// Main KV, indexer cache, and weight quantization stay distinct.
+// CONSUMER: P4 feasibility (acceptable KV precision on that arch).
+// full_revision is the commit `refs/tags/v0.30.0` resolved to on github.com/vllm-project/vllm
+// (ced6857afa0ea7b2e3f0846a62e1394e90f15607), not the tag spelling: VllmSourceRevision is one build.
+data vllm_0_30_0_qwen4_exp_qsa_revision: VllmSourceRevision = vllm_source_revision(
+  repository: "github.com/vllm-project/vllm" as NonEmptyStr,
+  full_revision: "ced6857afa0ea7b2e3f0846a62e1394e90f15607" as NonEmptyStr,
+)
+
+data qwen4_exp_qsa_locator: NonEmptyStr = "vllm/models/qwen4_exp/nvidia/qsa.py" as NonEmptyStr
+
+data qwen4_exp_nvidia_qsa_sm12_row: KvMainDtypeRow = kv_main_dtype_row(
+  backend: Qwen4ExpNvidiaQsa,
+  runtime: RowAtSourceRevision { revision: vllm_0_30_0_qwen4_exp_qsa_revision },
+  device_major: 12,
+  admitted: [KvAuto, KvBf16],
+  basis: KvBasisUpstreamSource { revision: vllm_0_30_0_qwen4_exp_qsa_revision, locator: qwen4_exp_qsa_locator },
+)
+
+data upstream_kv_main_dtype_rows: List<KvMainDtypeRow> = [
+  deepseek_v4_sparse_mla_sm12_row,
+  deepseek_v4_sparse_mla_sm10_row,
+  qwen4_exp_nvidia_qsa_sm12_row,
+]
 
 // THE DSA SPARSE INDEXER'S K CACHE, read at 8d09804c877c48165c6ba69bc9dc02d09bae0b83
 // (vllm/v1/attention/backends/mla/indexer.py dsa_indexer_uses_fp4): DSA_INDEXER_KV_DTYPES =
