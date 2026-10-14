@@ -1715,6 +1715,36 @@ fn ct_unbound_reference_to_a_twice_declared_leaf_refuses_test() -> String {
   )
 }
 
+// A declared Optional whose payload node is absent refuses; it never renders `()`.
+fn ct_an_optional_over_a_collection_of_optional_refuses_test() -> String {
+  [
+    "    // AN OPTIONAL CARRIER WHOSE PAYLOAD TYPE NODE IS ABSENT REFUSES; IT NEVER RENDERS `()`. The fixture is a\n",
+    "    // hand-built childless carrier node reaching the Absent arm directly, so the red does not depend on\n",
+    "    // what infer stamps for `Optional<List<Optional<Int>>>` (measured erased by merry-moth-118, node\n",
+    "    // adhoc-c3c735c9-3af; the source specimen is the positive control of the producer-side stamping PR).\n",
+    "    // THE CONTROL is the same carrier with an `Int` payload child, which renders `Option<i64>`.\n",
+    "    #[test]\n",
+    "    fn an_optional_carrier_with_an_absent_payload_node_refuses() {\n",
+    "        let source_indices = std::rc::Rc::new(HashMap::new());\n",
+    "        let render = |carrier: std::rc::Rc<crate::v1_std_core::Node>| -> String {\n",
+    "            crate::v1_compiler_emit_rust::render_rust_optional_carrier_applied(\n",
+    "                carrier,\n",
+    "                std::rc::Rc::new(im::Vector::new()),\n",
+    "                std::rc::Rc::new(im::OrdSet::new()),\n",
+    "                source_indices.clone(),\n",
+    "                std::rc::Rc::new(HashMap::new()),\n",
+    "                crate::v1_compiler_infer_env::empty_type_env(),\n",
+    "            )\n",
+    "        };\n",
+    "        let red = render(shaped_type_node(\"Optional\", Vec::new()));\n",
+    "        assert!(red.contains(\"compile_error!\") && red.contains(\"optional carrier payload type node absent\") && !red.contains(\"()\"), \"an absent payload must refuse and never render ():\\n\{red}\");\n",
+    "        let control = render(shaped_type_node(\"Optional\", vec![named_type_node(\"Int\")]));\n",
+    "        assert_eq!(control, \"Option<i64>\", \"a present payload node renders its payload\");\n",
+    "    }\n",
+    "\n",
+  ] |> join(separator: "")
+}
+
 // A same-leaf declaration in one module does not change what another module emits.
 fn ct_a_coproduct_named_optional_emits_as_its_own_enum_test() -> String {
   [
@@ -1996,6 +2026,7 @@ fn ct_coercion_tests() -> String {
     ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test(),
     ct_unstamped_bare_optional_follows_the_lookup_binding_order_test(),
     ct_a_coproduct_named_optional_emits_as_its_own_enum_test(),
+    ct_an_optional_over_a_collection_of_optional_refuses_test(),
     ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test())
 }
