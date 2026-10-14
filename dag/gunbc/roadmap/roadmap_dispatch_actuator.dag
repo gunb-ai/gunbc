@@ -88,6 +88,9 @@ import extdeps.tmux {
   TmuxPipeCommand,
   TmuxLsEntry,
   TmuxAttemptPaneEntry,
+  TmuxAttemptPaneAlive,
+  TmuxAttemptPaneExited,
+  TmuxAttemptPaneSignaled,
   AttemptPanesParsed,
   AttemptPanesParseRefused,
   parse_tmux_attempt_panes_output,
@@ -176,6 +179,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessAbsent,
   WorkerProcessRunning,
   WorkerProcessExited,
+  WorkerProcessSignaled,
   worker_process_observed_command,
   AttemptEvidence,
   WorktreeUnobserved,
@@ -3872,6 +3876,17 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
               },
             ),
           }
+        WorkerProcessSignaled { signal: _, last_command } =>
+          Present {
+            value: dispatch_tmux_session_scope_for_process_fingerprint(
+              node_id: node_id,
+              process_fingerprint: if last_command == "" {
+                "retained-signal" as NonEmptyStr
+              } else {
+                last_command as NonEmptyStr
+              },
+            ),
+          }
         WorkerProcessUnobserved { reason: _ } => none
         WorkerProcessAbsent => none
       }
@@ -4313,24 +4328,25 @@ fn worker_process_from_attempt_unit(
 fn worker_process_from_attempt_pane(
   pane: TmuxAttemptPaneEntry,
 ) -> WorkerProcessEvidence {
-  if pane.dead {
-    match pane.exit_code {
-      Present { value: code } =>
-        WorkerProcessExited {
-          exit_code: code,
-          last_command: pane.command,
-        }
-      Absent =>
+  match pane.standing {
+    TmuxAttemptPaneExited { status } =>
+      WorkerProcessExited {
+        exit_code: status,
+        last_command: pane.command,
+      }
+    TmuxAttemptPaneSignaled { signal } =>
+      WorkerProcessSignaled {
+        signal: signal,
+        last_command: pane.command,
+      }
+    TmuxAttemptPaneAlive =>
+      if pane.command == "" {
         WorkerProcessUnobserved {
-          reason: "dead pane did not carry an exit status" as NonEmptyStr,
+          reason: "running pane did not expose pane_current_command" as NonEmptyStr,
         }
-    }
-  } else if pane.command == "" {
-    WorkerProcessUnobserved {
-      reason: "running pane did not expose pane_current_command" as NonEmptyStr,
-    }
-  } else {
-    WorkerProcessRunning { command: pane.command as NonEmptyStr }
+      } else {
+        WorkerProcessRunning { command: pane.command as NonEmptyStr }
+      }
   }
 }
 
@@ -4487,6 +4503,11 @@ fn dispatch_session_cleanup(
         DispatchClearRetainedSession {
           session_name: session.session_name,
           exit_code: exit_code,
+        }
+      WorkerProcessSignaled { signal, last_command: _ } =>
+        DispatchClearRetainedSession {
+          session_name: session.session_name,
+          exit_code: signal,
         }
       WorkerProcessAbsent =>
         DispatchCleanupRefused {

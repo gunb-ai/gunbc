@@ -11,7 +11,7 @@ import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentPending, WorkflowSegmentActive,
 }
 import gunbc.worker_lifecycle {
-  WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved,
+  WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessSignaled, WorkerProcessAbsent, WorkerProcessUnobserved,
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion, review_criterion_brief_text }
 import gunbc.design_argument { ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued }
@@ -196,6 +196,7 @@ fn criterion_standing(e: CriterionReviewEvidence) -> CriterionStanding {
       match e.process {
         WorkerProcessRunning { command: _ } => CriterionReviewerRunning { key: e.criterion_key }
         WorkerProcessExited { exit_code, last_command: _ } => CriterionReviewerExitedWithoutVerdict { key: e.criterion_key, exit_code: exit_code }
+        WorkerProcessSignaled { signal, last_command: _ } => CriterionReviewerExitedWithoutVerdict { key: e.criterion_key, exit_code: signal }
         WorkerProcessUnobserved { reason } => CriterionReviewerUnobserved { key: e.criterion_key, reason: reason as String }
         WorkerProcessAbsent => CriterionAwaitingReviewer { key: e.criterion_key }
       }

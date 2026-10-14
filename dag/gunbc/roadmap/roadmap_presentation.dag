@@ -70,7 +70,7 @@ import extdeps.languages.json.emit {
 }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessUnobserved, WorkerProcessAbsent,
-  WorkerProcessRunning, WorkerProcessExited,
+  WorkerProcessRunning, WorkerProcessExited, WorkerProcessSignaled,
   worker_process_evidence_label,
 }
 import gunbc.harness.harness_throughput {
@@ -773,6 +773,8 @@ fn agent_completion_claim(process: WorkerProcessEvidence) -> String {
   match process {
     WorkerProcessExited { exit_code: _, last_command: _ } =>
       "Agent turn completed; the retained session is no longer running"
+    WorkerProcessSignaled { signal: _, last_command: _ } =>
+      "Agent turn completed; the retained session was killed"
     WorkerProcessRunning { command: _ } => "Agent turn completed"
     WorkerProcessAbsent => "Agent turn completed; the worker session is gone"
     WorkerProcessUnobserved { reason: _ } =>
@@ -790,6 +792,7 @@ fn session_container_value(process: WorkerProcessEvidence) -> String {
   match process {
     WorkerProcessRunning { command: _ } => "present"
     WorkerProcessExited { exit_code: _, last_command: _ } => "present"
+    WorkerProcessSignaled { signal: _, last_command: _ } => "present"
     WorkerProcessUnobserved { reason: _ } => "present"
     WorkerProcessAbsent => "absent"
   }
@@ -1101,6 +1104,7 @@ fn worker_alive_from_process(process: WorkerProcessEvidence) -> Bool {
   match process {
     WorkerProcessRunning { command: _ } => true
     WorkerProcessExited { exit_code: _, last_command: _ } => false
+    WorkerProcessSignaled { signal: _, last_command: _ } => false
     WorkerProcessAbsent => false
     WorkerProcessUnobserved { reason: _ } => false
   }

@@ -67,6 +67,7 @@ type WorkerProcessEvidence
   | WorkerProcessAbsent
   | WorkerProcessRunning { command: NonEmptyStr }
   | WorkerProcessExited { exit_code: Int, last_command: String }
+  | WorkerProcessSignaled { signal: Int, last_command: String }
 
 // The observed command, or a refusal: std's Optional carrier applied to this
 // coproduct's inhabitance (A3/A6 house shape). Only WorkerProcessRunning
@@ -80,6 +81,7 @@ fn worker_process_observed_command(process: WorkerProcessEvidence) -> NonEmptySt
     WorkerProcessUnobserved { reason: _ } => none
     WorkerProcessAbsent => none
     WorkerProcessExited { exit_code: _, last_command: _ } => none
+    WorkerProcessSignaled { signal: _, last_command: _ } => none
   }
 }
 
@@ -89,6 +91,7 @@ fn worker_process_evidence_label(evidence: WorkerProcessEvidence) -> String {
     WorkerProcessAbsent => "process absent"
     WorkerProcessRunning { command: _ } => "process running"
     WorkerProcessExited { exit_code: _, last_command: _ } => "process exited"
+    WorkerProcessSignaled { signal: _, last_command: _ } => "process signaled"
   }
 }
 
@@ -102,6 +105,16 @@ fn worker_process_evidence_detail(evidence: WorkerProcessEvidence) -> String {
       join([
         "exit=",
         to_string(exit_code),
+        if last_command == "" {
+          ""
+        } else {
+          join([" last-command=", last_command], "")
+        },
+      ], "")
+    WorkerProcessSignaled { signal, last_command } =>
+      join([
+        "signal=",
+        to_string(signal),
         if last_command == "" {
           ""
         } else {

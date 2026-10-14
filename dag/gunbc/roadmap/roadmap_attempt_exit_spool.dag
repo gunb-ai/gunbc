@@ -11,7 +11,10 @@ import extdeps.systemd.service_exec {
   ExecCommandLineRendering, ExecCommandLineRendered, ExecCommandLineRefused, exec_command_line,
   exec_command_line_full_privileges,
 }
-import extdeps.posix.signal { LinuxStandardSignal, linux_standard_signal_of_name }
+import extdeps.posix.signal {
+  LinuxStandardSignal, linux_standard_signal_of_name,
+  linux_standard_signal_of_number, linux_standard_signal_wire_name,
+}
 import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -374,32 +377,88 @@ fn attempt_exit_vendor_pane_entry_name(node_id: String, attempt_key: String, sta
   ], "")
 }
 
+type VendorPaneDeath
+  = VendorPaneExited { status: Int }
+  | VendorPaneSignaled { signal: Int }
+
+fn attempt_exit_vendor_pane_signaled_entry_name(node_id: String, attempt_key: String, signal_name: String) -> String {
+  join([
+    node_id,
+    attempt_exit_entry_separator,
+    attempt_key,
+    attempt_exit_entry_separator,
+    attempt_unit_role_token(role: AttemptWorkerRole),
+    attempt_exit_entry_separator,
+    "vendorpane",
+    attempt_exit_entry_separator,
+    "signal",
+    attempt_exit_entry_separator,
+    "killed",
+    attempt_exit_entry_separator,
+    signal_name,
+  ], "")
+}
+
+fn attempt_exit_vendor_pane_entry_name_of_death(node_id: String, attempt_key: String, death: VendorPaneDeath) -> String? {
+  match death {
+    VendorPaneExited { status } =>
+      Present { value: attempt_exit_vendor_pane_entry_name(node_id: node_id, attempt_key: attempt_key, status: status) }
+    VendorPaneSignaled { signal } =>
+      match linux_standard_signal_of_number(n: signal) {
+        Absent => none
+        Present { value: sig } =>
+          Present {
+            value: attempt_exit_vendor_pane_signaled_entry_name(
+              node_id: node_id,
+              attempt_key: attempt_key,
+              signal_name: linux_standard_signal_wire_name(signal: sig),
+            ),
+          }
+      }
+  }
+}
+
 // Vendor tmux panes have no ExecStopPost. The belt writes an inbox mkdir-name when it first sees
 // the dead pane, before it may reap. Callers that will reap must CHECK the result and keep the
 // dead pane when the write fails. Create-only mkdir is `mkdir_create_only_command`: the spool must
 // already exist; a missing or read-only inbox is a failed write, not a parent-creating success.
-fn attempt_exit_record_put_worker_exited(instance_root: String, node_id: String, attempt_key: String, status: Int) -> AttemptExitRecordPut {
+fn attempt_exit_record_put_mkdir_name(instance_root: String, entry_name: String) -> AttemptExitRecordPut {
+  let path = join([attempt_exit_inbox_dir(instance_root: instance_root), "/", entry_name], "")
+  let command = mkdir_create_only_command(path: path)
+  let ran = shell.Exec.RunArgv(
+    program: command.program.invocation as String,
+    arguments: command.arguments,
+  )
+  if ran.exit_code == 0 {
+    AttemptExitRecordPutOk
+  } else {
+    AttemptExitRecordPutFailed {
+      reason: join(["mkdir -- ", path, " failed: ", ran.stderr], ""),
+    }
+  }
+}
+
+fn attempt_exit_record_put_vendor_pane_death(instance_root: String, node_id: String, attempt_key: String, death: VendorPaneDeath) -> AttemptExitRecordPut {
   match attempt_exit_record_observe(instance_root: instance_root, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
     AttemptExitRecordFound { record: _ } => AttemptExitRecordPutOk
     AttemptExitRecordUnreadable { reason } => AttemptExitRecordPutFailed { reason: reason }
-    AttemptExitRecordNone => {
-      let path = join([
-        attempt_exit_inbox_dir(instance_root: instance_root),
-        "/",
-        attempt_exit_vendor_pane_entry_name(node_id: node_id, attempt_key: attempt_key, status: status),
-      ], "")
-      let command = mkdir_create_only_command(path: path)
-      let ran = shell.Exec.RunArgv(
-        program: command.program.invocation as String,
-        arguments: command.arguments,
-      )
-      if ran.exit_code == 0 {
-        AttemptExitRecordPutOk
-      } else {
-        AttemptExitRecordPutFailed {
-          reason: join(["mkdir -- ", path, " failed: ", ran.stderr], ""),
-        }
+    AttemptExitRecordNone =>
+      match attempt_exit_vendor_pane_entry_name_of_death(node_id: node_id, attempt_key: attempt_key, death: death) {
+        Absent =>
+          AttemptExitRecordPutFailed {
+            reason: "vendor pane signal is not a standard Linux signal name",
+          }
+        Present { value: entry_name } =>
+          attempt_exit_record_put_mkdir_name(instance_root: instance_root, entry_name: entry_name)
       }
-    }
   }
+}
+
+fn attempt_exit_record_put_worker_exited(instance_root: String, node_id: String, attempt_key: String, status: Int) -> AttemptExitRecordPut {
+  attempt_exit_record_put_vendor_pane_death(
+    instance_root: instance_root,
+    node_id: node_id,
+    attempt_key: attempt_key,
+    death: VendorPaneExited { status: status },
+  )
 }

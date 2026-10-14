@@ -218,6 +218,9 @@ import extdeps.tmux {
   TmuxListUnknowable,
   TmuxListStdoutRefused,
   TmuxAttemptPaneEntry,
+  TmuxAttemptPaneAlive,
+  TmuxAttemptPaneExited,
+  TmuxAttemptPaneSignaled,
   AttemptPanesParsed,
   AttemptPanesParseRefused,
   parse_tmux_attempt_panes_output,
@@ -233,6 +236,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessAbsent,
   WorkerProcessRunning,
   WorkerProcessExited,
+  WorkerProcessSignaled,
   worker_phase_label,
   worker_process_evidence_label,
   worker_process_evidence_detail,
@@ -600,7 +604,9 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole,
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
   AttemptWorkerRole, attempt_unit_role_token,
-  attempt_exit_record_put_worker_exited, AttemptExitRecordPutOk, AttemptExitRecordPutFailed,
+  attempt_exit_record_put_worker_exited, attempt_exit_record_put_vendor_pane_death,
+  AttemptExitRecordPutOk, AttemptExitRecordPutFailed,
+  VendorPaneDeath, VendorPaneExited, VendorPaneSignaled,
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
   AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
   attempt_exit_spool_stage_dir, attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
@@ -2568,6 +2574,7 @@ fn belt_supervisor_convene_gate(process: WorkerProcessEvidence) -> SupervisorCon
     WorkerProcessAbsent => ConveneClear
     WorkerProcessRunning { command: _ } => ConveneAlreadyLive
     WorkerProcessExited { exit_code, last_command: _ } => ConveneExitedNoVerdict { exit_code: exit_code }
+    WorkerProcessSignaled { signal, last_command: _ } => ConveneExitedNoVerdict { exit_code: signal }
     WorkerProcessUnobserved { reason } => ConveneLivenessUnobserved { reason: reason as String }
   }
 }
@@ -3406,16 +3413,12 @@ fn belt_dead_attempt_pane_standing(
       match matched.first() {
         Absent => BeltDeadAttemptPaneAbsent
         Present { value: pane } =>
-          if !pane.dead {
-            BeltDeadAttemptPaneLive
-          } else {
-            match pane.exit_code {
-              Present { value: status } => BeltDeadAttemptPaneEnded { status: status }
-              Absent =>
-                BeltDeadAttemptPaneUnobserved {
-                  reason: "dead pane did not carry an exit status",
-                }
-            }
+          match pane.standing {
+            TmuxAttemptPaneAlive => BeltDeadAttemptPaneLive
+            TmuxAttemptPaneExited { status } =>
+              BeltDeadAttemptPaneEnded { death: VendorPaneExited { status: status } }
+            TmuxAttemptPaneSignaled { signal } =>
+              BeltDeadAttemptPaneEnded { death: VendorPaneSignaled { signal: signal } }
           }
       }
     }
@@ -3423,7 +3426,7 @@ fn belt_dead_attempt_pane_standing(
 }
 
 type BeltDeadAttemptPane
-  = BeltDeadAttemptPaneEnded { status: Int }
+  = BeltDeadAttemptPaneEnded { death: VendorPaneDeath }
   | BeltDeadAttemptPaneLive
   | BeltDeadAttemptPaneAbsent
   | BeltDeadAttemptPaneUnobserved { reason: String }
@@ -3451,7 +3454,7 @@ fn belt_preserve_dead_pane_exit_then_reap(
   instance: HostDashboardInstance,
   session_name: String,
   node_id: String,
-  status: Int,
+  death: VendorPaneDeath,
 ) -> BeltTeardownOutcome {
   match belt_current_attempt_key_read(instance: instance, node_id: node_id) {
     BeltCurrentAttemptKeyUnreadable { reason } =>
@@ -3460,11 +3463,11 @@ fn belt_preserve_dead_pane_exit_then_reap(
         detail: join(["exit record write refused; dead pane kept: attempt key unreadable: ", reason], ""),
       }
     BeltCurrentAttemptKeyRead { key } =>
-      match attempt_exit_record_put_worker_exited(
+      match attempt_exit_record_put_vendor_pane_death(
         instance_root: instance.instance_root as String,
         node_id: node_id,
         attempt_key: key,
-        status: status,
+        death: death,
       ) {
         AttemptExitRecordPutFailed { reason } =>
           TeardownFailed {
@@ -3491,12 +3494,12 @@ fn belt_actuate_teardown_for_instance(
         session_name: session_name,
         detail: join(["teardown refused; pane evidence unobserved: ", reason], ""),
       }
-    BeltDeadAttemptPaneEnded { status } =>
+    BeltDeadAttemptPaneEnded { death } =>
       belt_preserve_dead_pane_exit_then_reap(
         instance: instance,
         session_name: session_name,
         node_id: node_id,
-        status: status,
+        death: death,
       )
     BeltDeadAttemptPaneLive =>
       belt_reap_session_for_instance(instance: instance, session_name: session_name)
@@ -9324,6 +9327,7 @@ fn belt_attempt_unrecoverable(provider: ProviderExecutionState, evidence: Worker
         WorkerProcessUnobserved { reason: _ } => false
         WorkerProcessRunning { command: _ } => false
         WorkerProcessExited { exit_code: _, last_command: _ } => false
+        WorkerProcessSignaled { signal: _, last_command: _ } => false
       }
     ProviderNotStarted => false
     ProviderStarting { activity: _ } => false
@@ -9347,6 +9351,7 @@ fn belt_attempt_worker_terminal(provider: ProviderExecutionState, evidence: Work
 fn belt_worker_process_terminal(evidence: WorkerProcessEvidence) -> Bool {
   match evidence {
     WorkerProcessExited { exit_code: _, last_command: _ } => true
+    WorkerProcessSignaled { signal: _, last_command: _ } => true
     WorkerProcessRunning { command: _ } => false
     WorkerProcessAbsent => false
     WorkerProcessUnobserved { reason: _ } => false
@@ -10463,6 +10468,16 @@ fn belt_session_liveness_from_process(
           last_command,
         ], ""),
       }
+    WorkerProcessSignaled { signal, last_command } =>
+      BeltSessionStaleTerminal {
+        session_name: session_name,
+        detail: join([
+          "retained pane: process killed by signal ",
+          to_string(signal),
+          "; last command ",
+          last_command,
+        ], ""),
+      }
     WorkerProcessAbsent =>
       BeltSessionStaleTerminal {
         session_name: session_name,
@@ -11397,6 +11412,8 @@ fn belt_audit_verified_attempt(instance: HostDashboardInstance, progress: Workfl
                 WorkerProcessRunning { command: _ } => ReviewSkipped { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: "an auditor is running" }
                 WorkerProcessExited { exit_code, last_command: _ } =>
                   ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor exited ", to_string(exit_code), " without writing a verdict; it is not respawned"], "") }
+                WorkerProcessSignaled { signal, last_command: _ } =>
+                  ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was killed by signal ", to_string(signal), " without writing a verdict; it is not respawned"], "") }
                 WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: progress.node_id, criterion: goal_audit_criterion_key, reason: reason as String }
                 WorkerProcessAbsent => belt_audit_spawn(instance: instance, progress: progress, worktree: worktree, head: head, verification_detail: verification_detail)
               }
@@ -11718,6 +11735,8 @@ fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_ke
         WorkerProcessRunning { command: _ } => ReviewSkipped { node_id: node_id, criterion: call.id, reason: "a reviewer is running" }
         WorkerProcessExited { exit_code, last_command: _ } =>
           ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer exited ", to_string(exit_code), " without writing a verdict; its exit record and journal are retained for inspection"], "") }
+        WorkerProcessSignaled { signal, last_command: _ } =>
+          ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was killed by signal ", to_string(signal), " without writing a verdict; its exit record and journal are retained for inspection"], "") }
         WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: reason as String }
         WorkerProcessAbsent =>
           belt_review_spawn(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call)
