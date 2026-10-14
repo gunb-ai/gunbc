@@ -25177,7 +25177,8 @@ pub fn rust_empty_map_init_expr(
                     ">".to_string(),
                 ),
                 emit_info.fn_generic_param_names.clone(),
-            ) || type_node_carries_erased_type_argument(map_type.clone()))
+            ) || type_node_carries_erased_type_argument(map_type.clone())
+                || v1_rt::contains(kv_type_str.clone(), "_".to_string()))
             {
                 "v1_rt::rc_empty_map::<_, _>()".to_string()
             } else {
