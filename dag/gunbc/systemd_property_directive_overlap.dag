@@ -11,6 +11,7 @@ import extdeps.systemd {
   ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
   InvocationIDProperty, FragmentPathProperty, JobProperty,
+  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, CapabilityBoundingSetProperty,
   systemd_unit_property_wire, PartOf, Unit }
 
 data systemd_property_directive_overlap_scope: ConstructionMechanism = SingleAuthority
@@ -168,6 +169,9 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     InvocationIDProperty => ObservationOnly
     FragmentPathProperty => ObservationOnly
     JobProperty => ObservationOnly
+    NoNewPrivilegesProperty => SettableDirective
+    RestrictSUIDSGIDProperty => SettableDirective
+    CapabilityBoundingSetProperty => SettableDirective
   }
 }
 
@@ -208,6 +212,7 @@ data systemd_unit_property_members: List<SystemdUnitProperty> = [
   PrivateTmpProperty, ReadWritePathsProperty, RemainAfterExitProperty, RuntimeMaxSecProperty, CollectModeProperty,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
   InvocationIDProperty, FragmentPathProperty, JobProperty,
+  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, CapabilityBoundingSetProperty,
 ]
 
 fn settable_property_wires() -> List<String> {

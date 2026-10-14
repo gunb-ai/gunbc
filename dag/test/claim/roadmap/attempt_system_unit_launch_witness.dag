@@ -3,12 +3,12 @@ module test.claim.roadmap.attempt_system_unit_launch_witness
 import std.types { Bool, NonEmptyStr }
 import std.optional { Present }
 import std.measure { kibibyte }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
 import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartFacts, AttemptSystemUnitAdmitted, AttemptSystemUnitRefused,
   attempt_system_unit_start_admitted, attempt_system_unit_control_admitted,
   AttemptSystemUnitStop, attempt_system_unit_privileged_effect, attempt_system_unit_sudoers_body,
-  attempt_system_unit_name_admitted,
+  attempt_system_unit_sudoers_path, attempt_system_unit_name_admitted,
 }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
@@ -121,9 +121,22 @@ test fn the_launcher_site_conforms_in_the_privileged_effect_census() -> Bool {
   }
 }
 
-test fn the_deployed_sudoers_body_names_both_instances_and_the_launcher_entry() -> Bool {
-  let body = attempt_system_unit_sudoers_body()
-  string_contains(s: body, pattern: "attempt_system_unit_launch")
-    && string_contains(s: body, pattern: "NOPASSWD")
-    && string_contains(s: body, pattern: "instance_root")
+test fn each_instance_gets_its_own_sudoers_file_and_body() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let lab = srv1_lab_dashboard_instance()
+  let live_path = attempt_system_unit_sudoers_path(instance: live)
+  let lab_path = attempt_system_unit_sudoers_path(instance: lab)
+  let live_body = attempt_system_unit_sudoers_body(instance: live)
+  let lab_body = attempt_system_unit_sudoers_body(instance: lab)
+  live_path != lab_path
+    && string_contains(s: live_path, pattern: live.instance_id as String)
+    && string_contains(s: lab_path, pattern: lab.instance_id as String)
+    && !string_contains(s: live.instance_id as String, pattern: ".")
+    && !string_contains(s: lab.instance_id as String, pattern: ".")
+    && string_contains(s: live_body, pattern: "attempt_system_unit_launch")
+    && string_contains(s: live_body, pattern: "NOPASSWD")
+    && string_contains(s: live_body, pattern: live.instance_root as String)
+    && !string_contains(s: live_body, pattern: lab.instance_root as String)
+    && string_contains(s: lab_body, pattern: lab.instance_root as String)
+    && !string_contains(s: lab_body, pattern: live.instance_root as String)
 }

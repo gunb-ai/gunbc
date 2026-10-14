@@ -187,51 +187,52 @@ fn sandbox_touch_cli(path: String) -> ProcessExit {
   }
 }
 
-fn launcher_touch_inner_argv(instance: HostDashboardInstance, path: String) -> List<String> {
-  match admit_named_argument(name: "path", value: path) {
-    NamedArgumentNameEmpty => []
-    NamedArgumentNameHoldsSeparator { name: _ } => []
-    NamedArgumentAdmitted { argument: arg } => [
+fn wet_witness_entry(instance: HostDashboardInstance) -> String {
+  join([instance.repo_root as String, "/dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag"], "")
+}
+
+fn launcher_gunbc_run_inner_argv(instance: HostDashboardInstance, function: String, extra_args: List<String>) -> List<String> {
+  concat(
+    [
       instance.serve_binary as String,
       "run",
       "--source-root", join([instance.repo_root as String, "/dag"], ""),
       "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
-      "--entry", join([instance.repo_root as String, "/dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag"], ""),
-      "--function", "sandbox_touch_cli",
-      "--arg", join([arg.name, "=", arg.value], ""),
-    ]
+      "--entry", wet_witness_entry(instance: instance),
+      "--function", function,
+    ],
+    extra_args,
+  )
+}
+
+fn launcher_touch_inner_argv(instance: HostDashboardInstance, path: String) -> List<String> {
+  match admit_named_argument(name: "path", value: path) {
+    NamedArgumentNameEmpty => []
+    NamedArgumentNameHoldsSeparator { name: _ } => []
+    NamedArgumentAdmitted { argument: arg } =>
+      launcher_gunbc_run_inner_argv(
+        instance: instance,
+        function: "sandbox_touch_cli",
+        extra_args: ["--arg", join([arg.name, "=", arg.value], "")],
+      )
   }
 }
 
-fn launcher_sandbox_touch(instance: HostDashboardInstance, unit_key: String, path: String) -> SandboxTouch {
-  let inner = launcher_touch_inner_argv(instance: instance, path: path)
-  match inner.first() {
-    Absent => SandboxTouchUnrunnable
-    Present { value: _ } => {
-      let facts = AttemptSystemUnitStartFacts {
-        node_id: wet_probe_node as String,
-        attempt_key: join([wet_probe_key, "-", unit_key], ""),
-        user: instance.directory_owner.user as NonEmptyStr,
-        working_directory: instance.repo_root as String,
-        attempt_worktree: probe_attempt_worktree(instance: instance),
-        stdout_path: join([probe_worker_dir(instance: instance), "/launcher-stdout.log"], ""),
-        stderr_path: join([probe_worker_dir(instance: instance), "/launcher-stderr.log"], ""),
-        granted: kibibyte(count: 65536),
-        exit_hook: "true" as NonEmptyStr,
-        inner_argv: inner,
-      }
-      if !attempt_system_unit_write_pending(
-        instance_root: instance.instance_root as String,
-        body: attempt_system_unit_encode_start_wait(facts: facts),
-      ) {
-        SandboxTouchUnrunnable
-      } else {
-        let cmd = attempt_system_unit_launch_host_argv(instance: instance)
-        SandboxTouchRan {
-          exit_code: shell.Exec.RunArgv(program: cmd.program, arguments: cmd.args).exit_code,
-        }
-      }
-    }
+fn sudo_n_true_cli() -> ProcessExit {
+  let r = shell.Exec.RunArgv(program: "/usr/bin/sudo", arguments: ["-n", "true"])
+  if r.exit_code == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "sudo -n true refused")
+  }
+}
+
+fn sudo_n_touch_cli(path: String) -> ProcessExit {
+  let r = shell.Exec.RunArgv(program: "/usr/bin/sudo", arguments: ["-n", "/usr/bin/touch", "--", path])
+  if r.exit_code == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "sudo -n touch refused")
   }
 }
 
@@ -262,6 +263,87 @@ test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Boo
       unit_key: "hooks",
       path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""),
     )
+}
+
+fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner: List<String>) -> SandboxTouch {
+  match inner.first() {
+    Absent => SandboxTouchUnrunnable
+    Present { value: _ } => {
+      let facts = AttemptSystemUnitStartFacts {
+        node_id: wet_probe_node as String,
+        attempt_key: join([wet_probe_key, "-", unit_key], ""),
+        user: instance.directory_owner.user as NonEmptyStr,
+        working_directory: instance.repo_root as String,
+        attempt_worktree: probe_attempt_worktree(instance: instance),
+        stdout_path: join([probe_worker_dir(instance: instance), "/launcher-stdout.log"], ""),
+        stderr_path: join([probe_worker_dir(instance: instance), "/launcher-stderr.log"], ""),
+        granted: kibibyte(count: 65536),
+        exit_hook: "true" as NonEmptyStr,
+        inner_argv: inner,
+      }
+      if !attempt_system_unit_write_pending(
+        instance_root: instance.instance_root as String,
+        body: attempt_system_unit_encode_start_wait(facts: facts),
+      ) {
+        SandboxTouchUnrunnable
+      } else {
+        let cmd = attempt_system_unit_launch_host_argv(instance: instance)
+        SandboxTouchRan {
+          exit_code: shell.Exec.RunArgv(program: cmd.program, arguments: cmd.args).exit_code,
+        }
+      }
+    }
+  }
+}
+
+fn launcher_sandbox_touch(instance: HostDashboardInstance, unit_key: String, path: String) -> SandboxTouch {
+  launcher_inner_start(instance: instance, unit_key: unit_key, inner: launcher_touch_inner_argv(instance: instance, path: path))
+}
+
+fn launcher_sudo_n_true(instance: HostDashboardInstance) -> SandboxTouch {
+  launcher_inner_start(
+    instance: instance,
+    unit_key: "sudo-n-true",
+    inner: launcher_gunbc_run_inner_argv(instance: instance, function: "sudo_n_true_cli", extra_args: []),
+  )
+}
+
+fn launcher_sudo_n_touch(instance: HostDashboardInstance, path: String) -> SandboxTouch {
+  match admit_named_argument(name: "path", value: path) {
+    NamedArgumentNameEmpty => SandboxTouchUnrunnable
+    NamedArgumentNameHoldsSeparator { name: _ } => SandboxTouchUnrunnable
+    NamedArgumentAdmitted { argument: arg } =>
+      launcher_inner_start(
+        instance: instance,
+        unit_key: "sudo-n-touch",
+        inner: launcher_gunbc_run_inner_argv(
+          instance: instance,
+          function: "sudo_n_touch_cli",
+          extra_args: ["--arg", join([arg.name, "=", arg.value], "")],
+        ),
+      )
+  }
+}
+
+test fn sudo_n_true_fails_inside_the_launched_unit() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  prepare_probe_attempt(instance: inst)
+    && match launcher_sudo_n_true(instance: inst) {
+      SandboxTouchUnrunnable => false
+      SandboxTouchRan { exit_code } => exit_code != 0
+    }
+}
+
+test fn sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  prepare_probe_attempt(instance: inst)
+    && match launcher_sudo_n_touch(
+      instance: inst,
+      path: join([path_parent_directory(path: inst.serve_binary as String), "/x"], ""),
+    ) {
+      SandboxTouchUnrunnable => false
+      SandboxTouchRan { exit_code } => exit_code != 0
+    }
 }
 
 test fn writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed() -> Bool {

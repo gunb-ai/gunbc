@@ -100,6 +100,9 @@ type SystemdUnitProperty
   | RuntimeMaxSecProperty
   | CollectModeProperty
   | JobProperty
+  | NoNewPrivilegesProperty
+  | RestrictSUIDSGIDProperty
+  | CapabilityBoundingSetProperty
 
 // THE WIRE SPELLING AS A SEALED WORD, SO THE CLOSED TYPE SURVIVES ALL THE WAY TO THE ARGV.
 //
@@ -179,6 +182,9 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     RuntimeMaxSecProperty => "RuntimeMaxSec" as NonEmptyStr
     CollectModeProperty => "CollectMode" as NonEmptyStr
     JobProperty => "Job" as NonEmptyStr
+    NoNewPrivilegesProperty => "NoNewPrivileges" as NonEmptyStr
+    RestrictSUIDSGIDProperty => "RestrictSUIDSGID" as NonEmptyStr
+    CapabilityBoundingSetProperty => "CapabilityBoundingSet" as NonEmptyStr
   }
 }
 

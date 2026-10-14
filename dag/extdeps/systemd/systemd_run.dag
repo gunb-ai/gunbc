@@ -148,7 +148,12 @@ fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRef
 // session placement record). Recording the typed property where text was declared is what made every
 // harness spawn fail after the typed options landed (srv1 lab, 2026-10-11).
 fn systemd_run_property_assignment(property: SystemdRunProperty) -> String {
-  concat(systemd_unit_property_wire(property: property.property), concat("=", property.value as String))
+  let name = systemd_unit_property_wire(property: property.property) as String
+  if (name == "CapabilityBoundingSet") {
+    concat(name, "=")
+  } else {
+    concat(name, concat("=", property.value as String))
+  }
 }
 
 fn systemd_run_property_options_long(properties: List<SystemdRunProperty>) -> List<SystemdRunOption> {
