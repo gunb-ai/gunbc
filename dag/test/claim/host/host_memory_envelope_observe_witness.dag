@@ -1,0 +1,77 @@
+module test.claim.host.host_memory_envelope_observe_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data envelope_meminfo_complete: String = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nMemAvailable:    8388608 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:       2097152 kB\nSwapFree:         524288 kB\n"
+
+data envelope_meminfo_without_available: String = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\nBuffers:           65536 kB\nCached:          4194304 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n"
+
+test fn witness_envelope_from_complete_meminfo_observes() -> Bool {
+  match host_memory_envelope_from_meminfo_text(
+    host: operator_host_srv1,
+    probed_at: gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at,
+    meminfo_text: envelope_meminfo_complete,
+    active_runner_unit_count: 10,
+    top_level_slice_limits: [
+      TopLevelSliceMemoryLimit { slice_unit: "system.slice" as NonEmptyStr, memory_max_raw: "infinity" },
+      TopLevelSliceMemoryLimit { slice_unit: "user.slice" as NonEmptyStr, memory_max_raw: "infinity" },
+    ],
+  ) {
+    HostMemoryEnvelopeRefused { host: _, reason: _ } => false
+    HostMemoryEnvelopeObserved { observation: obs } =>
+      host_identity_eq(a: obs.host, b: operator_host_srv1)
+        && (obs.probed_at as String) == (gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at as String)
+        && byte_size_count(b: obs.mem_total) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 16777216)))
+        && byte_size_count(b: obs.mem_available) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 8388608)))
+        && byte_size_count(b: obs.swap_total) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 2097152)))
+        && byte_size_count(b: obs.swap_free) == byte_size_count(b: kibibyte_to_byte_size(k: kibibyte(count: 524288)))
+        && obs.active_runner_unit_count == 10
+        && length(obs.top_level_slice_limits) == 2
+  }
+}
+
+test fn witness_envelope_missing_memavailable_refuses_not_widens() -> Bool {
+  match host_memory_envelope_from_meminfo_text(
+    host: operator_host_srv1,
+    probed_at: gunbc_srv1_memory_envelope_sleek_owl_397_second_probed_at,
+    meminfo_text: envelope_meminfo_without_available,
+    active_runner_unit_count: 10,
+    top_level_slice_limits: [],
+  ) {
+    HostMemoryEnvelopeObserved { observation: _ } => false
+    HostMemoryEnvelopeRefused { host: h, reason: why } =>
+      host_identity_eq(a: h, b: operator_host_srv1)
+        && string_contains(s: why, pattern: "MemAvailable")
+  }
+}
+
+test fn witness_top_level_slice_filter_excludes_nested() -> Bool {
+  is_top_level_slice_unit(unit: "system.slice" as NonEmptyStr)
+    && is_top_level_slice_unit(unit: "user.slice" as NonEmptyStr)
+    && is_top_level_slice_unit(unit: "sessions.slice" as NonEmptyStr)
+    && !is_top_level_slice_unit(unit: "system-actions-runner.slice" as NonEmptyStr)
+    && !is_top_level_slice_unit(unit: "-.slice" as NonEmptyStr)
+    && !is_top_level_slice_unit(unit: "actions-runner@srv1-01.service" as NonEmptyStr)
+}
+
+test fn witness_envelope_projects_host_mem_available_observation() -> Bool {
+  match host_memory_envelope_from_meminfo_text(
+    host: operator_host_srv1,
+    probed_at: gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at,
+    meminfo_text: envelope_meminfo_complete,
+    active_runner_unit_count: 0,
+    top_level_slice_limits: [],
+  ) {
+    HostMemoryEnvelopeRefused { host: _, reason: _ } => false
+    HostMemoryEnvelopeObserved { observation: obs } =>
+      let proj = host_mem_available_projection(obs: obs)
+      host_identity_eq(a: proj.host, b: obs.host)
+        && byte_size_count(b: proj.host_total) == byte_size_count(b: obs.mem_total)
+        && byte_size_count(b: proj.mem_available) == byte_size_count(b: obs.mem_available)
+  }
+}
+
+test fn witness_sleek_owl_397_receipt_instants_are_the_two_srv1_readings() -> Bool {
+  (gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at as String) == "2026-10-14T00:10:39Z"
+    && (gunbc_srv1_memory_envelope_sleek_owl_397_second_probed_at as String) == "2026-10-14T00:11:39Z"
+}

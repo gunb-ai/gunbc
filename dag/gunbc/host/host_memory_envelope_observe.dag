@@ -1,0 +1,304 @@
+module gunbc.host.host_memory_envelope_observe
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.measure { ByteSize, byte_size_count, kibibyte_to_byte_size }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.optional { Present }
+import product.host_identity { HostIdentity }
+import gunbc.host.host_memory_observation { HostMemAvailableObservation }
+import gunbc.host.host_converge { runner_instance_glob }
+import gunbc.systemctl_list_units { systemctl_list_units_active_services }
+import gunbc.systemctl_show_read {
+  systemctl_show_property_read,
+  SystemdPropertyCaptured,
+  SystemdPropertyBlank,
+  SystemdPropertyCaptureRefused,
+}
+import gunbc.host.host_effect { LocalShell }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.actions_run_binding {
+  actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
+}
+import extdeps.linux.procfs
+import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo, ProcMeminfo }
+import extdeps.systemd { MemoryMax }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+
+// READ-ONLY HOST MEMORY ENVELOPE. Modeled on gunbc.host.host_memory_observation
+// HostMemAvailableObservation (host, totals, available) and extended with Swap, the active
+// actions-runner@* count, and every top-level slice MemoryMax. No apply. DESIGN §3d: this is
+// independent readback, not a converge verdict.
+
+data host_memory_envelope_receipt_path: String = "target/host-memory-envelope-observe.txt"
+
+data gunbc_srv1_sleek_owl_397_envelope_readings_note: String = "FIRST TYPED RECEIPTS of this observe shape: two srv1 kernel readings taken by sleek-owl-397 at 2026-10-14 00:10:39Z and 2026-10-14 00:11:39Z. The rows below carry those instants as probed_at. MemTotal is the standing srv1 kernel figure (gunbc.host.host_memory_observation gunbc_ci_srv1_memtotal_measured). MemAvailable, Swap, runner-unit count and top-level slice limits at those two instants are the fields sleek-owl-397 observed; they are transcribed here as supplied values of this type once the numeric bodies are in hand (DESIGN 4d: do not assert as deduced what is only inferred). Until that transcription, the live fold and the hermetic RED/GREEN controls are the executing consumers."
+
+type TopLevelSliceMemoryLimit {
+  slice_unit: NonEmptyStr
+  memory_max_raw: String
+}
+
+type HostMemoryEnvelopeObservation {
+  host: HostIdentity
+  probed_at: NonEmptyStr
+  mem_total: ByteSize
+  mem_available: ByteSize
+  swap_total: ByteSize
+  swap_free: ByteSize
+  active_runner_unit_count: Int
+  top_level_slice_limits: List<TopLevelSliceMemoryLimit>
+}
+
+type HostMemoryEnvelopeObserveResult
+  = HostMemoryEnvelopeObserved { observation: HostMemoryEnvelopeObservation }
+  | HostMemoryEnvelopeRefused { host: HostIdentity, reason: String }
+
+fn host_mem_available_projection(obs: HostMemoryEnvelopeObservation) -> HostMemAvailableObservation {
+  HostMemAvailableObservation {
+    host: obs.host,
+    run_id: obs.probed_at,
+    runner_unit: "host" as NonEmptyStr,
+    host_total: obs.mem_total,
+    mem_available: obs.mem_available,
+  }
+}
+
+fn host_memory_envelope_from_meminfo(
+  host: HostIdentity,
+  probed_at: NonEmptyStr,
+  meminfo: ProcMeminfo,
+  active_runner_unit_count: Int,
+  top_level_slice_limits: List<TopLevelSliceMemoryLimit>,
+) -> HostMemoryEnvelopeObservation {
+  HostMemoryEnvelopeObservation {
+    host: host,
+    probed_at: probed_at,
+    mem_total: kibibyte_to_byte_size(k: meminfo.mem_total),
+    mem_available: kibibyte_to_byte_size(k: meminfo.mem_available),
+    swap_total: kibibyte_to_byte_size(k: meminfo.swap_total),
+    swap_free: kibibyte_to_byte_size(k: meminfo.swap_free),
+    active_runner_unit_count: active_runner_unit_count,
+    top_level_slice_limits: top_level_slice_limits,
+  }
+}
+
+fn host_memory_envelope_from_meminfo_text(
+  host: HostIdentity,
+  probed_at: NonEmptyStr,
+  meminfo_text: String,
+  active_runner_unit_count: Int,
+  top_level_slice_limits: List<TopLevelSliceMemoryLimit>,
+) -> HostMemoryEnvelopeObserveResult {
+  match parse_proc_meminfo(text: meminfo_text) {
+    MeminfoFieldAbsent { field: f } =>
+      HostMemoryEnvelopeRefused {
+        host: host,
+        reason: concat("host_memory_envelope_observe: /proc/meminfo field absent: ", f as String),
+      }
+    MeminfoParsed { meminfo: m } =>
+      HostMemoryEnvelopeObserved {
+        observation: host_memory_envelope_from_meminfo(
+          host: host,
+          probed_at: probed_at,
+          meminfo: m,
+          active_runner_unit_count: active_runner_unit_count,
+          top_level_slice_limits: top_level_slice_limits,
+        ),
+      }
+  }
+}
+
+fn is_top_level_slice_unit(unit: NonEmptyStr) -> Bool {
+  let name = unit as String
+  if !ends_with(s: name, suffix: ".slice") {
+    false
+  } else {
+    let stem = substring(s: name, start: 0, end: length(name) - 6)
+    stem != "" && stem != "-" && !string_contains(s: stem, pattern: "-")
+  }
+}
+
+fn top_level_slice_memory_limit_read(unit: NonEmptyStr) -> TopLevelSliceMemoryLimit? {
+  match systemctl_show_property_read(transport: LocalShell, unit: unit, property: MemoryMax) {
+    SystemdPropertyCaptured { value: raw } =>
+      Present { value: TopLevelSliceMemoryLimit { slice_unit: unit, memory_max_raw: raw } }
+    SystemdPropertyBlank =>
+      Present { value: TopLevelSliceMemoryLimit { slice_unit: unit, memory_max_raw: "" } }
+    SystemdPropertyCaptureRefused { reason: _ } => none
+  }
+}
+
+fn top_level_slice_limits_accumulate(
+  acc: List<TopLevelSliceMemoryLimit>?,
+  unit: NonEmptyStr,
+) -> List<TopLevelSliceMemoryLimit>? {
+  match acc {
+    Absent => none
+    Present { value: so_far } =>
+      if !is_top_level_slice_unit(unit: unit) {
+        Present { value: so_far }
+      } else {
+        match top_level_slice_memory_limit_read(unit: unit) {
+          Absent => none
+          Present { value: row } => Present { value: concat(so_far, [row]) }
+        }
+      }
+  }
+}
+
+fn host_memory_envelope_top_level_slice_limits() -> List<TopLevelSliceMemoryLimit>? {
+  match systemctl_list_units_active_services(instance_glob: "*.slice" as NonEmptyStr) {
+    Absent => none
+    Present { value: units } =>
+      let empty: List<TopLevelSliceMemoryLimit> = []
+      fold(units, init: Present { value: empty }, f: fn(acc, unit) {
+        top_level_slice_limits_accumulate(acc: acc, unit: unit)
+      })
+  }
+}
+
+fn host_memory_envelope_active_runner_count(host: HostIdentity) -> Int? {
+  match systemctl_list_units_active_services(instance_glob: runner_instance_glob(host: host) as NonEmptyStr) {
+    Absent => none
+    Present { value: units } => Present { value: length(units) }
+  }
+}
+
+fn host_memory_envelope_observe_local(host: HostIdentity) -> HostMemoryEnvelopeObserveResult {
+  let read = linux.Procfs.ReadMeminfo()
+  if !read.success {
+    HostMemoryEnvelopeRefused { host: host, reason: "host_memory_envelope_observe: /proc/meminfo could not be read on this host" }
+  } else {
+    match host_memory_envelope_active_runner_count(host: host) {
+      Absent =>
+        HostMemoryEnvelopeRefused {
+          host: host,
+          reason: "host_memory_envelope_observe: actions-runner@* unit enumeration absent; fail-closed",
+        }
+      Present { value: n } =>
+        match host_memory_envelope_top_level_slice_limits() {
+          Absent =>
+            HostMemoryEnvelopeRefused {
+              host: host,
+              reason: "host_memory_envelope_observe: top-level slice MemoryMax read absent; fail-closed",
+            }
+          Present { value: slices } =>
+            host_memory_envelope_from_meminfo_text(
+              host: host,
+              probed_at: probed_at_word(reading: clock_now_probed_at()),
+              meminfo_text: read.value,
+              active_runner_unit_count: n,
+              top_level_slice_limits: slices,
+            )
+        }
+    }
+  }
+}
+
+fn host_memory_envelope_receipt_text(obs: HostMemoryEnvelopeObservation) -> String {
+  join([
+    "host-memory-envelope host=",
+    obs.host as String,
+    " probed_at=",
+    obs.probed_at as String,
+    " mem_total=",
+    to_string(byte_size_count(b: obs.mem_total)),
+    " mem_available=",
+    to_string(byte_size_count(b: obs.mem_available)),
+    " swap_total=",
+    to_string(byte_size_count(b: obs.swap_total)),
+    " swap_free=",
+    to_string(byte_size_count(b: obs.swap_free)),
+    " active_runner_units=",
+    to_string(obs.active_runner_unit_count),
+    " top_level_slices=",
+    to_string(length(obs.top_level_slice_limits)),
+    "\n",
+  ], "")
+}
+
+fn local_kernel_hostname() -> String {
+  match hostname_short_read(transport: LocalShell) {
+    HostnameShortCaptured { value: v } => v
+    HostnameShortCaptureRefused { reason: _ } => ""
+  }
+}
+
+fn host_memory_envelope_observe_ci_wet() -> ProcessExit
+{
+  let dispatched = match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  if dispatched == "" {
+    exit_failure(reason: concat(
+      "host_memory_envelope_observe: ",
+      fleet_converge_expected_host_env_name,
+      " is unset; one host per run, named by the dispatch",
+    ))
+  } else {
+    let kernel = local_kernel_hostname()
+    if kernel != dispatched {
+      exit_failure(reason: join([
+        "host_memory_envelope_observe: dispatch host ",
+        dispatched,
+        " is not this kernel hostname ",
+        kernel,
+      ], ""))
+    } else {
+      match host_memory_envelope_observe_local(host: dispatched as HostIdentity) {
+        HostMemoryEnvelopeRefused { host: _, reason: why } => exit_failure(reason: why)
+        HostMemoryEnvelopeObserved { observation: obs } => {
+          let text = host_memory_envelope_receipt_text(obs: obs)
+          let w = Filesystem.Write(path: host_memory_envelope_receipt_path, content: text)
+          if w.success == false {
+            exit_failure(reason: join(["host_memory_envelope_observe: receipt write failed: ", w.error, "\n", text], ""))
+          } else {
+            ExitSuccess
+          }
+        }
+      }
+    }
+  }
+}
+
+fn host_memory_envelope_observe_this_kernel_wet() -> ProcessExit
+{
+  let kernel = local_kernel_hostname()
+  if kernel == "" {
+    exit_failure(reason: "host_memory_envelope_observe: kernel hostname unreadable")
+  } else {
+    match host_memory_envelope_observe_local(host: kernel as HostIdentity) {
+      HostMemoryEnvelopeRefused { host: _, reason: why } => exit_failure(reason: why)
+      HostMemoryEnvelopeObserved { observation: obs } => {
+        let text = host_memory_envelope_receipt_text(obs: obs)
+        let w = Filesystem.Write(path: host_memory_envelope_receipt_path, content: text)
+        if w.success == false {
+          exit_failure(reason: join(["host_memory_envelope_observe: receipt write failed: ", w.error, "\n", text], ""))
+        } else {
+          ExitSuccess
+        }
+      }
+    }
+  }
+}
+
+data gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at: NonEmptyStr = "2026-10-14T00:10:39Z" as NonEmptyStr
+data gunbc_srv1_memory_envelope_sleek_owl_397_second_probed_at: NonEmptyStr = "2026-10-14T00:11:39Z" as NonEmptyStr
+
+fn gunbc_srv1_memory_envelope_receipt_from_parts(
+  probed_at: NonEmptyStr,
+  meminfo_text: String,
+  active_runner_unit_count: Int,
+  top_level_slice_limits: List<TopLevelSliceMemoryLimit>,
+) -> HostMemoryEnvelopeObserveResult {
+  host_memory_envelope_from_meminfo_text(
+    host: operator_host_srv1,
+    probed_at: probed_at,
+    meminfo_text: meminfo_text,
+    active_runner_unit_count: active_runner_unit_count,
+    top_level_slice_limits: top_level_slice_limits,
+  )
+}
