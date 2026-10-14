@@ -32,19 +32,13 @@ data fb_own_source: String = "module v2.test.fb_own\n\ntype FsList<T> = FsEmpty 
 
 data fb_param_source: String = "module v2.test.fb_param\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fb_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fb_via_param(ys: FsList<Int>) -> Int { fb_take(xs: ys) }\n"
 
-data fb_d_source: String = "module v2.test.fb_d\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fb_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fb_id(n: Int) -> Int { 1 }\n\nfn fb_keep(l: FsList<Int>) -> Int { 1 }\n\nfn fb_f(n: Int) -> Int { fb_id(n: n) }\n"
+data fb_b_source: String = "module v2.test.fb_b\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fb_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fb_f(zs: FsNonEmpty<Int>) -> Int { fb_take(xs: zs) }\n"
 
-data fb_e_source: String = "module v2.test.fb_e\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fb_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fb_id(n: Int) -> Int { 1 }\n\nfn fb_keep(l: FsList<Int>) -> Int { 1 }\n\nfn fb_f(ys: FsList<Int>) -> Int { fb_keep(l: ys) }\n"
-
-data fb_g_source: String = "module v2.test.fb_g\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fb_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fb_id(n: Int) -> Int { 1 }\n\nfn fb_keep(l: FsList<Int>) -> Int { 1 }\n\nfn fb_f(zs: FsNonEmpty<Int>) -> Int { 1 }\n"
-
-data fb_h_source: String = "module v2.test.fb_h\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fb_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fb_id(n: Int) -> Int { 1 }\n\nfn fb_keep(l: FsList<Int>) -> Int { 1 }\n\nfn fb_f() -> Int { fb_take(xs: FsNonEmpty { head: 1, tail: FsEmpty }) }\n"
+data fb_c_source: String = "module v2.test.fb_c\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fb_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fb_f(ys: FsList<Int>) -> Int { fb_take(xs: ys) }\n"
 
 data fb_ingest: SourceRootIngest = [
-  rcf_read(source: fb_d_source, id: ^fb_d_read, unit: ^fb_d_cu, path: "src/v2/test/fixture/fb/d.dag"),
-  rcf_read(source: fb_e_source, id: ^fb_e_read, unit: ^fb_e_cu, path: "src/v2/test/fixture/fb/e.dag"),
-  rcf_read(source: fb_g_source, id: ^fb_g_read, unit: ^fb_g_cu, path: "src/v2/test/fixture/fb/g.dag"),
-  rcf_read(source: fb_h_source, id: ^fb_h_read, unit: ^fb_h_cu, path: "src/v2/test/fixture/fb/h.dag")
+  rcf_read(source: fb_b_source, id: ^fb_b_read, unit: ^fb_b_cu, path: "src/v2/test/fixture/fb/b.dag"),
+  rcf_read(source: fb_c_source, id: ^fb_c_read, unit: ^fb_c_cu, path: "src/v2/test/fixture/fb/c.dag")
 ]
 fn fb_resolve(subject: String) -> Outcome<ResolvedTree> {
   match module_roots_from_source_root_ingest(ingest: fb_ingest, lm: dag_language_model()) {
@@ -60,39 +54,33 @@ fn fb_resolve(subject: String) -> Outcome<ResolvedTree> {
   }
 }
 
-test fn fb_d_accepted_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_d")) {
+test fn fb_b_accepted_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_b")) {
     RcfInferAccepted { diagnostics: _ } => true
     _ => false
   }
 }
-test fn fb_e_accepted_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_e")) {
+test fn fb_b_resolve_refused_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_b")) {
+    RcfResolveRefused => true
+    _ => false
+  }
+}
+test fn fb_b_arg_refused_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_b"), reason: ^application_argument_does_not_inhabit)
+}
+test fn fb_c_accepted_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_c")) {
     RcfInferAccepted { diagnostics: _ } => true
     _ => false
   }
 }
-test fn fb_d_resolve_refused_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_d")) {
+test fn fb_c_resolve_refused_holds() -> Bool {
+  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_c")) {
     RcfResolveRefused => true
     _ => false
   }
 }
-test fn fb_d_infer_refused_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_d")) {
-    RcfInferRefused { diagnostics: _ } => true
-    _ => false
-  }
-}
-test fn fb_e_resolve_refused_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_e")) {
-    RcfResolveRefused => true
-    _ => false
-  }
-}
-test fn fb_e_infer_refused_holds() -> Bool {
-  match rcf_verdict(resolved: fb_resolve(subject: "v2.test.fb_e")) {
-    RcfInferRefused { diagnostics: _ } => true
-    _ => false
-  }
+test fn fb_c_arg_refused_holds() -> Bool {
+  rcf_refuses_with(resolved: fb_resolve(subject: "v2.test.fb_c"), reason: ^application_argument_does_not_inhabit)
 }
