@@ -1,4 +1,6 @@
 module test.claim.roadmap.roadmap_launch_deployment_receipt_witness
+import std.optional { Absent, Optional, Present }
+
 
 import gunbc.roadmap.roadmap_launch_deployment_cli { rlm1_merge_commit }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
@@ -551,7 +553,7 @@ test fn witness_two_substitutions_retain_both_blockers() -> Bool {
     DeploymentComplete { subject: _, facts: _, proof: _ } => false
     DeploymentIncomplete { subject: _, facts: _, first_blocker: b, further_blockers: rest } =>
       b.member == "principal" && list_length(items: rest) == 1
-        && (match list_head(xs: rest) { HeadFound { value: r } => r.member == "observed_host"  HeadAbsent => false })
+        && (match list_head(xs: rest) { Present { value: r } => r.member == "observed_host"  Absent => false })
   }
 }
 

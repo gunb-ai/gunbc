@@ -1,4 +1,6 @@
 module v2.test.claim.floor_discovery_source_authority
+import std.optional { Absent, Optional, Present }
+
 
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.floor_discovery_source_authority {
@@ -8,7 +10,7 @@ import v2.workflow.floor_discovery_source_authority {
   discover_floor_rows_for_source,
   floor_discovery_finalize_source_outcomes
 }
-import std.algebra { length, list_head, HeadFound, HeadAbsent }
+import std.algebra { length, list_head }
 import v2.std.collection { fold_list }
 import std.types { Bool, String, List }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
@@ -51,8 +53,8 @@ fn fdsa_rows_contain(rows: List<FloorDiscoveryRow>, entry: String, function: Str
 
 fn fdsa_first_row_reads(rows: List<FloorDiscoveryRow>, expected: LiveTreeDisposition) -> Bool {
   match list_head(xs: rows) {
-    HeadFound { value: row } => (length(xs: rows) == 1) && (row.reads_live_tree == expected)
-    HeadAbsent => false
+    Present { value: row } => (length(xs: rows) == 1) && (row.reads_live_tree == expected)
+    Absent => false
   }
 }
 

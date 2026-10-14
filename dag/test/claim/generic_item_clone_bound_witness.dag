@@ -1,4 +1,6 @@
 module test.claim.generic_item_clone_bound_witness
+import std.optional { Absent, Optional, Present }
+
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -290,7 +292,7 @@ test fn fn_nested_value_wrapper_positive_control() -> Bool {
   w_fn_nested_value_wrapper_gets_clone()
 }
 
-// Row 1a target shapes (FreeMonoidUniqueState<T>, ListTailResult<T> in src/v2/std/algebra.dag),
+// Row 1a target shapes (FreeMonoidUniqueState<T>, Optional<T> in src/v2/std/algebra.dag),
 // exercising v1_emit_struct_from_capability_table / v1_emit_enum_supplemental_impls end to end
 // rather than the pre-existing structural/WF fixpoint above: a struct or enum whose only
 // Clone-requiring field is FreeMonoid<T> keeps a BARE item-level header (the derive/WF triggers
@@ -382,15 +384,15 @@ fn w_freemonoid_supplemental_struct_hand_written_impls() -> Bool {
 
 fn w_freemonoid_supplemental_enum_hand_written_impls() -> Bool {
   compile_dag_rust_emit_check(
-    "module generic_item_witness.freemonoid_supplemental_enum\nimport std.algebra { FreeMonoid }\n\ntype ListTailResultLike<T>\n  = TailFound { tail: FreeMonoid<T> }\n  | TailAbsent\n",
+    "module generic_item_witness.freemonoid_supplemental_enum\nimport std.algebra { FreeMonoid }\n\ntype ListTailResultLike<T>\n  = Present { value: FreeMonoid<T> }\n  | Absent\n",
     "src/generic_item_witness_freemonoid_supplemental_enum.rs",
     [
       "enum ListTailResultLike<T>",
       "#[derive(Clone, serde::Serialize, serde::Deserialize)]\n#[serde(bound(serialize = \"T: Clone + serde::Serialize\", deserialize = \"T: Clone + serde::Deserialize<'de>\"))]",
       "impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ListTailResultLike<T>",
       "impl<T: Clone + PartialEq> PartialEq for ListTailResultLike<T>",
-      "Self::TailFound { tail } => f.debug_struct(\"TailFound\").field(\"tail\", tail).finish(),",
-      "(Self::TailFound { tail: a_tail }, Self::TailFound { tail: b_tail }) => a_tail == b_tail,"
+      "Self::Present { value } => f.debug_struct(\"Present\").field(\"value\", value).finish(),",
+      "(Self::Present { value: a_value }, Self::Present { value: b_value }) => a_value == b_value,"
     ],
     [
       "enum ListTailResultLike<T: Clone>",

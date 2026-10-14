@@ -1,7 +1,9 @@
 module gunbc.host.host_axis_caps
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
-import std.algebra { trim, list_head, HeadFound, HeadAbsent }
+import std.algebra { trim, list_head }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan,

@@ -1,0 +1,140 @@
+module v2.test.claim.compiler.equality_judged
+
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers }
+import v2.test.claim.compiler.literal_elaboration { lel_inferred }
+import v2.compiler.infer { infer }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason, diagnostics_has_reason }
+import v2.std.node { Symbol }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: `==` and `!=` are judged by the operator route #13060 built for `+`, `||` and `&&`
+// (v2.compiler.infer infer_transform_binary_infix): the canonical operation's EqualityComparison names
+// ^equivalence_field_eq, the operands are judged one type, the operand type's Equivalence row in
+// v2.extdeps.languages.dag dag_algebra_inhabitance_decls carries the field, and the comparison's type is
+// the field's DECLARED codomain -- Bool (v2.std.algebra_structure_signature equivalence_type_node) -- read
+// from the structure, not assigned. gunbc.recurring_failure_mode comparison_operands_never_judged_in_v2_infer;
+// the native-seven fatal site is g_fatal_at's `fatal.reason == ..`, `anchor.at == ^..`, `f == file`, `s == start`.
+//
+// BOUNDARY: source text in, through the production assembly route, then v2.compiler.infer infer.
+// Measured on main ef3ce7dea8 before the change: every comparison below was ACCEPTED with its operands
+// unjudged -- `Int == Symbol` and an `==` returned as Int included -- and `c || (a == b)` was REJECTED,
+// because `||` refuses an operand whose type is not derived.
+//
+// MUTATION: answering Absent for EqualityComparison in infer_canonical_operation_field turns the
+// derived, route and refusal claims red (the comparison is left underived again); the frontier claim
+// stays green.
+
+fn eqj_src(body: String) -> String {
+  join(["module p\n\n", body], "")
+}
+
+// ^eqj_assembly_refused when the source never reached infer, ^accepted when infer accepted it,
+// otherwise the fatal reason.
+fn eqj_reason(body: String) -> Symbol {
+  match bla_assemble_with_peers(p_src: eqj_src(body: body), peers: []) {
+    Rejected { diagnostics: _ } => ^eqj_assembly_refused
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => ^accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+// The advisories an accepted program carries; a refusal or a fixture that never assembled is
+// ^eqj_not_accepted, so no claim reads it as accepted.
+fn eqj_accepted_carries(body: String, reason: Symbol) -> Bool {
+  match bla_assemble_with_peers(p_src: eqj_src(body: body), peers: []) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: reason)
+      }
+  }
+}
+
+// ACCEPTED AND DERIVED: accepted, and no node of the program is left with an underived type.
+fn eqj_derived(body: String) -> Bool {
+  eqj_reason(body: body) == ^accepted && !eqj_accepted_carries(body: body, reason: ^infer_grounding_not_derived)
+}
+
+test fn eqj_a_symbol_compared_with_a_symbol_literal_is_derived() -> Bool {
+  eqj_derived(body: "fn k(a: Symbol) -> Bool {\n  a == ^x\n}\n")
+}
+
+test fn eqj_an_int_equality_and_inequality_are_derived() -> Bool {
+  eqj_derived(body: "fn k(a: Int, b: Int) -> Bool {\n  a == b\n}\n")
+    && eqj_derived(body: "fn k(a: Int, b: Int) -> Bool {\n  a != b\n}\n")
+}
+
+// THE RESULT IS Bool: the same comparison returned where Int is declared refuses at that return.
+// An underived comparison would be accepted there undecided.
+test fn eqj_an_equality_returned_as_int_refuses_at_the_declared_return() -> Bool {
+  eqj_reason(body: "fn k(a: Int, b: Int) -> Int {\n  a == b\n}\n") == ^arrow_body_does_not_inhabit_declared_return
+}
+
+// THE OPERANDS ARE JUDGED: two bound operands of different types refuse at the comparison.
+test fn eqj_operands_of_different_types_refuse_at_the_comparison() -> Bool {
+  eqj_reason(body: "fn k(a: Int, b: Symbol) -> Bool {\n  a == b\n}\n") == ^infer_transform_operand_type_mismatch
+}
+
+// THE CONSUMER: the comparison reaches `||` as Bool, so the composition is derived where it was refused.
+test fn eqj_an_equality_reaches_boolean_composition_as_bool() -> Bool {
+  eqj_derived(body: "fn k(a: Int, b: Int, c: Bool) -> Bool {\n  c || (a == b)\n}\n")
+}
+
+// THE FRONTIER: a carrier with no Equivalence row (Bool here) is not refused -- a missing row is not
+// evidence the type has no equality -- and stays counted as not derived.
+test fn eqj_a_carrier_without_an_equivalence_row_stays_on_the_frontier() -> Bool {
+  eqj_reason(body: "fn k(a: Bool, b: Bool) -> Bool {\n  a == b\n}\n") == ^accepted
+    && eqj_accepted_carries(body: "fn k(a: Bool, b: Bool) -> Bool {\n  a == b\n}\n", reason: ^infer_grounding_not_derived)
+}
+
+// Two uses of one declared record are one type (on the frontier, it has no row); two different records refuse.
+test fn eqj_a_record_compares_with_itself_and_not_with_another_record() -> Bool {
+  eqj_reason(body: "type P {\n  x: Int\n}\n\nfn k(a: P, b: P) -> Bool {\n  a == b\n}\n") == ^accepted
+    && eqj_reason(body: "type P {\n  x: Int\n}\n\ntype Q {\n  x: Int\n}\n\nfn k(a: P, b: Q) -> Bool {\n  a == b\n}\n") == ^infer_transform_operand_type_mismatch
+}
+
+// NOT JUDGED IS NOT DIFFERENT. An operand whose type is not derived (the nullary constructor `A` here), or a
+// literal that elaborates at the other operand's type (0 at std.nat Nat, kernel-grounded from 0), leaves the
+// comparison on the counted frontier; refusing either as a mismatch would read missing evidence as a verdict.
+// A literal that cannot inhabit the other side (1 at Symbol) is a mismatch.
+test fn eqj_an_unjudged_operand_stays_on_the_frontier() -> Bool {
+  eqj_reason(body: "type T\n  = A\n  | B\n\nfn k(t: T) -> Bool {\n  t == A\n}\n") == ^accepted
+    && eqj_accepted_carries(body: "type T\n  = A\n  | B\n\nfn k(t: T) -> Bool {\n  t == A\n}\n", reason: ^infer_grounding_not_derived)
+}
+
+fn eqj_nat_reason(body: String) -> Symbol {
+  match lel_inferred(src: join(["module p\n\nimport std.nat { Nat, Zero, Succ }\n\n", body], "")) {
+    Accepted { value: _, diagnostics: _ } => ^accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+  }
+}
+
+test fn eqj_a_literal_that_elaborates_at_the_other_operand_is_not_a_mismatch() -> Bool {
+  eqj_nat_reason(body: "fn zz(n: Nat) -> Bool {\n  n == 0\n}\n") == ^accepted
+    && eqj_reason(body: "fn k(a: Symbol) -> Bool {\n  a == 1\n}\n") == ^infer_transform_operand_type_mismatch
+}
+
+// THE CLOSED OPERATIONS KEEP THEIR TYPE: ring add's field is a composed abelian group, and its operation's
+// codomain is the carrier, so `a + b` over Int still derives Int (and is refused where Bool is declared).
+test fn eqj_a_closed_operation_still_derives_its_carrier() -> Bool {
+  eqj_derived(body: "fn k(a: Int, b: Int) -> Int {\n  a + b\n}\n")
+    && eqj_reason(body: "fn k(a: Int, b: Int) -> Bool {\n  a + b\n}\n") == ^arrow_body_does_not_inhabit_declared_return
+}
+
+// An operation field with no row is still refused: Bool has no `+`.
+test fn eqj_an_operation_the_carrier_lacks_still_refuses() -> Bool {
+  eqj_reason(body: "fn k(a: Bool, b: Bool) -> Bool {\n  a + b\n}\n") == ^infer_transform_operand_type_mismatch
+}
+
+// CONTROL: a fixture that does not assemble is neither derived nor accepted.
+test fn eqj_a_fixture_that_does_not_assemble_is_not_derived() -> Bool {
+  let body = "fn k(a: Int) -> Bool {\n  a == nope\n}\n"
+  !eqj_derived(body: body) && eqj_reason(body: body) == ^eqj_assembly_refused
+}

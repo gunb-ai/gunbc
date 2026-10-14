@@ -134,8 +134,16 @@ import v2.compiler.module_acquisition {
   PopulationReadRefused,
   SourceRootBinding,
   VerifiedAcquisition,
+  CensusAcquisition,
+  CensusAcquisitionBlocked,
+  CensusAcquisitionClosed,
+  CensusAcquisitionRefused,
+  CensusBlock,
+  acquire_census_closure_of,
   acquire_verified,
   acquisition_first_duplicate,
+  acquisition_refusal_text,
+  census_acquisition_ingest,
   acquisition_ingest,
   acquisition_module_path,
   enumerate_bound_modules,
@@ -2133,6 +2141,7 @@ type NativeDriverVerb
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
   | NativeDriverCensusInfer { source_roots: FreeMonoid<String> }
   | NativeDriverDemandCensus { source_roots: FreeMonoid<String> }
+  | NativeDriverCensusScoped { subject: String, source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
 
 type NativeDriverPlan
@@ -2150,9 +2159,18 @@ data native_driver_verb_census_infer: String = "census-infer"
 
 data native_driver_verb_demand_census: String = "demand-census"
 
+// THE SIXTH MODE, ITS OWN WORD: census-infer's walk over ONE SUBJECT'S ACQUIRED CLOSURE rather than the
+// roots' population (gunbc.plans.census_scoped_run section 5). The subject is an operand because it is
+// the transport of the instrument's bound subject (gunbc.instrument_targets
+// v2_native_census_scoped_binding), and it is checked here, at the command line: a label that names no
+// module refuses as misuse before any root is walked.
+data native_driver_verb_census_scoped: String = "census-scoped"
+
+data native_driver_census_scoped_needs_subject: String = "REFUSED: census-scoped takes a subject package label before the source roots"
+
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | demand-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> <source-root>... | demand-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
@@ -2189,6 +2207,8 @@ type NativeDriverParseState
   | DriverCensusResolveRoots { roots: FreeMonoid<String> }
   | DriverCensusInferRoots { roots: FreeMonoid<String> }
   | DriverDemandCensusRoots { roots: FreeMonoid<String> }
+  | DriverCensusScopedSeekSubject
+  | DriverCensusScopedRoots { subject: String, roots: FreeMonoid<String> }
   | DriverAdjudicateSeekFacts
   | DriverAdjudicateOptions { facts_path: String }
   | DriverAdjudicateSeekPatternValue { facts_path: String }
@@ -2198,7 +2218,7 @@ type NativeDriverParseState
 fn native_driver_unknown_verb_detail(word: String) -> String {
   concat(
     concat("REFUSED: unknown mode ", word),
-    " -- expected adjudicate, census, census-resolve, census-infer or demand-census"
+    " -- expected adjudicate, census, census-resolve, census-infer, census-scoped or demand-census"
   )
 }
 
@@ -2218,6 +2238,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverCensusInferRoots { roots: [] }
       } else if word == native_driver_verb_demand_census {
         DriverDemandCensusRoots { roots: [] }
+      } else if word == native_driver_verb_census_scoped {
+        DriverCensusScopedSeekSubject
       } else if word == native_driver_verb_adjudicate {
         DriverAdjudicateSeekFacts
       } else {
@@ -2234,6 +2256,14 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusInferRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverDemandCensusRoots { roots: roots } =>
       DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverCensusScopedSeekSubject =>
+      match native_census_subject_module(label: word) {
+        NativeCensusSubjectModuleUnavailable { reason: reason } =>
+          DriverParseRefused { reason: reason, detail: concat("REFUSED: census-scoped subject ", word, " names no module") }
+        NativeCensusSubjectModuleNamed { module: _ } => DriverCensusScopedRoots { subject: word, roots: [] }
+      }
+    DriverCensusScopedRoots { subject: subject, roots: roots } =>
+      DriverCensusScopedRoots { subject: subject, roots: list_snoc_item(xs: roots, item: word) }
     DriverAdjudicateSeekFacts =>
       DriverAdjudicateOptions { facts_path: word }
     DriverAdjudicateOptions { facts_path: facts_path } =>
@@ -2293,6 +2323,13 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
     DriverDemandCensusRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
+    DriverCensusScopedSeekSubject =>
+      NativeDriverPlanRefused {
+        reason: ^native_driver_census_scoped_without_subject,
+        detail: native_driver_census_scoped_needs_subject
+      }
+    DriverCensusScopedRoots { subject: subject, roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusScoped { subject: subject, source_roots: roots } }
     DriverAdjudicateOptions { facts_path: facts_path } =>
       NativeDriverPlanned {
         verb: NativeDriverAdjudicate {
@@ -2332,6 +2369,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensusResolve { source_roots: roots } => roots
         NativeDriverCensusInfer { source_roots: roots } => roots
         NativeDriverDemandCensus { source_roots: roots } => roots
+        NativeDriverCensusScoped { subject: _, source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
       }
   }
@@ -4502,6 +4540,62 @@ fn native_census_subject_module(label: String) -> NativeCensusSubjectModule {
         SubtreeTargets { package: _ } => NativeCensusSubjectModuleUnavailable { reason: ^native_census_subject_label_names_no_module }
         PackageTargets { package: package } =>
           NativeCensusSubjectModuleNamed { module: native_route_package_text_module(package_text: render_package(p: package)) }
+      }
+  }
+}
+
+// ── the scoped census: the subject's closure, acquired around its blocks ─────────────────────
+//
+// THE POPULATION IS THE SUBJECT'S ACQUIRED CLOSURE, NOT THE TREE (gunbc.plans.census_scoped_run).
+// The census acquisition (v2.compiler.module_acquisition acquire_census_closure_of) walks the same
+// requests the compiler's door walks and records, rather than stops at, a member or edge it cannot
+// pass. The ingest is acquisition's own reads, so membership and every stage result describe the
+// same bytes. The scope states whether that population is closed or blocked, and where: a blocked
+// population is never reported as a closed one, and a refused acquisition is no scope at all, so
+// NativeCensusScoped has no arm for it.
+type NativeCensusScope
+  = NativeCensusScopeClosed { subject: String, members: Int }
+  | NativeCensusScopeBlocked { subject: String, members: Int, blocked_first: CensusBlock, blocked_rest: List<CensusBlock> }
+
+type NativeCensusScoped {
+  scope: NativeCensusScope
+  ingest: SourceRootIngest
+}
+
+fn native_census_scoped_from(subject: String, acquisition: CensusAcquisition) -> Outcome<NativeCensusScoped> {
+  match acquisition {
+    CensusAcquisitionRefused { refusal: refusal } =>
+      native_lane_refused(reason: ^native_census_scoped_acquisition_refused, detail: acquisition_refusal_text(refusal: refusal))
+    CensusAcquisitionClosed { entries: _, modules: modules, reads: _ } =>
+      outcome_accepted(value: NativeCensusScoped {
+        scope: NativeCensusScopeClosed { subject: subject, members: length(xs: modules) },
+        ingest: census_acquisition_ingest(modules: modules, blocks: [])
+      })
+    CensusAcquisitionBlocked { entries: _, modules: modules, blocked_first: first, blocked_rest: rest, reads: _ } =>
+      outcome_accepted(value: NativeCensusScoped {
+        scope: NativeCensusScopeBlocked { subject: subject, members: length(xs: modules), blocked_first: first, blocked_rest: rest },
+        ingest: census_acquisition_ingest(modules: modules, blocks: Cons { head: first, tail: rest })
+      })
+  }
+}
+
+// CONSUMER: the emitted driver's census-scoped verb (v1.compiler.emit_rust run_census_scoped), run by
+// //gunbc/instruments:v2-native-census-scoped. The subject is the package label the verb was given;
+// the plan has already refused a label that names no module, and this refuses again rather than
+// trusting that it was called from the plan.
+fn native_lane_census_scoped_ingest(label: String, source_roots: FreeMonoid<String>) -> Outcome<NativeCensusScoped> {
+  match native_census_subject_module(label: label) {
+    NativeCensusSubjectModuleUnavailable { reason: reason } => native_lane_refused(reason: reason, detail: label)
+    NativeCensusSubjectModuleNamed { module: subject } =>
+      let resolved = source_root_bindings(roots: source_roots)
+      match resolved {
+        SourceRootsBound { bindings: bindings } =>
+          native_census_scoped_from(
+            subject: subject,
+            acquisition: acquire_census_closure_of(layout: repository_storage_layout(), bindings: bindings, entries: [subject])
+          )
+        SourceRootsUnrecognized { argument: _ } => native_lane_roots_refusal(bindings: resolved)
+        SourceRootsDuplicated { argument: _ } => native_lane_roots_refusal(bindings: resolved)
       }
   }
 }

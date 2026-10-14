@@ -15,6 +15,7 @@ import extdeps.llm.claude_code_stream_json {
   ClaudeCodeTurnResult,
 }
 import gunbc.roadmap.roadmap_provider_events {
+  ProviderExecutionState, ProviderNotStarted,
   ProviderItemActivity, RunningCommand, EditingFiles, UsingConnectedTool, Searching,
   UpdatingPlan, ReasoningItem, Reporting, HarnessReadingFile, HarnessWritingFile,
   HarnessEditingFile, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
@@ -22,7 +23,9 @@ import gunbc.roadmap.roadmap_provider_events {
   ItemStarted, ItemCompleted,
   ProviderEventsParsed,
   ProviderEventStreamRefused,
+  ProviderEvent, ProviderEventKind,
   ProviderRunning,
+  ProviderStarting,
   ProviderAwaitingSeat,
   ProviderCompleted,
   ProviderFailed,
@@ -37,6 +40,7 @@ import gunbc.roadmap.roadmap_provider_events {
   SkipRateLimitEvent,
   SkipClaudeUserWithoutToolResult,
   ThreadStarted,
+  TurnStarted,
   TurnCompleted,
   TurnFailed,
   codex_provider_event_line_observation_budget,
@@ -47,6 +51,12 @@ import gunbc.roadmap.roadmap_provider_events {
   provider_execution_state,
   provider_execution_state_label,
   provider_execution_detail,
+  provider_execution_fold_event,
+  provider_execution_terminality,
+  provider_item_activity_kind,
+  provider_execution_carried_detail,
+  TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking,
+  ItemKindReporting, ItemKindWorking,
 }
 
 data successful_codex_jsonl: String = "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item-1\",\"type\":\"file_change\",\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item-1\",\"type\":\"file_change\",\"status\":\"completed\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":3}}\n"
@@ -674,4 +684,154 @@ test fn a_harness_tool_round_reaches_the_operator_as_its_own_activity() -> Bool 
     uses: [WireToolUseBlock { id: "toolu_1", name: harness_tool_wire_name(tool: ReadFileTool) as String, input: json_object([]) }],
   ), "\n"), "\n")
   activity_of(text: read_line) == "Agent working · reading file"
+}
+
+// THE ONE TERMINALITY PARTITION, WITNESSED. The nfr_dissolve_provider_terminal_absorb rows are
+// gone because provider_execution_fold_event and provider_execution_detail now branch on
+// provider_execution_terminality (and the item-kind partition) instead of the variant list; a
+// state kind added to the closed ProviderExecutionState coproduct must name its class here or
+// the classifier loses a case.
+data witness_terminal_states: List<ProviderExecutionState> = [
+  ProviderNotStarted,
+  ProviderStarting { activity: "agent started" },
+  ProviderAwaitingSeat { detail: "waiting for a seat" },
+  ProviderRunning { activity: "agent working" },
+  ProviderCompleted { activity: "Agent complete" },
+  ProviderFailed { activity: "agent turn failed", detail: "d" },
+  ProviderBudgetSpent { activity: "Agent stopped at its round budget", detail: "d" },
+  ProviderEventsRefused { activity: "Agent complete", detail: "d" },
+]
+
+data witness_fold_event: ProviderEvent = ProviderEvent { line_number: 1, raw: "x", kind: TurnStarted }
+
+// The locked classes are exactly Completed, Refused, EventsRefused — the event fold and the belt
+// read the same partition, so the locked set the fold uses and the belt's terminal set differ only
+// in that the belt keeps EventsRefused open.
+test fn a_terminality_partition_names_the_five_classes() -> Bool {
+  match provider_execution_terminality(state: ProviderNotStarted) {
+    TerminalityNotStarted => true
+    _ => false
+  }
+    && match provider_execution_terminality(state: ProviderStarting { activity: "agent started" }) {
+         TerminalityWorking => true
+         _ => false
+       }
+    && match provider_execution_terminality(state: ProviderAwaitingSeat { detail: "waiting for a seat" }) {
+         TerminalityWorking => true
+         _ => false
+       }
+    && match provider_execution_terminality(state: ProviderRunning { activity: "agent working" }) {
+         TerminalityWorking => true
+         _ => false
+       }
+    && match provider_execution_terminality(state: ProviderCompleted { activity: "Codex turn complete" }) {
+         TerminalityCompleted { activity } => activity == "Codex turn complete"
+         _ => false
+       }
+    && match provider_execution_terminality(state: ProviderFailed { activity: "a", detail: "d" }) {
+         TerminalityRefused => true
+         _ => false
+       }
+    && match provider_execution_terminality(state: ProviderBudgetSpent { activity: "a", detail: "d" }) {
+         TerminalityRefused => true
+         _ => false
+       }
+    && match provider_execution_terminality(state: ProviderEventsRefused { activity: "a", detail: "d" }) {
+         TerminalityEventsRefused => true
+         _ => false
+       }
+}
+
+test fn a_carried_detail_partition_names_the_four_detail_carrying_states() -> Bool {
+  let carried = witness_terminal_states.filter(
+    s => match provider_execution_carried_detail(state: s) {
+           Present { value: _ } => true
+           none => false
+         },
+  )
+  count(carried) == 4
+    && match provider_execution_carried_detail(state: ProviderFailed { activity: "a", detail: "detail-9" }) {
+         Present { value: d } => d == "detail-9"
+         none => false
+       }
+    && match provider_execution_carried_detail(state: ProviderAwaitingSeat { detail: "seat-9" }) {
+         Present { value: d } => d == "seat-9"
+         none => false
+       }
+    && match provider_execution_carried_detail(state: ProviderRunning { activity: "a" }) {
+         Present { value: _ } => false
+         none => true
+       }
+}
+
+// The activity partition names Reporting as a case; the other eleven activities are the Working
+// class, so a new activity variant must name its class in provider_item_activity_kind, once.
+test fn a_item_kind_partition_names_only_reporting() -> Bool {
+  let activities: List<ProviderItemActivity> = [
+    RunningCommand, EditingFiles, UsingConnectedTool, Searching, UpdatingPlan,
+    ReasoningItem, Reporting, HarnessReadingFile, HarnessWritingFile,
+    HarnessEditingFile, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
+  ]
+  count(activities.filter(a => match provider_item_activity_kind(activity: a) {
+                                 ItemKindReporting => true
+                                 ItemKindWorking => false
+                               })) == 1
+    && match provider_item_activity_kind(activity: Reporting) {
+         ItemKindReporting => true
+         ItemKindWorking => false
+       }
+    && match provider_item_activity_kind(activity: RunningCommand) {
+         ItemKindReporting => false
+         ItemKindWorking => true
+       }
+}
+
+test fn a_fold_event_is_locked_for_every_locked_class() -> Bool {
+  witness_terminal_states.filter(
+    s => match provider_execution_terminality(state: s) {
+           TerminalityCompleted { activity: _ } => true
+           TerminalityRefused => true
+           TerminalityEventsRefused => true
+           TerminalityNotStarted => false
+           TerminalityWorking => false
+         },
+  ).all(
+    s => provider_execution_state_label(
+      state: provider_execution_fold_event(state: s, event: witness_fold_event),
+    ) == provider_execution_state_label(state: s),
+  ) && count(
+    witness_terminal_states.filter(
+      s => match provider_execution_terminality(state: s) {
+             TerminalityNotStarted => true
+             TerminalityWorking => true
+             _ => false
+           },
+    ),
+  ) == 4
+}
+
+test fn a_fold_event_names_the_reporting_item_completed_arm() -> Bool {
+  match provider_execution_fold_event(
+    state: ProviderNotStarted,
+    event: ProviderEvent { line_number: 1, raw: "x", kind: ItemCompleted { activity: Reporting } },
+  ) {
+    ProviderRunning { activity } => activity == "Agent finishing"
+    _ => false
+  }
+    && match provider_execution_fold_event(
+         state: ProviderNotStarted,
+         event: ProviderEvent { line_number: 1, raw: "x", kind: ItemCompleted { activity: EditingFiles } },
+       ) {
+         ProviderRunning { activity } => activity == "Agent working · editing files"
+         _ => false
+       }
+}
+
+test fn a_detail_partition_fold_matches_the_detail_reader() -> Bool {
+  witness_terminal_states.all(
+    s => match provider_execution_carried_detail(state: s) {
+           Present { value: d } => provider_execution_detail(state: s) == d
+           none => provider_execution_detail(state: s) == ""
+         },
+  )
 }
