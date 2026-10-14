@@ -7,7 +7,7 @@ import v2.std.witness { map_get_checked }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Arrow, Atom, ComputationNode, Conj, Disj, Instantiation, Node, Occupancy, Symbol, TypeNode }
-import v2.std.type_binder { AliasRenaming, GenericTypeDecl, NotARenaming, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, PureRenamingOf, TypeAlias, binder_conj_names, type_alias_renaming, type_decl_view }
+import v2.std.type_binder { AliasRenaming, GenericTypeDecl, NotARenaming, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, PureRenamingOf, TypeAlias, binder_conj_names, refinement_declaration_of_node, type_alias_renaming, type_decl_view }
 import std.occurrence_identity { CallableOccurrence, ConstructorOccurrence, LexicalValueOccurrence, NamespaceSegmentOccurrence, OccurrenceCategory, TypeOccurrence }
 import std.occurrence_binding_resolve { OccurrenceCategoryBindingAdmissible, OccurrenceCategoryBindingInadmissible, occurrence_category_binding_verdict }
 import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_last_segment, qualified_name_snoc }
@@ -714,13 +714,17 @@ fn symbol_index_lexical_lookup(
 // They disagreed on Atom: TypeOccurrence as a declaration (a module-level `type T = Name`)
 // vs not a type-child walk (the same Atom shape is a construct field). A PlainTypeDecl Conj
 // is a record only when the declaring path is RecordTypePayload — an import residual is also
-// a Conj. Those are two projections of one shape, not two facts.
+// a Conj — and a refinement when it carries a where clause (v2.std.type_binder
+// refinement_declaration_of_node): `type Char = Int where ...` declares a type, so a type
+// position may bind it, and its children keep the inherited walk they had as an unclassified
+// Conj. Those are two projections of one shape, not two facts.
 type TypeDeclMemberShape
   = TypeDeclShapeRecordOrCoproduct
   | TypeDeclShapeAliasAtom
   | TypeDeclShapeCallable
   | TypeDeclShapeValue
   | TypeDeclShapeBinderWrapper
+  | TypeDeclShapeRefinement
 
 type TypeDeclChildWalk
   = TypeDeclChildrenTypeOccurrence
@@ -738,7 +742,11 @@ fn type_decl_member_shape(index: SymbolIndex, path: QualifiedName, node: Node) -
           match symbol_index_declared_payload_at(index: index, qualified_path: path) {
             Present { value: RecordTypePayload } => TypeDeclShapeRecordOrCoproduct
             Present { value: VariantArmPayload } => TypeDeclShapeValue
-            Absent => TypeDeclShapeValue
+            Absent =>
+              match refinement_declaration_of_node(decl: member) {
+                Present { value: _ } => TypeDeclShapeRefinement
+                Absent => TypeDeclShapeValue
+              }
           }
         TypeNode { connective: Disj } => TypeDeclShapeRecordOrCoproduct
         TypeNode { connective: Instantiation } => TypeDeclShapeRecordOrCoproduct
@@ -755,6 +763,7 @@ fn type_decl_member_occurrence_category(shape: TypeDeclMemberShape) -> Occurrenc
     TypeDeclShapeRecordOrCoproduct => TypeOccurrence
     TypeDeclShapeAliasAtom => TypeOccurrence
     TypeDeclShapeBinderWrapper => TypeOccurrence
+    TypeDeclShapeRefinement => TypeOccurrence
     TypeDeclShapeCallable => CallableOccurrence
     TypeDeclShapeValue => LexicalValueOccurrence
   }
@@ -767,6 +776,7 @@ fn type_decl_member_child_walk(shape: TypeDeclMemberShape) -> TypeDeclChildWalk 
     TypeDeclShapeAliasAtom => TypeDeclChildrenInherited
     TypeDeclShapeCallable => TypeDeclChildrenInherited
     TypeDeclShapeValue => TypeDeclChildrenInherited
+    TypeDeclShapeRefinement => TypeDeclChildrenInherited
   }
 }
 

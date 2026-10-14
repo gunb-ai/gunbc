@@ -38,6 +38,7 @@ import gunbc.target_binding {
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
+  CardinalityRealizationProducer,
   RegenRoundCostProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading,
@@ -92,6 +93,7 @@ import gunbc.instrument_targets {
   generic_identity_census_label,
   interpolation_hole_census_label,
   shared_type_leaf_collision_census_label,
+  cardinality_realization_label,
   regen_round_cost_label,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
@@ -1057,6 +1059,16 @@ test fn the_shared_type_leaf_collision_census_operand_routes_to_its_own_producer
       label_eq(a: b.target, b: shared_type_leaf_collision_census_label())
         && (b.producer == SharedTypeLeafCollisionCensusProducer {})
         && !(b.producer == InterpolationHoleCensusProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_cardinality_realization_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:cardinality-realization") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: cardinality_realization_label())
+        && (b.producer == CardinalityRealizationProducer {})
+        && !(b.producer == RegenRoundCostProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
