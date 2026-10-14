@@ -48,6 +48,7 @@ fn materialization_gha_cache_key_prefix(family: String) -> String {
 // A line that names only source_digest is not a receipt and is not saved.
 
 data parse_verdict_publish_step_id: String = "publish_parse_verdicts"
+data parse_verdict_identity_step_name: String = "Resolve parse-verdict compiler identity"
 data parse_verdict_publish_step_name: String = "Walk parse-population and publish verdict receipts"
 fn parse_verdict_save_step_name() -> String {
   join(["Save ", parse_verdict_request_family, " receipts to Actions cache"], "")
@@ -56,6 +57,7 @@ data parse_verdict_receipt_dir: String = ".gunbc/parse-verdicts"
 data generation_one_executable_prefix: String = "v2-native-cli-gen-one-"
 data generation_one_closure_identity_suffix: String = ".closure_identity"
 data parse_verdict_compiler_output: String = "compiler_identity"
+data parse_verdict_parser_bin_output: String = "parser_bin"
 
 // The walk's argv (parse-population + source roots) is modeled; the runner glue that finds the
 // generation-one binary, stamps compiler onto Accepted lines, and writes GITHUB_OUTPUT is a
@@ -63,7 +65,7 @@ data parse_verdict_compiler_output: String = "compiler_identity"
 data parse_verdict_publish_shell_emit_dissolution_text: NonEmptyStr = "dissolve-on: parse_verdict_publish_walk_step -- hand-shell run carrier for locating the generation-one executable, walking parse-population, and stamping compiler onto Accepted receipt lines. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders this step from modeled bash_build statements rather than a joined command string, at which point this row and the comment it projects delete together."
 data parse_verdict_publish_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: parse_verdict_publish_shell_emit_dissolution_text)
 
-fn parse_verdict_publish_command() -> String {
+fn parse_verdict_identity_command() -> String {
   join(
     [
       "set -o pipefail",
@@ -74,10 +76,23 @@ fn parse_verdict_publish_command() -> String {
       join(["cid=\"$bin", generation_one_closure_identity_suffix, "\""], ""),
       "if [ ! -s \"$cid\" ]; then echo \"::error::IdentityUnknown: missing or empty parser identity beside the generation-one executable\"; exit 1; fi",
       "compiler=$(cat \"$cid\")",
+      join(["echo \"", parse_verdict_compiler_output, "=$compiler\" >> \"$GITHUB_OUTPUT\""], ""),
+      join(["echo \"", parse_verdict_parser_bin_output, "=$bin\" >> \"$GITHUB_OUTPUT\""], "")
+    ],
+    "; "
+  )
+}
+
+fn parse_verdict_publish_command() -> String {
+  join(
+    [
+      "set -o pipefail",
+      join(["bin=\"${{ steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_parser_bin_output, " }}\""], ""),
+      join(["compiler=\"${{ steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_compiler_output, " }}\""], ""),
+      "if [ -z \"$bin\" ] || [ ! -x \"$bin\" ] || [ -z \"$compiler\" ]; then echo \"::error::IdentityUnknown: parser identity or generation-one executable missing after the identity step\"; exit 1; fi",
       join(["mkdir -p \"", parse_verdict_receipt_dir, "\""], ""),
       join(["\"$bin\" ", cli_verb_parse_population, source_root_argv(), " | tee \"", parse_verdict_receipt_dir, "/walk.txt\""], ""),
-      join(["while IFS= read -r line; do fam=$(printf %s \"$line\" | cut -f1); digest=$(printf %s \"$line\" | cut -f2); verdict=$(printf %s \"$line\" | cut -f3); if [ \"$fam\" = parse-verdict ] && [ \"$verdict\" = Accepted ]; then printf \"parse-verdict\t%s\t%s\tAccepted\\n\" \"$digest\" \"$compiler\"; fi; done < \"", parse_verdict_receipt_dir, "/walk.txt\" > \"", parse_verdict_receipt_dir, "/receipts.tsv\""], ""),
-      join(["echo \"", parse_verdict_compiler_output, "=$compiler\" >> \"$GITHUB_OUTPUT\""], "")
+      join(["while IFS= read -r line; do fam=$(printf %s \"$line\" | cut -f1); digest=$(printf %s \"$line\" | cut -f2); verdict=$(printf %s \"$line\" | cut -f3); if [ \"$fam\" = parse-verdict ] && [ \"$verdict\" = Accepted ]; then printf \"parse-verdict\t%s\t%s\tAccepted\\n\" \"$digest\" \"$compiler\"; fi; done < \"", parse_verdict_receipt_dir, "/walk.txt\" > \"", parse_verdict_receipt_dir, "/receipts.tsv\""], "")
     ],
     "; "
   )
@@ -90,15 +105,16 @@ fn source_root_argv() -> String {
   )
 }
 
-fn parse_verdict_publish_script() -> String {
+fn parse_verdict_wrapped_script(command: String) -> String {
   concat(
     concat("# ", concat(dissolution_description(condition: parse_verdict_publish_shell_emit_dissolution_trigger), "\n")),
-    concat(wrap_command_with_floor_attempt_receipt(command: parse_verdict_publish_command()), "\n")
+    concat(wrap_command_with_floor_attempt_receipt(command: command), "\n")
   )
 }
 
 fn parse_verdict_publish_script_is_renderable() -> Bool {
-  wrap_command_is_renderable(command: parse_verdict_publish_command())
+  wrap_command_is_renderable(command: parse_verdict_identity_command())
+    && wrap_command_is_renderable(command: parse_verdict_publish_command())
 }
 
 fn parse_verdict_publish_memory_env() -> List<YamlKeyValue> {
@@ -113,11 +129,25 @@ fn parse_verdict_publish_memory_env() -> List<YamlKeyValue> {
   }
 }
 
+fn parse_verdict_identity_step() -> Step {
+  RunStep {
+    name: Present { value: parse_verdict_identity_step_name },
+    id: Present { value: parse_verdict_publish_step_id },
+    run: parse_verdict_wrapped_script(command: parse_verdict_identity_command()),
+    shell: none,
+    env: Present { value: parse_verdict_publish_memory_env() },
+    working_directory: none,
+    if_condition: Present { value: materialization_publish_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn parse_verdict_publish_walk_step() -> Step {
   RunStep {
     name: Present { value: parse_verdict_publish_step_name },
-    id: Present { value: parse_verdict_publish_step_id },
-    run: parse_verdict_publish_script(),
+    id: none,
+    run: parse_verdict_wrapped_script(command: parse_verdict_publish_command()),
     shell: none,
     env: Present { value: parse_verdict_publish_memory_env() },
     working_directory: none,
@@ -155,11 +185,13 @@ fn parse_verdict_publish_restore_keys() -> String {
   )
 }
 
-// SAVE MUST NOT RESTORE. cache_action is the combined restore-then-save action. A prefix
-// restore-key would hit an earlier main sha, overwrite the walk's receipts, and post-save that
-// older blob under the new sha — fabricating commit N+1's verdict from N. Combined restore with
-// only the exact key still misses on a new sha (the key includes github.sha), so the walk's
-// directory is what gets saved. Restore-keys belong on the PR-2 consumer, not here.
+// SAVE MUST NOT OVERWRITE THE WALK. cache_action is the combined restore-then-save action, and
+// gunbc.fleet.fleet_release_bins_key records that it can prefix-restore even with no restore-keys.
+// actions/cache/save is not an admitted ActionRelease (uses text is owner/repo@commit, no
+// subdirectory). So this step runs AFTER the identity step (so the key can name the compiler) and
+// BEFORE the walk: a restore, prefix or exact, can only extract into an empty receipt dir; the
+// walk then writes receipts.tsv; the action's post step saves that. Restore-keys stay off this
+// step; they belong on the PR-2 consumer.
 fn materialization_family_cache_save_step(family: String, path: String, cache_key: String) -> Step {
   UsesStep {
     name: Present { value: join(["Save ", family, " receipts to Actions cache"], "") },
