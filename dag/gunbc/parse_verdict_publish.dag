@@ -18,6 +18,10 @@ import gunbc.host.memory_envelope {
   memory_envelope_required_ci_contract,
 }
 import std.algebra { list_map }
+import gunbc.parse_verdict_schema {
+  parse_verdict_request_family,
+  parse_verdict_receipt_accepted,
+}
 
 // POLICY (not the GitHub cache interface): this repository publishes materialization receipts
 // only from a push of refs/heads/main. A pull-request run may restore a default-branch entry
@@ -30,7 +34,6 @@ fn materialization_publish_if() -> String {
 
 // ONE PROVIDER, GENERIC OVER REQUEST FAMILIES. The GHA cache key prefix names the family so a
 // later test-verdict family (operator E6) is another prefix, not another save mechanism.
-data parse_verdict_request_family: String = "parse-verdict"
 
 fn materialization_gha_cache_key_prefix(family: String) -> String {
   join(["gunbc-materialization-", family, "-"], "")
@@ -94,7 +97,8 @@ fn parse_verdict_publish_command() -> String {
       "if [ -z \"$bin\" ] || [ ! -x \"$bin\" ] || [ -z \"$compiler\" ]; then echo \"::error::IdentityUnknown: parser identity or generation-one executable missing after the identity step\"; exit 1; fi",
       join(["mkdir -p \"", parse_verdict_receipt_dir, "\""], ""),
       join(["\"$bin\" ", cli_verb_parse_population, source_root_argv(), " | tee \"", parse_verdict_receipt_dir, "/walk.txt\""], ""),
-      join(["while IFS= read -r line; do fam=$(printf %s \"$line\" | cut -f1); digest=$(printf %s \"$line\" | cut -f2); verdict=$(printf %s \"$line\" | cut -f3); if [ \"$fam\" = parse-verdict ] && [ \"$verdict\" = Accepted ]; then printf \"parse-verdict\t%s\t%s\tAccepted\\n\" \"$digest\" \"$compiler\"; fi; done < \"", parse_verdict_receipt_dir, "/walk.txt\" > \"", parse_verdict_receipt_dir, "/receipts.tsv\""], "")
+      join(["while IFS= read -r line; do fam=$(printf %s \"$line\" | cut -f1); digest=$(printf %s \"$line\" | cut -f2); verdict=$(printf %s \"$line\" | cut -f3); if [ \"$fam\" = ", parse_verdict_request_family, " ] && [ \"$verdict\" = ", parse_verdict_receipt_accepted, " ]; then printf \"", parse_verdict_request_family, "\\t%s\\t%s\\t", parse_verdict_receipt_accepted, "\\n\" \"$digest\" \"$compiler\"; fi; done < \"", parse_verdict_receipt_dir, "/walk.txt\" > \"", parse_verdict_receipt_dir, "/receipts.tsv\""], ""),
+      join(["if [ ! -s \"", parse_verdict_receipt_dir, "/receipts.tsv\" ]; then echo \"::error::ParseVerdictReceiptsEmpty: stamp matched no Accepted walk lines\"; exit 1; fi"], "")
     ],
     "; "
   )
@@ -173,27 +177,13 @@ fn parse_verdict_publish_cache_key() -> String {
   )
 }
 
-fn parse_verdict_publish_restore_keys() -> String {
-  join(
-    [
-      materialization_gha_cache_key_prefix(family: parse_verdict_request_family),
-      "${{ steps.",
-      parse_verdict_publish_step_id,
-      ".outputs.",
-      parse_verdict_compiler_output,
-      " }}-\n"
-    ],
-    ""
-  )
-}
-
 // SAVE MUST NOT OVERWRITE THE WALK. cache_action is the combined restore-then-save action, and
 // gunbc.fleet.fleet_release_bins_key records that it can prefix-restore even with no restore-keys.
 // actions/cache/save is not an admitted ActionRelease (uses text is owner/repo@commit, no
 // subdirectory). So this step runs AFTER the identity step (so the key can name the compiler) and
 // BEFORE the walk: a restore, prefix or exact, can only extract into an empty receipt dir; the
 // walk then writes receipts.tsv; the action's post step saves that. Restore-keys stay off this
-// step; they belong on the PR-2 consumer.
+// step until a restoring consumer exists.
 fn materialization_family_cache_save_step(family: String, path: String, cache_key: String) -> Step {
   UsesStep {
     name: Present { value: join(["Save ", family, " receipts to Actions cache"], "") },

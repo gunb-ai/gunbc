@@ -7,8 +7,16 @@ import std.types { Bool, String, List }
 // This module is the third import_closure_live entry of the parse-compiler identity: the wire
 // a publisher stamps and a consumer reads, not the rest of ArtifactRequest.
 
-data parse_verdict_receipt_line_prefix: String = "parse-verdict\t"
+data parse_verdict_request_family: String = "parse-verdict"
 data parse_verdict_receipt_accepted: String = "Accepted"
+
+fn parse_verdict_receipt_line_prefix() -> String {
+  join([parse_verdict_request_family, "\t"], "")
+}
+
+fn parse_verdict_walk_accepted_line(source_digest: String) -> String {
+  concat(parse_verdict_receipt_line_prefix(), source_digest, "\t", parse_verdict_receipt_accepted)
+}
 
 // Named roots of the parse-compiler identity (not the member list). Members are
 // v2.lens.module_graph import_closure_live over these paths with pool_roots dag + src/v2.
