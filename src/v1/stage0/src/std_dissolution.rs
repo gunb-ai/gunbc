@@ -14,7 +14,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum DissolutionTrigger {
     DeclarationAppears {
@@ -35,7 +35,7 @@ impl DissolutionTrigger {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum DissolutionCondition {
     BoundDissolution { trigger: Rc<DissolutionTrigger> },
@@ -43,7 +43,16 @@ pub enum DissolutionCondition {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum DissolutionStatus {

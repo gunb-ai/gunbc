@@ -115,7 +115,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct TokenStream {
     pub all: Rc<Vec<Rc<Token>>>,
     pub pos: i64,
@@ -246,14 +246,23 @@ pub struct ParseContext {
     pub source_extents: Rc<ParseSourceExtentState>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ParsedSourceExtent {
     pub occurrence: OccurrenceId,
     pub extent: Rc<SourceSpan>,
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum ErasedSourceScopeKind {
@@ -261,34 +270,34 @@ pub enum ErasedSourceScopeKind {
     ErasedSingletonBlockScope,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ErasedScopeRelation {
     ErasedScopeEncloses { occurrence: OccurrenceId },
     ErasedScopeInside { container: OccurrenceId },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ErasedSourceScope {
     pub kind: ErasedSourceScopeKind,
     pub extent: Rc<SourceSpan>,
     pub relation: Rc<ErasedScopeRelation>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct RecordedErasedScope {
     pub kind: ErasedSourceScopeKind,
     pub extent: Rc<SourceSpan>,
     pub enclosed: OccurrenceId,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ParsedSourceExtents {
     pub extents: Rc<Vec<Rc<ParsedSourceExtent>>>,
     pub erased_scopes: Rc<Vec<Rc<ErasedSourceScope>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ParseSourceExtentState {
     pub recorded: Rc<HashMap<OccurrenceId, Rc<SourceSpan>>>,
     pub published: Rc<Vec<Rc<ParsedSourceExtent>>>,
@@ -412,7 +421,7 @@ pub fn erased_scope_relation(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ParseResult {
     pub module: Option<Rc<Node>>,
     pub error: Option<Rc<ErrorNode>>,
@@ -455,7 +464,7 @@ pub struct ParsedPatternStampResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ParsedOccurrenceRole {
     ParsedOccurrenceUnclassified,
@@ -484,7 +493,7 @@ pub struct ParsedNodeIdentityMint {
     pub ctx: Rc<ParseContext>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ParsedExtentAt {
     ConsumedWindow {
@@ -940,7 +949,7 @@ pub fn parsed_node_with_ident(node: Rc<Node>, ident: i64) -> Rc<Node> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum AdvanceResult {
     AdvanceOk {
@@ -964,7 +973,7 @@ impl AdvanceResult {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum EatResult {
     EatConsumed {
@@ -984,14 +993,14 @@ impl EatResult {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct TokenResult {
     pub token: Rc<Token>,
     pub tokens: Rc<TokenStream>,
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct NameResult {
     pub name: String,
     pub span: Rc<SourceSpan>,
@@ -1289,7 +1298,7 @@ pub fn mint_parsed_optional_int_property(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ParsedStringPart {
     pub part: Rc<StringPart>,
     pub at: Rc<ParsedExtentAt>,
@@ -1385,7 +1394,7 @@ pub struct ItemPrefixResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ServiceConfig {
     pub endpoint: Rc<Node>,
     pub auth: Option<Rc<Node>>,
@@ -1402,13 +1411,15 @@ pub struct ConfigResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
+)]
 pub struct BindingPower {
     pub left: i64,
     pub right: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ExpectedToken {
     ExpectKeyword { text: String },
@@ -1632,7 +1643,7 @@ pub struct PipeCalleeResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ParserParam {
     pub occurrence_identity: Rc<NodeOccurrenceIdentity>,
     pub name: String,
@@ -1657,7 +1668,7 @@ pub struct IdentCollectResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct RangeBound {
     pub value: i64,
     pub property_at: Rc<ParsedExtentAt>,
@@ -1764,20 +1775,20 @@ pub struct OpBodyResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct UnitResult {
     pub tokens: Rc<TokenStream>,
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct StringLitResult {
     pub value: String,
     pub tokens: Rc<TokenStream>,
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct IntLitResult {
     pub value: i64,
     pub tokens: Rc<TokenStream>,
@@ -1785,7 +1796,16 @@ pub struct IntLitResult {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum ParserHelperIdentity {
@@ -1794,14 +1814,14 @@ pub enum ParserHelperIdentity {
     ParserHelperWith,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ParserCallIdentity {
     ParserCallHelper { helper: ParserHelperIdentity },
     ParserCallFunction { name: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ParserResultWitness {
     ParserWitnessAdvance,
@@ -1822,7 +1842,7 @@ impl ParserResultWitness {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct DescResult {
     pub desc: Option<String>,
     pub tokens: Rc<TokenStream>,
@@ -2566,22 +2586,23 @@ pub fn tok_is_keyword_name(tok: Option<Rc<Token>>, env: Rc<ParseEnvironment>) ->
 pub fn keyword_may_bind_as_pattern_name(text: String, env: Rc<ParseEnvironment>) -> bool {
     match v1_rt::lookup(&env.non_pattern_binder_keywords.clone(), text.clone()) {
         Some(_) => false,
-        std::option::Option::None => match v1_rt::lookup(&env.non_name_keywords.clone(), text.clone())
-        {
-            Some(_) => false,
-            std::option::Option::None => true,
-        },
+        std::option::Option::None => {
+            match v1_rt::lookup(&env.non_name_keywords.clone(), text.clone()) {
+                Some(_) => false,
+                std::option::Option::None => true,
+            }
+        }
     }
 }
 
 pub fn reserved_keyword_pattern_binder_error(text: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
     parse_error(
         v1_rt::concat(
-            v1_rt::concat("pattern binder '".to_string(), text),
+            v1_rt::concat("pattern binder '".to_string(), text.clone()),
             "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier"
                 .to_string(),
         ),
-        span,
+        span.clone(),
     )
 }
 
@@ -11931,7 +11952,7 @@ pub fn parse_op_requires_members(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum OperationRequiresDeclaration {
     RequiresUndeclared,
@@ -13972,13 +13993,13 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct HeadsBlockSkipResult {
     pub tokens: Rc<TokenStream>,
     pub err: Option<Rc<ErrorNode>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct HeadsDataValueSkipResult {
     pub tokens: Rc<TokenStream>,
     pub err: Option<Rc<ErrorNode>>,
@@ -17682,29 +17703,30 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                         err: std::option::Option::None,
                     }),
                     std::option::Option::None => {
-                        if keyword_may_bind_as_pattern_name(kw_text.clone(), ctx.env.clone())
-                        {
-                            let rest = token_stream_advance(tokens.clone(), 1);
-                            let minted = mint_parsed_node_identity(
-                                ctx.clone(),
-                                Rc::new(ParsedExtentAt::ConsumedWindow {
-                                    from: tokens.clone(),
-                                    to: rest.clone(),
-                                }),
-                            );
-                            Rc::new(PatternResult {
-                                pattern: Rc::new(MatchPattern::Bind {
-                                    declaration:
-                                        crate::v1_std_core::make_pattern_binder_declaration_node(
-                                            minted.identity.clone(),
-                                            kw_text.clone(),
-                                            span.clone(),
-                                        ),
-                                }),
-                                tokens: rest.clone(),
-                                ctx: minted.ctx.clone(),
-                                err: std::option::Option::None,
-                            })
+                        if keyword_may_bind_as_pattern_name(kw_text.clone(), ctx.env.clone()) {
+                            {
+                                let rest = token_stream_advance(tokens.clone(), 1);
+                                let minted = mint_parsed_node_identity(
+                                    ctx.clone(),
+                                    Rc::new(ParsedExtentAt::ConsumedWindow {
+                                        from: tokens.clone(),
+                                        to: rest.clone(),
+                                    }),
+                                );
+                                Rc::new(PatternResult {
+                                    pattern: Rc::new(MatchPattern::Bind {
+                                        declaration:
+                                            crate::v1_std_core::make_pattern_binder_declaration_node(
+                                                minted.identity.clone(),
+                                                kw_text.clone(),
+                                                span.clone(),
+                                            ),
+                                    }),
+                                    tokens: rest.clone(),
+                                    ctx: minted.ctx.clone(),
+                                    err: std::option::Option::None,
+                                })
+                            }
                         } else {
                             Rc::new(PatternResult {
                                 pattern: Rc::new(MatchPattern::Wildcard),
@@ -17928,25 +17950,23 @@ pub fn parse_variant_bindings_brace_acc(
                             t.text.clone(),
                         ) {
                             Some(_) => {}
-                            std::option::Option::None => {
-                                match v1_rt::lookup(
-                                    &ctx.env.clone().non_name_keywords.clone(),
-                                    t.text.clone(),
-                                ) {
-                                    Some(_) => {
-                                        return Rc::new(BindingsResult {
-                                            field_bindings: Rc::new(vec![]),
-                                            tokens: tokens.clone(),
-                                            ctx: ctx.clone(),
-                                            err: Some(reserved_keyword_pattern_binder_error(
-                                                t.text.clone(),
-                                                t.span.clone(),
-                                            )),
-                                        });
-                                    }
-                                    std::option::Option::None => {}
+                            std::option::Option::None => match v1_rt::lookup(
+                                &ctx.env.clone().non_name_keywords.clone(),
+                                t.text.clone(),
+                            ) {
+                                Some(_) => {
+                                    return Rc::new(BindingsResult {
+                                        field_bindings: Rc::new(vec![]),
+                                        tokens: tokens.clone(),
+                                        ctx: ctx.clone(),
+                                        err: Some(reserved_keyword_pattern_binder_error(
+                                            t.text.clone(),
+                                            t.span.clone(),
+                                        )),
+                                    })
                                 }
-                            }
+                                std::option::Option::None => {}
+                            },
                         }
                     }
                 }

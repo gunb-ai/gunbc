@@ -28,7 +28,16 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum CurrencyCode {

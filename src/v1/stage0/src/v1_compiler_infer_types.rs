@@ -334,7 +334,7 @@ pub fn is_unit_like(n: Rc<Node>) -> bool {
     ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 0))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum TypeResolutionVerdict {
     FullyResolved,
@@ -700,7 +700,7 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct KernelTypeBuild {
     pub ty: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -2397,7 +2397,7 @@ pub fn node_type_shape(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum TextJudgment {
     TextJudgedIn { env: Rc<TypeEnv> },
@@ -2405,7 +2405,16 @@ pub enum TextJudgment {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum TextNotAskedReason {
@@ -3274,7 +3283,7 @@ pub fn binop_algebra_fields(op: BinOp) -> Rc<Vec<AlgebraFieldKind>> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct AlgebraFieldMatch {
     pub field_kind: AlgebraFieldKind,
     pub field_node: Rc<Node>,
@@ -3323,7 +3332,7 @@ pub fn first_matching_algebra_field(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct BinOpInferred {
     pub result_type: Rc<Node>,
     pub algebra_field: Option<AlgebraFieldKind>,

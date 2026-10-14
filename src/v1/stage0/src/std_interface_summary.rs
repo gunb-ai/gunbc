@@ -31,7 +31,7 @@ pub type SignatureFingerprint = Rc<Fnv1a64Structural>;
 
 pub type TypedModuleKey = Rc<Fnv1a64Structural>;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum InterfaceContract {
     ContractAbsent,
@@ -49,7 +49,16 @@ impl InterfaceContract {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum ExportKind {
@@ -59,14 +68,14 @@ pub enum ExportKind {
     ExportService,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ExportEntry {
     pub name: NonEmptyStr,
     pub kind: ExportKind,
     pub contract: Rc<InterfaceContract>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct InterfaceSummary {
     pub module_path: NonEmptyStr,
     pub exports: Rc<Vec<Rc<ExportEntry>>>,

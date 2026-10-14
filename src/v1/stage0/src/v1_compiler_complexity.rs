@@ -98,7 +98,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum SizeExpr {
     SizeConst {
@@ -120,7 +120,7 @@ pub enum SizeExpr {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum CostExpr {
     CostConst {
@@ -156,7 +156,16 @@ pub enum CostExpr {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum Certainty {
@@ -164,7 +173,7 @@ pub enum Certainty {
     Conservative,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ComplexitySummary {
     pub work: Rc<CostExpr>,
     pub span: Rc<CostExpr>,
@@ -173,7 +182,7 @@ pub struct ComplexitySummary {
     pub peak_space: Option<Rc<CostExpr>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct CostInternTable {
     pub summaries: Rc<HashMap<String, Rc<ComplexitySummary>>>,
 }
@@ -219,20 +228,20 @@ pub fn evict_summary(table: Rc<CostInternTable>, func_name: String) -> Rc<CostIn
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SccInfo {
     pub members: Rc<Vec<String>>,
     pub member_set: Rc<BTreeSet<String>>,
     pub pattern: Rc<LoweringTarget>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SccBuildAcc {
     pub assigned: Rc<BTreeSet<String>>,
     pub index: Rc<HashMap<String, Rc<SccInfo>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SccResult {
     pub index: Rc<HashMap<String, Rc<SccInfo>>>,
     pub topo_order: Rc<Vec<String>>,
@@ -240,13 +249,13 @@ pub struct SccResult {
     pub call_graph: Rc<CallGraph>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ParserStateParam {
     pub name: String,
     pub index: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ParserResultSource {
     ParserResultAdvance {
@@ -280,38 +289,38 @@ impl ParserResultSource {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ParserProgressEdge {
     pub caller: String,
     pub callee: String,
     pub progress: DescentEvidence,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ParserProgressEnv {
     pub state_aliases: Rc<HashMap<String, DescentEvidence>>,
     pub result_sources: Rc<HashMap<String, Rc<ParserResultSource>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ParserProgressAcc {
     pub edges: Rc<Vec<Rc<ParserProgressEdge>>>,
     pub env: Rc<ParserProgressEnv>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct DescentCheckAcc {
     pub ok: bool,
     pub vars: Rc<HashMap<String, bool>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct EvidenceBlockAcc {
     pub evidence: Option<DescentEvidence>,
     pub vars: Rc<HashMap<String, bool>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SccEdgeBlockAcc {
     pub edges: Rc<Vec<Rc<ParserProgressEdge>>>,
     pub vars: Rc<HashMap<String, bool>>,
@@ -460,13 +469,13 @@ pub fn parser_result_state_progress(
     result_name: String,
 ) -> DescentEvidence {
     match (*source.clone()).clone() {
-        ParserResultSource::ParserResultAdvance { input, .. } => {
+        ParserResultSource::ParserResultAdvance { input: input, .. } => {
             strict_after_parser_witness(input.clone())
         }
-        ParserResultSource::ParserResultExpect { input, .. } => {
+        ParserResultSource::ParserResultExpect { input: input, .. } => {
             strict_after_parser_witness(input.clone())
         }
-        ParserResultSource::ParserResultEat { input, .. } => {
+        ParserResultSource::ParserResultEat { input: input, .. } => {
             if set_has(consumed_true_set.clone(), result_name.clone()) {
                 strict_after_parser_witness(input.clone())
             } else {
@@ -8479,14 +8488,14 @@ pub fn cost_of_method_by_shape(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ComplexityViolation {
     pub func_name: String,
     pub reason: String,
     pub span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct StructuralBoundResult {
     pub func_name: String,
     pub param: String,
@@ -8495,7 +8504,7 @@ pub struct StructuralBoundResult {
     pub span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ComplexityReport {
     pub function_classes: Rc<HashMap<String, String>>,
     pub space_classes: Rc<HashMap<String, String>>,
@@ -8979,7 +8988,7 @@ pub fn short_var_name(index: i64) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct Legend {
     pub substitution: Rc<HashMap<String, String>>,
     pub suffix: String,
@@ -9205,7 +9214,7 @@ pub fn collect_size_vars(expr: Rc<CostExpr>) -> Rc<Vec<String>> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct DeduplicateAcc {
     pub seen: Rc<HashMap<String, bool>>,
     pub out: Rc<Vec<String>>,
@@ -9233,7 +9242,7 @@ pub fn deduplicate(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct FuncEntry {
     pub name: String,
     pub body: Rc<Node>,
@@ -9242,16 +9251,18 @@ pub struct FuncEntry {
     pub is_tail_recursive: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
+)]
 pub struct RecursionContext;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SummaryResult {
     pub summary: Rc<ComplexitySummary>,
     pub table: Rc<CostInternTable>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct TopoBuildAcc {
     pub table: Rc<CostInternTable>,
     pub classes: Rc<HashMap<String, String>>,
@@ -9262,7 +9273,7 @@ pub struct TopoBuildAcc {
     pub processed: Rc<HashMap<String, bool>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct MatchCostAccum {
     pub result: Rc<SummaryResult>,
     pub branch_costs: Rc<Vec<Rc<CostExpr>>>,

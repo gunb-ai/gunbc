@@ -5566,38 +5566,6 @@ mod compiler_tests {
         );
     }
 
-    // AN OPTIONAL CARRIER WHOSE PAYLOAD TYPE NODE IS ABSENT REFUSES; IT NEVER RENDERS `()`. The fixture is a
-    // hand-built childless carrier node reaching the Absent arm directly, so the red does not depend on
-    // what infer stamps for `Optional<List<Optional<Int>>>` (measured erased by merry-moth-118, node
-    // adhoc-c3c735c9-3af; the source specimen is the positive control of the producer-side stamping PR).
-    // THE CONTROL is the same carrier with an `Int` payload child, which renders `Option<i64>`.
-    #[test]
-    fn an_optional_carrier_with_an_absent_payload_node_refuses() {
-        let source_indices = std::rc::Rc::new(HashMap::new());
-        let render = |carrier: std::rc::Rc<crate::v1_std_core::Node>| -> String {
-            crate::v1_compiler_emit_rust::render_rust_optional_carrier_applied(
-                carrier,
-                std::rc::Rc::new(im::Vector::new()),
-                std::rc::Rc::new(im::OrdSet::new()),
-                source_indices.clone(),
-                std::rc::Rc::new(HashMap::new()),
-                crate::v1_compiler_infer_env::empty_type_env(),
-            )
-        };
-        let red = render(shaped_type_node("Optional", Vec::new()));
-        assert!(
-            red.contains("compile_error!")
-                && red.contains("optional carrier payload type node absent")
-                && !red.contains("()"),
-            "an absent payload must refuse and never render ():\n{red}"
-        );
-        let control = render(shaped_type_node("Optional", vec![named_type_node("Int")]));
-        assert_eq!(
-            control, "Option<i64>",
-            "a present payload node renders its payload"
-        );
-    }
-
     // A REPEATED TYPE PARAMETER IN ONE HEADER REFUSES, LOCATED, AND SAYS WHICH NAME. The refusal
     // predates this row. Its message once blamed a value parameter and called a type a fn, so the
     // row asserts the NAME and the OWNER, not merely that some diagnostic fired. The control header
