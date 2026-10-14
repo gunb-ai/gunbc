@@ -141,3 +141,13 @@ test fn kpt_generic_unkinded_fn_runs() -> Bool { kpt_runs(src: "module p\n\nfn i
 test fn kpt_generic_kinded_fn_no_body_read_runs() -> Bool { kpt_runs(src: concat(kpe_prelude(), "fn constant<bits: Resolution>(x: Box<bits>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  constant(x: mk8())\n}\n"), name: ^constant) }
 test fn kpt_ctor_fn_runs() -> Bool { kpt_runs(src: concat(kpe_prelude(), "fn consumer() -> Int {\n  3\n}\n"), name: ^mk8) }
 test fn kpt_box_param_plain_fn_runs() -> Bool { kpt_runs(src: concat(kpe_prelude(), "fn take(x: Box<8>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  take(x: mk8())\n}\n"), name: ^take) }
+
+fn kpu_src(call: String) -> String {
+  concat("module p\n\ntype Resolution\n  = Static\n  | Pointer\n\nfn width_of<bits: Resolution>() -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  ", concat(call, "\n}\n"))
+}
+
+test fn kpu_explicit_literal_runs() -> Bool { kpt_runs(src: kpu_src(call: "width_of<8>()"), name: ^width_of) }
+test fn kpu_explicit_literal_assembles() -> Bool { match cref_inferred_of(o: cref_assemble(src: kpu_src(call: "width_of<8>()"))) { Present { value: _ } => true
+  Absent => false } }
+test fn kpu_explicit_variant_assembles() -> Bool { match cref_inferred_of(o: cref_assemble(src: kpu_src(call: "width_of<Pointer>()"))) { Present { value: _ } => true
+  Absent => false } }
