@@ -20,6 +20,9 @@ import gunbc.host.memory_envelope {
 import std.algebra { list_map }
 import gunbc.parse_verdict_schema {
   parse_verdict_request_family,
+  parse_compiler_sha_identity_blob_dir,
+  parse_compiler_sha_identity_blob_path,
+  parse_compiler_sha_identity_cache_key,
 }
 
 // POLICY (not the GitHub cache interface): this repository publishes materialization receipts
@@ -48,9 +51,9 @@ fn materialization_gha_cache_key_prefix(family: String) -> String {
 //   gunbc-materialization-<family>-<compiler_identity>-<github.sha>
 // compiler_identity is the parse-compiler digest (sidecar .parse_compiler_identity beside
 // keep_generation_one_executable): import_closure_live of tokenize+parse+schema, emitted
-// Rust of those modules, src/v1/stage0_runtime, rustc identity. Restore is prefix
-//   gunbc-materialization-<family>-<compiler_identity>-
-// so a parser-identity change cannot hit a prior compiler's blob.
+// Rust of those modules, src/v1/stage0_runtime, rustc identity. Restore is the exact
+// key for base.sha (never a prefix fallback onto another main sha). I_base is the
+// independent sha-keyed blob gunbc-parse-identity-<sha>.
 // THE RECEIPT PREIMAGE inside the blob is ParseVerdictRequest { source_digest, compiler }
 // (std.materialization_provider): every stored line is
 //   parse-verdict <TAB> <source_digest> <TAB> <compiler_identity> <TAB> Accepted
@@ -124,6 +127,7 @@ fn parse_verdict_wrapped_script(command: String) -> String {
 fn parse_verdict_publish_script_is_renderable() -> Bool {
   wrap_command_is_renderable(command: parse_verdict_identity_command())
     && wrap_command_is_renderable(command: parse_verdict_publish_command())
+    && wrap_command_is_renderable(command: parse_verdict_identity_blob_command())
 }
 
 fn parse_verdict_publish_memory_env() -> List<YamlKeyValue> {
@@ -208,4 +212,54 @@ fn parse_verdict_publish_save_step() -> Step {
     path: parse_verdict_receipt_dir,
     cache_key: parse_verdict_publish_cache_key()
   )
+}
+
+data parse_verdict_identity_blob_step_name: String = "Stage parse-compiler identity for sha-keyed cache"
+fn parse_verdict_identity_blob_save_step_name() -> String {
+  join(["Save parse-compiler identity blob for this sha"], "")
+}
+
+fn parse_verdict_identity_blob_command() -> String {
+  join(
+    [
+      "set -o pipefail",
+      join(["compiler=\"${{ steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_compiler_output, " }}\""], ""),
+      "if [ -z \"$compiler\" ]; then echo \"::error::IdentityUnknown: compiler identity missing before the sha-keyed identity save\"; exit 1; fi",
+      join(["mkdir -p \"", parse_compiler_sha_identity_blob_dir, "\""], ""),
+      join(["printf '%s' \"$compiler\" > \"", parse_compiler_sha_identity_blob_path(), "\""], "")
+    ],
+    "; "
+  )
+}
+
+fn parse_verdict_identity_blob_step() -> Step {
+  RunStep {
+    name: Present { value: parse_verdict_identity_blob_step_name },
+    id: none,
+    run: parse_verdict_wrapped_script(command: parse_verdict_identity_blob_command()),
+    shell: none,
+    env: Present { value: parse_verdict_publish_memory_env() },
+    working_directory: none,
+    if_condition: Present { value: materialization_publish_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn parse_verdict_identity_blob_save_step() -> Step {
+  UsesStep {
+    name: Present { value: parse_verdict_identity_blob_save_step_name() },
+    id: none,
+    uses: cache_save_action,
+    with: Present {
+      value: [
+        kv(key: "path", value: yaml_string(s: parse_compiler_sha_identity_blob_dir)),
+        kv(key: "key", value: yaml_string(s: parse_compiler_sha_identity_cache_key(sha: "${{ github.sha }}")))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: materialization_publish_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
 }

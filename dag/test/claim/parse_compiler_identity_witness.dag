@@ -1,6 +1,7 @@
 module test.claim.parse_compiler_identity_witness
 
 import std.types { Bool }
+import std.optional { Absent, Present }
 import v2.compiler.self_host.seed_retention_frontier {
   ReasonDeclaredElsewhere,
   seed_retention_frontier_roster,
@@ -19,6 +20,7 @@ import gunbc.parse_verdict_schema {
   Reused,
   FreshIdentityWalked,
   EvictedRefused,
+  BaseIdentityUnobserved,
 }
 import extdeps.filesystem.filesystem_io
 
@@ -41,27 +43,50 @@ test fn the_seed_parse_compiler_entry_consts_match_the_schema() -> Bool {
 }
 
 test fn a_changed_identity_is_a_fresh_walk_and_never_saves_on_a_pr() -> Bool {
-  match parse_verdict_reuse_from(i_head: "new", i_base: "old", restore_hit: false) {
+  match parse_verdict_reuse_from(i_head: "new", i_base: Present { value: "old" }, bundle_hit: false, receipts_nonempty: false, base_sha: "base") {
     FreshIdentityWalked { compiler: c } =>
       c == "new" && (parse_verdict_reuse_may_save(standing: FreshIdentityWalked { compiler: c }, is_main_push: false) == false)
     Reused { compiler: _ } => false
     EvictedRefused { compiler: _ } => false
+    BaseIdentityUnobserved { base_sha: _ } => false
   }
 }
 
 test fn same_identity_with_a_hit_is_reused() -> Bool {
-  match parse_verdict_reuse_from(i_head: "same", i_base: "same", restore_hit: true) {
+  match parse_verdict_reuse_from(i_head: "same", i_base: Present { value: "same" }, bundle_hit: true, receipts_nonempty: true, base_sha: "base") {
     Reused { compiler: c } => c == "same"
     FreshIdentityWalked { compiler: _ } => false
     EvictedRefused { compiler: _ } => false
+    BaseIdentityUnobserved { base_sha: _ } => false
   }
 }
 
 test fn same_identity_with_a_miss_is_evicted() -> Bool {
-  match parse_verdict_reuse_from(i_head: "same", i_base: "same", restore_hit: false) {
+  match parse_verdict_reuse_from(i_head: "same", i_base: Present { value: "same" }, bundle_hit: false, receipts_nonempty: false, base_sha: "base") {
     EvictedRefused { compiler: c } => c == "same"
     Reused { compiler: _ } => false
     FreshIdentityWalked { compiler: _ } => false
+    BaseIdentityUnobserved { base_sha: _ } => false
+  }
+}
+
+test fn same_identity_with_an_empty_bundle_is_evicted() -> Bool {
+  match parse_verdict_reuse_from(i_head: "same", i_base: Present { value: "same" }, bundle_hit: true, receipts_nonempty: false, base_sha: "base") {
+    EvictedRefused { compiler: c } => c == "same"
+    Reused { compiler: _ } => false
+    FreshIdentityWalked { compiler: _ } => false
+    BaseIdentityUnobserved { base_sha: _ } => false
+  }
+}
+
+test fn absent_base_identity_is_unobserved_and_never_walks() -> Bool {
+  match parse_verdict_reuse_from(i_head: "new", i_base: Absent, bundle_hit: false, receipts_nonempty: false, base_sha: "deadbeef") {
+    BaseIdentityUnobserved { base_sha: s } =>
+      s == "deadbeef"
+        && (parse_verdict_reuse_may_save(standing: BaseIdentityUnobserved { base_sha: s }, is_main_push: false) == false)
+    Reused { compiler: _ } => false
+    FreshIdentityWalked { compiler: _ } => false
+    EvictedRefused { compiler: _ } => false
   }
 }
 
