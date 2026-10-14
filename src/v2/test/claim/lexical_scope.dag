@@ -339,6 +339,22 @@ test fn a_qualified_reference_in_a_variant_payload_is_a_site() -> Bool {
   head_of_site(content: variant_payload_subject(), spelling: "v2.std.logic.and") == "unbound"
 }
 
+// The skip is the interned token-class payload labels, not an authored field named `value`.
+// Rec { value: n } is a construct field VALUE: a name there is a mention. A data item binds at
+// the root like `cfg`; a nullary coproduct arm is not a value declaration, so the head is unbound,
+// but it is still a site (DESIGN section 5: skipping every `value` edge would drop both).
+fn construct_field_value_names_subject() -> String {
+  "module v2.test.subject\n\ntype Rec { value: Slot }\n\ntype Slot = SomeNullaryArm | Empty\n\ndata someData: Slot = SomeNullaryArm\n\nfn as_data() -> Rec {\n  Rec { value: someData }\n}\n\nfn as_arm() -> Rec {\n  Rec { value: SomeNullaryArm }\n}\n"
+}
+
+test fn a_data_name_in_a_construct_field_value_is_a_site() -> Bool {
+  head_of_site(content: construct_field_value_names_subject(), spelling: "someData") == "root"
+}
+
+test fn a_nullary_arm_in_a_construct_field_value_is_a_site() -> Bool {
+  head_of_site(content: construct_field_value_names_subject(), spelling: "SomeNullaryArm") == "unbound"
+}
+
 test fn the_plain_collection_is_the_scoped_collection_with_the_head_dropped() -> Bool {
   match prepare_grammar(grammar: dag_language_model().grammar) {
     Rejected { diagnostics: _ } => false
