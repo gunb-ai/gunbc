@@ -20015,7 +20015,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            NativeCensusScope::NativeCensusScopeClosed \{ subject, .. \} => (subject.clone(), \"closed\", 0),", "\n",
       "            NativeCensusScope::NativeCensusScopeBlocked \{ subject, blocked_rest, .. \} => (subject.clone(), \"blocked\", 1 + blocked_rest.len()),", "\n",
       "        \};", "\n",
-      "        // THE RUN'S OWN RECORD, decided by v2.compiler.compile census_scoped_run_record from what this walk held.", "\n",
+      "        // THE RUN'S OWN RECORD, decided by v2.compiler.source_root_eval census_scoped_run_record from what this walk held.", "\n",
       "        let record = census_scoped_run_record(scope.clone(), Rc::new(im::vector::Vector::from(obligation_rows.clone())), Rc::new(walk.digests.iter().cloned().collect()));", "\n",
       "        println!(\"\{\}\", serde_json::json!(\{ \"census_run_record\": record.clone() \}));", "\n",
       "        // THE PROJECTION A LATER RUN READS BACK (census_comparable_record): plain data, so it deserializes", "\n",
