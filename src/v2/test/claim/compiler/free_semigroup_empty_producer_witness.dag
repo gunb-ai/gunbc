@@ -40,11 +40,14 @@ data fse_built_ok_source: String = "module v2.test.fse_built_ok\n\ntype FsIntLis
 
 data fse_formal_variant_source: String = "module v2.test.fse_formal_variant\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_take(xs: FsNonEmpty<Int>) -> Int { 1 }\n\nfn fse_call() -> Int { fse_take(xs: FsEmpty) }\n"
 
-data fse_alias_ok_source: String = "module v2.test.fse_alias_ok\n\ntype FsIntList = FsIntEmpty | FsIntCons { head: Int, tail: FsIntList }\n\ntype FsIntNonEmpty {\n  head: Int\n  tail: FsIntList\n}\n\ntype FsIntAlias = FsIntNonEmpty\n\nfn fse_alias_ok() -> FsIntAlias { FsIntNonEmpty { head: 1, tail: FsIntEmpty } }\n\nfn fse_alias_back(x: FsIntAlias) -> FsIntNonEmpty { x }\n"
+data fse_alias_ok_source: String = "module v2.test.fse_alias_ok\n\ntype FsIntList = FsIntEmpty | FsIntCons { head: Int, tail: FsIntList }\n\ntype FsIntNonEmpty {\n  head: Int\n  tail: FsIntList\n}\n\ntype FsIntAlias = FsIntNonEmpty\n\nfn fse_alias_ok() -> FsIntAlias { FsIntNonEmpty { head: 1, tail: FsIntEmpty } }\n"
+
+data fse_generic_ok_source: String = "module v2.test.fse_generic_ok\n\ntype FsList<T> = FsEmpty | FsCons { head: T, tail: FsList<T> }\n\ntype FsNonEmpty<T> {\n  head: T\n  tail: FsList<T>\n}\n\nfn fse_ok() -> FsNonEmpty<Int> { FsNonEmpty { head: 1, tail: FsEmpty } }\n"
 
 data fse_ingest: SourceRootIngest = [
   rcf_read(source: fse_return_empty_source, id: ^fse_return_empty_read, unit: ^fse_return_empty_cu, path: "src/v2/test/fixture/free_semigroup_empty/return_empty.dag"),
   rcf_read(source: fse_alias_ok_source, id: ^fse_alias_ok_read, unit: ^fse_alias_ok_cu, path: "src/v2/test/fixture/free_semigroup_empty/alias_ok.dag"),
+  rcf_read(source: fse_generic_ok_source, id: ^fse_generic_ok_read, unit: ^fse_generic_ok_cu, path: "src/v2/test/fixture/free_semigroup_empty/generic_ok.dag"),
   rcf_read(source: fse_built_ok_source, id: ^fse_built_ok_read, unit: ^fse_built_ok_cu, path: "src/v2/test/fixture/free_semigroup_empty/built_ok.dag"),
   rcf_read(source: fse_formal_variant_source, id: ^fse_formal_variant_read, unit: ^fse_formal_variant_cu, path: "src/v2/test/fixture/free_semigroup_empty/formal_b.dag"),
 ]
@@ -123,7 +126,12 @@ test fn fse_bare_generic_at_its_applied_self_is_undecided_holds() -> Bool {
   }
 }
 
-// ALIAS POSITIVE CONTROL on the real path: a transparent alias and the declaration it names inhabit each other.
+// ALIAS POSITIVE CONTROL on the real path: a value of the declaration inhabits a transparent alias of it (return position).
 test fn fse_a_transparent_alias_and_its_declaration_inhabit_each_other_holds() -> Bool {
   fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_alias_ok"))
+}
+
+// POSITIVE CONTROL, generic: a constructed value of the generic nonempty product, its tail the generic empty variant.
+test fn fse_a_constructed_generic_nonempty_value_is_accepted_holds() -> Bool {
+  fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_generic_ok"))
 }
