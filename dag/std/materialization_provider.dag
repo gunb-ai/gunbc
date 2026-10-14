@@ -37,6 +37,7 @@ import std.cache_identity {
   ArtifactKindId,
   CacheInterfaceId,
   parse_source_artifact_kind,
+  parse_verdict_artifact_kind,
   typed_module_artifact_kind,
   resolved_graph_artifact_kind,
   native_compiler_artifact_kind,
@@ -90,6 +91,7 @@ import std.judgment_contract {
   length_prefixed_encode,
   output_compile_clean_diagnostic_union,
   output_module_preparation_diagnostics,
+  output_parse_verdict,
   output_compute_work_outcome,
   output_compute_work_log,
   output_compute_work_outputs,
@@ -164,6 +166,7 @@ THE OPEN OBSERVATION, AND ITS HONEST CLASS (parent ruling on codex review 44286)
 
 type ArtifactRequest
   = ParseModuleRequest { source_digest: Fnv1a64Structural, compiler: DeclaredInput }
+  | ParseVerdictRequest { source_digest: Fnv1a64Structural, compiler: DeclaredInput }
   | TypecheckModuleRequest {
       source_digest: Fnv1a64Structural,
       direct_import_interfaces: List<InterfaceHash>,
@@ -408,6 +411,7 @@ fn request_evaluation_bucket(identity: EvaluationIdentity, req: ArtifactRequest)
   request_fold(
     req: req,
     parse_module: (sd, c) => evaluation_identity_index_bucket(evaluation: identity),
+    parse_verdict: (sd, c) => evaluation_identity_index_bucket(evaluation: identity),
     typecheck_module: (sd, ii, c) =>
       as_content_hash_structural(
         structural: typed_module_key(
@@ -503,6 +507,7 @@ fn request_git_object_rows(req: ArtifactRequest) -> List<EvaluationIdentityCompo
   request_fold(
     req: req,
     parse_module: (sd, c) => [],
+    parse_verdict: (sd, c) => [],
     typecheck_module: (sd, ii, c) => [],
     resolve_closure: (cd, c) => [],
     native_compiler: g => [],
@@ -788,6 +793,40 @@ fn parse_module_judgment_contract(source_digest: Fnv1a64Structural, compiler: De
   }
 }
 
+// THE PARSE VERDICT IS THE PARSE COMPUTATION PROJECTED TO ITS VERDICT, NOT A SECOND COMPUTATION. Subject
+// and declared inputs are READ FROM parse_module_judgment_contract, so the two requests cannot disagree on
+// which source under which parser they denote; only the kind (a verdict is not served as a tree) and the
+// required parts differ. The model has no output-subset request, so the narrower part set is its own
+// family. A refused parse is served only as a refusal arm; consumers re-parse refusals, because the receipt
+// carries only Accepted verdicts. The cause TEXT was equal across two file keys on the tested shapes
+// (module_acquisition path-independence claims), but acquisition_parsed interns the file key into
+// tokenization, so a located diagnostic is not covered by a key that carries no file; re-parsing is the
+// conservative arm until a located refusal is shown path-independent.
+// DECLARED FRONTIER (DESIGN section 3c). Consumers: the main-run publisher that commits one verdict per
+// walked module, and the population-parse lookup that serves them. TRIGGER: both land under the
+// parse-population receipt cut (witnesses wall-time), publisher first.
+fn parse_verdict_judgment_contract(source_digest: Fnv1a64Structural, compiler: DeclaredInput) -> JudgmentContract {
+  let parse = parse_module_judgment_contract(source_digest: source_digest, compiler: compiler)
+  JudgmentContract {
+    demand_identity: DemandIdentity {
+      kind: parse_verdict_artifact_kind,
+      subject: parse.demand_identity.subject,
+      declared_inputs: parse.demand_identity.declared_inputs
+    },
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: true,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [
+        persisted_output(id: output_parse_verdict, occurrence_contract: SemanticOnly),
+        persisted_output(id: output_parse_diagnostics, occurrence_contract: Scoped)
+      ]
+    },
+    demand_nature: parse.demand_nature
+  }
+}
+
 fn typecheck_module_judgment_contract(
   source_digest: Fnv1a64Structural,
   direct_import_interfaces: List<InterfaceHash>,
@@ -1031,6 +1070,7 @@ fn request_judgment_contract(req: ArtifactRequest) -> JudgmentContract {
   request_fold(
     req: req,
     parse_module: parse_module_judgment_contract,
+    parse_verdict: parse_verdict_judgment_contract,
     typecheck_module: typecheck_module_judgment_contract,
     resolve_closure: resolve_closure_judgment_contract,
     native_compiler: native_compiler_judgment_contract,
@@ -1043,6 +1083,7 @@ fn request_judgment_contract(req: ArtifactRequest) -> JudgmentContract {
 fn request_fold<T>(
   req: ArtifactRequest,
   parse_module: fn(Fnv1a64Structural, DeclaredInput) -> T,
+  parse_verdict: fn(Fnv1a64Structural, DeclaredInput) -> T,
   typecheck_module: fn(Fnv1a64Structural, List<InterfaceHash>, DeclaredInput) -> T,
   resolve_closure: fn(Fnv1a64Structural, DeclaredInput) -> T,
   native_compiler: fn(PreMaterializationIdentity) -> T,
@@ -1052,6 +1093,7 @@ fn request_fold<T>(
 ) -> T {
   match req {
     ParseModuleRequest { source_digest: sd, compiler: c } => parse_module(sd, c)
+    ParseVerdictRequest { source_digest: sd, compiler: c } => parse_verdict(sd, c)
     TypecheckModuleRequest { source_digest: sd, direct_import_interfaces: ii, compiler: c } =>
       typecheck_module(sd, ii, c)
     ResolveClosureRequest { closure_digest: cd, compiler: c } => resolve_closure(cd, c)
@@ -1223,6 +1265,11 @@ type MaterializedArtifact
       test_identity_population: ArtifactPart,
       module_import_closures: ArtifactPart
     }
+  | ParseVerdictArtifact {
+      request_key: ContentHash,
+      parse_verdict: ArtifactPart,
+      parse_diagnostics: ArtifactPart
+    }
   | ModuleVerdictBundleArtifact {
       request_key: ContentHash,
       test_verdicts: ArtifactPart,
@@ -1245,6 +1292,7 @@ type MaterializedArtifact
 fn artifact_fold<T>(
   artifact: MaterializedArtifact,
   parsed: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
+  parse_verdict: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   typed_module: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   resolved_graph: fn(ContentHash, ArtifactPart, ArtifactPart, ArtifactPart) -> T,
   native_compiler: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
@@ -1267,6 +1315,7 @@ fn artifact_fold<T>(
       native_compiler(k, e, d)
     UniverseArtifact { request_key: k, test_identity_population: p, module_import_closures: c } =>
       universe(k, p, c)
+    ParseVerdictArtifact { request_key: k, parse_verdict: v, parse_diagnostics: d } => parse_verdict(k, v, d)
     ModuleVerdictBundleArtifact { request_key: k, test_verdicts: v, preparation_diagnostics: d } =>
       module_verdict_bundle(k, v, d)
     ComputeWorkArtifact { request_key: k, outcome: o, log: l, outputs: x, gunbc_binary: g, claim_batch_binary: c } => compute_work(k, o, l, x, g, c)
@@ -1279,6 +1328,7 @@ fn artifact_kind(artifact: MaterializedArtifact) -> ArtifactKindId {
   artifact_fold(
     artifact: artifact,
     parsed: (k, t, d) => parse_source_artifact_kind,
+    parse_verdict: (k, v, d) => parse_verdict_artifact_kind,
     typed_module: (k, i, d) => typed_module_artifact_kind,
     resolved_graph: (k, g, s, u) => resolved_graph_artifact_kind,
     native_compiler: (k, e, d) => native_compiler_artifact_kind,
@@ -1293,6 +1343,7 @@ fn artifact_request_key(artifact: MaterializedArtifact) -> ContentHash {
   artifact_fold(
     artifact: artifact,
     parsed: (k, t, d) => k,
+    parse_verdict: (k, v, d) => k,
     typed_module: (k, i, d) => k,
     resolved_graph: (k, g, s, u) => k,
     native_compiler: (k, e, d) => k,
@@ -1308,6 +1359,10 @@ fn artifact_carried_outputs(artifact: MaterializedArtifact) -> List<CarriedOutpu
     artifact: artifact,
     parsed: (k, t, d) => [
       positioned_part(id: output_parse_tree, part: t),
+      positioned_part(id: output_parse_diagnostics, part: d)
+    ],
+    parse_verdict: (k, v, d) => [
+      positioned_part(id: output_parse_verdict, part: v),
       positioned_part(id: output_parse_diagnostics, part: d)
     ],
     typed_module: (k, i, d) => [
@@ -1503,6 +1558,9 @@ fn artifact_from_manifest(m: ArtifactManifest) -> ManifestDecode {
   if m.kind == parse_source_artifact_kind {
     manifest_two_part(m: m, first: output_parse_tree, second: output_parse_diagnostics,
       build: (a, b) => ParsedArtifact { request_key: k, parse_tree: a, parse_diagnostics: b })
+  } else if m.kind == parse_verdict_artifact_kind {
+    manifest_two_part(m: m, first: output_parse_verdict, second: output_parse_diagnostics,
+      build: (a, b) => ParseVerdictArtifact { request_key: k, parse_verdict: a, parse_diagnostics: b })
   } else if m.kind == typed_module_artifact_kind {
     manifest_two_part(m: m, first: output_typed_module_interface, second: output_typecheck_diagnostics,
       build: (a, b) => TypedModuleArtifact { request_key: k, typed_module_interface: a, typecheck_diagnostics: b })
