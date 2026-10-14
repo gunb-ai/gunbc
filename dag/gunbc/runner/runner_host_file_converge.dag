@@ -7,10 +7,23 @@ import std.algebra { trim, list_head }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
-import extdeps.systemd { systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, systemd_unit_property_wire }
+import extdeps.systemd { systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, systemd_unit_property_wire }
 import extdeps.tools.grep { grep_fixed_string_in_tree_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key, cgroup_v2_events_interface_file }
-import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv }
+import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_stop_argv, systemctl_disable_now_argv }
+import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
+import extdeps.posix.getent { getent_passwd_command }
+import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
+import extdeps.jobserver { jobserver_makeflags_env_name }
+import std.measure { HardwareThreadCount, hardware_thread_count_value }
+import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path, gunbc_runner_jobserver_service }
+import gunbc.host.host_axis_caps { cap_dropin_content }
+import gunbc.ci.ci_runner_placement {
+  runner_deployment_plan, runner_host_deployment_for,
+  HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
+  host_deployment_refusal_text,
+  CapacityQuota, NoCpuCeiling,
+}
 import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate }
 import extdeps.needrestart {
   NeedrestartServiceSelectionOverride,
@@ -71,9 +84,11 @@ import gunbc.runner.runner_unit_file {
   runner_unit_teardown_dropin_path,
   gunbc_runner_unit_teardown_dropin_text,
   runner_unit_depriv_dropin_path,
-  gunbc_runner_unit_depriv_dropin_text_from_figure,
-  runner_job_user_xdg_runtime_uid,
-  RunnerJobUserRuntimeUidFigure,
+  gunbc_runner_unit_depriv_dropin_text_from_reading,
+  RunnerJobUserUidReading,
+  JobUserUidObserved,
+  JobUserUidUnobserved,
+  runner_job_user_uid_reading,
   runner_unit_system_path,
   gunbc_runner_unit_fragment_from_deploy,
   RunnerUnitText,
@@ -168,8 +183,38 @@ data runner_host_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc" a
 
 data runner_needrestart_conf_d_stem: NonEmptyStr = "50-gunbc-actions-runner" as NonEmptyStr
 
-fn runner_host_file_desired_population(host: HostIdentity) -> RunnerHostFileDesiredPopulation {
-  runner_host_file_desired_population_from_uid_figure(host: host, figure: runner_job_user_xdg_runtime_uid())
+// THE SLOT'S CPU CEILING, AS THE DROP-IN THE CONVERGE OWNS. 60-fleet-cpu.conf is the managed name
+// (gunbc.host.host_converge gunbc_runner_per_slot_cpu_dropin_path), and its one value is the per-slot
+// quota gunbc.ci.ci_runner_placement host_cpu_allocation derives for this host -- the same field the
+// unit's CARGO_BUILD_JOBS binds to. Writing it here replaces whatever occupies that path, including
+// a hand-placed copy, so the path cannot be left as orphan drift. It does not depend on the job
+// user's uid, so it reaches a host whose uid read failed.
+type RunnerSlotCpuDesired
+  = SlotCpuDesired { per_slot: HardwareThreadCount, file: RunnerHostFileDesired }
+  | SlotCpuRefused { cause: NonEmptyStr }
+
+fn runner_slot_cpu_desired(host: HostIdentity) -> RunnerSlotCpuDesired {
+  match runner_host_deployment_for(p: runner_deployment_plan(), host: host) {
+    HostRunnerDeploymentRefused { refusal: r } =>
+      SlotCpuRefused { cause: concat("runner_host_file_converge: the runner deployment refuses, so no per-slot CPU quota is derived: ", host_deployment_refusal_text(c: r.cause)) as NonEmptyStr }
+    HostRunnerDeploymentDerived { deployment: d } =>
+      match d.per_runner_cpu_boundary {
+        NoCpuCeiling => SlotCpuRefused { cause: "runner_host_file_converge: the deployment declares no per-slot CPU ceiling" as NonEmptyStr }
+        CapacityQuota { threads: t } =>
+          SlotCpuDesired {
+            per_slot: t,
+            file: RunnerHostFileDesired {
+              subject: "runner-cpu-dropin" as NonEmptyStr,
+              path: gunbc_runner_per_slot_cpu_dropin_path as FilePath,
+              content: cap_dropin_content(
+                property: systemd_cpu_quota_property,
+                bytes_value: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }) as NonEmptyStr,
+              ),
+              mode: RemoteFileModeOwnerReadWriteWorldRead,
+            },
+          }
+      }
+  }
 }
 
 fn runner_host_teardown_and_needrestart(prefix: NeedrestartUnitNamePrefix) -> List<RunnerHostFileDesired> {
@@ -236,9 +281,31 @@ fn runner_host_files_with_optional_depriv(
 // THIS BLOCK SITS ON THE DECLARATION BECAUSE DESIGN SECTION 4c ADMITS NOTHING ELSE. It was first
 // written inside the match arm it describes, which the parse phase refuses -- "source annotation
 // sits inside a declaration body" -- and that refusal is the same one gunbc#8976 hit.
-fn runner_host_file_desired_population_from_uid_figure(
+// THE CPU DROP-IN JOINS EVERY ADMITTED POPULATION, uid read or not; a refused population stays refused.
+fn runner_host_file_desired_population_from_uid_reading(
   host: HostIdentity,
-  figure: RunnerJobUserRuntimeUidFigure,
+  reading: RunnerJobUserUidReading,
+) -> RunnerHostFileDesiredPopulation {
+  match runner_host_unit_files_desired(host: host, reading: reading) {
+    RunnerHostFilesDesiredRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
+    RunnerHostFilesDesired { files: fs, withheld: ws } =>
+      match runner_slot_cpu_desired(host: host) {
+        SlotCpuRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
+        SlotCpuDesired { per_slot: _, file: f } => RunnerHostFilesDesired { files: concat(fs, [f]), withheld: ws }
+      }
+  }
+}
+
+// THE UNIT FRAGMENT IS DELIVERED, AND THEREFORE ITS ENVIRONMENT IS OWED, EXACTLY WHEN THE POPULATION
+// CARRIES IT. Where the job user's uid could not be read the fragment is withheld, the host keeps
+// whatever unit it already runs, and the slot environment is reported rather than judged.
+fn runner_host_files_deliver_fragment(files: List<RunnerHostFileDesired>) -> Bool {
+  any(files, f => (f.path as String) == (runner_unit_system_path as String))
+}
+
+fn runner_host_unit_files_desired(
+  host: HostIdentity,
+  reading: RunnerJobUserUidReading,
 ) -> RunnerHostFileDesiredPopulation {
   match needrestart_unit_name_prefix(raw: runner_unit_prefix) {
     NeedrestartUnitNamePrefixRefused { cause: c } => RunnerHostFilesDesiredRefused { cause: c }
@@ -256,7 +323,7 @@ fn runner_host_file_desired_population_from_uid_figure(
           match gunbc_runner_unit_fragment_from_deploy(deploy: d, host: host) {
             RunnerUnitTextRefused { reason: r } => RunnerHostFilesDesiredRefused { cause: r }
             RunnerUnitText { text: fragment } =>
-              match gunbc_runner_unit_depriv_dropin_text_from_figure(deploy: d, host: host, figure: figure) {
+              match gunbc_runner_unit_depriv_dropin_text_from_reading(deploy: d, host: host, reading: reading) {
                 RunnerUnitTextRefused { reason: r } =>
                   RunnerHostFilesDesired {
                     files: runner_host_files_with_optional_depriv(
@@ -581,11 +648,67 @@ type RunnerSlotUnitReading {
   need_daemon_reload: String
   kill_mode: String
   exit_type: String
+  cpu_quota_per_sec: String
+  environment: String
+}
+
+// WHAT A SLOT MUST CARRY BEYOND ITS TEARDOWN: the derived CPU ceiling, always, and -- where this
+// run delivers the unit fragment -- the compile environment that fragment renders: CARGO_BUILD_JOBS
+// at the same per-slot figure and no MAKEFLAGS. A host whose fragment is withheld still runs a unit
+// this converge did not write, so its environment is reported by the receipt and not judged.
+type RunnerSlotExpectation {
+  intent: RunnerUnitLifecycleIntent
+  cpu_quota_identity: String
+  compile_jobs: HardwareThreadCount?
+}
+
+fn runner_slot_expectation(per_slot: HardwareThreadCount, fragment_delivered: Bool) -> RunnerSlotExpectation {
+  RunnerSlotExpectation {
+    intent: gunbc_runner_lifecycle_intent,
+    cpu_quota_identity: systemd_cpu_quota_per_sec_magnitude_identity(usec: systemd_cpu_quota_per_sec_of_threads(threads: per_slot)),
+    compile_jobs: if fragment_delivered { Present { value: per_slot } } else { none },
+  }
+}
+
+// systemctl prints Environment= as space-separated NAME=value words; a quoted LABELS_JSON word may
+// contain spaces, so a variable is matched as a word START, never by splitting on '='.
+fn slot_environment_names(environment: String, name: String) -> Bool {
+  starts_with(s: environment, prefix: concat(name, "=")) || string_contains(s: environment, pattern: concat(" ", concat(name, "=")))
+}
+
+fn slot_environment_assigns(environment: String, name: String, value: String) -> Bool {
+  let w = join([name, "=", value], "")
+  environment == w || starts_with(s: environment, prefix: concat(w, " ")) || ends_with(s: environment, suffix: concat(" ", w)) || string_contains(s: environment, pattern: join([" ", w, " "], ""))
+}
+
+// ONE JUDGMENT OVER A LOADED, RELOADED, TEARDOWN-EFFECTIVE SLOT. An undecodable quota is not a
+// match; a missing MAKEFLAGS is required, not merely tolerated, where the fragment was delivered.
+fn classify_slot_allocation(reading: RunnerSlotUnitReading, expect: RunnerSlotExpectation) -> RunnerSlotUnitStanding {
+  let observed = systemd_cpu_quota_per_sec_identity(q: parse_systemd_cpu_quota_per_sec_show(raw: trim(s: reading.cpu_quota_per_sec)))
+  let cpu_ok = match observed { Absent => false Present { value: q } => q == expect.cpu_quota_identity }
+  if !cpu_ok {
+    SlotAllocationNotEffective { detail: join(["CPUQuotaPerSecUSec=", trim(s: reading.cpu_quota_per_sec), " want=", expect.cpu_quota_identity, "us"], "") }
+  } else {
+    match expect.compile_jobs {
+      Absent => SlotTeardownEffective
+      Present { value: jobs } => {
+        let env = trim(s: reading.environment)
+        if slot_environment_names(environment: env, name: jobserver_makeflags_env_name) {
+          SlotAllocationNotEffective { detail: "Environment still carries MAKEFLAGS" }
+        } else if !slot_environment_assigns(environment: env, name: cargo_environment_variable_name(variable: CargoBuildJobsEnv) as String, value: to_string(hardware_thread_count_value(t: jobs))) {
+          SlotAllocationNotEffective { detail: join(["Environment does not assign CARGO_BUILD_JOBS=", to_string(hardware_thread_count_value(t: jobs))], "") }
+        } else {
+          SlotTeardownEffective
+        }
+      }
+    }
+  }
 }
 
 type RunnerSlotUnitStanding
   = SlotTeardownEffective
   | SlotTeardownNotEffective { kill_mode: String, exit_type: String }
+  | SlotAllocationNotEffective { detail: String }
   | SlotReloadPending
   | SlotUnitNotLoaded { load_state: String }
   | SlotRetiredAsDeclared
@@ -606,7 +729,8 @@ type RunnerSlotUnitStanding
 // A masked unit with no retirement standing -- one the authority does NOT retire -- stays not-loaded,
 // because ignoring masked units would hide a slot masked by mistake; a retiree still loaded is still
 // judged on its teardown, because it can still run a job.
-fn classify_runner_slot_unit_against_retirement(reading: RunnerSlotUnitReading, intent: RunnerUnitLifecycleIntent, retirements: List<RunnerRetirementStanding>) -> RunnerSlotUnitStanding {
+fn classify_runner_slot_unit_against_retirement(reading: RunnerSlotUnitReading, expect: RunnerSlotExpectation, retirements: List<RunnerRetirementStanding>) -> RunnerSlotUnitStanding {
+  let intent = expect.intent
   let own = filter(retirements, st => retirement_unit(s: st) == (reading.unit as String))
   if trim(s: reading.load_state) == (systemd_unit_load_state_masked_wire as String) && length(own) > 0 {
     fold(own, init: SlotRetiredAsDeclared, f: (acc, st) => match st {
@@ -620,7 +744,7 @@ fn classify_runner_slot_unit_against_retirement(reading: RunnerSlotUnitReading, 
     SlotReloadPending
   } else if trim(s: reading.kill_mode) == systemd_kill_mode_wire(mode: intent.kill_mode)
       && trim(s: reading.exit_type) == systemd_exit_type_wire(exit_type: intent.exit_type) {
-    SlotTeardownEffective
+    classify_slot_allocation(reading: reading, expect: expect)
   } else {
     SlotTeardownNotEffective { kill_mode: trim(s: reading.kill_mode), exit_type: trim(s: reading.exit_type) }
   }
@@ -630,6 +754,7 @@ fn runner_slot_unit_standing_wire(standing: RunnerSlotUnitStanding) -> String {
   match standing {
     SlotTeardownEffective => "effective"
     SlotTeardownNotEffective { kill_mode: k, exit_type: e } => join(["NOT-EFFECTIVE KillMode=", k, " ExitType=", e], "")
+    SlotAllocationNotEffective { detail: d } => concat("ALLOCATION-NOT-EFFECTIVE ", d)
     SlotReloadPending => "RELOAD-PENDING"
     SlotUnitNotLoaded { load_state: l } => concat("NOT-LOADED LoadState=", l)
     SlotRetiredAsDeclared => "retired-as-declared LoadState=masked"
@@ -649,7 +774,7 @@ type RunnerSlotPopulation
 
 // The last three are the retirement authority's readings (gunbc.runner.runner_slot_retirement
 // retirement_observation_from_readings), carried by the SAME show so a retiree costs no round trip.
-data runner_slot_show_properties: List<SystemdUnitProperty> = [IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup]
+data runner_slot_show_properties: List<SystemdUnitProperty> = [IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, CPUQuotaPerSecUSec, EnvironmentProperty]
 
 fn runner_unit_name_is_slot(name: String) -> Bool {
   starts_with(s: name, prefix: runner_unit_prefix) && ends_with(s: name, suffix: runner_unit_suffix)
@@ -702,8 +827,16 @@ fn parse_runner_slot_show_block(block: String) -> RunnerSlotUnitReading? {
                   match show_block_value(lines: lines, property: ExitTypeProperty) {
                     Absent => none
                     Present { value: exit } =>
-                      if id == "" { none } else {
-                        Present { value: RunnerSlotUnitReading { unit: id as NonEmptyStr, load_state: load, need_daemon_reload: reload, kill_mode: kill, exit_type: exit } }
+                      match show_block_value(lines: lines, property: CPUQuotaPerSecUSec) {
+                        Absent => none
+                        Present { value: cpu } =>
+                          match show_block_value(lines: lines, property: EnvironmentProperty) {
+                            Absent => none
+                            Present { value: env } =>
+                              if id == "" { none } else {
+                                Present { value: RunnerSlotUnitReading { unit: id as NonEmptyStr, load_state: load, need_daemon_reload: reload, kill_mode: kill, exit_type: exit, cpu_quota_per_sec: cpu, environment: env } }
+                              }
+                          }
                       }
                   }
               }
@@ -714,7 +847,7 @@ fn parse_runner_slot_show_block(block: String) -> RunnerSlotUnitReading? {
 
 // Each requested unit is joined to the block that NAMES it; a unit with no block of its own is UNREAD,
 // never borrowed from a neighbour's.
-fn classify_runner_slot_population(units: List<NonEmptyStr>, retirements: List<RunnerRetirementStanding>, show_stdout: String, intent: RunnerUnitLifecycleIntent) -> List<RunnerSlotUnitResult> {
+fn classify_runner_slot_population(units: List<NonEmptyStr>, retirements: List<RunnerRetirementStanding>, show_stdout: String, expect: RunnerSlotExpectation) -> List<RunnerSlotUnitResult> {
   let readings = flat_map(split(s: show_stdout, delimiter: "\n\n"), b => match parse_runner_slot_show_block(block: b) {
     Present { value: r } => [r]
     Absent => []
@@ -723,7 +856,7 @@ fn classify_runner_slot_population(units: List<NonEmptyStr>, retirements: List<R
     RunnerSlotUnitResult {
       unit: u,
       standing: fold(readings, init: SlotUnitUnread, f: (acc, r) =>
-        if (r.unit as String) == (u as String) { classify_runner_slot_unit_against_retirement(reading: r, intent: intent, retirements: retirements) } else { acc }),
+        if (r.unit as String) == (u as String) { classify_runner_slot_unit_against_retirement(reading: r, expect: expect, retirements: retirements) } else { acc }),
     })
 }
 
@@ -734,7 +867,7 @@ fn runner_slot_population_owes_reload(population: RunnerSlotPopulation) -> Bool 
       any(us, r => match r.standing {
         SlotReloadPending => true
         SlotTeardownEffective => false
-        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false
+        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false
         SlotUnitNotLoaded { load_state: _ } => false
         SlotRetiredAsDeclared => false
         SlotRetirementIncomplete { cause: _ } => false
@@ -747,13 +880,13 @@ fn runner_slot_population_effective(population: RunnerSlotPopulation) -> Bool {
   match population {
     SlotPopulationUnobservable { reason: _ } => false
     SlotPopulationObserved { units: us } =>
-      any(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false })
+      any(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false })
         && all(us, r => match r.standing {
         SlotTeardownEffective => true
         SlotRetiredAsDeclared => true
         SlotRetirementIncomplete { cause: _ } => false
         SlotReloadPending => false
-        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false
+        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false
         SlotUnitNotLoaded { load_state: _ } => false
         SlotUnitUnread => false
       })
@@ -768,7 +901,7 @@ fn runner_slot_population_read_completely(population: RunnerSlotPopulation) -> B
         SlotUnitUnread => false
         SlotTeardownEffective => true
         SlotReloadPending => true
-        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => true
+        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => true SlotAllocationNotEffective { detail: _ } => true
         SlotUnitNotLoaded { load_state: _ } => true
         SlotRetiredAsDeclared => true
         SlotRetirementIncomplete { cause: _ } => true
@@ -1017,6 +1150,7 @@ fn runner_retiree_standings(readings: List<RetireeShowReading>, batch: CgroupEve
 fn observe_runner_slot_population(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
+  expect: RunnerSlotExpectation,
 ) -> RunnerSlotPopulation
 {
   match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: systemctl_list_all_service_units_argv()) {
@@ -1044,11 +1178,236 @@ fn observe_runner_slot_population(
                   }
               }
               let retirements = runner_retiree_standings(readings: readings, batch: batch)
-              SlotPopulationObserved { units: classify_runner_slot_population(units: units, retirements: retirements, show_stdout: shown.stdout, intent: gunbc_runner_lifecycle_intent) }
+              SlotPopulationObserved { units: classify_runner_slot_population(units: units, retirements: retirements, show_stdout: shown.stdout, expect: expect) }
             }
         }
       }
   }
+}
+
+// ── The job user's uid, read from the host ──────────────────────────────────────────────────────
+
+// THE UID IS READ OVER THE ADMINISTRATOR EDGE THIS RUN ALREADY HOLDS, from the deploy row's job
+// user, and is never committed (operator approval 2026-10-14). A refused or unparseable read is
+// JobUserUidUnobserved, which withholds depriv and the unit fragment for this host only.
+fn observe_runner_job_user_uid(subject: RunnerHostFileSubject, context: FleetSshExecutionContext) -> RunnerJobUserUidReading
+{
+  match runner_host_deploy_for(host: subject.host) {
+    RunnerHostDeployUnmodeled { host: _ } => JobUserUidUnobserved { cause: "no runner deploy row names the job user" as NonEmptyStr }
+    RunnerHostDeployRefused { host: _, cause: c } => JobUserUidUnobserved { cause: concat("the runner deploy row refuses: ", c) as NonEmptyStr }
+    RunnerHostDeployFound { deploy: d } =>
+      match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: argv_words(command: getent_passwd_command(key: d.job_user))) {
+        TypedArgvExecRefused { reason: why } => JobUserUidUnobserved { cause: concat("getent passwd leg refused: ", why) as NonEmptyStr }
+        TypedArgvExecConverged { result: r } =>
+          runner_job_user_uid_reading(job_user: d.job_user, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+      }
+  }
+}
+
+fn runner_job_user_uid_reading_line(reading: RunnerJobUserUidReading) -> String {
+  match reading {
+    JobUserUidObserved { uid: u, passwd_line: l } => join(["job-user-uid=", to_string(u), " passwd=", l as String, "\n"], "")
+    JobUserUidUnobserved { cause: c } => join(["job-user-uid=UNOBSERVED ", c as String, "\n"], "")
+  }
+}
+
+// ── Retired host residue: the ctrl-jobserver ─────────────────────────────────────────────────────
+
+// WHAT THE RETIRED DAEMON LEFT ON A HOST, AS ITS INSTALLER PLACED IT. Cited from gunb-ai/ctrl
+// scripts/session-dashboard/host/install-ctrl-jobserver.sh: the daemon at /usr/local/sbin, its unit
+// at /etc/systemd/system, its knobs at /etc/default, and the FIFO's directory /var/lib/ctrl/jobserver
+// (the FIFO is gunbc.host.host_converge gunbc_runner_jobserver_default_fifo inside it). Operator
+// ruling 2026-10-14 retires it: allocation is declared up front as each slot's CPU ceiling, so
+// nothing lends permits at runtime and nothing can leak them.
+//
+// ABSENT IS THE CONVERGED STATE, NOT A FAILURE. The residue may already have been removed by hand,
+// or by gunb-ai/ctrl deleting its installers; a host with no unit and none of the paths is a Noop
+// whose readback passes. Whatever is present is stopped, disabled and removed, the manager is
+// reloaded if the unit file went, and the SAME observation is re-read: the result is settled only
+// when that re-read finds nothing.
+type RetiredHostResidue {
+  unit: NonEmptyStr
+  files: List<String>
+  directories: List<String>
+}
+
+data ctrl_jobserver_retired_residue: RetiredHostResidue = RetiredHostResidue {
+  unit: gunbc_runner_jobserver_service as NonEmptyStr,
+  files: [
+    "/etc/systemd/system/ctrl-jobserver.service",
+    "/etc/default/ctrl-jobserver",
+    "/usr/local/sbin/ctrl-jobserver",
+  ],
+  directories: ["/var/lib/ctrl/jobserver"],
+}
+
+type RetiredResidueObservation
+  = ResidueAbsent
+  | ResiduePresent { unit_known: Bool, present: List<String> }
+  | ResidueUnobservable { cause: String }
+
+// LoadState is the one reading that tells an absent unit from a present one; any other answer than
+// not-found is a unit the manager still knows. Each path is settled by the same metadata-then-parent
+// rule the desired files use, so "could not look" never reads as "absent".
+type ResiduePathReading {
+  path: String
+  standing: RunnerHostFilePathStanding
+}
+
+fn classify_retired_residue(load_state_exit: Int, load_state: String, readings: List<ResiduePathReading>) -> RetiredResidueObservation {
+  let paths = map(readings, r => r.standing)
+  let unreadable = filter(paths, p => match p {
+    HostFilePathUnreadable { cause: _ } => true
+    HostFilePathPresent { file_type: _ } => false
+    HostFilePathAbsent => false
+  })
+  if load_state_exit != 0 {
+    ResidueUnobservable { cause: join(["systemctl show LoadState exit=", to_string(load_state_exit)], "") }
+  } else if length(unreadable) > 0 {
+    ResidueUnobservable { cause: join(map(unreadable, p => match p { HostFilePathUnreadable { cause: c } => c HostFilePathPresent { file_type: _ } => "" HostFilePathAbsent => "" }), "; ") }
+  } else {
+    let unit_known = trim(s: load_state) != (systemd_unit_load_state_not_found_wire as String)
+    let present = flat_map(readings, r => match r.standing {
+      HostFilePathPresent { file_type: _ } => [r.path]
+      HostFilePathAbsent => []
+      HostFilePathUnreadable { cause: _ } => []
+    })
+    if !unit_known && length(present) == 0 { ResidueAbsent } else { ResiduePresent { unit_known: unit_known, present: present } }
+  }
+}
+
+fn observe_retired_residue(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, residue: RetiredHostResidue) -> RetiredResidueObservation
+{
+  let names = concat(residue.files, residue.directories)
+  let readings = map(names, n => ResiduePathReading {
+    path: n,
+    standing: match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: runner_host_file_metadata_probe_argv(path: n)) {
+      TypedArgvExecRefused { reason: why } => HostFilePathUnreadable { cause: why }
+      TypedArgvExecConverged { result: m } =>
+        observe_runner_host_file_path(subject: subject, context: context, path: n, reading: classify_host_file_metadata(exit_code: m.exit_code, stdout: m.stdout, stderr: m.stderr))
+    },
+  })
+  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: systemctl_show_load_state_argv(unit: residue.unit)) {
+    TypedArgvExecRefused { reason: why } => ResidueUnobservable { cause: why }
+    TypedArgvExecConverged { result: r } => classify_retired_residue(load_state_exit: r.exit_code, load_state: r.stdout, readings: readings)
+  }
+}
+
+type RetiredResidueResult
+  = ResidueAlreadyAbsent
+  | ResidueRetired
+  | ResidueObservedPresent { observation: RetiredResidueObservation }
+  | ResidueRetireRefused { step: String, reason: String }
+  | ResidueNotAttempted { reason: String }
+
+// One elevated leg; a nonzero exit is a refusal at that step, never swallowed.
+fn retire_leg(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, step: String, argv: List<String>) -> String?
+{
+  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: elevated_argv(command: argv)) {
+    TypedArgvExecRefused { reason: why } => Present { value: concat(step, concat(": ", why)) }
+    TypedArgvExecConverged { result: r } =>
+      if r.success { none } else { Present { value: join([step, " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
+  }
+}
+
+fn retire_legs_for(residue: RetiredHostResidue, observation: RetiredResidueObservation) -> List<RetireLeg> {
+  match observation {
+    ResidueAbsent => []
+    ResidueUnobservable { cause: _ } => []
+    ResiduePresent { unit_known: k, present: ps } =>
+      concat(
+        if k { [RetireLeg { step: "stop", argv: systemctl_stop_argv(unit: residue.unit) }, RetireLeg { step: "disable", argv: systemctl_disable_now_argv(unit: residue.unit) }] } else { [] },
+        concat(
+          map(filter(ps, p => any(residue.files, f => f == p)), p => RetireLeg { step: concat("remove ", p), argv: ["rm", "-f", "--", p] }),
+          concat(
+            map(filter(ps, p => any(residue.directories, d => d == p)), p => RetireLeg { step: concat("remove-tree ", p), argv: ["rm", "-r", "-f", "--one-file-system", "--", p] }),
+            [RetireLeg { step: "daemon-reload", argv: systemctl_daemon_reload_argv() }],
+          ),
+        ),
+      )
+  }
+}
+
+type RetireLeg {
+  step: String
+  argv: List<String>
+}
+
+fn run_retire_legs(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, legs: List<RetireLeg>) -> String?
+{
+  fold(legs, init: none, f: (acc, leg) => match acc {
+    Present { value: _ } => acc
+    Absent => retire_leg(subject: subject, context: context, step: leg.step, argv: leg.argv)
+  })
+}
+
+fn converge_retired_residue(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: RunnerHostFileConvergeMode,
+  privilege: RunnerHostPrivilegeStanding,
+  residue: RetiredHostResidue,
+) -> RetiredResidueResult
+{
+  let observed = observe_retired_residue(subject: subject, context: context, residue: residue)
+  match observed {
+    ResidueAbsent => ResidueAlreadyAbsent
+    ResidueUnobservable { cause: c } => ResidueNotAttempted { reason: concat("residue unobservable: ", c) }
+    ResiduePresent { unit_known: _, present: _ } =>
+      match mode {
+        RunnerHostFilesObserveOnly => ResidueObservedPresent { observation: observed }
+        RunnerHostFilesApply =>
+          match privilege {
+            AdministratorPrivilegeRefused { reason: why } => ResidueNotAttempted { reason: concat("administrator privilege refused: ", why) }
+            AdministratorPrivilegeAvailable =>
+              match run_retire_legs(subject: subject, context: context, legs: retire_legs_for(residue: residue, observation: observed)) {
+                Present { value: why } => ResidueRetireRefused { step: "retire", reason: why }
+                Absent =>
+                  match observe_retired_residue(subject: subject, context: context, residue: residue) {
+                    ResidueAbsent => ResidueRetired
+                    ResidueUnobservable { cause: c } => ResidueRetireRefused { step: "readback", reason: c }
+                    ResiduePresent { unit_known: k, present: ps } =>
+                      ResidueRetireRefused { step: "readback", reason: join(["still present after retirement: unit_known=", if k { "yes" } else { "no" }, " paths=", join(ps, ",")], "") }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn retired_residue_settled(result: RetiredResidueResult) -> Bool {
+  match result {
+    ResidueAlreadyAbsent => true
+    ResidueRetired => true
+    ResidueObservedPresent { observation: _ } => false
+    ResidueRetireRefused { step: _, reason: _ } => false
+    ResidueNotAttempted { reason: _ } => false
+  }
+}
+
+// Observe-only succeeds when it could SEE the residue, present or not.
+fn retired_residue_observed(result: RetiredResidueResult) -> Bool {
+  match result {
+    ResidueAlreadyAbsent => true
+    ResidueRetired => true
+    ResidueObservedPresent { observation: _ } => true
+    ResidueRetireRefused { step: _, reason: _ } => false
+    ResidueNotAttempted { reason: _ } => false
+  }
+}
+
+fn retired_residue_result_line(result: RetiredResidueResult) -> String {
+  join(["retired-residue unit=", ctrl_jobserver_retired_residue.unit as String, " ", match result {
+    ResidueAlreadyAbsent => "already-absent"
+    ResidueRetired => "retired-and-read-back-absent"
+    ResidueObservedPresent { observation: o } => match o {
+      ResiduePresent { unit_known: k, present: ps } => join(["PRESENT unit_known=", if k { "yes" } else { "no" }, " paths=", join(ps, ",")], "")
+      ResidueAbsent => "absent"
+      ResidueUnobservable { cause: c } => concat("UNOBSERVABLE ", c)
+    }
+    ResidueRetireRefused { step: st, reason: why } => join(["REFUSED step=", st, " ", why], "")
+    ResidueNotAttempted { reason: why } => concat("NOT-ATTEMPTED ", why)
+  }, "\n"], "")
 }
 
 // ── Apply ────────────────────────────────────────────────────────────────────────────────────────
@@ -1166,6 +1525,7 @@ type RunnerHostFileRun {
   mode: RunnerHostFileConvergeMode
   privilege: RunnerHostPrivilegeStanding
   results: List<RunnerHostFileResult>
+  residue: RetiredResidueResult
   reload: RunnerHostManagerReload
   slots: RunnerSlotPopulation
 }
@@ -1215,6 +1575,7 @@ fn run_runner_host_files(
   context: FleetSshExecutionContext,
   files: List<RunnerHostFileDesired>,
   mode: RunnerHostFileConvergeMode,
+  expect: RunnerSlotExpectation,
 ) -> RunnerHostFileRun
 {
   let privilege = observe_runner_host_administrator_privilege(subject: subject, context: context)
@@ -1231,16 +1592,18 @@ fn run_runner_host_files(
           }
       },
     })
-  let before = observe_runner_slot_population(subject: subject, context: context)
+  let residue = converge_retired_residue(subject: subject, context: context, mode: mode, privilege: privilege, residue: ctrl_jobserver_retired_residue)
+  let before = observe_runner_slot_population(subject: subject, context: context, expect: expect)
   let reload = runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before)
   RunnerHostFileRun {
     subject: subject,
     mode: mode,
     privilege: privilege,
     results: results,
+    residue: residue,
     reload: reload,
     slots: match reload {
-      ManagerReloaded => observe_runner_slot_population(subject: subject, context: context)
+      ManagerReloaded => observe_runner_slot_population(subject: subject, context: context, expect: expect)
       ManagerReloadNotOwed => before
       ManagerReloadRefused { reason: _ } => before
       ManagerReloadOwedNotAttempted { reason: _ } => before
@@ -1283,9 +1646,11 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         AdministratorPrivilegeRefused { reason: _ } => false
       })
         && !any(run.results, r => runner_host_file_planned_refused(p: r.planned))
+        && retired_residue_observed(result: run.residue)
         && runner_slot_population_read_completely(population: run.slots)
     RunnerHostFilesApply =>
       all(run.results, r => runner_host_file_outcome_settled(outcome: r.outcome))
+        && retired_residue_settled(result: run.residue)
         && (match run.reload {
           ManagerReloadNotOwed => true
           ManagerReloaded => true
@@ -1315,8 +1680,8 @@ fn runner_slot_population_text(population: RunnerSlotPopulation) -> String {
     SlotPopulationObserved { units: us } =>
       join([
         "slots observed=", to_string(length(us)),
-        " effective=", to_string(length(filter(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false }))),
-        " retired-as-declared=", to_string(length(filter(us, r => match r.standing { SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => false SlotTeardownEffective => false SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotUnitUnread => false }))),
+        " effective=", to_string(length(filter(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false }))),
+        " retired-as-declared=", to_string(length(filter(us, r => match r.standing { SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => false SlotTeardownEffective => false SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotUnitUnread => false }))),
         "\n",
         join(map(us, r => join(["slot ", r.unit as String, " ", runner_slot_unit_standing_wire(standing: r.standing), "\n"], "")), ""),
       ], "")
@@ -1332,6 +1697,7 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     "administrator-privilege=", runner_host_privilege_wire(privilege: run.privilege), "\n",
     join(map(run.results, r => runner_host_file_result_line(r: r)), ""),
     "planned-writes=", to_string(length(filter(run.results, r => runner_host_file_planned_write(p: r.planned)))), "\n",
+    retired_residue_result_line(result: run.residue),
     "manager-reload=", runner_host_manager_reload_wire(reload: run.reload), "\n",
     runner_slot_population_text(population: run.slots),
     "terminal=", if runner_host_file_run_succeeded(run: run) { "succeeded" } else { "REFUSED" }, "\n",
@@ -1356,16 +1722,21 @@ fn runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
       match runner_host_file_subject(host: raw_host as HostIdentity) {
         RunnerHostFileSubjectRefused { cause: c } => exit_failure(reason: c)
         RunnerHostFileSubjectAdmitted { subject: subject } =>
-          match runner_host_file_desired_population(host: raw_host as HostIdentity) {
-            RunnerHostFilesDesiredRefused { cause: c } => exit_failure(reason: c as String)
-            RunnerHostFilesDesired { files: files, withheld: withheld } =>
-              match prepare_fleet_ssh_agent_context(attempt_raw: runner_host_file_converge_attempt_raw) {
-                FleetSshContextRefused { cause: c } => exit_failure(reason: c)
-                FleetSshContextReady { context: context, receipt: context_receipt } => {
-                  let run = run_runner_host_files(subject: subject, context: context, files: files, mode: mode)
+          match prepare_fleet_ssh_agent_context(attempt_raw: runner_host_file_converge_attempt_raw) {
+            FleetSshContextRefused { cause: c } => exit_failure(reason: c)
+            FleetSshContextReady { context: context, receipt: context_receipt } => {
+              let uid_reading = observe_runner_job_user_uid(subject: subject, context: context)
+              match runner_host_file_desired_population_from_uid_reading(host: raw_host as HostIdentity, reading: uid_reading) {
+                RunnerHostFilesDesiredRefused { cause: c } => exit_failure(reason: c as String)
+                RunnerHostFilesDesired { files: files, withheld: withheld } =>
+                  match runner_slot_cpu_desired(host: raw_host as HostIdentity) {
+                    SlotCpuRefused { cause: c } => exit_failure(reason: c as String)
+                    SlotCpuDesired { per_slot: per_slot, file: _ } => {
+                  let run = run_runner_host_files(subject: subject, context: context, files: files, mode: mode, expect: runner_slot_expectation(per_slot: per_slot, fragment_delivered: runner_host_files_deliver_fragment(files: files)))
                   let body = join([
                     "runner_host_file_converge probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
                     context_receipt,
+                    runner_job_user_uid_reading_line(reading: uid_reading),
                     join(map(withheld, w => join(["withheld subject=", w.subject as String, " cause=", w.cause as String, "\n"], "")), ""),
                     runner_host_file_run_text(run: run),
                   ], "")
@@ -1377,8 +1748,10 @@ fn runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
                   } else {
                     ExitSuccess
                   }
-                }
+                    }
+                  }
               }
+            }
           }
       }
   }
