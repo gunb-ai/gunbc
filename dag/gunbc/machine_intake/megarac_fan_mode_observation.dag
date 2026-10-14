@@ -1,0 +1,84 @@
+module gunbc.machine_intake.megarac_fan_mode_observation
+
+import std.types { Int, List, NonEmptyStr }
+import std.measure { Percent, percent }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+
+// GROUNDED READ OF THE MEGARAC FAN-MODE SURFACE (Foxconn Mt. Collins, 2026-10-14 ~21:50Z).
+// Executor: operator credential, POST /api/session, GET these two paths, DELETE /api/session.
+// Source of the path names: served UI bundle source.min.js (gzip sha256 prefix ee9b14cbf7141b78),
+// AMI copyright, kept off-tree. This module is an observing-layer receipt, not an upstream fact.
+//
+// manager_disabled 0 at this instant is AUTOMATIC Cooling Manager. A later operator hand-set
+// (disable manager, manual PWM) is out-of-band drift: the next live GET records it; this row is
+// not overwritten. Missing socket-1 fans (SDR FAN0-3 present-absent, UI fans 1-4 pwm 0) is a
+// chassis fact the wiring model must carry, not a controller fault invented here.
+
+type MegaRacFanManagerStanding
+  = CoolingManagerAutomatic
+  | CoolingManagerDisabledManual
+
+type MegaRacFanInfoRow {
+  fan_number: Int
+  fan_pwm: Percent
+}
+
+type MegaRacFanModeObservation {
+  host: HostIdentity
+  observed_at: NonEmptyStr
+  manager: MegaRacFanManagerStanding
+  fans: List<MegaRacFanInfoRow>
+}
+
+fn megarac_manager_standing_of_wire(manager_disabled: Int) -> MegaRacFanManagerStanding {
+  if manager_disabled == 0 {
+    CoolingManagerAutomatic
+  } else {
+    CoolingManagerDisabledManual
+  }
+}
+
+data mtcollins1_megarac_fan_mode_observation_2026_10_14: MegaRacFanModeObservation = MegaRacFanModeObservation {
+  host: operator_host_mtcollins1,
+  observed_at: "2026-10-14T21:50:00Z" as NonEmptyStr,
+  manager: CoolingManagerAutomatic,
+  fans: [
+    MegaRacFanInfoRow { fan_number: 1, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 2, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 3, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 4, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 5, fan_pwm: percent(20) },
+    MegaRacFanInfoRow { fan_number: 6, fan_pwm: percent(20) },
+  ],
+}
+
+// DESIRED PHASES OF THE ONE PHYSICAL-MACHINE CONVERGE (no new workflow mode).
+// Boot (power-on through boot terminal): Cooling Manager disabled, PWM in [20,30].
+// Bringup and after: Cooling Manager automatic. A run that exits mid-boot restores the
+// phase's declared policy; a thermal-guard trip or unreadable temperature re-enables the
+// manager. PWM write members are unread, so apply of these rows refuses until that bind.
+type FanPolicyPhase
+  = BootThroughTerminal
+  | HostBringupAndAfter
+
+type MegaRacFanPhaseDesire {
+  phase: FanPolicyPhase
+  manager: MegaRacFanManagerStanding
+  manual_pwm_min: Percent
+  manual_pwm_max: Percent
+}
+
+data megarac_fan_boot_phase_desire: MegaRacFanPhaseDesire = MegaRacFanPhaseDesire {
+  phase: BootThroughTerminal,
+  manager: CoolingManagerDisabledManual,
+  manual_pwm_min: percent(20),
+  manual_pwm_max: percent(30),
+}
+
+data megarac_fan_bringup_phase_desire: MegaRacFanPhaseDesire = MegaRacFanPhaseDesire {
+  phase: HostBringupAndAfter,
+  manager: CoolingManagerAutomatic,
+  manual_pwm_min: percent(20),
+  manual_pwm_max: percent(30),
+}
