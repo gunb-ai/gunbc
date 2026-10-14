@@ -654,7 +654,7 @@ fn fleet_converge_allocation_store_plan_wet() -> ProcessExit
                 prior_generation: prior_generation,
                 observed_allocation_store: observed,
               ) {
-                Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: host is not modeled or baseline hash refused")
+                Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: host is not modeled or lease generation successor refused")
                 Present { value: artifact } => write_fleet_converge_plan_artifact_wet(artifact: artifact)
               }
           }

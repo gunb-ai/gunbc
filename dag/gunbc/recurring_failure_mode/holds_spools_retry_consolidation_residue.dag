@@ -20,7 +20,7 @@ data holds_spools_retry_consolidation_residue: RecurringFailureMode = RecurringF
 
     "SITE — gunbc.workspace_acquisition_invocation WorkspacePriorActorStanding wraps unit_invocation_holder_liveness into PriorActorRunning/Terminal/Unobservable. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: workspace_actor_takeover_decision consumes DurableHoldHolderLiveness directly and WorkspacePriorActorStanding is deleted.",
 
-    "SITE — spark transfer RestartSec/StartLimit* are systemd unit properties whose numbers are taken from spark_transfer_retry_law, but the unit still restarts without asking retry_admissibility. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: the transfer supervisor consumes retry_admissibility for whether another start is admissible; RestartSec is the law's earliest delay, not a second bound.",
+    "SITE — spark transfer StartLimitBurst/StartLimitIntervalSec are systemd burst-window facts, independent of spark_transfer_retry_law; RestartSec still projects the law's initial_delay. The unit restarts without asking retry_admissibility. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: the transfer supervisor consumes retry_admissibility for whether another start is admissible; RestartSec remains the law's earliest delay.",
 
     "SITE — retry_hint_from_http maps a real HttpRetryAfter into RetryHint on the hosted 429 classify path (hosted_http_failure_wire), and retry_admissibility refuses RetryHintUnresolved, but no retrying client yet feeds that hint into a retry decision. Hosted POST /chat/completions is not idempotent and must not. CURRENT RUNG: mitigatable. NEXT-RUNG TRIGGER: the first retrying idempotent HTTP client (not chat POST) passes retry_hint_from_http into retry_admissibility; spark RestartSec is not that client.",
 
