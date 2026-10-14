@@ -351,14 +351,17 @@ test fn a_rest_uri_template_path_binds_declared_holes_holds() -> Bool {
   sr_admitted(realization: sr_rest_path_entry(path: sr_string(value: "/servers/\{x\}")))
     && sr_admitted(realization: sr_rest_path_entry(path: sr_string(value: "/x")))
     && sr_admitted(realization: sr_rest_path_entry(path: sr_string(value: "/servers/\{x\}/also/\{x\}")))
+    && sr_admitted(realization: sr_rest_path_entry(path: sr_string(value: "/identity?audience=\{x\}")))
 }
 
 test fn a_rest_uri_template_unknown_hole_refuses_holds() -> Bool {
   sr_rest_path_cause_is(path: sr_string(value: "/servers/\{y\}"), expected: "UndeclaredInputBound:y")
+    && sr_rest_path_cause_is(path: sr_string(value: "/identity?audience=\{y\}"), expected: "UndeclaredInputBound:y")
 }
 
 test fn a_rest_uri_template_unclosed_brace_refuses_holds() -> Bool {
   sr_rest_path_cause_is(path: sr_string(value: "/servers/\{x"), expected: "BindingMalformed")
+    && sr_rest_path_cause_is(path: sr_string(value: "/identity?audience=\{x"), expected: "BindingMalformed")
 }
 
 // P2. One red for each remaining refusal reason, each differing from an accepted shape in that property.

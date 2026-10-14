@@ -7,11 +7,15 @@ import extdeps.transports.rest_declared { RestOtherContract, RestResponseStatus,
 import extdeps.transports.file_declared { FileOtherContract, FileStringTemplateContract, file_binding_field_contract, file_binding_field_of_key, file_output_channel_of_key }
 import extdeps.uri_path {
   LiteralToken,
+  MalformedPathSegment,
   MalformedPathTemplate,
   ParamToken,
   ParsedPathTemplate,
+  ParsedSegmentTokens,
   UrlPathToken,
-  parse_path_template
+  parse_path_template,
+  parse_segment_tokens,
+  uri_query_string
 }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node, dag_string_literal_value_optional }
 import std.types { http_status_of }
@@ -586,9 +590,11 @@ fn transport_string_field_refusal(op: Node, value: Node) -> Optional<Realization
 // decomposes the same spelling through extdeps.uri_path parse_path_template). Do not rewrite the
 // corpus into a list of concat parts: that would be a second surface for one form. A string literal
 // is that template; a list or a #13405 concat stays Template<OperationInputName> as before. An
-// unknown hole or an unclosed brace refuses located (DESIGN 5). A name that appears twice is still
-// one input (RFC 6570 §3.2.1: the same variable may expand more than once); both holes bind that
-// identity. REST `body` is RestOtherContract (a record of fields), not this parser.
+// unknown hole or an unclosed brace refuses located (DESIGN 5), including `{name}` after `?`:
+// parse_path_template strips the query for matching, so this wall runs the same parse_segment_tokens
+// over each `&`-separated query pair rather than admitting the suffix unread. A name that appears
+// twice is still one input (RFC 6570 §3.2.1: the same variable may expand more than once); both
+// holes bind that identity. REST `body` is RestOtherContract (a record of fields), not this parser.
 fn rest_path_field_refusal(op: Node, value: Node) -> Optional<RealizationRefusal> {
   match list_introduction_elements_optional(node: value) {
     Present { value: elements } =>
@@ -616,7 +622,37 @@ fn rest_path_template_cause(inputs: List<Symbol>, text: String) -> Optional<Argv
     MalformedPathTemplate { raw: _, segment: _, reason: r } =>
       optional_present(value: BindingMalformed { detail: r })
     ParsedPathTemplate { template: t } =>
-      rest_path_tokens_cause(inputs: inputs, tokens: t.tokens, seen: Empty)
+      match rest_path_tokens_cause(inputs: inputs, tokens: t.tokens, seen: Empty) {
+        Present { value: cause } => optional_present(value: cause)
+        Absent => rest_path_query_cause(inputs: inputs, text: text)
+      }
+  }
+}
+
+fn rest_path_query_cause(inputs: List<Symbol>, text: String) -> Optional<ArgvRefusalCause> {
+  let q = uri_query_string(path: text)
+  if q == "" {
+    optional_absent()
+  } else {
+    fold(q.split(delimiter: "&"), init: optional_absent(), f: fn(acc, pair) {
+      match acc {
+        Present { value: cause } => optional_present(value: cause)
+        Absent => rest_path_query_pair_cause(inputs: inputs, pair: pair)
+      }
+    })
+  }
+}
+
+fn rest_path_query_pair_cause(inputs: List<Symbol>, pair: String) -> Optional<ArgvRefusalCause> {
+  if pair == "" {
+    optional_absent()
+  } else {
+    match parse_segment_tokens(seg: pair) {
+      MalformedPathSegment { segment: _, reason: r } =>
+        optional_present(value: BindingMalformed { detail: r })
+      ParsedSegmentTokens { tokens: toks } =>
+        rest_path_tokens_cause(inputs: inputs, tokens: toks, seen: Empty)
+    }
   }
 }
 
