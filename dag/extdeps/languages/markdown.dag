@@ -1,6 +1,4 @@
 module extdeps.languages.markdown
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
-import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { List }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -760,11 +758,3 @@ data parse_inline_markdown_minimal_scaffold: Disposition = Scaffold {
     field: WholeDeclaration
   }
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "md_nested" },
-      reason: nfr_reason_land_red_era,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-]

@@ -1,7 +1,4 @@
 module extdeps.git
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
-import std.roster_frontier { FrontierRow, PathSubject }
-
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -1970,11 +1967,3 @@ fn git_remote_url_observation_of(
     GitRemoteUrlReadRefused { at: at, exit_code: exit_code, stderr: stderr }
   }
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "git_diff_name_status_pending_after_status" },
-      reason: nfr_reason_land_red_era,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-]

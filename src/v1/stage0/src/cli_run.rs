@@ -30445,6 +30445,53 @@ mod nfr_tests {
     }
 
     #[test]
+    fn nfr_frontier_reader_refuses_coverage_in_extdeps_module() {
+        let synthetic = "module extdeps.git\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"f\" }, reason: r, dissolution: d }\n\
+             ]\n";
+        let refusal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::non_fold_residue_units_from_module_source_with(
+                "dag/extdeps/git.dag",
+                synthetic,
+                super::NfrHomeCheck::Require,
+            )
+        }))
+        .expect_err("an upstream module must not host repository coverage rows");
+        let message = refusal
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| refusal.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default();
+        assert!(
+            message.contains("coverage state in an upstream module")
+                && message.contains("dag/extdeps/git.dag"),
+            "the refusal must LOCATE the upstream host; got: {message}"
+        );
+    }
+
+    #[test]
+    fn nfr_frontier_reader_accepts_extdeps_row_on_observing_host() {
+        let synthetic = "module gunbc.non_fold_residue\n\n\
+             data non_fold_residue_frontier: List<FrontierRow> = [\n\
+               FrontierRow { subject: PathSubject { path: \"dag/extdeps/git.dag::f\" }, reason: r, dissolution: d }\n\
+             ]\n";
+        let triples = super::non_fold_residue_triples_from_module_source_with(
+            "dag/gunbc/non_fold_residue.dag",
+            synthetic,
+            super::NfrHomeCheck::Require,
+        );
+        assert_eq!(
+            triples
+                .iter()
+                .map(super::nfr_identity_join_line)
+                .collect::<Vec<_>>(),
+            vec!["dag/extdeps/git.dag::f\tr\td".to_string()],
+            "extdeps coverage receipts live on gunbc.non_fold_residue"
+        );
+    }
+
+    #[test]
     fn nfr_frontier_reader_accepts_seed_mirror_exception_host() {
         let synthetic = "module gunbc.non_fold_residue\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
@@ -30539,7 +30586,7 @@ mod nfr_tests {
             entries.len(),
             "identity-join triples must cover every live unit"
         );
-        for t in &triples {
+        for t in triples {
             assert!(!t.path.is_empty());
             assert!(!t.reason.is_empty(), "reason ident empty for {}", t.path);
             assert!(

@@ -105,7 +105,7 @@ pub(crate) fn nfr_identity_join_line(t: &NfrFrontierTriple) -> String {
     format!("{}\t{}\t{}", t.path, t.reason, t.dissolution)
 }
 
-const NFR_SEED_MIRROR_EXCEPTION_HOST: &str = "dag/gunbc/non_fold_residue.dag";
+const NFR_OBSERVING_LAYER_HOST: &str = "dag/gunbc/non_fold_residue.dag";
 
 fn nfr_dag_rel_to_source_module(dag_rel: &str) -> Option<String> {
     let stem = dag_rel.strip_suffix(".dag")?;
@@ -126,8 +126,13 @@ fn nfr_dag_rel_has_stage0_mirror(dag_rel: &str) -> bool {
         .is_file()
 }
 
-fn nfr_seed_mirror_home_exception(host: &str, path_prefix: &str) -> bool {
-    host == NFR_SEED_MIRROR_EXCEPTION_HOST && nfr_dag_rel_has_stage0_mirror(path_prefix)
+fn nfr_path_is_extdeps_subject(dag_rel: &str) -> bool {
+    dag_rel.starts_with("dag/extdeps/") || dag_rel.starts_with("src/v2/extdeps/")
+}
+
+fn nfr_observing_layer_home_exception(host: &str, path_prefix: &str) -> bool {
+    host == NFR_OBSERVING_LAYER_HOST
+        && (nfr_path_is_extdeps_subject(path_prefix) || nfr_dag_rel_has_stage0_mirror(path_prefix))
 }
 
 fn nfr_join_site_key(module_rel_path: &str, authored_path: &str) -> String {
@@ -349,9 +354,17 @@ fn non_fold_residue_units_from_parse_source(
                      `subject` field"
             )
         });
+        if home == NfrHomeCheck::Require && nfr_path_is_extdeps_subject(module_rel_path) {
+            panic!(
+                "nfr frontier reader: `{data_name}` in {module_rel_path} stores repository \
+                 coverage state in an upstream module; the observing layer is \
+                 {NFR_OBSERVING_LAYER_HOST}"
+            );
+        }
         if home == NfrHomeCheck::Require && authored_path.contains("::") {
             let prefix = authored_path.split("::").next().unwrap_or("");
-            if prefix != module_rel_path && !nfr_seed_mirror_home_exception(module_rel_path, prefix)
+            if prefix != module_rel_path
+                && !nfr_observing_layer_home_exception(module_rel_path, prefix)
             {
                 panic!(
                         "nfr frontier reader: row path {authored_path:?} in {module_rel_path} is not at \

@@ -1,5 +1,4 @@
 module v2.extdeps.languages.dag
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.coercion { unicode_scalar_unfold }
 import std.types { Char, List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
@@ -239,8 +238,6 @@ import v2.extdeps.languages.fidelity {
   FidelityDisposition,
   Modeled
 }
-import std.roster_frontier { FrontierRow, PathSubject }
-
 data dag_source_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 
 data dag_pick_source_text: String = "fn one_or_two() -> Int { if true then 1 else 2 }"
@@ -8586,8 +8583,3 @@ fn dag_emit_parse_tree_with_root(root: GrammarRoot, tree: Node) -> Outcome<Strin
 fn dag_emit_parse_tree(tree: Node) -> Outcome<String> {
   dag_emit_parse_tree_with_root(root: dag_grammar_root(), tree: tree)
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "dag_kernel_value_type_binding" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "namespace_graft_spine_shaped_edge_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-]

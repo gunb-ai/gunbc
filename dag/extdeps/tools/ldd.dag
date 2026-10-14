@@ -1,7 +1,4 @@
 module extdeps.tools.ldd
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
-import std.roster_frontier { FrontierRow, PathSubject }
-
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { NonEmptyStr, List }
@@ -103,11 +100,3 @@ fn ldd_reading_of(output: String) -> LddReading {
       }
   }
 }
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow {
-      subject: PathSubject { path: "ldd_reading_of" },
-      reason: nfr_reason_typed_census_ca5ed1724b,
-      dissolution: nfr_dissolve_owning_fold,
-    },
-]
