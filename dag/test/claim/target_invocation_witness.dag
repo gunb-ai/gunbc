@@ -37,6 +37,7 @@ import gunbc.target_binding {
   DependencyDemandCensusProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
+  SharedTypeLeafCollisionCensusProducer,
   RegenRoundCostProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading,
@@ -90,6 +91,7 @@ import gunbc.instrument_targets {
   dependency_demand_census_label,
   generic_identity_census_label,
   interpolation_hole_census_label,
+  shared_type_leaf_collision_census_label,
   regen_round_cost_label,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
@@ -714,10 +716,11 @@ test fn the_canonicality_cause_reaches_the_rendered_refusal() -> Bool {
 
 // THE NATIVE ROUTE'S UNIVERSE, SUPPLIED AT THIS BOUNDARY RATHER THAN DERIVED. `admit_test_operand`
 // takes it as a parameter precisely so a claim can author one, and the production caller supplies
+// the pattern the seed parses from the constant `gunbc.native_route_seed_boundary_emit` renders from
 // `gunbc.witness.v2_native_route` `native_route_default_pattern`. Spelling it here means the arms
 // below discriminate the CONTAINMENT decision rather than one compiled-in constant.
 fn native_universe() -> extdeps.bazel.target_pattern.TargetPattern {
-  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "test" as NonEmptyStr] } }
+  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr] } }
 }
 
 // ADMISSION IS THE PATTERN AUTHORITY'S ANSWER, NOT A STRING TEST AT THE VERB. Each row below
@@ -964,7 +967,7 @@ test fn the_universe_contains_itself_and_not_its_siblings() -> Bool {
          outer: native_universe()
        )
     && !target_pattern_within(
-         inner: SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr, "compiler" as NonEmptyStr] } },
+         inner: SubtreeTargets { package: PackagePath { segments: ["v2x" as NonEmptyStr] } },
          outer: native_universe()
        )
     && !target_pattern_within(
@@ -1044,6 +1047,16 @@ test fn the_interpolation_hole_census_operand_routes_to_its_own_producer() -> Bo
       label_eq(a: b.target, b: interpolation_hole_census_label())
         && (b.producer == InterpolationHoleCensusProducer {})
         && !(b.producer == GenericIdentityCensusProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_shared_type_leaf_collision_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:shared-type-leaf-collision-census") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: shared_type_leaf_collision_census_label())
+        && (b.producer == SharedTypeLeafCollisionCensusProducer {})
+        && !(b.producer == InterpolationHoleCensusProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }

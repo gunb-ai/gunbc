@@ -58,35 +58,57 @@ import v2.std.compilers.lexing {
 
 // One source carrier is retained throughout the walk; progress is a scalar index.
 // Byte extents remain independently derived from consumed Unicode scalars.
+//
+// `truncated` says the carrier is a WINDOW of a longer text, so a position at its end is not the end
+// of the text but the first position the walk has not been shown. That is a third fact, distinct from
+// a scalar and from the end of the text, and the cursor reports it as its own head (LexHeadBeyond)
+// rather than as an absent scalar: a matcher that read the window's end as the text's end would
+// reject a delimited lexeme the text goes on to close and cut an identifier the text goes on to
+// extend, with nothing to tell the wrong answer from a right one.
 type LexCursor {
   source: v2.std.text.String
   index: Int
+  truncated: Bool
 }
 
-fn lex_cursor_head(cursor: LexCursor) -> v2.std.text.CharResult {
+// WHAT THE CURSOR SHOWS AT ITS POSITION. Every reader of the carrier takes this one answer, so the
+// window's edge reaches every matcher as a case it must handle, never as an absence it may misread.
+type LexHead
+  = LexHeadFound { value: Char }
+  | LexHeadEnd
+  | LexHeadBeyond
+
+fn lex_cursor_head(cursor: LexCursor) -> LexHead {
   match list_at_optional(xs: cursor.source, index: cursor.index) {
-    Absent => CharAbsent
-    Present { value: c } => CharFound { value: c }
+    Absent =>
+      if cursor.truncated { LexHeadBeyond } else { LexHeadEnd }
+    Present { value: c } => LexHeadFound { value: c }
   }
 }
 
 fn lex_cursor_empty(cursor: LexCursor) -> Bool {
   match lex_cursor_head(cursor: cursor) {
-    CharAbsent => true
-    CharFound { value: _ } => false
+    LexHeadEnd => true
+    LexHeadFound { value: _ } => false
+    LexHeadBeyond => false
   }
 }
 
 fn lex_cursor_advance(cursor: LexCursor) -> LexCursor {
-  LexCursor { source: cursor.source, index: cursor.index + 1 }
+  LexCursor { source: cursor.source, index: cursor.index + 1, truncated: cursor.truncated }
 }
 
+// A match is Beyond when its outcome, accepted or rejected, or the extent it would have accepted,
+// depends on text the window does not hold. It is never a rejection: a rejection is final for the
+// whole text, and this one is not.
 type LexMatchResult
   = LexMatchAccepted { remaining: LexCursor, lexeme: v2.std.text.String }
   | LexMatchRejected
+  | LexMatchBeyond
 
 type LexRuleApply
   = LexRuleNoMatch
+  | LexRuleBeyond
   | LexRuleToken { class: Symbol, lexeme: v2.std.text.String, remaining: LexCursor }
   | LexRuleTrivia { lexeme: v2.std.text.String, remaining: LexCursor }
   | LexRuleAnnotation { class: Symbol, lexeme: v2.std.text.String, remaining: LexCursor }
@@ -198,10 +220,12 @@ fn lex_consume_prefix(prefix: v2.std.text.String, source: LexCursor) -> LexMatch
     cons: fn(acc, expected) {
       match acc {
         LexMatchRejected => LexMatchRejected
+        LexMatchBeyond => LexMatchBeyond
         LexMatchAccepted { remaining: cursor, lexeme: consumed } =>
           match lex_cursor_head(cursor: cursor) {
-            CharAbsent => LexMatchRejected
-            CharFound { value: c } =>
+            LexHeadEnd => LexMatchRejected
+            LexHeadBeyond => LexMatchBeyond
+            LexHeadFound { value: c } =>
               if c == expected {
                 LexMatchAccepted { remaining: lex_cursor_advance(cursor: cursor), lexeme: list_snoc_item(xs: consumed, item: c) }
               } else { LexMatchRejected }
@@ -224,10 +248,14 @@ fn lexeme_grow(acc: v2.std.text.String, chunk: v2.std.text.String) -> v2.std.tex
   fold_list(xs: chunk, empty: acc, cons: fn(grown, c) { list_snoc_item(xs: grown, item: c) })
 }
 
+// `beyond` is set when a step read the window's edge: the repeat's extent, or the delimited lexeme's
+// close, then depends on text the window does not hold, and the state is `done` so no further step
+// reads on from a position whose answer is unknown.
 type RepeatState {
   remaining: LexCursor
   lexeme: v2.std.text.String
   done: Bool
+  beyond: Bool
 }
 
 type DelimitedState {
@@ -235,6 +263,7 @@ type DelimitedState {
   lexeme: v2.std.text.String
   done: Bool
   failed: Bool
+  beyond: Bool
 }
 
 fn lex_rule_pattern(rule: LexRule) -> LexPattern {
@@ -248,8 +277,9 @@ fn lex_rule_pattern(rule: LexRule) -> LexPattern {
 
 fn lex_match_char_pred(pred: fn(Char) -> Bool, source: LexCursor) -> LexMatchResult {
   match lex_cursor_head(cursor: source) {
-    CharAbsent => LexMatchRejected
-    CharFound { value: c } =>
+    LexHeadEnd => LexMatchRejected
+    LexHeadBeyond => LexMatchBeyond
+    LexHeadFound { value: c } =>
       if pred(c) {
         LexMatchAccepted { remaining: lex_cursor_advance(cursor: source), lexeme: Cons { head: c, tail: std.algebra.Empty } }
       } else { LexMatchRejected }
@@ -262,18 +292,21 @@ fn lex_repeat_step(element: LexPattern, state: RepeatState) -> RepeatState {
     false =>
       match lex_match_pattern(pattern: element, source: state.remaining) {
         LexMatchRejected =>
-          RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
+          RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true, beyond: false }
+        LexMatchBeyond =>
+          RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true, beyond: true }
         LexMatchAccepted { remaining: rest, lexeme: consumed } =>
           match string_is_empty(s: consumed) {
             true =>
-              RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
+              RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true, beyond: false }
             false =>
               lex_repeat_step(
                 element: element,
                 state: RepeatState {
                   remaining: rest,
                   lexeme: lexeme_grow(acc: state.lexeme, chunk: consumed),
-                  done: false
+                  done: false,
+                  beyond: false
                 }
               )
           }
@@ -295,16 +328,21 @@ fn lex_delimited_step(close: LexPattern, body: LexPattern, state: DelimitedState
             remaining: after_close,
             lexeme: lexeme_grow(acc: state.lexeme, chunk: close_lex),
             done: true,
-            failed: false
+            failed: false,
+            beyond: false
           }
+        LexMatchBeyond =>
+          DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: false, beyond: true }
         LexMatchRejected =>
           match lex_match_pattern(pattern: body, source: state.remaining) {
             LexMatchRejected =>
-              DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
+              DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true, beyond: false }
+            LexMatchBeyond =>
+              DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: false, beyond: true }
             LexMatchAccepted { remaining: after_body, lexeme: body_lex } =>
               match string_is_empty(s: body_lex) {
                 true =>
-                  DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true }
+                  DelimitedState { remaining: state.remaining, lexeme: state.lexeme, done: true, failed: true, beyond: false }
                 false =>
                   lex_delimited_step(
                     close: close,
@@ -313,7 +351,8 @@ fn lex_delimited_step(close: LexPattern, body: LexPattern, state: DelimitedState
                       remaining: after_body,
                       lexeme: lexeme_grow(acc: state.lexeme, chunk: body_lex),
                       done: false,
-                      failed: false
+                      failed: false,
+                      beyond: false
                     }
                   )
               }
@@ -487,8 +526,9 @@ fn lex_merge_by_index(left: List<CompiledLexRule>, right: List<CompiledLexRule>)
 
 fn lex_dispatch_candidates(dispatch: LexRuleDispatch, source: LexCursor) -> List<CompiledLexRule> {
   match lex_cursor_head(cursor: source) {
-    CharAbsent => dispatch.all
-    CharFound { value: c } =>
+    LexHeadEnd => dispatch.all
+    LexHeadBeyond => dispatch.all
+    LexHeadFound { value: c } =>
       lex_merge_by_index(
         left: match map_lookup(m: dispatch.by_char, key: c) {
           Present { value: rules } => rules
@@ -517,10 +557,12 @@ fn lex_match_pattern(pattern: LexPattern, source: LexCursor) -> LexMatchResult {
     KeywordPattern { text: text } =>
       match lex_match_prefix(prefix: text, source: source) {
         LexMatchRejected => LexMatchRejected
+        LexMatchBeyond => LexMatchBeyond
         LexMatchAccepted { remaining: rest, lexeme: lex } =>
           match lex_cursor_head(cursor: rest) {
-            CharAbsent => LexMatchAccepted { remaining: rest, lexeme: lex }
-            CharFound { value: c } =>
+            LexHeadEnd => LexMatchAccepted { remaining: rest, lexeme: lex }
+            LexHeadBeyond => LexMatchBeyond
+            LexHeadFound { value: c } =>
               if char_in_class(c: c, class: IdentContinueChar) { LexMatchRejected } else { LexMatchAccepted { remaining: rest, lexeme: lex } }
           }
       }
@@ -529,9 +571,11 @@ fn lex_match_pattern(pattern: LexPattern, source: LexCursor) -> LexMatchResult {
     SequencePattern { left: left, right: right } =>
       match lex_match_pattern(pattern: left, source: source) {
         LexMatchRejected => LexMatchRejected
+        LexMatchBeyond => LexMatchBeyond
         LexMatchAccepted { remaining: rest1, lexeme: lex1 } =>
           match lex_match_pattern(pattern: right, source: rest1) {
             LexMatchRejected => LexMatchRejected
+            LexMatchBeyond => LexMatchBeyond
             LexMatchAccepted { remaining: rest2, lexeme: lex2 } =>
               LexMatchAccepted { remaining: rest2, lexeme: list_append(left: lex1, right: lex2) }
           }
@@ -539,33 +583,42 @@ fn lex_match_pattern(pattern: LexPattern, source: LexCursor) -> LexMatchResult {
     ChoicePattern { left: left, right: right } =>
       match lex_match_pattern(pattern: left, source: source) {
         LexMatchAccepted { remaining: rest, lexeme: lex } => LexMatchAccepted { remaining: rest, lexeme: lex }
+        LexMatchBeyond => LexMatchBeyond
         LexMatchRejected => lex_match_pattern(pattern: right, source: source)
       }
     OptionalPattern { element: element } =>
       match lex_match_pattern(pattern: element, source: source) {
         LexMatchAccepted { remaining: rest, lexeme: lex } => LexMatchAccepted { remaining: rest, lexeme: lex }
+        LexMatchBeyond => LexMatchBeyond
         LexMatchRejected => LexMatchAccepted { remaining: source, lexeme: std.algebra.Empty }
       }
     RepeatPattern { element: element } =>
-      let result = lex_repeat_loop(element: element, init: RepeatState { remaining: source, lexeme: std.algebra.Empty, done: false })
-      LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
+      let result = lex_repeat_loop(element: element, init: RepeatState { remaining: source, lexeme: std.algebra.Empty, done: false, beyond: false })
+      if result.beyond { LexMatchBeyond } else { LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme } }
     OneOrMorePattern { element: element } =>
       match lex_match_pattern(pattern: element, source: source) {
         LexMatchRejected => LexMatchRejected
+        LexMatchBeyond => LexMatchBeyond
         LexMatchAccepted { remaining: rest, lexeme: lex } =>
-          let result = lex_repeat_loop(element: element, init: RepeatState { remaining: rest, lexeme: lex, done: false })
-          LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
+          let result = lex_repeat_loop(element: element, init: RepeatState { remaining: rest, lexeme: lex, done: false, beyond: false })
+          if result.beyond { LexMatchBeyond } else { LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme } }
       }
     DelimitedPattern { open: open, body: body, close: close } =>
       match lex_match_pattern(pattern: open, source: source) {
         LexMatchRejected => LexMatchRejected
+        LexMatchBeyond => LexMatchBeyond
         LexMatchAccepted { remaining: after_open, lexeme: open_lex } =>
-          let result = lex_delimited_step(close: close, body: body, state: DelimitedState { remaining: after_open, lexeme: open_lex, done: false, failed: false })
-          if result.done && !result.failed { LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme } } else { LexMatchRejected }
+          let result = lex_delimited_step(close: close, body: body, state: DelimitedState { remaining: after_open, lexeme: open_lex, done: false, failed: false, beyond: false })
+          if result.beyond {
+            LexMatchBeyond
+          } else {
+            if result.done && !result.failed { LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme } } else { LexMatchRejected }
+          }
       }
     NotFollowedByPattern { element: element } =>
       match lex_match_pattern(pattern: element, source: source) {
         LexMatchAccepted { remaining: _, lexeme: _ } => LexMatchRejected
+        LexMatchBeyond => LexMatchBeyond
         LexMatchRejected => LexMatchAccepted { remaining: source, lexeme: std.algebra.Empty }
       }
   }
@@ -574,6 +627,7 @@ fn lex_match_pattern(pattern: LexPattern, source: LexCursor) -> LexMatchResult {
 fn lex_try_compiled(compiled: CompiledLexRule, source: LexCursor) -> LexRuleApply {
   match lex_match_pattern(pattern: lex_rule_pattern(rule: compiled.rule), source: source) {
     LexMatchRejected => LexRuleNoMatch
+    LexMatchBeyond => LexRuleBeyond
     LexMatchAccepted { remaining: remaining, lexeme: lexeme } =>
       match compiled.rule {
         TokenRule { token_class: class, pattern: _ } =>
@@ -614,20 +668,28 @@ fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
   list_reverse(xs: compiled.reversed)
 }
 
-fn lex_try_rule(rule: LexRule, source: v2.std.text.String) -> LexRuleApply {
+// One rule over a text, as a claim holds it: the matcher's answer at the start of `source`. `truncated`
+// says `source` is a window of a longer text, so a read at its end answers Beyond and not the end of the
+// text; false reads the end as the text's end.
+fn lex_try_rule_window(rule: LexRule, source: v2.std.text.String, truncated: Bool) -> LexRuleApply {
   lex_try_compiled(
     compiled: CompiledLexRule {
       rule: rule,
       index: 0,
       first: lex_pattern_first(pattern: lex_rule_pattern(rule: rule))
     },
-    source: LexCursor { source: source, index: 0 }
+    source: LexCursor { source: source, index: 0, truncated: truncated }
   )
+}
+
+fn lex_try_rule(rule: LexRule, source: v2.std.text.String) -> LexRuleApply {
+  lex_try_rule_window(rule: rule, source: source, truncated: false)
 }
 
 fn lex_rule_apply_lexeme_length(apply: LexRuleApply) -> Int {
   match apply {
     LexRuleNoMatch => 0
+    LexRuleBeyond => 0
     LexRuleToken { lexeme: lexeme, remaining: _, class: _ } => length(xs: lexeme)
     LexRuleTrivia { lexeme: lexeme, remaining: _ } => length(xs: lexeme)
     LexRuleAnnotation { lexeme: lexeme, remaining: _, class: _ } => length(xs: lexeme)
@@ -635,11 +697,16 @@ fn lex_rule_apply_lexeme_length(apply: LexRuleApply) -> Int {
   }
 }
 
+// A rule that is Beyond makes the whole attempt Beyond, whichever rules matched beside it: the longest
+// match is the rule set's answer, and a rule the window cut off might have been the longer one, or
+// the later of two equals, so no other rule's match can be taken for the answer.
 fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> LexRuleApply {
   match acc {
+    LexRuleBeyond => LexRuleBeyond
     LexRuleNoMatch => candidate
     LexRuleToken { class: _, lexeme: _, remaining: _ } =>
       match candidate {
+        LexRuleBeyond => LexRuleBeyond
         LexRuleNoMatch => acc
         LexRuleToken { class: _, lexeme: _, remaining: _ } =>
           if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
@@ -668,6 +735,7 @@ fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> Le
       }
     LexRuleTrivia { lexeme: _, remaining: _ } =>
       match candidate {
+        LexRuleBeyond => LexRuleBeyond
         LexRuleNoMatch => acc
         LexRuleToken { class: _, lexeme: _, remaining: _ } =>
           if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
@@ -696,6 +764,7 @@ fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> Le
       }
     LexRuleAnnotation { class: _, lexeme: _, remaining: _ } =>
       match candidate {
+        LexRuleBeyond => LexRuleBeyond
         LexRuleNoMatch => acc
         LexRuleToken { class: _, lexeme: _, remaining: _ } =>
           if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
@@ -724,6 +793,7 @@ fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> Le
       }
     LexRuleModalToken { class: _, lexeme: _, remaining: _, transition: _ } =>
       match candidate {
+        LexRuleBeyond => LexRuleBeyond
         LexRuleNoMatch => acc
         LexRuleToken { class: _, lexeme: _, remaining: _ } =>
           if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
@@ -780,6 +850,9 @@ fn lexeme_utf8_octet_count(lexeme: v2.std.text.String) -> Int {
   )
 }
 
+// `beyond` says the walk halted at a position whose rule set answered Beyond: the window ended inside
+// what the next token needs, so nothing past that position is decided. It is distinct from `done` with
+// `error`, which is a refusal of the whole text, and from `done` alone, which is the end of it.
 type LexWalkAcc {
   remaining: LexCursor
   tokens: List<Token>
@@ -789,6 +862,7 @@ type LexWalkAcc {
   pos: Int
   done: Bool
   error: Bool
+  beyond: Bool
   file: Symbol
   dispatch: LexRuleDispatch
   modes: Map<Symbol, LexRuleDispatch>
@@ -841,6 +915,7 @@ fn lex_walk_with_mode(
     pos: acc.pos,
     done: acc.done || faulted,
     error: acc.error || faulted,
+    beyond: acc.beyond,
     file: acc.file,
     dispatch: dispatch,
     modes: acc.modes,
@@ -891,9 +966,9 @@ fn lex_walk_finish(acc: LexWalkAcc) -> LexWalkAcc {
   }
 }
 
-fn lex_walk_init(src: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet) -> LexWalkAcc {
+fn lex_walk_init(src: v2.std.text.String, truncated: Bool, file: Symbol, prepared: PreparedLexRuleSet) -> LexWalkAcc {
   LexWalkAcc {
-    remaining: LexCursor { source: src, index: 0 },
+    remaining: LexCursor { source: src, index: 0, truncated: truncated },
     tokens: std.algebra.Empty,
     annotations: std.algebra.Empty,
     line_prefix_indent_only: true,
@@ -901,6 +976,7 @@ fn lex_walk_init(src: v2.std.text.String, file: Symbol, prepared: PreparedLexRul
     pos: 0,
     done: false,
     error: false,
+    beyond: false,
     file: file,
     dispatch: prepared.dispatch,
     modes: prepared.modes,
@@ -912,46 +988,59 @@ fn lex_walk_init(src: v2.std.text.String, file: Symbol, prepared: PreparedLexRul
   }
 }
 
-// HOW FAR THE WALK GOES. The whole door lexes the text to its end; the prefix door
-// (tokenize_prefix_prepared) stops the SAME walk at a scalar index. The limit is one more reason for
-// the fold to stop, and it stops nothing else: every step it does take is lex_walk_step, so the tokens
-// of a stopped walk are exactly the leading tokens of the whole lex and a refusal inside the walked
-// part is the whole lex's first refusal.
+// HOW MUCH OF THE TEXT THE DOOR SHOWS THE WALK. The whole door lexes the text to its end; the prefix
+// door (tokenize_prefix_prepared) shows only its first `scalars` scalars. The walk never sees this
+// type: the door materializes the window as the carrier the walk reads, and a position past the
+// carrier's end answers Beyond (LexHead), so the walk has no limit to check and no second way to stop.
 type LexWalkLimit
   = LexWalkWhole
   | LexWalkUntil { scalars: Int }
 
-// A walk stops at its limit only while input remains: a cursor at the end of the text takes the finish
-// step like the whole walk, so a prefix that reaches the end of the text carries the end-of-input
-// verdict too (an unterminated mode) and is the whole lex, not a stand-in for it.
-fn lex_walk_limit_reached(acc: LexWalkAcc, limit: LexWalkLimit) -> Bool {
-  match limit {
-    LexWalkWhole => false
-    LexWalkUntil { scalars: n } =>
-      if acc.remaining.index >= n {
-        match lex_cursor_empty(cursor: acc.remaining) {
-          true => false
-          false => true
-        }
-      } else {
-        false
-      }
+fn lex_walk_is_done(acc: LexWalkAcc) -> Bool {
+  acc.done
+}
+
+// Whether the walk ended where the whole lex ends -- it finished or refused -- rather than at the
+// window's edge. A halt at Beyond is the one stop that is not the lex's end, and a cursor at the end
+// of a truncated carrier is not empty: its head is Beyond. A walk that has consumed its whole input is
+// done: fold_source takes the end of the source as a step of its own (v2.std.text fold_source), so the
+// walk's step on an empty cursor always runs. This used to read "or the cursor is empty" as well, which
+// answered the same question from the cursor and so could not tell a walk that had finished from one
+// whose end-of-input verdict never ran.
+fn lex_walk_reached_end(acc: LexWalkAcc) -> Bool {
+  acc.done && !acc.beyond
+}
+
+// THE WALK STOPS, UNDECIDED, WHERE THE WINDOW ENDS INSIDE WHAT THE NEXT TOKEN NEEDS. Nothing is
+// consumed and nothing is finished: the end-of-input verdict (an unterminated mode) belongs to the end
+// of the TEXT, which this halt is not, and a refusal belongs to a rule set that answered, which a Beyond
+// answer did not. The tokens already emitted are the leading tokens of the whole lex.
+fn lex_walk_halt_beyond(acc: LexWalkAcc) -> LexWalkAcc {
+  LexWalkAcc {
+    remaining: acc.remaining,
+    tokens: acc.tokens,
+    annotations: acc.annotations,
+    line_prefix_indent_only: acc.line_prefix_indent_only,
+    line_state: acc.line_state,
+    pos: acc.pos,
+    done: true,
+    error: false,
+    beyond: true,
+    file: acc.file,
+    dispatch: acc.dispatch,
+    modes: acc.modes,
+    mode_stack: acc.mode_stack,
+    mode_fault: acc.mode_fault,
+    gap_start: acc.gap_start,
+    gap_has_break: acc.gap_has_break,
+    layout: acc.layout
   }
 }
 
-fn lex_walk_is_done(acc: LexWalkAcc, limit: LexWalkLimit) -> Bool {
-  acc.done || lex_walk_limit_reached(acc: acc, limit: limit)
-}
-
-// Whether the walk ended where the whole lex ends -- it finished, refused, or has no input left --
-// rather than at its limit with input remaining.
-fn lex_walk_reached_end(acc: LexWalkAcc) -> Bool {
-  acc.done || lex_cursor_empty(cursor: acc.remaining)
-}
-
 fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
-  match lex_cursor_empty(cursor: acc.remaining) {
-    true =>
+  match lex_cursor_head(cursor: acc.remaining) {
+    LexHeadBeyond => lex_walk_halt_beyond(acc: acc)
+    LexHeadEnd =>
       lex_walk_finish(
         acc: LexWalkAcc {
             remaining: acc.remaining,
@@ -962,6 +1051,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
             pos: acc.pos,
             done: true,
             error: false,
+            beyond: acc.beyond,
             file: acc.file,
             dispatch: acc.dispatch,
             modes: acc.modes,
@@ -972,8 +1062,9 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
             layout: acc.layout
           }
       )
-    false =>
+    LexHeadFound { value: _ } =>
       match lex_try_rules(rules: lex_dispatch_candidates(dispatch: acc.dispatch, source: acc.remaining), source: acc.remaining) {
+        LexRuleBeyond => lex_walk_halt_beyond(acc: acc)
         LexRuleNoMatch =>
           LexWalkAcc {
             remaining: acc.remaining,
@@ -984,6 +1075,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
             pos: acc.pos,
             done: true,
             error: true,
+            beyond: acc.beyond,
             file: acc.file,
             dispatch: acc.dispatch,
             modes: acc.modes,
@@ -1005,6 +1097,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 pos: acc.pos,
                 done: true,
                 error: true,
+                beyond: acc.beyond,
                 file: acc.file,
                 dispatch: acc.dispatch,
                 modes: acc.modes,
@@ -1024,6 +1117,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
                 done: false,
                 error: false,
+                beyond: acc.beyond,
                 file: acc.file,
                 dispatch: acc.dispatch,
                 modes: acc.modes,
@@ -1048,6 +1142,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 pos: acc.pos,
                 done: true,
                 error: true,
+                beyond: acc.beyond,
                 file: acc.file,
                 dispatch: acc.dispatch,
                 modes: acc.modes,
@@ -1079,6 +1174,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
                 done: false,
                 error: false,
+                beyond: acc.beyond,
                 file: acc.file,
                 dispatch: acc.dispatch,
                 modes: acc.modes,
@@ -1113,6 +1209,7 @@ fn lex_walk_emit_token(acc: LexWalkAcc, class: Symbol, lexeme: v2.std.text.Strin
         pos: acc.pos,
         done: true,
         error: true,
+        beyond: acc.beyond,
         file: acc.file,
         dispatch: acc.dispatch,
         modes: acc.modes,
@@ -1141,6 +1238,7 @@ fn lex_walk_emit_token(acc: LexWalkAcc, class: Symbol, lexeme: v2.std.text.Strin
         pos: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme),
         done: false,
         error: false,
+        beyond: acc.beyond,
         file: acc.file,
         dispatch: acc.dispatch,
         modes: acc.modes,
@@ -1153,10 +1251,10 @@ fn lex_walk_emit_token(acc: LexWalkAcc, class: Symbol, lexeme: v2.std.text.Strin
   }
 }
 
-fn lex_walk_source_algebra(file: Symbol, prepared: PreparedLexRuleSet, limit: LexWalkLimit) -> SourceFold<LexWalkAcc> {
+fn lex_walk_source_algebra(file: Symbol, prepared: PreparedLexRuleSet, truncated: Bool) -> SourceFold<LexWalkAcc> {
   SourceFold {
-    init: fn(src) { lex_walk_init(src: src, file: file, prepared: prepared) },
-    is_done: fn(acc) { lex_walk_is_done(acc: acc, limit: limit) },
+    init: fn(src) { lex_walk_init(src: src, truncated: truncated, file: file, prepared: prepared) },
+    is_done: lex_walk_is_done,
     step: lex_walk_step
   }
 }
@@ -1164,8 +1262,9 @@ fn lex_walk_source_algebra(file: Symbol, prepared: PreparedLexRuleSet, limit: Le
 // The unmatched scalar's width in octets, so the refusal extent covers exactly that one scalar.
 fn lex_unmatched_scalar_octets(remaining: LexCursor) -> Int {
   match lex_cursor_head(cursor: remaining) {
-    CharFound { value: c } => unicode_scalar_utf8_octet_count(code_point: unicode_char_code_point(c: c))
-    CharAbsent => 0
+    LexHeadFound { value: c } => unicode_scalar_utf8_octet_count(code_point: unicode_char_code_point(c: c))
+    LexHeadEnd => 0
+    LexHeadBeyond => 0
   }
 }
 
@@ -1176,7 +1275,7 @@ fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet
 }
 
 fn lex_walk_artifact_prepared(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet) -> Outcome<LexArtifact> {
-  match lex_walk_artifact_limited(source: source, file: file, prepared: prepared, limit: LexWalkWhole) {
+  match lex_walk_artifact_windowed(source: source, truncated: false, file: file, prepared: prepared) {
     v2.std.diagnostic.Rejected { diagnostics: ds } =>
       v2.std.diagnostic.Rejected { diagnostics: ds }
     v2.std.diagnostic.Accepted { value: walk, diagnostics: ds } =>
@@ -1185,18 +1284,18 @@ fn lex_walk_artifact_prepared(source: v2.std.text.String, file: Symbol, prepared
 }
 
 // THE ARTIFACT OF A WALK, AND WHETHER THAT WALK IS THE WHOLE LEX. `complete` is false only for a walk
-// that a limit stopped with input remaining; every walk under LexWalkWhole is complete, so the whole
-// door and the prefix door are this one function with different limits.
+// that halted at the edge of a truncated carrier; every walk over a carrier that is the whole text is
+// complete, so the whole door and the prefix door are this one function over different carriers.
 type LexArtifactWalk {
   artifact: LexArtifact
   complete: Bool
 }
 
-fn lex_walk_artifact_limited(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet, limit: LexWalkLimit) -> Outcome<LexArtifactWalk> {
+fn lex_walk_artifact_windowed(source: v2.std.text.String, truncated: Bool, file: Symbol, prepared: PreparedLexRuleSet) -> Outcome<LexArtifactWalk> {
   match prepared.mode_refusal {
     Present { value: refusal } =>
       v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e5_mode_declaration_diagnostic(file: file, refusal: refusal)) }
-    Absent => lex_walk_artifact_walked(source: source, file: file, prepared: prepared, limit: limit)
+    Absent => lex_walk_artifact_walked(source: source, truncated: truncated, file: file, prepared: prepared)
   }
 }
 
@@ -1208,10 +1307,10 @@ fn lex_walk_mode_fault_diagnostic(file: Symbol, fault: LexWalkModeFault) -> Diag
   }
 }
 
-fn lex_walk_artifact_walked(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet, limit: LexWalkLimit) -> Outcome<LexArtifactWalk> {
+fn lex_walk_artifact_walked(source: v2.std.text.String, truncated: Bool, file: Symbol, prepared: PreparedLexRuleSet) -> Outcome<LexArtifactWalk> {
   let result = fold_source(
     src: source,
-    algebra: lex_walk_source_algebra(file: file, prepared: prepared, limit: limit)
+    algebra: lex_walk_source_algebra(file: file, prepared: prepared, truncated: truncated)
   )
   let at = match lex_cursor_empty(cursor: result.remaining) {
     true => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
@@ -1269,7 +1368,10 @@ fn lex_walk_prepared(source: v2.std.text.String, file: Symbol, prepared: Prepare
 //
 // EXACTLY ONCE, ABOVE EVERYTHING. Both arms below read the converted value, so no lexical callback,
 // prefix operation, walk state or fold ever receives the host form. A second conversion further in
-// would be a second answer to a question already answered.
+// would be a second answer to a question already answered. When a door is given a scalar limit
+// (tokenize_prefix_prepared) the text is first cut to that window by a host substring, so the one
+// conversion crosses the window and not the file; the cut is not a second crossing, since it neither
+// reads a character's meaning nor produces structural text.
 //
 // THIS IS ONE CONVERSION AT ONE INGRESS AND NOTHING WIDER. It is not permission for
 // arbitrary host Strings to inhabit structural text: gunbc.rung_drop's
@@ -1322,36 +1424,64 @@ fn tokenize_prepared(text: String, file: Symbol, prepared: PreparedLexRules) -> 
 }
 
 // THE LEADING TOKENS OF A LEX, AND WHETHER THEY ARE ALL OF IT. `stream` holds the tokens of the text up
-// to the walk's stop and `complete` says the stop was the end of the lex rather than the limit, so a
-// reader that needs only the start of a file (a module's header) can ask for a window and learn whether
-// a longer one could differ.
+// to the walk's stop and `complete` says the stop was the end of the lex rather than the edge of the
+// window, so a reader that needs only the start of a file (a module's header) can ask for a window and
+// learn whether a longer one could differ.
 type LexPrefix {
   stream: TokenStream
   complete: Bool
 }
 
+// THE TEXT A DOOR SHOWS THE WALK: host text, and whether it is only the start of a longer text. The
+// window is a HOST operation, taken before the one declared crossing, so the crossing below converts
+// the window and nothing it did not need.
+type LexWindow {
+  text: String
+  truncated: Bool
+}
+
+// A text holds more than n scalars exactly when its first n + 1 do, so truncation is decided from a
+// window one scalar wider than the one shown; counting the whole text would be a host operation that
+// follows the file's length, and the window is what the cost is meant to follow.
+fn lex_window(text: String, limit: LexWalkLimit) -> LexWindow {
+  match limit {
+    LexWalkWhole => LexWindow { text: text, truncated: false }
+    LexWalkUntil { scalars: n } =>
+      if string_length(s: substring(s: text, start: 0, end: n + 1)) > n {
+        LexWindow { text: substring(s: text, start: 0, end: if n < 0 { 0 } else { n }), truncated: true }
+      } else {
+        LexWindow { text: text, truncated: false }
+      }
+  }
+}
+
 // THE ONE DOOR OF THE LEX, WHOLE OR PARTIAL. tokenize_prepared is this door under LexWalkWhole, so the
 // text ingress below, the void-rules refusal and the walk are shared rather than restated. Under
-// LexWalkUntil the text is still unfolded and walked from its start with the whole text in view, only
-// stopped at the limit: a token that crosses the limit is lexed whole, never cut at it, so no token of a
-// prefix differs from the same token of the whole lex. A refusal inside the walked part is the whole
-// lex's refusal with its own cause; a refusal beyond it is not seen, which is why a prefix that is not
-// `complete` says nothing about the rest of the text.
+// LexWalkUntil only the first `scalars` scalars of the text cross and are walked, and the carrier says
+// it is a window (LexCursor.truncated): wherever the answer to "what does the rule set match here"
+// depends on a scalar past the window, the walk halts BEFORE the token and emits nothing for it. So the
+// tokens of a prefix are exactly the leading tokens of the whole lex, never a token cut at the window's
+// edge and never one the text would have lexed longer, and a token that straddles the edge is not in
+// the prefix at all. A refusal inside the walked part is the whole lex's refusal with its own cause; a
+// refusal beyond it is not seen, which is why a prefix that is not `complete` says nothing about the
+// rest of the text. The cost of the door follows the window and not the text: the unfold, which builds a
+// scalar sequence at hundreds of nanoseconds a scalar, is paid for the window.
 fn tokenize_prefix_prepared(text: String, file: Symbol, prepared: PreparedLexRules, limit: LexWalkLimit) -> Outcome<LexPrefix> {
-  let source = unicode_scalar_unfold(s: text)
+  let window = lex_window(text: text, limit: limit)
+  let source = unicode_scalar_unfold(s: window.text)
   let at = Textual {
     file: file,
     extent: WholeFile
   }
   match prepared {
     PreparedVoidLexRules =>
-      if is_empty(xs: source) {
-        v2.std.diagnostic.Accepted { value: LexPrefix { stream: token_stream_empty(), complete: true }, diagnostics: v2.std.diagnostic.None }
-      } else {
+      if window.truncated || !is_empty(xs: source) {
         v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
+      } else {
+        v2.std.diagnostic.Accepted { value: LexPrefix { stream: token_stream_empty(), complete: true }, diagnostics: v2.std.diagnostic.None }
       }
     PreparedModeledLexRules { root: prepared_set } =>
-      match lex_walk_artifact_limited(source: source, file: file, prepared: prepared_set, limit: limit) {
+      match lex_walk_artifact_windowed(source: source, truncated: window.truncated, file: file, prepared: prepared_set) {
         v2.std.diagnostic.Rejected { diagnostics: ds } =>
           v2.std.diagnostic.Rejected { diagnostics: ds }
         v2.std.diagnostic.Accepted { value: walk, diagnostics: ds } =>
