@@ -4486,38 +4486,39 @@ fn realize_live_deploy_apply_on_host(
     )
     let required_standing = transition_required_retiring(host: host)
     let admission = runner_host_deploy_for(host: host)
+    let cap_authorization = match admission {
+      RunnerHostDeployRefused { host: rh, cause: rc } =>
+        CapConvergeWithheld {
+          cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
+        }
+      RunnerHostDeployUnmodeled { host: uh } =>
+        CapConvergeWithheld {
+          cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
+        }
+      RunnerHostDeployFound { deploy: _ } =>
+        match required_standing {
+          RetireesUnresolved { host: uh, cause: rc } =>
+            CapConvergeWithheld {
+              cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
+            }
+          RetireesKnown { units: required } =>
+            cap_converge_decision(
+              host: host,
+              required_retiring: required,
+              observation: surplus_observation_from_census_and_retirement(
+                census: census,
+                standings: observe_retirement_standings(transport: transport, units: required),
+              ),
+            )
+        }
+    }
     realize_shell_on_host(
       script: retained_srvn(
         body: live_deploy_apply_script_for_wet(
           spec: spec,
           plan: plan,
           access: access,
-          cap_authorization: match admission {
-            RunnerHostDeployRefused { host: rh, cause: rc } =>
-              CapConvergeWithheld {
-                cause: join([rh as String, " is refused as a runner host (", rc, "), so no per-slot cap population is derivable for it and none may be written"], ""),
-              }
-            RunnerHostDeployUnmodeled { host: uh } =>
-              CapConvergeWithheld {
-                cause: join([uh as String, " has no runner deploy row, so no per-slot cap population is derivable for it"], ""),
-              }
-            RunnerHostDeployFound { deploy: _ } =>
-              match required_standing {
-                RetireesUnresolved { host: uh, cause: rc } =>
-                  CapConvergeWithheld {
-                    cause: join([uh as String, " has no derivable retirement obligation, so no cap raise can be admitted against it (", rc, "); existing caps are left exactly as observed"], ""),
-                  }
-                RetireesKnown { units: required } =>
-                  cap_converge_decision(
-                    host: host,
-                    required_retiring: required,
-                    observation: surplus_observation_from_census_and_retirement(
-                      census: census,
-                      standings: observe_retirement_standings(transport: transport, units: required),
-                    ),
-                  )
-              }
-          },
+          cap_authorization: cap_authorization,
         ),
         reason: "live_deploy apply (unit install + start)",
       ),

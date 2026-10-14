@@ -160,7 +160,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { dashboard_dispatch_worktree_me
 import gunbc.live_deploy.spec {
   HoldsProdRoleSingletons, HoldsNoRoleSingleton, deployment_fabric_storage_door_socket,
   deployment_slice_unit_name, deployment_slice_unit_path,
-  deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
+  deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
   deployment_owns_the_host_approval_broker,
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
@@ -171,8 +171,12 @@ import gunbc.live_deploy.spec {
   EnsuredSubject, EnsuredPackage, EnsuredOwnershipMarker, ensured_subject_identity,
   deployment_directory_demands,
   DeploymentArtifactStep,
+  OwnedArtifactKind,
+  ComposeOwnedArtifactKind,
+  UpsertArtifactKind,
+  ComposeOwned, UpsertOwned,
   ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
-  deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_function_suffix,
+  deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_exit_path_unit_name, deployment_belt_exit_drain_service_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_discovery_service_unit_name,
@@ -216,11 +220,13 @@ import gunbc.host.host_layout {
   publication_refused_dir,
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
 }
+import product.host_identity { HostIdentity }
 import gunbc.host.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
   CapAuthorizedForThisHost,
   CapConvergeDecision,
   CapConvergeWithheld,
+  CapMember,
   cap_authorization_for_host,
   deploy_memory_cap_apply_script_from_authorization,
   deploy_memory_cap_script_author_precedes_shadow_revert,
@@ -240,6 +246,8 @@ import gunbc.membership_reconcile {
 import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv }
 import gunbc.live_deploy.operations {
   deploy_stage_dir_var,
+  deploy_cap_stage_dir_var,
+  deploy_stage_dirs_exit_trap_command,
   deploy_stage_write_command,
   deploy_stage_write_expansion_command,
   deploy_stage_install_command,
@@ -278,6 +286,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_var,
   bash_build_command_with_words,
   bash_build_word_concat_from_nodes,
+  bash_build_with_redir,
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.node { Node }
@@ -318,7 +327,7 @@ data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_
 //      from a variable reference, and the tree-sync restart carries a `|| { ...; exit 1; }`
 //      diagnosis tail. BoundOperationInvocation names an operation and its inputs; it cannot carry
 //      a redirect, a word with an expansion in it, or a failure branch.
-//   3. THE LINE IS NOT A COMMAND AT ALL -- `set -euo pipefail`, the EXIT trap, and the
+//   3. THE LINE IS NOT A COMMAND AT ALL -- `set -euo pipefail` and the
 //      __GUNBC_*_REFUSED__ poison markers, which are deliberately not valid shell.
 //   4. THE BODY IS HAND-AUTHORED SHELL from another module (the sudoers install, the memory-cap
 //      block, the receipt echo), which is that module's own census row, not this one's.
@@ -338,6 +347,15 @@ data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_
 // per-claim ceiling refuses. Naming it makes the apply's own shell contract readable at its
 // producer, and keeps the two folds from drifting apart on the option set they set.
 data deploy_shell_strict_options_command: String = "set -euo pipefail"
+
+fn deploy_shell_merge_stderr_command() -> String {
+  bash_intent_command_or_poison(
+    intent: bash_build_with_redir(
+      inner: bash_build_command_from_lits(lits: ["exec"]),
+      redir: ^bash_production_fold_redir_stderr_to_stdout,
+    )
+  )
+}
 
 fn deploy_raw(command: String) -> PipelineStep {
   Do {
@@ -455,11 +473,19 @@ fn ensure_apt_package_step(pkg: NonEmptyStr, privileged: Bool) -> PipelineStep {
 // already carries Let with an ExprCmdSubst value, so the name, the callee and its argument are
 // three modeled parts instead of one quoted line an author assembled — and the variable name is
 // the same single authority the staged-path word reads (operations.deploy_stage_dir_var).
-fn deploy_stage_directory_let_step() -> PipelineStep {
+fn deploy_mktemp_dir_let_step(name: String) -> PipelineStep {
   Let {
-    name: deploy_stage_dir_var,
+    name: name,
     value: ExprCmdSubst { callee: "mktemp", args: ["-d"] },
   }
+}
+
+fn deploy_stage_directory_let_step() -> PipelineStep {
+  deploy_mktemp_dir_let_step(name: deploy_stage_dir_var)
+}
+
+fn deploy_cap_stage_directory_let_step() -> PipelineStep {
+  deploy_mktemp_dir_let_step(name: deploy_cap_stage_dir_var)
 }
 
 // The end-of-fold receipt line, named once for both folds. Its fields are argv elements rather
@@ -653,45 +679,44 @@ fn live_deploy_serve_unit_file_over_listener(
 
 // THE TAILNET DOOR'S UNIT: the same server as the unit above, launched on the door entry and bound
 // to the socket the deployment's serve route targets (gunbc.live_deploy.spec
-// deployment_tailnet_door_socket). Absent for a deployment whose route targets a port.
+// deployment_tailnet_door_socket). Three arms: emitted, not deployed (no socket), refused (OIDC).
+type LiveDeployTailnetDoorUnitEmission
+  = LiveDeployTailnetDoorUnitEmitted { file: SystemdUnitFile }
+  | LiveDeployTailnetDoorUnitNotDeployed
+  | LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: NonEmptyStr }
+
 fn live_deploy_tailnet_door_unit_file(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
-) -> SystemdUnitFile? {
+) -> LiveDeployTailnetDoorUnitEmission {
   match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
-    LiveDeployOidcEnvRefused { cause: _ } => none
+    LiveDeployOidcEnvRefused { cause } =>
+      LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: cause }
     LiveDeployOidcEnvAdmitted { directives } =>
       match deployment_tailnet_door_socket(names: spec.names) {
-        Absent => none
-        Present { value: socket } => Present { value: live_deploy_serve_unit_file_over_listener(
-          spec: spec, revision: revision, oidc_env: directives,
-          description: "gunbc roadmap tailnet door (gunbc serve)" as NonEmptyStr,
-          function: concat(spec.service.serve_function as String, deployment_tailnet_door_function_suffix) as NonEmptyStr,
-          listener: concat(" --unix-socket ", socket as String),
-        ) }
+        Absent => LiveDeployTailnetDoorUnitNotDeployed
+        Present { value: socket } => LiveDeployTailnetDoorUnitEmitted {
+          file: live_deploy_serve_unit_file_over_listener(
+            spec: spec, revision: revision, oidc_env: directives,
+            description: "gunbc roadmap tailnet door (gunbc serve)" as NonEmptyStr,
+            function: concat(spec.service.serve_function as String, deployment_tailnet_door_function_suffix) as NonEmptyStr,
+            listener: concat(" --unix-socket ", socket as String),
+          )
+        }
       }
   }
 }
 
 fn live_deploy_tailnet_door_unit_file_at(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second,
-) -> SystemdUnitFile? {
+) -> LiveDeployTailnetDoorUnitEmission {
   live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: Present { value: now_epoch })
 }
 
-// A step of this kind exists only where the door does (deployment_tailnet_door_steps), so the
-// absent arm is a spec whose steps and names disagree: it writes a refusal marker, never a unit.
-fn apply_tailnet_door_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> PipelineStep {
-  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
-    LiveDeployOidcEnvRefused { cause } => apply_oidc_readback_refuse_step(cause: cause)
-    LiveDeployOidcEnvAdmitted { directives: _ } =>
-      match live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
-        Absent => deploy_raw(command: "__GUNBC_TAILNET_DOOR_REFUSED__ TailnetDoorServeUnit step on a deployment whose serve route targets no unix socket")
-        Present { value: unit } => deploy_raw(command: deploy_stage_write_command(
-          stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
-          content: render(doc: doc_text(text: serialize_systemd_unit_file(file: unit)), proto: live_deploy_protocol),
-        ))
-      }
-  }
+fn apply_tailnet_door_unit_write_steps(spec: DeploymentSpec, file: SystemdUnitFile) -> List<PipelineStep> {
+  [deploy_raw(command: deploy_stage_write_command(
+    stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
+    content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
+  ))]
 }
 
 // THE FABRIC DB ENDPOINT'S UNIT: `gunbc serve` answering every request through the ONE .dag entry
@@ -743,8 +768,10 @@ fn apply_fabric_storage_unit_write_step(spec: DeploymentSpec, revision: ReleaseR
 // the marker is not valid shell, so the stage fails rather than serving an invented path.
 data fabric_storage_door_unknown_instance_poison: String = "__GUNBC_DEPLOY_REFUSED__ fabric storage step reached with a deployment that holds no prod role (gunbc.live_deploy.spec RoleSingletonHolding), so it has no door socket (gunbc.live_deploy.spec deployment_fabric_storage_door_socket). instance="
 
-fn fabric_storage_door_unknown_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: join([fabric_storage_door_unknown_instance_poison, spec.instance_id as String, "\n"], ""))
+data oidc_readback_refused_poison: String = "__GUNBC_OIDC_READBACK_REFUSED__ "
+
+fn oidc_readback_refused_command(cause: String) -> String {
+  concat(oidc_readback_refused_poison, cause)
 }
 
 fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?) -> Doc {
@@ -752,7 +779,7 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding,
     LiveDeployServeUnitEmitted { file } =>
       doc_text(text: serialize_systemd_unit_file(file: file))
     LiveDeployServeUnitOidcReadbackRefused { cause } =>
-      doc_text(text: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String, "\n"], ""))
+      doc_text(text: concat(oidc_readback_refused_command(cause: cause as String), "\n"))
   }
 }
 
@@ -1348,19 +1375,23 @@ fn deployment_step_ownership_opt(step: DeploymentStep) -> Ownership? {
 fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
   match step {
     ArtifactStep { step: art } => match art.kind {
-      GunbcSourceTree => Present { value: TreePublication }
-      ServeBinary => Present { value: Executable }
-      SystemdUnit => Present { value: UnitFile }
-      BeltEventPathUnit => none
-      FleetConvergeTimerUnit => none
-      TailscaleServeMapping => none
-      DeployedTreeRemoteUnit => none
-      PublicationHelperPathUnit => none
-      FabricStorageServeUnit => none
-      FabricStorageServeMapping => none
-      ApprovalBrokerFrontDoor => none
-      TailnetDoorServeUnit => none
-      OidcConfigArtifact => Present { value: OidcConfigFile }
+      UpsertOwned { kind: uk } => match uk {
+        GunbcSourceTree => Present { value: TreePublication }
+        ServeBinary => Present { value: Executable }
+        BeltEventPathUnit => none
+        TailscaleServeMapping => none
+        DeployedTreeRemoteUnit => none
+        PublicationHelperPathUnit => none
+        ApprovalBrokerFrontDoor => none
+      }
+      ComposeOwned { kind: ck } => match ck {
+        SystemdUnit => Present { value: UnitFile }
+        OidcConfigArtifact => Present { value: OidcConfigFile }
+        FleetConvergeTimerUnit => none
+        FabricStorageServeUnit => none
+        FabricStorageServeMapping => none
+        TailnetDoorServeUnit => none
+      }
     }
     Dependency { step: _ } => none
   }
@@ -1427,73 +1458,34 @@ fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentSte
 // fact. Parameterizing only the install side would have left the writer staging one name and the
 // installer copying another — a deploy that fails on a missing file, which is at least loud, or
 // worse installs a stale unit left in the stage directory from a previous run.
-fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?) -> PipelineStep {
-  match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
-    LiveDeployServeUnitEmitted { file } =>
-      deploy_raw(command: deploy_stage_write_command(
-        stage_name: spec.service.unit_name as String,
-        content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
-      ))
-    LiveDeployServeUnitOidcReadbackRefused { cause } => apply_oidc_readback_refuse_step(cause: cause)
-  }
-}
-
-fn apply_oidc_readback_refuse_step(cause: NonEmptyStr) -> PipelineStep {
-  deploy_raw(command: join(["__GUNBC_OIDC_READBACK_REFUSED__ ", cause as String], ""))
-}
-
-fn apply_oidc_line_stop_steps(spec: DeploymentSpec, oidc_now: Second?) -> List<PipelineStep> {
-  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
-    LiveDeployOidcEnvAdmitted { directives: _ } => []
-    LiveDeployOidcEnvRefused { cause } => [apply_oidc_readback_refuse_step(cause: cause)]
-  }
+fn apply_systemd_unit_write_steps(spec: DeploymentSpec, file: SystemdUnitFile) -> List<PipelineStep> {
+  [deploy_raw(command: deploy_stage_write_command(
+    stage_name: spec.service.unit_name as String,
+    content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
+  ))]
 }
 
 fn apply_oidc_config_steps(spec: DeploymentSpec, oidc_now: Second?) -> List<PipelineStep> {
-  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
-    TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
-    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
-    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } =>
-      [apply_oidc_readback_refuse_step(cause: "tracker-web OIDC realization missing" as NonEmptyStr)]
-    TrackerWebOidcServeReady { config: _ } =>
-      match oidc_now {
-        Absent => [apply_oidc_readback_refuse_step(cause: "observer clock unreadable" as NonEmptyStr)]
-        Present { value: now } => apply_oidc_config_steps_at(spec: spec, now_epoch: now, should_write: true)
-      }
+  let fragments = apply_oidc_fragments_over(
+    spec: spec,
+    oidc_now: oidc_now,
+    should_write: true,
+  )
+  match host_script_mutate_projection(fragments: fragments) {
+    MutateStepsAdmitted { steps } => steps
+    MutateRefused { member: _, cause: _ } => compose_host_script_decide_steps(fragments: fragments)
   }
 }
 
 fn apply_oidc_config_steps_at(spec: DeploymentSpec, now_epoch: Second, should_write: Bool) -> List<PipelineStep> {
-  match tracker_web_oidc_serve_standing(instance_id: spec.instance_id, now_epoch: now_epoch) {
-    TrackerWebOidcServeConfigured { config: cfg } =>
-      if !(should_write) {
-        []
-      } else {
-        [
-          deploy_raw(command: install_directory_command(
-            mode: install_d_shared_mode,
-            path: path_parent_dir(path: cfg.config_path as String),
-            privileged: true,
-          )),
-          deploy_raw(command: deploy_stage_write_command(
-            stage_name: "gunbc-oidc-config.json",
-            content: tracker_web_oidc_config_document(cfg: cfg),
-          )),
-          deploy_raw(command: deploy_stage_install_owned_command(
-            stage_name: "gunbc-oidc-config.json",
-            mode: install_file_owner_only_mode,
-            owner: spec.service.service_user,
-            group: spec.service.service_user,
-            dest: cfg.config_path as String,
-          )),
-        ]
-      }
-    TrackerWebOidcInstanceUnassigned { instance_id: _ } => []
-    TrackerWebOidcEnvironmentUnbound { instance_id: _, reason: _ } => []
-    TrackerWebOidcRealizationMissing { instance_id: _, environment: _ } =>
-      [apply_oidc_readback_refuse_step(cause: "tracker-web OIDC realization missing" as NonEmptyStr)]
-    TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause } =>
-      [apply_oidc_readback_refuse_step(cause: cause)]
+  let fragments = apply_oidc_fragments_over(
+    spec: spec,
+    oidc_now: Present { value: now_epoch },
+    should_write: should_write,
+  )
+  match host_script_mutate_projection(fragments: fragments) {
+    MutateStepsAdmitted { steps } => steps
+    MutateRefused { member: _, cause: _ } => compose_host_script_decide_steps(fragments: fragments)
   }
 }
 
@@ -1781,14 +1773,6 @@ fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> L
 // mode, and never a directory the writer then cannot write.
 data managed_directory_writer_uncovered_poison: String = "__GUNBC_DEPLOY_REFUSED__ managed host directory NOT ENSURED: a declared writer is neither its owner nor in its group, and gunbc.managed_directory managed_directory_admit refuses rather than deriving a world-writable mode. member="
 
-fn ensure_managed_directory_command(admission: ManagedDirectoryAdmission) -> String {
-  match admission {
-    ManagedDirectoryAdmitted { dir } => install_d_managed_command(dir: dir)
-    ManagedDirectoryRefused { member, path, writer } =>
-      join([managed_directory_writer_uncovered_poison, member as String, " path=", path as String, " writer=", writer as String], "")
-  }
-}
-
 // `-g` is spelled with the GROUP PRINCIPAL'S USER NAME (the owner's, unless the directory declares
 // another writer's group), not a modeled group name, and that is inherited from
 // install_d_owned_command rather than introduced here: PosixUser carries a gid but no group name,
@@ -1890,33 +1874,253 @@ fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> Li
 //
 // These run after the preamble (the sudoers grant they ride) and before every owned step, so no
 // member -- the unit's process, the belt event units -- starts before the directories it writes.
-fn owned_directory_apply_steps(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<PipelineStep> {
+// THE EMITTED ORDER DERIVES FROM THIS PARTITION. Every apply fragment is Decide or Mutate.
+// compose_host_script concatenates every Decide, then every Mutate, and drops the Mutate list
+// when any Decide is Refused. A cap withhold is HostScriptProceed plus a CONVERGE_WITHHELD
+// echo (2026-09-17: zero-mutation CAPS, other members still apply). Mutate still carries
+// List<PipelineStep> (authored strings), so a poison remains writable there; compose and the
+// enrolled mutate-marker claim are the mechanical preventative.
+type HostScriptStanding
+  = HostScriptProceed
+  | HostScriptRefused { cause: String }
+
+type HostScriptFragment
+  = Decide { member: NonEmptyStr, standing: HostScriptStanding, steps: List<PipelineStep> }
+  | Mutate { member: NonEmptyStr, steps: List<PipelineStep> }
+
+fn owned_directory_will_install(spec: DeploymentSpec, plan: ReleaseEffectPlan, t: OwnedDirectoryTarget) -> Bool {
+  match plan_mutation_of(plan: plan, member: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }) {
+    MemberNotInPlan => true
+    MutationInPlan { mutation } => !mutation_is_keep(e: mutation)
+  }
+}
+
+fn host_script_member_fragments(
+  member: NonEmptyStr,
+  standing: HostScriptStanding,
+  decide_steps: List<PipelineStep>,
+  mutate_steps: List<PipelineStep>,
+) -> List<HostScriptFragment> {
+  [
+    Decide { member: member, standing: standing, steps: decide_steps },
+    Mutate { member: member, steps: mutate_steps },
+  ]
+}
+
+fn host_script_member_refused(member: NonEmptyStr, cause: String, command: String) -> List<HostScriptFragment> {
+  host_script_member_fragments(
+    member: member,
+    standing: HostScriptRefused { cause: cause },
+    decide_steps: [deploy_raw(command: command)],
+    mutate_steps: [],
+  )
+}
+
+fn host_script_member_proceed(member: NonEmptyStr, mutate_steps: List<PipelineStep>) -> List<HostScriptFragment> {
+  host_script_member_fragments(
+    member: member,
+    standing: HostScriptProceed,
+    decide_steps: [],
+    mutate_steps: mutate_steps,
+  )
+}
+
+type HostScriptMutateProjection
+  = MutateStepsAdmitted { steps: List<PipelineStep> }
+  | MutateRefused { member: NonEmptyStr, cause: String }
+
+fn host_script_refused_sites(fragments: List<HostScriptFragment>) -> List<HostScriptMutateProjection> {
+  flat_map(fragments, f => match f {
+    Decide { member: m, standing: _, steps: _ } => match host_script_fragment_standing(f: f) {
+      HostScriptRefused { cause: c } => [MutateRefused { member: m, cause: c }]
+      HostScriptProceed => []
+    }
+    Mutate { member: _, steps: _ } => []
+  })
+}
+
+fn host_script_mutate_projection(fragments: List<HostScriptFragment>) -> HostScriptMutateProjection {
+  match compose_host_script_standing(fragments: fragments) {
+    HostScriptProceed =>
+      MutateStepsAdmitted {
+        steps: flat_map(fragments, f => match f {
+          Mutate { member: _, steps: s } => s
+          Decide { member: _, standing: _, steps: _ } => []
+        }),
+      }
+    HostScriptRefused { cause } =>
+      match first(host_script_refused_sites(fragments: fragments)) {
+        Present { value: r } => r
+        Absent => MutateRefused { member: "host-script" as NonEmptyStr, cause: cause }
+      }
+  }
+}
+
+// ONE CASE ANALYSIS per target: refusal is Decide with standing HostScriptRefused; Mutate carries only an admitted install.
+data owned_directory_unplannable_poison: String = "__GUNBC_DEPLOY_REFUSED__ owned directory NOT ENSURED: gunbc.owned_directory owned_directory_install_plan_of has no plan: "
+
+fn owned_directory_target_fragments(t: OwnedDirectoryTarget) -> List<HostScriptFragment> {
+  let member = "owned-directory" as NonEmptyStr
+  match owned_directory_install_plan_of(t: t) {
+    EnsurePlanUnavailable { reason } =>
+      host_script_member_refused(member: member, cause: reason, command: concat(owned_directory_unplannable_poison, reason))
+    EnsurePlanAvailable { plan } =>
+      match t {
+        OwnedDirectoryDeclared { member: _, path: _, owner: _, mode: _ } =>
+          host_script_member_proceed(
+            member: member,
+            mutate_steps: [deploy_raw(command: shell_privileged_command_text_of_argv(argv: owned_directory_install_argv(plan: plan)))],
+          )
+        OwnedDirectoryManaged { directory } =>
+          match managed_directory_admit(d: directory) {
+            ManagedDirectoryRefused { member: m, path, writer } =>
+              host_script_member_refused(
+                member: member,
+                cause: join([m as String, " writer uncovered"], ""),
+                command: join([managed_directory_writer_uncovered_poison, m as String, " path=", path as String, " writer=", writer as String], ""),
+              )
+            ManagedDirectoryAdmitted { dir } =>
+              match dir.entries {
+                EntriesUnmanaged =>
+                  host_script_member_proceed(
+                    member: member,
+                    mutate_steps: [deploy_raw(command: shell_privileged_command_text_of_argv(argv: owned_directory_install_argv(plan: plan)))],
+                  )
+                EntriesReadableByDependents { repaired_by } =>
+                  match managed_directory_entry_mode(d: dir) {
+                    ManagedEntryModeRefused { member: m, path, reason } =>
+                      host_script_member_refused(
+                        member: member,
+                        cause: reason as String,
+                        command: join([managed_directory_entry_mode_refused_poison, m as String, " path=", path as String, " reason=", reason as String], ""),
+                      )
+                    ManagedEntryModeDerived { mode: _ } =>
+                      host_script_member_proceed(
+                        member: member,
+                        mutate_steps: concat(
+                          [deploy_raw(command: shell_privileged_command_text_of_argv(argv: owned_directory_install_argv(plan: plan)))],
+                          map(
+                            managed_directory_entry_repair_commands(admission: ManagedDirectoryAdmitted { dir: dir }),
+                            c => deploy_raw(command: c),
+                          ),
+                        ),
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn owned_directory_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<HostScriptFragment> {
   flat_map(deployment_directory_demands(spec: spec), t =>
-    match plan_mutation_of(plan: plan, member: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }) {
-      MemberNotInPlan => owned_directory_install_steps(t: t)
-      MutationInPlan { mutation } =>
-        if mutation_is_keep(e: mutation) { [] } else { owned_directory_install_steps(t: t) }
+    if !(owned_directory_will_install(spec: spec, plan: plan, t: t)) {
+      []
+    } else {
+      owned_directory_target_fragments(t: t)
     })
 }
 
-// A TARGET WHOSE MODE DOES NOT DERIVE LOWERS TO A MARKER THAT IS NOT SHELL, never to an install with a
-// guessed mode. A managed target whose dependents read each other's entries also carries the entry
-// repair (managed_directory_entry_repair_commands), riding the same ensure as before.
-data owned_directory_unplannable_poison: String = "__GUNBC_DEPLOY_REFUSED__ owned directory NOT ENSURED: gunbc.owned_directory owned_directory_install_plan_of has no plan: "
+fn owned_directory_apply_steps(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<PipelineStep> {
+  let fragments = owned_directory_fragments(spec: spec, plan: plan)
+  match host_script_mutate_projection(fragments: fragments) {
+    MutateStepsAdmitted { steps } => steps
+    MutateRefused { member: _, cause: _ } => compose_host_script_decide_steps(fragments: fragments)
+  }
+}
 
 fn owned_directory_install_steps(t: OwnedDirectoryTarget) -> List<PipelineStep> {
-  match owned_directory_install_plan_of(t: t) {
-    EnsurePlanUnavailable { reason } => [deploy_raw(command: concat(owned_directory_unplannable_poison, reason))]
-    EnsurePlanAvailable { plan } =>
-      concat(
-        [deploy_raw(command: shell_privileged_command_text_of_argv(argv: owned_directory_install_argv(plan: plan)))],
-        match t {
-          OwnedDirectoryManaged { directory } =>
-            map(managed_directory_entry_repair_commands(admission: managed_directory_admit(d: directory)), c => deploy_raw(command: c))
-          OwnedDirectoryDeclared { member: _, path: _, owner: _, mode: _ } => []
-        },
-      )
+  let fragments = owned_directory_target_fragments(t: t)
+  match host_script_mutate_projection(fragments: fragments) {
+    MutateStepsAdmitted { steps } => steps
+    MutateRefused { member: _, cause: _ } => compose_host_script_decide_steps(fragments: fragments)
   }
+}
+
+type HostScriptTraceAcc {
+  next: Int
+  steps: List<PipelineStep>
+}
+
+fn host_script_step_marker(kind: String, member: NonEmptyStr, index: Int) -> PipelineStep {
+  deploy_raw(command: shell_command_text_of_argv(argv: [
+    "printf",
+    "%s\\n",
+    join(["__GUNBC_HOST_SCRIPT_STEP__", kind, member as String, to_string(index)], " "),
+  ]))
+}
+
+fn host_script_trace_steps(kind: String, member: NonEmptyStr, steps: List<PipelineStep>) -> List<PipelineStep> {
+  fold(steps, init: HostScriptTraceAcc { next: 0, steps: [] }, f: (acc, st) =>
+    HostScriptTraceAcc {
+      next: acc.next + 1,
+      steps: concat(acc.steps, [host_script_step_marker(kind: kind, member: member, index: acc.next), st]),
+    }).steps
+}
+
+fn host_script_standing_join(left: HostScriptStanding, right: HostScriptStanding) -> HostScriptStanding {
+  match left {
+    HostScriptRefused { cause: c } => HostScriptRefused { cause: c }
+    HostScriptProceed => right
+  }
+}
+
+fn host_script_fragment_standing(f: HostScriptFragment) -> HostScriptStanding {
+  match f {
+    Decide { member: _, standing: s, steps: _ } => s
+    Mutate { member: _, steps: _ } => HostScriptProceed
+  }
+}
+
+fn compose_host_script_standing(fragments: List<HostScriptFragment>) -> HostScriptStanding {
+  fold(fragments, init: HostScriptProceed, f: (acc, frag) =>
+    host_script_standing_join(left: acc, right: host_script_fragment_standing(f: frag)))
+}
+
+fn compose_host_script_decide_steps(fragments: List<HostScriptFragment>) -> List<PipelineStep> {
+  flat_map(fragments, f => match f {
+    Decide { member: m, standing: _, steps: s } => host_script_trace_steps(kind: "Decide", member: m, steps: s)
+    Mutate { member: _, steps: _ } => []
+  })
+}
+
+fn compose_host_script_mutate_steps(fragments: List<HostScriptFragment>) -> List<PipelineStep> {
+  match compose_host_script_standing(fragments: fragments) {
+    HostScriptRefused { cause: _ } => []
+    HostScriptProceed =>
+      flat_map(fragments, f => match f {
+        Mutate { member: m, steps: s } => host_script_trace_steps(kind: "Mutate", member: m, steps: s)
+        Decide { member: _, standing: _, steps: _ } => []
+      })
+  }
+}
+
+fn compose_host_script(fragments: List<HostScriptFragment>) -> Pipeline {
+  Pipeline {
+    steps: concat(
+      compose_host_script_decide_steps(fragments: fragments),
+      compose_host_script_mutate_steps(fragments: fragments),
+    ),
+    on_failure: FailFast,
+  }
+}
+
+fn composed_artifact_upsert(
+  kind: UpsertArtifactKind,
+  path: NonEmptyStr,
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+  oidc_now: Second?,
+  principal: GroundedPosixPrincipal,
+) -> Pipeline {
+  compose_host_script(fragments: host_script_member_proceed(
+    member: "artifact" as NonEmptyStr,
+    mutate_steps: emit_artifact_upsert(kind: kind, path: path, spec: spec, revision: revision, oidc_now: oidc_now, principal: principal),
+  ))
+}
+
+fn composed_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> Pipeline {
+  compose_host_script(fragments: artifact_retract_fragments(art: art, spec: spec))
 }
 
 // THE CAP APPLY CONSUMES RETIREMENT AUTHORIZATION, AND WITHOUT ONE IT REFUSES.
@@ -1939,56 +2143,87 @@ fn owned_directory_install_steps(t: OwnedDirectoryTarget) -> List<PipelineStep> 
 // THE WITHHELD LINE IS A REPORT, NOT A FAILURE: the same __GUNBC_CONVERGE_WITHHELD__ spelling the
 // fleet plan's slot teardown uses (gunbc.runner.runner_slot_provision slot_removal_withheld_line), so a
 // reader of the apply transcript sees one vocabulary for "this member was not performed and why".
-// Single quotes in the cause are dropped rather than escaped: the cause is prose for the operator,
-// and a quote inside a single-quoted echo would end the word and run the rest.
+// It is `echo` of one argv word (exit 0), not a poison and not a redirect onto a second stream:
+// deploy_apply_frame_decide_steps merges stderr onto stdout (`exec 2>&1`) so a capture that splits
+// the two fds cannot hide this report's order relative to visudo. Single quotes in the cause are
+// dropped rather than escaped so a quote cannot end the word.
 fn memory_cap_withheld_line(host: HostIdentity, cause: String) -> String {
-  join([
-    "echo '__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: ",
-    cause.replace(from: "'", to: ""),
-    "; existing caps left exactly as observed host=",
-    host as String,
-    "' >&2",
-  ], "")
+  shell_command_text_of_argv(argv: [
+    "echo",
+    join([
+      "__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: ",
+      cause.replace(from: "'", to: ""),
+      "; existing caps left exactly as observed host=",
+      host as String,
+    ], ""),
+  ])
 }
 
-fn deploy_memory_cap_apply_steps(
+fn memory_cap_host_refused_command(host: HostIdentity, cause: String) -> String {
+  concat(
+    concat("__GUNBC_DEPLOY_REFUSED__ memory-cap apply not authorized for this host: ", cause),
+    concat(" host=", host as String),
+  )
+}
+
+fn memory_cap_ordering_refused_command(host: HostIdentity) -> String {
+  concat("__GUNBC_DEPLOY_REFUSED__ memory-cap apply ordering gate failed host=", host as String)
+}
+
+fn deploy_memory_cap_fragments(
   spec: DeploymentSpec,
   authorization: CapConvergeDecision,
-) -> List<PipelineStep> {
+) -> List<HostScriptFragment> {
   let host = spec.target.host.identity
   match cap_authorization_for_host(d: authorization, host: host) {
     CapAuthorizationWithheld { cause: why } =>
-      [deploy_raw(command: memory_cap_withheld_line(host: host, cause: why))]
+      host_script_member_fragments(
+        member: "memory-cap" as NonEmptyStr,
+        standing: HostScriptProceed,
+        decide_steps: [deploy_raw(command: memory_cap_withheld_line(host: host, cause: why))],
+        mutate_steps: [],
+      )
     CapAuthorizationRefused { cause: why } =>
-      [
-        deploy_raw(
-          command: concat(
-            concat("__GUNBC_DEPLOY_REFUSED__ memory-cap apply not authorized for this host: ", why),
-            concat(" host=", host as String),
-          ),
-        ),
-      ]
+      host_script_member_refused(
+        member: "memory-cap" as NonEmptyStr,
+        cause: why,
+        command: memory_cap_host_refused_command(host: host, cause: why),
+      )
     CapAuthorizedForThisHost { desired: members, authorized_retiring: _, target_units: units } => {
       let script = deploy_memory_cap_apply_script_from_authorization(members: members, units: units)
-      if host_axis_caps_author_before_revert_enforced
+      let ordered = if host_axis_caps_author_before_revert_enforced
         && deploy_memory_cap_script_author_precedes_shadow_revert(
           script: script,
           members: members,
           units: units,
-        ) {
-        [deploy_raw(command: script)]
+        ) { true } else { false }
+      if ordered {
+        host_script_member_proceed(
+          member: "memory-cap" as NonEmptyStr,
+          mutate_steps: [deploy_raw(command: script)],
+        )
       } else {
-        [
-          deploy_raw(
-            command: concat(
-              "__GUNBC_DEPLOY_REFUSED__ memory-cap apply ordering gate failed host=",
-              host as String,
-            ),
-          ),
-        ]
+        host_script_member_refused(
+          member: "memory-cap" as NonEmptyStr,
+          cause: "memory-cap apply ordering gate failed",
+          command: memory_cap_ordering_refused_command(host: host),
+        )
       }
     }
   }
+}
+
+// THE PRODUCTION WRITER THE 2026-09-17 CLAIMS CALL. Withheld is the echo from the decide
+// half; refused is the poison from the decide half; authorized is the mutate half. One
+// case analysis; the ordering gate is read once.
+fn deploy_memory_cap_apply_steps(
+  spec: DeploymentSpec,
+  authorization: CapConvergeDecision,
+) -> List<PipelineStep> {
+  flat_map(deploy_memory_cap_fragments(spec: spec, authorization: authorization), f => match f {
+    Decide { member: _, standing: _, steps: s } => s
+    Mutate { member: _, steps: s } => s
+  })
 }
 
 // GunbcSourceTree stages working bytes with rsync --delete while excluding .git, then the
@@ -2085,7 +2320,7 @@ fn deploy_memory_cap_apply_steps(
 fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
   if deployment_owns_the_host_approval_broker(spec: spec) {
     concat(
-      approval_broker_dark_install_release_steps(principal: principal, spec: spec, revision: revision),
+      approval_broker_dark_install_release_steps(spec: spec, revision: revision),
       approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port),
     )
   } else {
@@ -2882,17 +3117,21 @@ fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> Li
   )
 }
 
+fn approval_broker_helper_grant_admitted_install_steps(revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
+  concat(
+    approval_broker_helper_snapshot_steps(revision: revision),
+    concat(
+      approval_broker_helper_grant_admitted_steps(revision: revision, principal: principal),
+      [deploy_raw(command: approval_broker_helper_snapshot_retire_command(revision: revision))],
+    ),
+  )
+}
+
 fn approval_broker_helper_grant_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
-  match approval_broker_helper_grant_admission(revision: revision) {
-    HelperGrantAdmitted => concat(
-      approval_broker_helper_snapshot_steps(revision: revision),
-      concat(
-        approval_broker_helper_grant_admitted_steps(principal: principal, revision: revision),
-        [deploy_raw(command: approval_broker_helper_snapshot_retire_command(revision: revision))],
-      ),
-    )
-    HelperGrantWordRefused { word: w } => [deploy_raw(command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w })))]
-    HelperGrantLocusWritableByGrantee { owner: o } => [deploy_raw(command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o })))]
+  let fragments = approval_broker_helper_grant_fragments(revision: revision, principal: principal)
+  match host_script_mutate_projection(fragments: fragments) {
+    MutateStepsAdmitted { steps } => steps
+    MutateRefused { member: _, cause: _ } => compose_host_script_decide_steps(fragments: fragments)
   }
 }
 
@@ -3040,17 +3279,20 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
         path: instance_receipts_dir(instance_root: spec.service.instance_root as String),
       )),
     ] }
-    UnitFile => concat(
-      apply_oidc_line_stop_steps(spec: spec, oidc_now: oidc_now),
-      concat(
-        if !plan_writes_unit(plan: plan) { [] } else { concat([
-          apply_systemd_unit_write_step(spec: spec, revision: revision, oidc_now: oidc_now),
-          deploy_raw(command: deploy_stage_install_command(
-            stage_name: spec.service.unit_name as String,
-            mode: install_file_shared_mode,
-            dest: deployment_systemd_unit_path(names: spec.names) as String,
-          )),
-        ], apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision)) },
+    UnitFile => match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
+      LiveDeployServeUnitOidcReadbackRefused { cause: _ } => []
+      LiveDeployServeUnitEmitted { file } => concat(
+        if !plan_writes_unit(plan: plan) { [] } else { concat(
+          apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
+          concat(
+            apply_systemd_unit_write_steps(spec: spec, file: file),
+            [deploy_raw(command: deploy_stage_install_command(
+              stage_name: spec.service.unit_name as String,
+              mode: install_file_shared_mode,
+              dest: deployment_systemd_unit_path(names: spec.names) as String,
+            ))],
+          ),
+        ) },
         concat(
           if !plan_reloads_manager(plan: plan) { [] } else { [deploy_effect(inv: systemctl_daemon_reload_effect())] },
           if !plan_restarts_process(plan: plan) { [] } else { concat([
@@ -3058,13 +3300,13 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
             deploy_effect(inv: systemctl_restart_effect(unit: plan.target.unit)),
           ], approval_broker_lifecycle_steps(spec: spec)) },
         ),
-      ),
-    )
+      )
+    }
     UnitManager => []
     ServiceProcess => []
     DirectoryRoot { path: _ } => []
     OidcConfigFile => match oidc_now {
-      Absent => [apply_oidc_readback_refuse_step(cause: "observer clock unreadable" as NonEmptyStr)]
+      Absent => []
       Present { value: now } => apply_oidc_config_steps_at(
         spec: spec,
         now_epoch: now,
@@ -3079,11 +3321,11 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
 // line above and the planned identity name one file.
 data release_executable_install_source: String = "target/release/gunbc"
 
-fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
-  match art.kind {
+fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
+  match kind {
     GunbcSourceTree => [
       deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
-      deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: path as String)),
       deploy_raw(command: deploy_stage_write_expansion_command(
         stage_name: "gunbc-tree-sync.env",
         format: "GUNBC_TREE_SRC=%s\n",
@@ -3108,7 +3350,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     ServeBinary => concat([
       deploy_raw(command: install_directory_command(
         mode: install_d_shared_mode,
-        path: path_parent_dir(path: art.path as String),
+        path: path_parent_dir(path: path as String),
         privileged: true,
       )),
       deploy_raw(command: install_file_owned_command(
@@ -3116,7 +3358,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         owner: spec.service.service_user,
         group: spec.service.service_user,
         source: "target/release/gunbc",
-        dest: art.path as String,
+        dest: path as String,
       )),
       deploy_raw(command: install_d_owned_command(
         spec: spec,
@@ -3133,18 +3375,6 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
     ]))
-    SystemdUnit => concat(concat([
-      apply_systemd_unit_write_step(spec: spec, revision: revision, oidc_now: oidc_now),
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: spec.service.unit_name as String,
-        mode: install_file_shared_mode,
-        dest: art.path as String,
-      )),
-    ], apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision)), concat([
-      deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
-      deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
-    ], approval_broker_lifecycle_steps(spec: spec)))
     PublicationHelperPathUnit => concat(
       concat(
         apply_publication_spool_steps(spec: spec),
@@ -3159,7 +3389,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
           deploy_raw(command: deploy_stage_install_command(
             stage_name: deployment_publication_path_unit_name(names: spec.names) as String,
             mode: install_file_shared_mode,
-            dest: art.path as String,
+            dest: path as String,
           )),
         ]
       ),
@@ -3199,7 +3429,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), dest: deployment_belt_exit_drain_service_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), dest: deployment_belt_discovery_service_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), dest: deployment_belt_answer_path_unit_path(names: spec.names)),
-        apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: art.path),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: path),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
         deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_drain_service_unit_name(names: spec.names))),
         deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
@@ -3212,54 +3442,17 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         path: deployment_retired_belt_timer_unit_path(names: spec.names),
       )
     )
-    FleetConvergeTimerUnit => [
-      deploy_raw(command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"),
-    ]
     TailscaleServeMapping => tailscale_serve_mapping_apply_steps(spec: spec)
-    FabricStorageServeUnit => match deployment_fabric_storage_door_socket(spec: spec) {
-     Absent => [fabric_storage_door_unknown_step(spec: spec)]
-     Present { value: door_socket } => [
-      apply_fabric_storage_unit_write_step(spec: spec, revision: revision, door_socket: door_socket),
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: deployment_fabric_storage_unit_name(names: spec.names) as String,
-        mode: install_file_shared_mode,
-        dest: art.path as String,
-      )),
-      deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_effect(inv: systemctl_enable_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
-      deploy_effect(inv: systemctl_restart_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
-     ]
-    }
-    FabricStorageServeMapping => match deployment_fabric_storage_door_socket(spec: spec) {
-      Absent => [fabric_storage_door_unknown_step(spec: spec)]
-      Present { value: door_socket } => [
-        deploy_raw(command: shell_privileged_command_text_of_argv(
-          argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door_socket))),
-        )),
-      ]
-    }
-    TailnetDoorServeUnit => [
-      apply_tailnet_door_unit_write_step(spec: spec, revision: revision, oidc_now: oidc_now),
-      deploy_raw(command: deploy_stage_install_command(
-        stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
-        mode: install_file_shared_mode,
-        dest: art.path as String,
-      )),
-      deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_effect(inv: systemctl_enable_effect(unit: deployment_tailnet_door_unit_name(names: spec.names))),
-      deploy_effect(inv: systemctl_restart_effect(unit: deployment_tailnet_door_unit_name(names: spec.names))),
-    ]
     ApprovalBrokerFrontDoor => map(
       deployment_approval_broker_front_door_endpoints(),
       e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: e)))),
     )
-    OidcConfigArtifact => apply_oidc_config_steps(spec: spec, oidc_now: oidc_now)
     DeployedTreeRemoteUnit => [
       apply_tree_remote_unit_write_step(spec: spec),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: deployment_tree_remote_unit_name(names: spec.names) as String,
         mode: install_file_shared_mode,
-        dest: art.path as String,
+        dest: path as String,
       )),
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_effect(inv: systemctl_restart_effect(unit: deployment_tree_remote_unit_name(names: spec.names))),
@@ -3294,43 +3487,49 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
 
 fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
   match art.kind {
-    TailscaleServeMapping => [
+    UpsertOwned { kind: TailscaleServeMapping } => [
       tailscale_serve_teardown_step(spec: spec),
     ]
-    FabricStorageServeMapping => match deployment_fabric_storage_door_socket(spec: spec) {
-      Absent => [fabric_storage_door_unknown_step(spec: spec)]
+    ComposeOwned { kind: FabricStorageServeMapping } => match deployment_fabric_storage_door_socket(spec: spec) {
+      Absent => [
+        deploy_raw(command: join([
+          fabric_storage_door_unknown_instance_poison,
+          spec.instance_id as String,
+          "\n",
+        ], "")),
+      ]
       Present { value: door_socket } => [
         deploy_raw(command: shell_privileged_command_text_of_argv(
           argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door_socket))),
         )),
       ]
     }
-    ApprovalBrokerFrontDoor => map(
+    UpsertOwned { kind: ApprovalBrokerFrontDoor } => map(
       deployment_approval_broker_front_door_endpoints(),
       e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e)))),
     )
-    TailnetDoorServeUnit => concat(
+    ComposeOwned { kind: TailnetDoorServeUnit } => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_tailnet_door_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    FabricStorageServeUnit => concat(
+    ComposeOwned { kind: FabricStorageServeUnit } => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_fabric_storage_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    SystemdUnit => concat(
+    ComposeOwned { kind: SystemdUnit } => concat(
       systemctl_disable_now_if_present_steps(unit: spec.service.unit_name, privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    BeltEventPathUnit => concat(
+    UpsertOwned { kind: BeltEventPathUnit } => concat(
       concat(
         concat(
           systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
@@ -3352,7 +3551,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    FleetConvergeTimerUnit => concat(
+    ComposeOwned { kind: FleetConvergeTimerUnit } => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
@@ -3362,7 +3561,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    PublicationHelperPathUnit => concat(
+    UpsertOwned { kind: PublicationHelperPathUnit } => concat(
       concat(
         systemctl_disable_now_if_present_steps(unit: deployment_publication_path_unit_name(names: spec.names), privileged: true),
         leftover_systemd_timer_retire_steps(
@@ -3378,20 +3577,20 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    DeployedTreeRemoteUnit => concat(
+    UpsertOwned { kind: DeployedTreeRemoteUnit } => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    ServeBinary => [
+    UpsertOwned { kind: ServeBinary } => [
       deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
     ]
-    OidcConfigArtifact => [
+    ComposeOwned { kind: OidcConfigArtifact } => [
       deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
     ]
-    GunbcSourceTree => concat(
+    UpsertOwned { kind: GunbcSourceTree } => concat(
       map(dispatch_root_refusal_paths(spec: spec), p => deploy_raw(command: rm_empty_directory_command(path: p))),
       [
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
@@ -3449,19 +3648,13 @@ fn emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep) -> Lis
 }
 
 fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_now: Second?, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
-  match effect {
-    EffectAdd { to: step } =>
-      match step {
-        Dependency { step: dep } => ensure_dependency_steps(dep: dep, privileged: true)
-        ArtifactStep { step: art } => emit_artifact_upsert(principal: principal, art: art, spec: spec, revision: revision, oidc_now: oidc_now)
-      }
-    EffectReplace { from: _, to: step } => emit_deploy_replace_unreachable_refusal(step: step)
-    EffectRemove { from: step } =>
-      match step {
-        ArtifactStep { step: art } => emit_artifact_teardown(art: art, spec: spec)
-        Dependency { step: dep } => emit_deploy_teardown_dependency_refusal(dep: dep)
-      }
-  }
+  compose_host_script(fragments: retract_or_apply_effect_fragments(
+    effect: effect,
+    spec: spec,
+    revision: revision,
+    oidc_now: oidc_now,
+    principal: principal,
+  )).steps
 }
 
 // THE TRAP LINE IS STILL A STRING, AND IT IS THE ONLY REMAINING ONE IN EITHER PREAMBLE.
@@ -3546,18 +3739,420 @@ fn deploy_apply_receipt_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "apply"))]
 }
 
-// THE APPLY FRAME: what the program carries before the sudoers preamble. A named producer so a
-// claim about what follows the frame derives the offset from this list rather than counting it.
-fn deploy_apply_frame_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+// THE APPLY FRAME: decide half is comments and set -e (no host effect). Mutate half is the
+// stage directory. compose_host_script, not this concat, is what the apply emits; this concat
+// remains so a claim can still name the frame's length as an offset when every Decide Proceeds.
+fn deploy_apply_frame_decide_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [
     deploy_raw(command: deploy_shell_strict_options_command),
+    deploy_raw(command: deploy_shell_merge_stderr_command()),
     Comment { text: concat("GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
     Comment { text: "Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal." },
     Comment { text: "Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service." },
     Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; roster sudoers install precedes mutation." },
-    deploy_stage_directory_let_step(),
-    deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
   ]
+}
+
+fn deploy_apply_frame_mutate_steps() -> List<PipelineStep> {
+  [
+    deploy_stage_directory_let_step(),
+    deploy_cap_stage_directory_let_step(),
+    deploy_raw(command: deploy_stage_dirs_exit_trap_command(dir_vars: [deploy_stage_dir_var, deploy_cap_stage_dir_var])),
+  ]
+}
+
+fn deploy_apply_frame_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  concat(deploy_apply_frame_decide_steps(spec: spec), deploy_apply_frame_mutate_steps())
+}
+
+fn deploy_stage_cleanup_frame_pipeline(bind_vars: List<String>, trap_vars: List<String>) -> Pipeline {
+  Pipeline {
+    steps: concat(
+      [deploy_raw(command: deploy_shell_strict_options_command)],
+      concat(
+        fold(bind_vars, init: [], f: (acc, v) => concat(acc, [deploy_mktemp_dir_let_step(name: v)])),
+        [deploy_raw(command: deploy_stage_dirs_exit_trap_command(dir_vars: trap_vars))],
+      ),
+    ),
+    on_failure: FailFast,
+  }
+}
+
+fn deploy_stage_cleanup_frame_script(bind_vars: List<String>, trap_vars: List<String>) -> String {
+  emit_pipeline_or_poison(
+    p: deploy_stage_cleanup_frame_pipeline(bind_vars: bind_vars, trap_vars: trap_vars),
+    refused: "__GUNBC_STAGE_CLEANUP_FRAME_REFUSED__",
+  )
+}
+
+fn deploy_retract_stage_cleanup_frame_script() -> String {
+  deploy_stage_cleanup_frame_script(bind_vars: [deploy_stage_dir_var], trap_vars: [deploy_stage_dir_var])
+}
+
+fn deploy_apply_stage_cleanup_frame_script() -> String {
+  deploy_stage_cleanup_frame_script(
+    bind_vars: [deploy_stage_dir_var, deploy_cap_stage_dir_var],
+    trap_vars: [deploy_stage_dir_var, deploy_cap_stage_dir_var],
+  )
+}
+
+fn deploy_two_dir_trap_one_var_mutant_script() -> String {
+  deploy_stage_cleanup_frame_script(
+    bind_vars: [deploy_stage_dir_var],
+    trap_vars: [deploy_stage_dir_var, deploy_cap_stage_dir_var],
+  )
+}
+
+fn apply_oidc_fragments(spec: DeploymentSpec, oidc_now: Second?) -> List<HostScriptFragment> {
+  apply_oidc_fragments_over(spec: spec, oidc_now: oidc_now, should_write: true)
+}
+
+// ONE match on placement and standing: refusal is Decide; admitted config writes are Mutate.
+fn apply_oidc_fragments_over(
+  spec: DeploymentSpec,
+  oidc_now: Second?,
+  should_write: Bool,
+) -> List<HostScriptFragment> {
+  let member = "oidc" as NonEmptyStr
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } =>
+      host_script_member_proceed(member: member, mutate_steps: [])
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } =>
+      host_script_member_proceed(member: member, mutate_steps: [])
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } =>
+      host_script_member_refused(
+        member: member,
+        cause: "tracker-web OIDC realization missing",
+        command: oidc_readback_refused_command(cause: "tracker-web OIDC realization missing"),
+      )
+    TrackerWebOidcServeReady { config: _ } =>
+      match oidc_now {
+        Absent =>
+          host_script_member_refused(
+            member: member,
+            cause: "observer clock unreadable",
+            command: oidc_readback_refused_command(cause: "observer clock unreadable"),
+          )
+        Present { value: now } =>
+          match tracker_web_oidc_serve_standing(instance_id: spec.instance_id, now_epoch: now) {
+            TrackerWebOidcServeConfigured { config: cfg } =>
+              host_script_member_proceed(
+                member: member,
+                mutate_steps: if !(should_write) {
+                  []
+                } else {
+                  [
+                    deploy_raw(command: install_directory_command(
+                      mode: install_d_shared_mode,
+                      path: path_parent_dir(path: cfg.config_path as String),
+                      privileged: true,
+                    )),
+                    deploy_raw(command: deploy_stage_write_command(
+                      stage_name: "gunbc-oidc-config.json",
+                      content: tracker_web_oidc_config_document(cfg: cfg),
+                    )),
+                    deploy_raw(command: deploy_stage_install_owned_command(
+                      stage_name: "gunbc-oidc-config.json",
+                      mode: install_file_owner_only_mode,
+                      owner: spec.service.service_user,
+                      group: spec.service.service_user,
+                      dest: cfg.config_path as String,
+                    )),
+                  ]
+                },
+              )
+            TrackerWebOidcInstanceUnassigned { instance_id: _ } =>
+              host_script_member_proceed(member: member, mutate_steps: [])
+            TrackerWebOidcEnvironmentUnbound { instance_id: _, reason: _ } =>
+              host_script_member_proceed(member: member, mutate_steps: [])
+            TrackerWebOidcRealizationMissing { instance_id: _, environment: _ } =>
+              host_script_member_refused(
+                member: member,
+                cause: "tracker-web OIDC realization missing",
+                command: oidc_readback_refused_command(cause: "tracker-web OIDC realization missing"),
+              )
+            TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: _, cause } =>
+              host_script_member_refused(
+                member: member,
+                cause: cause as String,
+                command: oidc_readback_refused_command(cause: cause as String),
+              )
+          }
+      }
+  }
+}
+
+fn approval_broker_helper_grant_fragments(revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<HostScriptFragment> {
+  match approval_broker_helper_grant_admission(revision: revision) {
+    HelperGrantAdmitted =>
+      host_script_member_proceed(
+        member: "helper-grant" as NonEmptyStr,
+        mutate_steps: approval_broker_helper_grant_admitted_install_steps(revision: revision, principal: principal),
+      )
+    HelperGrantWordRefused { word: w } =>
+      host_script_member_refused(
+        member: "helper-grant" as NonEmptyStr,
+        cause: approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w }),
+        command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w })),
+      )
+    HelperGrantLocusWritableByGrantee { owner: o } =>
+      host_script_member_refused(
+        member: "helper-grant" as NonEmptyStr,
+        cause: approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o }),
+        command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o })),
+      )
+  }
+}
+
+fn apply_helper_grant_fragments(spec: DeploymentSpec, plan: ReleaseEffectPlan, principal: GroundedPosixPrincipal) -> List<HostScriptFragment> {
+  if !(deployment_owns_the_host_approval_broker(spec: spec) && plan_writes_unit(plan: plan)) {
+    []
+  } else {
+    concat(
+      approval_device_store_fragments(),
+      approval_broker_helper_grant_fragments(revision: RevisionBoundAtEmission { revision: plan.target.revision }, principal: principal),
+    )
+  }
+}
+
+fn spec_has_artifact_kind(spec: DeploymentSpec, kind: OwnedArtifactKind) -> Bool {
+  any(spec.steps, st => match st {
+    ArtifactStep { step: art } => art.kind == kind
+    Dependency { step: _ } => false
+  })
+}
+
+fn serve_unit_write_fragments(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  oidc_now: Second?,
+  principal: GroundedPosixPrincipal,
+) -> List<HostScriptFragment> {
+  if !(spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: SystemdUnit })) {
+    []
+  } else {
+  let member = "serve-unit" as NonEmptyStr
+  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
+    LiveDeployOidcEnvAdmitted { directives: _ } =>
+      host_script_member_proceed(
+        member: member,
+        mutate_steps: emit_release_member_effects(
+          member: UnitFile,
+          plan: plan,
+          spec: spec,
+          oidc_now: oidc_now,
+          principal: principal,
+        ),
+      )
+    LiveDeployOidcEnvRefused { cause } =>
+      host_script_member_refused(
+        member: member,
+        cause: cause as String,
+        command: oidc_readback_refused_command(cause: cause as String),
+      )
+  }
+  }
+}
+
+fn tailnet_door_admitted_mutate_steps(
+  spec: DeploymentSpec,
+  file: SystemdUnitFile,
+) -> List<PipelineStep> {
+  concat(
+    apply_tailnet_door_unit_write_steps(spec: spec, file: file),
+    [
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
+        mode: install_file_shared_mode,
+        dest: deployment_tailnet_door_unit_path(names: spec.names) as String,
+      )),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_tailnet_door_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_restart_effect(unit: deployment_tailnet_door_unit_name(names: spec.names))),
+    ],
+  )
+}
+
+fn tailnet_door_fragments(spec: DeploymentSpec, oidc_now: Second?, revision: ReleaseRevisionBinding) -> List<HostScriptFragment> {
+  if !(spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: TailnetDoorServeUnit })) {
+    []
+  } else {
+    match live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
+      LiveDeployTailnetDoorUnitEmitted { file } =>
+        host_script_member_proceed(
+          member: "tailnet-door" as NonEmptyStr,
+          mutate_steps: tailnet_door_admitted_mutate_steps(spec: spec, file: file),
+        )
+      LiveDeployTailnetDoorUnitNotDeployed =>
+        host_script_member_proceed(member: "tailnet-door" as NonEmptyStr, mutate_steps: [])
+      LiveDeployTailnetDoorUnitOidcReadbackRefused { cause } =>
+        host_script_member_refused(
+          member: "tailnet-door" as NonEmptyStr,
+          cause: cause as String,
+          command: oidc_readback_refused_command(cause: cause as String),
+        )
+    }
+  }
+}
+
+fn fabric_storage_admitted_mutate_steps(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+  door_socket: NonEmptyStr,
+) -> List<PipelineStep> {
+  [
+    apply_fabric_storage_unit_write_step(spec: spec, revision: revision, door_socket: door_socket),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: deployment_fabric_storage_unit_name(names: spec.names) as String,
+      mode: install_file_shared_mode,
+      dest: deployment_fabric_storage_unit_path(names: spec.names) as String,
+    )),
+    deploy_effect(inv: systemctl_daemon_reload_effect()),
+    deploy_effect(inv: systemctl_enable_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
+    deploy_effect(inv: systemctl_restart_effect(unit: deployment_fabric_storage_unit_name(names: spec.names))),
+    deploy_raw(command: shell_privileged_command_text_of_argv(
+      argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: door_socket))),
+    )),
+  ]
+}
+
+fn fabric_storage_fragments(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<HostScriptFragment> {
+  if !(spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FabricStorageServeUnit })
+    || spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FabricStorageServeMapping })) {
+    []
+  } else {
+    match deployment_fabric_storage_door_socket(spec: spec) {
+      Present { value: door_socket } =>
+        host_script_member_proceed(
+          member: "fabric-storage" as NonEmptyStr,
+          mutate_steps: fabric_storage_admitted_mutate_steps(spec: spec, revision: revision, door_socket: door_socket),
+        )
+      Absent =>
+        host_script_member_refused(
+          member: "fabric-storage" as NonEmptyStr,
+          cause: "fabric storage door unknown",
+          command: join([fabric_storage_door_unknown_instance_poison, spec.instance_id as String, "\n"], ""),
+        )
+    }
+  }
+}
+
+data fleet_converge_timer_retired_poison: String = "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"
+
+fn fleet_converge_timer_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
+  if spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FleetConvergeTimerUnit }) {
+    host_script_member_refused(
+      member: "fleet-converge-timer" as NonEmptyStr,
+      cause: "FleetConvergeTimerUnit retired",
+      command: fleet_converge_timer_retired_poison,
+    )
+  } else {
+    []
+  }
+}
+
+fn artifact_apply_fragments(
+  art: DeploymentArtifactStep,
+  spec: DeploymentSpec,
+  effects: List<MemberEffect<DeploymentStep>>,
+  plan: ReleaseEffectPlan,
+  oidc_now: Second?,
+  principal: GroundedPosixPrincipal,
+) -> List<HostScriptFragment> {
+  let revision = RevisionBoundAtEmission { revision: plan.target.revision }
+  match art.kind {
+    ComposeOwned { kind: ck } => match ck {
+      OidcConfigArtifact =>
+        apply_oidc_fragments_over(
+          spec: spec,
+          oidc_now: oidc_now,
+          should_write: plan_writes_oidc_config(plan: plan),
+        )
+      SystemdUnit =>
+        serve_unit_write_fragments(spec: spec, plan: plan, oidc_now: oidc_now, principal: principal)
+      FabricStorageServeUnit =>
+        fabric_storage_fragments(spec: spec, revision: revision)
+      FabricStorageServeMapping =>
+        if spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FabricStorageServeUnit }) {
+          []
+        } else {
+          fabric_storage_fragments(spec: spec, revision: revision)
+        }
+      TailnetDoorServeUnit =>
+        tailnet_door_fragments(spec: spec, oidc_now: oidc_now, revision: revision)
+      FleetConvergeTimerUnit =>
+        fleet_converge_timer_fragments(spec: spec)
+    }
+    UpsertOwned { kind: _ } =>
+      host_script_member_proceed(
+        member: "spec-step" as NonEmptyStr,
+        mutate_steps: apply_step_effects(
+          step: ArtifactStep { step: art },
+          effects: effects,
+          spec: spec,
+          plan: plan,
+          oidc_now: oidc_now,
+          principal: principal,
+        ),
+      )
+  }
+}
+
+fn apply_step_fragments(
+  step: DeploymentStep,
+  spec: DeploymentSpec,
+  effects: List<MemberEffect<DeploymentStep>>,
+  plan: ReleaseEffectPlan,
+  oidc_now: Second?,
+  principal: GroundedPosixPrincipal,
+) -> List<HostScriptFragment> {
+  match step {
+    ArtifactStep { step: art } =>
+      artifact_apply_fragments(art: art, spec: spec, effects: effects, plan: plan, oidc_now: oidc_now, principal: principal)
+    Dependency { step: dep } =>
+      host_script_member_proceed(
+        member: "dependency" as NonEmptyStr,
+        mutate_steps: apply_step_effects(
+          step: Dependency { step: dep },
+          effects: effects,
+          spec: spec,
+          plan: plan,
+          oidc_now: oidc_now,
+          principal: principal,
+        ),
+      )
+  }
+}
+
+fn apply_intent_fragments(
+  spec: DeploymentSpec,
+  effects: List<MemberEffect<DeploymentStep>>,
+  access: DeployAccess,
+  plan: ReleaseEffectPlan,
+  cap_authorization: CapConvergeDecision,
+  oidc_now: Second?,
+) -> List<HostScriptFragment> {
+  concat(
+    concat(
+      [
+        Decide { member: "frame" as NonEmptyStr, standing: HostScriptProceed, steps: deploy_apply_frame_decide_steps(spec: spec) },
+        Mutate { member: "frame" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps() },
+        Mutate { member: "preamble" as NonEmptyStr, steps: deploy_apply_preamble_steps(access: access, spec: spec) },
+      ],
+      concat(
+        owned_directory_fragments(spec: spec, plan: plan),
+        deploy_memory_cap_fragments(spec: spec, authorization: cap_authorization),
+      ),
+    ),
+    concat(
+      apply_helper_grant_fragments(spec: spec, plan: plan, principal: access.principal),
+      concat(
+        flat_map(spec.steps, step =>
+          apply_step_fragments(step: step, spec: spec, effects: effects, plan: plan, oidc_now: oidc_now, principal: access.principal)),
+        [Mutate { member: "receipt" as NonEmptyStr, steps: deploy_apply_receipt_steps(spec: spec) }],
+      ),
+    ),
+  )
 }
 
 fn apply_intent_from_effects(
@@ -3568,25 +4163,14 @@ fn apply_intent_from_effects(
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
 ) -> Pipeline {
-  Pipeline {
-    steps: concat(
-      deploy_apply_frame_steps(spec: spec),
-      concat(
-        concat(
-          deploy_apply_preamble_steps(access: access, spec: spec),
-          owned_directory_apply_steps(spec: spec, plan: plan),
-        ),
-        concat(
-          deploy_memory_cap_apply_steps(spec: spec, authorization: cap_authorization),
-          concat(
-            flat_map(spec.steps, step => apply_step_effects(principal: access.principal, step: step, effects: effects, spec: spec, plan: plan, oidc_now: oidc_now)),
-            deploy_apply_receipt_steps(spec: spec)
-          )
-        )
-      )
-    ),
-    on_failure: FailFast
-  }
+  compose_host_script(fragments: apply_intent_fragments(
+    spec: spec,
+    effects: effects,
+    access: access,
+    plan: plan,
+    cap_authorization: cap_authorization,
+    oidc_now: oidc_now,
+  ))
 }
 
 // THE PARTITION THAT PROTECTED SIBLING TEARDOWNS IS DELETED BECAUSE ITS SUBJECT IS GONE. review
@@ -3643,37 +4227,146 @@ fn deploy_retract_frame_comments(spec: DeploymentSpec) -> List<PipelineStep> {
   Comment { text: "empty-dir only): live worktrees fail it LOUDLY — the same empty-dir refusal wall." },
   ]
 }
+fn artifact_retract_fragments(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<HostScriptFragment> {
+  match art.kind {
+    ComposeOwned { kind: FabricStorageServeMapping } => match deployment_fabric_storage_door_socket(spec: spec) {
+      Absent =>
+        host_script_member_refused(
+          member: "fabric-storage" as NonEmptyStr,
+          cause: "fabric storage door unknown",
+          command: join([fabric_storage_door_unknown_instance_poison, spec.instance_id as String, "\n"], ""),
+        )
+      Present { value: _ } =>
+        host_script_member_proceed(
+          member: "fabric-storage" as NonEmptyStr,
+          mutate_steps: emit_artifact_teardown(art: art, spec: spec),
+        )
+    }
+    _ =>
+      host_script_member_proceed(
+        member: "retract-step" as NonEmptyStr,
+        mutate_steps: emit_artifact_teardown(art: art, spec: spec),
+      )
+  }
+}
+
+fn retract_or_apply_effect_fragments(
+  effect: MemberEffect<DeploymentStep>,
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+  oidc_now: Second?,
+  principal: GroundedPosixPrincipal,
+) -> List<HostScriptFragment> {
+  match effect {
+    EffectAdd { to: step } => match step {
+      Dependency { step: dep } =>
+        host_script_member_proceed(
+          member: "dependency" as NonEmptyStr,
+          mutate_steps: ensure_dependency_steps(dep: dep, privileged: true),
+        )
+      ArtifactStep { step: art } => match art.kind {
+        ComposeOwned { kind: ck } => match ck {
+          OidcConfigArtifact => apply_oidc_fragments(spec: spec, oidc_now: oidc_now)
+          SystemdUnit => match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: oidc_now) {
+            LiveDeployOidcEnvRefused { cause } =>
+              host_script_member_refused(
+                member: "serve-unit" as NonEmptyStr,
+                cause: cause as String,
+                command: oidc_readback_refused_command(cause: cause as String),
+              )
+            LiveDeployOidcEnvAdmitted { directives: _ } =>
+              host_script_member_proceed(
+                member: "serve-unit" as NonEmptyStr,
+                mutate_steps: [],
+              )
+          }
+          FabricStorageServeUnit => fabric_storage_fragments(spec: spec, revision: revision)
+          FabricStorageServeMapping => fabric_storage_fragments(spec: spec, revision: revision)
+          TailnetDoorServeUnit => tailnet_door_fragments(spec: spec, oidc_now: oidc_now, revision: revision)
+          FleetConvergeTimerUnit => fleet_converge_timer_fragments(spec: spec)
+        }
+        UpsertOwned { kind: uk } =>
+          host_script_member_proceed(
+            member: "spec-step" as NonEmptyStr,
+            mutate_steps: emit_artifact_upsert(
+              kind: uk, path: art.path, spec: spec, revision: revision, oidc_now: oidc_now, principal: principal,
+            ),
+          )
+      }
+    }
+    EffectReplace { from: _, to: step } =>
+      host_script_member_refused(
+        member: "replace" as NonEmptyStr,
+        cause: "replace unreachable",
+        command: concat(live_deploy_replace_unreachable_poison, deployment_step_key(step: step) as String),
+      )
+    EffectRemove { from: step } => match step {
+      ArtifactStep { step: art } => artifact_retract_fragments(art: art, spec: spec)
+      Dependency { step: dep } =>
+        host_script_member_refused(
+          member: "dependency" as NonEmptyStr,
+          cause: "ensured dependency teardown",
+          command: concat(live_deploy_teardown_dependency_unreachable_poison, ensured_subject_identity(subject: dep.subject) as String),
+        )
+    }
+  }
+}
+
+fn retract_intent_fragments(
+  spec: DeploymentSpec,
+  effects: List<MemberEffect<DeploymentStep>>,
+  access: DeployAccess,
+) -> List<HostScriptFragment> {
+  concat(
+    [
+      Decide {
+        member: "frame" as NonEmptyStr,
+        standing: HostScriptProceed,
+        steps: concat(
+          [deploy_raw(command: deploy_shell_strict_options_command)],
+          deploy_retract_frame_comments(spec: spec),
+        ),
+      },
+      Mutate {
+        member: "frame" as NonEmptyStr,
+        steps: [
+          deploy_stage_directory_let_step(),
+          deploy_raw(command: deploy_stage_dirs_exit_trap_command(dir_vars: [deploy_stage_dir_var])),
+        ],
+      },
+      Mutate { member: "preamble" as NonEmptyStr, steps: deploy_apply_preamble_steps(access: access, spec: spec) },
+    ],
+    concat(
+      flat_map(effects, e => retract_or_apply_effect_fragments(
+        effect: e,
+        spec: spec,
+        revision: RevisionNotInstalled,
+        oidc_now: Absent,
+        principal: access.principal,
+      )),
+      [Mutate { member: "receipt" as NonEmptyStr, steps: [deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "retract"))] }],
+    ),
+  )
+}
+
 fn retract_intent_from_effects(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
   access: DeployAccess
 ) -> Pipeline {
-  Pipeline {
-    steps: concat(
-      concat(
-        [deploy_raw(command: deploy_shell_strict_options_command)],
-        concat(
-          deploy_retract_frame_comments(spec: spec),
-          [
-            deploy_stage_directory_let_step(),
-            deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
-          ]
-        )
-      ),
-      concat(
-        deploy_apply_preamble_steps(access: access, spec: spec),
-        concat(
-          flat_map(
-            effects,
-            e => emit_deploy_member_effect(principal: access.principal, effect: e, spec: spec, revision: RevisionNotInstalled, oidc_now: Absent),
-          ),
-          [
-            deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "retract")),
-          ]
-        )
+  compose_host_script(fragments: retract_intent_fragments(spec: spec, effects: effects, access: access))
+}
+
+fn retract_intent_fragments_for(spec: DeploymentSpec, access: DeployAccess) -> List<HostScriptFragment> {
+  match membership_effects(plan: deployment_retract_plan(spec: spec)) {
+    EffectsReady { effects: es } =>
+      retract_intent_fragments(spec: spec, effects: es, access: access)
+    ApplyRefused { refusals: _ } =>
+      host_script_member_refused(
+        member: "retract" as NonEmptyStr,
+        cause: "wholesale retract refuse",
+        command: live_deploy_wholesale_refused_poison_prefix,
       )
-    ),
-    on_failure: FailFast
   }
 }
 
@@ -3689,14 +4382,24 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
 // THE RELEASE HALF OF THE DARK INSTALL, NAMED: the release tree, then the helper snapshot and its
 // grant. The intent below consumes it, and a claim inspects the composition at this one interface
 // rather than rendering the whole orchestrated script (DESIGN section 3).
-fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
-  concat(
-    [deploy_raw(command: ensure_managed_directory_command(admission: managed_directory_admit(d: approval_device_store_directory())))],
-    concat(
-      approval_broker_tree_copy_steps(spec: spec, revision: revision),
-      approval_broker_helper_grant_steps(principal: principal, spec: spec, revision: revision),
-    ),
-  )
+fn approval_device_store_fragments() -> List<HostScriptFragment> {
+  match managed_directory_admit(d: approval_device_store_directory()) {
+    ManagedDirectoryAdmitted { dir } =>
+      host_script_member_proceed(
+        member: "owned-directory" as NonEmptyStr,
+        mutate_steps: [deploy_raw(command: install_d_managed_command(dir: dir))],
+      )
+    ManagedDirectoryRefused { member, path, writer } =>
+      host_script_member_refused(
+        member: "owned-directory" as NonEmptyStr,
+        cause: join([member as String, " writer uncovered"], ""),
+        command: join([managed_directory_writer_uncovered_poison, member as String, " path=", path as String, " writer=", writer as String], ""),
+      )
+  }
+}
+
+fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  approval_broker_tree_copy_steps(spec: spec, revision: revision)
 }
 
 // ── THE ADDITIVE BROKER INSTALL: STAGE 1 OF THE CUTOVER ─────────────────────────────────────
@@ -3723,21 +4426,41 @@ fn approval_broker_dark_install_release_steps(spec: DeploymentSpec, revision: Re
 // the broker yet (gunbc.auth.approval_broker_cutover approval_route_ownership) and the broker does
 // not hold the store (gunbc.auth.approval_writer_authority), so a loopback client that finds the
 // port is REFUSED rather than merely unlikely to look.
+// STORE, THEN THIS RELEASE'S GRANT, THEN THE BROKER UNIT. Grant mutate precedes the unit write
+// so a helpers-stretch failure exits before daemon-reload and cannot leave NeedDaemonReload=yes
+// with a new unit already on disk (the 2026-10-12 run-1 hole).
+fn approval_broker_dark_install_body_fragments(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+  principal: GroundedPosixPrincipal,
+) -> List<HostScriptFragment> {
+  concat(
+    approval_device_store_fragments(),
+    concat(
+      approval_broker_helper_grant_fragments(revision: revision, principal: principal),
+      [Mutate {
+        member: "dark-install" as NonEmptyStr,
+        steps: concat(
+          apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
+          concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
+        ),
+      }],
+    ),
+  )
+}
+
 fn approval_broker_dark_install_intent(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
   access: DeployAccess,
 ) -> Pipeline {
-  Pipeline {
-    steps: concat(
-      concat(
-        [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
-        apply_approval_broker_unit_write_steps(principal: access.principal, spec: spec, revision: revision),
-      ),
-      concat([deploy_effect(inv: systemctl_daemon_reload_effect())], approval_broker_lifecycle_steps(spec: spec)),
-    ),
-    on_failure: FailFast,
-  }
+  compose_host_script(fragments: concat(
+    [
+      Decide { member: "frame" as NonEmptyStr, standing: HostScriptProceed, steps: [deploy_raw(command: deploy_shell_strict_options_command)] },
+      Mutate { member: "frame" as NonEmptyStr, steps: [deploy_stage_directory_let_step()] },
+    ],
+    approval_broker_dark_install_body_fragments(spec: spec, revision: revision, principal: access.principal),
+  ))
 }
 
 // A NON-OWNING SPEC REACHING THE DARK INSTALL REFUSES LOUDLY RATHER THAN EMITTING A SCRIPT THAT

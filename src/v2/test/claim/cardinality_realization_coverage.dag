@@ -1,0 +1,291 @@
+module v2.test.claim.cardinality_realization_coverage
+
+import std.algebra { FreeMonoid, fold_list }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Optional, Present }
+import std.types { List }
+import v2.std.integer { Int }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.test.claim.cardinality_realization_specimens { specimen_tags }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REALIZATION-SUPPORT ROWS of roadmap node cardinality-realization-conformance: for each
+// (target, specimen) pair, what the target is EXPECTED to do with that specimen of
+// v2.test.claim.cardinality_realization_specimens. A pair with no row is a typed refusal
+// (RealizationUndeclared), never an unobserved pair.
+//
+// THIS IS AN OBSERVING-LAYER COVERAGE FACT, not a field of v2.std.compilers.target_model TargetModel:
+// TargetModel is the grammar and serialization row set of one language (hundreds of constructor
+// sites) and does not model what a path can realize; and what a path does with a specimen is a
+// claim THIS repository makes about it (DESIGN section 3, external upstream decomposition).
+//
+// ROWS DECLARE THE EXPECTATION, NEVER THE RESULT. A hand-authored "Executed" is a transcribed result
+// that rots; the evidence is running each path and comparing its outcome with the row. Two keys are
+// identities, not text: the target is the DeclarationRef of the path's realization authority and the
+// specimen is the DeclarationRef of the specimen's own declaration, so a renamed or deleted specimen
+// is a DECLARED identity; the guarantee is explicit DeclarationRef identity coverage, NOT that each
+// reference resolves: renaming a key and its row to one nonexistent declaration still joins. No
+// parallel shape enum forks the specimens.
+//
+// WHAT EXECUTES WHAT, honestly, per path (DESIGN 4b, rung honesty: a class's rung is the minimum
+// across its in-scope paths):
+//   evaluator       the claims in this module and in the specimens module execute the specimens'
+//                   tag functions on the claim evaluator and join the declared Realizes rows. They do
+//                   NOT invoke eval_test_claim_subject, which is the target's identity key, not a
+//                   called route; the required workflow does not run this population either.
+//   seed Rust emit  NOT GATED. `gunbc compile --target rust` over the specimens module, cargo run of
+//                   the emitted crate, each specimen separately; observed locally, recorded in the PR.
+//   native v2 CLI   NOT GATED. `compile_cli emit --entry <specimens module>`; CI builds the CLI but
+//                   runs it only on its own controls. Observed locally, recorded in the PR.
+// So the class rung is mitigation until a wet instrument runs the two ungated paths over the specimens
+// and compares with these rows. Trigger: that instrument, as a `gunbc test <label>` row.
+
+type RealizationExpectation
+  = Realizes
+  | RefusesWith { causes: List<Symbol> }
+  | ExpectedRed { defects: List<Symbol>, owner: DeclarationRef }
+
+type RealizationSupportRow {
+  target: DeclarationRef
+  specimen: DeclarationRef
+  expectation: RealizationExpectation
+}
+
+type RealizationLookup
+  = RealizationDeclared { expectation: RealizationExpectation }
+  | RealizationUndeclared { target: DeclarationRef, specimen: DeclarationRef }
+  | RealizationDuplicated { target: DeclarationRef, specimen: DeclarationRef }
+
+data specimens_module: String = "v2.test.claim.cardinality_realization_specimens"
+
+data list_specimen_module: String = "v2.test.claim.cardinality_realization_list_specimen"
+
+fn specimen_ref(name: String) -> DeclarationRef { decl_ref(module_path: specimens_module, decl_name: name) }
+
+data evaluator_target: DeclarationRef = decl_ref(module_path: "v2.compiler.eval", decl_name: "eval_test_claim_subject")
+
+data seed_rust_target: DeclarationRef = decl_ref(module_path: "std.languages", decl_name: "rust_language")
+
+data native_v2_target: DeclarationRef = decl_ref(module_path: "v2.cli.compile_cli", decl_name: "cli_run_bound")
+
+data specimen_1_absent: DeclarationRef = specimen_ref(name: "specimen_absent")
+
+data specimen_2_present_absent: DeclarationRef = specimen_ref(name: "specimen_present_absent")
+
+data specimen_3_present_present: DeclarationRef = specimen_ref(name: "specimen_present_present")
+
+data specimen_4_absent_collection: DeclarationRef = specimen_ref(name: "specimen_absent_collection")
+
+data specimen_5_present_empty_collection: DeclarationRef = specimen_ref(name: "specimen_present_empty_collection")
+
+data specimen_6_present_absent_entries: DeclarationRef = specimen_ref(name: "specimen_present_absent_entries")
+
+data specimen_6_list_present_absent_list_entries: DeclarationRef = decl_ref(module_path: list_specimen_module, decl_name: "specimen_present_absent_list_entries")
+
+data specimen_7_foreign_missing: DeclarationRef = specimen_ref(name: "specimen_foreign_member_missing_text")
+
+data specimen_8_foreign_null: DeclarationRef = specimen_ref(name: "specimen_foreign_member_null_text")
+
+data specimen_9_foreign_invalid: DeclarationRef = specimen_ref(name: "specimen_foreign_member_invalid_text")
+
+data all_specimens: List<DeclarationRef> = [
+  specimen_1_absent,
+  specimen_2_present_absent,
+  specimen_3_present_present,
+  specimen_4_absent_collection,
+  specimen_5_present_empty_collection,
+  specimen_6_present_absent_entries,
+  specimen_6_list_present_absent_list_entries,
+  specimen_7_foreign_missing,
+  specimen_8_foreign_null,
+  specimen_9_foreign_invalid
+]
+
+data all_targets: List<DeclarationRef> = [evaluator_target, seed_rust_target, native_v2_target]
+
+// The tag the evaluator path answers for each of nine specimens is asserted by the specimens module and the
+// List spelling's by v2.test.claim.cardinality_realization_list_specimen; the evaluator rows below
+// are the declared expectation that all ten are realized.
+// SPECIMEN 6 OVER List on seed Rust: a List nested under an Optional is left unstamped by seed
+// inference and the expected element type is not pushed into the literal, so
+// render_rust_optional_carrier_inner falls back to () and the payload is lost. The emitted type is
+// Option<Rc<Vec<Option<()>>>> and the emitted crate fails rustc E0308; the FreeMonoid spelling is
+// stamped and realizes. Repair lanes at the time of writing (inference stamping, the renderer) are
+// not recorded as owners; the owner is list_erasure_owner.
+// THE OWNER OF AN EXPECTED RED is the durable carrier that tracks the defect, by identity: the
+// recurring_failure_mode row whose class the defect instantiates. Sessions are ephemeral and are not
+// owners. A red row cannot be written without one (the field is required, with no absent arm).
+data list_erasure_owner: DeclarationRef = decl_ref(module_path: "gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target", decl_name: "accepted_source_emits_uncompilable_target")
+
+data seed_rust_list_defects: List<Symbol> = [^render_rust_optional_carrier_inner]
+
+// NATIVE v2 CLI, every specimen: the source roots do not yield an exact closure. The entry's
+// closure does not front-end (std.decimal, via the JSON decoder import); a module importing only
+// v2.std.integer refuses at that module; one importing neither refuses on grounding. Located and
+// typed but CLOSURE-WIDE: it fires before any cardinality shape is reached, so it does not
+// discriminate the shapes.
+data native_closure_causes: List<Symbol> = [
+  ^body_lowering_reason_field_refinement_unmodeled,
+  ^normalized_tree_reason_wrapper_retention_not_normalized,
+  ^infer_grounding_not_derived
+]
+
+fn refuses(target: DeclarationRef, specimen: DeclarationRef, causes: List<Symbol>) -> RealizationSupportRow {
+  RealizationSupportRow { target: target, specimen: specimen, expectation: RefusesWith { causes: causes } }
+}
+
+fn supported(target: DeclarationRef, specimen: DeclarationRef) -> RealizationSupportRow {
+  RealizationSupportRow { target: target, specimen: specimen, expectation: Realizes }
+}
+
+fn expected_red(target: DeclarationRef, specimen: DeclarationRef, defects: List<Symbol>, owner: DeclarationRef) -> RealizationSupportRow {
+  RealizationSupportRow { target: target, specimen: specimen, expectation: ExpectedRed { defects: defects, owner: owner } }
+}
+
+data realization_support_rows: List<RealizationSupportRow> = [
+  supported(target: evaluator_target, specimen: specimen_1_absent),
+  supported(target: evaluator_target, specimen: specimen_2_present_absent),
+  supported(target: evaluator_target, specimen: specimen_3_present_present),
+  supported(target: evaluator_target, specimen: specimen_4_absent_collection),
+  supported(target: evaluator_target, specimen: specimen_5_present_empty_collection),
+  supported(target: evaluator_target, specimen: specimen_6_present_absent_entries),
+  supported(target: evaluator_target, specimen: specimen_6_list_present_absent_list_entries),
+  supported(target: evaluator_target, specimen: specimen_7_foreign_missing),
+  supported(target: evaluator_target, specimen: specimen_8_foreign_null),
+  supported(target: evaluator_target, specimen: specimen_9_foreign_invalid),
+  supported(target: seed_rust_target, specimen: specimen_1_absent),
+  supported(target: seed_rust_target, specimen: specimen_2_present_absent),
+  supported(target: seed_rust_target, specimen: specimen_3_present_present),
+  supported(target: seed_rust_target, specimen: specimen_4_absent_collection),
+  supported(target: seed_rust_target, specimen: specimen_5_present_empty_collection),
+  supported(target: seed_rust_target, specimen: specimen_6_present_absent_entries),
+  expected_red(target: seed_rust_target, specimen: specimen_6_list_present_absent_list_entries, defects: seed_rust_list_defects, owner: list_erasure_owner),
+  supported(target: seed_rust_target, specimen: specimen_7_foreign_missing),
+  supported(target: seed_rust_target, specimen: specimen_8_foreign_null),
+  supported(target: seed_rust_target, specimen: specimen_9_foreign_invalid),
+  refuses(target: native_v2_target, specimen: specimen_1_absent, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_2_present_absent, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_3_present_present, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_4_absent_collection, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_5_present_empty_collection, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_6_present_absent_entries, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_6_list_present_absent_list_entries, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_7_foreign_missing, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_8_foreign_null, causes: native_closure_causes),
+  refuses(target: native_v2_target, specimen: specimen_9_foreign_invalid, causes: native_closure_causes)
+]
+
+fn row_matches(row: RealizationSupportRow, target: DeclarationRef, specimen: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: row.target, b: target) && declaration_ref_eq(a: row.specimen, b: specimen)
+}
+
+fn realization_support(rows: List<RealizationSupportRow>, target: DeclarationRef, specimen: DeclarationRef) -> RealizationLookup {
+  fold_list(
+    xs: rows,
+    empty: RealizationUndeclared { target: target, specimen: specimen },
+    cons: fn(acc, row) {
+      if row_matches(row: row, target: target, specimen: specimen) {
+        match acc {
+          RealizationUndeclared { target: _, specimen: _ } => RealizationDeclared { expectation: row.expectation }
+          RealizationDeclared { expectation: _ } => RealizationDuplicated { target: target, specimen: specimen }
+          RealizationDuplicated { target: _, specimen: _ } => acc
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn lookup_is_declared(l: RealizationLookup) -> Bool {
+  match l {
+    RealizationDeclared { expectation: _ } => true
+    RealizationUndeclared { target: _, specimen: _ } => false
+    RealizationDuplicated { target: _, specimen: _ } => false
+  }
+}
+
+fn target_is_covered(rows: List<RealizationSupportRow>, target: DeclarationRef) -> Bool {
+  fold_list(
+    xs: all_specimens,
+    empty: true,
+    cons: fn(acc, s) { acc && lookup_is_declared(l: realization_support(rows: rows, target: target, specimen: s)) }
+  )
+}
+
+fn expectation_is_realizes(l: RealizationLookup) -> Bool {
+  match l {
+    RealizationDeclared { expectation: Realizes } => true
+    RealizationDeclared { expectation: RefusesWith { causes: _ } } => false
+    RealizationDeclared { expectation: ExpectedRed { defects: _, owner: _ } } => false
+    RealizationUndeclared { target: _, specimen: _ } => false
+    RealizationDuplicated { target: _, specimen: _ } => false
+  }
+}
+
+fn target_realizes_all(rows: List<RealizationSupportRow>, target: DeclarationRef) -> Bool {
+  fold_list(
+    xs: all_specimens,
+    empty: true,
+    cons: fn(acc, s) { acc && expectation_is_realizes(l: realization_support(rows: rows, target: target, specimen: s)) }
+  )
+}
+
+// The evaluator's executed answers: one tag per original specimen, in specimen order. The ten
+// specimens are nine tags plus the List spelling, whose answer is asserted in the specimens module.
+test fn the_evaluator_realizes_what_its_rows_declare() -> Bool {
+  target_realizes_all(rows: realization_support_rows, target: evaluator_target)
+    && specimen_tags() == [1, 20, 37, 40, 50, 71, 80, 81, 92]
+}
+
+// COMPLETENESS BY IDENTITY, not by count: every (target, specimen) pair of the declared rosters has a
+// row. A specimen added to all_specimens, or a target added to all_targets, without its rows reds here.
+test fn every_target_specimen_pair_has_a_declared_row() -> Bool {
+  fold_list(
+    xs: all_targets,
+    empty: true,
+    cons: fn(acc, t) { acc && target_is_covered(rows: realization_support_rows, target: t) }
+  )
+}
+
+fn rows_without_pair(rows: List<RealizationSupportRow>, target: DeclarationRef, specimen: DeclarationRef) -> List<RealizationSupportRow> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, r) {
+    if declaration_ref_eq(a: r.target, b: target) && declaration_ref_eq(a: r.specimen, b: specimen) { acc } else { acc + [r] }
+  })
+}
+
+// THE DISCRIMINATING CONTROL: dropping one row makes that pair a typed refusal, so a missing pair
+// cannot read as support. The control filters the one seed Rust specimen-4 row out of realization_support_rows.
+test fn a_missing_pair_is_a_typed_refusal_not_support() -> Bool {
+  !lookup_is_declared(l: realization_support(rows: rows_without_pair(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection), target: seed_rust_target, specimen: specimen_4_absent_collection))
+    && lookup_is_declared(l: realization_support(rows: rows_without_pair(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection), target: seed_rust_target, specimen: specimen_3_present_present))
+    && lookup_is_declared(l: realization_support(rows: realization_support_rows, target: seed_rust_target, specimen: specimen_4_absent_collection))
+}
+
+fn rows_reversed(rows: List<RealizationSupportRow>) -> List<RealizationSupportRow> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, r) { [r] + acc })
+}
+
+// EXACTLY ONE ROW PER PAIR. A second row for a pair that is declared ExpectedRed (here a Realizes row
+// for seed Rust specimen 8) makes the pair Duplicated, which is not declared and not support, in
+// either row order; and the unique rows give the same answer whatever their order.
+test fn a_duplicate_pair_is_refused_in_either_order() -> Bool {
+  let dup = supported(target: seed_rust_target, specimen: specimen_8_foreign_null)
+  let a = realization_support_rows + [dup]
+  let b = [dup] + realization_support_rows
+  !lookup_is_declared(l: realization_support(rows: a, target: seed_rust_target, specimen: specimen_8_foreign_null))
+    && !lookup_is_declared(l: realization_support(rows: b, target: seed_rust_target, specimen: specimen_8_foreign_null))
+    && !target_is_covered(rows: a, target: seed_rust_target)
+    && !expectation_is_realizes(l: realization_support(rows: a, target: seed_rust_target, specimen: specimen_8_foreign_null))
+    && target_realizes_all(rows: rows_reversed(rows: realization_support_rows), target: evaluator_target)
+    && !target_realizes_all(rows: rows_reversed(rows: realization_support_rows), target: seed_rust_target)
+}
+
+// A path that is expected to be red is not green: the seed Rust target does not realize every
+// specimen, and the rows say so.
+test fn the_seed_rust_path_is_not_declared_to_realize_everything() -> Bool {
+  !target_realizes_all(rows: realization_support_rows, target: seed_rust_target)
+}

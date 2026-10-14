@@ -1,5 +1,6 @@
 module v2.test.claim.binder_admission.callable_binder_slice
 
+import std.occurrence_identity { LexicalValueOccurrence }
 import v2.compiler.resolve {
   LexicalBinding,
   LexicalUntyped,
@@ -268,7 +269,8 @@ fn cbs_ctx(scope: Scope) -> ResolveContext {
     position: Empty,
     lm: void_language_model(identity: ^cbs_void_language),
     under_module_root: false,
-    declaring: NotDeclaring
+    declaring: NotDeclaring,
+    reference_category: LexicalValueOccurrence
   }
 }
 

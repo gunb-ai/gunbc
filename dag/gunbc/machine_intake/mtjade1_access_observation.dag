@@ -48,7 +48,7 @@ import gunbc.machine_intake.subject {
   ComponentIdentity,
 }
 import std.types { Int, List, NonEmptyStr, String }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import std.decl_ref { decl_ref }
 import gunbc.board_authority_binding { mtjade1_fru_receipt, receipt_sha256_hex }
 import gunbc.ipmitool_fru_text {

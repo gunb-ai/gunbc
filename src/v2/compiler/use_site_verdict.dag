@@ -3,7 +3,7 @@ module v2.compiler.use_site_verdict
 import std.types { List }
 import std.algebra { list_snoc_item }
 import v2.std.node {
-  Absent,
+  NotFound,
   Ambiguous,
   Atom,
   Edge,
@@ -70,7 +70,7 @@ fn use_site_verdict_move_field_of(children: List<Edge>) -> UseSiteVerdict {
         TypeNode { connective: Instantiation } => Unclassified
         ComputationNode { behavior: _ } => Unclassified
       }
-    Absent => Unclassified
+    NotFound => Unclassified
     Ambiguous => Unclassified
   }
 }
@@ -101,7 +101,7 @@ fn use_site_verdict_of_node(target: Node) -> UseSiteVerdict {
 fn use_site_verdict_lookup(node: Node) -> UseSiteVerdictLookup {
   match named_edge_target_lookup(children: node.children, name: use_site_verdict_edge) {
     Found { target: t } => VerdictFound { verdict: use_site_verdict_of_node(target: t) }
-    Absent => VerdictAbsent
+    NotFound => VerdictAbsent
     Ambiguous => VerdictAmbiguous
   }
 }
