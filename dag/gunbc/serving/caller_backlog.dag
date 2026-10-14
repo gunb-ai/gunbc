@@ -5,7 +5,7 @@ import std.nat { Nat, Zero, Succ }
 import std.optional { Present, Absent }
 import std.algebra { length }
 import extdeps.languages.json.emit {
-  JsonValue, JsonArray, JsonBool, JsonNull, JsonNumber, JsonObject, JsonString,
+  JsonKeyValue, JsonValue, JsonArray, JsonBool, JsonNull, JsonNumber, JsonObject, JsonString,
   json_array, json_bool, json_int, json_kv, json_object, json_string, serialize_json,
 }
 import extdeps.languages.json.parse {

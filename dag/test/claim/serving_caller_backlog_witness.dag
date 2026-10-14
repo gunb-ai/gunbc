@@ -49,7 +49,7 @@ import gunbc.harness.harness_cli { harness_durable_worker_cli, harness_bind_belt
 import std.decl_ref { DeclarationRef }
 import v2.std.decl_index { decl_facts_at }
 import std.optional { Present, Absent }
-import gunbc.compile_census_probe { blocking_subject_count_for }
+import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
 import gunbc.serving.caller_retry_contract {
   DurableRetryProperty, PersistBeforeOffer, RetriableRefusal, StableTurnIdentity, IdempotentRetryDuplicateSuppression,
   NoExpiryOnLongWait, DurableCancellation, NoDoubleExecution, serving_route_caller_retry_rows, modeled_caller_retry_rows, modeled_caller_backlog,
@@ -331,8 +331,8 @@ test fn w_encoded_waiting_roundtrips_recovery_history() -> Bool {
 }
 
 test fn w_bound_deficit_decode_refuses_a_negative_count() -> Bool {
-  let negative_probes = "{\"work\":\"logical-work-a\",\"reservation\":\"grant-work-a\",\"generation\":2,\"phase\":{\"kind\":\"recovery_bound_exceeded\",\"probes_succeeded\":-1,\"requests_failed\":2},\"recovery\":[]}" as NonEmptyStr
-  let negative_requests = "{\"work\":\"logical-work-a\",\"reservation\":\"grant-work-a\",\"generation\":2,\"phase\":{\"kind\":\"recovery_bound_exceeded\",\"probes_succeeded\":1,\"requests_failed\":-2},\"recovery\":[]}" as NonEmptyStr
+  let negative_probes = "{\"work\":\"logical-work-a\",\"reservation\":\"grant-work-a\",\"partition\":\"part-a\",\"generation\":2,\"phase\":{\"kind\":\"recovery_bound_exceeded\",\"probes_succeeded\":-1,\"requests_failed\":2},\"recovery\":[]}" as NonEmptyStr
+  let negative_requests = "{\"work\":\"logical-work-a\",\"reservation\":\"grant-work-a\",\"partition\":\"part-a\",\"generation\":2,\"phase\":{\"kind\":\"recovery_bound_exceeded\",\"probes_succeeded\":1,\"requests_failed\":-2},\"recovery\":[]}" as NonEmptyStr
   let zero = CallerWorkRecord {
     work: work_a,
     seat: seat_a,
@@ -340,7 +340,9 @@ test fn w_bound_deficit_decode_refuses_a_negative_count() -> Bool {
     phase: WorkRecoveryBoundExceeded { deficit: recovery_bound_deficit(events: [] as List<RecoveryEvent>) },
     recovery: [] as List<RecoveryEvent>,
   }
-  (match decode_waiting(payload: negative_probes) { Absent => true  Present { value: _ } => false })
+  let nonnegative = "{\"work\":\"logical-work-a\",\"reservation\":\"grant-work-a\",\"partition\":\"part-a\",\"generation\":2,\"phase\":{\"kind\":\"recovery_bound_exceeded\",\"probes_succeeded\":1,\"requests_failed\":2},\"recovery\":[]}" as NonEmptyStr
+  (match decode_waiting(payload: nonnegative) { Absent => false  Present { value: _ } => true })
+    && (match decode_waiting(payload: negative_probes) { Absent => true  Present { value: _ } => false })
     && (match decode_waiting(payload: negative_requests) { Absent => true  Present { value: _ } => false })
     && (match encode_waiting(record: zero) {
       WaitingWireUnencodable { reason: _ } => false
@@ -440,7 +442,7 @@ data waiting_store_bypass_source: String = "module test.probe.caller_backlog_wai
 
 data waiting_idempotent_bypass_source: String = "module test.probe.caller_backlog_waiting_idempotent_bypass\nimport std.types { NonEmptyStr }\nimport gunbc.serving.caller_backlog { CallerWorkRecord, DurablePersistStanding, persist_waiting_idempotent_on_store }\nfn forge(root: NonEmptyStr, record: CallerWorkRecord) -> DurablePersistStanding {\n  persist_waiting_idempotent_on_store(root: root, record: record)\n}\n"
 
-data admitted_waiting_persist_source: String = "module test.probe.caller_backlog_admitted_waiting_persist\nimport std.types { NonEmptyStr, Int }\nimport product.fabric.execution { ReservationRef }\nimport gunbc.serving.caller_backlog { LogicalWorkId, CallerBacklogSnapshot, DurablePersistStanding, persist_waiting_durable }\nfn go(root: NonEmptyStr, snap: CallerBacklogSnapshot, work: LogicalWorkId, reservation: ReservationRef, generation: Int) -> DurablePersistStanding {\n  persist_waiting_durable(root: root, snapshot: snap, work: work, reservation: reservation, generation: generation)\n}\n"
+data admitted_waiting_persist_source: String = "module test.probe.caller_backlog_admitted_waiting_persist\nimport std.types { NonEmptyStr, Int }\nimport gunbc.serving.caller_backlog { LogicalWorkId, CallerBacklogSnapshot, DurablePersistStanding, persist_waiting_durable }\nfn go(root: NonEmptyStr, snap: CallerBacklogSnapshot, work: LogicalWorkId, generation: Int) -> DurablePersistStanding {\n  persist_waiting_durable(root: root, snapshot: snap, work: work, seat: none, generation: generation)\n}\n"
 
 data rebind_bypass_source: String = "module test.probe.caller_backlog_rebind_bypass\nimport std.types { NonEmptyStr }\nimport gunbc.serving.caller_backlog { LogicalWorkId, SeatRef, DurableRebindStanding, rebind_reservation_durable }\nfn forge(root: NonEmptyStr, work: LogicalWorkId, next: SeatRef) -> DurableRebindStanding {\n  rebind_reservation_durable(root: root, work: work, expected: none, next: next)\n}\n"
 
@@ -489,6 +491,7 @@ test fn w_foreign_module_cannot_publish_an_initial_record() -> Bool {
 }
 
 test fn w_typed_waiting_persist_is_the_admitted_publication_path() -> Bool {
+  total_blocking_count_for(source: admitted_waiting_persist_source) == 0 &&
   blocking_subject_count_for(
     source: admitted_waiting_persist_source,
     wanted_class: "ConstructorCallAdmissionRefused",

@@ -16,10 +16,11 @@ import gunbc.serving.caller_backlog {
 // caller-owned and names what makes it DURABLE rather than merely retried: each property below.
 // gunbc.serving.caller_backlog is the executing model of those properties. caller_backlog_standing
 // derives DurableCallerBacklog only from a roster that has established every row. The SERVING ROUTE
-// consumes those folds for belt-spawned worker turns (serving_route_caller_retry_rows), but a pending
-// placement still shares exit status 1 with a refusal and no entry point cancels, so
-// serving_route_caller_backlog remains an EXTERNAL RETRY OBLIGATION naming exactly those two. Declaring the route durable while those gaps remain would be a meaning
-// fork (DESIGN §3) and rung inflation (DESIGN §4b).
+// does not yet establish any of the seven: the belt places its work on the operator endpoint, which takes no
+// seat, so the belt entry is unactivated and serving_route_caller_retry_rows holds every row unestablished
+// (see its comment for the trigger). serving_route_caller_backlog is therefore an EXTERNAL RETRY OBLIGATION
+// naming all seven. Declaring the route durable while that holds would be a meaning fork (DESIGN §3) and rung
+// inflation (DESIGN §4b).
 //
 // THE STANDING IS DERIVED, NEVER AUTHORED. Adding a server queue is not the trigger; the executing
 // basis is the caller's persisted snapshot, not a router-local queue, and the route names DurableCallerBacklog
@@ -120,7 +121,7 @@ fn modeled_caller_backlog() -> CallerBacklogStanding {
 // durability. FRONTIER, trigger: a fleet-seat placement for BatchQualityTolerant belt work (rented card to seat,
 // #13915); the activating change has the belt pass the dispatch node, the turn ordinal and the instance's
 // host_layout state root, and switches these rows only where that execution establishes them. The fail-closed
-// refusal in gunbc.harness.harness_cli harness_worker_cli stays for any entry that does pass a turn (the fold wiring itself is exercised by the
+// refusal in gunbc.harness.harness_cli harness_durable_worker_cli stays for any entry that does pass a turn (the fold wiring itself is exercised by the
 // harness_seat and caller_backlog witnesses on a fleet binding).
 data serving_route_caller_retry_rows: List<DurableRetryPropertyRow> = [
   DurableRetryPropertyRow { property: PersistBeforeOffer, standing: RetryPropertyUnestablished { obligation: "the belt worker's placement is the operator endpoint, which takes no seat, so its durable turn reaches no caller_backlog fold (gunbc.harness.harness_seat harness_bind_seat refuses it); established only once the belt places a durable turn on a fleet seat" as NonEmptyStr } },
