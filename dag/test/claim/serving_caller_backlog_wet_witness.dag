@@ -26,6 +26,21 @@ import gunbc.serving.caller_backlog {
   RecoveryEvent, RecoveryProbe, RecoveryRequest,
 }
 import std.nat { Nat }
+import std.measure { Measure, Count, One }
+import product.capacity.pool { Pool }
+import product.capacity.event_chain { PartitionId }
+import product.capacity.pool_events { SeatRequest }
+import product.capacity.lease { LeasePolicy, QuiescenceRequired, LeaseGrant }
+import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_event_log { SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused, fabric_seat_acquire, fabric_seat_release, seat_release_wire }
+import gunbc.harness.harness_seat {
+  HarnessCallerHold, HarnessCallerTurn, harness_complete_with_grant, HarnessCallerTurnCompleted, HarnessCallerCompletionRefused, harness_now_epoch, harness_unplaced_reservation, harness_seat_pool_root, harness_claim_seat, HarnessSeatClaimed, HarnessSeatClaimRefused,
+}
+import gunbc.serving.caller_backlog {
+  rebind_reservation_durable, DurableReservationRebound, DurableRebindPredecessorMismatch, DurableRebindRefusedTerminal,
+  DurableRebindUnknownWork, DurableRebindStoreRefused, DurableRebindKeyNotSlotAddressable,
+}
 import std.algebra { length }
 import std.measure { money_amount_micro }
 import extdeps.currency.currency { Usd }
@@ -750,4 +765,149 @@ test fn slash_bearing_dispatch_node_derives_a_persistable_resumable_work_id_by_r
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
   ok && removed.success
+}
+
+// A REAL DURABLE-CAS REBIND RACE (review 5516084074): two retries both read the placeholder reservation and
+// both try to take the record. The store's compare-and-set on the slot generation admits one; the other
+// finds the first one's reservation and is refused with it. If the rebind did not name its predecessor
+// (or did not go through the CAS), both would be told they were rebound and both would run.
+test fn two_retries_rebinding_one_waiting_record_admit_exactly_one_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let work = "logical-work-race" as LogicalWorkId
+  let placeholder = harness_unplaced_reservation(work: work)
+  let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, reservation: placeholder, generation: 1)
+  let first = rebind_reservation_durable(root: root, work: work, expected: placeholder, reservation: "seat-retry-a" as ReservationRef)
+  let second = rebind_reservation_durable(root: root, work: work, expected: placeholder, reservation: "seat-retry-b" as ReservationRef)
+  let after = resume_waiting_durable(root: root, work: work)
+  let cleaned = shell.Remove.RecursiveForce(path: root_path)
+  (match persisted { DurableWaitingPersisted { record: _ } => true  other => false })
+    && (match first { DurableReservationRebound { record: _ } => true  other => false })
+    && (match second { DurableRebindPredecessorMismatch { held: h } => (h as String) == "seat-retry-a"  other => false })
+    && (match after { DurableResumedWaiting { record: r } => (r.reservation as String) == "seat-retry-a"  other => false })
+    && cleaned.success
+}
+
+fn claim_pool() -> Pool<Count, One> {
+  harness_seat_pool_root(partition: "claim-partition" as PartitionId, ceiling: 2)
+}
+
+fn claim_request(reference: String, at: Int) -> SeatRequest {
+  SeatRequest { reference: reference as NonEmptyStr, amount: Measure { count: 1 }, at: at, term_seconds: 600 }
+}
+
+fn claim_policy() -> LeasePolicy {
+  LeasePolicy { maximum_duration_seconds: 600, release_law: QuiescenceRequired }
+}
+
+fn claim_acquire(store: FabricStorageBinding, partition: PartitionId, reference: String, at: Int) -> LeaseGrant? {
+  match fabric_seat_acquire(store: store, partition: partition, root: claim_pool(), actor: "claim-witness" as NonEmptyStr,
+    request: claim_request(reference: reference, at: at), policy: claim_policy(), attempts: 3, budget: 4096) {
+    SeatGranted { grant: g, generation: _, attempts_used: _ } => Present { value: g }
+    other => none
+  }
+}
+
+fn claim_refused(c: HarnessSeatClaim) -> Bool {
+  match c { HarnessSeatClaimed => false  HarnessSeatClaimRefused { detail: _ } => true }
+}
+
+fn claim_taken(c: HarnessSeatClaim) -> Bool {
+  match c { HarnessSeatClaimed => true  HarnessSeatClaimRefused { detail: _ } => false }
+}
+
+// TWO RETRIES OF ONE WORK OVER A REAL SEAT PARTITION: retry A acquires a seat and claims the record; retry B
+// acquires its own seat while A's is still current and its claim is refused, so only A reaches the execution
+// side of HarnessSeatBound. After A's seat is released, a later retry C may claim (the prior grant is retired).
+// The mutation that skips the predecessor proof lets B claim, and this reads RED.
+test fn only_one_of_two_retries_claims_the_seat_by_real_execution() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let fabric = fabric_storage_file_root(root: concat(dir.path as String, "/fabric") as NonEmptyStr)
+  let work = "logical-work-claim" as LogicalWorkId
+  let root = dir.path as NonEmptyStr
+  let ok = if !dir.success { false } else { match fabric_storage_file_root_ensure(root: fabric) {
+    FabricStorageRootReady => {
+      let store = FabricStorageLocalFiles { root: fabric }
+      let partition = "claim-partition" as PartitionId
+      let hold = HarnessCallerHold { work: work, root: root }
+      let persisted = persist_waiting_durable(root: root, snapshot: empty_caller_backlog, work: work, reservation: harness_unplaced_reservation(work: work), generation: 1)
+      match claim_acquire(store: store, partition: partition, reference: "seat-a", at: 100) {
+        Absent => false
+        Present { value: ga } => match claim_acquire(store: store, partition: partition, reference: "seat-b", at: 101) {
+          Absent => false
+          Present { value: gb } => {
+            let a = harness_claim_seat(hold: hold, grant: ga, store: store, partition: partition)
+            let b = harness_claim_seat(hold: hold, grant: gb, store: store, partition: partition)
+            let released = fabric_seat_release(store: store, partition: partition, root: claim_pool(), reference: "seat-a" as NonEmptyStr, reason: "done" as NonEmptyStr, at: 102, attempts: 3, budget: 4096)
+            match claim_acquire(store: store, partition: partition, reference: "seat-c", at: 103) {
+              Absent => false
+              Present { value: gc } => {
+                let c = harness_claim_seat(hold: hold, grant: gc, store: store, partition: partition)
+                claim_taken(c: a) && claim_refused(c: b) && claim_taken(c: c)
+              }
+            }
+          }
+        }
+      }
+    }
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  ok && cleaned.success
+}
+
+fn completion_fixture(ordinal: Nat, acquired_at_offset: Int, release_before: Bool) -> String {
+  let dir = shell.Mktemp.Dir()
+  let fabric = fabric_storage_file_root(root: concat(dir.path as String, "/fabric") as NonEmptyStr)
+  let state_root = dir.path as NonEmptyStr
+  let turn = HarnessCallerTurn { dispatch_node: "completion-node" as NonEmptyStr, ordinal: ordinal, state_root: state_root }
+  let observed = if !dir.success { "setup: no temp dir" } else { match fabric_storage_file_root_ensure(root: fabric) {
+    FabricStorageRootReady => match logical_work_id_of(key: DispatchTurnKey { dispatch_node: turn.dispatch_node, ordinal: turn.ordinal }) {
+      WorkIdKeyNotOctets { observed: _ } => "setup: work id"
+      WorkIdDerived { work: work } => match harness_now_epoch() {
+        Absent => "setup: clock"
+        Present { value: now } => {
+          let store = FabricStorageLocalFiles { root: fabric }
+          let partition = "claim-partition" as PartitionId
+          let hold = HarnessCallerHold { work: work, root: state_root }
+          let persisted = persist_waiting_durable(root: state_root, snapshot: empty_caller_backlog, work: work, reservation: harness_unplaced_reservation(work: work), generation: 1)
+          match claim_acquire(store: store, partition: partition, reference: "seat-completion", at: now + acquired_at_offset) {
+            Absent => "setup: acquire"
+            Present { value: g } => match harness_claim_seat(hold: hold, grant: g, store: store, partition: partition) {
+              HarnessSeatClaimRefused { detail: d } => join(["setup: claim refused: ", d], "")
+              HarnessSeatClaimed => {
+                let released = if release_before {
+                  seat_release_wire(r: fabric_seat_release(store: store, partition: partition, root: claim_pool(), reference: "seat-completion" as NonEmptyStr, reason: "done" as NonEmptyStr, at: now, attempts: 3, budget: 4096))
+                } else { "kept" }
+                match harness_complete_with_grant(turn: turn, presented: g, store: store, partition: partition) {
+                  HarnessCallerTurnCompleted { record: _ } => "completed"
+                  HarnessCallerCompletionRefused { detail: _ } => "refused"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    other => "setup: fabric root"
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  if cleaned.success { observed } else { "setup: cleanup" }
+}
+
+// PRODUCTION COMPLETION OVER A REAL PARTITION (review 5516084074). A grant acquired now, still current in the
+// partition, completes the work. A grant acquired long ago is expired by the clock read AT COMPLETION: a fence
+// time copied from the acquisition (granted_at) would call it unexpired, so that mutation reads RED. A grant
+// whose seat was released in the partition is refused though the bound grant value still looks valid: a
+// current-grant taken from the bound grant instead of the partition read would admit it, so that mutation reads RED.
+test fn completion_admits_a_current_grant_by_real_execution() -> Bool {
+  completion_fixture(ordinal: 1, acquired_at_offset: 0, release_before: false) == "completed"
+}
+
+test fn completion_refuses_a_grant_expired_by_the_observed_clock_by_real_execution() -> Bool {
+  completion_fixture(ordinal: 2, acquired_at_offset: -100000, release_before: false) == "refused"
+}
+
+test fn completion_refuses_a_grant_the_partition_has_released_by_real_execution() -> Bool {
+  completion_fixture(ordinal: 3, acquired_at_offset: 0, release_before: true) == "refused"
 }

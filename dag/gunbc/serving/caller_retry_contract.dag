@@ -114,7 +114,7 @@ fn modeled_caller_backlog() -> CallerBacklogStanding {
 // turn ordinal and instance backlog root to gunbc.harness.harness_seat harness_bind_seat, which admits the
 // turn through resume_waiting_durable / persist_waiting_durable, notes the placement round's typed
 // RecoveryEvents (note_recovery_durable), keeps the work waiting across zero supply
-// (apply_ready_supply_law), rebinds the record to the granted seat, and commits completion through
+// (apply_ready_supply_law), rebinds the record to the granted seat only by naming the predecessor it expects (rebind_reservation_durable admits one retry, and the harness proves the predecessor's seat retired in the partition first), and commits completion through
 // commit_attempt_durable against the grant read from the seat partition. Turns bound without a key
 // (the probe, reviewer, auditor and supervisor entries) make no durable record, and stay outside this
 // claim. Two rows stay unestablished: a pending placement still exits with the refusal's status, and no

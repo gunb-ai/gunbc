@@ -941,24 +941,34 @@ fn cancel_work_durable(
 type RebindStanding
   = ReservationRebound { record: CallerWorkRecord }
   | RebindRefusedTerminal { phase: CallerWorkPhase }
+  | RebindPredecessorMismatch { held: ReservationRef }
   | RebindUnknownWork
   | RebindDuplicate
 
-fn rebind_reservation(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, reservation: ReservationRef) -> RebindStanding {
+// THE REBIND IS A CLAIM, NOT A REPLACEMENT. It names the reservation it expects to replace and is admitted
+// only when the record still holds exactly that one, so two retries of one work cannot both rebind from
+// the same predecessor: the second meets the first's reservation and refuses. Whether a bound
+// predecessor's grant is retired is the seat authority's fact, read by the caller before it names that
+// predecessor as expected; the record only guarantees that the claim is taken once per predecessor.
+fn rebind_reservation(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, expected: ReservationRef, reservation: ReservationRef) -> RebindStanding {
   match lookup_record(snapshot: snapshot, work: work) {
     CallerRecordAbsent => RebindUnknownWork
     CallerRecordDuplicated => RebindDuplicate
     CallerRecordFound { record: head } =>
       match head.phase {
         WorkWaiting =>
-          ReservationRebound {
-            record: CallerWorkRecord {
-              work: head.work,
-              reservation: reservation,
-              generation: head.generation,
-              phase: WorkWaiting,
-              recovery: head.recovery,
-            },
+          if (head.reservation as String) == (expected as String) {
+            ReservationRebound {
+              record: CallerWorkRecord {
+                work: head.work,
+                reservation: reservation,
+                generation: head.generation,
+                phase: WorkWaiting,
+                recovery: head.recovery,
+              },
+            }
+          } else {
+            RebindPredecessorMismatch { held: head.reservation }
           }
         WorkCompleted => RebindRefusedTerminal { phase: head.phase }
         WorkCancelled => RebindRefusedTerminal { phase: head.phase }
@@ -970,6 +980,7 @@ fn rebind_reservation(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, rese
 type DurableRebindStanding
   = DurableReservationRebound { record: CallerWorkRecord }
   | DurableRebindRefusedTerminal { phase: CallerWorkPhase }
+  | DurableRebindPredecessorMismatch { held: ReservationRef }
   | DurableRebindUnknownWork
   | DurableRebindStoreRefused { detail: NonEmptyStr }
   | DurableRebindKeyNotSlotAddressable { work: LogicalWorkId }
@@ -977,6 +988,7 @@ type DurableRebindStanding
 fn rebind_reservation_durable(
   root: NonEmptyStr,
   work: LogicalWorkId,
+  expected: ReservationRef,
   reservation: ReservationRef,
 ) -> DurableRebindStanding {
   match observe_durable_record(root: root, work: work) {
@@ -990,8 +1002,9 @@ fn rebind_reservation_durable(
     }
     DurableSlotKeyNotSlotAddressable { work: w } => DurableRebindKeyNotSlotAddressable { work: w }
     DurableSlotPresent { record: held, generation: g } =>
-      match rebind_reservation(snapshot: singleton_snapshot(record: held), work: work, reservation: reservation) {
+      match rebind_reservation(snapshot: singleton_snapshot(record: held), work: work, expected: expected, reservation: reservation) {
         RebindUnknownWork => DurableRebindUnknownWork
+        RebindPredecessorMismatch { held: h } => DurableRebindPredecessorMismatch { held: h }
         RebindDuplicate => DurableRebindStoreRefused {
           detail: "snapshot has duplicate records for this work" as NonEmptyStr
         }

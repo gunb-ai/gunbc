@@ -812,6 +812,11 @@ fn harness_worker_exit_completed(outcome: HarnessTurnOutcome, seat: HarnessSeatR
   }
 }
 
+// THE BELT-SPAWNED WORKER FAILS CLOSED ON ITS DURABLE TURN. A worker is launched with the dispatch node, turn
+// ordinal and state root its caller's backlog is keyed by; if those cannot build the key (empty node or root,
+// negative ordinal) there is no durable record to run under, and the worker refuses BEFORE it offers work
+// rather than falling back to the non-durable path. Only the probe, reviewer, auditor and supervisor
+// entries pass no turn, and they are not workers.
 fn harness_worker_cli(
   worktree: String,
   brief: String,
@@ -826,9 +831,30 @@ fn harness_worker_cli(
   turn_ordinal: Int,
   state_root: String,
 ) -> ProcessExit {
-  let turn = harness_caller_turn(dispatch_node: dispatch_node, turn_ordinal: turn_ordinal, state_root: state_root)
+  match harness_caller_turn(dispatch_node: dispatch_node, turn_ordinal: turn_ordinal, state_root: state_root) {
+    Absent => ExitFailure { code: 2, reason: join(["harness worker refused: the belt's durable turn is malformed (dispatch node `", dispatch_node, "`, turn ordinal ", to_string(turn_ordinal), ", state root `", state_root, "`), so no work was offered"], "") }
+    Present { value: turn } => harness_worker_turn_cli(
+      worktree: worktree, brief: brief, timeout_program: timeout_program, request_scratch_path: request_scratch_path,
+      events_path: events_path, repo_root: repo_root, gunbc_program: gunbc_program, attempt_identity: attempt_identity,
+      alignment_chain_fingerprint: alignment_chain_fingerprint, turn: turn,
+    )
+  }
+}
+
+fn harness_worker_turn_cli(
+  worktree: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+  repo_root: String,
+  gunbc_program: String,
+  attempt_identity: String,
+  alignment_chain_fingerprint: String,
+  turn: HarnessCallerTurn,
+) -> ProcessExit {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
-  let binding = harness_bind_seat_waiting(role: "worker", system_prompt: system_prompt, brief: brief, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path, turn: turn)
+  let binding = harness_bind_seat_waiting(role: "worker", system_prompt: system_prompt, brief: brief, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path, turn: Present { value: turn })
   match harness_binding_answer(binding: binding) {
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BindingPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -849,7 +875,7 @@ fn harness_worker_cli(
             prompt: brief,
             step_budget: harness_worker_step_budget,
           )
-          let completion = harness_worker_completion(turn: turn, binding: binding, outcome: outcome)
+          let completion = harness_worker_completion(turn: Present { value: turn }, binding: binding, outcome: outcome)
           let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
           harness_worker_exit_completed(outcome: outcome, seat: seat_release, completion: completion)
         }
