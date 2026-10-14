@@ -238,7 +238,7 @@ fn opened_ok(dir: String, rec: AttemptRecord) -> Bool {
 fn launched_ok(dir: String, rec: AttemptRecord) -> Bool {
   match attempt_open(root: dir as NonEmptyStr, record: rec) {
     AttemptAdvanced { state: _, generation: g } =>
-      match attempt_begin_launch(root: dir as NonEmptyStr, record: rec, expected: g) {
+      match attempt_begin_launch(root: dir as NonEmptyStr, reference: rec.reference as NonEmptyStr, expected: g) {
         AttemptAdvanced { state: _, generation: _ } => true
         AttemptLostRace { expected: _, observed: _ } => false
         AttemptTransitionRefused { detail: _ } => false
@@ -361,7 +361,7 @@ fn launched_with_real_seat(dir: String) -> SessionPlacementGrant? {
       let rec = slot_a(opened: 1000)
       match attempt_open(root: dir as NonEmptyStr, record: rec) {
         AttemptAdvanced { state: _, generation: g1 } =>
-          match attempt_begin_launch(root: dir as NonEmptyStr, record: rec, expected: g1) {
+          match attempt_begin_launch(root: dir as NonEmptyStr, reference: rec.reference as NonEmptyStr, expected: g1) {
             AttemptAdvanced { state: _, generation: _ } => Present { value: real_grant(dir: dir, lease: lease, slot: rec, generation: g1) }
             AttemptLostRace { expected: _, observed: _ } => none
             AttemptTransitionRefused { detail: _ } => none

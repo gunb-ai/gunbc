@@ -1,0 +1,18 @@
+module gunbc.rung_drop_amendment.manual_required_floor_runner_deleted
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+
+// THE DORMANT MANUAL RUNNER IS GONE. gunbc.rung_drop v1_required_lanes_withdrawn names the seed's own
+// runners as the reason its TEMPORARY rung is Mitigatable and says a change deleting one owes its own
+// declaration; this is that declaration. Nothing on the required path called the runner.
+
+data manual_required_floor_runner_deleted: RungDropAmendment = RungDropAmendment {
+  drop_identity: "v1_required_lanes_withdrawn" as NonEmptyStr,
+
+  amended: "2026-10-14",
+
+  later_event: "the claim_executor --required-floor, --required-ci and --required-lane modes and cli_run run_required_floor were deleted. The instrument floor-memory-qualification, whose only subject was that manual required-floor route, was root-deleted in the same change; after that no surviving production caller remained. The live claim-evaluation kernel moved to cli_run claim_execution and the cgroup readers to cli_run cgroup_memory" as NonEmptyStr,
+
+  bearing: "the manual required-floor runner is not an accepted restoration route and no longer exists at head. Restoration of the withdrawn population still means native required-path judgment by a binary built from the seed's emission, never recreating the v1 floor. The restoration trigger is unchanged" as NonEmptyStr,
+}

@@ -153,15 +153,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import std.algebra {
-  Empty,
-  list_snoc_item,
-  TailAbsent,
-  TailFound,
-  fold_list,
-  is_empty,
-  list_tail
-}
+import std.algebra { Empty, list_snoc_item, fold_list, is_empty, list_tail }
 import v2.std.text {
   String
 }
@@ -1208,9 +1200,9 @@ fn list_head_and_tail(xs: List<Node>, node: Node) -> Outcome<TypeExprHeadTail> {
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
     Present { value: head } =>
       match list_tail(xs: xs) {
-        TailAbsent =>
+        Absent =>
           outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: node))
-        TailFound { tail: t } =>
+        Present { value: t } =>
           Accepted { value: TypeExprHeadTail { head: head, tail: t }, diagnostics: None }
       }
   }

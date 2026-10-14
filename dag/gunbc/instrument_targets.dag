@@ -12,7 +12,6 @@ import gunbc.target_binding {
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
   BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
-  FloorMemoryQualificationProducer,
   TypedGraphExclusiveBytesProducer,
   TypedGraphExclusiveBytesFloorSubjectProducer,
   CompileCleanDiagnosticCensusProducer,
@@ -51,7 +50,7 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-  V2NativeCensusProducer, RefusalCensusReading, TypeDeclarationUseReading, NativeProcessMemoryReading,
+  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, NativeProcessMemoryReading,
   DependencyDemandCensusProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
@@ -107,20 +106,9 @@ fn heads_reading_differential_label() -> Label {
   }
 }
 
-// THE FLOOR'S MEMORY DEMAND, QUALIFIED. The subject is the required-floor PROCESS -- not any
-// function inside it -- which is why the reading is taken by a supervisor from outside rather than
-// by anything the floor itself emits. See `gunbc.floor_memory_demand` for why an in-process
-// observer cannot report the two terminations that matter most.
-fn floor_memory_qualification_label() -> Label {
-  Label {
-    package: instruments_package()
-    target: TargetName { name: "floor-memory-qualification" }
-  }
-}
-
 // THE TYPED GRAPH'S BYTES BY CLASS, LEAVE-ONE-OUT: what removing each class would save, which the
 // floor's sequential attribution cannot say (a late class is credited nodes it shared). A different
-// observation from floor-memory-qualification's demand verdict, over its own subject.
+// observation from the floor's demand verdict, over its own subject.
 fn typed_graph_exclusive_bytes_label() -> Label {
   Label {
     package: instruments_package()
@@ -286,6 +274,22 @@ fn v2_native_frontier_label() -> Label {
 // lives where it is authorable, in v2.test.claim.native_census.whole_tree_census_resolve.
 fn v2_native_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-census" } }
+}
+
+// THE SCOPED CENSUS (gunbc.plans.census_scoped_run): the same report, over one subject's closure as
+// v2.compiler.module_acquisition acquires it around its blocks, rather than over the whole tree.
+// `gunbc test //gunbc/instruments:v2-native-census-scoped`. The SUBJECT IS THIS ROW'S OWN FACT, bound
+// here and never a CLI option: the first subject is the native test target (native-seven); a later
+// subject is a further row, never a changed meaning of this one. Its verdict is a report's, as
+// v2-native-census's is: a completed run is held whether its closure is closed or blocked -- the scope
+// is the finding -- and a run that did not complete, or completed for another subject, is the
+// subject unreached.
+fn v2_native_census_scoped_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "v2-native-census-scoped" } }
+}
+
+fn v2_native_census_scoped_subject() -> PackageName {
+  PackagePath { segments: ["v2", "test", "claim", "parse", "expression_bodied_fn_decl_parse"] }
 }
 
 // THE NOMINAL-TYPE PLAN'S M0 (docs/plans/nominal-type-declaration-plan.md section 2): every type
@@ -755,6 +759,10 @@ fn native_process_memory_census_binding() -> TargetBinding {
   TargetBinding { target: native_process_memory_census_label() producer: V2NativeCensusProducer { reading: NativeProcessMemoryReading { workload: NativeCensusWorkload { verb: NativeCensusFrontEnd } } } }
 }
 
+fn v2_native_census_scoped_binding() -> TargetBinding {
+  TargetBinding { target: v2_native_census_scoped_label() producer: V2NativeCensusProducer { reading: ScopedRefusalCensusReading { subject: v2_native_census_scoped_subject() } } }
+}
+
 fn v2_native_census_binding() -> TargetBinding {
   TargetBinding { target: v2_native_census_label() producer: V2NativeCensusProducer { reading: RefusalCensusReading } }
 }
@@ -804,13 +812,6 @@ fn primitive_egress_census_v2_binding() -> TargetBinding {
 
 fn primitive_egress_census_dag_binding() -> TargetBinding {
   TargetBinding { target: primitive_egress_census_dag_label() producer: PrimitiveEgressCensusDagProducer {} }
-}
-
-fn floor_memory_qualification_binding() -> TargetBinding {
-  TargetBinding {
-    target: floor_memory_qualification_label()
-    producer: FloorMemoryQualificationProducer {}
-  }
 }
 
 fn typed_graph_exclusive_bytes_binding() -> TargetBinding {
@@ -899,10 +900,10 @@ fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
-    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(), type_declaration_use_census_label(), native_process_memory_census_label(),
+    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(), v2_native_census_scoped_label(), type_declaration_use_census_label(), native_process_memory_census_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
-    primitive_egress_census_seed_label(), floor_memory_qualification_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
+    primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
     self_host_behavioral_equivalence_label(), dependency_demand_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
@@ -918,10 +919,10 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(), type_declaration_use_census_binding(), native_process_memory_census_binding(),
+    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(), v2_native_census_scoped_binding(), type_declaration_use_census_binding(), native_process_memory_census_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
-    primitive_egress_census_seed_binding(), floor_memory_qualification_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
+    primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
     self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
