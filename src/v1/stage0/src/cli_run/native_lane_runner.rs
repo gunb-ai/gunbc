@@ -3085,8 +3085,9 @@ fn population_refusal_framed(stderr: &str, parts: &[&str]) -> bool {
 /// (`v2.cli.population_verbs`) are folds over what the host handed them; claims over those folds
 /// supply the observations, so these walks are the inhabitance that the BUILT binary reads real
 /// directories and decides with the real verdicts -- deleting the integration makes a control here
-/// fail. Both verbs hold over the live governed roots (`dag` and `src/v2`), which is the job these
-/// verbs have on `witnesses`; every other control differs from a holding one in a single fact:
+/// fail. `check-layout` holds over the live governed roots (`dag` and `src/v2`); `parse-population` is
+/// walked over fixture roots only (`gunbc.rung_drop.required_live_root_parse_population_withdrawn`).
+/// Every other control differs from a holding one in a single fact:
 ///
 /// - `parse-population` over the door fixture's root refuses every declared refusal the root does not
 ///   hold (the declaration is an obligation on the walk) and nothing else, and over the materialized
@@ -3161,7 +3162,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     // PARSE-POPULATION IS NOT WALKED OVER THE LIVE ROOTS ON `witnesses`: the whole-population parse cost
     // ~18 minutes of every run and pushed the required job past its 90-minute cap. A module's parse
     // verdict outside the two emitted closures is not judged on the required path, which is the loss
-    // `gunbc.rung_drop` `v1_required_lanes_withdrawn` already declares; the fixture roots below still
+    // `gunbc.rung_drop.required_live_root_parse_population_withdrawn` declares; the fixture roots below still
     // walk the verb on real directories, so deleting the integration keeps a control red.
     eprintln!("v2-native-cli: live roots — check-layout held; parse-population not walked over the live roots");
 
@@ -3172,8 +3173,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
     )?;
     // THE DOOR ROOT HOLDS ONE CLEAN MODULE AND NONE OF THE DECLARED ONES, so the declaration is the only
     // thing that can refuse it: every declared refusal is a module this root does not have, one located
-    // line each, and nothing else is reported (the module it holds parses). The line count is the live
-    // report's own count of met refusals, a join of two runs of the verb on the size of the declaration.
+    // line each, and nothing else is reported (the module it holds parses).
     let door_text = door.stdout.trim();
     let door_declared_unmet = door_text
         .lines()

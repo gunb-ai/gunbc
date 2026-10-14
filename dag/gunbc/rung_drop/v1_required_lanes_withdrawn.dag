@@ -39,15 +39,6 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // stage0 mirrors and the seed-build artifacts only, as a REPAIR; the registry-wide artifacts
 // (workflows, documents, product artifacts) are still compared by nothing on a pull request.
 //
-// AMENDED 2026-10-14 ON AN OPERATOR RULING ("ci needs to cut whatever was added recently - its broken"):
-// the v2-native-cli step had walked `parse-population` over the live `dag` and `src/v2` roots, judging
-// every module's parse on the required path (a native narrowing of the module member below). That walk
-// cost ~18 minutes per run and put `witnesses` past its 90-minute timeout, which the operator will not
-// raise, so it is withdrawn and the parse verdict of a module outside the two emitted closures returns
-// to this row's population. The verb is still walked over the fixture roots (door, malformed, empty,
-// absent), and `check-layout` is still walked over the live roots. The demand-minimal return is a parse
-// of the modules a change touched, and of the whole population only when the parser closure changed.
-
 // WHAT THIS ROW DOES NOT DO. It does not amend the rows that already described losses on these lanes
 // (required_gate_bankruptcy, witness_floor_off_the_required_gate,
 // required_lanes_do_not_resolve_product_layer_modules, v1_integration_tests_deleted_from_the_unit_lane
@@ -62,7 +53,6 @@ data v1_required_lanes_withdrawn_population: List<String> = [
   "the lint: `cargo clippy --all-targets -- -D warnings` (`gunbc.repo.repo_self_build` `repo_self_clippy_command`), the only command that compiles the integration-test and example targets",
   "the v1 unit tests: `cargo test --release -p v1-compiler --lib` (`gunbc.repo.repo_self_build` `repo_self_test_command`), which ran on merge_group and workflow_dispatch",
   "module resolution: every module the source-root ingestion admits under dag/ and src/v2/ that is outside the import closures of `gunbc.instrument_targets` `self_host_entry` and `v2_native_cli_entry` is handed to a compiler by no required step, so it can stop resolving on main with the required context green. Enumerated BY IDENTITY, not by count, by `gunbc test //gunbc/instruments:required-lane-resolution-census` (`gunbc.required_lane_resolution_census_live`), which from this change does not hold by design",
-  "module parse: a module under dag/ or src/v2/ outside the import closures of `gunbc.instrument_targets` `self_host_entry` and `v2_native_cli_entry` is parsed by no required step, so a change can make it unparseable with the required context green. `v2.cli.population_verbs` `parse_population` judges it when run over the live roots, which no required step does",
   "the consumers of those lanes' products: no merge_group run uploads a compiler pair candidate. Fleet-desired admission, which used to build that pair and advance `refs/fleet/desired`, is withdrawn: the admitted revision is what has landed on `origin/main`. `gunbc.fleet.fleet_revision_acceptance` still names a required-CI success that carries the `witnesses` job's emit-and-build verdict, under the contract epoch `gunbc.required_ci_contract_epoch` moved to with the lane withdrawal, and is not the production admission path",
   "the regeneration of what `gunbc.heal_workflow` does not cover is owed by the author: the registry-rostered artifacts other than the stage0 mirrors and the eleven seed-build artifacts; `gunbc.drift_watch_workflow` only reports drift of the workflows, runner sudoers, githooks, `.gitignore`, `.gitattributes` and fci1 context on a schedule and repairs none, and the merge driver, plans, doc projections and product artifacts are compared by nothing. The push-back job repairs and never refuses a merge, so a stage0 mirror or seed-build artifact it did not repair (a fork pull request, a non-converging round, a moved head) is compared by nothing",
   "NOT ENUMERATED HERE, and named so the gap is not read as empty: every `gunbc.recurring_failure_mode` row and every standing `gunbc.rung_drop` row whose stated current rung is held by a step of the four lanes. Those rows are not amended by this change, and each now sits no higher than this row's temporary rung",
