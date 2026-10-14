@@ -103,7 +103,7 @@ data mtcollins1_megarac_thermal_snapshot_2026_10_14: MegaRacThermalSnapshot = Me
 // Boot (power-on through boot terminal): Cooling Manager disabled, PWM in [20,30].
 // Bringup and after: Cooling Manager automatic. A run that exits mid-boot restores the
 // phase's declared policy; a thermal-guard trip or unreadable temperature re-enables the
-// manager.
+// manager (gunbc.machine_intake.megarac_fan_thermal_guard). PWM write is fan_pwm_all as a string.
 type FanPolicyPhase
   = BootThroughTerminal
   | HostBringupAndAfter
