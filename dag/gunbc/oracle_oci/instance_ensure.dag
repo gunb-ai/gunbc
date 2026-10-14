@@ -3,7 +3,7 @@ module gunbc.oracle_oci.instance_ensure
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.resources { Network }
 import std.measure { Gigabyte, gigabyte, gigabyte_count, Second, second, second_count, measure_sub, measure_le, MeasureDifference, MeasureSubtrahendExceedsMinuend }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import extdeps.clock { Clock }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_bool, json_int, serialize_json }
 import extdeps.cloud.oracle_oci_request_signing { OciPostJson }

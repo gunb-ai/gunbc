@@ -22,7 +22,7 @@ import extdeps.tools.gnu_coreutils {
   coreutils_install_owner_flag,
   coreutils_install_group_flag,
 }
-import extdeps.tools.diffutils { diffutils_cmp_program, diffutils_cmp_silent_flag }
+import extdeps.tools.diffutils { diffutils_cmp_program }
 import gunbc.fleet.fleet_posix_accounts { fleet_visudo_binary_path, fleet_cp_binary_path, fleet_mv_binary_path }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.shell_command_text {
@@ -113,20 +113,57 @@ fn systemctl_unmask_command(unit: NonEmptyStr, privileged: Bool) -> String {
   }
 }
 
-// THE DEPLOY STAGING DIRECTORY IS ONE FACT. Apply and retract both create a temp directory and
-// hold it in this shell variable; every staged file is named relative to it. Spelled at each use
-// site it was a literal inside seven different quotations, each of which decided independently
-// how to quote the expansion.
+// THE APPLY-FOLD STAGING DIRECTORY. Apply and retract both create a temp directory and hold it
+// in this shell variable; sudoers, helper grants, unit files and tree-sync env are named
+// relative to it. The cap member does NOT share this directory: two members writing one mktemp
+// dir is the class that left the helpers readback competing with fleet-width drop-ins.
 data deploy_stage_dir_var: String = "_gunbc_stage"
+
+// THE CAP MEMBER'S PRIVATE STAGING DIRECTORY. deploy_cap_upsert_staged_stmts authors
+// 20-fleet-width.conf / 40-fleet-high.conf here, never under deploy_stage_dir_var.
+data deploy_cap_stage_dir_var: String = "_gunbc_cap_stage"
+
+fn deploy_path_word_in_dir(dir_var: String, stage_name: String) -> Node {
+  bash_build_word_concat_from_nodes(parts: [
+    bash_build_word_var(name: dir_var),
+    bash_build_word_lit(text: concat("/", stage_name)),
+  ])
+}
 
 // A staged path is a WORD — a variable reference and a literal suffix concatenated as two parts
 // of one word — so nothing here decides how the expansion is quoted. The grammar does, and it
 // does so identically at a redirection target and at an install argument, from the same word.
 fn deploy_stage_path_word(stage_name: String) -> Node {
-  bash_build_word_concat_from_nodes(parts: [
-    bash_build_word_var(name: deploy_stage_dir_var),
-    bash_build_word_lit(text: concat("/", stage_name)),
-  ])
+  deploy_path_word_in_dir(dir_var: deploy_stage_dir_var, stage_name: stage_name)
+}
+
+fn deploy_cap_stage_path_word(stage_name: String) -> Node {
+  deploy_path_word_in_dir(dir_var: deploy_cap_stage_dir_var, stage_name: stage_name)
+}
+
+// ONE EXIT TRAP, parameterized by the stage variables the frame actually binds. Two traps
+// would race on EXIT; naming a variable the frame did not bind is an unbound-variable abort
+// under `set -u` after the mutations, and the rm never completes. Apply passes
+// [_gunbc_stage, _gunbc_cap_stage]; retract passes [_gunbc_stage]. Inner words are lit rm,
+// lit -rf, then one var word per bound name. Outer words are lit trap, a literal whose text
+// is that inner emission, lit EXIT. The bash emitter quotes; this source has no quote
+// characters.
+fn deploy_stage_dirs_rm_command(dir_vars: List<String>) -> Node {
+  bash_build_command_with_words(words: fold(
+    dir_vars,
+    init: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-rf")],
+    f: (acc, v) => concat(acc, [bash_build_word_var(name: v)]),
+  ))
+}
+
+fn deploy_stage_dirs_exit_trap_command(dir_vars: List<String>) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "trap"),
+      bash_build_word_lit(text: shell_command_text_of_node(stmt: deploy_stage_dirs_rm_command(dir_vars: dir_vars))),
+      bash_build_word_lit(text: "EXIT"),
+    ]),
+  )
 }
 
 // Writing a staged file is `printf %s <content> > <staged path>`, NOT a here-document. A
@@ -238,11 +275,14 @@ fn deploy_stage_install_from_command(
   )
 }
 
+// NOT SILENT. `cmp -s` returns 2 when a operand is missing and prints nothing (cmp(1): -s
+// suppresses all normal output, including the "No such file" line). bright-moth-475's prod
+// apply ended host_effect_apply exit=2 after helpers visudo with no named command; that is
+// this flag. A missing or differing staged file must name both paths on stderr.
 fn deploy_stage_cmp_stages_command(left: String, right: String) -> String {
   shell_command_text_of_node(
     stmt: bash_build_command_with_words(words: [
       bash_build_word_lit(text: diffutils_cmp_program as String),
-      bash_build_word_lit(text: diffutils_cmp_silent_flag as String),
       deploy_stage_path_word(stage_name: left),
       deploy_stage_path_word(stage_name: right),
     ]),

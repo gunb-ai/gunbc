@@ -57,8 +57,8 @@ use crate::std_occurrence_identity::OccurrenceTransportValidation::{
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_before, authored_token_ordinal_eq,
     occurrence_category_clause_e_dependency_inducing_verdict,
-    occurrence_containment_path_is_prefix_of, occurrence_containment_paths_equal,
-    occurrence_id_allocator_initial, occurrence_transport_validate,
+    occurrence_containment_path_is_prefix_of, occurrence_id_allocator_initial,
+    occurrence_transport_validate,
 };
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceCategory,
@@ -249,41 +249,6 @@ pub struct DeclarationExposureIndexBuild {
     pub refusal: Option<Rc<DeclarationExposureIndexRefusal>>,
 }
 
-pub fn declaration_exposure_eq(
-    left: Rc<DeclarationExposure>,
-    right: Rc<DeclarationExposure>,
-) -> bool {
-    match (*left.clone()).clone() {
-        DeclarationExposure::LexicalExposure {
-            exposing_scope: left_scope,
-            ..
-        } => match (*right.clone()).clone() {
-            DeclarationExposure::LexicalExposure {
-                exposing_scope: right_scope,
-                ..
-            } => crate::std_occurrence_identity::occurrence_containment_paths_equal(
-                left_scope.clone(),
-                right_scope.clone(),
-            ),
-            _ => false,
-        },
-        DeclarationExposure::ModuleExposure {
-            module: left_module,
-            ..
-        } => match (*right.clone()).clone() {
-            DeclarationExposure::ModuleExposure {
-                module: right_module,
-                ..
-            } => (left_module.clone() == right_module.clone()),
-            _ => false,
-        },
-        DeclarationExposure::RootExposure => match (*right.clone()).clone() {
-            DeclarationExposure::RootExposure => true,
-            _ => false,
-        },
-    }
-}
-
 pub fn declaration_exposure_from_containment_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -410,7 +375,7 @@ pub fn declaration_exposure_fold_step(
             row.occurrence.clone().value.clone(),
         ) {
             Some(existing) => {
-                if declaration_exposure_eq(existing.clone(), row.exposure.clone()) {
+                if (existing.clone() == row.exposure.clone()) {
                     build
                 } else {
                     Rc::new(DeclarationExposureIndexBuild {
