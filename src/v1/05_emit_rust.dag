@@ -19748,7 +19748,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                // written as they are decided rather than accumulated: the census is over the", "\n",
       "                // whole tree, and a population held to the end is a second corpus-sized", "\n",
       "                // allocation beside the context that produced it.", "\n",
-      "                for row in native_census_residual_rows(entry.clone(), first.clone(), rest.clone()).iter() \{", "\n",
+      "                for row in native_census_residual_rows(context.positions.clone(), entry.clone(), first.clone(), rest.clone()).iter() \{", "\n",
       "                    residual_rows += 1;", "\n",
       "                    println!(\"{}\", serde_json::json!(\{ \"census_residual\": row \}));", "\n",
 
@@ -19884,7 +19884,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            NativeInferCensusOutcome::NativeInferCensusFileRefused => \{ file_refused += 1; \"file_refused\" \}", "\n",
       "            NativeInferCensusOutcome::NativeInferCensusResolveRefused \{ first, rest, .. \} => \{", "\n",
       "                resolve_refused += 1;", "\n",
-      "                for row in native_census_residual_rows(entry.clone(), first.clone(), rest.clone()).iter() \{", "\n",
+      "                for row in native_census_residual_rows(context.positions.clone(), entry.clone(), first.clone(), rest.clone()).iter() \{", "\n",
       "                    residual_rows += 1;", "\n",
       "                    println!(\"{}\", serde_json::json!(\{ \"census_residual\": row \}));", "\n",
       "                \}", "\n",
