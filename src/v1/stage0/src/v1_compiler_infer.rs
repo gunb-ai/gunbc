@@ -1778,15 +1778,23 @@ pub fn constructor_call_admission_diags_for_outcome(
         match (*outcome).clone() {
             CallTargetOutcome::DeclaredCallableResolved { declared, .. }
             | CallTargetOutcome::DeclaredCallableIdentityResolved { declared, .. } => {
-                constructor_admission_diags_from_lookup(
-                    crate::v1_compiler_infer_lookup::constructor_declaration_for_admission(
-                        scope.type_env.clone(),
-                        declared.owner_module_path.clone(),
-                        declared.decl_name.clone(),
-                    ),
-                    scope.clone(),
-                    span.clone(),
-                )
+                if crate::v1_compiler_infer_method::is_empty_map_constructor(
+                    crate::v1_std_core::qualified_last_segment(declared.decl_name.clone()),
+                ) || crate::v1_compiler_infer_method::is_empty_set_constructor(
+                    crate::v1_std_core::qualified_last_segment(declared.decl_name.clone()),
+                ) {
+                    Rc::new(vec![])
+                } else {
+                    constructor_admission_diags_from_lookup(
+                        crate::v1_compiler_infer_lookup::constructor_declaration_for_admission(
+                            scope.type_env.clone(),
+                            declared.owner_module_path.clone(),
+                            declared.decl_name.clone(),
+                        ),
+                        scope.clone(),
+                        span.clone(),
+                    )
+                }
             }
             CallTargetOutcome::BuiltinCallableResolved { .. }
             | CallTargetOutcome::LocallyBoundCallee { .. }
@@ -13869,6 +13877,16 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 let bare_m = crate::v1_compiler_infer_types::bare_map_node();
 match expected.clone() {
     Some(exp) => if expected_type_is_keyed_collection(exp.clone(), scope.clone()) {
+                                    {
+                                        let core = expected_collection_surface(exp.clone(), scope.clone(), 8);
+                                        let inhabit = if expected_type_is_open_variable(core.clone()) {
+                                            match bare_m.clone() {
+                                                Some(map_t) => map_t,
+                                                None => exp.clone(),
+                                            }
+                                        } else {
+                                            core.clone()
+                                        };
                                     Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
@@ -13879,13 +13897,14 @@ match expected.clone() {
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
-    node: exp.clone(),
+    node: inhabit.clone(),
 })), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
     diagnostics: arg_diags.clone(),
 })
+                                    }
                                 } else {
                                     {
-                                        let empty_map_diags = arg_diags.clone();
+                                        let empty_map_diags = v1_rt::concat(arg_diags.clone(), Rc::new(vec![inference_error("empty_map(): expected type is not a keyed collection".to_string(), span.clone(), scope.module_name.clone())]));
 match bare_m.clone() {
     Some(map_t) => Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -13958,6 +13977,16 @@ match bare_m.clone() {
                                     let bare_s = crate::v1_compiler_infer_types::bare_set_node();
 match expected.clone() {
     Some(exp) => if expected_type_is_set_collection(exp.clone(), scope.clone()) {
+                                        {
+                                            let core = expected_collection_surface(exp.clone(), scope.clone(), 8);
+                                            let inhabit = if expected_type_is_open_variable(core.clone()) {
+                                                match bare_s.clone() {
+                                                    Some(set_t) => set_t,
+                                                    None => exp.clone(),
+                                                }
+                                            } else {
+                                                core.clone()
+                                            };
                                         Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
@@ -13965,13 +13994,14 @@ match expected.clone() {
 })),
     descent_evidence: std::option::Option::None,
 }), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
-    node: exp.clone(),
+    node: inhabit.clone(),
 })), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
     diagnostics: arg_diags.clone(),
 })
+                                        }
                                     } else {
                                         {
-                                            let empty_set_diags = arg_diags.clone();
+                                            let empty_set_diags = v1_rt::concat(arg_diags.clone(), Rc::new(vec![inference_error("empty_set(): expected type is not Set<...>".to_string(), span.clone(), scope.module_name.clone())]));
 match bare_s.clone() {
     Some(set_t) => Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -23631,25 +23661,222 @@ pub struct SigParamSplit {
     pub generic_names: Rc<Vec<String>>,
 }
 
+pub fn expected_type_spelling(exp: Rc<Node>, scope: Rc<InferScope>) -> String {
+    let authored = crate::v1_std_core::authored_name_at(
+        scope.type_env.clone().source_indices.clone(),
+        exp.clone(),
+    );
+    if authored.clone() != "" {
+        authored
+    } else {
+        exp.name.clone()
+    }
+}
+
+pub fn expected_type_is_open_variable(exp: Rc<Node>) -> bool {
+    match exp.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { .. }) => true,
+        _ => false,
+    }
+}
+
+pub fn expected_collection_surface(
+    exp: Rc<Node>,
+    scope: Rc<InferScope>,
+    fuel: i64,
+) -> Rc<Node> {
+    if fuel <= 0 {
+        exp
+    } else {
+        let last = crate::v1_std_core::qualified_last_segment(expected_type_spelling(
+            exp.clone(),
+            scope.clone(),
+        ));
+        if last.clone() == "Map" || last.clone() == "Set" || last.clone() == "List" {
+            exp
+        } else {
+            match exp.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: rt, .. }) => {
+                    let rt_last = crate::v1_std_core::qualified_last_segment(
+                        expected_type_spelling(rt.clone(), scope.clone()),
+                    );
+                    if rt_last.clone() == "Map"
+                        || rt_last.clone() == "Set"
+                        || rt_last.clone() == "List"
+                        || rt_last.clone() == "Outcome"
+                        || rt_last.clone() == "Optional"
+                    {
+                        expected_collection_surface(rt, scope.clone(), fuel - 1)
+                    } else {
+                        expected_collection_unwrap(exp.clone(), scope.clone(), last, fuel)
+                    }
+                }
+                Some(InferredNode::TypeVariable { .. }) => exp,
+                _ => expected_collection_unwrap(exp.clone(), scope.clone(), last, fuel),
+            }
+        }
+    }
+}
+
+pub fn expected_collection_unwrap(
+    exp: Rc<Node>,
+    scope: Rc<InferScope>,
+    last: String,
+    fuel: i64,
+) -> Rc<Node> {
+    if exp.connective.clone() == Conj && ((exp.children.clone().len() as i64) == 1) {
+        match exp.children.clone().get(0).cloned() {
+            Some(inner) => expected_collection_surface(inner, scope.clone(), fuel - 1),
+            None => exp,
+        }
+    } else if last.clone() == "Outcome" && ((exp.children.clone().len() as i64) >= 1) {
+        match exp.children.clone().get(0).cloned() {
+            Some(inner) => expected_collection_surface(inner, scope.clone(), fuel - 1),
+            None => exp,
+        }
+    } else if last.clone() == "Optional" && ((exp.children.clone().len() as i64) == 1) {
+        match exp.children.clone().get(0).cloned() {
+            Some(inner) => expected_collection_surface(inner, scope.clone(), fuel - 1),
+            None => exp,
+        }
+    } else {
+        let peeled_opt = crate::v1_compiler_infer_types::extract_optional_inner_node(exp.clone());
+        if peeled_opt.return_cardinality.clone() != exp.return_cardinality.clone() {
+            expected_collection_surface(peeled_opt, scope.clone(), fuel - 1)
+        } else if last.clone() == "Int"
+            || last.clone() == "Bool"
+            || last.clone() == "String"
+            || last.clone() == "Hash"
+        {
+            exp
+        } else {
+            expected_collection_follow_type(exp, scope, last, fuel)
+        }
+    }
+}
+
+pub fn expected_collection_follow_type(
+    exp: Rc<Node>,
+    scope: Rc<InferScope>,
+    last: String,
+    fuel: i64,
+) -> Rc<Node> {
+    match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), exp.clone()) {
+        Some(rhs) => expected_collection_from_resolved_type(
+            exp.clone(),
+            rhs,
+            scope.clone(),
+            last.clone(),
+            fuel,
+        ),
+        None => {
+            let spelling = expected_type_spelling(exp.clone(), scope.clone());
+            match crate::v1_compiler_infer_env::lookup_type_by_name(
+                scope.type_env.clone(),
+                spelling,
+            ) {
+                Some(rhs) => expected_collection_from_resolved_type(
+                    exp.clone(),
+                    rhs,
+                    scope.clone(),
+                    last.clone(),
+                    fuel,
+                ),
+                None => match crate::v1_compiler_infer_env::lookup_type_by_name(
+                    scope.type_env.clone(),
+                    last.clone(),
+                ) {
+                    Some(rhs) => {
+                        expected_collection_from_resolved_type(exp, rhs, scope, last, fuel)
+                    }
+                    None => exp,
+                },
+            }
+        }
+    }
+}
+
+pub fn expected_collection_from_resolved_type(
+    exp: Rc<Node>,
+    rhs: Rc<Node>,
+    scope: Rc<InferScope>,
+    last: String,
+    fuel: i64,
+) -> Rc<Node> {
+    let rhs_last = crate::v1_std_core::qualified_last_segment(expected_type_spelling(
+        rhs.clone(),
+        scope.clone(),
+    ));
+    if rhs_last.clone() != last.clone() {
+        expected_collection_surface(rhs, scope.clone(), fuel - 1)
+    } else {
+        match rhs.body.clone() {
+            Some(alias_rhs) => {
+                let body_last = crate::v1_std_core::qualified_last_segment(
+                    expected_type_spelling(alias_rhs.clone(), scope.clone()),
+                );
+                if body_last != last {
+                    expected_collection_surface(alias_rhs, scope, fuel - 1)
+                } else {
+                    exp
+                }
+            }
+            None => match rhs.type_annotation.clone() {
+                Some(ann) => {
+                    if crate::v1_compiler_infer_types::is_type_expr_annotation(ann.clone()) {
+                        let ann_last = crate::v1_std_core::qualified_last_segment(
+                            expected_type_spelling(ann.clone(), scope.clone()),
+                        );
+                        if ann_last != last {
+                            expected_collection_surface(ann, scope, fuel - 1)
+                        } else {
+                            exp
+                        }
+                    } else {
+                        exp
+                    }
+                }
+                None => exp,
+            },
+        }
+    }
+}
+
 pub fn expected_type_is_keyed_collection(exp: Rc<Node>, scope: Rc<InferScope>) -> bool {
-    let si = scope.type_env.clone().source_indices.clone();
-    if crate::v1_compiler_infer_types::node_is_keyed_collection(exp.clone(), si.clone()) {
+    let core = expected_collection_surface(exp.clone(), scope.clone(), 8);
+    if expected_type_is_open_variable(core.clone()) {
         true
     } else {
-        ((exp.children.clone().len() as i64) == 2)
-            && (exp.name.clone() == "Map"
-                || crate::v1_std_core::qualified_last_segment(exp.name.clone()) == "Map")
+        let si = scope.type_env.clone().source_indices.clone();
+        let last = crate::v1_std_core::qualified_last_segment(expected_type_spelling(
+            core.clone(),
+            scope.clone(),
+        ));
+        if crate::v1_compiler_infer_types::node_is_keyed_collection(core.clone(), si.clone()) {
+            true
+        } else {
+            last.clone() == "Map"
+                || (((core.children.clone().len() as i64) == 2) && core.name.clone() == "Map")
+        }
     }
 }
 
 pub fn expected_type_is_set_collection(exp: Rc<Node>, scope: Rc<InferScope>) -> bool {
-    let si = scope.type_env.clone().source_indices.clone();
-    if crate::v1_compiler_infer_types::node_is_set_collection(exp.clone(), si.clone()) {
+    let core = expected_collection_surface(exp.clone(), scope.clone(), 8);
+    if expected_type_is_open_variable(core.clone()) {
         true
     } else {
-        ((exp.children.clone().len() as i64) == 1)
-            && (exp.name.clone() == "Set"
-                || crate::v1_std_core::qualified_last_segment(exp.name.clone()) == "Set")
+        let si = scope.type_env.clone().source_indices.clone();
+        let last = crate::v1_std_core::qualified_last_segment(expected_type_spelling(
+            core.clone(),
+            scope.clone(),
+        ));
+        if crate::v1_compiler_infer_types::node_is_set_collection(core.clone(), si.clone()) {
+            true
+        } else {
+            last.clone() == "Set"
+                || (((core.children.clone().len() as i64) == 1) && core.name.clone() == "Set")
+        }
     }
 }
 
@@ -23667,7 +23894,15 @@ pub fn call_target_for_direct_call(
                 name: func_name.clone(),
             }),
         },
-        std::option::Option::None => match (*crate::v1_compiler_infer_lookup::func_env_declared_func_sig(
+        std::option::Option::None => match crate::v1_compiler_infer_method::bare_call_non_declaration_binding(
+            func_name.clone(),
+        ) {
+            crate::v1_compiler_infer_method::NonDeclarationBinding::EmptyCollectionConstructor => {
+                Rc::new(CallTargetOutcome::BuiltinCallableResolved {
+                    primitive_name: func_name.clone(),
+                })
+            }
+            _ => match (*crate::v1_compiler_infer_lookup::func_env_declared_func_sig(
             scope.func_env.clone(),
             scope.type_env.clone(),
             func_name.clone(),
@@ -23723,6 +23958,7 @@ pub fn call_target_for_direct_call(
                     }
                 }
             }
+        },
         },
     }
 }
