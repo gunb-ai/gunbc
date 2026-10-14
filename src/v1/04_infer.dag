@@ -9204,7 +9204,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             ),
             diagnostics: concat(arg_diags, relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name))
           }
-        } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) && match call_target { BuiltinCallableResolved { primitive_name: _ } => true, _ => false } {
+        } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) && match resolved_plain_call_target_for_outcome(outcome: call_target) { RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => true, _ => false } {
           let bare_m = bare_map_node()
           match expected {
             Present { value: exp } =>
@@ -9279,7 +9279,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
-        } else if !callee_is_body_binding && is_empty_set_constructor(name: func_name) && match call_target { BuiltinCallableResolved { primitive_name: _ } => true, _ => false } {
+        } else if !callee_is_body_binding && is_empty_set_constructor(name: func_name) && match resolved_plain_call_target_for_outcome(outcome: call_target) { RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => true, _ => false } {
           let bare_s = bare_set_node()
           match expected {
             Present { value: exp } =>
