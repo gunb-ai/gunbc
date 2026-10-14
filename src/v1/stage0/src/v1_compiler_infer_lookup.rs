@@ -404,6 +404,54 @@ pub fn lookup_func_sig(
     }
 }
 
+pub fn func_env_declared_func_sig(
+    func_env: Rc<ResolvedFuncEnv>,
+    type_env: Rc<TypeEnv>,
+    name: String,
+) -> Rc<FuncSigLookup> {
+    if crate::v1_compiler_infer_env::listed_import_required_bare_call_blocked(
+        type_env.clone(),
+        name.clone(),
+    ) {
+        Rc::new(FuncSigLookup::FuncSigUnresolved)
+    } else if v1_rt::name_resolution_policy_is_namespace_only() {
+        match v1_rt::map_get(&func_env.local.clone(), name.clone()) {
+            Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved {
+                sig: sig.clone(),
+                declared: Rc::new(DeclaredCallableIdentity {
+                    owner_module_path: func_env.name.clone(),
+                    decl_name: crate::v1_std_core::qualified_last_segment(name.clone()),
+                }),
+            }),
+            std::option::Option::None => {
+                match (*crate::v1_compiler_infer_sigs::decide_callable_candidates(
+                    crate::v1_compiler_infer_sigs::parent_closure_callable_candidates(
+                        func_env.clone(),
+                        name.clone(),
+                    ),
+                ))
+                .clone()
+                {
+                    FuncSigLookup::FuncSigResolved { sig, declared, .. } => {
+                        Rc::new(FuncSigLookup::FuncSigResolved {
+                            sig: sig.clone(),
+                            declared: declared.clone(),
+                        })
+                    }
+                    FuncSigLookup::FuncSigAmbiguous {
+                        candidates: cands, ..
+                    } => Rc::new(FuncSigLookup::FuncSigAmbiguous {
+                        candidates: cands.clone(),
+                    }),
+                    FuncSigLookup::FuncSigUnresolved => Rc::new(FuncSigLookup::FuncSigUnresolved),
+                }
+            }
+        }
+    } else {
+        crate::v1_compiler_infer_sigs::lookup_resolved_sig(func_env.clone(), name.clone())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BorrowedCensusDecl {
     pub owner_module_path: String,

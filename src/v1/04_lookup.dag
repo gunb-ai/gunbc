@@ -469,6 +469,37 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
   }
 }
 
+// Direct-call target selection must not consult the whole-tree census before builtin /
+// empty-collection classification. `lookup_func_sig` still does (func_sig_from_global_bare),
+// which reinterprets a kernel `empty_map` as `v2.std.collection.empty_map` whenever that
+// spelling is unique in the pool. This lookup is func-env / import-closure declarations only.
+fn func_env_declared_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> FuncSigLookup {
+  if listed_import_required_bare_call_blocked(env: type_env, name: name) {
+    FuncSigUnresolved
+  } else {
+    if name_resolution_policy_is_namespace_only() {
+      match map_get(func_env.local, name) {
+        Present { value: sig } =>
+          FuncSigResolved {
+            sig: sig,
+            declared: DeclaredCallableIdentity {
+              owner_module_path: func_env.name,
+              decl_name: qualified_last_segment(name: name)
+            }
+          }
+        Absent =>
+          match decide_callable_candidates(candidates: parent_closure_callable_candidates(env: func_env, name: name)) {
+            FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
+            FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
+            FuncSigUnresolved => FuncSigUnresolved
+          }
+      }
+    } else {
+      lookup_resolved_sig(env: func_env, name: name)
+    }
+  }
+}
+
 type BorrowedCensusDecl {
   owner_module_path: String
   node: Node

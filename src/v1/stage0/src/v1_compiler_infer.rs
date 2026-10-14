@@ -23645,7 +23645,7 @@ pub fn call_target_for_direct_call(
                 name: func_name.clone(),
             }),
         },
-        std::option::Option::None => match (*crate::v1_compiler_infer_lookup::lookup_func_sig(
+        std::option::Option::None => match (*crate::v1_compiler_infer_lookup::func_env_declared_func_sig(
             scope.func_env.clone(),
             scope.type_env.clone(),
             func_name.clone(),
