@@ -22,7 +22,7 @@ import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
 import gunbc.runner.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_root }
-import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, belt_tick_cadence }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, belt_tick_cadence, belt_credential_recovery_backstop }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.release_locus {
@@ -54,7 +54,7 @@ import gunbc.managed_directory {
   ManagedDirectory,
   managed_directory_admit,
   ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
-  managed_directory_permissions, declared_directory_mode, DirectoryOwnerAllEveryoneTraverse,
+  managed_directory_permissions, declared_directory_mode, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly,
   EntriesUnmanaged, EntriesReadableByDependents,
   managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused, entry_mode_add_read_symbolic,
 }
@@ -108,9 +108,9 @@ import extdeps.systemd.unit_file {
   TriggerLimitIntervalSec, TriggerLimitBurst,
   ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
   SystemdInstallSection, NotInstallable, Installable,
-  SystemdUnitDirective, Description, After, Wants, StartLimitIntervalSec, StartLimitBurst,
+  SystemdUnitDirective, Description, After, Wants, StartLimitIntervalSec, StartLimitBurst, OnSuccess, OnFailure,
   SystemdServiceDirective, ServiceType, OneshotMode, SimpleMode, ExecStart, Restart,
-  Environment, EnvironmentFile, EnvironmentFileIfPresent, WorkingDirectory, ServiceUser, ServiceGroup,
+  Environment, WorkingDirectory, ServiceUser, ServiceGroup,
   TimeoutStartSec,
   SystemdTimerDirective, TimerUnit, OnCalendar, OnBootSec, OnUnitInactiveSec,
   AccuracySec, RandomizedDelaySec, Persistent,
@@ -189,6 +189,8 @@ import gunbc.live_deploy.spec {
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_exit_path_unit_name, deployment_belt_exit_drain_service_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_discovery_service_unit_name,
+  deployment_belt_credential_recovery_unit_name, deployment_belt_credential_recovery_unit_path,
+  deployment_belt_credential_recovery_timer_unit_name, deployment_belt_credential_recovery_timer_unit_path,
   deployment_belt_exit_drain_service_unit_path, deployment_belt_answer_path_unit_path, deployment_belt_discovery_service_unit_path,
   deployment_belt_service_unit_path, deployment_belt_unit_install_target,
   deployment_publication_service_unit_name,
@@ -199,7 +201,6 @@ import gunbc.live_deploy.spec {
   deployment_publication_path_unit_path,
   deployment_publication_timer_unit_path,
   deployment_retired_belt_timer_unit_path,
-  deployment_credential_env_path,
   deployment_fleet_converge_service_unit_name,
   deployment_fleet_converge_timer_unit_name,
   deployment_fleet_converge_service_unit_path,
@@ -227,9 +228,13 @@ import gunbc.host.host_layout {
   publication_request_dir,
   publication_answer_dir,
   publication_refused_dir,
+  publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
 }
 import product.host_identity { HostIdentity }
+import gunbc.host.host_converge {
+  slice_control_plan_for, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
+}
 import gunbc.host.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
   CapAuthorizedForThisHost,
@@ -910,6 +915,8 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       Description { text: "gunbc roadmap belt launch (queues the one launch obligation: admission, spawn, teardown, discovery)" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
+      OnSuccess { unit: deployment_belt_credential_recovery_unit_name(names: spec.names) },
+      OnFailure { unit: deployment_belt_credential_recovery_unit_name(names: spec.names) },
     ],
     service: concat([
       ServiceType { mode: OneshotMode },
@@ -936,17 +943,10 @@ fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_belt_service_unit_file(spec: spec)))
 }
 
-// THE PUBLICATION HELPER: THE ONLY UNIT IN THIS DEPLOYMENT THAT BINDS A CREDENTIAL, AND THE ONLY
-// ONE WHOSE User= IS NOT THE SERVICE PRINCIPAL. gunbc.live_deploy.spec deployment_credential_env_path
-// carries the full argument for why that pairing is the boundary rather than the file being one;
-// what this emission adds is the enforcement, and it is worth stating what each line is doing:
-//
-// User=/Group= name the publication principal, so the credential file this unit reads is owned by
-// an account the service user is not. EnvironmentFileIfPresent is the `-` prefixed form, so an
-// absent file leaves the unit startable and the helper answers with a recorded refusal naming the
-// variable -- the located refusal is a FEATURE, and the required form would replace it with a unit
-// that will not start. Type=oneshot with no Restart, because a run either answers its spool or
-// reports why it could not, and the path unit is what asks again.
+// THE PUBLICATION HELPER: THE ONLY UNIT WHOSE User= IS NOT THE SERVICE PRINCIPAL. It mints a
+// gunbai-bot installation token from the host-custodied App key (group-readable by this principal)
+// and binds no environment file. Type=oneshot with no Restart, because a run either answers its
+// spool or reports why it could not, and the path unit is what asks again.
 //
 // THERE IS NO Environment= LINE AND NO SPAWN ROOT. The belt unit carries GUNBC_BELT_SPAWN_WORKDIR
 // because a tick creates worktrees and launches provider sessions; this unit reads documents and
@@ -966,7 +966,6 @@ fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
       ServiceGroup { name: spec.names.publication_principal },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
       WorkingDirectory { path: svc.repo_root },
-      EnvironmentFileIfPresent { path: deployment_credential_env_path(names: spec.names) },
       ExecStart { command: join([
         svc.serve_binary as String,
         " run --source-root dag --source-root src/v2",
@@ -1112,6 +1111,12 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
       group: spec.names.publication_principal,
       path: publication_refused_dir(instance_root: spec.service.instance_root as String),
     )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: declared_directory_mode(m: DirectoryOwnerOnly),
+      owner: spec.names.publication_principal,
+      group: spec.names.publication_principal,
+      path: publication_bare_mirror_path(instance_root: spec.service.instance_root as String) as String,
+    )),
   ]
 }
 
@@ -1174,6 +1179,27 @@ fn live_deploy_belt_exit_drain_service_unit_file(spec: DeploymentSpec) -> System
 
 fn live_deploy_belt_discovery_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt discovery (queues outstanding obligations, bounded)", function: "belt_discover_once_cli", install: NotInstallable)
+}
+
+fn live_deploy_belt_credential_recovery_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_belt_event_service_unit_file(
+    spec: spec,
+    description: "gunbc roadmap belt credential recovery (observes the recorded belt cgroup from its own unit)",
+    function: "belt_credential_recovery_cli",
+    install: NotInstallable)
+}
+
+fn live_deploy_belt_credential_recovery_timer_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  TimerUnitFile {
+    unit: [Description { text: "gunbc roadmap belt credential recovery backstop (does not depend on the belt continuing to tick)" as NonEmptyStr }],
+    timer: [
+      TimerUnit { target: deployment_belt_credential_recovery_unit_name(names: spec.names) },
+      OnBootSec { duration: systemd_time_span_of_seconds(d: belt_credential_recovery_backstop) },
+      OnUnitInactiveSec { duration: systemd_time_span_of_seconds(d: belt_credential_recovery_backstop) },
+      AccuracySec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }
 }
 
 fn live_deploy_belt_exit_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
@@ -2292,24 +2318,37 @@ fn deploy_memory_cap_apply_steps(
   })
 }
 
+fn slice_control_refused_command(host: HostIdentity, cause: String) -> String {
+  concat(
+    concat("__GUNBC_DEPLOY_REFUSED__ slice-control cannot be derived: ", cause),
+    concat(" host=", host as String),
+  )
+}
+
 fn apply_slice_control_converge_steps(spec: DeploymentSpec) -> List<PipelineStep> {
-  let stmts = slice_control_converge_stmts(host: spec.target.host.identity)
-  if stmts.length() == 0 {
-    []
-  } else {
-    [deploy_raw(command: deploy_slice_control_converge_script(host: spec.target.host.identity))]
+  match slice_control_plan_for(host: spec.target.host.identity) {
+    SliceControlPlanDerived { units: _ } =>
+      [deploy_raw(command: deploy_slice_control_converge_script(host: spec.target.host.identity))]
+    SliceControlPlanNotOwed => []
+    SliceControlPlanRefused { cause: _ } => []
   }
 }
 
 fn apply_slice_control_converge_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
-  let steps = apply_slice_control_converge_steps(spec: spec)
-  if steps.length() == 0 {
-    []
-  } else {
-    host_script_member_proceed(
-      member: "slice-control" as NonEmptyStr,
-      mutate_steps: steps,
-    )
+  let host = spec.target.host.identity
+  match slice_control_plan_for(host: host) {
+    SliceControlPlanNotOwed => []
+    SliceControlPlanDerived { units: _ } =>
+      host_script_member_proceed(
+        member: "slice-control" as NonEmptyStr,
+        mutate_steps: apply_slice_control_converge_steps(spec: spec),
+      )
+    SliceControlPlanRefused { cause } =>
+      host_script_member_refused(
+        member: "slice-control" as NonEmptyStr,
+        cause: cause,
+        command: slice_control_refused_command(host: host, cause: cause),
+      )
   }
 }
 
@@ -3506,6 +3545,8 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         apply_belt_service_unit_write_step(spec: spec),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), file: live_deploy_belt_discovery_service_unit_file(spec: spec)),
+        apply_belt_unit_file_write_step(stage_name: deployment_belt_credential_recovery_unit_name(names: spec.names), file: live_deploy_belt_credential_recovery_unit_file(spec: spec)),
+        apply_belt_unit_file_write_step(stage_name: deployment_belt_credential_recovery_timer_unit_name(names: spec.names), file: live_deploy_belt_credential_recovery_timer_unit_file(spec: spec)),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), file: live_deploy_belt_exit_path_unit_file(spec: spec)),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
         deploy_raw(command: deploy_stage_install_command(
@@ -3515,6 +3556,8 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         )),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), dest: deployment_belt_exit_drain_service_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), dest: deployment_belt_discovery_service_unit_path(names: spec.names)),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_credential_recovery_unit_name(names: spec.names), dest: deployment_belt_credential_recovery_unit_path(names: spec.names)),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_credential_recovery_timer_unit_name(names: spec.names), dest: deployment_belt_credential_recovery_timer_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), dest: deployment_belt_answer_path_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: path),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
@@ -3523,6 +3566,8 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
         deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
         deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
         deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
+        deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_credential_recovery_timer_unit_name(names: spec.names))),
+        deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_credential_recovery_timer_unit_name(names: spec.names))),
       ],
       leftover_systemd_timer_retire_steps(
         unit: deployment_retired_belt_timer_unit_name(names: spec.names),
@@ -3621,6 +3666,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         concat(
           systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
           systemctl_disable_now_if_present_steps(unit: deployment_belt_answer_path_unit_name(names: spec.names), privileged: true),
+          systemctl_disable_now_if_present_steps(unit: deployment_belt_credential_recovery_timer_unit_name(names: spec.names), privileged: true),
         ),
         leftover_systemd_timer_retire_steps(
           unit: deployment_retired_belt_timer_unit_name(names: spec.names),
@@ -3633,6 +3679,8 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
           deployment_belt_answer_path_unit_path(names: spec.names) as String,
           deployment_belt_exit_drain_service_unit_path(names: spec.names) as String,
           deployment_belt_discovery_service_unit_path(names: spec.names) as String,
+          deployment_belt_credential_recovery_unit_path(names: spec.names) as String,
+          deployment_belt_credential_recovery_timer_unit_path(names: spec.names) as String,
           deployment_belt_service_unit_path(names: spec.names) as String,
         ])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
@@ -4528,16 +4576,19 @@ fn approval_broker_dark_install_body_fragments(
     approval_device_store_fragments(),
     concat(
       approval_broker_helper_grant_fragments(revision: revision, principal: principal),
-      [Mutate {
-        member: "dark-install" as NonEmptyStr,
-        steps: concat(
-          apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
-          concat(
-            concat([deploy_effect(inv: systemctl_daemon_reload_effect())], apply_slice_control_converge_steps(spec: spec)),
-            approval_broker_lifecycle_steps(spec: spec),
+      concat(
+        [Mutate {
+          member: "dark-install" as NonEmptyStr,
+          steps: concat(
+            apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
+            concat(
+              [deploy_effect(inv: systemctl_daemon_reload_effect())],
+              approval_broker_lifecycle_steps(spec: spec),
+            ),
           ),
-        ),
-      }],
+        }],
+        apply_slice_control_converge_fragments(spec: spec),
+      ),
     ),
   )
 }

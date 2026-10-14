@@ -126,6 +126,8 @@ type SystemdUnitDirective
   | Requires { target: NonEmptyStr }
   | StartLimitIntervalSec { duration: NonEmptyStr }
   | StartLimitBurst { count: NonEmptyStr }
+  | OnSuccess { unit: NonEmptyStr }
+  | OnFailure { unit: NonEmptyStr }
   | SuccessAction { action: SystemdUnitStateAction }
   | FailureAction { action: SystemdUnitStateAction }
 
@@ -734,6 +736,8 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
     Requires { target: v } => join(["Requires=", v as String], "")
     StartLimitIntervalSec { duration: v } => join(["StartLimitIntervalSec=", v as String], "")
     StartLimitBurst { count: v } => join(["StartLimitBurst=", v as String], "")
+    OnSuccess { unit: v } => join(["OnSuccess=", v as String], "")
+    OnFailure { unit: v } => join(["OnFailure=", v as String], "")
     SuccessAction { action: a } => join(["SuccessAction=", systemd_unit_state_action_wire(action: a)], "")
     FailureAction { action: a } => join(["FailureAction=", systemd_unit_state_action_wire(action: a)], "")
   }

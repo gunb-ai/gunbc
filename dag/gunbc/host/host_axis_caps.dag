@@ -25,8 +25,10 @@ import gunbc.host.host_converge {
   gunbc_runner_control_dropin_dir_prefix,
   slice_control_caps_for,
   SliceControlCaps,
-  SliceControlUnit, SessionsSliceControl, UncappedSliceControl, SliceControlRefused,
-  slice_control_units_for,
+  SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
+  SliceControlUnit, SessionsSliceControl, UncappedSliceControl,
+  SliceControlPlan, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
+  slice_control_plan_for,
 }
 import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
@@ -677,8 +679,7 @@ fn slice_control_converge_stmts_for_caps(caps: SliceControlCaps) -> List<Node> {
 }
 
 // The sessions CPU cap is appended after MemoryHigh, inside the same single revert: a second revert
-// would undo the memory set-properties. A refused sessions unit emits a refusal, never its memory
-// half alone.
+// would undo the memory set-properties.
 fn slice_control_converge_stmts_for_unit(u: SliceControlUnit) -> List<Node> {
   match u {
     UncappedSliceControl { caps: c } => slice_control_converge_stmts_for_caps(caps: c)
@@ -692,20 +693,16 @@ fn slice_control_converge_stmts_for_unit(u: SliceControlUnit) -> List<Node> {
           )
         ),
       ])
-    SliceControlRefused { unit: un, cause: why } => [
-      bash_build_with_redir(
-        inner: shell_command_intent(words: ["echo", join(["slice-control refused for ", un as String, ": ", why], "")]),
-        redir: ^bash_production_fold_redir_stdout_to_stderr,
-      ),
-      bash_build_exit(code: "1"),
-    ]
   }
 }
 
 fn slice_control_converge_stmts(host: HostIdentity) -> List<Node> {
-  fold(slice_control_units_for(host: host), init: [], f: (acc, u) =>
-    concat(acc, slice_control_converge_stmts_for_unit(u: u))
-  )
+  match slice_control_plan_for(host: host) {
+    SliceControlPlanNotOwed => []
+    SliceControlPlanRefused { cause: _ } => []
+    SliceControlPlanDerived { units } =>
+      fold(units, init: [], f: (acc, u) => concat(acc, slice_control_converge_stmts_for_unit(u: u)))
+  }
 }
 
 fn deploy_slice_control_converge_script(host: HostIdentity) -> String {

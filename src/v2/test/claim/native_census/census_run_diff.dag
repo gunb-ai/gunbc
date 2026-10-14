@@ -3,14 +3,14 @@ module v2.test.claim.native_census.census_run_diff
 import std.algebra { Cons, Empty, length, list_append, list_find_first }
 import std.occurrence_identity { OccurrenceId }
 import std.optional { Absent, Optional, Present }
-import std.types { Bool, CommitSha, Int, List, String }
-import gunbc.guarantee_measurement { GitRevision, MeasurementRevision }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.compiler.census_run_record {
+import v2.compiler.compile {
   CensusDiffClearedAndNewlyExposed,
+  CensusDiffDuplicateObligation,
   CensusDiffIncompleteEvidence,
   CensusDiffLocationUpdate,
-  CensusDiffDuplicateObligation,
   CensusDiffMemberAdded,
   CensusDiffMemberRemoved,
   CensusDiffNewlyObservedNotRegression,
@@ -33,13 +33,6 @@ import v2.compiler.census_run_record {
   CensusRunDiffSubjectRefused,
   CensusRunIncomplete,
   CensusRunRecord,
-  census_obligation_rows_from_infer,
-  census_obligation_rows_from_member_block,
-  census_run_diff,
-  census_run_record,
-  census_three_stage_rows
-}
-import v2.compiler.compile {
   NativeCensusCauseFrontEnd,
   NativeCensusCauseInfer,
   NativeCensusCauseResolve,
@@ -48,7 +41,12 @@ import v2.compiler.compile {
   NativeCensusScopeBlocked,
   NativeCensusScopeClosed,
   NativeInferCensusFileRefused,
-  NativeInferCensusResolveRefused
+  NativeInferCensusResolveRefused,
+  census_obligation_rows_from_infer,
+  census_obligation_rows_from_member_block,
+  census_run_diff,
+  census_run_record,
+  census_three_stage_rows
 }
 import v2.compiler.module_acquisition {
   AcquireImportedModule,
@@ -74,12 +72,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data census_diff_subject: String = "v2.cs.subject"
 
-fn rev_a() -> MeasurementRevision {
-  GitRevision { commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha }
+fn rev_a() -> Fnv1a64Structural {
+  content_hash_atom(value: "census-claim-reads-a" as NonEmptyStr)
 }
 
-fn rev_b() -> MeasurementRevision {
-  GitRevision { commit: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as CommitSha }
+fn rev_b() -> Fnv1a64Structural {
+  content_hash_atom(value: "census-claim-reads-b" as NonEmptyStr)
 }
 
 fn planted_chain(reason: Symbol) -> NonEmptyDiagnostics {
@@ -106,7 +104,7 @@ fn planted_refused(reason: Symbol, at: FileRefusalAt, occurrence: Optional<Occur
 fn record_of(
   population: List<String>,
   obligations: List<CensusObligationRow>,
-  revision: MeasurementRevision,
+  revision: Fnv1a64Structural,
   completion: CensusRunCompletion,
   scope: NativeCensusScope
 ) -> CensusRunRecord {
@@ -120,7 +118,7 @@ fn record_of(
   )
 }
 
-fn closed_complete(population: List<String>, obligations: List<CensusObligationRow>, revision: MeasurementRevision) -> CensusRunRecord {
+fn closed_complete(population: List<String>, obligations: List<CensusObligationRow>, revision: Fnv1a64Structural) -> CensusRunRecord {
   record_of(
     population: population,
     obligations: obligations,

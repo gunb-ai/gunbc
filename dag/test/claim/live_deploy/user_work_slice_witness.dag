@@ -43,8 +43,9 @@ import gunbc.host.host_converge {
   approval_broker_runtime_caps_for, ApprovalBrokerRuntimeCapsNotOwed,
   ApprovalBrokerRuntimeCapsDerived, ApprovalBrokerRuntimeCapsRefused,
   slice_control_caps_for,
+  SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data seed_user_work_scope_path: String = "src/v1/stage0/src/cli_run/user_work_scope.rs"
@@ -292,10 +293,25 @@ test fn approval_broker_runtime_caps_are_the_model_14_16_on_the_placed_host() ->
 }
 
 test fn slice_control_caps_include_sessions_and_broker_on_srv1_only() -> Bool {
-  let srv1 = slice_control_caps_for(host: operator_host_srv1)
-  let srv3 = slice_control_caps_for(host: operator_host_srv3)
-  srv1.length() == 2
-    && srv3.length() == 0
-    && any(srv1, c => c.unit as String == "sessions.slice" && byte_size_count(b: c.memory_max) == 137438953472)
-    && any(srv1, c => c.unit as String == "gunbc-approval-broker.slice" && byte_size_count(b: c.memory_max) == 17179869184 && byte_size_count(b: c.memory_high) == 15032385536)
+  match slice_control_caps_for(host: operator_host_srv1) {
+    SliceControlNotOwed => false
+    SliceControlRefused { cause: _ } => false
+    SliceControlDerived { caps } =>
+      caps.length() == 2
+        && any(caps, c => c.unit as String == "sessions.slice" && byte_size_count(b: c.memory_max) == 137438953472)
+        && any(caps, c => c.unit as String == "gunbc-approval-broker.slice" && byte_size_count(b: c.memory_max) == 17179869184 && byte_size_count(b: c.memory_high) == 15032385536)
+        && match slice_control_caps_for(host: operator_host_srv3) {
+          SliceControlNotOwed => true
+          SliceControlDerived { caps: _ } => false
+          SliceControlRefused { cause: _ } => false
+        }
+  }
+}
+
+test fn slice_control_refuses_when_session_reservation_is_unestablished() -> Bool {
+  match slice_control_caps_for(host: operator_host_srv2) {
+    SliceControlRefused { cause: _ } => true
+    SliceControlNotOwed => false
+    SliceControlDerived { caps: _ } => false
+  }
 }
