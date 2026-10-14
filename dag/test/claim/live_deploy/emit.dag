@@ -21,6 +21,8 @@ import gunbc.live_deploy.spec {
   DeploymentArtifactStep,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_slice_unit_name,
   gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
+  gunbc_user_work_slice_unit_path,
+  gunbc_service_uid,
   gunbc_approval_broker_unit_path, deployment_owns_the_host_approval_broker,
   DeploymentSpec,
   DeploymentDependencyStep,
@@ -68,7 +70,7 @@ import gunbc.live_deploy.spec {
   deployment_publication_path_unit_name,
   deployment_publication_service_unit_name,
 }
-import gunbc.live_deploy.desired { prod_role_actuated_realization, deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.desired { prod_role_actuated_realization, deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec, srv2_deploy_desired_deployment }
 import gunbc.host.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var, srv1_attempt_state_directory }
 import gunbc.managed_directory {
   managed_directory_mode_octal,
@@ -102,6 +104,7 @@ import gunbc.live_deploy.operations {
   rm_empty_directory_command,
   rm_force_recursive_command,
   systemctl_disable_now_command,
+  systemctl_user_daemon_reload_command,
   deploy_stage_install_command,
   deploy_stage_write_command,
   deploy_stage_write_expansion_command,
@@ -161,6 +164,7 @@ import gunbc.live_deploy.emit {
   compose_host_script_mutate_steps,
   host_script_step_marker,
   host_script_trace_steps,
+  HostScriptProceed,
   HostScriptRefused,
   HostScriptFragment,
   Decide, Mutate,
@@ -177,6 +181,9 @@ import gunbc.live_deploy.emit {
   leftover_systemd_timer_retire_dissolution,
   live_deploy_publication_path_unit_file,
   deploy_memory_cap_apply_steps,
+  apply_slice_control_converge_steps,
+  apply_slice_control_converge_fragments,
+  compose_host_script_standing,
   approval_broker_helper_sudoers_stage_name,
   approval_broker_helper_sudoers_readback_stage_name,
 }
@@ -193,6 +200,7 @@ import gunbc.host.host_axis_caps {
   deploy_memory_cap_shadow_revert_script,
   deploy_memory_cap_script_author_precedes_shadow_revert,
   deploy_memory_cap_apply_script_from_authorization,
+  deploy_slice_control_converge_script,
   deploy_runner_memory_cap_author_script,
   derived_runner_memory_cap_members,
   cap_converge_decision,
@@ -535,6 +543,21 @@ test fn the_convergence_slice_is_installed_before_the_convergence_restart() -> B
   }
 }
 
+test fn the_user_work_slice_is_installed_into_the_user_unit_directory() -> Bool {
+  let spec = deployment_spec_srv1()
+  let sh = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
+  string_contains(s: sh, pattern: gunbc_user_work_slice_unit_path() as String)
+}
+
+test fn the_user_work_slice_install_reloads_the_user_manager() -> Bool {
+  let spec = deployment_spec_srv1()
+  let sh = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
+  string_contains(
+    s: sh,
+    pattern: systemctl_user_daemon_reload_command(uid: gunbc_service_uid, privileged: true),
+  )
+}
+
 fn witness_apply_preamble_text() -> String {
   pipeline_steps_text(steps: deploy_apply_preamble_steps(access: ci_deploy_srv1_access, spec: deployment_spec_srv1()))
 }
@@ -611,6 +634,39 @@ test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
     && string_contains(s: steps, pattern: "20-fleet-width.conf")
     && string_contains(s: steps, pattern: deploy_memory_cap_shadow_revert_script(units: units))
     && string_contains(s: steps, pattern: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)))
+}
+
+test fn witness_apply_script_converges_sessions_and_broker_slice_control() -> Bool {
+  let host = operator_host_srv1
+  let script = deploy_slice_control_converge_script(host: host)
+  let steps = pipeline_steps_text(steps: apply_slice_control_converge_steps(spec: deployment_spec_srv1()))
+  let apply = witness_apply_script()
+  match compose_host_script_standing(fragments: apply_slice_control_converge_fragments(spec: deployment_spec_srv1())) {
+    HostScriptRefused { cause: _ } => false
+    HostScriptProceed =>
+      string_contains(s: steps, pattern: script)
+        && string_contains(s: apply, pattern: script)
+        && string_contains(s: script, pattern: "sessions.slice")
+        && string_contains(s: script, pattern: "gunbc-approval-broker.slice")
+        && string_contains(s: script, pattern: "17179869184")
+        && string_contains(s: script, pattern: "15032385536")
+        && string_contains(s: script, pattern: "137438953472")
+  }
+}
+
+test fn a_refused_slice_control_drops_prior_mutate_from_the_composed_plan() -> Bool {
+  let planted = Mutate { member: "planted-prior" as NonEmptyStr, steps: deploy_apply_frame_steps(spec: deployment_spec_srv1()) }
+  let frags = concat([planted], apply_slice_control_converge_fragments(spec: selected_deployment_spec(row: srv2_deploy_desired_deployment())))
+  match compose_host_script_standing(fragments: frags) {
+    HostScriptProceed => false
+    HostScriptRefused { cause: _ } =>
+      compose_host_script_mutate_steps(fragments: frags).length() == 0
+        && !string_contains(s: pipeline_steps_text(steps: compose_host_script(fragments: frags).steps), pattern: "mktemp")
+        && string_contains(
+          s: pipeline_steps_text(steps: compose_host_script_decide_steps(fragments: frags)),
+          pattern: "__GUNBC_DEPLOY_REFUSED__ slice-control",
+        )
+  }
 }
 
 data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. Working-byte rsync and repository convergence must instead ride the service-user oneshot unit (principal User=briansrls), and every mutation outside it must be one of the roster-granted sudo -n commands (fleet_posix_ci_runner_sudo_grants). Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (carried by the annotation on gunbc.live_deploy.emit install_d_owned_command)."

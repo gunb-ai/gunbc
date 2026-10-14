@@ -23,9 +23,7 @@
 //!
 //! EVERY AXIS ERRS TOWARD A MISS. A miss costs one build; a stale hit serves a compiler that does
 //! not correspond to the tree. So the axes are over-approximations of relevance, never under:
-//! the producer is the seed's own source tree, the closure and the census-only declaration universe
-//! are hashed at content grain (a span-insensitive heads hash would narrow the latter and is a
-//! declared next step, not assumed here).
+//! the producer is the seed's own source tree, the source closure is hashed at content grain.
 //!
 //! WRITES ARE ATOMIC AND READS ARE VERIFIED. An entry is committed only after the discriminating
 //! red held on the artifact, by writing a private sibling directory and renaming it into place; a
@@ -163,14 +161,7 @@ pub(super) fn derive_key(
         .map_err(|c| format!("NativeProductKeyUnreadable — source discovery: {c}"))?;
     let closure = super::load_sources_for_entry_with_pool(&index, entry)
         .map_err(|c| format!("NativeProductKeyUnreadable — closure load: {c}"))?;
-    let universe =
-        super::compile_clean::compile_clean_census_only_sources_for_compiled(&index, &closure);
-    let source_closure = hex(format!(
-        "closure={};declaration_universe={}",
-        sources_axis(&closure),
-        sources_axis(&universe)
-    )
-    .as_bytes());
+    let source_closure = sources_axis(&closure);
     let toolchain = super::emitted_closure_compile_host::probe_toolchain_identity_for_key()?;
     let build_configuration =
         hex(super::emitted_closure_compile_host::probe_build_configuration_for_key().as_bytes());
