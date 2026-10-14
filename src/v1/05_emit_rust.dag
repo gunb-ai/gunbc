@@ -3418,6 +3418,14 @@ fn shared_layer_refuse_expr(leaf: String, cause: String) -> String {
   emit_rust_compile_error_expr(message: concat("shared layer refused for '", leaf, "': ", cause, " — wrap/deref/Copy of a user type requires one declaration identity"))
 }
 
+fn rust_maybe_shared_wrap(answer: SharedLayerAnswer, raw: String) -> String {
+  match answer {
+    SharedLayerAtShared => rust_shared_wrap_ctor(inner_expr: raw)
+    SharedLayerAtValue => raw
+    SharedLayerRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
+  }
+}
+
 fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolution: TypeDeclResolution, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> SharedLayerAnswer {
   if is_container_type(name: leaf) {
     if set_contains(shared_types, leaf) { SharedLayerAtShared } else { SharedLayerAtValue }
@@ -3440,10 +3448,19 @@ fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolutio
 
 fn shared_layer_of_undecided_kernel_spelling(shared_types: Set<String>, leaf: String, type_decl_items: TypeDeclIndex) -> SharedLayerAnswer {
   let corpus = type_decl_identities_of_leaf(index: type_decl_items, leaf: leaf)
-  if corpus |> any(id => shared_types_contains_identity(shared_types: shared_types, identity: id)) {
-    SharedLayerRefuse { leaf: leaf, cause: "TypeDeclKernelSpellingUndecided candidates disagree on layer" }
-  } else {
+  if (corpus |> count) == 0 {
     SharedLayerAtValue
+  } else {
+    let shared_n = corpus |> filter(id => shared_types_contains_identity(shared_types: shared_types, identity: id)) |> count
+    if shared_n == (corpus |> count) {
+      SharedLayerAtShared
+    } else if shared_n == 0 {
+      SharedLayerAtValue
+    } else if is_kernel_type(name: leaf) {
+      SharedLayerAtValue
+    } else {
+      SharedLayerRefuse { leaf: leaf, cause: "TypeDeclKernelSpellingUndecided candidates disagree on layer" }
+    }
   }
 }
 
@@ -11190,7 +11207,7 @@ fn box_bound_fields_for_pattern(pattern: MatchPattern, shared_types: Set<String>
                 match rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: bare_n, field_name: fb_name) {
                   NeedsBox => [fb_name]
                   NeedsNoBox => []
-                  NeedsBoxRefuse { leaf: _, cause: _ } => []
+                  NeedsBoxRefuse { leaf: _, cause: _ } => [fb_name]
                 }
             }
           }
@@ -12674,8 +12691,8 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
               } else { variant_name }
           }
       }
-      if rc_name != "" && shared_types_contains_leaf(shared_types: shared_types, leaf: rc_name, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names) && !rust_expr_is_grounded_shared_value(expr: raw) {
-        rust_shared_wrap_ctor(inner_expr: raw)
+      if rc_name != "" && !rust_expr_is_grounded_shared_value(expr: raw) {
+        rust_maybe_shared_wrap(answer: shared_layer_of_leaf(shared_types: shared_types, leaf: rc_name, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names), raw: raw)
       } else { raw }
     _ => emit_error_expr(message: "emit_rust_expr_record_lit expected ExprRecordLit", target: Rust)
   }
@@ -12702,7 +12719,6 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
 // sufficient that no site can wrap an already-shared value however many grounded producers exist.
 fn rust_expr_is_grounded_shared_value(expr: String) -> Bool {
   expr == emit_freemonoid_empty_rc_value()
-    || starts_with(s: expr, prefix: rust_shared_wrap_ctor_prefix())
 }
 
 fn emit_rust_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -15615,8 +15631,8 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
             Present { value: en } => en
             Absent => variant_name
           }
-          if rc_name != "" && shared_types_contains_leaf(shared_types: shared_types, leaf: qualified_last_segment(name: rc_name), type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names) && !rust_expr_is_grounded_shared_value(expr: raw) {
-            rust_shared_wrap_ctor(inner_expr: raw)
+          if rc_name != "" && !rust_expr_is_grounded_shared_value(expr: raw) {
+            rust_maybe_shared_wrap(answer: shared_layer_of_leaf(shared_types: shared_types, leaf: qualified_last_segment(name: rc_name), type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names), raw: raw)
           } else { raw }
         Absent =>
           emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info_with_expected_type(emit_info: emit_info, expected_type: record_field_expected_type(struct_node: struct_node, outer_type_name: outer_type_name, field_name: field_name, scope: scope, emit_info: emit_info)), fuel: 1024)
@@ -15818,9 +15834,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                   if rust_record_field_needs_fn_rc(scope: scope, struct_name: r_sn, field_name: fname0) {
                     let wrapped_val = wrap_rust_record_field_value(raw: fval0, value_node: Present { value: field_init_node_value(n: f) }, scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: r_sn, field_name: fname0)
                     let struct_lit = concat(r_sn, " {\n    ", emit_ident(name: fname0, target: Rust), ": ", wrapped_val, ",\n}")
-                    if shared_types_contains_leaf(shared_types: shared_types, leaf: r_sn, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names) {
-                      rust_shared_wrap_ctor(inner_expr: struct_lit)
-                    } else { struct_lit }
+                    rust_maybe_shared_wrap(answer: shared_layer_of_leaf(shared_types: shared_types, leaf: r_sn, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names), raw: struct_lit)
                   } else { fval0 }
                 Absent =>
                   if struct_candidates_by_field_names(field_names: single_field_names, type_summaries: emit_info.type_summaries) |> count > 1 {
@@ -15849,9 +15863,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
               )
               let body = field_strs |> join(separator: "\n")
               let struct_lit = concat(resolved_sn, " {\n", body, "\n}")
-              if shared_types_contains_leaf(shared_types: shared_types, leaf: resolved_sn, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names) {
-                rust_shared_wrap_ctor(inner_expr: struct_lit)
-              } else { struct_lit }
+              rust_maybe_shared_wrap(answer: shared_layer_of_leaf(shared_types: shared_types, leaf: resolved_sn, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names), raw: struct_lit)
             Absent =>
               let resolution_candidates = anonymous_record_struct_candidates(field_names: lit_field_names, field_type_hints: field_type_hints, type_summaries: emit_info.type_summaries)
               if resolution_candidates |> count > 1 {
@@ -16025,8 +16037,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         let all_field_strs = concat(concat(field_strs, default_strs), phantom_strs)
         let fields_str = all_field_strs |> join(separator: "\n")
         let raw = concat(display_tn, " {\n", fields_str, "\n}")
-        if ctor_alias_resolved && shared_types_contains_type_expr(shared_types: shared_types, type_expr: resolved_type, type_decl_items: emit_info.type_decl_items, source_indices: si, generic_param_names: emit_info.fn_generic_param_names) {
-          rust_shared_wrap_ctor(inner_expr: raw)
+        if ctor_alias_resolved {
+          rust_maybe_shared_wrap(answer: shared_layer_of_type_expr(shared_types: shared_types, type_expr: resolved_type, type_decl_items: emit_info.type_decl_items, source_indices: si, generic_param_names: emit_info.fn_generic_param_names), raw: raw)
         } else { raw }
         }
       }

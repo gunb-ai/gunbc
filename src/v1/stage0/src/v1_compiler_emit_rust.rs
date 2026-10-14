@@ -6514,6 +6514,16 @@ pub fn shared_layer_refuse_expr(leaf: String, cause: String) -> String {
     ))
 }
 
+pub fn rust_maybe_shared_wrap(answer: SharedLayerAnswer, raw: String) -> String {
+    match answer {
+        SharedLayerAnswer::SharedLayerAtShared => rust_shared_wrap_ctor(raw),
+        SharedLayerAnswer::SharedLayerAtValue => raw,
+        SharedLayerAnswer::SharedLayerRefuse { leaf, cause } => {
+            shared_layer_refuse_expr(leaf, cause)
+        }
+    }
+}
+
 pub fn shared_layer_of_resolution(
     shared_types: Rc<BTreeSet<String>>,
     leaf: String,
@@ -6571,16 +6581,26 @@ pub fn shared_layer_of_undecided_kernel_spelling(
         type_decl_items,
         leaf.clone(),
     );
-    if corpus
-        .iter()
-        .any(|id| shared_types_contains_identity(shared_types.clone(), id.clone()))
-    {
-        SharedLayerAnswer::SharedLayerRefuse {
-            leaf,
-            cause: "TypeDeclKernelSpellingUndecided candidates disagree on layer".to_string(),
-        }
-    } else {
+    if corpus.is_empty() {
         SharedLayerAnswer::SharedLayerAtValue
+    } else {
+        let shared_n = corpus
+            .iter()
+            .filter(|id| shared_types_contains_identity(shared_types.clone(), (*id).clone()))
+            .count() as i64;
+        let all_n = corpus.len() as i64;
+        if shared_n == all_n {
+            SharedLayerAnswer::SharedLayerAtShared
+        } else if shared_n == 0 {
+            SharedLayerAnswer::SharedLayerAtValue
+        } else if crate::std_types::is_kernel_type(leaf.clone()) {
+            SharedLayerAnswer::SharedLayerAtValue
+        } else {
+            SharedLayerAnswer::SharedLayerRefuse {
+                leaf,
+                cause: "TypeDeclKernelSpellingUndecided candidates disagree on layer".to_string(),
+            }
+        }
     }
 }
 
@@ -26443,8 +26463,7 @@ pub fn emit_rust_expr_record_lit(
 }
 
 pub fn rust_expr_is_grounded_shared_value(expr: String) -> bool {
-    ((expr.clone() == emit_freemonoid_empty_rc_value())
-        || v1_rt::starts_with(expr, rust_shared_wrap_ctor_prefix()))
+    expr == emit_freemonoid_empty_rc_value()
 }
 
 pub fn emit_rust_expr_string_interp(
