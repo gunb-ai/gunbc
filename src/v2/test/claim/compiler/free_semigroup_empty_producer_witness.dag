@@ -228,17 +228,26 @@ test fn fse_a_reversed_range_is_impossible_holds() -> Bool {
   }
 }
 
-test fn fse_probe_call_accepted_holds() -> Bool {
-  fse_accepted_plain(resolved: fse_resolve(subject: "v2.test.fse_call_empty"))
+test fn fse_probe_r0_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_call_empty"), reason: ^homomorphism_rule_exact_structural_equality)
 }
 
-test fn fse_probe_call_resolve_refused_holds() -> Bool {
-  match rcf_verdict(resolved: fse_resolve(subject: "v2.test.fse_call_empty")) {
-    RcfResolveRefused => true
-    _ => false
-  }
+test fn fse_probe_r1_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_call_empty"), reason: ^preservation_rule_exact_structural_equality_zip_fold)
 }
 
-test fn fse_probe_call_refused_not_inhabit_holds() -> Bool {
-  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_call_empty"), reason: ^application_argument_does_not_inhabit_declared)
+test fn fse_probe_r2_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_call_empty"), reason: ^inhabitance_undecidable_argument_type_not_derived)
+}
+
+test fn fse_probe_r3_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_call_empty"), reason: ^find_witness_reason_no_candidate)
+}
+
+test fn fse_probe_r4_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_call_empty"), reason: ^application_positional_deficit)
+}
+
+test fn fse_probe_r5_holds() -> Bool {
+  rcf_refuses_with(resolved: fse_resolve(subject: "v2.test.fse_call_empty"), reason: ^inhabitance_undecidable_generic_formal)
 }
