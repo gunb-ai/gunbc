@@ -78,6 +78,17 @@ test fn an_upstream_retry_after_is_a_lower_bound_never_a_shortening() -> Bool {
   }
 }
 
+test fn a_real_work_success_ends_the_item_even_if_later_failures_are_appended() -> Bool {
+  let history = [
+    ev(class: RealWorkSuccess, at: 4),
+    ev(class: RealWorkFailure, at: 5),
+  ]
+  match retry_admissibility(law: witness_law, history: history, hint: retry_no_hint(), jitter: second(count: Zero)) {
+    RetryAlreadySucceeded => true
+    _ => false
+  }
+}
+
 test fn exhaustion_and_cancellation_are_persisted_terminals() -> Bool {
   let exhausted_hist = [
     ev(class: RealWorkFailure, at: 1),

@@ -18,8 +18,9 @@ import std.measure { Second, second, second_count }
 //   - the attempt bound runs over the item's WHOLE history: a resume, restart or new endpoint
 //     does not reset it, because the history is an argument, not process-local state;
 //   - only REAL-WORK outcomes count, so a succeeding probe never resets a failing series;
-//   - exhaustion and cancellation are persisted terminals carried in the history, never inferred
-//     from silence.
+//   - exhaustion, cancellation and real-work success are persisted terminals carried in the
+//     history, never inferred from silence. RealWorkSuccess ends the item: a later RealWorkFailure
+//     in the same history does not reopen retry (that would retry completed work).
 //
 // Due times are EpochSecs. Delays, caps, hints and jitter are std.measure Second — the length
 // already used by belt run bounds and event_backlog — not a second Nat beside the failure count
