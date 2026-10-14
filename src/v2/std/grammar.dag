@@ -1,9 +1,10 @@
 module v2.std.grammar
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
 import v2.std.parse_refusal_reason { ParseRefusalReason, parse_refusal_reason_symbol }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, is_empty, fold_list, zip_eq, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, is_empty, fold_list, zip_eq, list_head, list_tail, skip }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -12,12 +13,7 @@ import v2.std.collection {
   map_insert,
   map_lookup
 }
-import std.optional {
-  Absent,
-  Present,
-  optional_absent,
-  optional_present
-}
+import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -42,11 +38,16 @@ import v2.std.node_query {
 import v2.std.compilers.lexing { LexRules }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.node {
+  Arrow,
   Atom,
+  ComputationNode,
   Conj,
+  Disj,
   Edge,
+  Instantiation,
   Authored,
   Node,
+  Occupancy,
   Positional,
   Symbol,
   TypeNode,
@@ -65,6 +66,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.text { String }
 import std.integer { int_to_decimal_string }
+import std.roster_frontier { FrontierRow, PathSubject }
 
 type FormalTerminal {
   identity: Symbol
@@ -279,16 +281,16 @@ fn grammar_expr_infix_table(
   InfixTable { operand: operand, continuation_guard: continuation_guard, operators: operators }
 }
 
-fn grammar_infix_row_lookup(rows: List<InfixOperatorRow>, token_class: Symbol) -> Optional<InfixOperatorRow> {
+fn grammar_infix_row_lookup(rows: List<InfixOperatorRow>, token_class: Symbol) -> std.optional.Optional<InfixOperatorRow> {
   match list_head(xs: rows) {
-    HeadAbsent => optional_absent()
-    HeadFound { value: row } =>
+    Absent => optional_absent()
+    Present { value: row } =>
       if grammar_infix_row_class(row: row) == token_class {
         optional_present(value: row)
       } else {
         match list_tail(xs: rows) {
-          TailAbsent => optional_absent()
-          TailFound { tail: rest } => grammar_infix_row_lookup(rows: rest, token_class: token_class)
+          Absent => optional_absent()
+          Present { value: rest } => grammar_infix_row_lookup(rows: rest, token_class: token_class)
         }
       }
   }
@@ -311,14 +313,14 @@ fn grammar_infix_right_min_power(row: InfixOperatorRow) -> Int {
   row.binding_power + 1
 }
 
-fn grammar_infix_operator_choice(rows: List<InfixOperatorRow>) -> Optional<GrammarExpr> {
+fn grammar_infix_operator_choice(rows: List<InfixOperatorRow>) -> std.optional.Optional<GrammarExpr> {
   match list_head(xs: rows) {
-    HeadAbsent => optional_absent()
-    HeadFound { value: row } =>
+    Absent => optional_absent()
+    Present { value: row } =>
       let here = grammar_expr_terminal(token_class: grammar_infix_row_class(row: row))
       match list_tail(xs: rows) {
-        TailAbsent => optional_present(value: here)
-        TailFound { tail: rest } =>
+        Absent => optional_present(value: here)
+        Present { value: rest } =>
           match grammar_infix_operator_choice(rows: rest) {
             Absent => optional_present(value: here)
             Present { value: others } => optional_present(value: Choice { left: here, right: others })
@@ -572,7 +574,6 @@ fn grammar_empty_sync_tokens() -> List<Symbol> {
   []
 }
 
-
 fn grammar_empty_node() -> Node {
   stamp_node_shape_synthetic(shape: type_shape(connective: Conj, children: []))
 }
@@ -660,7 +661,7 @@ fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
 
 fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: std.optional.Optional<Symbol>) -> Node {
   match binding {
-    Present { value: binding } =>
+    Present { value: bound } =>
       Node {
         kind: TypeNode {
           connective: Conj
@@ -672,7 +673,7 @@ fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: std.opt
           ),
           grammar_named_edge(
             name: ^formal_terminal_occurrence_binding_node_projection,
-            target: grammar_atom(identity: binding)
+            target: grammar_atom(identity: bound)
           )
         ],
         occurrence_id: OccurrenceSynthetic
@@ -1269,10 +1270,10 @@ fn grammar_nested_block_edge(unit: Symbol, edges: List<Edge>) -> Edge {
 
 fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: std.optional.Optional<Symbol>) -> Edge {
   match binding {
-    Present { value: binding } =>
+    Present { value: bound } =>
       Edge {
         label: Positional,
-        target: grammar_concrete_bound_token_node(token_class: terminal.identity, binding: binding)
+        target: grammar_concrete_bound_token_node(token_class: terminal.identity, binding: bound)
       }
     Absent =>
       Edge {
@@ -1514,7 +1515,7 @@ fn grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: Node) -> Diagn
 // because the end-of-row check compares it with the child count.
 fn formal_conj_child_atom_head(rest: List<Node>, emitted: Node) -> Witness<Node> {
   match list_head(xs: rest) {
-    HeadFound { value: slot_child } =>
+    Present { value: slot_child } =>
       match node_atom_identity_optional(node: slot_child) {
         Present { value: _ } => Holds { value: slot_child }
         Absent =>
@@ -1522,7 +1523,7 @@ fn formal_conj_child_atom_head(rest: List<Node>, emitted: Node) -> Witness<Node>
             diagnostic: grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: emitted)
           }
       }
-    HeadAbsent =>
+    Absent =>
       Violates {
         diagnostic: grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: emitted)
       }
@@ -1530,10 +1531,7 @@ fn formal_conj_child_atom_head(rest: List<Node>, emitted: Node) -> Witness<Node>
 }
 
 fn grammar_cursor_rest<T>(xs: List<T>) -> List<T> {
-  match list_tail(xs: xs) {
-    TailFound { tail: t } => t
-    TailAbsent => Empty
-  }
+  skip(xs: xs, n: 1)
 }
 
 type EmittedRhsMatchState
@@ -1579,13 +1577,13 @@ fn formal_production_rhs_matches_nonterminal_step(
   nonterminal: FormalNonterminal
 ) -> EmittedRhsMatchState {
   match list_head(xs: slots_rest) {
-    HeadFound { value: slot } =>
+    Present { value: slot } =>
       match resolution_production_for_lhs_exact(resolution: slot, lhs: nonterminal.identity) {
         Holds { value: _ } =>
           emitted_rhs_match_advanced(index: index, children_rest: children_rest, slots_rest: slots_rest)
         Violates { diagnostic: _ } => EmittedRhsMatchFail
       }
-    HeadAbsent => EmittedRhsMatchFail
+    Absent => EmittedRhsMatchFail
   }
 }
 
@@ -1779,9 +1777,9 @@ fn formal_slot_cursor_heads_asked(cursors: List<List<std.optional.Optional<Symbo
     empty: Empty,
     cons: fn(acc, cursor) {
       match list_head(xs: cursor) {
-        HeadFound { value: Present { value: nonterminal } } => formal_symbol_list_insert(xs: acc, item: nonterminal)
-        HeadFound { value: Absent } => acc
-        HeadAbsent => acc
+        Present { value: Present { value: nonterminal } } => formal_symbol_list_insert(xs: acc, item: nonterminal)
+        Present { value: Absent } => acc
+        Absent => acc
       }
     }
   )
@@ -2240,7 +2238,7 @@ fn derive_grammar_relation_nonterminal_step(
   nonterminal: FormalNonterminal
 ) -> Witness<DeriveGrammarRelationTokensProgress> {
   match list_head(xs: slots_rest) {
-    HeadFound { value: slot } =>
+    Present { value: slot } =>
       match resolution_production_for_lhs_exact(resolution: slot, lhs: nonterminal.identity) {
         Holds { value: nested } =>
           match derive_grammar_relation_token_edges_resolved(
@@ -2261,7 +2259,7 @@ fn derive_grammar_relation_nonterminal_step(
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
-    HeadAbsent =>
+    Absent =>
       Violates {
         diagnostic: Diagnostic {
           reason: ^grammar_relation_emitted_conj_slot_missing,
@@ -2392,8 +2390,8 @@ fn derive_grammar_relation_token_edges_resolved(
       )
     }
   ) {
-    Holds { value: DeriveGrammarRelationTokensProgress { edges: result, conj_index: conj_index, conj_children: conj_children, children_rest: _, slots_rest: _ } } =>
-      if conj_index == conj_positional_child_count(children: conj_children) {
+    Holds { value: DeriveGrammarRelationTokensProgress { edges: result, conj_index: conj_index, conj_children: walked_conj_children, children_rest: _, slots_rest: _ } } =>
+      if conj_index == conj_positional_child_count(children: walked_conj_children) {
         Holds { value: result }
       } else {
         Violates {
@@ -2586,17 +2584,14 @@ fn grammar_infix_associativity_symbol(associativity: InfixAssociativity) -> Symb
 // The rows as a right-folded spine, as a repeat's capture is: a Conj's labels are unique, so a list
 // cannot be one Conj with a repeated label.
 fn grammar_infix_rows_node(rows: List<InfixOperatorRow>) -> Node {
-  match list_head(xs: rows) {
-    HeadAbsent => grammar_expr_node(children: [])
-    HeadFound { value: row } =>
+  match rows {
+    Empty => grammar_expr_node(children: [])
+    Cons { head: row, tail: rest } =>
       grammar_expr_node(children: [
         grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: grammar_infix_row_node(row: row)),
         grammar_named_edge(
           name: ^grammar_sequence_right_node_projection,
-          target: match list_tail(xs: rows) {
-            TailAbsent => grammar_expr_node(children: [])
-            TailFound { tail: rest } => grammar_infix_rows_node(rows: rest)
-          }
+          target: grammar_infix_rows_node(rows: rest)
         )
       ])
   }
@@ -2878,16 +2873,16 @@ fn rebuild_emitted_rhs_walk_step(
               ) {
                 Holds { value: token } =>
                   match token {
-                    BoundToken { token_class: token_class, binding: binding } =>
+                    BoundToken { token_class: token_class, binding: token_binding } =>
                       if token_class == terminal.identity &&
                         (
                           formal_binding_is_emitted_atom_from_slot(binding: binding_symbol) ||
-                            binding_symbol == binding
+                            binding_symbol == token_binding
                         ) {
                         RebuildRhsWalkOk {
                           children: list_snoc_item(
                             xs: children,
-                            item: rebuild_emitted_atom_node(identity: binding)
+                            item: rebuild_emitted_atom_node(identity: token_binding)
                           ),
                           token_index: token_index + 1
                         }
@@ -3828,10 +3823,15 @@ fn grammar_emit_parse_tree(root: GrammarRoot, tree: ParseTree) -> Outcome<List<G
 // v2.compiler.parse parse_wrap_production_captured builds); Absent for any node that is not a
 // production wrapper. Shared by the .dag language's surface readers and the parser's annotation
 // region roster, which both key on "is this a production".
-fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
+fn parse_production_emitted_identity_optional(node: Node) -> std.optional.Optional<Symbol> {
   match named_child_lookup(root: node, name: ^grammar_production_identity_node_projection) {
     NamedChildFound { target: id_node } => node_atom_identity_optional(node: id_node)
     NamedChildMissing => Absent
     NamedChildAmbiguous => Absent
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "grammar_emit_is_empty_conj" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "grammar_emit_sequence" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

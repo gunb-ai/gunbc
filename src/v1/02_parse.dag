@@ -1158,6 +1158,23 @@ fn tok_is_keyword_name(tok: Token?, env: ParseEnvironment) -> Bool {
   match tok_keyword_to_name(tok: tok, env: env) { Present { value: _ } => true  Absent => false }
 }
 
+// Whether a keyword spelling may be a pattern binder. Authority:
+// env.non_pattern_binder_keywords union env.non_name_keywords. Both parse_pattern and
+// parse_variant_bindings_brace_acc read this; they must not hardcode spellings.
+fn keyword_may_bind_as_pattern_name(text: String, env: ParseEnvironment) -> Bool {
+  match lookup(env.non_pattern_binder_keywords, key: text) {
+    Present { value: _ } => false
+    Absent => match lookup(env.non_name_keywords, key: text) {
+      Present { value: _ } => false
+      Absent => true
+    }
+  }
+}
+
+fn reserved_keyword_pattern_binder_error(text: String, span: SourceSpan) -> ErrorNode {
+  parse_error(msg: concat("pattern binder '", text, "' is a reserved keyword, not a binder name; rename it to a non-keyword identifier"), span: span)
+}
+
 fn shape_display_name(shape: TokenShape) -> String {
   match shape {
     ShKeyword => "keyword"
@@ -6421,7 +6438,33 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
         Present { value: lv } => {
           PatternResult { pattern: LitPattern { value: lv }, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
         }
-        Absent => PatternResult { pattern: Wildcard, tokens: tokens, ctx: ctx, err: none }
+        // Literals (true/false/none/null) already returned. Remaining keywords:
+        // name-admissible ones (`module`, `alias`, ...) bind like identifiers — the corpus
+        // writes ModuleExposure { module: module }. `match` and non_name_keywords that are
+        // not literals (acquire/release) refuse here at the keyword token, instead of a
+        // Wildcard that leaves the token unconsumed so the variant-binding reader re-reads
+        // it as a field and misattributes FieldNotFound to the type declaration.
+        Absent => {
+          if keyword_may_bind_as_pattern_name(text: kw_text, env: ctx.env) {
+            let rest = token_stream_advance(stream: tokens, n: 1)
+            let minted = mint_parsed_node_identity(ctx: ctx, at: ConsumedWindow { from: tokens, to: rest })
+            PatternResult {
+              pattern: Bind {
+                declaration: make_pattern_binder_declaration_node(occurrence_identity: minted.identity, name: kw_text, span: span)
+              },
+              tokens: rest,
+              ctx: minted.ctx,
+              err: none
+            }
+          } else {
+            PatternResult {
+              pattern: Wildcard,
+              tokens: tokens,
+              ctx: ctx,
+              err: Present { value: reserved_keyword_pattern_binder_error(text: kw_text, span: span) }
+            }
+          }
+        }
       }
     }
     Present { value: ShLitInt } => {
@@ -6469,6 +6512,24 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
   } else {
     let binding_from = tokens
     let bind_span = token_span(tok: token_stream_first(stream: tokens))
+    let first_tok = token_stream_first(stream: tokens)
+    match first_tok {
+      Present { value: t } => {
+        if is_keyword_shape(shape: t.shape) {
+          match lookup(ctx.env.syntax_spec.keyword_literals, key: t.text) {
+            Present { value: _ } => {}
+            Absent => {
+              match lookup(ctx.env.non_name_keywords, key: t.text) {
+                Present { value: _ } =>
+                  return BindingsResult { field_bindings: [], tokens: tokens, ctx: ctx, err: Present { value: reserved_keyword_pattern_binder_error(text: t.text, span: t.span) } }
+                Absent => {}
+              }
+            }
+          }
+        }
+      }
+      Absent => {}
+    }
     let r = expect_name(tokens: tokens, env: ctx.env)
     if has_err(err: r.err) { return BindingsResult { field_bindings: [], tokens: r.tokens, ctx: ctx, err: r.err } }
     let field_name = r.name
@@ -6484,7 +6545,10 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
       let minted = mint_parsed_node_identity(ctx: r2.ctx, at: ConsumedWindow { from: binding_from, to: r2.tokens })
       let fb = make_field_binding_node(occurrence_identity: minted.identity, field_name: field_name, binding: r2.pattern, span: bind_span, name_span: field_name_span)
       parse_variant_bindings_brace_acc(tokens: tokens, ctx: minted.ctx, acc: list_push(acc, fb))
-    EatUnchanged { tokens: __eu } =>
+    EatUnchanged { tokens: __eu } => {
+      if !keyword_may_bind_as_pattern_name(text: field_name, env: ctx.env) {
+        return BindingsResult { field_bindings: [], tokens: tokens, ctx: ctx, err: Present { value: reserved_keyword_pattern_binder_error(text: field_name, span: field_name_span) } }
+      }
       let e2 = eat(tokens: tokens, expected: ExpectComma)
       let tokens = skip_newlines(tokens: match e2 { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
       let declaration_mint = mint_parsed_node_identity(ctx: ctx, at: AtToken { span: field_name_span })
@@ -6501,6 +6565,7 @@ fn parse_variant_bindings_brace_acc(tokens: TokenStream, ctx: ParseContext, acc:
         name_span: field_name_span
       )
       parse_variant_bindings_brace_acc(tokens: tokens, ctx: field_mint.ctx, acc: list_push(acc, fb))
+    }
     }
   }
 }

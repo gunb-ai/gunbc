@@ -5,6 +5,15 @@ import extdeps.ietf.http_semantics { HttpStatusClass, Informational, Successful,
 import extdeps.transports.shell_declared { ShellArgvContract, ShellExitCode, ShellExitNonzero, ShellExitPattern, ShellStringTemplateContract, shell_binding_field_contract, shell_binding_field_of_key, shell_exit_nonzero_spelling, shell_output_channel_of_key }
 import extdeps.transports.rest_declared { RestOtherContract, RestResponseStatus, RestStatusClass, RestStatusCode, RestStringTemplateContract, rest_binding_field_contract, rest_binding_field_of_key }
 import extdeps.transports.file_declared { FileOtherContract, FileStringTemplateContract, file_binding_field_contract, file_binding_field_of_key, file_output_channel_of_key }
+import extdeps.uri_path {
+  LiteralToken,
+  MalformedPathTemplate,
+  ParamToken,
+  ParsedPathTemplate,
+  UrlPathToken,
+  parse_path_template,
+  parse_query_template
+}
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_int_from_node, dag_string_literal_value_optional }
 import std.types { http_status_of }
 import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusalCause, ArgvTemplate, BindingMalformed, ExecutablePositionNotLiteral, OperationInputName, UndeclaredInputBound }
@@ -259,7 +268,7 @@ fn status_code_int_optional(pat: Node) -> Optional<Int> {
           Rejected { diagnostics: _ } => optional_absent()
         }
       Ambiguous => optional_absent()
-      Absent => optional_absent()
+      NotFound => optional_absent()
     }
   }
 }
@@ -331,7 +340,7 @@ fn operation_input_names_of_domain(domain: Node) -> List<Symbol> {
                   Absent => binders
                 }
               Ambiguous => binders
-              Absent => binders
+              NotFound => binders
             }
           } else {
             binders
@@ -404,7 +413,7 @@ fn realization_leaf_member_refusal(interface: Node, member: Edge) -> Optional<Re
         match named_edge_target_lookup(children: interface.children, name: n) {
           Found { target: op } => realization_entry_refusal(op: op, entry: member.target)
           Ambiguous => realization_refusal(reason: ^service_realization_entry_without_operation, at: member.target)
-          Absent => realization_refusal(reason: ^service_realization_entry_without_operation, at: member.target)
+          NotFound => realization_refusal(reason: ^service_realization_entry_without_operation, at: member.target)
         }
       }
   }
@@ -448,7 +457,7 @@ fn realization_entry_members_refusal(op: Node, entry: Node) -> Optional<Realizat
     match named_edge_target_lookup(children: entry.children, name: realization_transport_label()) {
       Found { target: transport } => realization_entry_with_transport_refusal(op: op, entry: entry, transport: transport)
       Ambiguous => realization_refusal(reason: ^service_realization_entry_without_transport, at: entry)
-      Absent => realization_refusal(reason: ^service_realization_entry_without_transport, at: entry)
+      NotFound => realization_refusal(reason: ^service_realization_entry_without_transport, at: entry)
     }
   }
 }
@@ -468,7 +477,7 @@ fn realization_transport_block_refusal(op: Node, entry: Node, transport: Node) -
         Absent => realization_transport_kind_refusal(k: k)
       }
     Ambiguous => realization_refusal(reason: ^service_realization_transport_unmodeled, at: transport)
-    Absent => realization_refusal(reason: ^service_realization_transport_unmodeled, at: transport)
+    NotFound => realization_refusal(reason: ^service_realization_transport_unmodeled, at: transport)
   }
 }
 
@@ -532,7 +541,7 @@ fn realization_declared_field_refusal(kind: DeclaredTransport, op: Node, key: St
       match rest_binding_field_of_key(key: key) {
         Present { value: field } =>
           match rest_binding_field_contract(field: field) {
-            RestStringTemplateContract => transport_string_field_refusal(op: op, value: value)
+            RestStringTemplateContract => rest_path_field_refusal(op: op, value: value)
             RestOtherContract => optional_absent()
           }
         Absent => realization_refusal(reason: ^service_realization_binding_field_unknown, at: value)
@@ -571,6 +580,75 @@ fn transport_string_field_refusal(op: Node, value: Node) -> Optional<Realization
         realization_first_refusal(acc: acc, next: fn() { transport_template_element_refusal(op: op, el: el) })
       })
     Absent => transport_template_element_refusal(op: op, el: value)
+  }
+}
+
+// A REST `path` is the upstream URI-template string (RFC 6570 simple `{name}` holes; the seed
+// decomposes the same spelling through extdeps.uri_path parse_path_template). Do not rewrite the
+// corpus into a list of concat parts: that would be a second surface for one form. A string literal
+// is that template; a list or a #13405 concat stays Template<OperationInputName> as before. An
+// unknown hole or an unclosed brace refuses located (DESIGN 5), including `{name}` after `?`
+// (extdeps.uri_path parse_query_template). This wall only binds those tokens to declared inputs.
+// A name that appears twice is still one input (RFC 6570 §3.2.1: the same variable may expand more
+// than once); both holes bind that identity. REST `body` is RestOtherContract (a record of fields),
+// not this parser.
+fn rest_path_field_refusal(op: Node, value: Node) -> Optional<RealizationRefusal> {
+  match list_introduction_elements_optional(node: value) {
+    Present { value: elements } =>
+      fold(elements, init: optional_absent(), f: fn(acc, el) {
+        realization_first_refusal(acc: acc, next: fn() { rest_path_element_refusal(op: op, el: el) })
+      })
+    Absent => rest_path_element_refusal(op: op, el: value)
+  }
+}
+
+fn rest_path_element_refusal(op: Node, el: Node) -> Optional<RealizationRefusal> {
+  match dag_string_literal_value_optional(node: el) {
+    Present { value: text } =>
+      match rest_path_template_cause(inputs: operation_input_names(op: op), text: text) {
+        Present { value: cause } =>
+          optional_present(value: RealizationRefusal { reason: ^service_realization_argv_refused, at: el, argv: optional_present(value: cause) })
+        Absent => optional_absent()
+      }
+    Absent => transport_template_element_refusal(op: op, el: el)
+  }
+}
+
+fn rest_path_template_cause(inputs: List<Symbol>, text: String) -> Optional<ArgvRefusalCause> {
+  match parse_path_template(raw: text) {
+    MalformedPathTemplate { raw: _, segment: _, reason: r } =>
+      optional_present(value: BindingMalformed { detail: r })
+    ParsedPathTemplate { template: t } =>
+      match rest_path_tokens_cause(inputs: inputs, tokens: t.tokens) {
+        Present { value: cause } => optional_present(value: cause)
+        Absent =>
+          match parse_query_template(raw: text) {
+            MalformedPathTemplate { raw: _, segment: _, reason: r } =>
+              optional_present(value: BindingMalformed { detail: r })
+            ParsedPathTemplate { template: q } =>
+              rest_path_tokens_cause(inputs: inputs, tokens: q.tokens)
+          }
+      }
+  }
+}
+
+fn rest_path_tokens_cause(inputs: List<Symbol>, tokens: List<UrlPathToken>) -> Optional<ArgvRefusalCause> {
+  match tokens {
+    Empty => optional_absent()
+    Cons { head: tok, tail: rest } =>
+      match tok {
+        LiteralToken { text: _ } => rest_path_tokens_cause(inputs: inputs, tokens: rest)
+        ParamToken { name: n } =>
+          rest_path_param_cause(inputs: inputs, name: n, rest: rest)
+      }
+  }
+}
+
+fn rest_path_param_cause(inputs: List<Symbol>, name: String, rest: List<UrlPathToken>) -> Optional<ArgvRefusalCause> {
+  if symbol_in(xs: inputs, s: symbol_intern_lexeme(lexeme: name)) {
+    rest_path_tokens_cause(inputs: inputs, tokens: rest)
+  } else {
+    optional_present(value: UndeclaredInputBound { name: name as OperationInputName })
   }
 }
 
@@ -814,7 +892,7 @@ fn realization_conj_arm_step(kind: DeclaredTransport, acc: RealizationArmsWalk, 
         Present { value: _ } => realization_decoded_arm_step(acc: acc, arm: arm, pat: pat)
       }
     Ambiguous => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
-    Absent => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
+    NotFound => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
   }
 }
 
@@ -829,7 +907,7 @@ fn realization_decoded_arm_step(acc: RealizationArmsWalk, arm: Node, pat: Node) 
         if realization_arm_member_count_conforms(arm: arm) { RealizationArmsWalk { seen: list_snoc_item(xs: acc.seen, item: pat), refusal: optional_absent() } }
         else { realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm) }
       Ambiguous => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
-      Absent => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
+      NotFound => realization_arms_walk_refused(acc: acc, reason: ^service_realization_arm_malformed, at: arm)
     }
   }
 }
@@ -843,7 +921,7 @@ fn realization_arm_member_count_conforms(arm: Node) -> Bool {
         Absent => false
       }
     Ambiguous => false
-    Absent => count(arm.children) == 2
+    NotFound => count(arm.children) == 2
   }
 }
 

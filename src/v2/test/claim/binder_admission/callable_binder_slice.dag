@@ -1,5 +1,6 @@
 module v2.test.claim.binder_admission.callable_binder_slice
 
+import std.occurrence_identity { LexicalValueOccurrence }
 import v2.compiler.resolve {
   LexicalBinding,
   LexicalUntyped,
@@ -165,7 +166,8 @@ fn cbs_root_scope_declaring(name: Symbol) -> Scope {
       module_qn: Empty,
       test_code: test_code_index_empty(),
       declared_in: Empty,
-      imported_origins: empty_map()
+      imported_origins: empty_map(),
+    unavailable_providers: []
     }
   }
 }
@@ -268,7 +270,8 @@ fn cbs_ctx(scope: Scope) -> ResolveContext {
     position: Empty,
     lm: void_language_model(identity: ^cbs_void_language),
     under_module_root: false,
-    declaring: NotDeclaring
+    declaring: NotDeclaring,
+    reference_category: LexicalValueOccurrence
   }
 }
 

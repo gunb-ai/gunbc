@@ -76,7 +76,7 @@ fn local_tidy_path_matches_glob(path: String, glob: String) -> Bool {
 fn local_tidy_path_matches_trigger(path: String, check: LocalTidyCheck) -> Bool {
   match check {
     LocalTidyCargoFmtCheck => path_is_rust_monolith(path: path)
-    _ => any(
+    LocalTidyWitnessCheck { entry: _, check_fns: _ } => any(
       local_tidy_trigger_globs(check: check),
       g => local_tidy_path_matches_glob(path: path, glob: g)
     )
@@ -170,4 +170,3 @@ fn local_tidy_fmt_outcome_blocks(outcome: LocalTidyFmtOutcome) -> Bool {
     FmtToolUnavailable { program: _, cause: _ } => true
   }
 }
-

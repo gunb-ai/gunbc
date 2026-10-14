@@ -1,8 +1,10 @@
 module v2.lens.enforcement.cost_coverage
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_land_red_era }
 import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.compiler.normalized_tree { NormalizedTree }
-
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type CostCoverageIngestVerdict
   = IngestParsedClean
@@ -424,3 +426,26 @@ fn cost_coverage_unknown_fraction_bps(receipt: CostCoverageTreeReceipt) -> Int {
     false => (receipt.fn_unknown * 10000) / receipt.fn_attempted
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "cost_coverage_fn_verdict_is_body_not_located" },
+      reason: nfr_reason_land_red_era,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "cost_coverage_fn_verdict_is_known" },
+      reason: nfr_reason_land_red_era,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "cost_coverage_fn_verdict_is_parse_tree_opaque" },
+      reason: nfr_reason_land_red_era,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "cost_coverage_fn_verdict_is_unknown" },
+      reason: nfr_reason_land_red_era,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+]

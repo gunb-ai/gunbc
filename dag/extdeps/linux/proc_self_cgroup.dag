@@ -1,12 +1,10 @@
 module extdeps.linux.proc_self_cgroup
-
 import std.algebra { trim }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Https, Uri }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { FilePathParts, Int, List, NonEmptyStr, String }
-
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -195,25 +193,6 @@ fn unified_membership_outcome_tag_from_content(content: String) -> UnifiedMember
   unified_membership_outcome_tag(
     record: read_unified_cgroup_membership(content: content)
   )
-}
-
-fn unified_membership_outcome_tag_eq(
-  a: UnifiedMembershipOutcomeTag,
-  b: UnifiedMembershipOutcomeTag,
-) -> Bool {
-  match a {
-    OutcomeTagMissing =>
-      match b { OutcomeTagMissing => true, _ => false }
-    OutcomeTagAmbiguous =>
-      match b { OutcomeTagAmbiguous => true, _ => false }
-    OutcomeTagMalformed =>
-      match b { OutcomeTagMalformed => true, _ => false }
-    OutcomeTagObserved { relative_path: ra } =>
-      match b {
-        OutcomeTagObserved { relative_path: rb } => ra as String == rb as String
-        _ => false
-      }
-  }
 }
 
 fn proc_self_cgroup_is_unified_v2_line_drift_sketch(

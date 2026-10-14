@@ -99,8 +99,14 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   decode_dispatch_executor_request,
   dispatch_tmux_session_scope_for_recorded,
   claude_credential_custody_source,
-  ClaudeCustodyFile,
+  ClaudeCustodyBound,
   ClaudeCustodyUnbound,
+  snapshot_custody_declaration,
+}
+import gunbc.dispatch_credential_snapshot { ClaudeFromSnapshot, CursorFromSnapshot }
+import gunbc.worker_turn_snapshot_custody {
+  claude_worker_turn_snapshot_custody,
+  cursor_worker_turn_snapshot_custody,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -404,7 +410,13 @@ data spawn_argv_tail: List<String> = ["env", "CLAUDE_CODE_NO_FLICKER=1", "claude
 // SnapshotLaunch).
 test fn the_dispatch_credential_is_held_in_its_custody_file() -> Bool {
   match claude_credential_custody_source() {
-    ClaudeCustodyFile { path } => path as String == claude_code_oauth_harness_host_path as String
+    ClaudeCustodyBound { custody } =>
+      (custody.path as String) == (claude_code_oauth_harness_host_path as String)
+        && (custody.path as String) == (snapshot_custody_declaration(executor: ClaudeFromSnapshot).path as String)
+        && (snapshot_custody_declaration(executor: ClaudeFromSnapshot).path as String)
+          == (claude_worker_turn_snapshot_custody.path as String)
+        && (snapshot_custody_declaration(executor: CursorFromSnapshot).path as String)
+          == (cursor_worker_turn_snapshot_custody.path as String)
     ClaudeCustodyUnbound { reason: _ } => false
   }
 }

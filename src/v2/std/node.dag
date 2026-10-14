@@ -1,5 +1,6 @@
 module v2.std.node
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item }
@@ -25,6 +26,8 @@ import std.content_hash {
   content_hash_combine_structural,
   as_content_hash_structural,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type Symbol
 
@@ -137,7 +140,6 @@ fn connective_from_coproduct_variant(
 fn behavior_coproduct_variants() -> List<Behavior> {
   [Value, Transform, Branch, Loop, Bind, Match]
 }
-
 
 type NodeKind
   = TypeNode { connective: Connective }
@@ -978,8 +980,6 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   })
 }
 
-
-
 // THE ONE PARSER OF AN ARROW'S DECLARED ORDER. An Arrow built from a declared signature carries one
 // ^arrow_signature_order_edge (v2.std.arrow_signature signature_order_edge): a Transform
 // whose positional children after the head are childless Atoms, one per domain binder, in declared
@@ -1000,7 +1000,7 @@ type ArrowParameterOrderStep {
 
 fn arrow_signature_order_read(children: List<Edge>) -> ArrowParameterOrderRead {
   match core_edge_target_lookup(children: children, marker: ArrowSignatureOrderEdge) {
-    Absent => OrderAbsent
+    NotFound => OrderAbsent
     Ambiguous => OrderUnreadable
     Found { target: list } => arrow_signature_order_list_read(list: list)
   }
@@ -1272,12 +1272,12 @@ fn type_binder_order_conforms(children: List<Edge>) -> Bool {
 type NamedEdgeTargetLookup
   = Found { target: Node }
   | Ambiguous
-  | Absent
+  | NotFound
 
 fn edge_target_lookup_step(acc: NamedEdgeTargetLookup, hit: Bool, target: Node) -> NamedEdgeTargetLookup {
   if hit {
     match acc {
-      Absent => Found { target: target }
+      NotFound => Found { target: target }
       Found { target: _ } => Ambiguous
       Ambiguous => Ambiguous
     }
@@ -1288,7 +1288,7 @@ fn edge_target_lookup_step(acc: NamedEdgeTargetLookup, hit: Bool, target: Node) 
 
 // The edge carrying this AUTHORED name. A structural label is never found by spelling.
 fn named_edge_target_lookup(children: List<Edge>, name: Symbol) -> NamedEdgeTargetLookup {
-  fold(children, init: Absent, f: fn(acc, e) {
+  fold(children, init: NotFound, f: fn(acc, e) {
     match e.label {
       Authored { name: sym } => edge_target_lookup_step(acc: acc, hit: sym == name, target: e.target)
       StructuralLabel { label: _ } => acc
@@ -1298,7 +1298,7 @@ fn named_edge_target_lookup(children: List<Edge>, name: Symbol) -> NamedEdgeTarg
 }
 
 fn core_edge_target_lookup(children: List<Edge>, marker: CoreEdgeLabel) -> NamedEdgeTargetLookup {
-  fold(children, init: Absent, f: fn(acc, e) {
+  fold(children, init: NotFound, f: fn(acc, e) {
     edge_target_lookup_step(acc: acc, hit: edge_is_core(e: e, marker: marker), target: e.target)
   })
 }
@@ -1430,7 +1430,6 @@ fn resolved_reference_kind_of_label(label: EdgeLabel) -> ResolvedReferenceMarkin
 // so a nullary `R {}` never reads as a reference. It is a Core structural marker of the typed
 // EdgeLabel coproduct planned in gunbc#12473 (arm ConstructTag), declared here in the form of its
 // sibling until that cut converts both.
-
 
 // AN ANONYMOUS RECORD LITERAL'S TAG IS ELIDED, NOT GUESSED. `data x: T = { f: v }` names no
 // constructor; the constructor is chosen by the EXPECTED type, which lowering (before resolve) cannot
@@ -1622,7 +1621,7 @@ fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
 
 fn arrow_body_target_conforms(children: List<Edge>) -> Bool {
   match arrow_body_target_lookup(children: children) {
-    Absent => true
+    NotFound => true
     Found { target: t } => arrow_body_target_is_valid_realization(target: t)
     Ambiguous => false
   }
@@ -1799,6 +1798,35 @@ fn match_arm_node_conforms(arm: Node) -> Bool {
 fn match_arm_pattern_edge(parent: Node, edge: Edge) -> Bool {
   match_arm_node_conforms(arm: parent)
     && edge_is_core(e: edge, marker: MatchArmPatternEdge)
+}
+
+// THE KEY EDGE OF A BIND: the first of a Bind's exactly three positionals, when it is an atom -- the shape
+// v2.compiler.lexical_scope bind_binder sites a `let` binder at. The key is a binder NAME, a binding form as a
+// match arm's pattern is, so infer declines it (v2.compiler.infer infer_gather_fold_step) and the walk over
+// the nodes infer derives facts for skips it (v2.std.type_binder node_inferred_subtree_nodes). The binder's
+// type is the InferBinderType row its references read, never a fact about the key atom.
+fn bind_key_edge_is(key: Edge, edge: Edge) -> Bool {
+  key == edge && match key.target.kind {
+    TypeNode { connective: Atom { identity: _ } } => true
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn bind_key_edge(parent: Node, edge: Edge) -> Bool {
+  match parent.kind {
+    ComputationNode { behavior: Bind } =>
+      if positional_child_count(children: parent.children) == 3 {
+        match positional_edges(children: parent.children) {
+          Cons { head: e0, tail: _ } => bind_key_edge_is(key: e0, edge: edge)
+          Empty => false
+        }
+      } else {
+        false
+      }
+    ComputationNode { behavior: _ } => false
+    TypeNode { connective: _ } => false
+  }
 }
 
 type MatchArmChildrenConformFold {
@@ -2089,8 +2117,8 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
 }
 
 fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
-  let n = canonicalize_node_for_content_hash(n: n)
-  fold(n.children, init: algebra.init(n), f: fn(acc, e) {
+  let canonical = canonicalize_node_for_content_hash(n: n)
+  fold(canonical.children, init: algebra.init(canonical), f: fn(acc, e) {
     algebra.step(acc, e, fold_node_content_hash(n: e.target, algebra: algebra))
   })
 }
@@ -3030,3 +3058,12 @@ fn algebra_empty_conj() -> Node {
  occurrence_id: OccurrenceSynthetic
 }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "arrow_body_construct_tag_leads" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "arrow_body_some_edge_targets_an_atom" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "arrow_domain_binds_a_name" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "arrow_signature_order_edge" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "loop_edge_contributes_to_iteration_fold" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "match_arm_node_conforms" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

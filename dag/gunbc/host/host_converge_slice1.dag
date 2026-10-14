@@ -7,6 +7,9 @@ import product.host_identity { HostIdentity }
 import extdeps.systemd {
   systemd_memory_max_property,
   MemoryMax,
+  MemoryHigh,
+  MemorySwapMax,
+  SystemdUnitProperty,
   systemd_tasks_max_property,
   TasksMax,
   TasksCurrent,
@@ -192,28 +195,39 @@ fn host_converge_slice1_probed_at() -> NonEmptyStr? {
   clock_now_probed_at()
 }
 
-fn host_converge_slice1_read_memory_max_raw(unit: NonEmptyStr) -> String? {
-  match systemctl_show_property_read(transport: LocalShell, unit: unit, property: MemoryMax) {
+fn host_converge_slice1_read_property_raw(unit: NonEmptyStr, property: SystemdUnitProperty) -> String? {
+  match systemctl_show_property_read(transport: LocalShell, unit: unit, property: property) {
     SystemdPropertyCaptured { value: raw } => Present { value: raw }
     SystemdPropertyBlank => none
     SystemdPropertyCaptureRefused { reason: _ } => none
   }
 }
 
+// THE EFFECTIVE READ IS ALL THREE CEILINGS, AND AN UNREAD ONE REFUSES THE WHOLE READ. The row used to
+// carry memory_swap_max_raw and memory_high_raw as hardcoded blanks, so a unit whose swap ceiling a
+// system.control shadow had raised read as having none to disagree with.
 fn host_converge_slice1_live_read(unit: NonEmptyStr, probed_at: NonEmptyStr) -> RunnerUnitMemoryLiveRead? {
-  match host_converge_slice1_read_memory_max_raw(unit: unit) {
+  match host_converge_slice1_read_property_raw(unit: unit, property: MemoryMax) {
     Present { value: memory_max_raw } =>
-      Present {
-        value: runner_unit_live_read_typed(
-          row: RunnerUnitLiveReadRow {
-            unit: unit,
-            memory_max_raw: memory_max_raw,
-            memory_swap_max_raw: "",
-            memory_high_raw: "",
-            memory_current_raw: "",
-            probed_at: probed_at,
+      match host_converge_slice1_read_property_raw(unit: unit, property: MemorySwapMax) {
+        Present { value: memory_swap_max_raw } =>
+          match host_converge_slice1_read_property_raw(unit: unit, property: MemoryHigh) {
+            Present { value: memory_high_raw } =>
+              Present {
+                value: runner_unit_live_read_typed(
+                  row: RunnerUnitLiveReadRow {
+                    unit: unit,
+                    memory_max_raw: memory_max_raw,
+                    memory_swap_max_raw: memory_swap_max_raw,
+                    memory_high_raw: memory_high_raw,
+                    memory_current_raw: "",
+                    probed_at: probed_at,
+                  }
+                )
+              }
+            Absent => none
           }
-        )
+        Absent => none
       }
     Absent => none
   }

@@ -891,15 +891,14 @@ fn required_gate_prefixes() -> List<String> {
 // gate-closure and floor-cgroup lines.
 //
 // THE TEST-REFERENCE WALL WITNESS (roadmap node test-reference-discipline-remainder). The reds of
-// `test.claim.test_reference_wall_witness` are the ledger's enforcement evidence: unledgered
-// test-to-test references refuse (TestCodeReferenced), observed-versus-declared drift refuses
-// (TestCodeReferenceBudgetMismatch), and a discharged-but-unpaid-down row refuses. They were
-// authored and then executed by NO lane -- the module matches no family prefix, which is the
-// srv1/deep-ferret class again: evidence written, never run, reds reaching main unnoticed. Admitted
-// at exact module grain, not a `test.claim.test_reference_wall_` family, which would sweep nothing
-// in today but would silently widen if a sibling is ever planted. Its claims run through the census
-// probe over planted fixture sources (no live-tree read, SubstrateInputsOnly in spirit -- the
-// fixture sources are supplied strings), priced at NewWitnessTier.
+// `test.claim.test_reference_wall_witness` are the wall's enforcement evidence: a reference that
+// reaches a TestMarked declaration refuses (TestCodeReferenced). They were authored and then
+// executed by NO lane -- the module matches no family prefix, which is the srv1/deep-ferret class
+// again: evidence written, never run, reds reaching main unnoticed. Admitted at exact module grain,
+// not a `test.claim.test_reference_wall_` family, which would sweep nothing in today but would
+// silently widen if a sibling is ever planted. Its claims run through the census probe over planted
+// fixture sources (no live-tree read, SubstrateInputsOnly in spirit -- the fixture sources are
+// supplied strings), priced at NewWitnessTier.
 // THE SEED-GROWTH ADMISSION WITNESS (operator ruling, escalation msg_341a9785, approved
 // 2026-10-03). `test.claim.seed_growth_admission_witness` carries the seed-growth roster's
 // duplicate-key and well-formed checks and the addition/staleness join; it matched no family prefix,

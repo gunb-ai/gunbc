@@ -40,6 +40,7 @@ import gunbc.spark.credential_workflow {
 }
 import gunbc.fleet.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host.host_reset_return { host_reset_return_receipt_path }
+import gunbc.host.host_memory_envelope_observe { host_memory_envelope_receipt_path }
 import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.auth.approval_keyring_pins {
@@ -451,12 +452,13 @@ data gunbc_ci_floor_batch_wall_budget_note: String = "SUPERSEDED by the derived 
 // dissolve-on diagnosis and it REFUTES the hypothesised mechanism. The growth is NOT the cold-spawn
 // / per-entry-reconcile class the wasted_ms=166525 reading suggested. Measured by execution on the
 // perturb spawn shape (trivial 1-module compile, 4 source roots) there are TWO independent
-// corpus-denominated costs in different places. (A) THE CENSUS, inside reconcile: main.rs:491-514
-// reads every indexed module outside the closure off disk into census_only_sources, and
-// v1_compiler_compile.rs:2580 parse_census_fill_sources parses all ~2543 of them BETWEEN
-// compile.normalize.done and compile.reconcile.done — so it books to the reconcile bin and reads as
-// 'reconcile is slow' when it is a whole-tree parse wearing reconcile's label. ~23s local, ~12-13s
-// on fleet. (B) THE POLICY TAIL, after the compile: cli_run.rs:2105
+// corpus-denominated costs in different places. (A) THE CENSUS, inside reconcile: the product
+// compile used to load every indexed module outside the closure as census_only_sources and
+// parse them with parse_census_fill_sources between compile.normalize.done and
+// compile.reconcile.done — so it booked to the reconcile bin and read as 'reconcile is slow'
+// when it was a whole-tree parse wearing reconcile's label. ~23s local, ~12-13s on fleet.
+// That fill is deleted: compile.reconcile indexes only the compiled closure, and out-of-closure
+// body grammaticality is run_dag_parse_sweep. (B) THE POLICY TAIL, after the compile:
 // compile_clean_unlisted_import_use_blocks_from_policy calls default_source_roots() (WHOLE TREE) +
 // resolve_entry_graph_shared to evaluate ONE nullary Bool fn. ~34-42s, once per process,
 // INDEPENDENT of what was compiled — proven by running the same module with only its own source
@@ -924,6 +926,11 @@ data gunbc_ci_runner_host_file_observe_target: GunbcRunStepTarget = GunbcRunStep
   function: "runner_host_file_observe_ci_wet",
 }
 
+data gunbc_ci_host_memory_envelope_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_memory_envelope_observe.dag",
+  function: "host_memory_envelope_observe_ci_wet",
+}
+
 data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_host_file_converge.dag",
   function: "runner_host_file_converge_ci_wet",
@@ -1347,6 +1354,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_microvm_network_observe_target,
     gunbc_ci_runner_microvm_network_apply_target,
     gunbc_ci_runner_host_file_observe_target,
+    gunbc_ci_host_memory_envelope_observe_target,
     gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
@@ -2813,6 +2821,16 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
     function: gunbc_ci_runner_host_file_observe_target.function,
     claim_run: false,
     receipt_rel: "target/runner-host-file-converge-receipt.txt"
+  )
+}
+
+fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_memory_envelope_observe_target.entry,
+    function: gunbc_ci_host_memory_envelope_observe_target.function,
+    claim_run: false,
+    receipt_rel: host_memory_envelope_receipt_path
   )
 }
 

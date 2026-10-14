@@ -87,3 +87,89 @@ fn parse_sweep_refusal_location_follows_the_offending_line() {
         errors[0]
     );
 }
+
+// Out-of-closure body grammaticality belongs to the parse sweep, not to an entry compile.
+// Pair A: the entry's dependency closure compiles; the same malformed body, once IN the closure,
+// still refuses the compile. Pair B: the same population under `run_dag_parse_sweep` refuses at
+// that body. A compile reads only the sources it is handed, so the sibling file cannot reach it.
+#[test]
+fn out_of_closure_malformed_body_is_owned_by_the_parse_sweep() {
+    use std::rc::Rc;
+    use v1_compiler::v1_compiler_compile::{
+        compile_to_resolved_with_options, default_compile_pipeline_options, SourceFile,
+    };
+
+    let entry = "module probe_root.entry\n\ndata ok: Bool = true\n";
+    let outsider = "module probe_root.outsider\n\nfn body_probe(x: Int) -> Int { let = = = 9 }\n";
+
+    let hard_messages = |files: Vec<(&str, &str)>| -> Vec<String> {
+        let sources: Vec<Rc<SourceFile>> = files
+            .into_iter()
+            .map(|(path, content)| {
+                Rc::new(SourceFile {
+                    path: path.to_string(),
+                    content: content.to_string(),
+                })
+            })
+            .collect();
+        compile_to_resolved_with_options(
+            Rc::new(sources.into()),
+            default_compile_pipeline_options(),
+        )
+        .diagnostics
+        .iter()
+        .filter(|d| v1_compiler::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect()
+    };
+
+    let closure_only = hard_messages(vec![("entry.dag", entry)]);
+    assert!(
+        closure_only.is_empty(),
+        "an entry compile must not refuse a body outside its closure: {closure_only:?}"
+    );
+    let in_closure = hard_messages(vec![("entry.dag", entry), ("outsider.dag", outsider)]);
+    assert!(
+        !in_closure.is_empty(),
+        "the same malformed body inside the closure must still refuse the compile"
+    );
+
+    let dir = scratch_root("body_probe_authority");
+    let root = dir.join("probe_root");
+    std::fs::create_dir_all(&root).expect("probe root");
+    std::fs::write(root.join("entry.dag"), entry).expect("entry");
+    std::fs::write(root.join("outsider.dag"), outsider).expect("outsider");
+    match v1_compiler::cli_run::run_dag_parse_sweep(&dir, &["probe_root"]) {
+        Ok(sweep) => panic!(
+            "parse sweep must refuse the malformed outsider body; parsed {} clean file(s)",
+            sweep.parse_clean
+        ),
+        Err(errors) => {
+            // The malformed body is on line 3 of `outsider`: module, blank, fn.
+            assert!(
+                errors.iter().any(|e| e.contains("outsider.dag:3:")
+                    && e.contains("expected name, found Eq")),
+                "sweep must refuse the outsider body parse at outsider.dag line 3, got {errors:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn ordinary_front_end_retains_an_authored_annotation() {
+    use std::rc::Rc;
+    use v1_compiler::v1_compiler_compile::{front_end_sources, SourceFile};
+
+    let source = "module probe_root.noted\n\n// authored note\ndata ok: Bool = true\n";
+    let result = front_end_sources(Rc::new(
+        vec![Rc::new(SourceFile {
+            path: "noted.dag".to_string(),
+            content: source.to_string(),
+        })]
+        .into(),
+    ));
+    assert!(
+        !result.annotations.rows.is_empty(),
+        "the ordinary front end must keep the bound annotation of an authored comment"
+    );
+}
