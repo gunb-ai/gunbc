@@ -147,11 +147,11 @@ fn out_of_closure_malformed_body_is_owned_by_the_parse_sweep() {
             sweep.parse_clean
         ),
         Err(errors) => {
+            // The malformed body is on line 3 of `outsider`: module, blank, fn.
             assert!(
-                errors
-                    .iter()
-                    .any(|e| e.contains("expected name, found Eq") || e.contains("outsider.dag")),
-                "sweep must locate the outsider body parse, got {errors:?}"
+                errors.iter().any(|e| e.contains("outsider.dag:3:")
+                    && e.contains("expected name, found Eq")),
+                "sweep must refuse the outsider body parse at outsider.dag line 3, got {errors:?}"
             );
         }
     }
