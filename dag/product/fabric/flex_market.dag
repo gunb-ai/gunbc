@@ -12,7 +12,7 @@ import std.measure {
 }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.currency.currency { CurrencyCode }
-import extdeps.external_authority { TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.demand {
   term_money, term_delay, term_interruption, term_accepted_work, debt_payoff_objective,
@@ -744,19 +744,6 @@ fn flex_release_window_start(running_count: Nat) -> FlexReleaseWindow {
   FlexReleaseWindow { running_count: running_count, remaining: Succ { prev: Zero } }
 }
 
-fn flex_cap_is_over(cap: FlexCapAssessment) -> Bool {
-  match cap {
-    FlexCapOver { occupied: _, cap: _ } => true
-    FlexCapAtLimit { occupied: _, cap: _ } => true
-    FlexCapUnder { occupied: _, cap: _ } => false
-    FlexCapNeedsExhaustedRoster => false
-    FlexCapUnreadable => false
-    FlexCapUnobserved => false
-    FlexCapRateUnconverted => false
-    FlexCapCurrencyMismatch { left: _, right: _ } => false
-  }
-}
-
 fn flex_release_admit(
   running_count: Nat,
   cap: FlexCapAssessment,
@@ -868,14 +855,30 @@ fn flex_ninfer_qwen_probe() -> FlexCardProbe {
   FlexCardUnitEstablished { unit: Qwen3_8_27bOnNinfer }
 }
 
-data flex_ninfer_min_driver: Nat = 580
-data flex_vllm_min_driver: Nat = 590
+type FlexHostDriverMinimum {
+  major: Nat
+  standing: CitedFigureStanding
+}
+
+data flex_ninfer_min_driver: FlexHostDriverMinimum = FlexHostDriverMinimum {
+  major: 580,
+  standing: TranscribedUncited {
+    read_obligation: "read the ninfer Qwen3.8-27b launch image NVIDIA driver major requirement; 580 is a transcribed flex screen, not a cited NVIDIA or ninfer figure" as NonEmptyStr,
+  },
+}
+
+data flex_vllm_min_driver: FlexHostDriverMinimum = FlexHostDriverMinimum {
+  major: 590,
+  standing: TranscribedUncited {
+    read_obligation: "read the vLLM CUDA 13 serving image NVIDIA driver major requirement; 590 is a transcribed flex screen, not a cited NVIDIA or vLLM figure" as NonEmptyStr,
+  },
+}
 
 fn flex_unit_min_host_driver(unit: HarnessServingUnit) -> Nat? {
   match unit {
-    Qwen3_8_27bOnNinfer => Present { value: flex_ninfer_min_driver }
-    DeepseekV4FlashOnVllm => Present { value: flex_vllm_min_driver }
-    Glm53FlashOnVllm => Present { value: flex_vllm_min_driver }
+    Qwen3_8_27bOnNinfer => Present { value: flex_ninfer_min_driver.major }
+    DeepseekV4FlashOnVllm => Present { value: flex_vllm_min_driver.major }
+    Glm53FlashOnVllm => Present { value: flex_vllm_min_driver.major }
     NemotronUltraFreeOnOpenRouter => none
   }
 }

@@ -283,11 +283,11 @@ test fn operator_template_and_policy_are_named_facts() -> Bool {
     && byte_size_count(b: flex_qwen_disk) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 32)))
     && flex_search_type == vast_ai_search_type_bid
     && match flex_unit_min_host_driver(unit: Qwen3_8_27bOnNinfer) {
-      Present { value: n } => n == flex_ninfer_min_driver
+      Present { value: n } => n == flex_ninfer_min_driver.major
       Absent => false
     }
     && match flex_unit_min_host_driver(unit: Glm53FlashOnVllm) {
-      Present { value: n } => n == flex_vllm_min_driver
+      Present { value: n } => n == flex_vllm_min_driver.major
       Absent => false
     }
     && money_per_hour_cap_is_one_thirty_four()
