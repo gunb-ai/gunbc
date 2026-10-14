@@ -417,6 +417,28 @@ fn publication_refused_dir(instance_root: String) -> String {
   join([publication_spool_root(instance_root: instance_root), "/requests-refused"], "")
 }
 
+// THE BELT DISPATCH SPOOL, THE OS-PRINCIPAL SERVICE-WRITE ROUTE. HTTP /dispatch stays human-only
+// (gunbc.auth.request_authentication belt_actuation_admission). Automation writes a request file
+// as the instance service user; the belt drains it. Authority is the kernel's directory mode
+// (other.write false, group the service principal), not reachability and not a loopback exemption.
+// gunbc.live_deploy.emit apply_dispatch_spool_steps creates the directories; gunbc.roadmap.roadmap_dispatch_spool
+// is the only reader of a request's bytes.
+fn dispatch_spool_root(instance_root: String) -> String {
+  join([instance_root, "/dispatch-spool"], "")
+}
+
+fn dispatch_request_dir(instance_root: String) -> String {
+  join([dispatch_spool_root(instance_root: instance_root), "/requests"], "")
+}
+
+fn dispatch_answer_dir(instance_root: String) -> String {
+  join([dispatch_spool_root(instance_root: instance_root), "/answers"], "")
+}
+
+fn dispatch_refused_dir(instance_root: String) -> String {
+  join([dispatch_spool_root(instance_root: instance_root), "/requests-refused"], "")
+}
+
 // srv1 observation (2026-08-13, parent eager-koi-458): directory already briansrls-owned;
 // EACCES was a root-owned STALE FILE from the pre-b1 unit user, not the directory.
 // Publication authority is atomic rename in gunbc.fleet.fleet_converge_cli — NOT live_deploy

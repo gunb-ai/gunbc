@@ -1,0 +1,112 @@
+module test.claim.roadmap_dispatch_spool_witness
+
+import std.types { Bool, String }
+import gunbc.roadmap.roadmap_dispatch_spool {
+  dispatch_request_json,
+  dispatch_spool_key,
+  dispatch_spool_entry_name,
+  dispatch_request_admission,
+  DispatchRequestAdmitted,
+  DispatchRequestUndecodableDocument,
+  DispatchRequestHumanOnlyAction,
+  DispatchRequestMisaddressed,
+  dispatch_spool_outcome_key,
+  DispatchSpoolRequestRefused,
+  DispatchSpoolAnswerWriteFailed,
+}
+import gunbc.host.host_layout { dispatch_request_dir }
+import gunbc.live_deploy.emit {
+  publication_spool_request_mode,
+  live_deploy_belt_dispatch_spool_path_unit_file,
+  live_deploy_belt_dispatch_spool_drain_service_unit_file,
+  apply_dispatch_spool_steps,
+}
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  deployment_belt_dispatch_spool_drain_service_unit_name,
+}
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
+import extdeps.systemd.unit_file { systemd_unit_file_lines }
+
+fn live_spec() -> DeploymentSpec {
+  deployment_spec_srv1()
+}
+
+fn well_formed_entry() -> String {
+  dispatch_spool_entry_name(key: dispatch_spool_key(node_id: "n1", executor_word: ""))
+}
+
+test fn dispatch_request_directory_mode_refuses_other_writers() -> Bool {
+  !publication_spool_request_mode.other.write
+    && publication_spool_request_mode.group.write
+    && string_contains(
+      s: pipeline_steps_text(steps: apply_dispatch_spool_steps(spec: live_spec())),
+      pattern: dispatch_request_dir(instance_root: live_spec().service.instance_root as String),
+    )
+}
+
+test fn a_well_formed_dispatch_request_at_its_own_entry_is_admitted() -> Bool {
+  match dispatch_request_admission(
+    entry: well_formed_entry(),
+    request_text: dispatch_request_json(node_id: "n1", executor_word: ""),
+  ) {
+    DispatchRequestAdmitted { request: _ } => true
+    DispatchRequestUndecodableDocument { reason: _ } => false
+    DispatchRequestHumanOnlyAction { reason: _ } => false
+    DispatchRequestMisaddressed { detail: _ } => false
+  }
+}
+
+test fn a_malformed_dispatch_request_is_refused() -> Bool {
+  match dispatch_request_admission(entry: well_formed_entry(), request_text: "{}") {
+    DispatchRequestUndecodableDocument { reason: _ } => true
+    DispatchRequestAdmitted { request: _ } => false
+    DispatchRequestHumanOnlyAction { reason: _ } => false
+    DispatchRequestMisaddressed { detail: _ } => false
+  }
+}
+
+test fn a_misaddressed_dispatch_request_is_refused() -> Bool {
+  match dispatch_request_admission(
+    entry: "not-the-key.json",
+    request_text: dispatch_request_json(node_id: "n1", executor_word: ""),
+  ) {
+    DispatchRequestMisaddressed { detail: _ } => true
+    DispatchRequestAdmitted { request: _ } => false
+    DispatchRequestUndecodableDocument { reason: _ } => false
+    DispatchRequestHumanOnlyAction { reason: _ } => false
+  }
+}
+
+test fn a_human_only_action_on_the_service_spool_is_refused() -> Bool {
+  match dispatch_request_admission(
+    entry: well_formed_entry(),
+    request_text: "{\"schema\":\"belt-dispatch-spool-request/v1\",\"node_id\":\"n1\",\"action\":\"stop\"}",
+  ) {
+    DispatchRequestHumanOnlyAction { reason } => string_contains(s: reason, pattern: "stop")
+    DispatchRequestAdmitted { request: _ } => false
+    DispatchRequestUndecodableDocument { reason: _ } => false
+    DispatchRequestMisaddressed { detail: _ } => false
+  }
+}
+
+test fn dispatched_and_refused_outcomes_stay_distinct() -> Bool {
+  dispatch_spool_outcome_key(o: DispatchSpoolRequestRefused { entry: "e", detail: "d" })
+    != dispatch_spool_outcome_key(o: DispatchSpoolAnswerWriteFailed { entry: "e", detail: "d" })
+}
+
+test fn the_dispatch_spool_path_wakes_the_drain_on_a_non_empty_request_directory() -> Bool {
+  let spec = live_spec()
+  let lines = systemd_unit_file_lines(file: live_deploy_belt_dispatch_spool_path_unit_file(spec: spec))
+  any(lines, l => l == join(["Unit=", deployment_belt_dispatch_spool_drain_service_unit_name(names: spec.names) as String], ""))
+    && any(lines, l => l == join(["DirectoryNotEmpty=", dispatch_request_dir(instance_root: spec.service.instance_root as String)], ""))
+    && any(lines, l => l == "WantedBy=paths.target")
+}
+
+test fn the_dispatch_spool_drain_runs_as_the_service_principal() -> Bool {
+  let spec = live_spec()
+  let lines = systemd_unit_file_lines(file: live_deploy_belt_dispatch_spool_drain_service_unit_file(spec: spec))
+  any(lines, l => l == join(["User=", spec.service.service_user as String], ""))
+    && any(lines, l => string_contains(s: l, pattern: "--function belt_dispatch_spool_drain_cli"))
+}
