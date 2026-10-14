@@ -2,7 +2,7 @@ module v2.std.integer
 
 import std.coercion { unicode_scalar_unfold }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, TotalOrder, Ordering, Less, Equal, Greater, list_snoc_item, TailAbsent, TailFound, fold_list, length, list_map }
+import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, TotalOrder, Ordering, Less, Equal, Greater, list_snoc_item, fold_list, length, list_map }
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
 import v2.std.collection {
   list_at_optional
@@ -1112,12 +1112,12 @@ fn integer_string_to_decimal_digits_step(
       match integer_char_code_to_decimal_digit_optional(c: c) {
         Present { value: d } =>
           match string_tail(s: s) {
-            TailFound { tail: rest } =>
+            Present { value: rest } =>
               integer_string_to_decimal_digits_step(
                 s: rest,
                 acc: integer_decimal_digits_snoc(xs: acc, digit: d)
               )
-            TailAbsent => optional_absent()
+            Absent => optional_absent()
           }
         Absent => optional_absent()
       }

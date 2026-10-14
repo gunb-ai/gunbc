@@ -210,6 +210,11 @@ fn bash_command_fold_plan() -> List<List<Runnable>> {
       },
       RunnableSingleClaim {
         entry: bash_fold_test_entry,
+        function: "bash_fold_with_redir_from_file_var_holds",
+        profile: runnable_resource_profile_negligible()
+      },
+      RunnableSingleClaim {
+        entry: bash_fold_test_entry,
         function: "bash_fold_heredoc_holds",
         profile: runnable_resource_profile_negligible()
       },

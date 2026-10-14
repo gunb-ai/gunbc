@@ -1,7 +1,9 @@
 module gunbc.host.host_axis_caps
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
-import std.algebra { trim, list_head, HeadFound, HeadAbsent }
+import std.algebra { trim, list_head }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -32,6 +34,7 @@ import extdeps.systemd {
   MemoryHigh,
   systemd_memory_max_property,
   systemd_memory_high_property,
+  systemd_memory_swap_max_property,
 }
 import extdeps.systemd.systemctl {
   systemctl_daemon_reload_argv,
@@ -243,8 +246,20 @@ fn derived_runner_memory_high_cap_member() -> CapMember {
   )
 }
 
+// SWAP IS AUTHORED LIKE THE OTHER TWO CEILINGS. 30-fleet-swap.conf was enrolled in
+// caps_managed_dropin_paths but absent from the desired set, so gunbc_runner_slot_desired's
+// memory_swap_max (0) was written by nothing and a hand-set swap ceiling was neither authored
+// against nor reconciled.
+fn derived_runner_memory_swap_cap_member() -> CapMember {
+  desired_cap_member(
+    dropin_path: gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr,
+    property: systemd_memory_swap_max_property as NonEmptyStr,
+    bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)) as NonEmptyStr,
+  )
+}
+
 fn derived_runner_memory_cap_members() -> List<CapMember> {
-  [derived_runner_memory_max_cap_member(), derived_runner_memory_high_cap_member()]
+  [derived_runner_memory_max_cap_member(), derived_runner_memory_high_cap_member(), derived_runner_memory_swap_cap_member()]
 }
 
 // ── RAISING A CAP IS ORDERED AFTER RETIREMENT, AND THE ORDER IS A TYPE ────────────────────────

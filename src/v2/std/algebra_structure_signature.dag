@@ -357,8 +357,11 @@ fn algebra_structure_typed_binders(structures: List<Node>) -> List<Symbol> {
 // never mistaken for a structure that lacks the field (DESIGN section 5: no fabricated plausible answer). A
 // field is declared when the structure binds it, or when a sub-structure it composes (through a binder in
 // algebra_structure_composing_fields) declares it. An operation's signature and the carrier are never entered.
+// A declared field carries the type its binder declares, so a reader of the field's RESULT reads it from
+// the structure (equivalence's eq returns Bool, ring add's group operation returns the carrier) rather than
+// assuming it; algebra_field_operation_type reads the operation a composing field denotes.
 type AlgebraFieldDeclaration
-  = FieldDeclared
+  = FieldDeclared { field_type: Node }
   | FieldNotDeclared
   | InhabitanceMalformed { cause: Symbol }
 
@@ -381,6 +384,17 @@ fn algebra_inhabitance_field_reading(inhabitance: Node, field: Symbol) -> Algebr
         NamedChildFound { target: algebra } =>
           InhabitanceFieldRead { carrier: carrier, declaration: algebra_structure_field_declaration(structure: algebra, field: field) }
       }
+  }
+}
+
+// THE OPERATION A DECLARED FIELD DENOTES. A field typed by a composed structure -- ring add is an abelian
+// group, ring mul a monoid -- denotes that structure's binary operation, the ^magma_field_op its composition
+// reaches; any other field type is the operation itself. A composed structure with no magma operation answers
+// FieldNotDeclared, so a reader refuses it rather than guessing a result.
+fn algebra_field_operation_type(field_type: Node) -> AlgebraFieldDeclaration {
+  match conj_children_optional(n: field_type) {
+    Absent => FieldDeclared { field_type: field_type }
+    Present { value: _ } => algebra_structure_field_declaration(structure: field_type, field: ^magma_field_op)
   }
 }
 
@@ -412,10 +426,10 @@ fn algebra_structure_field_declaration(structure: Node, field: Symbol) -> Algebr
 fn algebra_field_declaration_join(a: AlgebraFieldDeclaration, b: AlgebraFieldDeclaration) -> AlgebraFieldDeclaration {
   match a {
     InhabitanceMalformed { cause: _ } => a
-    FieldDeclared =>
+    FieldDeclared { field_type: _ } =>
       match b {
         InhabitanceMalformed { cause: _ } => b
-        FieldDeclared => a
+        FieldDeclared { field_type: _ } => a
         FieldNotDeclared => a
       }
     FieldNotDeclared => b
@@ -429,7 +443,7 @@ fn algebra_structure_edge_field_declaration(e: Edge, field: Symbol) -> AlgebraFi
         Absent => InhabitanceMalformed { cause: ^algebra_structure_field_not_a_binder }
         Present { value: parts } =>
           algebra_field_declaration_join(
-            a: if name == field { FieldDeclared } else { FieldNotDeclared },
+            a: if name == field { FieldDeclared { field_type: parts.type_node } } else { FieldNotDeclared },
             b: if algebra_field_composes_a_structure(name: name) {
               match conj_children_optional(n: parts.type_node) {
                 Present { value: _ } => algebra_structure_field_declaration(structure: parts.type_node, field: field)
@@ -561,22 +575,13 @@ fn boolean_algebra_node(inhabitant: Node) -> Node {
   )
 }
 
-fn bool_type_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Disj },
-    children: [
-      Edge { label: Authored { name: ^bool_variant_true }, target: algebra_empty_conj() },
-      Edge { label: Authored { name: ^bool_variant_false }, target: algebra_empty_conj() },
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
-}
-
+// eq returns v2.std.logic bool_node, the one Bool every Bool-typed position derives. A structural
+// true/false Disj stood here as a second spelling of Bool, which no derived type could equal.
 fn equivalence_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      binder_edge(name: ^equivalence_field_eq, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: bool_type_node())),
+      binder_edge(name: ^equivalence_field_eq, type_node: algebra_binary_fn_node(domain: inhabitant, codomain: bool_node())),
     ],
     occurrence_id: OccurrenceSynthetic
 }
