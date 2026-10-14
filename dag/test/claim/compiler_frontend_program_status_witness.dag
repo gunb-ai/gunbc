@@ -2,7 +2,7 @@ module test.claim.compiler_frontend_program_status_witness
 
 import std.types { NonEmptyStr }
 import std.decl_ref { decl_ref }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.witness_admission { DiscoverySelection, NoConsumer }
 import gunbc.compiler_frontend_program_interlock {
   ProgramMilestone,
@@ -679,16 +679,23 @@ test fn xl2_is_not_derivable_while_the_rehearsal_residual_has_no_producer() -> B
 // THE XL-2 PREREQUISITE PARTITION, AT IDENTITY GRAIN. Delivered and outstanding are decided by
 // each arm's standing, and this pins WHICH arms sit on each side, with the PR each delivery
 // cites -- so flipping an arm's standing, or re-attributing it, reddens a conjunct rather than
-// leaving a label check green. The roster is also checked exact: every arm, each once.
+// leaving a label check green. A standing lookup on a constructed variant is not a join: it
+// stays green if that variant is missing from xl2_prerequisites. Each identity check therefore
+// requires the arm occur exactly once on the roster. Completeness is the other direction:
+// every roster member is one of the claimed identities. No numeric roster pin.
+fn xl2_roster_exactly_once(p: Xl2Prerequisite) -> Bool {
+  count(xl2_prerequisites |> filter(q => xl2_prerequisite_label(p: q) == xl2_prerequisite_label(p: p))) == 1
+}
+
 fn xl2_delivered_by(p: Xl2Prerequisite, pr: Int, merge_sha: String) -> Bool {
-  match xl2_prerequisite_standing(p: p) {
+  xl2_roster_exactly_once(p: p) && match xl2_prerequisite_standing(p: p) {
     PrerequisiteDelivered { owner: _, evidence, qualification: _ } => evidence.pr == pr && evidence.merge_sha as String == merge_sha
     PrerequisiteOutstanding { tracked_by: _, why: _ } => false
   }
 }
 
 fn xl2_outstanding_tracked_by(p: Xl2Prerequisite, decl_name: String) -> Bool {
-  match xl2_prerequisite_standing(p: p) {
+  xl2_roster_exactly_once(p: p) && match xl2_prerequisite_standing(p: p) {
     PrerequisiteDelivered { owner: _, evidence: _, qualification: _ } => false
     PrerequisiteOutstanding { tracked_by, why: _ } => tracked_by.decl_name as String == decl_name
   }
@@ -698,8 +705,37 @@ fn xl2_label_is(p: Xl2Prerequisite, want: Xl2Prerequisite) -> Bool {
   xl2_prerequisite_label(p: p) == xl2_prerequisite_label(p: want)
 }
 
-test fn xl2_prerequisites_partition_into_twenty_two_delivered_and_three_outstanding() -> Bool {
-  count(xl2_prerequisites) == 25
+fn xl2_claimed_partition_member(p: Xl2Prerequisite) -> Bool {
+  xl2_label_is(p: p, want: PlainCallArgumentReferenceVisibility)
+    || xl2_label_is(p: p, want: IfArmCallArgumentReferenceVisibility)
+    || xl2_label_is(p: p, want: BareFieldTypeVisibility)
+    || xl2_label_is(p: p, want: WholeTreeResolveCensus)
+    || xl2_label_is(p: p, want: ResolveOccurrenceCompleteness)
+    || xl2_label_is(p: p, want: OperatorExpressionLoweredWhole)
+    || xl2_label_is(p: p, want: OptionalAccessorLocatedRefusal)
+    || xl2_label_is(p: p, want: MatchOnCallScrutineeNavigation)
+    || xl2_label_is(p: p, want: CompoundCallArgumentValueLowering)
+    || xl2_label_is(p: p, want: StrippedTreeRehearsalComposition)
+    || xl2_label_is(p: p, want: BlockStatementReferenceVisibility)
+    || xl2_label_is(p: p, want: LoweringOccurrenceProjection)
+    || xl2_label_is(p: p, want: ListLiteralElementVisibility)
+    || xl2_label_is(p: p, want: LambdaArgumentValueLowering)
+    || xl2_label_is(p: p, want: CaretSymbolOperandLowering)
+    || xl2_label_is(p: p, want: AsCastOperandLowering)
+    || xl2_label_is(p: p, want: ElseLessIfStatementLowering)
+    || xl2_label_is(p: p, want: WildcardMatchArmResolution)
+    || xl2_label_is(p: p, want: QualifiedFieldTypeVisibility)
+    || xl2_label_is(p: p, want: MatchEveryArmLowered)
+    || xl2_label_is(p: p, want: EnclosingExpressionLoweredWhole)
+    || xl2_label_is(p: p, want: DataInitializerMatchScrutineeLowering)
+    || xl2_label_is(p: p, want: MatchArmStatementBodyLowering)
+    || xl2_label_is(p: p, want: ServiceModuleLowering)
+    || xl2_label_is(p: p, want: UsesClauseCarrier)
+}
+
+test fn xl2_prerequisites_partition_is_an_identity_join() -> Bool {
+  all(xl2_prerequisites, p => xl2_claimed_partition_member(p: p))
+    && all(xl2_prerequisites, p => xl2_roster_exactly_once(p: p))
     && xl2_delivered_by(p: PlainCallArgumentReferenceVisibility, pr: 12108, merge_sha: "b0d307c31b")
     && xl2_delivered_by(p: BareFieldTypeVisibility, pr: 11574, merge_sha: "b705d17c45")
     && xl2_delivered_by(p: WholeTreeResolveCensus, pr: 11738, merge_sha: "c6b4e7ed2c")
@@ -711,13 +747,13 @@ test fn xl2_prerequisites_partition_into_twenty_two_delivered_and_three_outstand
     && xl2_delivered_by(p: IfArmCallArgumentReferenceVisibility, pr: 12221, merge_sha: "e74e345a93")
     && xl2_delivered_by(p: BlockStatementReferenceVisibility, pr: 12221, merge_sha: "e74e345a93")
     && xl2_delivered_by(p: OptionalAccessorLocatedRefusal, pr: 12780, merge_sha: "de028fb0ec")
-    && xl2_outstanding_tracked_by(p: LoweringOccurrenceProjection, decl_name: "lowering_rebuilds_an_authored_atom_without_its_occurrence")
+    && xl2_delivered_by(p: LoweringOccurrenceProjection, pr: 12314, merge_sha: "b40c7f6067")
     && xl2_delivered_by(p: ListLiteralElementVisibility, pr: 12208, merge_sha: "575fc486ad")
     && xl2_delivered_by(p: LambdaArgumentValueLowering, pr: 12210, merge_sha: "c2c064faa0")
     && xl2_delivered_by(p: CaretSymbolOperandLowering, pr: 12420, merge_sha: "aa3b461215")
     && xl2_delivered_by(p: AsCastOperandLowering, pr: 12315, merge_sha: "696a77dee7")
     && xl2_delivered_by(p: ElseLessIfStatementLowering, pr: 12713, merge_sha: "2e95e66d25")
-    && xl2_outstanding_tracked_by(p: ServiceModuleLowering, decl_name: "service_interface_member_has_no_carrier")
+    && xl2_delivered_by(p: ServiceModuleLowering, pr: 13833, merge_sha: "7c9319cbaf")
     && xl2_delivered_by(p: WildcardMatchArmResolution, pr: 12297, merge_sha: "0579afae7f")
     && xl2_delivered_by(p: QualifiedFieldTypeVisibility, pr: 12033, merge_sha: "10e01b1169")
     && xl2_delivered_by(p: MatchEveryArmLowered, pr: 12383, merge_sha: "8ebd8b671d")
@@ -725,20 +761,16 @@ test fn xl2_prerequisites_partition_into_twenty_two_delivered_and_three_outstand
     && xl2_delivered_by(p: DataInitializerMatchScrutineeLowering, pr: 12510, merge_sha: "b768b0f431")
     && xl2_delivered_by(p: MatchArmStatementBodyLowering, pr: 12510, merge_sha: "b768b0f431")
     && xl2_outstanding_tracked_by(p: UsesClauseCarrier, decl_name: "uses_clause_has_no_carrier")
-    && count(xl2_prerequisites_outstanding()) == 3
     && all(xl2_prerequisites_outstanding(),
-         p => xl2_label_is(p: p, want: LoweringOccurrenceProjection)
-           || xl2_label_is(p: p, want: ServiceModuleLowering)
-           || xl2_label_is(p: p, want: UsesClauseCarrier))
-    && all(xl2_prerequisites,
-         p => count(xl2_prerequisites |> filter(q => xl2_prerequisite_label(p: q) == xl2_prerequisite_label(p: p))) == 1)
+         p => xl2_label_is(p: p, want: UsesClauseCarrier))
 }
 
 // THE INVARIANT THE PARTITION MUST NOT MOVE: prerequisites are necessary, not sufficient, so
-// XL-2 stays NotDerivable and the producer literal stays Unavailable with twenty-two of twenty-five delivered
-// -- and would stay so with twenty-five of twenty-five, because the producer is its own deliverable.
+// XL-2 stays NotDerivable and the producer literal stays Unavailable while any or all of the
+// roster is delivered -- the producer is its own deliverable. The delivered count is derived
+// from the roster, not pinned (a sibling flip of another arm must not redden this conjunct).
 test fn xl2_stays_not_derivable_with_its_prerequisites_mostly_delivered() -> Bool {
-  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) == 22
+  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) + count(xl2_prerequisites_outstanding()) == count(xl2_prerequisites)
     && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))
     && match rehearsal_producer_standing() {
          RehearsalProducerUnavailable { why: _, cause: _ } => true

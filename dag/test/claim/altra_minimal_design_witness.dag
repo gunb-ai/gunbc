@@ -46,7 +46,7 @@ import extdeps.cpu.ampere_altra_memory_controller {
   active_channel_count,
   channel_count_is_production_qualified,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

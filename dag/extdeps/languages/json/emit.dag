@@ -5,6 +5,7 @@ import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme, json_
 import extdeps.numeric.base16 { int_to_upper_hex }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -94,14 +95,59 @@ fn escape_json_string(s: String) -> String {
 // code point below 0x20 is covered by construction, and none of the replacement texts contains a
 // code point a later pass splits on, so each original character escapes exactly once. Output bytes
 // are identical to the per-char fold's; only the building cost changes (DESIGN section 6).
-data json_named_escape_code_points: List<Int> = [8, 9, 10, 12, 13]
+// Each row is ONE fact, the control character spelled as a text literal. Its code point is DERIVED from
+// that spelling through the declared Unicode scalar unfold (std.coercion unicode_scalar_unfold), so the
+// number and the character cannot drift apart (review 79227) and no Int is asked to be a Char at run time
+// (gunbc.recurring_failure_mode char_brand_admits_any_int). A row of other than one scalar is not a
+// control character; the witness holds every row to one scalar and the two lists to 0..31 exactly.
+fn json_escape_row_code_point(spelled: String) -> Int {
+  fold(unicode_scalar_unfold(s: spelled), init: 0, f: (_acc, c) => c)
+}
 
-data json_control_escape_code_points: List<Int> = [
-  0, 1, 2, 3, 4, 5, 6, 7, 11, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-]
+fn json_named_escape_rows() -> List<String> {
+  [
+  "\u{8}",
+  "\u{9}",
+  "\u{a}",
+  "\u{c}",
+  "\u{d}",
+  ]
+}
 
-fn json_escape_replace(s: String, code_point: Int, replacement: String) -> String {
-  join(split(s: s, delimiter: from_code_point(code_point)), replacement)
+fn json_control_escape_rows() -> List<String> {
+  [
+  "\u{0}",
+  "\u{1}",
+  "\u{2}",
+  "\u{3}",
+  "\u{4}",
+  "\u{5}",
+  "\u{6}",
+  "\u{7}",
+  "\u{b}",
+  "\u{e}",
+  "\u{f}",
+  "\u{10}",
+  "\u{11}",
+  "\u{12}",
+  "\u{13}",
+  "\u{14}",
+  "\u{15}",
+  "\u{16}",
+  "\u{17}",
+  "\u{18}",
+  "\u{19}",
+  "\u{1a}",
+  "\u{1b}",
+  "\u{1c}",
+  "\u{1d}",
+  "\u{1e}",
+  "\u{1f}",
+  ]
+}
+
+fn json_escape_replace(s: String, delimiter: String, replacement: String) -> String {
+  join(split(s: s, delimiter: delimiter), replacement)
 }
 
 fn json_escape_named_replacement(code_point: Int) -> String {
@@ -117,27 +163,27 @@ fn json_escape_control_replacement(code_point: Int) -> String {
 }
 
 fn json_escape_via_passes(s: String) -> String {
-  let unslashed = json_escape_replace(s: s, code_point: 92, replacement: "\\\\")
-  let quoted = json_escape_replace(s: unslashed, code_point: 34, replacement: "\\\"")
+  let unslashed = json_escape_replace(s: s, delimiter: "\u{5c}", replacement: "\\\\")
+  let quoted = json_escape_replace(s: unslashed, delimiter: "\u{22}", replacement: "\\\"")
   let named = fold(
-    json_named_escape_code_points,
+    json_named_escape_rows(),
     init: quoted,
-    f: fn(acc, code_point) {
+    f: fn(acc, row) {
       json_escape_replace(
         s: acc,
-        code_point: code_point,
-        replacement: json_escape_named_replacement(code_point: code_point),
+        delimiter: row,
+        replacement: json_escape_named_replacement(code_point: json_escape_row_code_point(spelled: row)),
       )
     },
   )
   fold(
-    json_control_escape_code_points,
+    json_control_escape_rows(),
     init: named,
-    f: fn(acc, code_point) {
+    f: fn(acc, row) {
       json_escape_replace(
         s: acc,
-        code_point: code_point,
-        replacement: json_escape_control_replacement(code_point: code_point),
+        delimiter: row,
+        replacement: json_escape_control_replacement(code_point: json_escape_row_code_point(spelled: row)),
       )
     },
   )

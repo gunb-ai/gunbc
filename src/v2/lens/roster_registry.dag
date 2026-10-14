@@ -16,8 +16,7 @@ import v2.lens.common.construction_justification {
 }
 import std.decl_ref { DeclarationRef }
 import std.disposition { SingleAuthority }
-import v2.std.algebra { count_where, fold_list, Empty }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, count_where, fold_list, Empty }
 import v2.std.text { String }
 
 // Group-of-units standard-representation lens (operator ruling 2026-07-22, roadmap group 5a): every

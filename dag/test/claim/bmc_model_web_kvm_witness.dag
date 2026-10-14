@@ -1,6 +1,6 @@
 module test.claim.bmc_model_web_kvm_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
 import std.measure { second }

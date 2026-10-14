@@ -1,7 +1,7 @@
 module v2.test.claim.parse.parse_test_grammar_not_predicate
 
 import v2.compiler.parse { ParseArtifact, parse_module }
-import v2.std.algebra { length }
+import std.algebra { length }
 import std.types { List }
 import v2.std.compilers.lexing { Token, token_stream_new }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
@@ -20,7 +20,7 @@ import v2.std.grammar {
   grammar_empty_sync_tokens
 }
 import v2.std.integer { Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, content_hash }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

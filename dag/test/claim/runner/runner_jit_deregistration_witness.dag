@@ -1,7 +1,7 @@
 module test.claim.runner.runner_jit_deregistration_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.upsert_decision { Noop, Apply, Refuse }
 import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestExchangeStatusRefused, RestExchangeUnreached }
 import extdeps.github.actions_jit_runner { JitRunnerName }

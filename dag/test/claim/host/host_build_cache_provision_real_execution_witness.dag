@@ -12,7 +12,7 @@ import gunbc.host.host_effect_realize {
   ShellExecObserved,
 }
 import std.realization_reconcile { NotConverged, Converged }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

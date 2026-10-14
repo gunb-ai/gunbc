@@ -8,6 +8,7 @@ import std.compiler_entry {
 import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
 import std.coercion { TypeRealizationDecision }
+import std.unicode.scalar { ascii_lowercase }
 
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
 import v1.std.core {
@@ -82,7 +83,7 @@ import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
   escape_json_string, module_to_filename, make_indent,
-  to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
+  to_snake, to_screaming_snake, is_upper,
   sanitize_service_name, capitalize_first, service_var_name, to_pascal,
   escape_string_literal_body, unique_strings, to_string, to_string_helper,
   test_function_name,
@@ -621,7 +622,7 @@ fn to_camel(name: String) -> String {
   if parts |> count == 0 { name }
   else {
     let first_part = match parts |> first {
-      Present { value: p } => p |> chars |> map(c => to_lower_char(ch: c)) |> join(separator: "")
+      Present { value: p } => ascii_lowercase(s: p)
       Absent => ""
     }
     let rest_parts = parts |> enumerate
@@ -2526,8 +2527,7 @@ fn emit_suffix_escape_ident(converted: String, suffix: String, keywords: List<St
 }
 
 fn hex_digit_char(d: Int) -> String {
-  if d < 10 { from_code_point(cp: 48 + d) }
-  else { from_code_point(cp: 55 + d) }
+  substring(s: "0123456789ABCDEF", start: d, end: d + 1)
 }
 
 fn int_to_upper_hex_inner(n: Int, acc: String) -> String {

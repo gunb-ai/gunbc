@@ -9,7 +9,7 @@ import gunbc.host.host_hygiene_reaper_remediate {
   ReapEffectRefused,
   residual_reap_effect_for,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -196,4 +196,28 @@ test fn typed_reap_effect_needs_no_action_for_empty_dead_slot_with_no_override()
     NoEffect { unit: u } => u == reaper_test_dead_slot_empty_no_override.unit
     _ => false
   }
+}
+
+// Off-diagonal cases the old wildcard arms absorbed. These are RED: they pin the
+// two-axis discrimination of action_kills_build_cache_server against the derived
+// == conjunction (obs.occupant == CgroupBuildCacheServerOccupant
+//   && a == KillOccupantAndRemoveOverride). A too-permissive == (e.g. the
+// occupant axis failing to distinguish build-cache from the other occupants, or
+// the action axis matching a non-kill action to the nullary kill variant) would
+// make any of these come out true and the witness would fail.
+
+test fn kill_action_on_non_build_cache_occupant_is_false() -> Bool {
+  action_kills_build_cache_server(a: KillOccupantAndRemoveOverride, obs: reaper_test_dead_slot_ordinary_residue) == false
+    && action_kills_build_cache_server(a: KillOccupantAndRemoveOverride, obs: reaper_test_dead_slot_empty_no_override) == false
+}
+
+test fn build_cache_occupant_with_non_kill_action_is_false() -> Bool {
+  action_kills_build_cache_server(a: NoActionNeeded, obs: reaper_test_stranded_build_cache_slot) == false
+    && action_kills_build_cache_server(a: RemoveOverrideOnly, obs: reaper_test_stranded_build_cache_slot) == false
+    && action_kills_build_cache_server(a: ReapRefused { cause: RefusalUnitActive }, obs: reaper_test_stranded_build_cache_slot) == false
+}
+
+// Positive control: the one on-diagonal case the kill arm must accept.
+test fn build_cache_occupant_with_kill_action_is_true() -> Bool {
+  action_kills_build_cache_server(a: KillOccupantAndRemoveOverride, obs: reaper_test_stranded_build_cache_slot) == true
 }

@@ -51,7 +51,7 @@ import extdeps.google.sheets {
   SheetsCellDataRead,
   sheets_color_channel_read,
 }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import gunbc.review_sheet_tab_locator { LocatedReviewTab }
 import extdeps.google.sheets {
   A1RangeEncoding,

@@ -9,7 +9,6 @@ data s1_closure_paths: List<String> = [
   "src/v2/compiler/normalize.dag",
   "src/v2/extdeps/languages/dag.dag",
   "src/v2/extdeps/languages/fidelity.dag",
-  "src/v2/std/algebra.dag",
   "src/v2/std/artifact.dag",
   "src/v2/std/collection.dag",
   "src/v2/std/compilers/lexing.dag",

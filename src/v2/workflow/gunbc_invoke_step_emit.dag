@@ -1,8 +1,7 @@
 module v2.workflow.gunbc_invoke_step_emit
 
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, list_flat_map }
 import std.types { Char }
-import v2.std.algebra { list_flat_map }
 import v2.std.text { string_contains_char }
 import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_shell_unquoted_path_alphabet, orch_shell_unquoted_path_ok }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
@@ -18,12 +17,12 @@ import gunbc.cli_invoke {
 }
 import v2.std.orchestration {
   Do,
-  EnvBinding,
   FailFast,
   Pipeline,
   PipelineStep,
-  Run
+  Run,
 }
+import std.env_binding { EnvBinding }
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
 

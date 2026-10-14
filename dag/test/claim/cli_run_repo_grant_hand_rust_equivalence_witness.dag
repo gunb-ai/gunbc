@@ -17,7 +17,7 @@ import gunbc.cli_run_repo_grant {
 import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool, String }
 import std.access { Permit, Deny }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

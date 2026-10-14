@@ -38,8 +38,8 @@ pub use crate::v1_compiler_emit_core_support::{
     escape_string_literal_body, extract_test_projections, is_leaf_type_item, is_type_alias_item,
     is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
     make_indent, module_filename_collision_diagnostics, module_to_filename, sanitize_service_name,
-    service_var_name, test_function_name, to_lower_char, to_screaming_snake, to_snake, to_string,
-    to_string_helper, to_upper_char, unique_strings,
+    service_var_name, test_function_name, to_screaming_snake, to_snake, to_string,
+    to_string_helper, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;

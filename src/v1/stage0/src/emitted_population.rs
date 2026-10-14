@@ -58,6 +58,7 @@
 // src/std_computation.rs
 // src/std_constructors.rs
 // src/std_content_hash.rs
+// src/std_decimal.rs
 // src/std_decl_ref.rs
 // src/std_disposition.rs
 // src/std_dissolution.rs
@@ -88,6 +89,7 @@
 // src/std_process_termination.rs
 // src/std_realization_schedule.rs
 // src/std_reference_binding_observation.rs
+// src/std_render_repeat_string_bootstrap.rs
 // src/std_repair_input_origin.rs
 // src/std_roster_frontier.rs
 // src/std_serialization.rs
@@ -97,6 +99,7 @@
 // src/std_termination.rs
 // src/std_trait_derive_shape.rs
 // src/std_types.rs
+// src/std_unicode_scalar.rs
 // src/std_unicode_types.rs
 // src/std_witness_admission.rs
 // src/std_workspace_artifact.rs
@@ -158,12 +161,14 @@
 // src/v1_tests_claim_bare_variant_reference_occurrence_control_test.rs
 // src/v1_tests_claim_carrier_realization_census.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
+// src/v1_tests_claim_escape_json_string_differential.rs
 // src/v1_tests_claim_generic_identity_census.rs
 // src/v1_tests_claim_interpolation_hole_census.rs
 // src/v1_tests_claim_item_kind_dissolves_shape_predicates_control_test.rs
 // src/v1_tests_claim_parse_source_extent_control_test.rs
 // src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs
+// src/v1_tests_claim_shared_type_leaf_collision_census.rs
 // src/v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness.rs
 // src/v1_tests_claim_transport_roster_closure_witness_test.rs
 // src/v1_tests_claim_type_declaration_occurrence_control_test.rs

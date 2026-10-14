@@ -9,7 +9,7 @@ import v2.lens.complexity_accumulator_copy.roster_gate {
 }
 import v2.lens.common.source_analysis_standing { SourceTokenizationRejected }
 import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -47,7 +47,7 @@ test fn roster_lens_cost_model_zero_suspects_within_ratchet() -> Bool {
 }
 
 test fn roster_std_algebra_zero_suspects_within_ratchet() -> Bool {
-  file_gate(path: "src/v2/std/algebra.dag", refusal_ceiling: 3)
+  file_gate(path: "dag/std/algebra.dag", refusal_ceiling: 3)
 }
 
 // Carrier on the copied (right) port — the same polarity as

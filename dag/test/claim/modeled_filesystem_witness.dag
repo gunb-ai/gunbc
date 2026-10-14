@@ -16,7 +16,7 @@ import v2.std.witness_evaluation {
   WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { second }
 import extdeps.transports.shell { ShellProcessExited }
 import extdeps.filesystem.filesystem_io {

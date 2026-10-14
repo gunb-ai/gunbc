@@ -1,8 +1,7 @@
 module extdeps.iproute2.ss
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
-import v2.std.algebra { length }
-import std.algebra { trim }
+import std.algebra { trim, length }
 
 // ss(8) from iproute2, cited to the upstream manual. The socket-statistics query this repository
 // consumes is a LISTENING-SOCKET ENUMERATION filtered to one port, whose answer is the population

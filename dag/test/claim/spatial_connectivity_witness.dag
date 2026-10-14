@@ -16,7 +16,7 @@ import product.spatial_connectivity {
   reachable_from, rooms_are_connected, world_is_connected, unreachable_room,
 }
 import std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

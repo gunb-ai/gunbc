@@ -174,16 +174,21 @@ data replace_section_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
-data code_point_contract: PrimitiveContract = {
-  name: "code_point",
-  work: "1",
-  output_size: "1",
-  certainty: Proven,
+// replace(s, from, to): every occurrence of `from` (length m) in `s` (length n) replaced by `to`
+// (length k). The bound is total over accepted inputs, including an empty `from`, which matches at
+// every one of the n + 1 boundaries: at most n + 1 matches each write k, so the output is at most
+// n + (n + 1) * k. Work covers comparing each position against `from` and writing that output:
+// n * m + m + n + (n + 1) * k, below (n + 1) * (m + k + 1).
+data replace_contract: PrimitiveContract = {
+  name: "replace",
+  work: "(n + 1) * (m + k + 1)",
+  output_size: "n + (n + 1) * k",
+  certainty: Conservative,
   carrier_cost: CarrierInsensitive
 }
 
-data from_code_point_contract: PrimitiveContract = {
-  name: "from_code_point",
+data code_point_contract: PrimitiveContract = {
+  name: "code_point",
   work: "1",
   output_size: "1",
   certainty: Proven,
@@ -516,6 +521,14 @@ data map_values_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
+data sorted_map_keys_contract: PrimitiveContract = {
+  name: "sorted_map_keys",
+  work: "n * log(n)",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
 data index_by_contract: PrimitiveContract = {
   name: "index_by",
   work: "n * key_fn_work",
@@ -624,7 +637,6 @@ fn builtin_registry_surface_names() -> List<String> {
     "parse_int",
     "char_at",
     "substring",
-    "from_code_point",
     "chars_to_string",
     "record_source_chars_index_lookup",
     "resolution_silent_pick_is_enabled",
@@ -780,8 +792,8 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     parse_int_contract,
     str_eq_contract,
     replace_section_contract,
+    replace_contract,
     code_point_contract,
-    from_code_point_contract,
     scan_while_contract,
     skip_horizontal_ws_contract,
     scan_to_eol_contract,
@@ -821,6 +833,7 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     map_merge_contract,
     map_keys_contract,
     map_values_contract,
+    sorted_map_keys_contract,
     index_by_contract,
     with_contract,
     filesystem_read_contract,

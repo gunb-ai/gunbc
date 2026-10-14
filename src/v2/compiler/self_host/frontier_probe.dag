@@ -55,7 +55,6 @@ import v2.compiler.source_authority {
   SourceRootManifestAbsent,
   SourceRootManifestElided,
   SourceRootRowsMissing,
-  discovered_source_refs_digest_eq,
   frontier_probe_discovered_closure_seal,
   source_ref_count_in_list,
   source_ref_list_digest_build,
@@ -76,13 +75,12 @@ import v2.compiler.source_authority_read {
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.lens.reference_deps { admission_from_module_root, reference_deps_ingest_source_text }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
   content_hash_eq_structural
 }
-import v2.std.algebra { fold_list, length }
 import v2.std.diagnostic {
   Accepted,
   diagnostics_fatal,
@@ -182,10 +180,7 @@ fn frontier_probe_discovered_closure_subject_from_host_manifest(
   host_discovered_digest: DiscoveredSourceRefsDigest
 ) -> Outcome<FrontierProbeIngestSubject> {
   let closure = frontier_probe_discovered_closure_seal(refs: refs, entry: entry)
-  if discovered_source_refs_digest_eq(
-    left: closure.population_digest,
-    right: host_discovered_digest
-  ) {
+  if (closure.population_digest == host_discovered_digest) {
     outcome_accepted(
       value: FrontierProbeDiscoveredClosureSubject {
         closure: closure,

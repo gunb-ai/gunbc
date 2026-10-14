@@ -15,8 +15,7 @@ import v2.lens.common.algebraic_composition {
 import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent, inferred_facts_subject_node, infer_facts_lookup_miss_diagnostic }
-import v2.std.algebra { bag_eq }
-import std.algebra { list_snoc_item }
+import std.algebra { list_snoc_item, bag_eq }
 import v2.std.collection {
   optional_present_witness
 }
@@ -179,32 +178,11 @@ fn parallelism_witness(tree: InferredTree, dependencies: List<DependencyView>) -
   }
 }
 
-fn parallelism_relation_eq(a: ParallelismRelation, b: ParallelismRelation) -> Bool {
-  match a {
-    DataDependent => match b {
-      DataDependent => true
-      _ => false
-    }
-    EffectCoupled => match b {
-      EffectCoupled => true
-      _ => false
-    }
-    BarrierCoupled => match b {
-      BarrierCoupled => true
-      _ => false
-    }
-    UnresolvedCoupling { diagnostic: ad } => match b {
-      UnresolvedCoupling { diagnostic: bd } => ad == bd
-      _ => false
-    }
-  }
-}
-
 fn parallelism_classified_eq(
   a: ClassifiedDependencyView<ParallelismRelation>,
   b: ClassifiedDependencyView<ParallelismRelation>
 ) -> Bool {
-  classified_dependency_view_eq(a: a, b: b, classification_eq: parallelism_relation_eq)
+  classified_dependency_view_eq(a: a, b: b, classification_eq: fn(a, b) { a == b })
 }
 
 fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {

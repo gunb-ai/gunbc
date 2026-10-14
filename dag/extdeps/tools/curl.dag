@@ -3,10 +3,9 @@ module extdeps.tools.curl
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of, Unit }
-import std.algebra { trim }
+import std.algebra { trim, Less, Equal, Greater }
 import std.resources { Network }
 import std.measure { Second, second, second_count, Microsecond, microsecond, microsecond_count }
-import std.algebra { Less, Equal, Greater }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_core_of_dotted, semver_minimum_of_constraint }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.version { VersionConstraint }
@@ -809,7 +808,7 @@ fn curl_ascii_lower_from(s: String, i: Int, acc: String) -> String {
   } else {
     let c = char_at(s, i)
     let cp = code_point(c)
-    curl_ascii_lower_from(s: s, i: i + 1, acc: concat(acc, if cp >= 65 && cp <= 90 { from_code_point(cp: cp + 32) } else { c }))
+    curl_ascii_lower_from(s: s, i: i + 1, acc: concat(acc, if cp >= 65 && cp <= 90 { substring(s: "abcdefghijklmnopqrstuvwxyz", start: cp - 65, end: cp - 64) } else { c }))
   }
 }
 

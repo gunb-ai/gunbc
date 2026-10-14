@@ -4,6 +4,7 @@ import v2.compiler.infer {
   ConstructIsRecord,
   ConstructIsVariantArm,
   ConstructNotARecord,
+  ConstructVariantArmIdentityUnavailable,
   infer,
   infer_record_construct_read,
   inferred_facts_resolved_type
@@ -15,11 +16,10 @@ import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty, list_append }
+import std.algebra { Cons, Empty, list_append, contains, list_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, None, Outcome, Rejected, Some }
-import v2.std.algebra { contains, list_map }
 import v2.compiler.inferred_tree { ObligatedInferredTree }
 import v2.std.node_query { construct_tag_optional }
 import v2.std.node {
@@ -198,6 +198,7 @@ fn vfp_construct_read_decode(resolved: ResolvedTree) -> Symbol {
             Present { value: s } => s
             Absent => ^vfp_read_arm_path_absent
           }
+        ConstructVariantArmIdentityUnavailable => ^vfp_read_identity_unavailable
         ConstructNotARecord => ^vfp_read_not_a_record
       }
   }
@@ -218,6 +219,7 @@ fn vfp_construct_read_carrier_decode(resolved: ResolvedTree) -> Symbol {
             Present { value: s } => s
             Absent => ^vfp_read_no_carrier
           }
+        ConstructVariantArmIdentityUnavailable => ^vfp_read_identity_unavailable
         ConstructNotARecord => ^vfp_read_not_a_record
       }
   }

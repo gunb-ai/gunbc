@@ -112,7 +112,7 @@ data effect_reach_host_sink_callee_symbols_v0: List<String> = [
 // WHAT THIS ROW DOES NOT SAY: that the derivation should be widened. Under-approximation here is
 // a declared fail-open on the SKIP axis, where a missed live reader costs a witness that runs
 // when it could have been skipped. What the ceiling forbids is the OTHER use -- treating the
-// derivation as a substitute for the authored disposition, which v2.std.live_tree's own note
+// derivation as a substitute for the authored disposition, which std.live_tree's own note
 // now records as refuted rather than open.
 // THE THREE BOUNDS AS A CLOSED VOCABULARY, because naming them is what lets the same class be
 // recognised a second time. They are not a checklist of bugs: each fails in a different way and
@@ -211,7 +211,7 @@ data call_reachability_live_read_classification: String = "call-reachability-gra
 
 // WHY THE ROW SAYS THE CLASS IS UNENFORCED, and why that is larger than any property of this
 // classifier. A witness entry may declare SubstrateInputsOnly while reading live state.
-// v2.std.live_tree named the nightly affected-set falsifier as what would catch it; that cadence
+// std.live_tree named the nightly affected-set falsifier as what would catch it; that cadence
 // is gone. THIS DERIVATION IS NOT THAT BACKSTOP: reads_live_tree_effective consults it only for a
 // row already claiming SubstrateInputsOnly, and on the population where ground truth exists it
 // agrees with a minority of the authors who declared a live read, so it would not reliably
@@ -222,7 +222,7 @@ data call_reachability_live_read_classification: String = "call-reachability-gra
 // WHAT THIS ROW DOES NOT SAY: that the derivation should be widened. Under-approximation here is
 // a declared fail-open on the SKIP axis, where a missed live reader costs a witness that runs
 // when it could have been skipped. What the ceiling forbids is the OTHER use -- treating the
-// derivation as a substitute for the authored disposition, which v2.std.live_tree's own note
+// derivation as a substitute for the authored disposition, which std.live_tree's own note
 // now records as refuted rather than open.
 // The executing evidence is a PLANTED PAIR rather than a corpus count, so the red is a property of
 // the derivation and cannot be dissolved by corpus drift: dag/test/fixture/effect_reach_conjunction

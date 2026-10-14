@@ -149,12 +149,9 @@ import extdeps.git {
   git_fetch_no_tags_shell,
 }
 import std.types { GitRef, Int, String, List, NonEmptyStr }
-import v2.std.algebra { FreeSemigroup, non_empty_to_list, list_map }
 import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
   Do,
-  EnvSet,
-  EnvUnset,
   EscalationLevel,
   Exit,
   FailFast,
@@ -165,13 +162,14 @@ import v2.std.orchestration {
   PipelineStep,
   Predicate,
   Retry,
-  Run
+  Run,
 }
+import std.env_binding { EnvSet, EnvUnset }
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list, list_map }
 
 type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 

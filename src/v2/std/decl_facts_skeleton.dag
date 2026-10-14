@@ -3,14 +3,14 @@ module v2.std.decl_facts_skeleton
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.types { List, String }
-import v2.std.algebra {
+import std.algebra {
   Empty,
   HeadAbsent,
   HeadFound,
   count_where,
   length,
   list_head,
-  list_reverse,
+  list_reverse
 }
 import v2.std.collection { Absent, Present }
 import v2.std.decl_index { DeclFact }

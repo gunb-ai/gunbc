@@ -3,8 +3,7 @@ module v2.std.grammar
 import std.types { List }
 import v2.std.parse_refusal_reason { ParseRefusalReason, parse_refusal_reason_symbol }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, list_append, list_snoc_item }
-import v2.std.algebra { is_empty, fold_list, fold_list_node, zip_eq, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, is_empty, fold_list, zip_eq, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import v2.std.collection {
   Map,
   PointwisePower,
@@ -53,6 +52,7 @@ import v2.std.node {
   TypeNode,
   StructuralLabel,
   symbol_intern_lexeme,
+  fold_list_node
 }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.compilers.target_model {
@@ -660,7 +660,7 @@ fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
 
 fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: std.optional.Optional<Symbol>) -> Node {
   match binding {
-    Present { value: binding } =>
+    Present { value: bound } =>
       Node {
         kind: TypeNode {
           connective: Conj
@@ -672,7 +672,7 @@ fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: std.opt
           ),
           grammar_named_edge(
             name: ^formal_terminal_occurrence_binding_node_projection,
-            target: grammar_atom(identity: binding)
+            target: grammar_atom(identity: bound)
           )
         ],
         occurrence_id: OccurrenceSynthetic
@@ -1269,10 +1269,10 @@ fn grammar_nested_block_edge(unit: Symbol, edges: List<Edge>) -> Edge {
 
 fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: std.optional.Optional<Symbol>) -> Edge {
   match binding {
-    Present { value: binding } =>
+    Present { value: bound } =>
       Edge {
         label: Positional,
-        target: grammar_concrete_bound_token_node(token_class: terminal.identity, binding: binding)
+        target: grammar_concrete_bound_token_node(token_class: terminal.identity, binding: bound)
       }
     Absent =>
       Edge {
@@ -2392,8 +2392,8 @@ fn derive_grammar_relation_token_edges_resolved(
       )
     }
   ) {
-    Holds { value: DeriveGrammarRelationTokensProgress { edges: result, conj_index: conj_index, conj_children: conj_children, children_rest: _, slots_rest: _ } } =>
-      if conj_index == conj_positional_child_count(children: conj_children) {
+    Holds { value: DeriveGrammarRelationTokensProgress { edges: result, conj_index: conj_index, conj_children: walked_conj_children, children_rest: _, slots_rest: _ } } =>
+      if conj_index == conj_positional_child_count(children: walked_conj_children) {
         Holds { value: result }
       } else {
         Violates {
@@ -2878,16 +2878,16 @@ fn rebuild_emitted_rhs_walk_step(
               ) {
                 Holds { value: token } =>
                   match token {
-                    BoundToken { token_class: token_class, binding: binding } =>
+                    BoundToken { token_class: token_class, binding: token_binding } =>
                       if token_class == terminal.identity &&
                         (
                           formal_binding_is_emitted_atom_from_slot(binding: binding_symbol) ||
-                            binding_symbol == binding
+                            binding_symbol == token_binding
                         ) {
                         RebuildRhsWalkOk {
                           children: list_snoc_item(
                             xs: children,
-                            item: rebuild_emitted_atom_node(identity: binding)
+                            item: rebuild_emitted_atom_node(identity: token_binding)
                           ),
                           token_index: token_index + 1
                         }

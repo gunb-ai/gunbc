@@ -29,7 +29,7 @@ import product.pcb.stackup {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.pcb.world { CapabilityEstablished, CapabilityPending, CapabilityRefused }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

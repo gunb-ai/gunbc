@@ -28,7 +28,7 @@ import gunbc.econ.free_tier_serving {
   derive_free_tier_serving_floor,
 }
 import std.measure { byte_size, money_per_month_micros }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

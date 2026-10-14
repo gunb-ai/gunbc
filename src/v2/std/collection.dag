@@ -1,8 +1,7 @@
 module v2.std.collection
 
-import std.algebra { PointwisePower }
+import std.algebra { PointwisePower, fold_list, is_empty }
 import std.primitives { empty_map_contract, get_contract, lookup_contract, map_insert_contract, PrimitiveContract }
-import v2.std.algebra { fold_list, is_empty }
 import std.types { List, Set, Map }
 import v2.std.diagnostic {
   Diagnostic,

@@ -1,6 +1,6 @@
 module test.claim.toml_emission
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.toml.types {
   TomlDocument, TomlTable, TomlEntry, TomlKeyValue,
   TomlString, TomlInteger, TomlBool, TomlArray, TomlInlineTable,

@@ -1,5 +1,6 @@
 module v2.test.claim.bash_command_fold
 
+
 import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.extdeps.languages.bash {
   bash_stmt_env_prefixed_emitted,
@@ -67,7 +68,7 @@ import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -214,11 +215,11 @@ test fn bash_fold_command_single_lit_true_holds() -> Bool {
 }
 
 test fn bash_fold_command_multi_lit_echo_hi_holds() -> Bool {
-  bash_fold_stmt_kind_sentinel == from_code_point(cp: 2)
-    && bash_fold_word_lit_sentinel == from_code_point(cp: 0)
-    && bash_fold_word_var_sentinel == from_code_point(cp: 1)
-    && bash_fold_word_concat_sentinel == from_code_point(cp: 3)
-    && bash_fold_word_cmdsubst_sentinel == from_code_point(cp: 4)
+  bash_fold_stmt_kind_sentinel == "\u{2}"
+    && bash_fold_word_lit_sentinel == "\u{0}"
+    && bash_fold_word_var_sentinel == "\u{1}"
+    && bash_fold_word_concat_sentinel == "\u{3}"
+    && bash_fold_word_cmdsubst_sentinel == "\u{4}"
     && bash_emit_matches_golden(
       stmt: bash_fold_command_stmt(node: bash_fold_cmd_echo_hi_emitted),
       golden: bash_fold_cmd_echo_hi_golden

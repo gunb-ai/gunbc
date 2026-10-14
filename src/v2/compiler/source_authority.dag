@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 
 import v2.std.language_model { LanguageModel }
 
+import v2.compiler.module_header { ModuleHeaderAbsent, ModuleHeaderDeclared, ModuleHeaderRead, ModuleHeaderReader, ModuleHeaderRefused, module_header_read }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse {
@@ -16,25 +17,14 @@ import v2.compiler.parse {
 }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import std.coercion { unicode_scalar_unfold }
+import std.unicode.scalar { ascii_lowercase }
 import v2.compiler.tokenize { char_in_class, tokenize }
 import v2.extdeps.languages.dag {
   dag_language_model,
   qualified_name_from_module_node
 }
 import v2.std.compilers.lexing { IdentContinueChar, IdentStartChar, TokenStream }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim }
-import v2.std.algebra {
-  HeadAbsent,
-  HeadFound,
-  fold_list,
-  is_empty,
-  length,
-  list_find_first,
-  list_head,
-  list_map,
-  list_reverse,
-  skip
-}
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, trim, HeadAbsent, HeadFound, fold_list, is_empty, length, list_find_first, list_head, list_map, list_reverse, skip }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
@@ -84,11 +74,15 @@ import std.content_hash {
   ContentHashComparison,
   ContentHashEqual,
   Fnv1a64Structural,
+  HashFamily,
+  Sha1Hash,
+  Sha256Hash,
+  Sha512Hash,
   as_content_hash_structural,
   compare_content_hash,
   content_hash_atom,
   content_hash_combine_structural,
-  content_hash_eq_structural,
+  content_hash_family,
   content_hash_of_value,
   serialize_content_hash,
   Fnv1a64
@@ -158,29 +152,6 @@ type FrontierProbeDiscoveredClosure {
 // Closed probe-side closure carrier (operator ruling 2026-08-04): refs, population_digest, and
 // entry are one subject. population_digest is always derived from refs at seal time — never a
 // separate caller input.
-
-fn discovered_source_refs_digest_eq(
-  left: DiscoveredSourceRefsDigest,
-  right: DiscoveredSourceRefsDigest
-) -> Bool {
-  match left {
-    DiscoveredSourceRefsDigestFromList { digest: left_digest } =>
-      match right {
-        DiscoveredSourceRefsDigestFromList { digest: right_digest } =>
-          content_hash_eq_structural(left: left_digest, right: right_digest)
-        _ => false
-      }
-    DiscoveredSourceRefsDigestUnavailable {
-      cause: DiscoveredSourceRefsDigestNoRefList { reason: left_reason }
-    } =>
-      match right {
-        DiscoveredSourceRefsDigestUnavailable {
-          cause: DiscoveredSourceRefsDigestNoRefList { reason: right_reason }
-        } => left_reason == right_reason
-        _ => false
-      }
-  }
-}
 
 fn frontier_probe_discovered_closure_seal(
   refs: List<SourceRef>,
@@ -341,12 +312,14 @@ fn source_storage_identity_digest(storage: SourceStorageIdentity) -> Fnv1a64Stru
 
 type SourceRefContentHashStructural
   = SourceRefContentHashStructuralOk { digest: Fnv1a64Structural }
-  | SourceRefContentHashStructuralNonFnv1a64
+  | SourceRefContentHashStructuralNonFnv1a64 { family: HashFamily }
 
 fn source_ref_content_hash_structural(hash: ContentHash) -> SourceRefContentHashStructural {
   match hash {
     Fnv1a64(structural) => SourceRefContentHashStructuralOk { digest: structural }
-    _ => SourceRefContentHashStructuralNonFnv1a64
+    Sha256Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: content_hash_family(hash: hash) }
+    Sha1Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: content_hash_family(hash: hash) }
+    Sha512Hash(_) => SourceRefContentHashStructuralNonFnv1a64 { family: content_hash_family(hash: hash) }
   }
 }
 
@@ -379,7 +352,7 @@ fn source_ref_list_digest_build(refs: List<SourceRef>) -> SourceRefListDigestBui
         SourceRefListDigestNonStructuralRefused { path: _ } => acc
         SourceRefListDigestOk { digest: prior } =>
           match source_ref_content_hash_structural(hash: ref.content_hash) {
-            SourceRefContentHashStructuralNonFnv1a64 =>
+            SourceRefContentHashStructuralNonFnv1a64 { family: _ } =>
               SourceRefListDigestNonStructuralRefused { path: ref.path }
             SourceRefContentHashStructuralOk { digest: structural } =>
               SourceRefListDigestOk {
@@ -1598,11 +1571,10 @@ fn ascii_case_fold_from(s: String, at: Int, acc: List<String>) -> List<String> {
     acc
   } else {
     let ch = substring(s: s, start: at, end: at + 1)
-    let cp = code_point(ch)
     ascii_case_fold_from(
       s: s,
       at: at + 1,
-      acc: list_snoc_item(xs: acc, item: if cp >= 65 && cp <= 90 { from_code_point(cp + 32) } else { ch })
+      acc: list_snoc_item(xs: acc, item: ascii_lowercase(s: ch))
     )
   }
 }
@@ -1704,26 +1676,13 @@ fn reference_next_read(
   }
 }
 
-// The module a source file declares: the first line that begins `module `. Read off the header
-// text rather than the parse, so a file whose front end refuses still has a declared name to
-// compare with the request.
-fn module_header_declared_name(content: String) -> Optional<String> {
-  match list_find_first(
-    xs: split(s: content, delimiter: "\n"),
-    predicate: fn(line) { starts_with(s: trim(line), prefix: "module ") }
-  ) {
-    Absent => optional_absent()
-    Present { value: line } =>
-      optional_present(value: trim(substring(s: trim(line), start: 7, end: string_length(s: trim(line)))))
-  }
-}
-
 type ReferenceLookup
   = ReferenceResolved { module: String, member: String, file: ModuleFileRef, content: String }
   | ReferenceUnknownModule { reference: String }
   | ReferenceRefused { module: String, file: ModuleFileRef, cause: String }
   | ReferenceModuleLineMissing { module: String, file: ModuleFileRef }
   | ReferenceModuleLineDisagrees { module: String, declared: String, file: ModuleFileRef }
+  | ReferenceModuleHeaderRefused { module: String, file: ModuleFileRef, cause: String }
   | ReferenceCrossTreeDenied { module: String, file: ModuleFileRef, reason: CrossTreeDenialReason }
 
 type ReferenceAdvance
@@ -1736,10 +1695,11 @@ fn reference_member(reference: String, module: String) -> String {
   join(skip(xs: split(s: reference, delimiter: "."), n: consumed), ".")
 }
 
-fn reference_present(reference: String, module: String, file: ModuleFileRef, content: String) -> ReferenceLookup {
-  match module_header_declared_name(content: content) {
-    Absent => ReferenceModuleLineMissing { module: module, file: file }
-    Present { value: declared } =>
+fn reference_present(reader: ModuleHeaderReader, reference: String, module: String, file: ModuleFileRef, content: String) -> ReferenceLookup {
+  match module_header_read(reader: reader, file: module_file_key(file: file), content: content) {
+    ModuleHeaderAbsent => ReferenceModuleLineMissing { module: module, file: file }
+    ModuleHeaderRefused { cause: cause } => ReferenceModuleHeaderRefused { module: module, file: file, cause: cause }
+    ModuleHeaderDeclared { module: declared } =>
       if declared == module {
         ReferenceResolved { module: module, member: reference_member(reference: reference, module: module), file: file, content: content }
       } else {
@@ -1749,6 +1709,7 @@ fn reference_present(reference: String, module: String, file: ModuleFileRef, con
 }
 
 fn reference_after_probe(
+  reader: ModuleHeaderReader,
   reference: String,
   module: String,
   rest: List<String>,
@@ -1756,7 +1717,7 @@ fn reference_after_probe(
 ) -> ReferenceAdvance {
   match probe {
     ModuleFilePresent { file: file, content: content } =>
-      ReferenceDecided { lookup: reference_present(reference: reference, module: module, file: file, content: content) }
+      ReferenceDecided { lookup: reference_present(reader: reader, reference: reference, module: module, file: file, content: content) }
     ModuleFileAbsent { file: _ } => ReferenceContinue { rest: rest }
     ModuleFileRefused { file: file, cause: cause } =>
       ReferenceDecided { lookup: ReferenceRefused { module: module, file: file, cause: cause } }
@@ -1785,6 +1746,7 @@ fn observed_probe_of(observed: List<ModuleFileProbe>, file: ModuleFileRef) -> Mo
 }
 
 fn resolve_reference_from(
+  reader: ModuleHeaderReader,
   layout: SourceStorageLayout,
   from_tree: SourceRootRef,
   from_module: String,
@@ -1797,16 +1759,17 @@ fn resolve_reference_from(
     ReferenceNextReadDenied { module: module, file: file, reason: reason } =>
       ReferenceCrossTreeDenied { module: module, file: file, reason: reason }
     ReferenceNextReadFile { module: module, file: file, rest: rest } =>
-      match reference_after_probe(reference: reference, module: module, rest: rest, probe: observed_probe_of(observed: observed, file: file)) {
+      match reference_after_probe(reader: reader, reference: reference, module: module, rest: rest, probe: observed_probe_of(observed: observed, file: file)) {
         ReferenceDecided { lookup: lookup } => lookup
         ReferenceContinue { rest: remaining } =>
-          resolve_reference_from(layout: layout, from_tree: from_tree, from_module: from_module, reference: reference, candidates: remaining, observed: observed)
+          resolve_reference_from(reader: reader, layout: layout, from_tree: from_tree, from_module: from_module, reference: reference, candidates: remaining, observed: observed)
       }
   }
 }
 
 // The lookup run over a supplied observation: the decision procedure, without the reads.
 fn resolve_reference_over(
+  reader: ModuleHeaderReader,
   layout: SourceStorageLayout,
   from_tree: SourceRootRef,
   from_module: String,
@@ -1814,6 +1777,7 @@ fn resolve_reference_over(
   observed: List<ModuleFileProbe>
 ) -> ReferenceLookup {
   resolve_reference_from(
+    reader: reader,
     layout: layout,
     from_tree: from_tree,
     from_module: from_module,
@@ -1844,7 +1808,7 @@ fn resolve_reference_over(
 // hosts and plans the registry enumerates.
 type LayoutFileHeader {
   file: ModuleFileRef
-  declared_module: Optional<String>
+  declared: ModuleHeaderRead
 }
 
 type LayoutRefusal
@@ -1854,6 +1818,7 @@ type LayoutRefusal
   | DeclaredModuleUnderivable { file: ModuleFileRef, declared: String, cause: String }
   | FileNotNamed { file: ModuleFileRef, cause: String }
   | ModuleLineMissing { file: ModuleFileRef }
+  | ModuleHeaderUnreadable { file: ModuleFileRef, cause: String }
   | DuplicateModule { module: String, files: List<ModuleFileRef> }
 
 type LayoutVerdict
@@ -1919,9 +1884,10 @@ fn header_namespace_refusals(namespaces: Map<String, Bool>, header: LayoutFileHe
 }
 
 fn header_declaration_refusals(layout: SourceStorageLayout, header: LayoutFileHeader, positional: String) -> List<LayoutRefusal> {
-  match header.declared_module {
-    Absent => [ModuleLineMissing { file: header.file }]
-    Present { value: declared } =>
+  match header.declared {
+    ModuleHeaderAbsent => [ModuleLineMissing { file: header.file }]
+    ModuleHeaderRefused { cause: cause } => [ModuleHeaderUnreadable { file: header.file, cause: cause }]
+    ModuleHeaderDeclared { module: declared } =>
       match module_file(layout: layout, name: declared) {
         ModuleNameUnderivable { name: _, cause: cause } =>
           [DeclaredModuleUnderivable { file: header.file, declared: declared, cause: cause }]
@@ -1960,9 +1926,10 @@ type DeclaredGroups {
 }
 
 fn declared_group_add(groups: DeclaredGroups, header: LayoutFileHeader) -> DeclaredGroups {
-  match header.declared_module {
-    Absent => groups
-    Present { value: declared } => declared_group_insert(groups: groups, key: ascii_case_fold(s: declared), header: header)
+  match header.declared {
+    ModuleHeaderAbsent => groups
+    ModuleHeaderRefused { cause: _ } => groups
+    ModuleHeaderDeclared { module: declared } => declared_group_insert(groups: groups, key: ascii_case_fold(s: declared), header: header)
   }
 }
 
@@ -2074,6 +2041,7 @@ fn layout_refusal_text(refusal: LayoutRefusal) -> String {
     FileNotNamed { file: file, cause: cause } =>
       concat(module_file_key(file: file), ": the file's position names no module: ", cause)
     ModuleLineMissing { file: file } => concat(module_file_key(file: file), ": no module line")
+    ModuleHeaderUnreadable { file: file, cause: cause } => concat(module_file_key(file: file), ": the module header does not parse: ", cause)
     DuplicateModule { module: module, files: files } =>
       concat("module ", module, " is declared by ", join(list_map(xs: files, f: fn(file) { module_file_key(file: file) }), ", "))
   }

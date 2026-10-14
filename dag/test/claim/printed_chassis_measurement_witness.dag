@@ -48,7 +48,7 @@ import product.printed_chassis.measurement {
   required_chassis_length,
   mvp_measurement_roster,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

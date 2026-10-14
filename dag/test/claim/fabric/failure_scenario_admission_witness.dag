@@ -1,7 +1,7 @@
 module test.claim.fabric.failure_scenario_admission_witness
 
 import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Int, List, EpochSecs }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { MoneyRate, money_amount_micro, second, hardware_thread_count, HardwareThreadCount }
@@ -10,6 +10,7 @@ import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey }
 import product.fabric.work {
   Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,
   ControlPlaneCapacity,
+ WarmResidencyRequired,
 }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
@@ -93,6 +94,7 @@ fn requirements(caps: CapabilityManifestRef) -> ExecutionRequirements {
     capabilities: caps,
     trust_domain: trust(),
     isolation: IsolationProfile { guarantees: [] },
+    revocation: WarmResidencyRequired,
   }
 }
 
@@ -639,6 +641,7 @@ fn requirements_at(threads: Int) -> ExecutionRequirements {
     capabilities: caps(),
     trust_domain: trust(),
     isolation: IsolationProfile { guarantees: [] },
+    revocation: WarmResidencyRequired,
   }
 }
 

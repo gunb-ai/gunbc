@@ -12,6 +12,7 @@ pub use crate::std_algebra::{
 };
 pub use crate::std_algebra::{FinitePowerSet, FinitelySupportedFunction, FreeMonoid};
 pub use crate::std_optional::Optional;
+pub use crate::std_optional::{optional_absent, optional_present};
 pub use crate::std_unicode_types::unicode_scalar;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -170,6 +171,9 @@ pub type Bool = bool;
 
 pub type Unit = ();
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Never(pub std::marker::PhantomData<()>);
+
 pub type Json = serde_json::Value;
 
 pub type Bytes = std::vec::Vec<u8>;
@@ -291,9 +295,9 @@ pub fn http_status_max() -> i64 {
 
 pub fn http_status_of(n: i64) -> Option<i64> {
     if ((n.clone() < http_status_min()) || (n.clone() > http_status_max())) {
-        std::option::Option::None
+        crate::std_optional::optional_absent()
     } else {
-        Some(n.clone())
+        crate::std_optional::optional_present(n.clone())
     }
 }
 
@@ -382,7 +386,7 @@ pub fn file_path_sentinel_scaffold_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SourceSpan {
     pub file: FilePath,
     pub start: i64,

@@ -1,7 +1,7 @@
 module test.claim.dgx_spark_witness
 
 import std.types { NonEmptyStr, Bool, List, String, Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 import extdeps.systems.types {
   IntegratedComputeSystemCatalogRow,

@@ -11,7 +11,7 @@ import v2.extdeps.languages.dag {
   dag_match_body_from_arms,
   dag_type_atom_node
 }
-import v2.std.algebra { fold_list }
+import std.algebra { fold_list }
 import v2.std.diagnostic {
   Accepted,
   Diagnostics,
@@ -39,7 +39,7 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

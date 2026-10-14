@@ -2,8 +2,7 @@ module v2.lens.enforcement.receipts
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { contains }
+import std.algebra { Cons, Empty, contains }
 import v2.std.integer { Int }
 import v2.std.text { String }
 import v2.std.node { Atom, ComputationNode, Edge, Loop, Authored, Node, Positional, TypeNode, LoopBoundEdge, core_edge_label }
@@ -22,7 +21,7 @@ import v2.lens.enforcement.vocab {
   ReceiptRef, HasReceiptRef, NoReceiptRef,
   consumer_kind_eq
 }
-import v2.lens.enforcement.contract { LensContract, EnrollmentDiscoveryReceipt, Cost, lens_id_v0_eq }
+import v2.lens.enforcement.contract { LensContract, EnrollmentDiscoveryReceipt, Cost }
 import std.realization_schedule { ScheduleWitnessEntry, schedule_witness_entry_eq }
 
 type SubjectJudgment
@@ -209,7 +208,7 @@ fn red_control_status_for(probe: Node) -> RedControlStatus {
 }
 
 fn red_control_status_for_contract(contract: LensContract) -> RedControlStatus {
-  if lens_id_v0_eq(left: contract.entry.lens_id, right: Cost) {
+  if (contract.entry.lens_id == Cost) {
     red_control_status_for(probe: cost_red_control_probe)
   } else {
     RedControlAbsent

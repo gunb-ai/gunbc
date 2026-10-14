@@ -1,6 +1,6 @@
 module test.claim.instrument_bob_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.termination { DescentEvidence, Strict, NonIncreasing, DescentUnknown, evidence_rank }

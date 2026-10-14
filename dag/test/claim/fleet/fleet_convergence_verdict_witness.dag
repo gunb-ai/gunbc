@@ -28,7 +28,7 @@ import gunbc.fleet.fleet_convergence_verdict {
   CellConflict,
   cell_standing_is_converged,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

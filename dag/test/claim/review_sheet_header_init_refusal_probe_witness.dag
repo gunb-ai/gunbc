@@ -22,7 +22,7 @@ module test.claim.review_sheet_header_init_refusal_probe_witness
 
 import std.types { Bool, String }
 import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_census_probe { blocking_subject_count_for, total_blocking_count_for }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

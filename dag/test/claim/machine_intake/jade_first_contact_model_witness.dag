@@ -3,7 +3,7 @@ module test.claim.machine_intake.jade_first_contact_model_witness
 import std.types { Bool, List, String }
 import std.nat { Nat }
 import std.measure { ClockBasis, ObservationInstant, ProcessMonotonic, SharedMonotonic, WallClock, nanosecond }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import gunbc.machine_intake.bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
 import gunbc.machine_intake.bmc_firmware_family_discriminator {

@@ -10,7 +10,7 @@ import gunbc.spark.model_snapshot_materialize {
   InstrumentReading, InstrumentDidNotRun,
   InstrumentVerified, InstrumentRejectedTheSubject, InstrumentContradictedItself,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

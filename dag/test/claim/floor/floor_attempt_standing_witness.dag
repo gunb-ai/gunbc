@@ -2,7 +2,7 @@ module test.claim.floor.floor_attempt_standing_witness
 
 import std.types { Bool, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.floor.floor_attempt_standing {
   FloorAttemptSubject,
   FloorHeadCurrent,

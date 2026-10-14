@@ -1,7 +1,7 @@
 module test.claim.fabric.fabric_writer_identity_observe_witness
 
 import std.types { Bool, String, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.fabric_storage { FabricStoreUnreachable }
 import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
 import product.host_identity { HostIdentity }

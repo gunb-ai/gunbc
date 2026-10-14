@@ -9,7 +9,7 @@ import gunbc.runner.runner_microvm_stop_propagation_probe {
   StopPropagationProbeScope, PropagationAcrossPartOfOnly,
   runner_microvm_stop_propagation_probe_scope,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

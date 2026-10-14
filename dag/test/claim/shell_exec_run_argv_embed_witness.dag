@@ -8,7 +8,7 @@ import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_insta
 import test.claim.live_deploy.apply_emission_projection { apply_emitted_steps_text }
 import extdeps.filesystem.filesystem_io
 import extdeps.exec.exec_arg_limit { host_exec_arg_max_strlen }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

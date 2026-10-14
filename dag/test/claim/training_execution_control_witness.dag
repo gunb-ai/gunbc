@@ -73,10 +73,10 @@ import product.training.execution_control {
   TrainingConvergenceInputAdmitted, TrainingConvergenceInputSubjectMismatch,
   admit_convergence_input,
 }
-import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity }
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity , WarmResidencyRequired }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.envelope { ResourceEnvelope }
-import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, admission_terms, debt_payoff_objective }
 import product.fabric.identity {
   FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, OfferKey, GrantKey, fabric_identity_eq,
 }
@@ -86,7 +86,7 @@ import std.measure { MoneyOnce, money_amount_micro, hardware_thread_count }
 import std.integer { PositiveInt }
 import std.nat { Nat }
 import std.types { NonEmptyStr, Bool, List, Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -114,6 +114,7 @@ data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
   isolation: shared_kernel_sandbox_profile(),
+  revocation: WarmResidencyRequired,
 }
 
 fn fixture_observations(d: DropoutPermille) -> TrainingResolutionObservations {
@@ -150,15 +151,16 @@ fn demand_for(work_key: NonEmptyStr) -> Demand<NonEmptyStr> {
     work: FabricIdentity { principal: "gunbai", key: work_key },
     origin: "gunbc.observation.training-graph",
     submitted_at: "2026-08-28T00:00:00Z",
-    admission: AdmissionTerms {
-      deadline: none,
+    admission: admission_terms(
       buy: BuyTerms {
         budget_account: "training",
         currency: Usd,
         reservation_price: money_amount_micro(count: 1),
         maximum_buy_order: money_amount_micro(count: 1000),
       },
-    },
+      deadline: none,
+      objective: debt_payoff_objective,
+    ),
     satisfaction: SatisfactionRequirement {
       terminal_receipt_may_satisfy: true,
       new_attempt_required: false,

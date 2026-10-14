@@ -8,7 +8,7 @@ import std.decl_ref { decl_ref }
 import std.measure { second, millisecond, second_count }
 import std.types { NonEmptyStr }
 import gunbc.ci.ci_spec { gunbc_ci_floor_batch_clamp_params, gunbc_ci_compile_clean_clamp }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
