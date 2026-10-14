@@ -3308,39 +3308,31 @@ fn native_import_target_attribution(context: NativeTestContext, module: Qualifie
       match map_lookup(m: shared.roots.by_name, key: module) {
         Absent => NativeImportTargetsUnreadable { reason: ^native_import_target_module_not_indexed }
         Present { value: tree } =>
-          match import_target_refused(
-            import_bindings: normalized_tree_import_bindings(tree: tree),
-            refusals: fold_list(xs: context.file_refusals, empty: Empty, cons: fn(acc, r) {
-              match r.module {
-                Absent => acc
-                Present { value: m } =>
-                  list_snoc_item(
-                    xs: acc,
-                    item: RefusedImportTarget {
-                      module: m,
-                      path: r.path,
-                      cause: native_test_file_refusal_fatal_reason(fr: r)
-                    }
-                  )
-              }
-            })
-          ) {
-            Absent => NativeImportTargetsAdmitted
-            Present { value: hit } =>
-              fold_list(xs: context.file_refusals, empty: NativeImportTargetsAdmitted, cons: fn(found, r) {
-                match found {
-                  NativeImportTargetRefused { target: _ } => found
-                  NativeImportTargetsUnreadable { reason: _ } => found
-                  NativeImportTargetNotAsked => found
-                  NativeImportTargetsAdmitted =>
-                    if r.path == hit.path {
-                      NativeImportTargetRefused { target: r }
-                    } else {
-                      found
+          fold_list(xs: context.file_refusals, empty: NativeImportTargetsAdmitted, cons: fn(found, r) {
+            match found {
+              NativeImportTargetRefused { target: _ } => found
+              NativeImportTargetsUnreadable { reason: _ } => found
+              NativeImportTargetNotAsked => found
+              NativeImportTargetsAdmitted =>
+                match r.module {
+                  Absent => found
+                  Present { value: m } =>
+                    match import_target_refused(
+                      import_bindings: normalized_tree_import_bindings(tree: tree),
+                      refusals: [
+                        RefusedImportTarget {
+                          module: m,
+                          path: r.path,
+                          cause: native_test_file_refusal_fatal_reason(fr: r)
+                        }
+                      ]
+                    ) {
+                      Absent => found
+                      Present { value: _ } => NativeImportTargetRefused { target: r }
                     }
                 }
-              })
-          }
+            }
+          })
       }
   }
 }

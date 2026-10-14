@@ -43,8 +43,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // qualified reference requested and nothing else. The acquirer's own claims discriminate what it
 // reads; these discriminate what the door does with what it was given, at that one interface:
 //   - an acquired closure is emitted as one typed arm per member, in acquisition order;
-//   - a file in the ingest that does not parse is not a member; a consumer of it refuses as
-//     importee_refused (the same import-target attribution the census uses);
+//   - a file in the ingest that does not parse is not a member and is a file_refusal on the
+//     emission; a consumer of it refuses as importee_refused (the same import-target attribution
+//     the census uses);
 //   - one module identity declared by two files refuses the emission at both files;
 //   - an entry the ingest does not hold was not acquired for it and is refused, never replaced by
 //     some other module;
@@ -254,13 +255,21 @@ test fn an_acquired_closure_is_emitted_as_exactly_one_arm_per_member_holds() -> 
 }
 
 // DIRECTION 2. A file in the ingest that does not parse is not a member; the rest of the closure
-// still emits. The unreadable file's declarations never enter the index.
+// still emits. The unreadable file's declarations never enter the index. NOTHING IMPORTS IT, so
+// attribution cannot ride a consumer arm — the refusal is the emission's file_refusals record
+// (review 80058: an Accepted emission that simply omitted the file was a silent widen).
 test fn a_file_in_the_closure_that_does_not_parse_is_not_a_member_holds() -> Bool {
   match ce_emission_unparseable_file().outcome {
     Rejected { diagnostics: _ } => false
     Accepted { value: e, diagnostics: _ } =>
       ce_members_are(e: e, expected: ["v2.std.logic"])
         && ce_arm_count(e: e, name: "v2.test.ce_unparseable") == 0
+        && (match e.refusals {
+          Cons { head: r, tail: Empty } => r.path == ^ce_unparseable_read
+          Cons { head: _, tail: _ } => false
+          Empty => false
+        })
+        && closure_emission_refused_count(emission: e) >= 1
   }
 }
 
@@ -272,6 +281,11 @@ test fn a_consumer_of_a_file_refused_importee_is_importee_refused_RED() -> Bool 
     Accepted { value: e, diagnostics: _ } =>
       ce_arm_count(e: e, name: "v2.test.ce_broken") == 0
         && ce_arm_is_refused_with(arm: ce_arm_of(e: e, name: "v2.test.ce_relies"), reason: ^importee_refused)
+        && (match e.refusals {
+          Cons { head: r, tail: Empty } => r.path == ^ce_broken_read
+          Cons { head: _, tail: _ } => false
+          Empty => false
+        })
   }
 }
 
@@ -433,6 +447,10 @@ fn ce_round_trip_holds(e: ClosureEmission) -> Bool {
         })
         && (match json_field(obj: doc, key: "modules") {
           FieldRead { value: JsonArray { elements: rows } } => ce_rows_match(rows: rows, arms: e.modules)
+          _ => false
+        })
+        && (match json_field(obj: doc, key: "file_refusals") {
+          FieldRead { value: JsonArray { elements: rows } } => length(xs: rows) == length(xs: e.refusals)
           _ => false
         })
   }

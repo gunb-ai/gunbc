@@ -2,7 +2,7 @@ module v2.compiler.self_host.closure_emission
 
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules }
-import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, list_append, list_map, list_reverse, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, length, list_append, list_map, list_reverse, list_snoc_item }
 import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
 import extdeps.languages.json.emit {
   JsonKeyValue,
@@ -73,7 +73,7 @@ import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.std.grammar { ParseTree }
 import v2.std.integer { Int }
-import std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 
@@ -96,8 +96,10 @@ import v2.compiler.refinement_discharge { infer_and_discharge }
 //
 // FOUR PHASES, EACH A SINGLE PASS. (1) Every ingest file is parsed with ONE occurrence allocator
 // threaded across the ingest (the seeded front end), so no two files share an authored id. A file
-// that does not parse is recorded as a refused import target and the rest of the ingest continues
-// (the same absorb the census uses); it is not a member and its declarations never enter the index.
+// that does not parse is recorded as a refused import target on the emission (ClosureEmission
+// refusals) and the rest of the ingest continues (the same absorb the census uses); it is not a
+// member and its declarations never enter the index. An unimported refused file is still that
+// record — it is never omitted from the outcome.
 // (2) Every parse is normalized from that allocator's FINAL mark; a normalize refusal is the same
 // refused-target record. A second file declaring one identity is refused at both files. (3) One
 // symbol index is filled from every member's full projection. (4) Each member is resolved once.
@@ -159,6 +161,7 @@ type ClosureEmission {
   entry: QualifiedName
   members: FreeMonoid<QualifiedName>
   modules: FreeMonoid<ClosureMemberEmission>
+  refusals: FreeMonoid<ClosureFileRefusal>
 }
 
 // The spans ride beside the outcome for the reason v2.compiler.program_assembly IngestAssembly
@@ -514,7 +517,8 @@ fn closure_emission_of_members(
           type_declaration_modifiers: type_declaration_modifiers,
           refused_targets: refused_targets
         )
-      })
+      }),
+      refusals: refusals
     })
   } else {
     outcome_rejected(d: closure_emission_diagnostic(reason: ^closure_emission_entry_not_acquired, at: entry_locus))
@@ -593,7 +597,7 @@ fn closure_emission_refused_count(emission: ClosureEmission) -> Int {
       ClosureMemberEmitted { module: _, text: _ } => n
       ClosureMemberRefused { module: _, diagnostics: _ } => n + 1
     }
-  })
+  }) + length(xs: emission.refusals)
 }
 
 // THE ONE CODEC. The carrier renders through extdeps.languages.json, whose parse direction reads it
@@ -614,6 +618,13 @@ fn closure_member_emission_json(m: ClosureMemberEmission) -> JsonValue {
   }
 }
 
+fn closure_file_refusal_json(r: ClosureFileRefusal) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "path", value: json_string(s: symbol_lexeme(sym: r.path))),
+    json_kv(key: "cause", value: json_string(s: symbol_lexeme(sym: r.cause)))
+  ])
+}
+
 fn closure_emission_json(emission: ClosureEmission) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "entry", value: json_string(s: qualified_name_to_dotted_string(qn: emission.entry))),
@@ -622,21 +633,35 @@ fn closure_emission_json(emission: ClosureEmission) -> String {
     }))),
     json_kv(key: "modules", value: json_array(elements: list_map(xs: emission.modules, f: fn(m) {
       closure_member_emission_json(m: m)
+    }))),
+    json_kv(key: "file_refusals", value: json_array(elements: list_map(xs: emission.refusals, f: fn(r) {
+      closure_file_refusal_json(r: r)
     })))
   ]))
 }
 
-// The first member refusal in acquisition order, for a consumer that must state one located cause
-// (the CLI's failing status); every refusal stays its member's arm in the carrier.
+// The first located refusal in acquisition order, for a consumer that must state one cause
+// (the CLI's failing status): a member's arm first, then a file refusal that never became a
+// member (unimported parse/normalize refuse). Every refusal stays on the carrier.
 fn closure_emission_first_refusal(emission: ClosureEmission) -> Optional<NonEmptyDiagnostics> {
-  fold_list(xs: emission.modules, empty: Absent, cons: fn(found, m) {
+  let member = fold_list(xs: emission.modules, empty: optional_absent(), cons: fn(found, m) {
     match found {
       Present { value: _ } => found
       Absent =>
         match m {
           ClosureMemberEmitted { module: _, text: _ } => found
-          ClosureMemberRefused { module: _, diagnostics: d } => Present { value: d }
+          ClosureMemberRefused { module: _, diagnostics: d } => optional_present(value: d)
         }
     }
   })
+  match member {
+    Present { value: _ } => member
+    Absent =>
+      fold_list(xs: emission.refusals, empty: optional_absent(), cons: fn(found, r) {
+        match found {
+          Present { value: _ } => found
+          Absent => optional_present(value: r.diagnostics)
+        }
+      })
+  }
 }
