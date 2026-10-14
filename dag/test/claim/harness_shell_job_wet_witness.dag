@@ -277,6 +277,41 @@ test fn job_kill_keeps_the_job_running_unless_reap_confirms_death() -> Bool {
   dir.success && out.success && confirmed && text.contains("killed process group")
 }
 
+test fn job_output_of_a_finished_exit_3_job_does_not_say_exit_0() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let started = harness_run_command_scheduled(
+    environment: env_at(worktree: dir.path, output: out.path),
+    command: "sleep 2; exit 3",
+    schedule: fixture_schedule(),
+  )
+  let waited = harness_wait_jobs_scheduled(
+    environment: started.environment,
+    schedule: fixture_schedule(),
+    request: WaitUseDefault,
+  )
+  let read = match waited.environment.jobs.first() {
+    Absent => waited
+    Present { value: j } => harness_read_job_output(environment: waited.environment, id: j.id)
+  }
+  let text = harness_outcome_text(outcome: read.outcome)
+  let _stop = fold(read.environment.jobs, init: read, f: (acc, j) =>
+    if harness_job_is_running(job: j) {
+      harness_kill_job(environment: acc.environment, id: j.id)
+    } else {
+      acc
+    })
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success
+    && !text.contains("[exit 0]")
+    && match read.outcome {
+      ToolCompleted { text: _, exit_code, standing: _ } => exit_code == 3 && text.contains("[exit 3]")
+      ToolRefused { disposition: _ } => false
+      ToolJob { id: _, text: _ } => false
+    }
+}
+
 test fn unread_job_output_is_typed_unreadable_not_empty() -> Bool {
   let dir = shell.Mktemp.Dir()
   let out = shell.Mktemp.Dir()

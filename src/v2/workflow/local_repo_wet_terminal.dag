@@ -2305,6 +2305,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "job_output_of_a_finished_exit_3_job_does_not_say_exit_0" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "job_output_of_a_finished_exit_3_job_does_not_say_exit_0",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "run_command_does_not_dirty_the_worktree_git_status" },
       entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
       function: "run_command_does_not_dirty_the_worktree_git_status",

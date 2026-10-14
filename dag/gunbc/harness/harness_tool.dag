@@ -26,6 +26,8 @@ import gunbc.harness.harness_shell_job_policy {
 }
 import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellSpawn, ShellSpawned, ShellSpawnFailed,
+  JobRunning, JobFinished, JobExitedOutcome, JobSignaledOutcome,
+  JobReapRefusedOutcome, harness_job_with_state,
   harness_start_shell_job, harness_await_pid, harness_command_table, harness_read_job_text,
   JobTextRead, JobTextUnreadable,
   harness_replace_job, harness_find_job, harness_wait_until_any,
@@ -159,7 +161,6 @@ type HarnessToolEnvironment {
   working_directory: FilePath
   timeout_program: FilePath
   job_output_directory: FilePath
-  duration_limit_seconds: Int
   jobs: List<HarnessShellJob>
   wait_pace: HarnessWaitPace
 }
@@ -173,7 +174,6 @@ fn harness_tool_environment(
     working_directory: working_directory,
     timeout_program: timeout_program,
     job_output_directory: job_output_directory,
-    duration_limit_seconds: schedule_seconds(s: harness_shell_job_schedule.backstop),
     jobs: [],
     wait_pace: WaitPaceReset,
   }
@@ -230,7 +230,6 @@ fn harness_env_with_jobs(
     working_directory: environment.working_directory,
     timeout_program: environment.timeout_program,
     job_output_directory: environment.job_output_directory,
-    duration_limit_seconds: environment.duration_limit_seconds,
     jobs: jobs,
     wait_pace: wait_pace,
   }
@@ -265,7 +264,47 @@ fn harness_wait_note(seconds: Second, clamped: Bool, raised_to_minimum: Bool, ca
   join([clamped_note, raised_note, backstop_note], "")
 }
 
-fn harness_job_output_outcome(job: HarnessShellJob, jobs: List<HarnessShellJob>, exit_code: Int) -> HarnessToolOutcome {
+fn harness_job_output_for_state(
+  job: HarnessShellJob,
+  jobs: List<HarnessShellJob>,
+  text: String,
+) -> HarnessToolOutcome {
+  let with_note = if job.stdio_note == "" {
+    text
+  } else {
+    join([text, "\n", job.stdio_note], "")
+  }
+  let bounded = harness_bounded_tool_text(
+    text: join([with_note, "\n", harness_command_table(jobs: jobs)], ""),
+  )
+  match job.state {
+    JobRunning =>
+      ToolJob { id: job.id, text: bounded.text }
+    JobFinished { outcome } =>
+      match outcome {
+        JobExitedOutcome { code } =>
+          ToolCompleted {
+            text: bounded.text,
+            exit_code: code,
+            standing: bounded.standing,
+          }
+        JobSignaledOutcome { signal } =>
+          ToolRefused {
+            disposition: ToolEffectRefused {
+              detail: join(["job ", job.id, " signaled ", to_string(value: signal)], ""),
+            },
+          }
+        JobReapRefusedOutcome { cause } =>
+          ToolRefused {
+            disposition: ToolEffectRefused {
+              detail: join(["job ", job.id, " reap refused: ", cause as String], ""),
+            },
+          }
+      }
+  }
+}
+
+fn harness_job_output_outcome(job: HarnessShellJob, jobs: List<HarnessShellJob>) -> HarnessToolOutcome {
   match harness_read_job_text(job: job) {
     JobTextUnreadable { path, cause } =>
       ToolRefused {
@@ -273,21 +312,8 @@ fn harness_job_output_outcome(job: HarnessShellJob, jobs: List<HarnessShellJob>,
           detail: join(["job output unreadable at ", path, ": ", cause], ""),
         },
       }
-    JobTextRead { text } => {
-      let with_note = if job.stdio_note == "" {
-        text
-      } else {
-        join([text, "\n", job.stdio_note], "")
-      }
-      let bounded = harness_bounded_tool_text(
-        text: join([with_note, "\n", harness_command_table(jobs: jobs)], ""),
-      )
-      ToolCompleted {
-        text: bounded.text,
-        exit_code: exit_code,
-        standing: bounded.standing,
-      }
-    }
+    JobTextRead { text } =>
+      harness_job_output_for_state(job: job, jobs: jobs, text: text)
   }
 }
 
@@ -367,9 +393,11 @@ fn harness_run_command_scheduled(
                 wait_pace: harness_pace_after_window_change(),
               ),
               outcome: harness_job_output_outcome(
-                job: job,
+                job: harness_job_with_state(
+                  job: job,
+                  state: JobFinished { outcome: JobExitedOutcome { code: code } },
+                ),
                 jobs: environment.jobs,
-                exit_code: code,
               ),
             }
           }
@@ -506,7 +534,7 @@ fn harness_read_job_output(environment: HarnessToolEnvironment, id: String) -> H
           jobs: jobs,
           wait_pace: environment.wait_pace,
         ),
-        outcome: harness_job_output_outcome(job: stamped, jobs: jobs, exit_code: 0),
+        outcome: harness_job_output_outcome(job: stamped, jobs: jobs),
       }
     }
   }

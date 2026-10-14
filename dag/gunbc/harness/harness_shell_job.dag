@@ -110,15 +110,6 @@ fn harness_observe_job(job: HarnessShellJob) -> HarnessShellJobObservation {
   harness_observe_standing(job: harness_refresh_job(job: job))
 }
 
-fn harness_job_finished(obs: HarnessShellJobObservation) -> Bool {
-  match obs {
-    JobStillRunning { job: _ } => false
-    JobExited { job: _, code: _ } => true
-    JobSignaled { job: _, signal: _ } => true
-    JobReapRefused { job: _, cause: _ } => true
-  }
-}
-
 fn harness_command_table_line(obs: HarnessShellJobObservation) -> String {
   match obs {
     JobStillRunning { job } =>
