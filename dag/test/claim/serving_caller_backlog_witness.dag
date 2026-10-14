@@ -465,14 +465,14 @@ test fn w_typed_waiting_persist_is_the_admitted_publication_path() -> Bool {
 // refuses; the live one completes. Same fold as the compute-cell arm.
 data seat_grant_gen2: LeaseGrant = LeaseGrant {
   reference: "grant-work-a" as NonEmptyStr,
-  fence: LeaseFence { grant: "evt-1" as GrantIdentity, generation: 2 as Nat },
+  fence: LeaseFence { grant: "evt-1" as GrantIdentity, generation: 2 },
   granted_at: 0 as EpochSecs,
-  maximum_duration_seconds: 60 as Nat,
+  maximum_duration_seconds: 60,
   expires_at: 60 as EpochSecs,
 }
 
-fn seat_holder(generation: Int, grant: String) -> LeaseFence {
-  LeaseFence { grant: grant as GrantIdentity, generation: generation as Nat }
+fn seat_holder(generation: Nat, grant: String) -> LeaseFence {
+  LeaseFence { grant: grant as GrantIdentity, generation: generation }
 }
 
 test fn w_seat_lease_stale_generation_cannot_commit() -> Bool {
@@ -501,10 +501,10 @@ fn derived_id_text(key: DispatchTurnKey) -> String {
 // The same (dispatch node, ordinal) key from two process attempts is one id; a different ordinal
 // or dispatch node is a different id; a slash-bearing node id still yields a slot-addressable id.
 test fn w_work_key_is_stable_across_process_attempts_and_ordinals_differ() -> Bool {
-  let k1 = DispatchTurnKey { dispatch_node: "node://session-7" as NonEmptyStr, ordinal: 1 as Nat }
-  let k1_again = DispatchTurnKey { dispatch_node: "node://session-7" as NonEmptyStr, ordinal: 1 as Nat }
-  let k2 = DispatchTurnKey { dispatch_node: "node://session-7" as NonEmptyStr, ordinal: 2 as Nat }
-  let other = DispatchTurnKey { dispatch_node: "node://session-8" as NonEmptyStr, ordinal: 1 as Nat }
+  let k1 = DispatchTurnKey { dispatch_node: "node://session-7" as NonEmptyStr, ordinal: 1 }
+  let k1_again = DispatchTurnKey { dispatch_node: "node://session-7" as NonEmptyStr, ordinal: 1 }
+  let k2 = DispatchTurnKey { dispatch_node: "node://session-7" as NonEmptyStr, ordinal: 2 }
+  let other = DispatchTurnKey { dispatch_node: "node://session-8" as NonEmptyStr, ordinal: 1 }
   derived_id_text(key: k1) != ""
     && derived_id_text(key: k1) == derived_id_text(key: k1_again)
     && derived_id_text(key: k1) != derived_id_text(key: k2)

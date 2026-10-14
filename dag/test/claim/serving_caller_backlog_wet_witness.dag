@@ -717,7 +717,7 @@ test fn stale_recovery_cannot_truncate_or_revive_terminal_by_real_execution() ->
 test fn slash_bearing_dispatch_node_derives_a_persistable_resumable_work_id_by_real_execution() -> Bool {
   let root_path = fresh_root()
   let root = root_path as NonEmptyStr
-  let key = DispatchTurnKey { dispatch_node: "node://session-x" as NonEmptyStr, ordinal: 3 as Nat }
+  let key = DispatchTurnKey { dispatch_node: "node://session-x" as NonEmptyStr, ordinal: 3 }
   let ok = match logical_work_id_of(key: key) {
     WorkIdKeyNotOctets { observed: _ } => false
     WorkIdDerived { work: work } =>
