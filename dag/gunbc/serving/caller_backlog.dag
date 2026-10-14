@@ -15,6 +15,9 @@ import extdeps.languages.json.parse {
 import product.fabric.execution { ReservationRef }
 import product.fabric.budget { MoneyAccount, fence_admits }
 import product.capacity.lease { LeaseGrant, LeaseFence, FenceCurrent, FenceObsolete, FenceForeignGrant, fence_verdict, lease_grant_expired_at }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.bytes { bytes_qualified_octets, utf8_encode_bytes }
+import std.encoding { base64_encode, UrlSafe }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.durable_compare_and_set {
   ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
@@ -43,15 +46,25 @@ type LogicalWorkId = NonEmptyStr where brand("LogicalWorkId")
 // THE WORK KEY IS THE CALLER'S, SUPPLIED, AND SURVIVES A PROCESS RESTART. A harness turn is named
 // by the dispatch node that owns it and the turn's ordinal within that dispatch; a per-process
 // minted subject (harness_turn_subject) is not a key because a restarted process mints a new one.
-// The id is derived from the typed key by a JSON array encoding, which is injective over
-// (string, int), so no two distinct keys share an id and no delimiter can be forged inside a part.
+// The id is the base64url (std.encoding, RFC 4648 section 5 alphabet: no slash, so it is a
+// valid durable slot key for any node id such as node://session-x) of the UTF-8 JSON array
+// [dispatch_node, ordinal]; JSON is injective over (string, int) and base64 over bytes, so
+// distinct keys never share an id.
 type DispatchTurnKey {
   dispatch_node: NonEmptyStr
   ordinal: Nat
 }
 
-fn logical_work_id_of(key: DispatchTurnKey) -> LogicalWorkId {
-  serialize_json(v: json_array(elements: [json_string(s: key.dispatch_node as String), json_int(n: key.ordinal as Int)])) as LogicalWorkId
+type WorkIdDerivation
+  = WorkIdDerived { work: LogicalWorkId }
+  | WorkIdKeyNotOctets { observed: Int }
+
+fn logical_work_id_of(key: DispatchTurnKey) -> WorkIdDerivation {
+  match bytes_qualified_octets(b: utf8_encode_bytes(s: serialize_json(v: json_array(elements: [json_string(s: key.dispatch_node as String), json_int(n: key.ordinal as Int)])))) {
+    QualifiedOctetsRefused { observed: o } => WorkIdKeyNotOctets { observed: o }
+    QualifiedOctetsReady { value: sealed } =>
+      WorkIdDerived { work: base64_encode(octets: sealed, variant: UrlSafe) as LogicalWorkId }
+  }
 }
 
 type RecoveryBoundDeficit {

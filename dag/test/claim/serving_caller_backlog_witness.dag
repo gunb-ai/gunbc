@@ -28,7 +28,7 @@ import gunbc.serving.caller_backlog {
   waiting_survives_ready_supply, apply_ready_supply, apply_ready_supply_law, offer_against_ready_supply,
   KeepWaitingAcrossZeroSupply, ExpireWaitingOnZeroSupply,
   SupplyReady, SupplyAbsentWaiting, SupplyUnknownWork, SupplyTerminal, SupplyDuplicate,
-  commit_attempt, snapshot_after_commit, ComputeCellFence, SeatLeaseFence, DispatchTurnKey, logical_work_id_of,
+  commit_attempt, snapshot_after_commit, ComputeCellFence, SeatLeaseFence, DispatchTurnKey, logical_work_id_of, WorkIdDerived, WorkIdKeyNotOctets,
   cancel_work, snapshot_after_cancel, note_recovery, snapshot_after_recovery, caller_retry_disposition, lookup_record,
   persist_before_offer_basis, retriable_refusal_basis, stable_turn_identity_basis, idempotent_retry_basis,
   no_expiry_on_long_wait_basis, durable_cancellation_basis, no_double_execution_basis,
@@ -489,12 +489,23 @@ test fn w_seat_lease_stale_generation_cannot_commit() -> Bool {
 
 // The same (dispatch node, ordinal) key from two process attempts is one id; a different ordinal
 // or dispatch node is a different id.
+fn derived_id_text(key: DispatchTurnKey) -> String {
+  match logical_work_id_of(key: key) {
+    WorkIdDerived { work: w } => w as String
+    WorkIdKeyNotOctets { observed: _ } => ""
+  }
+}
+
+// The same (dispatch node, ordinal) key from two process attempts is one id; a different ordinal
+// or dispatch node is a different id; a slash-bearing node id still yields a slot-addressable id.
 test fn w_work_key_is_stable_across_process_attempts_and_ordinals_differ() -> Bool {
-  let k1 = DispatchTurnKey { dispatch_node: "node-7" as NonEmptyStr, ordinal: 1 as Nat }
-  let k1_again = DispatchTurnKey { dispatch_node: "node-7" as NonEmptyStr, ordinal: 1 as Nat }
-  let k2 = DispatchTurnKey { dispatch_node: "node-7" as NonEmptyStr, ordinal: 2 as Nat }
-  let other = DispatchTurnKey { dispatch_node: "node-8" as NonEmptyStr, ordinal: 1 as Nat }
-  (logical_work_id_of(key: k1) as String) == (logical_work_id_of(key: k1_again) as String)
-    && (logical_work_id_of(key: k1) as String) != (logical_work_id_of(key: k2) as String)
-    && (logical_work_id_of(key: k1) as String) != (logical_work_id_of(key: other) as String)
+  let k1 = DispatchTurnKey { dispatch_node: "node://session-7" as NonEmptyStr, ordinal: 1 as Nat }
+  let k1_again = DispatchTurnKey { dispatch_node: "node://session-7" as NonEmptyStr, ordinal: 1 as Nat }
+  let k2 = DispatchTurnKey { dispatch_node: "node://session-7" as NonEmptyStr, ordinal: 2 as Nat }
+  let other = DispatchTurnKey { dispatch_node: "node://session-8" as NonEmptyStr, ordinal: 1 as Nat }
+  derived_id_text(key: k1) != ""
+    && derived_id_text(key: k1) == derived_id_text(key: k1_again)
+    && derived_id_text(key: k1) != derived_id_text(key: k2)
+    && derived_id_text(key: k1) != derived_id_text(key: other)
+    && !derived_id_text(key: k1).contains("/")
 }
