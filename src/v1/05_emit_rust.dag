@@ -3610,6 +3610,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: typed.modules, data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
+    fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, source_indices: closure_source_indices),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     positional_payload_variants: base_info.positional_payload_variants,
@@ -4306,6 +4307,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: [typed_module], data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
+    fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, source_indices: merged_module_source_indices(modules: [typed_module])),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     positional_payload_variants: base_info.positional_payload_variants,
@@ -5759,6 +5761,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     type_decl_items: emit_info.type_decl_items,
     data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
     fn_decl_items: emit_info.fn_decl_items,
+    fn_map_key_bounds: emit_info.fn_map_key_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
@@ -7762,6 +7765,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             type_decl_items: emit_info.type_decl_items,
             data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
             fn_decl_items: emit_info.fn_decl_items,
+            fn_map_key_bounds: emit_info.fn_map_key_bounds,
             recursive_type_set: emit_info.recursive_type_set,
             fielded_variants: emit_info.fielded_variants,
             positional_payload_variants: emit_info.positional_payload_variants,
@@ -8890,9 +8894,51 @@ fn rust_map_key_bound_traits() -> List<String> {
   ["std::cmp::Eq", "std::hash::Hash"]
 }
 
+// EVERY GENERIC INSIDE A KEY-POSITION TYPE ARGUMENT EARNS THE BOUND, AT ANY DEPTH. The key type of
+// `Map<SubjectKey<K>, V>` is `SubjectKey<K>`, and the im::HashMap bridges require that whole type to
+// be Eq + Hash; a derived `SubjectKey<K>: Hash` holds only when `K: Hash`, so `K` owes the bound
+// although it is not the head of the key. Reading only the key's head name left `K` bare (rustc
+// E0277 on the std.keyed_roster index). The walk collects every name in the key expression and
+// the caller filters to the fn's generics, so a generic that never reaches a key position stays
+// unbounded (pinned by the negative control in map_key_derive_requirement_witness).
+// The key subtree is walked over its authored children with authored names (the walk
+// v1_type_expr_contains_param_name already makes for set elements), and the resolved head name is
+// kept so a bare `K` key still resolves as before.
+fn v1_type_expr_all_names(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  concat(
+    [authored_name_at(source_indices: source_indices, node: child_type_node(ch: type_expr))],
+    v1_authored_type_expr_names(type_expr: type_expr, source_indices: source_indices)
+  )
+}
+
+fn v1_authored_type_expr_names(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  concat(
+    [authored_name_at(source_indices: source_indices, node: type_expr)],
+    type_expr.children |> flat_map(c => v1_authored_type_expr_names(type_expr: c, source_indices: source_indices))
+  )
+}
+
+fn v1_map_key_nested_names_in_type_expr(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let own = match v1_type_expr_keyed_map_verdict(type_expr: type_expr, source_indices: source_indices) {
+    KeyedMap =>
+      match type_expr.children |> first {
+        Present { value: key_child } => v1_type_expr_all_names(type_expr: key_child, source_indices: source_indices)
+        Absent => []
+      }
+    NotKeyedMap => []
+    KeyedMapUndecidable { name: _ } => []
+  }
+  concat(
+    own,
+    type_expr.children |> flat_map(ch =>
+      v1_map_key_nested_names_in_type_expr(type_expr: child_type_node(ch: ch), source_indices: source_indices)
+    )
+  )
+}
+
 fn v1_fn_signature_map_key_param_names(value_params: List<Node>, ret: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let from_params = value_params |> flat_map(p => v1_map_key_head_names_in_type_expr(type_expr: param_node_type_expr(n: p), source_indices: source_indices))
-  let from_ret = v1_map_key_head_names_in_type_expr(type_expr: ret, source_indices: source_indices)
+  let from_params = value_params |> flat_map(p => v1_map_key_nested_names_in_type_expr(type_expr: param_node_type_expr(n: p), source_indices: source_indices))
+  let from_ret = v1_map_key_nested_names_in_type_expr(type_expr: ret, source_indices: source_indices)
   unique_strings(items: concat(from_params, from_ret) |> filter(n => generic_param_names |> any(g => g == n)))
 }
 
@@ -9037,7 +9083,7 @@ fn v1_call_forwarding_forwarded_param_names(
 // `S: Clone` by cloning a CostTimeAxis<S> through derive(Clone); the wrapper instantiates that same
 // S and emitted bare, so regen produced a seed that does not typecheck (rustc E0277).
 //
-// The walk mirrors v1_call_forwarding_equality_bound_param_names exactly rather than adding a
+// The walk mirrors v1_call_forwarding_bound_param_names (EqualityForwarded) exactly rather than adding a
 // scrutinee special case, and for the reason that half already states: descending every child can
 // only find more call sites, while precision stays where it belongs, in the exact type-resolving
 // predicate v1_call_forwarding_bound_wrapper_param_names applies per (callee param, argument) pair.
@@ -9544,20 +9590,35 @@ fn v1_call_site_static_forwarded_param_names(
   }
 }
 
-fn v1_call_forwarding_equality_bound_param_names(
+// WHICH BOUND A CALL-FORWARDING WALK PROPAGATES. One walker serves every bound class (DESIGN.md S2:
+// one derivation of how a callee's bound reaches the caller's generics, not a copy per class); the
+// class selects only where the callee's OWN bound comes from. EqualityForwarded derives the one-hop
+// equality bound from the callee body. MapKeyForwarded READS the callee's DECLARED map-key bound from
+// `declared_map_key_bounds` (EmitGraphInfo.fn_map_key_bounds, built once per emission by
+// v1_fn_map_key_bound_table); it never re-derives key position at a call site, and a call cycle
+// needs no guard because the table is a fixpoint, not a recursion.
+type ForwardedBoundClass
+  = EqualityForwarded
+  | MapKeyForwarded
+
+fn v1_call_forwarding_bound_param_names(
+  bound_class: ForwardedBoundClass,
   generic_param_names: List<String>,
   body: Node,
   fn_decl_items: Map<String, Node>,
+  declared_map_key_bounds: Map<String, List<String>>,
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
   if (generic_param_names |> count) == 0 {
     return []
   }
   let here = match body.expr_data {
-    ExprCall => v1_call_site_equality_forwarded_param_names(
+    ExprCall => v1_call_site_forwarded_param_names(
+      bound_class: bound_class,
       call: body,
       generic_param_names: generic_param_names,
       fn_decl_items: fn_decl_items,
+      declared_map_key_bounds: declared_map_key_bounds,
       source_indices: source_indices
     )
     _ => []
@@ -9565,23 +9626,24 @@ fn v1_call_forwarding_equality_bound_param_names(
   body.children |> fold(init: here, f: (acc, child) =>
     v1_union_bound_param_names(
       base: acc,
-      extra: v1_call_forwarding_equality_bound_param_names(
+      extra: v1_call_forwarding_bound_param_names(
+        bound_class: bound_class,
         generic_param_names: generic_param_names,
         body: child,
         fn_decl_items: fn_decl_items,
+        declared_map_key_bounds: declared_map_key_bounds,
         source_indices: source_indices
       )
     )
   )
 }
 
-// One call site: resolve the callee's declaration, re-derive the callee's OWN equality bound with
-// the same derivation emit_fn_def runs on itself (DESIGN.md S2 -- one derivation, two call sites,
-// never a re-implementation), then forward it onto the wrapper's params.
-fn v1_call_site_equality_forwarded_param_names(
+fn v1_call_site_forwarded_param_names(
+  bound_class: ForwardedBoundClass,
   call: Node,
   generic_param_names: List<String>,
   fn_decl_items: Map<String, Node>,
+  declared_map_key_bounds: Map<String, List<String>>,
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
   let si = source_indices
@@ -9593,22 +9655,98 @@ fn v1_call_site_equality_forwarded_param_names(
         Absent => []
         Present { value: callee_body } =>
           let callee_params = callee_item.params
-          let callee_type_params = function_type_params(params: callee_params)
-          let callee_generic_param_names = callee_type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
-          let callee_eq_param_names = v1_fn_body_equality_bound_param_names(
-            body: callee_body,
-            generic_param_names: callee_generic_param_names,
-            source_indices: si
-          )
+          let callee_generic_param_names = function_type_params(params: callee_params) |> map(p => generic_param_name_at(n: p, source_indices: si))
+          let callee_bound_param_names = match bound_class {
+            EqualityForwarded => v1_fn_body_equality_bound_param_names(
+              body: callee_body,
+              generic_param_names: callee_generic_param_names,
+              source_indices: si
+            )
+            MapKeyForwarded =>
+              match map_get(declared_map_key_bounds, callee_name) {
+                Present { value: declared } => declared
+                Absent => []
+              }
+          }
           v1_call_forwarding_forwarded_param_names(
             call: call,
             callee_value_params: function_value_params(params: callee_params),
             callee_generic_param_names: callee_generic_param_names,
-            callee_bound_param_names: callee_eq_param_names,
+            callee_bound_param_names: callee_bound_param_names,
             wrapper_generic_param_names: generic_param_names,
             source_indices: si
           )
       }
+  }
+}
+
+// THE DECLARED MAP-KEY BOUND OF EVERY FN, ONCE. fn name -> the generics that owe Eq + Hash: its
+// signature derivation (v1_fn_signature_map_key_param_names) unioned with what its body forwards
+// from callees' declared bounds, closed to a fixpoint. Computed once per emission where the
+// EmitGraphInfo is assembled and read at every call site, so a call graph with fan-out costs one
+// pass per round (rounds <= fn count, in practice 2-3), never a re-walk per path.
+fn v1_fn_map_key_bound_table(fn_decl_items: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<String>> {
+  let names = sorted_map_keys(fn_decl_items)
+  let seed = names |> fold(init: empty_map(), f: (acc, n) =>
+    match map_get(fn_decl_items, n) {
+      Present { value: item } =>
+        let generics = function_type_params(params: item.params) |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+        let bound = v1_fn_signature_map_key_param_names(
+          value_params: function_value_params(params: item.params),
+          ret: resolved_type(n: item),
+          generic_param_names: generics,
+          source_indices: source_indices
+        )
+        if (bound |> count) > 0 { map_insert(acc, n, bound) } else { acc }
+      Absent => acc
+    }
+  )
+  v1_fn_map_key_bound_fixpoint(names: names, fn_decl_items: fn_decl_items, source_indices: source_indices, table: seed, fuel: names |> count)
+}
+
+fn v1_fn_map_key_bound_total(table: Map<String, List<String>>) -> Int {
+  map_values(table) |> fold(init: 0, f: (acc, l) => acc + (l |> count))
+}
+
+fn v1_fn_map_key_bound_fixpoint(
+  names: List<String>,
+  fn_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>,
+  table: Map<String, List<String>>,
+  fuel: Int
+) -> Map<String, List<String>> {
+  if fuel <= 0 {
+    return table
+  }
+  let next = names |> fold(init: table, f: (acc, n) =>
+    match map_get(fn_decl_items, n) {
+      Present { value: item } =>
+        match item.body {
+          Absent => acc
+          Present { value: body } =>
+            let generics = function_type_params(params: item.params) |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+            let forwarded = v1_call_forwarding_bound_param_names(
+              bound_class: MapKeyForwarded,
+              generic_param_names: generics,
+              body: body,
+              fn_decl_items: fn_decl_items,
+              declared_map_key_bounds: acc,
+              source_indices: source_indices
+            )
+            let existing = match map_get(acc, n) {
+              Present { value: e } => e
+              Absent => []
+            }
+            let merged = v1_union_bound_param_names(base: existing, extra: forwarded)
+            if (merged |> count) > 0 { map_insert(acc, n, merged) } else { acc }
+        }
+      Absent => acc
+    }
+  )
+  if v1_fn_map_key_bound_total(table: next) == v1_fn_map_key_bound_total(table: table) {
+    next
+  } else {
+    v1_fn_map_key_bound_fixpoint(names: names, fn_decl_items: fn_decl_items, source_indices: source_indices, table: next, fuel: fuel - 1)
   }
 }
 
@@ -9779,21 +9917,33 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     generic_param_names: generic_param_names,
     source_indices: si
   )
-  let call_forwarding_eq_param_names = v1_call_forwarding_equality_bound_param_names(
+  let call_forwarding_eq_param_names = v1_call_forwarding_bound_param_names(
+    bound_class: EqualityForwarded,
     generic_param_names: generic_param_names,
     body: body,
     fn_decl_items: emit_info.fn_decl_items,
+    declared_map_key_bounds: emit_info.fn_map_key_bounds,
     source_indices: si
   )
   let eq_param_names = v1_union_bound_param_names(
     base: self_eq_param_names,
     extra: call_forwarding_eq_param_names
   )
-  let map_key_param_names = v1_fn_signature_map_key_param_names(
-    value_params: value_params,
-    ret: inferred,
-    generic_param_names: generic_param_names,
-    source_indices: si
+  let map_key_param_names = v1_union_bound_param_names(
+    base: v1_fn_signature_map_key_param_names(
+      value_params: value_params,
+      ret: inferred,
+      generic_param_names: generic_param_names,
+      source_indices: si
+    ),
+    extra: v1_call_forwarding_bound_param_names(
+      bound_class: MapKeyForwarded,
+      generic_param_names: generic_param_names,
+      body: body,
+      fn_decl_items: emit_info.fn_decl_items,
+      declared_map_key_bounds: emit_info.fn_map_key_bounds,
+      source_indices: si
+    )
   )
   let set_element_param_names = v1_fn_signature_set_element_param_names(
     signature_type_exprs: list_push(value_params |> map(p => param_node_type_expr(n: p)), inferred),
@@ -13521,6 +13671,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               type_decl_items: emit_info.type_decl_items,
               data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
               fn_decl_items: emit_info.fn_decl_items,
+              fn_map_key_bounds: emit_info.fn_map_key_bounds,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
               positional_payload_variants: emit_info.positional_payload_variants,
@@ -13555,6 +13706,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               type_decl_items: emit_info.type_decl_items,
               data_variant_wire_spellings: emit_info.data_variant_wire_spellings,
               fn_decl_items: emit_info.fn_decl_items,
+              fn_map_key_bounds: emit_info.fn_map_key_bounds,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
               positional_payload_variants: emit_info.positional_payload_variants,
@@ -19480,6 +19632,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    native_demand_census_output,", "\n",
       "    native_lane_acquire, native_lane_acquired, native_lane_census_ingest, native_lane_census_scoped_ingest,", "\n",
       "    NativeCensusScope, NativeCensusScoped,", "\n",
+      "    census_module_obligation_rows, census_scoped_run_record, census_comparable_record, census_comparable_diff,", "\n",
+      "    CensusObligationRow, CensusComparableRecord, CensusRunDiffResult,", "\n",
       "    native_lane_controls, native_lane_file_refusal_index, native_lane_receipt,", "\n",
       "    native_test_context_absorb,", "\n",
       "    native_test_context_finish, native_test_context_from_ingest, native_test_context_state_empty,", "\n",
@@ -19871,7 +20025,28 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "// second walk of the roots. The scope line says whether that population is closed or blocked, and", "\n",
       "// where. The walk is census-infer's, without the type-declaration census and without the subject", "\n",
       "// annotation: every member is in the subject's closure by construction (gunbc.plans.census_scoped_run).", "\n",
-      "fn run_census_scoped(subject: &str, source_roots: &[String]) \{", "\n",
+      "// WHAT A SCOPED WALK CARRIES BESIDE ITS READS: the label it was given, the scope acquisition decided,", "\n",
+      "// the member digests it printed (the record's revision is read off them), and the baseline record it", "\n",
+      "// compares itself against, when one was named.", "\n",
+      "// A BASELINE IS A PUBLISHED RUN RECORD (the host's CensusRunRecordFile), and the host alone decides", "\n",
+      "// which one -- by the status field it wrote (latest_complete_census_record). This only reads the", "\n",
+      "// census_run_comparable row back as the same type; a file without one is a stated cause, never an empty diff.", "\n",
+      "fn census_baseline_record(path: &str) -> Result<Rc<CensusComparableRecord>, String> \{", "\n",
+      "    let text = std::fs::read_to_string(path).map_err(|cause| format!(\"reading \{path\}: \{cause\}\"))?;", "\n",
+      "    let file: serde_json::Value = serde_json::from_str(&text).map_err(|cause| format!(\"\{path\} is not one JSON value: \{cause\}\"))?;", "\n",
+      "    let row = file.get(\"rows\").and_then(|r| r.as_array()).and_then(|rows| rows.iter().find_map(|row| row.get(\"census_run_comparable\").cloned()))", "\n",
+      "        .ok_or_else(|| format!(\"\{path\} carries no census_run_comparable row\"))?;", "\n",
+      "    serde_json::from_value::<CensusComparableRecord>(row).map(Rc::new).map_err(|cause| format!(\"\{path\} census_run_comparable does not read back: \{cause\}\"))", "\n",
+      "\}", "\n",
+      "", "\n",
+      "struct CensusScopedWalk \{", "\n",
+      "    label: String,", "\n",
+      "    scope: Rc<NativeCensusScope>,", "\n",
+      "    digests: Vec<String>,", "\n",
+      "    against: Option<String>,", "\n",
+      "\}", "\n",
+      "", "\n",
+      "fn run_census_scoped(subject: &str, against: Option<String>, source_roots: &[String]) \{", "\n",
       "    if source_roots.is_empty() \{", "\n",
       "        eprintln!(\"REFUSED: no source roots given\");", "\n",
       "        std::process::exit(2);", "\n",
@@ -19881,10 +20056,13 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // THE INPUTS THIS RUN READ, AS THE RUN READ THEM (gunbc.plans.census_scoped_run section 6): one", "\n",
       "    // member line per acquired read, its bytes digested (v1_rt bytes_identity_hash) from the string every stage consumes,", "\n",
       "    // so the run record's identity is the content that was censused and never a second read of the roots.", "\n",
+      "    let mut digests: Vec<String> = Vec::new();", "\n",
       "    for read in scoped.ingest.iter() \{", "\n",
-      "        println!(\"\{\}\", serde_json::json!(\{ \"census_member\": \{ \"compilation_unit\": read.compilation_unit.clone(), \"bytes\": read.source.carried.len(), \"fnv1a64\": bytes_identity_hash(read.source.carried.as_bytes()) \} \}));", "\n",
+      "        let digest = bytes_identity_hash(read.source.carried.as_bytes());", "\n",
+      "        println!(\"\{\}\", serde_json::json!(\{ \"census_member\": \{ \"compilation_unit\": read.compilation_unit.clone(), \"bytes\": read.source.carried.len(), \"fnv1a64\": digest.clone() \} \}));", "\n",
+      "        digests.push(digest);", "\n",
       "    \}", "\n",
-      "    census_infer_walk(scoped.ingest.iter().cloned().collect(), Some((subject.to_string(), scoped.scope.clone())));", "\n",
+      "    census_infer_walk(scoped.ingest.iter().cloned().collect(), Some(CensusScopedWalk \{ label: subject.to_string(), scope: scoped.scope.clone(), digests, against \}));", "\n",
       "\}", "\n",
       "", "\n",
       "// THE WALK BOTH CENSUS-INFER MODES SHARE. Every decision is a .dag fold: the per-module step (v2.compiler.compile", "\n",
@@ -19896,7 +20074,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "// the whole-corpus run, which also feeds the type census and marks each root against the subject", "\n",
       "// closure; a scoped run does neither, and its terminal names its scope instead, with the label it was", "\n",
       "// given so the instrument can check the subject it observed against the one it bound.", "\n",
-      "fn census_infer_walk(reads: Vec<Rc<DagSourceReadWitness>>, scope: Option<(String, Rc<NativeCensusScope>)>) \{", "\n",
+      "fn census_infer_walk(reads: Vec<Rc<DagSourceReadWitness>>, scope: Option<CensusScopedWalk>) \{", "\n",
       "    let corpus_reads = reads.len();", "\n",
       "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
       "    let mut context = match &*native_test_context_from_ingest(ingest.clone()) \{", "\n",
@@ -19929,6 +20107,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let mut residual_rows: u64 = 0;", "\n",
       "    let mut inferred: u64 = 0;", "\n",
       "    let mut infer_refused: u64 = 0;", "\n",
+      "    let mut obligation_rows: Vec<Rc<CensusObligationRow>> = Vec::new();", "\n",
       "    for entry in modules.iter() \{", "\n",
       "        let started = Instant::now();", "\n",
       "        let step = native_census_module_inference(context.clone(), refusal_index.clone(), entry.clone());", "\n",
@@ -19947,6 +20126,11 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            NativeInferCensusOutcome::NativeInferCensusInferred \{ .. \} => \{ inferred += 1; \"inferred\" \}", "\n",
       "            NativeInferCensusOutcome::NativeInferCensusInferRefused \{ .. \} => \{ infer_refused += 1; \"infer_refused\" \}", "\n",
       "        \};", "\n",
+      "        if scope.is_some() \{", "\n",
+      "            for row in census_module_obligation_rows(refusal_index.clone(), entry.clone(), step.outcome.clone()).iter() \{", "\n",
+      "                obligation_rows.push(row.clone());", "\n",
+      "            \}", "\n",
+      "        \}", "\n",
       "        if scope.is_none() \{", "\n",
       "            let contribution = native_census_infer_type_contribution(context.clone(), entry.clone(), step.outcome.clone());", "\n",
       "            run = type_census_run_add(run, contribution);", "\n",
@@ -19964,7 +20148,9 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        println!(\"\{\}\", serde_json::json!(\{ \"cause_group\": group \}));", "\n",
       "    \}", "\n",
       "    let roots = native_census_roots_ranked(cause_groups.clone());", "\n",
-      "    if let Some((subject_label, scope)) = scope \{", "\n",
+      "    if let Some(walk) = scope \{", "\n",
+      "        let subject_label = walk.label.clone();", "\n",
+      "        let scope = walk.scope.clone();", "\n",
       "        for root in roots.iter() \{", "\n",
       "            println!(\"\{\}\", serde_json::json!(\{ \"census_root\": root \}));", "\n",
       "        \}", "\n",
@@ -19972,9 +20158,37 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            NativeCensusScope::NativeCensusScopeClosed \{ subject, .. \} => (subject.clone(), \"closed\", 0),", "\n",
       "            NativeCensusScope::NativeCensusScopeBlocked \{ subject, blocked_rest, .. \} => (subject.clone(), \"blocked\", 1 + blocked_rest.len()),", "\n",
       "        \};", "\n",
+      "        // THE RUN'S OWN RECORD, decided by v2.compiler.compile census_scoped_run_record from what this walk held.", "\n",
+      "        let record = census_scoped_run_record(scope.clone(), Rc::new(im::vector::Vector::from(obligation_rows.clone())), Rc::new(walk.digests.iter().cloned().collect()));", "\n",
+      "        println!(\"\{\}\", serde_json::json!(\{ \"census_run_record\": record.clone() \}));", "\n",
+      "        // THE PROJECTION A LATER RUN READS BACK (census_comparable_record): plain data, so it deserializes", "\n",
+      "        // without minting a sealed value, and census_comparable_diff compares exactly these fields.", "\n",
+      "        let comparable = census_comparable_record(record.clone());", "\n",
+      "        println!(\"\{\}\", serde_json::json!(\{ \"census_run_comparable\": comparable.clone() \}));", "\n",
+      "        // THE COMPARISON, when a baseline was named: census_run_diff decides every finding. A baseline that", "\n",
+      "        // cannot be read as a completed record is reported as no comparison, never as an empty one.", "\n",
+      "        let diff = match &walk.against \{", "\n",
+      "            None => \"none\",", "\n",
+      "            Some(path) => match census_baseline_record(path) \{", "\n",
+      "                Err(cause) => \{", "\n",
+      "                    println!(\"\{\}\", serde_json::json!(\{ \"census_diff_unavailable\": \{ \"against\": path, \"cause\": cause \} \}));", "\n",
+      "                    \"unavailable\"", "\n",
+      "                \}", "\n",
+      "                Ok(before) => \{", "\n",
+      "                    let result = census_comparable_diff(before, comparable.clone());", "\n",
+      "                    println!(\"\{\}\", serde_json::json!(\{ \"census_run_diff\": result.clone(), \"against\": path \}));", "\n",
+      "                    match &*result \{", "\n",
+      "                        CensusRunDiffResult::CensusRunDiffSubjectRefused \{ .. \} => \"subject_refused\",", "\n",
+      "                        CensusRunDiffResult::CensusRunDiffCompared \{ .. \} => \"compared\",", "\n",
+      "                    \}", "\n",
+      "                \}", "\n",
+      "            \},", "\n",
+      "        \};", "\n",
       "        println!(\"\{\}\", serde_json::json!(\{", "\n",
       "            \"_terminal\": \"complete\",", "\n",
       "            \"mode\": \"census-scoped\",", "\n",
+      "            \"against\": walk.against.clone(),", "\n",
+      "            \"diff\": diff,", "\n",
       "            \"subject_label\": subject_label,", "\n",
       "            \"subject\": subject,", "\n",
       "            \"acquisition\": acquisition,", "\n",
@@ -20728,7 +20942,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                NativeDriverVerb::NativeDriverCensusResolve \{ .. \} => run_census_resolve(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusInfer \{ .. \} => run_census_infer(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverDemandCensus \{ .. \} => run_demand_census(&source_roots),", "\n",
-      "                NativeDriverVerb::NativeDriverCensusScoped \{ subject, .. \} => run_census_scoped(subject, &source_roots),", "\n",
+      "                NativeDriverVerb::NativeDriverCensusScoped \{ subject, against, .. \} => run_census_scoped(subject, against.clone(), &source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverAdjudicate \{ facts_path, pattern, .. \} => run_adjudication(facts_path, Rc::new(TargetPattern::clone(pattern)), &source_roots),", "\n",
       "            \}", "\n",
       "        \}", "\n",

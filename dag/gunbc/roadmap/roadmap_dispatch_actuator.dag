@@ -64,7 +64,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
   AttemptProcessExitedWith, AttemptProcessSignaled, attempt_exit_record_observe,
 }
-import extdeps.posix.signal { linux_standard_signal_number }
+import extdeps.posix.signal { linux_standard_signal_number, linux_standard_signal_render }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
@@ -88,6 +88,9 @@ import extdeps.tmux {
   TmuxPipeCommand,
   TmuxLsEntry,
   TmuxAttemptPaneEntry,
+  TmuxAttemptPaneAlive,
+  TmuxAttemptPaneExited,
+  TmuxAttemptPaneSignaled,
   AttemptPanesParsed,
   AttemptPanesParseRefused,
   parse_tmux_attempt_panes_output,
@@ -176,6 +179,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessAbsent,
   WorkerProcessRunning,
   WorkerProcessExited,
+  WorkerProcessSignaled,
   worker_process_observed_command,
   AttemptEvidence,
   WorktreeUnobserved,
@@ -270,7 +274,6 @@ import gunbc.roadmap.roadmap_dispatch_destination {
   destination_is_this_spawn_tree,
   destination_not_this_spawn_tree_reason,
 }
-
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
   reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as NonEmptyStr
 }
@@ -3869,6 +3872,17 @@ fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> Tm
               },
             ),
           }
+        WorkerProcessSignaled { signal: _, last_command } =>
+          Present {
+            value: dispatch_tmux_session_scope_for_process_fingerprint(
+              node_id: node_id,
+              process_fingerprint: if last_command == "" {
+                "retained-signal" as NonEmptyStr
+              } else {
+                last_command as NonEmptyStr
+              },
+            ),
+          }
         WorkerProcessUnobserved { reason: _ } => none
         WorkerProcessAbsent => none
       }
@@ -4106,6 +4120,10 @@ type DispatchSessionCleanup
       session_name: String,
       exit_code: Int,
     }
+  | DispatchClearSignaledSession {
+      session_name: String,
+      signal: Int,
+    }
   | DispatchCleanupRefused { reason: String }
 
 fn dispatch_session_cleanup_action(
@@ -4114,6 +4132,7 @@ fn dispatch_session_cleanup_action(
   match cleanup {
     DispatchStopRunningProcess { session_name: _ } => "stop"
     DispatchClearRetainedSession { session_name: _, exit_code: _ } => "clear"
+    DispatchClearSignaledSession { session_name: _, signal: _ } => "clear"
     DispatchCleanupRefused { reason: _ } => "unavailable"
   }
 }
@@ -4124,6 +4143,7 @@ fn dispatch_session_cleanup_allowed(
   match cleanup {
     DispatchStopRunningProcess { session_name: _ } => true
     DispatchClearRetainedSession { session_name: _, exit_code: _ } => true
+    DispatchClearSignaledSession { session_name: _, signal: _ } => true
     DispatchCleanupRefused { reason: _ } => false
   }
 }
@@ -4138,6 +4158,12 @@ fn dispatch_session_cleanup_detail(
       join([
         "provider process already exited ",
         to_string(exit_code),
+        "; only retained tmux session metadata will be removed",
+      ], "")
+    DispatchClearSignaledSession { session_name: _, signal } =>
+      join([
+        "provider process already killed by ",
+        linux_standard_signal_render(n: signal),
         "; only retained tmux session metadata will be removed",
       ], "")
     DispatchCleanupRefused { reason } => reason
@@ -4310,24 +4336,25 @@ fn worker_process_from_attempt_unit(
 fn worker_process_from_attempt_pane(
   pane: TmuxAttemptPaneEntry,
 ) -> WorkerProcessEvidence {
-  if pane.dead {
-    match pane.exit_code {
-      Present { value: code } =>
-        WorkerProcessExited {
-          exit_code: code,
-          last_command: pane.command,
-        }
-      Absent =>
+  match pane.standing {
+    TmuxAttemptPaneExited { status } =>
+      WorkerProcessExited {
+        exit_code: status,
+        last_command: pane.command,
+      }
+    TmuxAttemptPaneSignaled { signal } =>
+      WorkerProcessSignaled {
+        signal: signal,
+        last_command: pane.command,
+      }
+    TmuxAttemptPaneAlive =>
+      if pane.command == "" {
         WorkerProcessUnobserved {
-          reason: "dead pane did not carry an exit status" as NonEmptyStr,
+          reason: "running pane did not expose pane_current_command" as NonEmptyStr,
         }
-    }
-  } else if pane.command == "" {
-    WorkerProcessUnobserved {
-      reason: "running pane did not expose pane_current_command" as NonEmptyStr,
-    }
-  } else {
-    WorkerProcessRunning { command: pane.command as NonEmptyStr }
+      } else {
+        WorkerProcessRunning { command: pane.command as NonEmptyStr }
+      }
   }
 }
 
@@ -4484,6 +4511,11 @@ fn dispatch_session_cleanup(
         DispatchClearRetainedSession {
           session_name: session.session_name,
           exit_code: exit_code,
+        }
+      WorkerProcessSignaled { signal, last_command: _ } =>
+        DispatchClearSignaledSession {
+          session_name: session.session_name,
+          signal: signal,
         }
       WorkerProcessAbsent =>
         DispatchCleanupRefused {

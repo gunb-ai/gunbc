@@ -1,5 +1,6 @@
 module v2.compiler.emit_produced
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
 import v2.compiler.target_serialize { target_bundle_optional_child, target_serialize_bodied_arrow_from_model }
 import v2.compiler.target_carriers { emit_module_decl_separator, target_source_medium }
@@ -46,6 +47,8 @@ import v2.extdeps.languages.dag { namespace_graft_node_is_module_body }
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
 import v2.std.text { String }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 fn emit_produced_decl_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
@@ -170,8 +173,6 @@ fn produced_decl_conjs_in_children(
 fn produced_decl_conjs_in_tree(root: Node) -> FreeMonoid<Node> {
   produced_decl_conjs_in_children(children: root.children, acc: Empty)
 }
-
-
 
 // EVERY DIRECT MEMBER OF A MODULE BODY HAS EXACTLY ONE TARGET REALIZATION OR ONE TYPED REFUSAL.
 // The class is decided once, here, from the member's own declaration edge and its module's declaration
@@ -565,3 +566,9 @@ fn emit_produced_module(decls: List<Node>, target: TargetModel) -> Outcome<Mediu
     f: fn(joined) { target_source_medium(text: joined, target: target) }
   )
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "module_member_class" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "module_member_conj_class" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "refinement_row_class" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]
