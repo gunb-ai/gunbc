@@ -33,12 +33,11 @@ import product.fabric.selection {
   OfferLiabilityOverBuyOrder, OfferRevocationNotAdmitted, selection_liability,
 }
 
-// Fleet interruptible-bid policy. In this change the executing consumer of flex_bid_admission is
-// the witness. DECLARED FRONTIER (DESIGN §3c): the production consumer is the fold that maps a
-// Vast SearchOffers row through vast_ai_min_bid_money_per_hour into FlexBidAttempt (quote_currency
-// = vast_ai_quote_currency) and calls flex_bid_admission. TRIGGER: that adapter exists as a
-// production module (not a test) and deleting the witness still leaves an execution of the real
-// path. Until then this slice is M0 model-only: no effects, no search, no bid PUT.
+// Fleet interruptible-bid policy. Adapter: product.fabric.flex_vast_shadow flex_shadow_bid maps a
+// VastAiOffer through vast_ai_min_bid_money_per_hour and calls flex_bid_admission. DECLARED FRONTIER
+// (DESIGN §3c): a non-test executing route that remains if the witness is deleted. TRIGGER: an
+// instrument or wet readonly Search that calls flex_shadow_bid. Until then the executing consumer
+// is test.claim.fabric.flex_vast_shadow_witness. No create or destroy.
 
 data flex_floor_buffer: NonzeroNatFraction = NonzeroNatFraction { num: 1, denom_predecessor: 9 }
 
@@ -74,6 +73,10 @@ type FlexBidSubject
   = FlexNewAcquisition
   | FlexExistingAcquisition { current_bid: MoneyPerHour }
 
+type FlexActuationMode
+  = FlexActuationDry
+  | FlexActuationWet
+
 type FlexPolicy {
   fleet_rate_cap: MoneyPerHour
   floor_buffer: NonzeroNatFraction
@@ -81,6 +84,9 @@ type FlexPolicy {
   // Not a mix of on-demand vs interruptible headcount.
   on_demand_fraction: NonzeroNatFraction
   acquisition_horizon: Second
+  // Write loop. FlexActuationDry is observe/plan/record; Wet is the write loop.
+  // Trial and every current constructor are Dry.
+  actuation: FlexActuationMode
 }
 
 type FlexAcquisitionWindow {

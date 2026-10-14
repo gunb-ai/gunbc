@@ -1,4 +1,4 @@
-module gunbc.namespace_cut.namespace_step0_candidate_run
+module v2.workflow.namespace_step0_candidate_run
 
 import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
@@ -24,8 +24,8 @@ import gunbc.instruments.multi_module_compile_fixture {
   compile_fixture
 }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
-import gunbc.namespace_cut.parsed_import_statement_production { parsed_import_statements_live }
-import gunbc.namespace_cut.namespace_step0_strip_producer {
+import v2.workflow.parsed_import_statement_production { parsed_import_statements_live }
+import v2.workflow.namespace_step0_strip_producer {
   Step0SourceStrip,
   Step0SourceStripped,
   Step0SourceStripRefused,

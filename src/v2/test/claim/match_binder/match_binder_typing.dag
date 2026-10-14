@@ -426,12 +426,13 @@ test fn mbt_a_record_scrutinee_refuses_holds() -> Bool {
   )
 }
 
-// A HOST-TEXT SCRUTINEE IS NOT A COPRODUCT, AND A FreeMonoid WALK OVER IT IS A TEXT CROSSING WITH NO
-// UNFOLD (DESIGN section 4, ruling text_crossings_go_through_the_unfold). The scrutinee type is the kernel
-// String's own node (v2.std.node host_text_type_node), what `std.types String` resolves to, and the arms
-// are the Empty/Cons walk's shape. This is the refusal the seed does NOT carry: it admitted
-// `match name { Empty .. Cons { head, tail } .. }` over a kernel String and emitted `__fm[0]` over a Rust
-// String (gunbc.rung_drop text_boundary_identity_wall, the match-pattern population).
+// A HOST-TEXT SCRUTINEE IS NOT A COPRODUCT (DESIGN section 4, ruling
+// text_crossings_go_through_the_unfold). The scrutinee type is the kernel String's own node (v2.std.node
+// host_text_type_node), what `std.types String` resolves to, and the checker refuses with
+// infer_match_scrutinee_not_coproduct. This is a check of the inference interface with a supplied
+// non-coproduct scrutinee type: the arms are mbt_supplied_arms() (Rejected/Accepted), not an Empty/Cons
+// walk, and it is not an end-to-end route fixture over source text. The seed carries no such refusal
+// (gunbc.rung_drop text_boundary_identity_wall, the match-pattern population).
 test fn mbt_a_host_text_scrutinee_refuses_holds() -> Bool {
   mbt_supplied_refuses_with(
     o: mbt_supplied_match(

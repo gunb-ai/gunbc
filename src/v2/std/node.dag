@@ -2089,8 +2089,8 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
 }
 
 fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
-  let n = canonicalize_node_for_content_hash(n: n)
-  fold(n.children, init: algebra.init(n), f: fn(acc, e) {
+  let canonical = canonicalize_node_for_content_hash(n: n)
+  fold(canonical.children, init: algebra.init(canonical), f: fn(acc, e) {
     algebra.step(acc, e, fold_node_content_hash(n: e.target, algebra: algebra))
   })
 }
