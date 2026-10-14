@@ -27,11 +27,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE NINE CONTROLLED SPECIMENS of roadmap node cardinality-realization-conformance, each reduced
 // to ONE Int tag by an elimination that keeps every distinction the specimen exists to test, so two
 // specimens that a realization conflates read as one tag and the pairwise claim reds. This module
-// covers the EVALUATOR PATH ONLY. The Rust emit path and the native v2 route are an OPEN FRONTIER
-// of roadmap node cardinality-realization-conformance, not covered here: no `gunbc test <label>`
-// re-derives them yet, and their one-off observations are PR evidence, not an instrument. Trigger:
-// a TargetModel realization-support row keyed by (target, shape), whose consumer executes these
-// nine specimens on each path or refuses explicitly. Until then the rung is the minimum across paths.
+// covers the EVALUATOR PATH as claims executing the tag functions (not eval_test_claim_subject itself). The other paths are declared per (target, specimen) in
+// v2.test.claim.cardinality_realization_coverage, which also holds the rung: the seed Rust emit
+// realizes 1-6 and 7 and does NOT realize the List spelling of specimen 6 or specimens 8 and 9 (each
+// enrolled ExpectedRed with its owners), and the native v2 CLI refuses the whole closure before any
+// shape is reached. Those two paths are observed locally and recorded in the PR, not gated: no
+// `gunbc test <label>` re-derives them. Trigger: a wet instrument row that runs both over these
+// specimens and compares the outcome with the coverage rows. Until then the class rung is the
+// minimum across paths, which is mitigation.
+//   (specimen 6 is declared again over List in v2.test.claim.cardinality_realization_list_specimen, its own
+//   module because the seed Rust emit of it does not compile and would take every specimen here with it)
 //   1 Absent                      2 Present(Absent)              3 Present(Present(7))
 //   4 absent collection           5 present empty collection     6 present collection of absent entries
 //   7 foreign member missing      8 foreign member present with null   9 foreign member present, invalid value
@@ -47,6 +52,13 @@ fn specimen_absent_collection() -> Optional<FreeMonoid<Int>> { Absent }
 fn specimen_present_empty_collection() -> Optional<FreeMonoid<Int>> { Present { value: [] } }
 
 fn specimen_present_absent_entries() -> Optional<FreeMonoid<Optional<Int>>> { Present { value: [Absent] } }
+
+// THE THREE FOREIGN FIXTURES AS DECLARATIONS, so each has an identity a support row can cite.
+data specimen_foreign_member_missing_text: String = "{}"
+
+data specimen_foreign_member_null_text: String = "{\"a\":null}"
+
+data specimen_foreign_member_invalid_text: String = "{\"a\":5}"
 
 fn tag_flat(x: Optional<Int>) -> Int {
   match x {
@@ -156,9 +168,9 @@ fn specimen_tags() -> FreeMonoid<Int> {
     tag_collection(x: specimen_absent_collection()),
     tag_collection(x: specimen_present_empty_collection()),
     tag_entries(x: specimen_present_absent_entries()),
-    tag_presence_text(text: "{}"),
-    tag_presence_text(text: "{\"a\":null}"),
-    tag_field_text(text: "{\"a\":5}")
+    tag_presence_text(text: specimen_foreign_member_missing_text),
+    tag_presence_text(text: specimen_foreign_member_null_text),
+    tag_field_text(text: specimen_foreign_member_invalid_text)
   ]
 }
 

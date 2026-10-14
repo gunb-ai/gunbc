@@ -14,11 +14,6 @@ import gunbc.instruments.native_process_memory_reading { NativeMeasuredWorkload 
 // identity and dependency edges; this relation answers the separate realization question. In
 // particular, no command line, function name, or execution closure is carried here: selecting a
 // transport belongs to the later realization layer, not to either side of this model relation.
-// FloorMemoryQualificationProducer supervises a required-floor run inside a cgroup it shares with
-// the child, then reads memory.peak and memory.events from OUTSIDE the dead process. Deliberately
-// NOT the RequiredFloorProducer variant, which remains unbound: what it produces is a memory
-// QUALIFICATION, not a floor verdict, and reusing a differently-named slot for a different fact is
-// the meaning fork DESIGN section 3 forbids.
 // NativeClaimProgramProducer IS GENERIC OVER ITS ENTRY AND ITS HOST DEADLINE. The entry is the
 // NativeClaimDriver program; the deadline is a std.measure Millisecond wall budget on the child
 // process after emit and build. Exceeding it is ObservationDidNotHold (gunbc test exit 1): the bound
@@ -49,7 +44,6 @@ type TargetProducer
   | PrimitiveEgressCensusV2Producer
   | PrimitiveEgressCensusDagProducer
   | PrimitiveEgressCensusSeedProducer
-  | FloorMemoryQualificationProducer
   | TypedGraphExclusiveBytesProducer
   | TypedGraphExclusiveBytesFloorSubjectProducer
   | RequiredLaneResolutionCensusProducer
@@ -90,7 +84,6 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     PrimitiveEgressCensusV2Producer {} => optional_absent()
     PrimitiveEgressCensusDagProducer {} => optional_absent()
     PrimitiveEgressCensusSeedProducer {} => optional_absent()
-    FloorMemoryQualificationProducer {} => optional_absent()
     TypedGraphExclusiveBytesProducer {} => optional_absent()
     TypedGraphExclusiveBytesFloorSubjectProducer {} => optional_absent()
     RequiredLaneResolutionCensusProducer {} => optional_absent()

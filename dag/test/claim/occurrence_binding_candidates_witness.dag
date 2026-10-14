@@ -1195,3 +1195,28 @@ test fn section13_failed_observation_refuses_holds() -> Bool {
     _ => false
   }
 }
+
+// D1 derived-equality backfill (declaration_exposure_eq deleted): the hand fold delegated the
+// LexicalExposure arm to occurrence_containment_paths_equal (structural equality of
+// OccurrenceContainmentPath: ancestors FreeMonoid<OccurrenceId> + terminal), and compared the
+// ModuleExposure/RootExposure arms directly. The primitive structural == is exactly that.
+// Discriminating RED: distinct variants and distinct field values (including a distinct terminal
+// id and a distinct ancestors list inside the recursive LexicalExposure scope) must compare
+// unequal. Positive control: equal values (each variant, including the recursive scope) compare
+// equal.
+fn obc_path(terminal: Int) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath { ancestors: [OccurrenceId { value: 900 }], terminal: OccurrenceId { value: terminal } }
+}
+
+test fn declaration_exposure_derived_eq_red_and_positive_holds() -> Bool {
+  !(RootExposure == ModuleExposure { module: "m" })
+    && !(ModuleExposure { module: "a" } == ModuleExposure { module: "b" })
+    && !(LexicalExposure { exposing_scope: obc_path(1) } == LexicalExposure { exposing_scope: obc_path(2) })
+    && !(LexicalExposure { exposing_scope: obc_path(1) } == ModuleExposure { module: "m" })
+    && !(LexicalExposure { exposing_scope: obc_path(1) } == RootExposure)
+    && !(LexicalExposure { exposing_scope: OccurrenceContainmentPath { ancestors: [OccurrenceId { value: 100 }], terminal: OccurrenceId { value: 1 } } }
+         == LexicalExposure { exposing_scope: OccurrenceContainmentPath { ancestors: [OccurrenceId { value: 200 }], terminal: OccurrenceId { value: 1 } } })
+    && (RootExposure == RootExposure)
+    && (ModuleExposure { module: "m" } == ModuleExposure { module: "m" })
+    && (LexicalExposure { exposing_scope: obc_path(7) } == LexicalExposure { exposing_scope: obc_path(7) })
+}

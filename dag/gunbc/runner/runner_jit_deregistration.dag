@@ -1,5 +1,6 @@
 module gunbc.runner.runner_jit_deregistration
 
+import std.optional { Absent, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.resources { Network }
 import std.decl_ref { decl_ref }
