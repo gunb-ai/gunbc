@@ -1,6 +1,8 @@
 module extdeps.bmc.megarac_fan_policy
 
-import std.types { NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.measure { Percent, percent_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
 import extdeps.external_authority {
@@ -66,25 +68,53 @@ fn megarac_fan_policy_read_obligation() -> NonEmptyStr? {
   cited_figure_read_obligation(standing: megarac_fan_policy_standing)
 }
 
-// THE CONVERGE SURFACE, MODELED AS UNBOUND RATHER THAN GUESSED.
+// THE CONVERGE SURFACE, BOUND TO THE FOXCONN MT. COLLINS SERVED-UI FAN CONTROL.
 //
-// A MegaRAC build sets its fan mode either through the proprietary REST surface or through an IPMI
-// OEM command, and which one a build offers is a BUILD fact, not a family one. This lane was asked
-// to model the surface and not to write through it, so what is declared is the shape of the binding
-// that is missing - not a path and not a netfn/cmd pair. Writing plausible OEM bytes here would be
-// worse than leaving it unbound: an OEM command byte that means 'set fan mode' on one vendor's build
-// means something else on another, and the failure mode of guessing is a write to an unknown
-// register on a machine in someone's home.
-//
-// The protocol floor is the one thing that IS known at family grain, and it is consumed from
-// extdeps.bmc.megarac's own floor rather than restated: IPMI is guaranteed, Redfish is per-build.
+// The write is the SP-X REST FanControlView path, not an OEM IPMI command. BmcProtocol still has
+// no REST arm, so the bound surface's protocol field stays the family IPMI floor used for SDR tach.
 type MegaRacFanModeSurface
   = MegaRacFanModeSurfaceUnbound { read_obligation: NonEmptyStr }
   | MegaRacFanModeSurfaceBound { protocol: BmcProtocol, contract_note: NonEmptyStr }
 
 data megarac_fan_mode_surface: MegaRacFanModeSurface = MegaRacFanModeSurfaceBound {
   protocol: Ipmi,
-  contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). READ: GET /api/fan_control/get_manager_status {manager_disabled:0|1} and GET /api/fan_control/get_fan_info [{id,fan_number,fan_speed,fan_pwm}] — extdeps.bmc.megarac megarac_op_fan_get_manager_status / megarac_op_fan_get_fan_info, executed 2026-10-14 ~21:50Z. WRITE Cooling Manager: POST /api/fan_control/set_manager_status {manager_disabled:r} — megarac_op_fan_set_manager_status, cited not yet executed here. WRITE PWM: POST /api/fan_control/set_fan_speed — megarac_op_fan_set_fan_speed; JSON member names unread (fan_control view). BmcProtocol has no SP-X REST arm; this field stays the family IPMI floor used for SDR tach. PWM write body may not be inferred.",
+  contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). READ: GET /api/fan_control/get_manager_status {manager_disabled:0|1} and GET /api/fan_control/get_fan_info [{id,fan_number,fan_speed,fan_pwm}]. WRITE manager: POST /api/fan_control/set_manager_status {manager_disabled:r}. WRITE PWM: POST /api/fan_control/set_fan_speed JSON {fan_pwm_all: r} with r a STRING from select#fan_all_speed (20..100 step 5); no per-fan write; only while manager_disabled is 1; readback is get_fan_info. BmcProtocol has no SP-X REST arm; this field stays the family IPMI floor used for SDR tach.",
+}
+
+data megarac_fan_pwm_all_admitted_wires: List<Int> = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]
+
+data megarac_fan_boot_pwm_wires: List<Int> = [20, 25, 30]
+
+fn megarac_int_in(xs: List<Int>, n: Int) -> Bool {
+  match xs.first() {
+    Absent => false
+    Present { value: h } => if h == n { true } else { megarac_int_in(xs: xs.skip(n: 1), n: n) }
+  }
+}
+
+type MegaRacFanPwmAll
+  = MegaRacFanPwmAllAdmitted { wire: NonEmptyStr }
+  | MegaRacFanPwmAllRefused { duty: Percent }
+
+fn megarac_fan_pwm_all_of(duty: Percent) -> MegaRacFanPwmAll {
+  let n = percent_count(p: duty) as Int
+  if megarac_int_in(xs: megarac_fan_pwm_all_admitted_wires, n: n) {
+    MegaRacFanPwmAllAdmitted { wire: to_string(n) as NonEmptyStr }
+  } else {
+    MegaRacFanPwmAllRefused { duty: duty }
+  }
+}
+
+fn megarac_fan_pwm_all_body(pwm: MegaRacFanPwmAll) -> NonEmptyStr? {
+  match pwm {
+    MegaRacFanPwmAllAdmitted { wire: w } =>
+      Present { value: concat(concat("{\"fan_pwm_all\":\"", w as String), "\"}") as NonEmptyStr }
+    MegaRacFanPwmAllRefused { duty: _ } => Absent
+  }
+}
+
+fn megarac_fan_boot_pwm_admitted(duty: Percent) -> Bool {
+  megarac_int_in(xs: megarac_fan_boot_pwm_wires, n: percent_count(p: duty) as Int)
 }
 
 fn megarac_fan_mode_surface_read_obligation(surface: MegaRacFanModeSurface) -> NonEmptyStr? {

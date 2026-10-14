@@ -393,15 +393,13 @@ test fn bounded_monitoring_completion_carries_the_admitted_bound() -> Bool {
   }
 }
 
-test fn openbmc_fan_route_is_admitted_and_megarac_stays_unbound() -> Bool {
+test fn openbmc_and_megarac_fan_routes_are_admitted() -> Bool {
   match bmc_fan_route_admission(route: fan_converge_route_for_family(family: OpenBmc)) {
     BmcFanRouteAdmitted { route: r } =>
       r == openbmc_fan_converge_route
         && match bmc_fan_route_admission(route: fan_converge_route_for_family(family: AmiMegaRac)) {
-          BmcFanRouteUnbound { read_obligation: o } =>
-            r != megarac_fan_converge_route
-              && string_contains(s: o as String, pattern: "set_fan_speed")
-          BmcFanRouteAdmitted { route: _ } => false
+          BmcFanRouteAdmitted { route: m } => m == megarac_fan_converge_route
+          BmcFanRouteUnbound { read_obligation: _ } => false
         }
     BmcFanRouteUnbound { read_obligation: _ } => false
   }
