@@ -29,7 +29,7 @@ data match_shorthand_source: String = "module zqxkwbind.probe\n\ntype Context = 
 
 data match_colon_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { reported_alias: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { reported_alias: match } => true, _ => false } }\n"
 
-data acquire_shorthand_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { acquire: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { acquire } => true, _ => false } }\n"
+data acquire_shorthand_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { held: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { acquire } => true, _ => false } }\n"
 
 data acquire_colon_source: String = "module zqxkwbind.probe\n\ntype Context = Ordered { reported_alias: String }\n\nfn probe(c: Context) -> Bool { match c { Ordered { reported_alias: acquire } => true, _ => false } }\n"
 
