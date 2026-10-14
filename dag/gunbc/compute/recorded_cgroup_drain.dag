@@ -1,0 +1,62 @@
+module gunbc.compute.recorded_cgroup_drain
+
+import std.types { Bool, String }
+
+type RecordedInvocationStanding
+  = RecordedInvocationStillCurrent
+  | RecordedInvocationEnded
+
+type RecordedCgroupPathStanding
+  = RecordedPathAbsent
+  | RecordedPathPopulated
+  | RecordedPathEmpty
+  | RecordedPathUnreadable { detail: String }
+
+type RecordedCgroupDrain
+  = RecordedCgroupPreserve { detail: String }
+  | RecordedCgroupMaySeal { detail: String }
+
+fn recorded_invocation_standing(recorded_id: String, current_id: String, unit_inactive: Bool) -> RecordedInvocationStanding {
+  if unit_inactive || current_id != recorded_id {
+    RecordedInvocationEnded
+  } else {
+    RecordedInvocationStillCurrent
+  }
+}
+
+fn recorded_cgroup_drain(invocation: RecordedInvocationStanding, path: RecordedCgroupPathStanding) -> RecordedCgroupDrain {
+  match invocation {
+    RecordedInvocationStillCurrent =>
+      RecordedCgroupPreserve { detail: "the recorded invocation is still the current one" }
+    RecordedInvocationEnded =>
+      match path {
+        RecordedPathAbsent =>
+          RecordedCgroupMaySeal { detail: "ENOENT on the recorded ControlGroup path" }
+        RecordedPathEmpty =>
+          RecordedCgroupMaySeal { detail: "cgroup.events populated 0" }
+        RecordedPathPopulated =>
+          RecordedCgroupPreserve { detail: "cgroup.events populated 1" }
+        RecordedPathUnreadable { detail: d } =>
+          RecordedCgroupPreserve { detail: d }
+      }
+  }
+}
+
+fn recorded_cgroup_may_seal(d: RecordedCgroupDrain) -> Bool {
+  match d {
+    RecordedCgroupMaySeal { detail: _ } => true
+    RecordedCgroupPreserve { detail: _ } => false
+  }
+}
+
+fn recorded_path_standing_from_events_error(error: String) -> RecordedCgroupPathStanding {
+  if string_contains(s: error, pattern: "ENOENT") {
+    RecordedPathAbsent
+  } else {
+    RecordedPathUnreadable { detail: error }
+  }
+}
+
+fn recorded_path_standing_from_events_body(body: String, decode: fn(String) -> RecordedCgroupPathStanding) -> RecordedCgroupPathStanding {
+  decode(body)
+}

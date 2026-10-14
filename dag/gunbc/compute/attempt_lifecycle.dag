@@ -96,11 +96,10 @@ fn unit_lifecycle_wire(u: UnitLifecycle) -> String {
 // THE LIFECYCLE STATE THE SLOT CARRIES. Reserved and Launching are the exclusive-admission gate,
 // not "has a unit" and not "the first read happened":
 //
-//   Reserved  -- launch/child-reader entitlement is not yet admitted. Producer-owned acquisition
-//                and synchronous probe borrows may still be active.
-//   Launching -- the durable launch-reader entitlement won. It does not mean a reader has opened
-//                the payload.
-//   Terminal  -- that entitlement is excluded. begin_launch at the pre-terminal generation loses.
+//   Reserved  -- launch/child-reader entitlement is not admitted. Producer-owned take or probe
+//                activity may still be live.
+//   Launching -- the durable launch-reader entitlement won.
+//   Terminal  -- no new launch reader can be admitted; physical cleanup may still be owed.
 //
 // Reserved is the only state a launch may proceed from and the only state recovery may terminate
 // from without observing the launched reader -- because in Reserved that reader was never admitted,

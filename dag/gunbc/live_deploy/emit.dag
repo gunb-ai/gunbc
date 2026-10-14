@@ -105,7 +105,7 @@ import extdeps.systemd.unit_file {
   TriggerLimitIntervalSec, TriggerLimitBurst,
   ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
   SystemdInstallSection, NotInstallable, Installable,
-  SystemdUnitDirective, Description, After, Wants, StartLimitIntervalSec, StartLimitBurst,
+  SystemdUnitDirective, Description, After, Wants, StartLimitIntervalSec, StartLimitBurst, OnSuccess, OnFailure,
   SystemdServiceDirective, ServiceType, OneshotMode, SimpleMode, ExecStart, Restart,
   Environment, EnvironmentFile, EnvironmentFileIfPresent, WorkingDirectory, ServiceUser, ServiceGroup,
   TimeoutStartSec,
@@ -174,6 +174,7 @@ import gunbc.live_deploy.spec {
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_exit_path_unit_name, deployment_belt_exit_drain_service_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_discovery_service_unit_name,
+  deployment_belt_credential_recovery_unit_name, deployment_belt_credential_recovery_unit_path,
   deployment_belt_exit_drain_service_unit_path, deployment_belt_answer_path_unit_path, deployment_belt_discovery_service_unit_path,
   deployment_belt_service_unit_path, deployment_belt_unit_install_target,
   deployment_publication_service_unit_name,
@@ -870,6 +871,8 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       Description { text: "gunbc roadmap belt launch (queues the one launch obligation: admission, spawn, teardown, discovery)" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
+      OnSuccess { unit: deployment_belt_credential_recovery_unit_name(names: spec.names) },
+      OnFailure { unit: deployment_belt_credential_recovery_unit_name(names: spec.names) },
     ],
     service: concat([
       ServiceType { mode: OneshotMode },
@@ -1134,6 +1137,14 @@ fn live_deploy_belt_exit_drain_service_unit_file(spec: DeploymentSpec) -> System
 
 fn live_deploy_belt_discovery_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt discovery (queues outstanding obligations, bounded)", function: "belt_discover_once_cli", install: NotInstallable)
+}
+
+fn live_deploy_belt_credential_recovery_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_belt_event_service_unit_file(
+    spec: spec,
+    description: "gunbc roadmap belt credential recovery (observes the recorded belt cgroup from its own unit)",
+    function: "belt_credential_recovery_cli",
+    install: NotInstallable)
 }
 
 fn live_deploy_belt_exit_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
@@ -3187,6 +3198,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         apply_belt_service_unit_write_step(spec: spec),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), file: live_deploy_belt_exit_drain_service_unit_file(spec: spec)),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), file: live_deploy_belt_discovery_service_unit_file(spec: spec)),
+        apply_belt_unit_file_write_step(stage_name: deployment_belt_credential_recovery_unit_name(names: spec.names), file: live_deploy_belt_credential_recovery_unit_file(spec: spec)),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), file: live_deploy_belt_exit_path_unit_file(spec: spec)),
         apply_belt_unit_file_write_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), file: live_deploy_belt_answer_path_unit_file(spec: spec)),
         deploy_raw(command: deploy_stage_install_command(
@@ -3196,6 +3208,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         )),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_drain_service_unit_name(names: spec.names), dest: deployment_belt_exit_drain_service_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_discovery_service_unit_name(names: spec.names), dest: deployment_belt_discovery_service_unit_path(names: spec.names)),
+        apply_belt_unit_file_install_step(stage_name: deployment_belt_credential_recovery_unit_name(names: spec.names), dest: deployment_belt_credential_recovery_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), dest: deployment_belt_answer_path_unit_path(names: spec.names)),
         apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: art.path),
         deploy_effect(inv: systemctl_daemon_reload_effect()),
@@ -3345,6 +3358,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
           deployment_belt_answer_path_unit_path(names: spec.names) as String,
           deployment_belt_exit_drain_service_unit_path(names: spec.names) as String,
           deployment_belt_discovery_service_unit_path(names: spec.names) as String,
+          deployment_belt_credential_recovery_unit_path(names: spec.names) as String,
           deployment_belt_service_unit_path(names: spec.names) as String,
         ])),
         deploy_effect(inv: systemctl_daemon_reload_effect()),

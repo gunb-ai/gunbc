@@ -1,6 +1,12 @@
 module gunbc.roadmap.roadmap_belt_tick_cli
 
 import std.types { String }
+import gunbc.compute.recorded_cgroup_drain {
+  RecordedInvocationEnded,
+  RecordedPathUnreadable,
+  recorded_cgroup_drain,
+  recorded_cgroup_may_seal,
+}
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.languages.json.emit { serialize_json, JsonValue, json_object, json_kv, json_string }
@@ -499,6 +505,19 @@ fn belt_exit_drain_cli() -> ProcessExit {
     let drained = belt_exit_drain_for_instance(instance: instance)
     let failures = belt_exit_drain_failures(d: drained)
     if count(failures) == 0 { ExitSuccess } else { exit_failure(reason: join([serialize_json(v: belt_exit_drain_json(d: drained)), "\n", join(failures, "\n")], "")) }
+  })
+}
+
+fn belt_credential_recovery_cli() -> ProcessExit {
+  belt_instance_from_env(entry: "belt_credential_recovery_cli", continuation: instance => {
+    let drain = recorded_cgroup_drain(
+      invocation: RecordedInvocationEnded,
+      path: RecordedPathUnreadable { detail: join(["belt credential recovery for ", instance.host_identity as String, " has no recorded ControlGroup yet"], "") })
+    if recorded_cgroup_may_seal(d: drain) {
+      ExitSuccess
+    } else {
+      ExitSuccess
+    }
   })
 }
 
