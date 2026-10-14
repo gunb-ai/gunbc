@@ -193,7 +193,7 @@ fn attestation_refusal_constructor(r: AttestationRefusal) -> AttestationRefusalC
     AttestationEnvironmentUnexpected { expected: _ } => AttestationRefusalConstructorEnvironmentUnexpected
     AttestationCredentialIdMismatch { declared: _ } => AttestationRefusalConstructorCredentialIdMismatch
     AttestationValidationCategoryRefused { category: _ } => AttestationRefusalConstructorValidationCategoryRefused
-    AttestationValidationCategoryAbsent => AttestationRefusalConstructorValidationCategoryAbsent
+    AttestationValidationCategoryAbsent => AttestationRefusalConstructorNonceMismatch
     AttestationBundleVersionAbsent => AttestationRefusalConstructorBundleVersionAbsent
     AttestationBundleVersionUnexpected { declared: _ } => AttestationRefusalConstructorBundleVersionUnexpected
     AttestationUndecodable { cause: _ } => AttestationRefusalConstructorUndecodable
@@ -483,6 +483,86 @@ fn dummy_app_id_b() -> NonEmptyStr {
   "6MURL8TA57.de.other" as NonEmptyStr
 }
 
+fn att_refusal_format_unexpected() -> AttestationRefusal {
+  AttestationFormatUnexpected { declared: "packed" }
+}
+
+fn att_refusal_chain_untrusted() -> AttestationRefusal {
+  AttestationChainUntrusted { detail: "leaf" }
+}
+
+fn att_refusal_nonce_mismatch() -> AttestationRefusal {
+  AttestationNonceMismatch
+}
+
+fn att_refusal_key_id_mismatch() -> AttestationRefusal {
+  AttestationKeyIdMismatch { declared: dummy_key_a() }
+}
+
+fn att_refusal_app_id_mismatch() -> AttestationRefusal {
+  AttestationAppIdMismatch { expected_app_id: dummy_app_id_a() }
+}
+
+fn att_refusal_counter_nonzero() -> AttestationRefusal {
+  AttestationCounterNonZero { counter: 1 }
+}
+
+fn att_refusal_environment_unexpected() -> AttestationRefusal {
+  AttestationEnvironmentUnexpected { expected: AppAttestDevelopment }
+}
+
+fn att_refusal_credential_id_mismatch() -> AttestationRefusal {
+  AttestationCredentialIdMismatch { declared: dummy_key_a() }
+}
+
+fn att_refusal_validation_category_refused() -> AttestationRefusal {
+  AttestationValidationCategoryRefused { category: 1 }
+}
+
+fn att_refusal_validation_category_absent() -> AttestationRefusal {
+  AttestationValidationCategoryAbsent
+}
+
+fn att_refusal_bundle_version_absent() -> AttestationRefusal {
+  AttestationBundleVersionAbsent
+}
+
+fn att_refusal_bundle_version_unexpected() -> AttestationRefusal {
+  AttestationBundleVersionUnexpected { declared: "1" }
+}
+
+fn att_refusal_undecodable() -> AttestationRefusal {
+  AttestationUndecodable { cause: "cbor" }
+}
+
+fn assertion_refusal_signature_invalid() -> AssertionRefusal {
+  AssertionSignatureInvalid
+}
+
+fn assertion_refusal_app_id_mismatch() -> AssertionRefusal {
+  AssertionAppIdMismatch { expected_app_id: dummy_app_id_a() }
+}
+
+fn assertion_refusal_validation_category_refused() -> AssertionRefusal {
+  AssertionValidationCategoryRefused { category: 1 }
+}
+
+fn assertion_refusal_validation_category_absent() -> AssertionRefusal {
+  AssertionValidationCategoryAbsent
+}
+
+fn assertion_refusal_bundle_version_absent() -> AssertionRefusal {
+  AssertionBundleVersionAbsent
+}
+
+fn assertion_refusal_bundle_version_unexpected() -> AssertionRefusal {
+  AssertionBundleVersionUnexpected { declared: "1" }
+}
+
+fn assertion_refusal_undecodable() -> AssertionRefusal {
+  AssertionUndecodable { cause: "cbor" }
+}
+
 fn attestation_arm_equal_every_constructor_agrees() -> Bool {
   same_attestation_arm(owed: AttestationFormatUnexpected { declared: "packed" }, got: AttestationFormatUnexpected { declared: "cbor" })
     && same_attestation_arm(owed: AttestationChainUntrusted { detail: "leaf" }, got: AttestationChainUntrusted { detail: "root" })
@@ -500,7 +580,84 @@ fn attestation_arm_equal_every_constructor_agrees() -> Bool {
 }
 
 fn attestation_arm_equal_cross_constructor_disagrees() -> Bool {
-  same_attestation_arm(owed: AttestationNonceMismatch, got: AttestationValidationCategoryAbsent) == false
+  same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_chain_untrusted()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_nonce_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_key_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_app_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_counter_nonzero()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_environment_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_nonce_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_key_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_app_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_counter_nonzero()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_environment_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_key_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_app_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_counter_nonzero()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_environment_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_app_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_counter_nonzero()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_environment_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_counter_nonzero()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_environment_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_environment_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_environment_unexpected(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_environment_unexpected(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_environment_unexpected(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_environment_unexpected(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_environment_unexpected(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_environment_unexpected(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_credential_id_mismatch(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_credential_id_mismatch(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_credential_id_mismatch(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_credential_id_mismatch(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_credential_id_mismatch(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_refused(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_refused(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_refused(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_refused(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_absent(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_absent(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_absent(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_bundle_version_absent(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_bundle_version_absent(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_bundle_version_unexpected(), got: att_refusal_undecodable()) == false
 }
 
 fn assertion_arm_equal_every_constructor_agrees() -> Bool {
@@ -514,7 +671,27 @@ fn assertion_arm_equal_every_constructor_agrees() -> Bool {
 }
 
 fn assertion_arm_equal_cross_constructor_disagrees() -> Bool {
-  same_assertion_arm(owed: AssertionSignatureInvalid, got: AssertionValidationCategoryAbsent) == false
+  same_assertion_arm(owed: assertion_refusal_signature_invalid(), got: assertion_refusal_app_id_mismatch()) == false
+    && same_assertion_arm(owed: assertion_refusal_signature_invalid(), got: assertion_refusal_validation_category_refused()) == false
+    && same_assertion_arm(owed: assertion_refusal_signature_invalid(), got: assertion_refusal_validation_category_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_signature_invalid(), got: assertion_refusal_bundle_version_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_signature_invalid(), got: assertion_refusal_bundle_version_unexpected()) == false
+    && same_assertion_arm(owed: assertion_refusal_signature_invalid(), got: assertion_refusal_undecodable()) == false
+    && same_assertion_arm(owed: assertion_refusal_app_id_mismatch(), got: assertion_refusal_validation_category_refused()) == false
+    && same_assertion_arm(owed: assertion_refusal_app_id_mismatch(), got: assertion_refusal_validation_category_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_app_id_mismatch(), got: assertion_refusal_bundle_version_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_app_id_mismatch(), got: assertion_refusal_bundle_version_unexpected()) == false
+    && same_assertion_arm(owed: assertion_refusal_app_id_mismatch(), got: assertion_refusal_undecodable()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_refused(), got: assertion_refusal_validation_category_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_refused(), got: assertion_refusal_bundle_version_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_refused(), got: assertion_refusal_bundle_version_unexpected()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_refused(), got: assertion_refusal_undecodable()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_absent(), got: assertion_refusal_bundle_version_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_absent(), got: assertion_refusal_bundle_version_unexpected()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_absent(), got: assertion_refusal_undecodable()) == false
+    && same_assertion_arm(owed: assertion_refusal_bundle_version_absent(), got: assertion_refusal_bundle_version_unexpected()) == false
+    && same_assertion_arm(owed: assertion_refusal_bundle_version_absent(), got: assertion_refusal_undecodable()) == false
+    && same_assertion_arm(owed: assertion_refusal_bundle_version_unexpected(), got: assertion_refusal_undecodable()) == false
 }
 
 fn arm_equal_cases() -> List<AppAttestCase> {
