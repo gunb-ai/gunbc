@@ -3,14 +3,18 @@ module std.key_relation
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, decl_ref }
 
-// NAMING MOVE, NOT A WALL (honest rung, DESIGN §4b). KeyRelation packages scope_of, key_of,
-// scope_eq, key_eq, and a phantom Relation brand so each consumer names the relation under which
+// NAMING MOVE, NOT A WALL (honest rung, DESIGN §4b). KeyRelation packages scope_of, key_of
+// and a phantom Relation brand so each consumer names the relation under which
 // its population reconciles — a real §3 improvement over anonymous key_of/key_eq pairs that
 // coincidentally share carriers. The Relation type parameter is a legitimate bodyless type-tag
 // (DESIGN Hardware precedent): never construction-reached, not a hollow alias. It does NOT enforce
 // the load-bearing identity law: any content-derived key_of still typechecks and still inhabits a
 // KeyRelation unchanged. GlobalKeyScope is an empty record today, so the scope axis does no work
 // until a consumer grounds a real scope type. Functional-key cardinality for membership_reconcile
+// There is no scope_eq/key_eq: a keyed index consults the projected identity's own structural
+// equality, so where a relation's compared identity is narrower than the subject, key_of and scope_of
+// must project to EXACTLY the compared identity (see gunbc.tailscale_serve_scope).
+// Functional-key cardinality for membership_reconcile
 // is NOT stored on this carrier: std.keyed_roster keyed_roster_build over ScopedKey rows PRODUCES
 // the evidence by refusing KeyedRosterBuildDuplicateKey (operator ruling 2026-08-16). An authored
 // 0<=1 magnitude proved nothing about a population; the roster constructor is the wall. Rung today:
@@ -49,6 +53,15 @@ data key_relation_identity_wall_first_consumer: DeclarationRef = decl_ref(module
 
 data key_relation_brand_type_tag_note: String = "Relation brand types (e.g. TailscaleServeRouteKeyRelation) are uninhabited phantom tags — legitimate under the hollow-alias rule because they are never construction-reached, only used as type parameters to keep unrelated relations non-substitutable when Subject/Scope/Key carriers coincide."
 
+// THE IDENTITY CARRIER A KEYED INDEX KEYS ON. It wraps the STRUCTURED key value, never a display or
+// concatenated string, so two keys are the same slot exactly when the structured values are equal
+// (substrate identity); a '::'-style join is not injective and must not be wrapped. ContentIdentity
+// stays a distinct carrier. Introducing it does NOT climb the identity wall: nothing yet constrains
+// key_of to return it.
+type SubjectKey<K> {
+  subject: K
+}
+
 type ScopedKey<Relation, Scope, Key> {
   scope: Scope
   key: Key
@@ -57,8 +70,6 @@ type ScopedKey<Relation, Scope, Key> {
 type KeyRelation<Relation, Subject, Scope, Key> {
   scope_of: fn(Subject) -> Scope
   key_of: fn(Subject) -> Key
-  scope_eq: fn(Scope, Scope) -> Bool
-  key_eq: fn(Key, Key) -> Bool
 }
 
 type GlobalKeyScope {}
@@ -67,10 +78,6 @@ data global_key_scope_marker: GlobalKeyScope = GlobalKeyScope {}
 
 fn global_key_scope() -> GlobalKeyScope {
   global_key_scope_marker
-}
-
-fn global_key_scope_eq(_: GlobalKeyScope, _: GlobalKeyScope) -> Bool {
-  true
 }
 
 fn key_relation_global_scope_of<Subject>(_subject: Subject) -> GlobalKeyScope {
@@ -86,25 +93,12 @@ fn key_relation_scoped_key<Relation, Subject, Scope, Key>(
   ScopedKey { scope: scope_of(subject), key: key_of(subject) }
 }
 
-fn key_relation_scoped_key_eq<Relation, Subject, Scope, Key>(
-  relation: KeyRelation<Relation, Subject, Scope, Key>,
-  a: ScopedKey<Relation, Scope, Key>,
-  b: ScopedKey<Relation, Scope, Key>,
-) -> Bool {
-  let scope_eq = relation.scope_eq
-  let key_eq = relation.key_eq
-  scope_eq(a.scope, b.scope) && key_eq(a.key, b.key)
-}
-
 fn key_relation_global<Relation, Subject, Key>(
   key_of: fn(Subject) -> Key,
-  key_eq: fn(Key, Key) -> Bool,
 ) -> KeyRelation<Relation, Subject, GlobalKeyScope, Key> {
   KeyRelation {
     scope_of: key_relation_global_scope_of,
     key_of: key_of,
-    scope_eq: global_key_scope_eq,
-    key_eq: key_eq,
   }
 }
 
@@ -128,12 +122,11 @@ fn keyed_resource_subject_value_eq<M, Relation, Scope, Key, State>(
 
 fn key_resource_relation_global<Relation, Subject, Key, State>(
   key_of: fn(Subject) -> Key,
-  key_eq: fn(Key, Key) -> Bool,
   state_of: fn(Subject) -> State,
   state_eq: fn(State, State) -> Bool,
 ) -> KeyedResourceRelation<Relation, Subject, GlobalKeyScope, Key, State> {
   KeyedResourceRelation {
-    key: key_relation_global(key_of: key_of, key_eq: key_eq),
+    key: key_relation_global(key_of: key_of),
     state: StateRelation { state_of: state_of, state_eq: state_eq },
   }
 }

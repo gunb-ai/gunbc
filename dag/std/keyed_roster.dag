@@ -2,7 +2,8 @@ module std.keyed_roster
 import std.optional { Absent, Present }
 
 import std.types { List, Bool, Int, String }
-import std.keyed_row { KeyedRow, keyed_row_find }
+import std.keyed_row { KeyedRow }
+import std.key_relation { SubjectKey }
 
 // Keyed roster set/map CONSTRUCTION semantics (generated-file conflict policy lane 4, operator
 // ruling 2026-08-01). Path-keyed grant and roster carriers are row 3 in the four-case policy: never
@@ -13,11 +14,15 @@ import std.keyed_row { KeyedRow, keyed_row_find }
 // a second value can exist, so a git clean-merge that appended two branches' list literals into
 // duplicate paths is caught at per-PR admission instead of stalling main. keyed_roster_insert also
 // refuses when the input roster already carries duplicate keys (KeyedRosterInvalidRoster), so
-// insert cannot widen an invalid roster. keyed_roster_build folds via
-// keyed_roster_insert_into_unique on a proven-duplicate-free accumulator (O(n²) via keyed_row_find
-// per fold step; keyed_roster_locate_duplicate, used by keyed_roster_insert's invalid-roster
-// pre-check, is also O(n²) worst-case — each of the n fold steps does one O(n) occurrence count
-// plus at most two O(n) locates). Consumers inspect the canonical typed verdict (KeyedRosterBuild /
+// insert cannot widen an invalid roster. every operation derives from ONE index (keyed_roster_index) built left to right with a map_get and a
+// map_insert per row, keyed on the SubjectKey's own substrate identity rather than a caller predicate:
+// build, insert's invalid-roster precheck and keyed_roster_locate_duplicate are each O(n) (insert also
+// pays the O(n) concat that appends its row). The refusal is this module's own map hit, not
+// map_insert (runtime map_insert is last-write-wins) and not map_introduction_duplicate_key (the
+// map-literal law). Authored order is the input list itself; the distinct and duplicated key lists are
+// accumulated by prepend-then-reverse. The identity wall is NOT climbed here: key_of is not yet
+// constrained to return SubjectKey, so key_relation_identity_wall_next_rung_trigger stays unbound.
+// Consumers inspect the canonical typed verdict (KeyedRosterBuild /
 // KeyedRosterInsert) directly — no parallel *_holds or *_duplicate_free Bool predicates that
 // collapse the coproduct. Dup detection for list literals: keyed_roster_locate_duplicate returns
 // KeyedRosterDuplicateEvidence?; path_occurrence_count is a low-level count helper for totality
@@ -33,137 +38,216 @@ import std.keyed_row { KeyedRow, keyed_row_find }
 // dissolution trigger fixed). Publication-grant carrier deferred: public_file_publish_grants
 // deleted from main (#7591); incident row-sets held as keyed_roster_witness fixtures until re-land.
 
-fn keyed_occurrence_count<K, V>(
-  rows: List<KeyedRow<K, V>>,
-  wanted_key: K,
-  key_eq: fn(K, K) -> Bool,
-) -> Int {
-  fold(rows, init: 0, f: fn(n, row) {
-    if key_eq(row.row_key, wanted_key) { n + 1 } else { n }
-  })
-}
-
 type KeyedRosterDuplicateEvidence<K, V> {
-  key: K
+  key: SubjectKey<K>
   value: V
-  first: KeyedRow<K, V>
-  duplicate: KeyedRow<K, V>
+  first: KeyedRow<SubjectKey<K>, V>
+  duplicate: KeyedRow<SubjectKey<K>, V>
 }
 
 fn path_occurrence_count(paths: List<String>, target: String) -> Int {
   fold(paths, init: 0, f: fn(n, p) { if p == target { n + 1 } else { n } })
 }
 
-type KeyedRosterSecondRowScan<K, V>
-  = KeyedRosterSecondRowScanAbsent
-  | KeyedRosterSecondRowScanAwaitingSecond
-  | KeyedRosterSecondRowScanFound { row: KeyedRow<K, V> }
+// ONE SLOT PER DISTINCT KEY. later_reversed holds every row after the first, newest first, so an
+// occurrence is a constant-work cons; keyed_roster_index_occurrences reverses it on read.
+type KeyedRosterSlot<K, V> {
+  first_position: Int
+  first: KeyedRow<SubjectKey<K>, V>
+  second: KeyedRow<SubjectKey<K>, V>?
+  later_reversed: List<KeyedRow<SubjectKey<K>, V>>
+  count: Int
+}
 
-fn keyed_roster_locate_second_row<K, V>(
-  rows: List<KeyedRow<K, V>>,
-  wanted_key: K,
-  key_eq: fn(K, K) -> Bool,
-) -> KeyedRow<K, V>? {
-  match fold(rows, init: KeyedRosterSecondRowScanAbsent, f: fn(acc, row) {
-    match acc {
-      KeyedRosterSecondRowScanFound { row: _ } => acc
-      KeyedRosterSecondRowScanAwaitingSecond =>
-        if key_eq(row.row_key, wanted_key) {
-          KeyedRosterSecondRowScanFound { row: row }
+// THE TOTAL INDEX: always builds, never refuses. rows is the authored order. distinct is in first-seen
+// order, duplicated in the order each key FIRST repeats (a 3-way repeat is listed once, its count is
+// in the slot). earliest_duplicate is the duplicated key whose FIRST occurrence is earliest, with its
+// first and second rows (what keyed_roster_locate_duplicate has always returned); first_conflict is
+// the first incoming row, in list order, whose key was already present (what keyed_roster_build
+// refuses on). The counters are incremented on the branch that performs the operation they count, so
+// a witness measures the real path: map_lookups, map_inserts, key_prepends and order_reversals are
+// OPERATIONS issued, not the substrate's internal copy volume.
+type KeyedRosterIndex<K, V> {
+  rows: List<KeyedRow<SubjectKey<K>, V>>
+  slots: Map<SubjectKey<K>, KeyedRosterSlot<K, V>>
+  distinct: List<SubjectKey<K>>
+  duplicated: List<SubjectKey<K>>
+  earliest_duplicate: KeyedRosterDuplicateEvidence<K, V>?
+  first_conflict: KeyedRosterDuplicateEvidence<K, V>?
+  map_lookups: Int
+  map_inserts: Int
+  key_prepends: Int
+  order_reversals: Int
+}
+
+type KeyedRosterIndexBuild<K, V> {
+  slots: Map<SubjectKey<K>, KeyedRosterSlot<K, V>>
+  distinct_reversed: List<SubjectKey<K>>
+  duplicated_reversed: List<SubjectKey<K>>
+  earliest_duplicate: KeyedRosterDuplicateEvidence<K, V>?
+  earliest_first_position: Int
+  first_conflict: KeyedRosterDuplicateEvidence<K, V>?
+  position: Int
+  map_lookups: Int
+  map_inserts: Int
+  key_prepends: Int
+}
+
+fn keyed_roster_index_step<K, V>(
+  build: KeyedRosterIndexBuild<K, V>,
+  row: KeyedRow<SubjectKey<K>, V>,
+) -> KeyedRosterIndexBuild<K, V> {
+  match map_get(build.slots, row.row_key) {
+    Absent =>
+      KeyedRosterIndexBuild {
+        slots: map_insert(
+          build.slots,
+          row.row_key,
+          KeyedRosterSlot {
+            first_position: build.position,
+            first: row,
+            second: none,
+            later_reversed: [],
+            count: 1,
+          },
+        ),
+        distinct_reversed: concat([row.row_key], build.distinct_reversed),
+        duplicated_reversed: build.duplicated_reversed,
+        earliest_duplicate: build.earliest_duplicate,
+        earliest_first_position: build.earliest_first_position,
+        first_conflict: build.first_conflict,
+        position: build.position + 1,
+        map_lookups: build.map_lookups + 1,
+        map_inserts: build.map_inserts + 1,
+        key_prepends: build.key_prepends + 1,
+      }
+    Present { value: slot } => {
+      let repeats = slot.count == 1
+      let evidence = KeyedRosterDuplicateEvidence {
+        key: row.row_key,
+        value: slot.first.value,
+        first: slot.first,
+        duplicate: row,
+      }
+      let earlier = repeats && (build.earliest_first_position < 0 || slot.first_position < build.earliest_first_position)
+      KeyedRosterIndexBuild {
+        slots: map_insert(
+          build.slots,
+          row.row_key,
+          KeyedRosterSlot {
+            first_position: slot.first_position,
+            first: slot.first,
+            second: if repeats { Present { value: row } } else { slot.second },
+            later_reversed: concat([row], slot.later_reversed),
+            count: slot.count + 1,
+          },
+        ),
+        distinct_reversed: build.distinct_reversed,
+        duplicated_reversed: if repeats {
+          concat([row.row_key], build.duplicated_reversed)
         } else {
-          acc
-        }
-      KeyedRosterSecondRowScanAbsent =>
-        if key_eq(row.row_key, wanted_key) {
-          KeyedRosterSecondRowScanAwaitingSecond
-        } else {
-          acc
-        }
+          build.duplicated_reversed
+        },
+        earliest_duplicate: if earlier { Present { value: evidence } } else { build.earliest_duplicate },
+        earliest_first_position: if earlier { slot.first_position } else { build.earliest_first_position },
+        first_conflict: match build.first_conflict {
+          Present { value: _ } => build.first_conflict
+          Absent => Present { value: evidence }
+        },
+        position: build.position + 1,
+        map_lookups: build.map_lookups + 1,
+        map_inserts: build.map_inserts + 1,
+        key_prepends: build.key_prepends + (if repeats { 2 } else { 1 }),
+      }
     }
-  }) {
-    KeyedRosterSecondRowScanFound { row: row } => Present { value: row }
-    KeyedRosterSecondRowScanAbsent => none
-    KeyedRosterSecondRowScanAwaitingSecond => none
   }
 }
 
-fn keyed_roster_locate_first_row<K, V>(
-  rows: List<KeyedRow<K, V>>,
-  wanted_key: K,
-  key_eq: fn(K, K) -> Bool,
-) -> KeyedRow<K, V>? {
-  fold(rows, init: none, f: fn(acc, row) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if key_eq(row.row_key, wanted_key) {
-          Present { value: row }
-        } else {
-          acc
-        }
-    }
-  })
+fn keyed_roster_index<K, V>(rows: List<KeyedRow<SubjectKey<K>, V>>) -> KeyedRosterIndex<K, V> {
+  let build = fold(
+    rows,
+    init: KeyedRosterIndexBuild {
+      slots: empty_map(),
+      distinct_reversed: [],
+      duplicated_reversed: [],
+      earliest_duplicate: none,
+      earliest_first_position: -1,
+      first_conflict: none,
+      position: 0,
+      map_lookups: 0,
+      map_inserts: 0,
+      key_prepends: 0,
+    },
+    f: keyed_roster_index_step,
+  )
+  KeyedRosterIndex {
+    rows: rows,
+    slots: build.slots,
+    distinct: reverse(build.distinct_reversed),
+    duplicated: reverse(build.duplicated_reversed),
+    earliest_duplicate: build.earliest_duplicate,
+    first_conflict: build.first_conflict,
+    map_lookups: build.map_lookups,
+    map_inserts: build.map_inserts,
+    key_prepends: build.key_prepends,
+    order_reversals: 2,
+  }
+}
+
+fn keyed_roster_index_operations<K, V>(index: KeyedRosterIndex<K, V>) -> Int {
+  index.map_lookups + index.map_inserts + index.key_prepends + index.order_reversals
+}
+
+fn keyed_roster_index_contains<K, V>(index: KeyedRosterIndex<K, V>, key: SubjectKey<K>) -> Bool {
+  match map_get(index.slots, key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn keyed_roster_index_count<K, V>(index: KeyedRosterIndex<K, V>, key: SubjectKey<K>) -> Int {
+  match map_get(index.slots, key) {
+    Present { value: slot } => slot.count
+    Absent => 0
+  }
+}
+
+// Every row carrying the key, in authored order (one linear reverse of that key's own occurrences).
+fn keyed_roster_index_occurrences<K, V>(
+  index: KeyedRosterIndex<K, V>,
+  key: SubjectKey<K>,
+) -> List<KeyedRow<SubjectKey<K>, V>> {
+  match map_get(index.slots, key) {
+    Present { value: slot } => concat([slot.first], reverse(slot.later_reversed))
+    Absent => []
+  }
 }
 
 fn keyed_roster_locate_duplicate<K, V>(
-  rows: List<KeyedRow<K, V>>,
-  key_eq: fn(K, K) -> Bool,
+  rows: List<KeyedRow<SubjectKey<K>, V>>,
 ) -> KeyedRosterDuplicateEvidence<K, V>? {
-  fold(rows, init: none, f: fn(acc, row) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if keyed_occurrence_count(rows: rows, wanted_key: row.row_key, key_eq: key_eq) > 1 {
-          match keyed_roster_locate_first_row(
-            rows: rows,
-            wanted_key: row.row_key,
-            key_eq: key_eq,
-          ) {
-            Present { value: first } =>
-              match keyed_roster_locate_second_row(
-                rows: rows,
-                wanted_key: row.row_key,
-                key_eq: key_eq,
-              ) {
-                Present { value: duplicate } =>
-                  Present {
-                    value: KeyedRosterDuplicateEvidence {
-                      key: row.row_key,
-                      value: row.value,
-                      first: first,
-                      duplicate: duplicate,
-                    }
-                  }
-                Absent => acc
-              }
-            Absent => acc
-          }
-        } else {
-          acc
-        }
-    }
-  })
+  keyed_roster_index(rows: rows).earliest_duplicate
 }
 
 type KeyedRosterInsert<K, V>
-  = KeyedRosterInserted { rows: List<KeyedRow<K, V>> }
+  = KeyedRosterInserted { rows: List<KeyedRow<SubjectKey<K>, V>> }
   | KeyedRosterDuplicateKey {
-      key: K
-      existing: KeyedRow<K, V>
-      incoming: KeyedRow<K, V>
+      key: SubjectKey<K>
+      existing: KeyedRow<SubjectKey<K>, V>
+      incoming: KeyedRow<SubjectKey<K>, V>
     }
   | KeyedRosterInvalidRoster {
-      key: K
-      first: KeyedRow<K, V>
-      duplicate: KeyedRow<K, V>
+      key: SubjectKey<K>
+      first: KeyedRow<SubjectKey<K>, V>
+      duplicate: KeyedRow<SubjectKey<K>, V>
     }
 
 fn keyed_roster_insert<K, V>(
-  rows: List<KeyedRow<K, V>>,
-  incoming: KeyedRow<K, V>,
-  key_eq: fn(K, K) -> Bool,
+  rows: List<KeyedRow<SubjectKey<K>, V>>,
+  incoming: KeyedRow<SubjectKey<K>, V>,
 ) -> KeyedRosterInsert<K, V> {
-  match keyed_roster_locate_duplicate(rows: rows, key_eq: key_eq) {
+  let index = keyed_roster_index(rows: rows)
+  match index.earliest_duplicate {
     Present { value: evidence } =>
       KeyedRosterInvalidRoster {
         key: evidence.key,
@@ -171,68 +255,44 @@ fn keyed_roster_insert<K, V>(
         duplicate: evidence.duplicate,
       }
     Absent =>
-      match keyed_row_find(rows: rows, wanted_key: incoming.row_key, key_eq: key_eq) {
-        Present { value: existing } =>
+      match map_get(index.slots, incoming.row_key) {
+        Present { value: slot } =>
           KeyedRosterDuplicateKey {
             key: incoming.row_key,
-            existing: existing,
+            existing: slot.first,
             incoming: incoming,
           }
-        Absent =>
-          KeyedRosterInserted { rows: concat(rows, [incoming]) }
+        Absent => KeyedRosterInserted { rows: concat(rows, [incoming]) }
       }
-  }
-}
-
-fn keyed_roster_insert_into_unique<K, V>(
-  rows: List<KeyedRow<K, V>>,
-  incoming: KeyedRow<K, V>,
-  key_eq: fn(K, K) -> Bool,
-) -> KeyedRosterInsert<K, V> {
-  match keyed_row_find(rows: rows, wanted_key: incoming.row_key, key_eq: key_eq) {
-    Present { value: existing } =>
-      KeyedRosterDuplicateKey {
-        key: incoming.row_key,
-        existing: existing,
-        incoming: incoming,
-      }
-    Absent =>
-      KeyedRosterInserted { rows: concat(rows, [incoming]) }
   }
 }
 
 type KeyedRosterBuild<K, V>
-  = KeyedRosterBuilt { rows: List<KeyedRow<K, V>> }
+  = KeyedRosterBuilt { rows: List<KeyedRow<SubjectKey<K>, V>> }
   | KeyedRosterBuildDuplicateKey {
-      key: K
-      first: KeyedRow<K, V>
-      duplicate: KeyedRow<K, V>
+      key: SubjectKey<K>
+      first: KeyedRow<SubjectKey<K>, V>
+      duplicate: KeyedRow<SubjectKey<K>, V>
     }
 
 fn keyed_roster_build<K, V>(
-  incomings: List<KeyedRow<K, V>>,
-  key_eq: fn(K, K) -> Bool,
+  incomings: List<KeyedRow<SubjectKey<K>, V>>,
 ) -> KeyedRosterBuild<K, V> {
-  fold(incomings, init: KeyedRosterBuilt { rows: [] }, f: fn(acc, row) {
-    match acc {
-      KeyedRosterBuilt { rows: rows } =>
-        match keyed_roster_insert_into_unique(rows: rows, incoming: row, key_eq: key_eq) {
-          KeyedRosterInserted { rows: next } => KeyedRosterBuilt { rows: next }
-          KeyedRosterDuplicateKey { key: k, existing: first, incoming: dup } =>
-            KeyedRosterBuildDuplicateKey { key: k, first: first, duplicate: dup }
-          KeyedRosterInvalidRoster { key: k, first: f, duplicate: d } =>
-            KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d }
-        }
-      KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
-        KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d }
-    }
-  })
+  let index = keyed_roster_index(rows: incomings)
+  match index.first_conflict {
+    Present { value: evidence } =>
+      KeyedRosterBuildDuplicateKey {
+        key: evidence.key,
+        first: evidence.first,
+        duplicate: evidence.duplicate,
+      }
+    Absent => KeyedRosterBuilt { rows: incomings }
+  }
 }
 
 fn keyed_roster_union<K, V>(
-  left: List<KeyedRow<K, V>>,
-  right: List<KeyedRow<K, V>>,
-  key_eq: fn(K, K) -> Bool,
+  left: List<KeyedRow<SubjectKey<K>, V>>,
+  right: List<KeyedRow<SubjectKey<K>, V>>,
 ) -> KeyedRosterBuild<K, V> {
-  keyed_roster_build(incomings: concat(left, right), key_eq: key_eq)
+  keyed_roster_build(incomings: concat(left, right))
 }
