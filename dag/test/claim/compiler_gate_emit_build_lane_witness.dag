@@ -51,7 +51,9 @@ import gunbc.runner.runner_slot_desired {
   JobOwnsNoBoundedCgroup, JobOwnsBoundedCgroup, gunbc_runner_slot_job_cgroup_ownership
 }
 import extdeps.exec.command { shell_command_render }
-import std.algebra { length }
+import std.algebra { length, list_head, skip }
+import gunbc.action_use_admission { cache_save_action }
+import extdeps.github.action_release { action_release_uses_text }
 import extdeps.filesystem.filesystem_io
 import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 
@@ -471,15 +473,58 @@ fn step_if_condition(step: Step) -> String {
   }
 }
 
+fn publisher_save_is_cache_save_only(step: Step) -> Bool {
+  match step {
+    UsesStep { name: n, id: _, uses: u, with: w, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      (match n { Present { value: v } => v == parse_verdict_save_step_name()  Absent => false })
+        && (action_release_uses_text(action_release: u) == action_release_uses_text(action_release: cache_save_action))
+        && match w {
+          Present { value: kvs } =>
+            any(kvs, kv => kv.key == "key")
+              && any(kvs, kv => kv.key == "path")
+              && (any(kvs, kv => kv.key == "restore-keys") == false)
+          Absent => false
+        }
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+fn publisher_identity_walk_save_triple(identity: Step, walk: Step, save: Step) -> Bool {
+  (step_name_text(step: identity) == parse_verdict_identity_step_name)
+    && match identity {
+      RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => true
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    }
+    && (step_name_text(step: walk) == parse_verdict_publish_step_name)
+    && match walk {
+      RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => true
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    }
+    && publisher_save_is_cache_save_only(step: save)
+}
+
+fn publisher_order_holds(steps: List<Step>) -> Bool {
+  match list_head(xs: steps) {
+    Absent => false
+    Present { value: identity } =>
+      match list_head(xs: skip(xs: steps, n: 1)) {
+        Absent => false
+        Present { value: walk } =>
+          match list_head(xs: skip(xs: steps, n: 2)) {
+            Absent => false
+            Present { value: save } =>
+              publisher_identity_walk_save_triple(identity: identity, walk: walk, save: save)
+                || publisher_order_holds(steps: skip(xs: steps, n: 1))
+          }
+      }
+  }
+}
+
 test fn the_required_job_binds_the_parse_verdict_publisher() -> Bool {
-  let names = compiler_gate_emit_build_bound_steps() |> map(b => b.step_name)
-  any(names, n => n == parse_verdict_identity_step_name)
-    && any(names, n => n == parse_verdict_publish_step_name)
-    && any(names, n => n == parse_verdict_save_step_name())
-    && string_contains(
-      s: join(names, "\n"),
-      pattern: join([parse_verdict_identity_step_name, "\n", parse_verdict_publish_step_name, "\n", parse_verdict_save_step_name()], "")
-    )
+  any(
+    compiler_gate_workflow.jobs,
+    j => (j.id == compiler_gate_required_job_id) && publisher_order_holds(steps: j.steps)
+  )
 }
 
 test fn a_pr_head_run_never_publishes() -> Bool {

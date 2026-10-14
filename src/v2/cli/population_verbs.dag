@@ -400,27 +400,31 @@ fn population_parse_report(tally: PopulationParse) -> PopulationReport {
         " declared refusal(s) never met, each on its own line of the report"
       )
     }
-  } else if tally.parsed == 0 {
-    PopulationReport {
-      text: join(lines, "\n"),
-      held: false,
-      detail: "the bound trees store no module under the declared namespaces; a parse over nothing is not a parse of zero"
+  } else if match tally.compiler {
+    Present { value: _ } => is_empty(xs: tally.accepted_receipts)
+    Absent => tally.parsed == 0
+  } {
+    match tally.compiler {
+      Present { value: _ } =>
+        PopulationReport {
+          text: "",
+          held: false,
+          detail: parse_verdict_receipts_empty_detail
+        }
+      Absent =>
+        PopulationReport {
+          text: join(lines, "\n"),
+          held: false,
+          detail: "the bound trees store no module under the declared namespaces; a parse over nothing is not a parse of zero"
+        }
     }
   } else {
     match tally.compiler {
       Present { value: _ } =>
-        if is_empty(xs: tally.accepted_receipts) {
-          PopulationReport {
-            text: "",
-            held: false,
-            detail: parse_verdict_receipts_empty_detail
-          }
-        } else {
-          PopulationReport {
-            text: join(list_reverse(xs: tally.accepted_receipts), "\n"),
-            held: true,
-            detail: "every enumerated module parsed or is refused exactly as declared, and every declared refusal was met"
-          }
+        PopulationReport {
+          text: join(list_reverse(xs: tally.accepted_receipts), "\n"),
+          held: true,
+          detail: "every enumerated module parsed or is refused exactly as declared, and every declared refusal was met"
         }
       Absent =>
         PopulationReport {

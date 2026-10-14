@@ -2,6 +2,10 @@ module test.claim.parse_compiler_identity_witness
 
 import std.types { Bool }
 import std.algebra { length }
+import v2.compiler.self_host.seed_retention_frontier {
+  ReasonDeclaredElsewhere,
+  seed_retention_frontier_roster,
+}
 import gunbc.parse_verdict_schema {
   parse_compiler_identity_entries,
   parse_compiler_tokenize_entry,
@@ -67,6 +71,18 @@ test fn the_stored_line_stamps_compiler() -> Bool {
 test fn pr2_is_the_named_restore_consumer() -> Bool {
   (parse_verdict_pr2_restore_frontier.declaration.decl_name == "parse_verdict_request_family")
     && ((parse_verdict_pr2_restore_frontier.named_consumer as String) != parse_verdict_pr2_restore_frontier.declaration.decl_name)
+}
+
+test fn the_gen_one_sidecar_writer_is_seed_retained_against_the_hasher_justification() -> Bool {
+  any(seed_retention_frontier_roster, row =>
+    (row.crate_relative_path == "src/cli_run/native_lane_runner.rs")
+      && match row.reason {
+        ReasonDeclaredElsewhere { authority: a } =>
+          (a.module_path as String) == "gunbc.parse_compiler_identity_seed_growth"
+            && (a.decl_name as String) == "parse_compiler_identity_seed_growth_justification"
+        _ => false
+      }
+  )
 }
 
 test fn main_may_save_after_a_fresh_identity_walk() -> Bool {
