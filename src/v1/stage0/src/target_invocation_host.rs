@@ -4983,12 +4983,6 @@ fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
 }
 
 fn user_runtime_dir_with_bus() -> Option<String> {
-    if let Ok(d) = std::env::var("XDG_RUNTIME_DIR") {
-        let bus = std::path::Path::new(&d).join("bus");
-        if bus.exists() {
-            return Some(d);
-        }
-    }
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     let uid = status
         .lines()
@@ -5004,8 +4998,10 @@ fn user_runtime_dir_with_bus() -> Option<String> {
 }
 
 /// `gunbc test //gunbc/instruments:compute-run-unit-cold`. No user bus is SubjectUnreached
-/// (exit 2), never a green skip. When the bus exists, bind XDG_RUNTIME_DIR from it — fleet
-/// jobs leave that env unset even when linger and `/run/user/<uid>/bus` are present.
+/// (exit 2), never a green skip. When `/run/user/<uid>/bus` exists, bind that directory as
+/// this instrument's user-session realization onto the process that will exec `systemd-run
+/// --user` — not by reading ambient `XDG_RUNTIME_DIR`. The fold additionally `--setenv`s the
+/// same paths onto the unit.
 fn run_compute_run_unit_cold() -> InvocationOutcome {
     match user_runtime_dir_with_bus() {
         None => InvocationOutcome {

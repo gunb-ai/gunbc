@@ -1,23 +1,26 @@
 module gunbc.instruments.compute_run_unit_cold
 
 import std.types { String, Bool, Int, List, FilePath, GitRef, NonEmptyStr }
-import std.algebra { trim }
+import std.algebra { trim, starts_with }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.measure { kibibyte }
+import std.optional { Present, Absent }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.roadmap.roadmap_dashboard_instance { fleet_compute_hermetic_dashboard_instance, HostDashboardInstance }
+import gunbc.roadmap.roadmap_dashboard_instance { fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_run_unit, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, ComputeUnitRunExecuted, ComputeUnitRunRefused,
   NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire,
 }
+import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_request { work_default_build }
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
 import extdeps.git { shape_git_worktree_add_detached_argv }
+import extdeps.linux.procfs { procfs_status_effective_uid }
 import extdeps.systemd.systemd_run {
   SystemdRunWaitSummary, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   ServiceResultFormatNotGrounded, SummaryNoInvocation, SummarySuppressedByQuietLauncher,
-  SummaryCaptureEmpty, SummaryLineAbsent,
+  SummaryCaptureEmpty, SummaryLineAbsent, SystemdSetenvBinding,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
@@ -26,19 +29,63 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // refuses with SubjectUnreached (exit 2) when /run/user/<uid>/bus is absent; this fold is reached
 // only after that check, and it holds only if a unit was actually invoked (SummaryNoInvocation is
 // a miss, never a pass).
+//
+// Compute root lives under the invoking git toplevel (the job workspace on CI), never /opt/gunbc.
+// User-session runtime is this instance's realization: /run/user/<uid> when that bus exists,
+// bound onto the unit as --setenv, not read as an ambient XDG_RUNTIME_DIR default.
 
 data compute_run_unit_cold_identity: String = "c01d000000000001"
 
-fn hermetic_instance() -> HostDashboardInstance {
-  fleet_compute_hermetic_dashboard_instance()
+type HermeticUserSessionRuntime
+  = HermeticUserSessionRuntimeBound { runtime_dir: FilePath }
+  | HermeticUserSessionRuntimeAbsent
+
+fn path_is_under_opt_gunbc(path: String) -> Bool {
+  (path == "/opt/gunbc") || starts_with(s: path, prefix: "/opt/gunbc/")
 }
 
-fn hermetic_layout() -> ComputeLayout {
-  compute_layout(instance: hermetic_instance(), identity_hex: compute_run_unit_cold_identity)
+fn observe_workspace(instance: HostDashboardInstance) -> String {
+  match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: ".", args: ["rev-parse", "--show-toplevel"]) {
+    ComputeExecOk { stdout, stderr: _ } => trim(s: stdout)
+    ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""
+  }
+}
+
+fn observe_hermetic_user_session_runtime() -> HermeticUserSessionRuntime {
+  let status = Filesystem.Read(path: "/proc/self/status")
+  if !status.success {
+    HermeticUserSessionRuntimeAbsent
+  } else {
+    match procfs_status_effective_uid(content: status.content) {
+      Absent => HermeticUserSessionRuntimeAbsent
+      Present { value: uid } => {
+        let runtime_dir = join(["/run/user/", to_string(value: uid)], "")
+        let listed = Filesystem.List(path: runtime_dir as FilePath)
+        if listed.success && any(split(s: listed.entries, delimiter: "\n"), n => n == "bus") {
+          HermeticUserSessionRuntimeBound { runtime_dir: runtime_dir as FilePath }
+        } else {
+          HermeticUserSessionRuntimeAbsent
+        }
+      }
+    }
+  }
+}
+
+fn hermetic_user_session_setenv(runtime: HermeticUserSessionRuntime) -> List<SystemdSetenvBinding> {
+  match runtime {
+    HermeticUserSessionRuntimeAbsent => []
+    HermeticUserSessionRuntimeBound { runtime_dir } => [
+      SystemdSetenvBinding { name: "XDG_RUNTIME_DIR", value: runtime_dir as String as NonEmptyStr },
+      SystemdSetenvBinding {
+        name: "DBUS_SESSION_BUS_ADDRESS",
+        value: join(["unix:path=", runtime_dir as String, "/bus"], "") as NonEmptyStr,
+      },
+    ]
+  }
 }
 
 fn mkdir_ok(instance: HostDashboardInstance, path: String) -> Bool {
-  match compute_exec(program: instance.toolchain.directory_create as String, workdir: "/tmp", args: ["-p", path]) {
+  match compute_exec(program: instance.toolchain.directory_create as String, workdir: ".", args: ["-p", path]) {
     ComputeExecOk { stdout: _, stderr: _ } => true
     ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
   }
@@ -83,77 +130,114 @@ fn prepare_checkout(instance: HostDashboardInstance, layout: ComputeLayout, head
 }
 
 fn compute_run_unit_cold_exit() -> CliWireResponse {
-  let instance = hermetic_instance()
-  let layout = hermetic_layout()
-  let roots_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
-    && mkdir_ok(instance: instance, path: instance.repo_root as String)
-    && mkdir_ok(instance: instance, path: layout.work_dir)
-    && mkdir_ok(instance: instance, path: layout.target_dir)
-    && mkdir_ok(instance: instance, path: layout.attempts_dir)
-  if !roots_ok {
+  let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath)
+  let workspace = observe_workspace(instance: probe)
+  if workspace == "" {
     CliWirePrintable {
-      bytes: join(["compute-run-unit-cold: could not create layout under ", layout.root], ""),
-      exit: ExitFailure { code: 1, reason: "layout directories were not created" },
+      bytes: "compute-run-unit-cold: git toplevel (job workspace) could not be read",
+      exit: ExitFailure { code: 1, reason: "workspace unreadable" },
+    }
+  } else if path_is_under_opt_gunbc(path: workspace) {
+    CliWirePrintable {
+      bytes: join(["compute-run-unit-cold: workspace is host-shared production path ", workspace], ""),
+      exit: ExitFailure { code: 1, reason: "workspace under /opt/gunbc" },
     }
   } else {
-    let head = observe_head(instance: instance, workdir: ".")
-    if head == "" {
+    let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath)
+    let layout = compute_layout(instance: instance, identity_hex: compute_run_unit_cold_identity)
+    let root = compute_root(instance: instance) as String
+    if path_is_under_opt_gunbc(path: instance.instance_root as String) || path_is_under_opt_gunbc(path: root) {
       CliWirePrintable {
-        bytes: "compute-run-unit-cold: HEAD could not be read from the invoking checkout",
-        exit: ExitFailure { code: 1, reason: "HEAD unreadable" },
+        bytes: join(["compute-run-unit-cold: compute root resolved to host-shared path ", root], ""),
+        exit: ExitFailure { code: 1, reason: "compute root under /opt/gunbc" },
       }
     } else {
-      let wt = prepare_checkout(instance: instance, layout: layout, head: head)
-      if wt != "" {
-        CliWirePrintable { bytes: wt, exit: ExitFailure { code: 1, reason: wt } }
-      } else {
-        let granted = kibibyte(count: 16777216)
-        let op = work_default_build()
-        match compute_run_unit(
-          instance: instance,
-          layout: layout,
-          identity_hex: compute_run_unit_cold_identity,
-          argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency),
-          env: compute_operation_env(op: op),
-          granted: granted,
-        ) {
-          ComputeUnitRunRefused { cause: _ } =>
+      match observe_hermetic_user_session_runtime() {
+        HermeticUserSessionRuntimeAbsent =>
+          CliWirePrintable {
+            bytes: "compute-run-unit-cold: user session bus absent after host admitted it",
+            exit: ExitFailure { code: 1, reason: "user session runtime unbound" },
+          }
+        HermeticUserSessionRuntimeBound { runtime_dir } => {
+          let roots_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
+            && mkdir_ok(instance: instance, path: layout.work_dir)
+            && mkdir_ok(instance: instance, path: layout.target_dir)
+            && mkdir_ok(instance: instance, path: layout.attempts_dir)
+          if !roots_ok {
             CliWirePrintable {
-              bytes: "compute-run-unit-cold: systemd-run option words refused",
-              exit: ExitFailure { code: 1, reason: "unit launch refused" },
+              bytes: join(["compute-run-unit-cold: could not create layout under ", layout.root], ""),
+              exit: ExitFailure { code: 1, reason: "layout directories were not created" },
             }
-          ComputeUnitRunExecuted { run: unit_run } => {
-            let invoked = unit_was_invoked(summary: unit_run.summary)
-            let exec_ok = match unit_run.exec {
-              ComputeExecOk { stdout: _, stderr: _ } => true
-              ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
-            }
-            let bytes = join([
-              "compute-run-unit-cold identity=", compute_run_unit_cold_identity, "\n",
-              "target_dir=", layout.target_dir, "\n",
-              "checkout=", layout.checkout, "\n",
-              "unit_invoked=", if invoked { "true" } else { "false" }, "\n",
-              "unit result: ", compute_summary_result_wire(summary: unit_run.summary), "\n",
-              "unit peak: ", compute_summary_peak_wire(summary: unit_run.summary), "\n",
-              match unit_run.exec {
-                ComputeExecOk { stdout, stderr } => join(["exec=ok\n", stdout, stderr], "")
-                ComputeExecFailed { exit_code, stdout, stderr } =>
-                  join(["exec=failed exit=", to_string(value: exit_code), "\n", stdout, stderr], "")
-              },
-            ], "")
-            if invoked && exec_ok {
-              CliWirePrintable { bytes: bytes, exit: ExitSuccess }
-            } else {
+          } else {
+            let head = observe_head(instance: instance, workdir: workspace)
+            if head == "" {
               CliWirePrintable {
-                bytes: bytes,
-                exit: ExitFailure {
-                  code: 1,
-                  reason: if !invoked {
-                    "no systemd unit was invoked (SummaryNoInvocation)"
-                  } else {
-                    "the unit ran and the command failed"
-                  },
-                },
+                bytes: "compute-run-unit-cold: HEAD could not be read from the invoking checkout",
+                exit: ExitFailure { code: 1, reason: "HEAD unreadable" },
+              }
+            } else {
+              let wt = prepare_checkout(instance: instance, layout: layout, head: head)
+              if wt != "" {
+                CliWirePrintable { bytes: wt, exit: ExitFailure { code: 1, reason: wt } }
+              } else {
+                let granted = kibibyte(count: 16777216)
+                let op = work_default_build()
+                let env = concat(
+                  compute_operation_env(op: op),
+                  hermetic_user_session_setenv(runtime: HermeticUserSessionRuntimeBound { runtime_dir: runtime_dir }),
+                )
+                match compute_run_unit(
+                  instance: instance,
+                  layout: layout,
+                  identity_hex: compute_run_unit_cold_identity,
+                  argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency),
+                  env: env,
+                  granted: granted,
+                ) {
+                  ComputeUnitRunRefused { cause: _ } =>
+                    CliWirePrintable {
+                      bytes: "compute-run-unit-cold: systemd-run option words refused",
+                      exit: ExitFailure { code: 1, reason: "unit launch refused" },
+                    }
+                  ComputeUnitRunExecuted { run: unit_run } => {
+                    let invoked = unit_was_invoked(summary: unit_run.summary)
+                    let exec_ok = match unit_run.exec {
+                      ComputeExecOk { stdout: _, stderr: _ } => true
+                      ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
+                    }
+                    let bytes = join([
+                      "compute-run-unit-cold identity=", compute_run_unit_cold_identity, "\n",
+                      "workspace=", workspace, "\n",
+                      "compute_root=", root, "\n",
+                      "target_dir=", layout.target_dir, "\n",
+                      "checkout=", layout.checkout, "\n",
+                      "user_runtime_dir=", runtime_dir as String, "\n",
+                      "unit_invoked=", if invoked { "true" } else { "false" }, "\n",
+                      "unit result: ", compute_summary_result_wire(summary: unit_run.summary), "\n",
+                      "unit peak: ", compute_summary_peak_wire(summary: unit_run.summary), "\n",
+                      match unit_run.exec {
+                        ComputeExecOk { stdout, stderr } => join(["exec=ok\n", stdout, stderr], "")
+                        ComputeExecFailed { exit_code, stdout, stderr } =>
+                          join(["exec=failed exit=", to_string(value: exit_code), "\n", stdout, stderr], "")
+                      },
+                    ], "")
+                    if invoked && exec_ok {
+                      CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+                    } else {
+                      CliWirePrintable {
+                        bytes: bytes,
+                        exit: ExitFailure {
+                          code: 1,
+                          reason: if !invoked {
+                            "no systemd unit was invoked (SummaryNoInvocation)"
+                          } else {
+                            "the unit ran and the command failed"
+                          },
+                        },
+                      }
+                    }
+                  }
+                }
               }
             }
           }
