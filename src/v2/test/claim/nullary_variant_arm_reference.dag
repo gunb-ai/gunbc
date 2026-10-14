@@ -336,9 +336,9 @@ fn nvar_failure_construct() -> Node {
 test fn a_record_payload_arm_used_as_a_constructor_is_unchanged_holds() -> Bool {
   let root = nvar_failure_construct()
   match infer_record_construct_read(node: root, resolved: nvar_tree(root: root, index: nvar_payload_index())) {
-    ConstructIsVariantArm { construct: construct } =>
-      construct.variant_path == nvar_process_exit()
-        && construct.arm_path == nvar_failure_declaring()
+    ConstructIsVariantArm { construct: arm_construct } =>
+      arm_construct.variant_path == nvar_process_exit()
+        && arm_construct.arm_path == nvar_failure_declaring()
     ConstructIsRecord { construct: _ } => false
     ConstructNotARecord => false
     ConstructVariantArmIdentityUnavailable => false
