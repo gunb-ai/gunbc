@@ -3447,7 +3447,7 @@ fn native_module_resolve_verdict(
                     root: resolved,
                     symbol_index: shared.symbol_index,
                     closure_declarations: closure.declarations,
-                    unavailable_providers: closure.refused,
+                    module_outcomes: closure.module_outcomes,
                     member_kinds: no_member_declaration_kinds(),
                     type_declaration_modifiers: shared.type_declaration_modifiers,
                     lexical: lexical
@@ -3813,7 +3813,7 @@ fn native_demand_census_unbound_standing(authored: List<AuthoredUsesFunction>, d
 fn native_demand_census_closure_outcomes(context: NativeTestContext) -> List<ModuleOutcome> {
   match context.resolution {
     Rejected { diagnostics: _ } => []
-    Accepted { value: shared, diagnostics: _ } => closure_declarations_demand(shared: shared).refused
+    Accepted { value: shared, diagnostics: _ } => closure_declarations_demand(shared: shared).module_outcomes
   }
 }
 
@@ -4599,7 +4599,7 @@ fn native_census_cause_groups_add_resolve_refused(
 // program can author (DESIGN section 4b). Its proposed edge, a fatal located at T's declaration, is
 // not readable either, because every infer diagnostic is located at a node of M's own tree.
 // What does exist is the edge v2.compiler.infer infer_closure_miss_refusal builds: when a closure
-// provider's own RESOLVE refused (ResolvedTree unavailable_providers), M's projection through one of
+// provider's own RESOLVE refused (ClosureProviderRefusal derived from ResolvedTree module_outcomes), M's projection through one of
 // its declarations refuses as a closure miss, with the provider's refusal chain carried immediately
 // ahead of that miss in M's chain. M
 // resolved, so it IS an infer subject. That is a cross-stage cascade the design said could not
@@ -4625,7 +4625,7 @@ fn native_census_infer_cascade(
 ) -> NativeCensusCascade {
   native_census_infer_cascade_of(
     module_paths: module_paths,
-    providers: module_outcomes_provider_refusals(outcomes: resolved.unavailable_providers),
+    providers: module_outcomes_provider_refusals(outcomes: resolved.module_outcomes),
     chain: chain,
     attribution: fn(provider) { native_import_target_attribution(context: context, module: provider) }
   )

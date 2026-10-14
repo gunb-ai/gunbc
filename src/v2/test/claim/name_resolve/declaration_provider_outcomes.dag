@@ -103,7 +103,7 @@ fn dpo_outcomes() -> Optional<List<ModuleOutcome>> {
       match context.resolution {
         Rejected { diagnostics: _ } => optional_absent()
         Accepted { value: shared, diagnostics: _ } =>
-          optional_present(value: closure_declarations_demand(shared: shared).refused)
+          optional_present(value: closure_declarations_demand(shared: shared).module_outcomes)
       }
   }
 }

@@ -154,7 +154,7 @@ fn nvar_tree_with_bindings(
     symbol_index: index,
     resolved_declarations: index,
     lexical_bindings: bindings,
-    unavailable_providers: [],
+    module_outcomes: [],
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),
     constructing_module: optional_absent()

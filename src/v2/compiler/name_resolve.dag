@@ -19,7 +19,7 @@ import v2.compiler.body_lowering_fold { TypeDeclarationModifierChannel }
 import v2.compiler.resolve {
   Namespace,
   namespace_bindings_augment_from_module_atoms,
-  namespace_with_unavailable_providers,
+  namespace_with_module_outcomes,
   ObservationIncomplete,
   ResolveContext,
   ResolveNodeWalk,
@@ -39,7 +39,7 @@ import v2.compiler.resolve {
   resolve_walk_with_namespace_policy,
   ResolveWalkAccepted,
   type_declaration_modifier_channel_of_trees,
-  unavailable_providers_except_subject
+  module_outcomes_except_subject
 }
 import v2.compiler.lexical_scope {
   DeclaredBinding,
@@ -191,12 +191,13 @@ type ResolutionContext {
   type_declaration_modifiers: TypeDeclarationModifierChannel
 }
 
-// THE CLOSURE'S RESOLVED DECLARATIONS AND THE ROOTS THAT CONTRIBUTED NONE BECAUSE THEIR OWN RESOLVE
-// REFUSED. Both are the one demand's product (closure_declarations_demand) and are memoized together, so a
-// later subject reading the cached index also reads which providers it lacks.
+// THE CLOSURE'S RESOLVED DECLARATIONS AND THE MODULE-OUTCOME ROSTER. Both are the one demand's
+// product (closure_declarations_demand) and are memoized together. module_outcomes is every
+// observed module, including DeclarationAvailable rows; ClosureProviderRefusal is the derived
+// lookup that reads unavailability from that roster.
 type ClosureIndex {
   declarations: SymbolIndex
-  refused: List<ModuleOutcome>
+  module_outcomes: List<ModuleOutcome>
 }
 
 // One stored production: the admission it was produced under, and its outcome -- a refusal is
@@ -741,7 +742,7 @@ fn admission_namespace_base(canonical_symbols: PointwisePower<Symbol>) -> Namesp
     test_code: test_code_index_empty(),
     declared_in: Empty,
     imported_origins: empty_map(),
-    unavailable_providers: []
+    module_outcomes: []
   }
 }
 
@@ -845,7 +846,7 @@ fn admitted_subject_from_bindings(
       test_code: test_code,
       declared_in: module_qn,
       imported_origins: origins,
-      unavailable_providers: []
+      module_outcomes: []
     },
     subject_root: subject_module_root
   }
@@ -1079,7 +1080,7 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
                   w: walked.walk,
                   symbol_index: after.symbol_index,
                   closure_declarations: closure.declarations,
-                  unavailable_providers: closure.refused,
+                  module_outcomes: closure.module_outcomes,
                   member_kinds: channel,
                   type_declaration_modifiers: after.type_declaration_modifiers
                 )
@@ -1121,7 +1122,7 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
 // WHICH roots are folded and not the inference rule.
 type ClosureDeclarations {
   declarations: SymbolIndex
-  refused: List<ModuleOutcome>
+  module_outcomes: List<ModuleOutcome>
   context: ResolutionContext
 }
 
@@ -1184,42 +1185,6 @@ fn closure_symbols_published(xs: FreeMonoid<Symbol>, published: Map<Symbol, Node
   })
 }
 
-fn closure_row_by_dotted(rows: List<DeclPhase1Row>, dotted: String) -> Optional<DeclPhase1Row> {
-  fold_list(xs: rows, empty: optional_absent(), cons: fn(acc, row) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => if row.dotted == dotted { optional_present(value: row) } else { acc }
-    }
-  })
-}
-
-fn closure_component_blocking_refusal(
-  rows: List<DeclPhase1Row>,
-  blocked: Map<String, NonEmptyDiagnostics>,
-  component: List<String>
-) -> Optional<NonEmptyDiagnostics> {
-  fold_list(xs: component, empty: optional_absent(), cons: fn(found, name) {
-    match found {
-      Present { value: _ } => found
-      Absent =>
-        match closure_row_by_dotted(rows: rows, dotted: name) {
-          Absent => found
-          Present { value: row } =>
-            match row.local_refusal {
-              Present { value: r } => optional_present(value: r)
-              Absent =>
-                fold_list(xs: row.callees, empty: found, cons: fn(hit, callee) {
-                  match hit {
-                    Present { value: _ } => hit
-                    Absent => map_lookup(m: blocked, key: callee)
-                  }
-                })
-            }
-        }
-    }
-  })
-}
-
 fn closure_phase2_blocked(
   rows: List<DeclPhase1Row>
 ) -> Map<String, NonEmptyDiagnostics> {
@@ -1230,7 +1195,7 @@ fn closure_phase2_blocked(
     }
   })
   let name_set = fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
-    map_insert(m: acc, key: row.dotted, value: true)
+    map_insert(m: acc, key: row.dotted, value: row.dotted)
   })
   fold_list(xs: rows, empty: seed, cons: fn(blocked, _) {
     fold_list(xs: rows, empty: blocked, cons: fn(acc, row) {
@@ -1397,7 +1362,7 @@ fn closure_phase1_walk_module(
 // published.
 fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations {
   match shared.closure_declarations {
-    Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, refused: closure.refused, context: shared }
+    Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, module_outcomes: closure.module_outcomes, context: shared }
     Absent =>
       let phase1 = fold_list(
         xs: shared.roots.roots,
@@ -1430,7 +1395,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
       })
       ClosureDeclarations {
         declarations: index,
-        refused: observed,
+        module_outcomes: observed,
         context: ResolutionContext {
           lm: phase1.context.lm,
           roots: phase1.context.roots,
@@ -1440,7 +1405,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
           policy: phase1.context.policy,
           namespaces: phase1.context.namespaces,
           namespaces_built: phase1.context.namespaces_built,
-          closure_declarations: optional_present(value: ClosureIndex { declarations: index, refused: observed }),
+          closure_declarations: optional_present(value: ClosureIndex { declarations: index, module_outcomes: observed }),
           type_declaration_modifiers: phase1.context.type_declaration_modifiers
         }
       }
@@ -1467,9 +1432,9 @@ fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admis
       let threaded = Accepted { value: demand.context, diagnostics: validate_diag }
       match demand.admitted {
         Accepted { value: admitted, diagnostics: namespace_diag } =>
-          let refused = match demand.context.closure_declarations {
+          let outcomes = match demand.context.closure_declarations {
             Present { value: closure } =>
-              unavailable_providers_except_subject(providers: closure.refused, subject: admission.subject.name)
+              module_outcomes_except_subject(providers: closure.module_outcomes, subject: admission.subject.name)
             Absent => []
           }
           ContextWalk {
@@ -1477,7 +1442,7 @@ fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admis
               pending: namespace_diag,
               w: resolve_walk_with_namespace_policy(
                 tree: admitted.subject_root,
-                namespace: namespace_with_unavailable_providers(namespace: admitted.namespace, providers: refused),
+                namespace: namespace_with_module_outcomes(namespace: admitted.namespace, providers: outcomes),
                 lm: shared.lm,
                 policy: shared.policy
               )

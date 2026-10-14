@@ -316,7 +316,9 @@ type ResolvedTree {
   symbol_index: SymbolIndex
   resolved_declarations: SymbolIndex
   lexical_bindings: Map<OccurrenceId, LexicalBinding>
-  unavailable_providers: List<ModuleOutcome>
+  // THE CLOSURE'S PUBLICATION ROSTER. Includes DeclarationAvailable rows; unavailability is
+  // read from it by ClosureProviderRefusal (unavailable_provider_for_path).
+  module_outcomes: List<ModuleOutcome>
   member_kinds: MemberKindChannel
   type_declaration_modifiers: TypeDeclarationModifierChannel
   constructing_module: Optional<Symbol>
@@ -449,7 +451,7 @@ fn unavailable_provider_for_module(providers: List<ModuleOutcome>, module: Quali
   })
 }
 
-fn unavailable_providers_except_subject(providers: List<ModuleOutcome>, subject: QualifiedName) -> List<ModuleOutcome> {
+fn module_outcomes_except_subject(providers: List<ModuleOutcome>, subject: QualifiedName) -> List<ModuleOutcome> {
   fold_list(xs: providers, empty: [], cons: fn(acc, p) {
     if module_outcome_module(o: p) == subject {
       acc
@@ -460,7 +462,7 @@ fn unavailable_providers_except_subject(providers: List<ModuleOutcome>, subject:
 }
 
 fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  unavailable_provider_for_path(index: tree.symbol_index, providers: tree.unavailable_providers, path: path)
+  unavailable_provider_for_path(index: tree.symbol_index, providers: tree.module_outcomes, path: path)
 }
 
 // The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
@@ -501,7 +503,7 @@ fn resolved_tree_of(
   root: Node,
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
-  unavailable_providers: List<ModuleOutcome>,
+  module_outcomes: List<ModuleOutcome>,
   member_kinds: MemberKindChannel,
   type_declaration_modifiers: TypeDeclarationModifierChannel,
   lexical: List<LexicalBindingEntry>
@@ -511,7 +513,7 @@ fn resolved_tree_of(
     symbol_index: symbol_index,
     resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
     lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) }),
-    unavailable_providers: unavailable_providers,
+    module_outcomes: module_outcomes,
     member_kinds: member_kinds,
     type_declaration_modifiers: type_declaration_modifiers,
     constructing_module: resolved_tree_constructing_module_of(root: root)
@@ -640,10 +642,10 @@ type Namespace {
   // the row was recorded). An imported name whose declaration is DeclarationRefused, or
   // whose module is ModuleUnavailable, refuses with that chain, not as unbound
   // (resolve_reason_declarer_refused).
-  unavailable_providers: List<ModuleOutcome>
+  module_outcomes: List<ModuleOutcome>
 }
 
-fn namespace_with_unavailable_providers(namespace: Namespace, providers: List<ModuleOutcome>) -> Namespace {
+fn namespace_with_module_outcomes(namespace: Namespace, providers: List<ModuleOutcome>) -> Namespace {
   Namespace {
     bindings: namespace.bindings,
     canonical_symbols: namespace.canonical_symbols,
@@ -652,7 +654,7 @@ fn namespace_with_unavailable_providers(namespace: Namespace, providers: List<Mo
     test_code: namespace.test_code,
     declared_in: namespace.declared_in,
     imported_origins: namespace.imported_origins,
-    unavailable_providers: providers
+    module_outcomes: providers
   }
 }
 
@@ -769,7 +771,7 @@ fn empty_namespace() -> Namespace {
     test_code: test_code_index_empty(),
     declared_in: Empty,
     imported_origins: empty_map(),
-    unavailable_providers: []
+    module_outcomes: []
   }
 }
 
@@ -1080,7 +1082,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
     ),
     declared_in: declared_in,
     imported_origins: empty_map(),
-    unavailable_providers: []
+    module_outcomes: []
   }
 }
 
@@ -2033,7 +2035,7 @@ fn resolve_reference_path_miss(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.unavailable_providers, path: path) {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, path: path) {
     Present { value: provider } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -2112,7 +2114,7 @@ fn resolve_atom_bound(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.unavailable_providers, path: path) {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, path: path) {
     Present { value: provider } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -2272,7 +2274,7 @@ fn resolve_kernel_type_atom_optional(n: Node, identity: Symbol) -> Optional<Node
 fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
   match map_lookup(m: ctx.namespace.imported_origins, key: identity) {
     Present { value: origin } =>
-      match unavailable_provider_for_module(providers: ctx.namespace.unavailable_providers, module: origin) {
+      match unavailable_provider_for_module(providers: ctx.namespace.module_outcomes, module: origin) {
         Present { value: provider } =>
           Rejected {
             diagnostics: rejected_with_pending(
@@ -2669,14 +2671,14 @@ fn resolved_tree_outcome(
   w: ResolveNodeWalk,
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
-  unavailable_providers: List<ModuleOutcome>,
+  module_outcomes: List<ModuleOutcome>,
   member_kinds: MemberKindChannel,
   type_declaration_modifiers: TypeDeclarationModifierChannel
 ) -> Outcome<ResolvedTree> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
       Accepted {
-        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, unavailable_providers: unavailable_providers, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, lexical: l),
+        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, module_outcomes: module_outcomes, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, lexical: l),
         diagnostics: d
       }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
@@ -5088,7 +5090,7 @@ fn resolve_with_namespace_policy(
     ),
     symbol_index: namespace.symbol_index,
     closure_declarations: empty_symbol_index(),
-    unavailable_providers: [],
+    module_outcomes: [],
     member_kinds: channel,
     type_declaration_modifiers: type_declaration_modifier_channel_of_tree(tree: tree)
   )
