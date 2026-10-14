@@ -347,8 +347,22 @@ fn harness_start_shell_job(
   }
 }
 
-fn harness_kill_process_group(pid: Int) -> Bool {
-  posix.Signal.TerminateProcessGroup(pgid: to_string(value: pid) as NonEmptyStr).success
+type HarnessTerminateProcessGroup {
+  success: Bool
+  stderr: String
+}
+
+fn harness_kill_process_group(pid: Int) -> HarnessTerminateProcessGroup {
+  let r = posix.Signal.TerminateProcessGroup(pgid: to_string(value: pid) as NonEmptyStr)
+  HarnessTerminateProcessGroup { success: r.success, stderr: r.stderr }
+}
+
+fn harness_kill_signal_note(signaled: HarnessTerminateProcessGroup) -> String {
+  if signaled.success {
+    ""
+  } else {
+    join([" TerminateProcessGroup failed: ", signaled.stderr], "")
+  }
 }
 
 type HarnessJobKill
@@ -356,7 +370,7 @@ type HarnessJobKill
   | JobKillUnconfirmed { job: HarnessShellJob, detail: String }
 
 fn harness_kill_running_job(job: HarnessShellJob) -> HarnessJobKill {
-  let _signaled = harness_kill_process_group(pid: job.pid)
+  let signaled = harness_kill_process_group(pid: job.pid)
   match harness_await_pid(pid: job.pid, remaining: second(count: 5)) {
     Exited { code } =>
       JobKillConfirmed {
@@ -375,12 +389,29 @@ fn harness_kill_running_job(job: HarnessShellJob) -> HarnessJobKill {
     StillRunning =>
       JobKillUnconfirmed {
         job: job,
-        detail: join(["job ", job.id, " is still running after TerminateProcessGroup"], ""),
+        detail: join(
+          [
+            "job ",
+            job.id,
+            " is still running after TerminateProcessGroup",
+            harness_kill_signal_note(signaled: signaled),
+          ],
+          "",
+        ),
       }
     ReapRefused { cause } =>
       JobKillUnconfirmed {
         job: job,
-        detail: join(["job ", job.id, " reap refused after TerminateProcessGroup: ", cause as String], ""),
+        detail: join(
+          [
+            "job ",
+            job.id,
+            " reap refused after TerminateProcessGroup: ",
+            cause as String,
+            harness_kill_signal_note(signaled: signaled),
+          ],
+          "",
+        ),
       }
   }
 }

@@ -7,6 +7,7 @@ import gunbc.harness.harness_wire { WireToolUseBlock }
 import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellJobState, JobRunning, JobFinished, JobExitedOutcome,
   harness_hand_in_blocked_by_running_jobs, harness_kept_stdio_path, harness_stdio_move_note,
+  HarnessTerminateProcessGroup, harness_kill_signal_note,
 }
 import gunbc.harness.harness_shell_job_policy { WaitRequestedMinutes, WaitMalformedMinutes, WaitUseDefault, WaitPaceReset }
 import gunbc.harness.harness_tool {
@@ -70,6 +71,18 @@ test fn a_malformed_wait_minutes_member_keeps_the_parse_cause() -> Bool {
     WaitUseDefault => false
     WaitRequestedMinutes { minutes: _ } => false
   }
+}
+
+test fn an_unconfirmed_kill_carries_the_terminate_stderr() -> Bool {
+  harness_kill_signal_note(
+    signaled: HarnessTerminateProcessGroup {
+      success: false,
+      stderr: "kill: (-9): Operation not permitted",
+    },
+  ).contains("Operation not permitted")
+    && harness_kill_signal_note(
+      signaled: HarnessTerminateProcessGroup { success: true, stderr: "" },
+    ) == ""
 }
 
 test fn a_failed_stdio_rename_keeps_the_mktemp_path_and_says_so() -> Bool {
