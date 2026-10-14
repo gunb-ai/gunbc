@@ -286,6 +286,7 @@ pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
 // v2.lens.fallback_arm_census when v2.compiler.infer types coproduct match scrutinees.
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Closed-total verdict of a typed scrutinee. `Undetermined` is its own arm (a scrutinee whose
 /// inferred type is not a resolved node), counted by the caller, never folded into `Open`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -295,6 +296,7 @@ pub(crate) enum TypedScrutineeClosedness {
     Undetermined,
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 pub(crate) fn typed_scrutinee_closedness(
     scrutinee: &Rc<Node>,
     env: &Rc<TypeEnv>,
@@ -319,6 +321,7 @@ pub(crate) fn typed_scrutinee_closedness(
     }
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Every wildcard arm in a typed graph, one fact per arm, keyed `rel::decl#armN`.
 #[derive(Debug, Default)]
 pub(crate) struct TypedFallbackArmWalk {
@@ -334,6 +337,7 @@ pub(crate) struct TypedFallbackArmWalk {
 }
 
 impl TypedFallbackArmWalk {
+    #[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
     /// The non-fold-residue population: `rel::decl` of every wildcard over a closed coproduct.
     pub(crate) fn non_fold_residue_sites(&self) -> BTreeSet<String> {
         self.facts
@@ -344,6 +348,7 @@ impl TypedFallbackArmWalk {
     }
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Walk every typed module of `graph`, or only those whose module path is in `module_filter`.
 pub(crate) fn typed_fallback_arm_walk(
     graph: &ResolvedGraph,
@@ -377,6 +382,7 @@ pub(crate) fn typed_fallback_arm_walk(
     walk
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 fn typed_collect_wildcard_arms(
     node: &Rc<Node>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -420,6 +426,7 @@ fn typed_collect_wildcard_arms(
     }
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// (unrostered live sites, stale roster rows) over one typed walk, against the live roster.
 pub(crate) fn non_fold_residue_roster_diff(
     walk: &TypedFallbackArmWalk,
@@ -430,6 +437,7 @@ pub(crate) fn non_fold_residue_roster_diff(
     })
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// The pure core. A roster row is STALE when its site's module was typed by this walk and no
 /// longer carries the site, OR when its subject file does not exist at all -- a deleted module
 /// never enters `covered_paths`, so without the existence arm its row would outlive it silently.
@@ -464,6 +472,7 @@ pub(crate) fn non_fold_residue_roster_diff_with(
     (unrostered, stale)
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Subject paths of every roster row the diff ADDED or DELETED (base vs head). A row-only edit
 /// touches the roster module and not the subject, so without these the typed scope never reaches
 /// the site the row claims about.
@@ -478,6 +487,7 @@ pub(crate) fn non_fold_residue_changed_row_paths(
         .collect()
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// A changed roster row's subject, by its EXACT path, with a typed disposition. Nothing is
 /// dropped: a path that exists but cannot be read or declares no module refuses, and a readable
 /// module is seeded AND must then appear by that same path among the walk's covered paths.
@@ -500,6 +510,7 @@ pub(crate) enum NonFoldResidueRowSubject {
     },
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 pub(crate) fn non_fold_residue_classify_row_subject(
     path: &str,
     exists: bool,
@@ -527,6 +538,7 @@ pub(crate) fn non_fold_residue_classify_row_subject(
     }
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// The subjects of every roster row the diff added or deleted, read at the floor's resolved diff
 /// base and classified by exact path. Refuses when the base roster cannot be read.
 pub(crate) fn non_fold_residue_changed_row_subjects(
@@ -551,6 +563,7 @@ pub(crate) fn non_fold_residue_changed_row_subjects(
     )
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// The seeds a subject set contributes: the module of every readable, module-declaring subject.
 pub(crate) fn non_fold_residue_row_subject_seeds(
     subjects: &[NonFoldResidueRowSubject],
@@ -566,6 +579,7 @@ pub(crate) fn non_fold_residue_row_subject_seeds(
         .collect()
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// Every changed-row subject this run could not judge by its exact path: unreadable, module-less,
 /// or a module path the walk did not cover (not typed, excluded as a test file, or a same-named
 /// module at another path). Missing subjects are absent here -- the roster diff judges them stale.
@@ -598,6 +612,7 @@ pub(crate) fn non_fold_residue_row_subjects_unjudged(
         .collect()
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 /// The required floor's DIFF-SCOPED non-fold-residue verdict over the graph its strict preparation
 /// already typed: every module the diff touched plus every interface consumer it planned. A
 /// wildcard is added or removed only by editing its module, and a scrutinee's closedness moves
@@ -618,6 +633,7 @@ pub(crate) struct NonFoldResidueDiffVerdict {
     pub row_subjects_untyped: Vec<String>,
 }
 
+#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
 pub(crate) fn non_fold_residue_diff_verdict(
     graph: &ResolvedGraph,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -784,6 +800,47 @@ mod nfr_typed_tests {
         assert!(
             !got.contains("m.dag::step") && !got.contains("m.dag::p_part"),
             "the partition-carried total fold must NOT be flagged; got {got:?}"
+        );
+    }
+
+    // DISCRIMINATING RED (D2 local_tidy): the OLD shape of
+    // dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger was a one-special-variant
+    // dispatch -- `LocalTidyCargoFmtCheck => <special>`, `_ => <glob fallback>` -- a wildcard over
+    // the closed coproduct `LocalTidyCheck` whose other variant is a STRUCT variant. The fixture
+    // mirrors that shape (a named struct variant `W { entry: _, check_fns: _ }` + a bare `_`).
+    // The walk must flag the site: the `_` arm is exactly the glob fallback that silently swallowed
+    // the struct variant, so a variant misrouted there is caught by the ratchet.
+    #[test]
+    fn red_control_wildcard_over_struct_variant_coproduct_is_residue() {
+        let got = sites("module m\ntype Tidy = W { entry: String, check_fns: List<String> } | C\nfn f(x: Tidy) -> Bool {\n  match x {\n    C => true\n    _ => false\n  }\n}\n");
+        assert!(
+            got.contains("m.dag::f"),
+            "a wildcard fallback over a closed coproduct with a struct variant must be flagged; got {got:?}"
+        );
+    }
+
+    // POSITIVE CONTROL (D2 local_tidy): the NEW totalized shape -- one explicit arm per variant, the
+    // struct variant matched by its pattern `W { entry: _, check_fns: _ }`, no wildcard/else
+    // fallback -- must NOT be flagged, i.e. the dissolved site is no longer a residue site.
+    #[test]
+    fn green_control_total_struct_variant_dispatch_is_not_residue() {
+        let got = sites("module m\ntype Tidy = W { entry: String, check_fns: List<String> } | C\nfn f(x: Tidy) -> Bool {\n  match x {\n    C => true\n    W { entry: _, check_fns: _ } => false\n  }\n}\n");
+        assert!(
+            !got.contains("m.dag::f"),
+            "one explicit arm per variant (no wildcard) must NOT be flagged; got {got:?}"
+        );
+    }
+
+    // DISCRIMINATING RED 2 (D2 local_tidy): the failure the totalization removes. Under the OLD
+    // one-special-variant dispatch a THIRD variant added to `Tidy` would be silently swallowed by
+    // the `_` glob fallback; the walk must flag that wildcard as a residue site. This is the
+    // "adding/misrouting a variant is caught" case: the wildcard, not the type, is the residue.
+    #[test]
+    fn red_control_third_variant_silently_swallowed_by_wildcard_is_residue() {
+        let got = sites("module m\ntype Tidy = W { entry: String, check_fns: List<String> } | C | D\nfn f(x: Tidy) -> Bool {\n  match x {\n    C => true\n    _ => false\n  }\n}\n");
+        assert!(
+            got.contains("m.dag::f"),
+            "a wildcard that swallows a newly-added variant must be flagged; got {got:?}"
         );
     }
 

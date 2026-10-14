@@ -1,4 +1,6 @@
 module v2.lens.enforcement.lens_module_gate
+import std.optional { Absent, Optional, Present }
+
 
 import std.types { List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -6,7 +8,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.lens.registry {
-  Bound, LensIdV0, Unbound, lens_registry_v0, lens_id_v0_eq,
+  Bound, LensIdV0, Unbound, lens_registry_v0,
   ComplexityDerivedKernel, ComplexityOptimality, ComplexityAccumulatorCopy, ComplexityLinearityAudit,
   ComplexityLowering, Cost, Coverage, DependencyFidelity, Discrimination, DispositionRedundancy,
   DocReachability, DuplicateComputation, EffectReach, EmittedBinaryEffectConfinement, FallbackArmCensus, MandatoryTag, ExtdepsShapeTransportPolicy,
@@ -28,7 +30,7 @@ import v2.lens.registry.completeness {
   lens_registry_completeness_unenrolled_count_from_facts
 }
 import std.disposition { RealizationDispatch }
-import std.algebra { list_snoc_item, contains, count_where, fold_list, list_head, HeadFound, HeadAbsent }
+import std.algebra { list_snoc_item, contains, count_where, fold_list, list_head }
 import v2.std.integer { Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String, string_eq }
@@ -91,7 +93,7 @@ fn lens_module_gate_string_member(xs: List<String>, x: String) -> Bool {
 }
 
 fn lens_module_gate_verdict_remedy_pair_eq(a: VerdictRemedyPair, b: VerdictRemedyPair) -> Bool {
-  lens_id_v0_eq(left: a.lens_id, right: b.lens_id)
+  a.lens_id == b.lens_id
     && (a.verdict_authority == b.verdict_authority)
     && (a.remedy == b.remedy)
 }
@@ -678,12 +680,12 @@ fn lens_module_gate_redundant_blocking_step(
       }
     )
     match list_head(xs: prior) {
-      HeadFound { value: _ } =>
+      Present { value: _ } =>
         RedundantBlockingAcc {
           redundant: acc.redundant + 1,
           seen: list_snoc_item(xs: acc.seen, item: surface)
         }
-      HeadAbsent =>
+      Absent =>
         RedundantBlockingAcc {
           redundant: acc.redundant,
           seen: list_snoc_item(xs: acc.seen, item: surface)
