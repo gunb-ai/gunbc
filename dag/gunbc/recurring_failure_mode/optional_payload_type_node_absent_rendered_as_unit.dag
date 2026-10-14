@@ -9,7 +9,7 @@ data optional_payload_type_node_absent_rendered_as_unit: RecurringFailureMode = 
   receipts: [
     "**an Optional carrier whose payload type node is absent on the declared children was rendered with a fabricated `()` payload** (INVALID STATE: `Optional<List<Optional<Int>>>` emitted as `Option<Rc<Vec<Option<()>>>>` because render_rust_optional_carrier_inner took `Absent => \"()\"`; the element payload was erased to Unit).",
 
-    "HARM: section 5 silent wrongness: with `[Absent]` the output compiles with the wrong type; with `[Absent, Present{value:5}]` cargo refuses E0308 at a site far from the cause, and the interpreter answers 5.",
+    "HARM: section 5 silent wrongness: with `[Absent]` the output compiles with the wrong type; with `[Absent, Present \{ value: 5 }]` cargo refuses E0308 at a site far from the cause, and the interpreter answers 5.",
 
     "SPECIMEN, 2026-10-13 (measured by neat-boar-550, localised by merry-moth-118, node adhoc-c3c735c9-3af): the earliest wrong link was infer stamping, which left the inner List unstamped and the element leaf childless; the emitter only rendered what it was given.",
 
