@@ -1566,6 +1566,7 @@ test fn witness_headless_claude_uses_a_transient_unit_with_stream_json_on_the_ev
         SystemdUnitContainer { plan } =>
           plan.unit == dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
             && plan.working_directory == "/wt"
+            && plan.attempt_worktree == "/wt"
             && plan.stdout_path == events
             && plan.stderr_path == log
       }

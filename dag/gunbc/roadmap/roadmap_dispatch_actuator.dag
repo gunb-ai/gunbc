@@ -2931,7 +2931,9 @@ fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyS
 // applied through the same grant-to-unit fold the compute provider uses
 // (gunbc.compute.unit_bounds compute_grant_unit_properties), so the memory the ledger counts and the
 // memory the cgroup enforces are one figure; it used to be the instance ceiling read directly. WorkingDirectory is the controller checkout for the reason
-// dispatch_pane_working_directory states. StandardOutput and StandardError append to the attempt's
+// dispatch_pane_working_directory states (harness: repo_root). ReadWritePaths starts with this
+// attempt's worktree, not that cwd: a harness worker that ran from /source used to carve /source
+// writable (bright-moth-475 on 13942, live unit ReadWritePaths). StandardOutput and StandardError append to the attempt's
 // own events path, so capture is a unit property rather than a quoted shell payload piped through
 // a terminal multiplexer. ExecStopPost is the attempt's exit record (gunbc.roadmap.roadmap_attempt_exit_spool
 // attempt_exit_hook): one create-only mkdir whose name carries the manager's stop-time facts, written
@@ -2939,6 +2941,7 @@ fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyS
 fn dispatch_worker_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
+  attempt_worktree: String,
   worker_log_path: String,
   granted: Kibibyte,
   process_bounds: UnitProcessBounds,
@@ -2947,6 +2950,7 @@ fn dispatch_worker_unit_properties(
   dispatch_worker_unit_stream_properties(
     instance: instance,
     working_directory: working_directory,
+    attempt_worktree: attempt_worktree,
     stdout_path: worker_log_path,
     stderr_path: worker_log_path,
     granted: granted,
@@ -2958,6 +2962,7 @@ fn dispatch_worker_unit_properties(
 fn dispatch_worker_unit_stream_properties(
   instance: HostDashboardInstance,
   working_directory: String,
+  attempt_worktree: String,
   stdout_path: String,
   stderr_path: String,
   granted: Kibibyte,
@@ -2972,7 +2977,7 @@ fn dispatch_worker_unit_stream_properties(
       SystemdRunProperty { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
       SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
       SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
-      SystemdRunProperty { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance, working_directory: working_directory, scratch_directory: path_parent_directory(path: stdout_path)) as NonEmptyStr },
+      SystemdRunProperty { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)) as NonEmptyStr },
       SystemdRunProperty { property: ExecStopPostProperty, value: exit_hook },
     ],
   )
@@ -3016,20 +3021,20 @@ fn dispatch_worker_git_writable_paths(instance: HostDashboardInstance) -> List<S
   ]
 }
 
-fn dispatch_worker_writable_path_list(instance: HostDashboardInstance, working_directory: String, scratch_directory: String) -> List<String> {
+fn dispatch_worker_writable_path_list(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String) -> List<String> {
   concat(
-    [working_directory, scratch_directory],
+    [attempt_worktree, scratch_directory],
     dispatch_worker_git_writable_paths(instance: instance),
   )
 }
 
-fn dispatch_worker_writable_paths(instance: HostDashboardInstance, working_directory: String, scratch_directory: String) -> String {
-  join(dispatch_worker_writable_path_list(instance: instance, working_directory: working_directory, scratch_directory: scratch_directory), separator: " ")
+fn dispatch_worker_writable_paths(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String) -> String {
+  join(dispatch_worker_writable_path_list(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: scratch_directory), separator: " ")
 }
 
-fn dispatch_worker_path_is_writable(instance: HostDashboardInstance, working_directory: String, scratch_directory: String, path: String) -> Bool {
+fn dispatch_worker_path_is_writable(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String, path: String) -> Bool {
   any(
-    dispatch_worker_writable_path_list(instance: instance, working_directory: working_directory, scratch_directory: scratch_directory),
+    dispatch_worker_writable_path_list(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: scratch_directory),
     root => path == root || starts_with(s: path, prefix: join([root, "/"], "")),
   )
 }
@@ -3044,6 +3049,7 @@ type DispatchWorkerUnitPlan {
   systemd_run_program: FilePath
   unit: NonEmptyStr
   working_directory: String
+  attempt_worktree: String
   stdout_path: String
   stderr_path: String
   inner_argv: List<String>
@@ -3054,6 +3060,7 @@ fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, pla
   dispatch_worker_unit_stream_properties(
     instance: instance,
     working_directory: plan.working_directory,
+    attempt_worktree: plan.attempt_worktree,
     stdout_path: plan.stdout_path,
     stderr_path: plan.stderr_path,
     granted: granted,
@@ -3089,6 +3096,7 @@ fn dispatch_systemd_unit_container_plan(
   node_id: String,
   attempt_key: String,
   pane_working_directory: String,
+  worktree_path: String,
   stdout_path: String,
   stderr_path: String,
   provider_inner: List<String>,
@@ -3116,6 +3124,7 @@ fn dispatch_systemd_unit_container_plan(
                 systemd_run_program: program,
                 unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
                 working_directory: pane_working_directory,
+                attempt_worktree: worktree_path,
                 stdout_path: stdout_path,
                 stderr_path: stderr_path,
                 inner_argv: provider_inner,
@@ -3181,6 +3190,7 @@ fn dispatch_session_container_for_provider(
         node_id: node_id,
         attempt_key: attempt_key,
         pane_working_directory: pane_working_directory,
+        worktree_path: worktree_path,
         stdout_path: worker_log_path,
         stderr_path: worker_log_path,
         provider_inner: provider_inner,
@@ -3193,6 +3203,7 @@ fn dispatch_session_container_for_provider(
         node_id: node_id,
         attempt_key: attempt_key,
         pane_working_directory: pane_working_directory,
+        worktree_path: worktree_path,
         stdout_path: events_path,
         stderr_path: worker_log_path,
         provider_inner: provider_inner,
