@@ -286,20 +286,6 @@ type KernelMintDeclarationLookup
   | KernelMintDeclarationAbsent
   | KernelMintDeclarationAmbiguous { row_count: Int }
 
-// WHETHER A RULING-B COLLECTION MINT MAY PAIR WITH A std.algebra TEMPLATE DECLARATION.
-// kernel_mint_shape_diagnostics (#13178, Optional de-fork) admits only names the seed actually
-// mints: Optional is a kernel TYPE (T? sugar) and is judged by coproduct shape. Concat is not a
-// kernel type. Ruling B adds a second admitted class: callee spelling → the one collection_*_shape
-// identity. A name in neither class still refuses ("the seed mints no kernel type named …").
-fn kernel_operation_mint_admitted(minted_name: String, decl_name: String) -> Bool {
-  (minted_name == "concat" && decl_name == "collection_concat_shape")
-    || (minted_name == "count" && decl_name == "collection_count_shape")
-    || (minted_name == "map" && decl_name == "collection_map_shape")
-    || (minted_name == "filter" && decl_name == "collection_filter_shape")
-    || (minted_name == "first" && decl_name == "collection_first_shape")
-    || (minted_name == "join" && decl_name == "collection_join_shape")
-}
-
 fn kernel_mint_declaration_for(rows: List<KernelMintDeclaration>, minted_name: String) -> KernelMintDeclarationLookup {
   let matching = rows |> filter(r => (r.minted_name as String) == minted_name)
   let n = matching |> count

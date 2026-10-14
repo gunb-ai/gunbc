@@ -1,8 +1,6 @@
 module v2.test.claim.compiler.kernel_op_declaration_import
 
-import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
 import std.types { Bool }
-import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra {
   collection_concat_shape,
@@ -10,30 +8,23 @@ import std.algebra {
   collection_filter_shape,
   collection_first_shape,
   collection_join_shape,
-  collection_map_shape,
-  fold_list
+  collection_map_get_shape,
+  collection_map_shape
 }
 import std.literal_elaboration {
   KernelMintDeclarationAbsent,
   KernelMintDeclarationAmbiguous,
   KernelMintDeclarationFound,
-  kernel_mint_declaration_for,
-  kernel_operation_mint_admitted
+  kernel_mint_declaration_for
 }
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
 import std.decl_ref { decl_ref, declaration_ref_eq }
-import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
-import std.optional { Absent, Present }
-import v2.std.node { node_subtree_nodes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUBJECT (i): a bare authored concat(a, b) binds to the one declaration
-// std.algebra.collection_concat_shape when that identity is imported; without the import it
-// refuses. No free fn concat. Mint rows pair callee spellings to those identities. The shape
-// guard still refuses a name that is neither Optional nor an admitted pairing.
+// Named std.algebra templates for kernel collection spellings that have no fn. Import-scoping of
+// the surface heads is a resolver last-tier deletion, not a kernel mint.
 
-// REAL PATH: the named templates in THIS MODULE'S import of std.algebra carry the kernel spellings.
 test fn collection_shape_rows_carry_the_kernel_spellings() -> Bool {
   collection_concat_shape().name == "concat"
     && collection_count_shape().name == "count"
@@ -41,47 +32,12 @@ test fn collection_shape_rows_carry_the_kernel_spellings() -> Bool {
     && collection_filter_shape().name == "filter"
     && collection_first_shape().name == "first"
     && collection_join_shape().name == "join"
+    && collection_map_get_shape().name == "map_get"
 }
 
-test fn concat_mint_row_binds_the_algebra_template() -> Bool {
+test fn concat_has_no_kernel_mint_row() -> Bool {
   match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "concat") {
-    KernelMintDeclarationFound { declaration: d } =>
-      declaration_ref_eq(a: d, b: decl_ref(module_path: "std.algebra", decl_name: "collection_concat_shape"))
-    KernelMintDeclarationAbsent => false
-    KernelMintDeclarationAmbiguous { row_count: _ } => false
-  }
-}
-
-// RED: kernel_mint_shape_diagnostics still refuses a minted_name that is not Optional and not
-// an admitted ruling-B pairing (same message class as #13178: no kernel type of that name).
-test fn undeclared_mint_name_is_not_admitted() -> Bool {
-  !kernel_operation_mint_admitted(minted_name: "not_a_kernel_mint", decl_name: "Optional")
-    && !kernel_operation_mint_admitted(minted_name: "concat", decl_name: "Optional")
-    && !kernel_operation_mint_admitted(minted_name: "Bool", decl_name: "collection_concat_shape")
-    && kernel_operation_mint_admitted(minted_name: "concat", decl_name: "collection_concat_shape")
-}
-
-test fn unbound_mint_name_has_no_row() -> Bool {
-  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "not_a_kernel_mint") {
     KernelMintDeclarationAbsent => true
-    KernelMintDeclarationFound { declaration: _ } => false
-    KernelMintDeclarationAmbiguous { row_count: _ } => false
-  }
-}
-
-// #13872 declares empty_map / map_insert / map_lookup as real std.algebra fns. Minting map_insert
-// would be two declarations for one concept. map_get is the kernel spelling of the same total
-// lookup as map_lookup (Map, key → Optional<V>); callers move to map_lookup, no new template.
-test fn map_insert_and_map_get_are_not_mint_pairings() -> Bool {
-  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "map_insert") {
-    KernelMintDeclarationAbsent =>
-      match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "map_get") {
-        KernelMintDeclarationAbsent =>
-          !kernel_operation_mint_admitted(minted_name: "map_insert", decl_name: "collection_map_insert_shape")
-            && !kernel_operation_mint_admitted(minted_name: "map_get", decl_name: "collection_map_get_shape")
-        KernelMintDeclarationFound { declaration: _ } => false
-        KernelMintDeclarationAmbiguous { row_count: _ } => false
-      }
     KernelMintDeclarationFound { declaration: _ } => false
     KernelMintDeclarationAmbiguous { row_count: _ } => false
   }
@@ -93,32 +49,5 @@ test fn optional_mint_row_is_unchanged() -> Bool {
       declaration_ref_eq(a: d, b: decl_ref(module_path: "std.optional", decl_name: "Optional"))
     KernelMintDeclarationAbsent => false
     KernelMintDeclarationAmbiguous { row_count: _ } => false
-  }
-}
-
-data kodi_concat_red: String = "module p\n\nimport v2.std.collection { List }\n\nfn f(a: List<Int>, b: List<Int>) -> List<Int> {\n  concat(a, b)\n}\n"
-
-data kodi_concat_green: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { collection_concat_shape }\n\nfn f(a: List<Int>, b: List<Int>) -> List<Int> {\n  concat(a, b)\n}\n"
-
-test fn bare_concat_without_import_is_unbound() -> Bool {
-  match fmi_assemble(src: kodi_concat_red) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
-  }
-}
-
-// The assemble peer only has to DECLARE collection_concat_shape so imported_origins admits
-// the spelling. The bound path is v2.compiler.fold_lowering's roster DeclarationRef
-// (std.algebra.collection_concat_shape), the same path cca_route_runs_on_the_real_path uses.
-test fn concat_with_identity_import_binds_the_template() -> Bool {
-  match fmi_assemble(src: kodi_concat_green) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      fold_list(xs: node_subtree_nodes(root: tree.root), empty: false, cons: fn(acc, n) {
-        acc || (match declaration_reference_path_optional(node: n) {
-          Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_concat_shape"
-          Absent => false
-        })
-      })
   }
 }

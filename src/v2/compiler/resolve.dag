@@ -2388,22 +2388,11 @@ fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbo
   }
 }
 
-// WHETHER THIS MODULE IMPORTED THE ROSTER ROW'S DECLARATION (the template identity, e.g.
-// collection_concat_shape). Ruling B: concat/count are not an ambient last-tier bind; the
-// identity must be imported. The surface spelling is still the row's template name.
-fn collection_roster_identity_imported(ctx: ResolveContext, row: DeclarationRef) -> Bool {
-  match map_lookup(m: ctx.namespace.imported_origins, key: symbol_intern_lexeme(lexeme: row.decl_name)) {
-    Absent => false
-    Present { value: origin } => qualified_name_to_dotted_string(qn: origin) == row.module_path
-  }
-}
-
 // A NAME NO FRAME AND NO ROOT BINDING ANSWERS: the symbol index, then the kernel types, then a primitive-call
 // row of the one collection roster by SURFACE HEAD (v2.compiler.fold_lowering collection_roster_rows: concat,
-// count) WHEN THE MODULE IMPORTED THAT ROW'S DECLARATION, then unbound. The roster is asked LAST, so any
-// declaration that claims the name -- a local, an import, an indexed declaration -- takes precedence and
-// the row never shadows the corpus. The row's declaration name (collection_concat_shape) is not a second
-// implicit spelling of the primitive; importing it is what admits the surface head.
+// count), then unbound. The roster is asked LAST, so any declaration that claims the name -- a local, an
+// import, an indexed declaration -- takes precedence and the row never shadows the corpus. The row's
+// declaration name (collection_concat_shape) is not a second implicit spelling of the primitive.
 fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
   match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
     SymbolIndexAtomHit { path: path } =>
@@ -2424,12 +2413,7 @@ fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending
         Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
         Absent =>
           match collection_roster_primitive_call_row_optional(head: identity) {
-            Present { value: r } =>
-              if collection_roster_identity_imported(ctx: ctx, row: r.row) {
-                resolve_atom_bound(ctx: ctx, n: n, path: declaration_ref_path(r: r.row), pending: pending)
-              } else {
-                resolve_atom_primitive_authority(ctx: ctx, n: n, identity: identity, pending: pending)
-              }
+            Present { value: r } => resolve_atom_bound(ctx: ctx, n: n, path: declaration_ref_path(r: r.row), pending: pending)
             Absent => resolve_atom_primitive_authority(ctx: ctx, n: n, identity: identity, pending: pending)
           }
       }

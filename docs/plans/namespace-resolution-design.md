@@ -780,17 +780,12 @@ root” reading is retired so it cannot license an ambient last-tier bind.
 
 **Declared frontier, not a present wall.** The one declaration for each collection callee is
 the `std.algebra` `collection_*_shape` row (no free `fn concat`; `kernel_mint_declaration_rows`
-pairs Optional plus those callee spellings to the one identity each). Path (i): a bare authored `concat(a, b)` / `count(xs)` binds
-that row when the module imported the row’s declaration name
-(`collection_concat_shape` / `collection_count_shape`); without the import it refuses. That
-gate is `v2.compiler.resolve` `collection_roster_identity_imported`, and it covers only the
-roster’s primitive-call heads (concat, count). `first`, `map`, `filter`, `join`
-have the named template homes; last-tier does not yet bind those spellings. `map_insert` /
-`empty_map` / `map_lookup` are missing imports of the real `std.algebra` fns landing in
-#13872 — they are not mint pairings. `map_get` is the kernel spelling of that same total
-lookup as `map_lookup`; callers move to `map_lookup` rather than a second template. Trigger:
-extend that import gate to those heads, or path (ii) rewrite callers to the declared form. Until
-then the plan does not claim those spellings are imported-and-bound.
+is the Optional mint only). Today a bare `concat` still binds ambiently: `resolve_atom_unscoped`
+asks `collection_roster_primitive_call_row_optional` with no import check, then
+`resolve_atom_primitive_authority`. Trigger: delete that last-tier ambient bind so a roster
+spelling binds only when the module imported the template identity, reading the existing
+`collection_roster_rows` (one authority). Until then the plan does not claim those spellings
+are import-scoped. `map_insert` / `empty_map` / `map_lookup` wait on #13872's real fns.
 
 **RULED — the (Y) expected-type filter (operator, 2026-07-22; recorded in §4).** The re-adjudication
 is done: the pool-filter reading of (Y) dies with the `global_bare` tier (there is never a pool

@@ -451,6 +451,12 @@ fn collection_join_shape() -> AlgebraFieldTemplate {
   { name: "join", param_types: [ReceiverSelf, NamedTemplate { name: "String" }], return_type: NamedTemplate { name: "String" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none }
 }
 
+// MAP LOOKUP UNDER THE KERNEL SPELLING map_get. No fn map_get exists; this named row is the std
+// home for that spelling. map_lookup (#13872) is the same total keyed read; callers move there.
+fn collection_map_get_shape() -> AlgebraFieldTemplate {
+  { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none }
+}
+
 fn collection_sort_by_shape() -> AlgebraFieldTemplate {
   { name: "sort_by", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "SortKey" } }], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeSortBody }, callback_element_position: Present { value: 0 } }
 }
@@ -1108,7 +1114,7 @@ fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
 fn partial_function_templates() -> List<AlgebraFieldTemplate> {
   [
     { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    collection_map_get_shape(),
     { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none }
   ]
 }
@@ -1116,7 +1122,7 @@ fn partial_function_templates() -> List<AlgebraFieldTemplate> {
 fn finitely_supported_function_templates() -> List<AlgebraFieldTemplate> {
   [
     { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    collection_map_get_shape(),
     { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_insert", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_merge", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },

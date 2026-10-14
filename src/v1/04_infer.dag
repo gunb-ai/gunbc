@@ -18,8 +18,7 @@ import std.literal_elaboration {
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
-  kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous,
-  kernel_operation_mint_admitted
+  kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
@@ -17068,7 +17067,9 @@ fn kernel_optional_shape_refusal(decl: Node, env: TypeEnv) -> String? {
 fn kernel_mint_shape_diagnostics(env: TypeEnv, module_name: String, module_span: SourceSpan) -> List<ErrorNode> {
   kernel_mint_declaration_rows |> flat_map(row =>
     if (row.declaration.module_path as String) != module_name { [] }
-    else if (row.minted_name as String) == kernel_optional_mint_name {
+    else if (row.minted_name as String) != kernel_optional_mint_name {
+      [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: concat("the seed mints no kernel type named '", row.minted_name as String, "'"), span: module_span }, module_name: module_name)]
+    } else {
       match declaration_node_of_ref(d: row.declaration, env: env) {
         Absent =>
           [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: "this module does not declare it", span: module_span }, module_name: module_name)]
@@ -17079,14 +17080,6 @@ fn kernel_mint_shape_diagnostics(env: TypeEnv, module_name: String, module_span:
               [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: cause, span: decl.span }, module_name: module_name)]
           }
       }
-    } else if kernel_operation_mint_admitted(minted_name: row.minted_name as String, decl_name: row.declaration.decl_name as String) {
-      match declaration_node_of_ref(d: row.declaration, env: env) {
-        Absent =>
-          [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: "this module does not declare it", span: module_span }, module_name: module_name)]
-        Present { value: _ } => []
-      }
-    } else {
-      [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: concat("the seed mints no kernel type named '", row.minted_name as String, "'"), span: module_span }, module_name: module_name)]
     })
 }
 
