@@ -2311,6 +2311,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "hand_in_in_the_same_round_as_a_backgrounded_command_is_refused" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "hand_in_in_the_same_round_as_a_backgrounded_command_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.live_deploy.approval_broker_helper_readback_real_execution", function: "a_clean_observable_snapshot_reaches_the_grant_by_real_execution" },
       entry: "dag/test/claim/live_deploy/approval_broker_helper_readback_real_execution.dag",
       function: "a_clean_observable_snapshot_reaches_the_grant_by_real_execution",

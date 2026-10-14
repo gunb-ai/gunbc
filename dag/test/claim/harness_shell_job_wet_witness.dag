@@ -10,6 +10,8 @@ import extdeps.filesystem.filesystem_io
 import extdeps.tools.gnu_coreutils { pwd_command }
 import gunbc.command_runner { run_shell_command_capture, LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.languages.json.emit { json_object, json_kv, json_string }
+import gunbc.harness.harness_wire { WireToolUseBlock }
 import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, WaitUseDefault, WaitPaceReset,
 }
@@ -22,6 +24,9 @@ import gunbc.harness.harness_shell_job {
   HarnessShellJob, JobFinished, JobExitedOutcome,
   harness_observe_job, JobStillRunning, JobExited, JobSignaled, JobReapRefused,
   harness_job_is_running,
+}
+import gunbc.harness.harness_turn {
+  harness_prepare_hand_in_round, HandInRoundBlocked, HandInRoundClear,
 }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -346,4 +351,48 @@ test fn run_command_does_not_dirty_the_worktree_git_status() -> Bool {
       ToolJob { id: _, text: _ } => false
       ToolRefused { disposition: _ } => false
     }
+}
+
+test fn hand_in_in_the_same_round_as_a_backgrounded_command_is_refused() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let uses = [
+    WireToolUseBlock {
+      id: "c1",
+      name: "run_command",
+      input: json_object([json_kv(key: "command", value: json_string(s: "sleep 95"))]),
+    },
+    WireToolUseBlock {
+      id: "h1",
+      name: "hand_in",
+      input: json_object([]),
+    },
+  ]
+  let prepared = harness_prepare_hand_in_round(
+    environment: env_at(worktree: dir.path, output: out.path),
+    uses: uses,
+  )
+  let blocked = match prepared {
+    HandInRoundBlocked { environment: env, results: _, detail } => {
+      let _stop = fold(env.jobs, init: env, f: (acc, j) =>
+        if harness_job_is_running(job: j) {
+          harness_kill_job(environment: acc, id: j.id).environment
+        } else {
+          acc
+        })
+      detail.contains("wait or job_kill")
+    }
+    HandInRoundClear { environment: env, results: _ } => {
+      let _stop = fold(env.jobs, init: env, f: (acc, j) =>
+        if harness_job_is_running(job: j) {
+          harness_kill_job(environment: acc, id: j.id).environment
+        } else {
+          acc
+        })
+      false
+    }
+  }
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success && blocked
 }
