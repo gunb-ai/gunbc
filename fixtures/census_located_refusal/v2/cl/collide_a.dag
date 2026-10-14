@@ -1,4 +1,0 @@
-module v2.cl.collide_a
-
-fn collide_a_go() -> Int {
-  1

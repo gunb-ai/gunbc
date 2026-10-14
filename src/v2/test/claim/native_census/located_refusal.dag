@@ -37,9 +37,10 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// PLANTED BYTES MATCH fixtures/census_located_refusal/ (outside every corpus root). The claim
-// supplies them at the ingest boundary so the inhabitance path is native_test_context_from_ingest
-// plus the census resolve/infer folds, not a disk read.
+// THE PATH NAMES NO COMMITTED FILE (review 79630; same cut as review 69628 on
+// occurrence_file_attribution). The claim constructs each read from the string below and uses the
+// path only as an identity outside every corpus root. A second copy of these bytes on disk would
+// be a dangling declaration (DESIGN §3c).
 
 data resolve_miss_source: String = "module v2.cl.resolve_miss\n\nimport std.types { Int }\n\nfn cl_resolve_miss_go() -> Int {\n  cl_resolve_absent\n}\n"
 

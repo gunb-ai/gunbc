@@ -1,7 +1,0 @@
-module v2.cl.resolve_miss
-
-import std.types { Int }
-
-fn cl_resolve_miss_go() -> Int {
-  cl_resolve_absent
-}

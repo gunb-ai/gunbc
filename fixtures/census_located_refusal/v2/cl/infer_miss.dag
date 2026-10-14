@@ -1,7 +1,0 @@
-module v2.cl.infer_miss
-
-import std.types { Bool, Int }
-
-fn cl_infer_miss_go() -> Int {
-  true
-}
