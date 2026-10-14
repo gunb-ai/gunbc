@@ -48,7 +48,6 @@ import v2.compiler.lexical_scope {
   module_root_bindings,
   try_edge_declared_binding
 }
-import std.graph { CallGraph, GraphEdge, graph_strongly_connected_components }
 import v2.std.resolution_policy {
   ImportScoped,
   NameResolutionPolicy,
@@ -62,7 +61,7 @@ import v2.compiler.namespace_graft {
   namespace_graft_module_body_root
 }
 import v2.compiler.parse { parse_tree_projection_edge }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list }
 import v2.std.collection { Absent, Map, Present, PointwisePower, empty_map, map_contains_key, map_get_checked, map_lookup, map_insert, optional_absent, optional_present }
 import std.optional { Optional }
 import v2.std.diagnostic {
@@ -1224,32 +1223,41 @@ fn closure_component_blocking_refusal(
 fn closure_phase2_blocked(
   rows: List<DeclPhase1Row>
 ) -> Map<String, NonEmptyDiagnostics> {
-  let names = fold_list(xs: rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: row.dotted) })
-  let name_set = fold_list(xs: names, empty: empty_map(), cons: fn(acc, n) { map_insert(m: acc, key: n, value: true) })
-  let edges = fold_list(xs: rows, empty: [], cons: fn(acc, row) {
-    fold_list(xs: row.callees, empty: acc, cons: fn(eacc, callee) {
-      if callee == row.dotted {
-        eacc
-      } else {
-        match map_lookup(m: name_set, key: callee) {
-          Absent => eacc
-          Present { value: _ } =>
-            list_snoc_item(xs: eacc, item: GraphEdge { caller: row.dotted, callee: callee })
-        }
+  let seed = fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
+    match row.local_refusal {
+      Absent => acc
+      Present { value: r } => map_insert(m: acc, key: row.dotted, value: r)
+    }
+  })
+  let name_set = fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
+    map_insert(m: acc, key: row.dotted, value: true)
+  })
+  fold_list(xs: rows, empty: seed, cons: fn(blocked, _) {
+    fold_list(xs: rows, empty: blocked, cons: fn(acc, row) {
+      match map_lookup(m: acc, key: row.dotted) {
+        Present { value: _ } => acc
+        Absent =>
+          fold_list(xs: row.callees, empty: acc, cons: fn(hit, callee) {
+            match map_lookup(m: hit, key: row.dotted) {
+              Present { value: _ } => hit
+              Absent =>
+                if callee == row.dotted {
+                  hit
+                } else {
+                  match map_lookup(m: name_set, key: callee) {
+                    Absent => hit
+                    Present { value: _ } =>
+                      match map_lookup(m: hit, key: callee) {
+                        Absent => hit
+                        Present { value: r } => map_insert(m: hit, key: row.dotted, value: r)
+                      }
+                  }
+                }
+            }
+          })
       }
     })
   })
-  fold_list(
-    xs: list_reverse(xs: graph_strongly_connected_components(names: names, graph: CallGraph { edges: edges })),
-    empty: empty_map(),
-    cons: fn(acc, component) {
-      match closure_component_blocking_refusal(rows: rows, blocked: acc, component: component) {
-        Absent => acc
-        Present { value: r } =>
-          fold_list(xs: component, empty: acc, cons: fn(m, name) { map_insert(m: m, key: name, value: r) })
-      }
-    }
-  )
 }
 
 fn closure_publish_module(
