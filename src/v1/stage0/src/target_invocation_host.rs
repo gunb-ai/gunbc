@@ -316,6 +316,7 @@ pub enum TargetProducer {
     SharedTypeLeafCollisionCensus,
     CardinalityRealization,
     RegenRoundCost,
+    ComputeRunUnitCold,
     /// `NativeClaimProgramProducer { entry, deadline }`: the entry is carried so a second program
     /// of the same shape is a registry row, never another variant. The Millisecond deadline is
     /// read from `gunbc.instrument_targets` `native_claim_child_deadline_count` at spawn.
@@ -546,6 +547,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("regen-round-cost"),
             TargetProducer::RegenRoundCost,
+        ),
+        (
+            instrument_label("compute-run-unit-cold"),
+            TargetProducer::ComputeRunUnitCold,
         ),
     ]
 }
@@ -985,6 +990,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         }
         TargetProducer::CardinalityRealization => run_cardinality_realization(),
         TargetProducer::RegenRoundCost => run_regen_round_cost_instrument(),
+        TargetProducer::ComputeRunUnitCold => run_compute_run_unit_cold(),
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
             "self-host-behavioral-equivalence",
             "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
@@ -4973,6 +4979,51 @@ fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
         },
+    }
+}
+
+fn user_runtime_dir_with_bus() -> Option<String> {
+    if let Ok(d) = std::env::var("XDG_RUNTIME_DIR") {
+        let bus = std::path::Path::new(&d).join("bus");
+        if bus.exists() {
+            return Some(d);
+        }
+    }
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let uid = status
+        .lines()
+        .find(|l| l.starts_with("Uid:"))?
+        .split_whitespace()
+        .nth(1)?;
+    let d = format!("/run/user/{uid}");
+    if std::path::Path::new(&d).join("bus").exists() {
+        Some(d)
+    } else {
+        None
+    }
+}
+
+/// `gunbc test //gunbc/instruments:compute-run-unit-cold`. No user bus is SubjectUnreached
+/// (exit 2), never a green skip. When the bus exists, bind XDG_RUNTIME_DIR from it — fleet
+/// jobs leave that env unset even when linger and `/run/user/<uid>/bus` are present.
+fn run_compute_run_unit_cold() -> InvocationOutcome {
+    match user_runtime_dir_with_bus() {
+        None => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: "compute-run-unit-cold: no observation: user session bus absent at /run/user/<uid>/bus (systemd-run --user cannot run)".to_string(),
+        },
+        Some(dir) => {
+            std::env::set_var("XDG_RUNTIME_DIR", &dir);
+            std::env::set_var(
+                "DBUS_SESSION_BUS_ADDRESS",
+                format!("unix:path={dir}/bus"),
+            );
+            run_cli_wire_census(
+                "compute-run-unit-cold",
+                "dag/gunbc/instruments/compute_run_unit_cold.dag",
+                "compute_run_unit_cold_exit",
+            )
+        }
     }
 }
 

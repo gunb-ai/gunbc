@@ -57,6 +57,7 @@ import gunbc.target_binding {
   SharedTypeLeafCollisionCensusProducer,
   CardinalityRealizationProducer,
   RegenRoundCostProducer,
+  ComputeRunUnitColdProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -685,6 +686,14 @@ fn regen_round_cost_binding() -> TargetBinding {
   TargetBinding { target: regen_round_cost_label() producer: RegenRoundCostProducer {} }
 }
 
+fn compute_run_unit_cold_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compute-run-unit-cold" } }
+}
+
+fn compute_run_unit_cold_binding() -> TargetBinding {
+  TargetBinding { target: compute_run_unit_cold_label() producer: ComputeRunUnitColdProducer {} }
+}
+
 fn emitted_crate_workspace_binding() -> TargetBinding {
   TargetBinding { target: emitted_crate_workspace_label() producer: EmittedCrateWorkspaceProducer {} }
 }
@@ -909,6 +918,7 @@ fn instrument_targets() -> List<Label> {
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
+    compute_run_unit_cold_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
@@ -929,6 +939,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
+    compute_run_unit_cold_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),

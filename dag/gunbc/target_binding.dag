@@ -55,6 +55,7 @@ type TargetProducer
   | SharedTypeLeafCollisionCensusProducer
   | CardinalityRealizationProducer
   | RegenRoundCostProducer
+  | ComputeRunUnitColdProducer
   | NativeClaimProgramProducer { entry: String, deadline: Millisecond }
   | NativeServeProgramProducer { entry: String }
 
@@ -96,6 +97,7 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     SharedTypeLeafCollisionCensusProducer {} => optional_absent()
     CardinalityRealizationProducer {} => optional_absent()
     RegenRoundCostProducer {} => optional_absent()
+    ComputeRunUnitColdProducer {} => optional_absent()
     NativeServeProgramProducer { entry: _ } => optional_absent()
   }
 }
