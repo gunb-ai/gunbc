@@ -100,6 +100,13 @@ test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() 
       unit: "gunbc-writable-probe-attempt-file.service" as NonEmptyStr,
       path: join([attempt, "/forged-owner-record"], ""),
     ) != 0
+    && sandbox_touch_exit(
+      instance: inst,
+      worktree: wt,
+      scratch: scratch,
+      unit: "gunbc-writable-probe-hook.service" as NonEmptyStr,
+      path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""),
+    ) != 0
 }
 
 test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
