@@ -4759,7 +4759,7 @@ fn run_required_v2_native_inner(
     // possible. `gunbc test <operand>` passes the operand's own pattern, already admitted by
     // `extdeps.bazel.target_pattern` and rendered by its own renderer; the lane and the frontier
     // pass none, and the emitted binary adjudicates by its own default,
-    // `v2.workflow.v2_native_route` `native_route_default_pattern` (the whole native universe), read
+    // `gunbc.native_route_universe` `native_route_default_pattern` (the whole native universe), read
     // inside the compiler where it is declared. The seed therefore carries no spelling of that default
     // to hand over. This runner does not parse, default or widen the pattern it is given: a pattern
     // that reached here was decided by the authority, and substituting one here would let the run

@@ -2356,7 +2356,7 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
     }
 }
 
-/// `v2.workflow.v2_native_route` `native_route_default_pattern`, READ from the file rendered from
+/// `gunbc.native_route_universe` `native_route_default_pattern`, READ from the file rendered from
 /// it: the native test route's whole universe. An operand CONTAINED in it belongs to that route.
 ///
 /// THIS SEED HAS NO SPELLING OF THAT UNIVERSE. `NATIVE_ROUTE_DEFAULT_PATTERN` is a constant of
@@ -2369,7 +2369,7 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
 /// parse is a refusal the caller reports, never a panic and never a fallback to some other universe.
 ///
 /// The universe the EMITTED binary adjudicates by default is the same declaration read inside the
-/// compiler (`v2.compiler.compile`, `adjudicate` without `--pattern`); the seed passes it a pattern
+/// compiler (`v2.compiler.source_root_eval`, `adjudicate` without `--pattern`); the seed passes it a pattern
 /// only when the operator wrote one, so nothing here is handed to it as text.
 fn native_route_default_pattern() -> Result<TargetPattern, TargetPatternRefusal> {
     parse_target_pattern(crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN)
@@ -3518,7 +3518,7 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
                 message: format!(
                     "gunbc test: the native route's boundary, {:?}, is not an admitted target pattern; \
                      src/v1/stage0/src/native_route_seed_boundary_generated.rs is rendered from \
-                     v2.workflow.v2_native_route native_route_default_pattern by \
+                     gunbc.native_route_universe native_route_default_pattern by \
                      gunbc.native_route_seed_boundary_emit, so regenerate it rather than route without a boundary\n  cause: {}",
                     crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN,
                     target_pattern_refusal_text(&cause)

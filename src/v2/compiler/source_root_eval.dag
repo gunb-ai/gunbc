@@ -1267,7 +1267,7 @@ data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a
 data native_driver_adjudicate_needs_pattern: String = "REFUSED: adjudicate --pattern takes a target pattern as the next word"
 
 // THE PATTERN IS AN OPTION AND NOT AN OPERAND, SO THAT ABSENCE HAS A MEANING OF ITS OWN: the
-// compiler's route boundary, `v2.workflow.v2_native_route` `native_route_default_pattern`. The
+// compiler's route boundary, `gunbc.native_route_universe` `native_route_default_pattern`. The
 // caller that wants the lane's whole universe says nothing, and the one value it would have said is
 // read here, from the declaration that owns it, rather than spelled again by every caller.
 data native_driver_pattern_flag: String = "--pattern"
