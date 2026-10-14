@@ -922,6 +922,7 @@ fn provider_item_activity_kind(activity: ProviderItemActivity) -> ProviderItemAc
     HarnessReadingFile => ItemKindWorking
     HarnessWritingFile => ItemKindWorking
     HarnessEditingFile => ItemKindWorking
+    HarnessHandingIn => ItemKindWorking
     HarnessRefusingUnrecognizedTool => ItemKindWorking
     UnclassifiedItem => ItemKindWorking
   }
@@ -937,6 +938,7 @@ fn provider_execution_carried_detail(state: ProviderExecutionState) -> String? {
     ProviderNotStarted => none
     ProviderStarting { activity: _ } => none
     ProviderAwaitingSeat { detail } => Present { value: detail }
+    ProviderAwaitingAcceptance { handin: _ } => none
     ProviderRunning { activity: _ } => none
     ProviderCompleted { activity: _ } => none
     ProviderFailed { activity: _, detail } => Present { value: detail }
