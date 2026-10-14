@@ -364,6 +364,7 @@ import v2.std.diagnostic {
   Locus,
   NonEmptyDiagnostics,
   Outcome,
+  None,
   Some,
   Textual,
   WholeFile,
