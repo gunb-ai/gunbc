@@ -1236,7 +1236,7 @@ type NativeDriverVerb
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
   | NativeDriverCensusInfer { source_roots: FreeMonoid<String> }
   | NativeDriverDemandCensus { source_roots: FreeMonoid<String> }
-  | NativeDriverCensusScoped { subject: String, source_roots: FreeMonoid<String> }
+  | NativeDriverCensusScoped { subject: String, against: Optional<String>, source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
 
 type NativeDriverPlan
@@ -1258,9 +1258,13 @@ data native_driver_verb_census_scoped: String = "census-scoped"
 
 data native_driver_census_scoped_needs_subject: String = "REFUSED: census-scoped takes a subject package label before the source roots"
 
+data native_driver_census_scoped_against_flag: String = "--against"
+
+data native_driver_census_scoped_needs_against: String = "REFUSED: census-scoped --against takes the path of a previous run record"
+
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> <source-root>... | demand-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> [--pattern <target-pattern>] <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | census-scoped <subject-label> [--against <run-record>] <source-root>... | demand-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
@@ -1294,7 +1298,9 @@ type NativeDriverParseState
   | DriverCensusInferRoots { roots: FreeMonoid<String> }
   | DriverDemandCensusRoots { roots: FreeMonoid<String> }
   | DriverCensusScopedSeekSubject
-  | DriverCensusScopedRoots { subject: String, roots: FreeMonoid<String> }
+  | DriverCensusScopedAfterSubject { subject: String }
+  | DriverCensusScopedSeekAgainst { subject: String }
+  | DriverCensusScopedRoots { subject: String, against: Optional<String>, roots: FreeMonoid<String> }
   | DriverAdjudicateSeekFacts
   | DriverAdjudicateOptions { facts_path: String }
   | DriverAdjudicateSeekPatternValue { facts_path: String }
@@ -1346,10 +1352,18 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       match native_census_subject_module(label: word) {
         NativeCensusSubjectModuleUnavailable { reason: reason } =>
           DriverParseRefused { reason: reason, detail: concat("REFUSED: census-scoped subject ", word, " names no module") }
-        NativeCensusSubjectModuleNamed { module: _ } => DriverCensusScopedRoots { subject: word, roots: [] }
+        NativeCensusSubjectModuleNamed { module: _ } => DriverCensusScopedAfterSubject { subject: word }
       }
-    DriverCensusScopedRoots { subject: subject, roots: roots } =>
-      DriverCensusScopedRoots { subject: subject, roots: list_snoc_item(xs: roots, item: word) }
+    DriverCensusScopedAfterSubject { subject: subject } =>
+      if word == native_driver_census_scoped_against_flag {
+        DriverCensusScopedSeekAgainst { subject: subject }
+      } else {
+        DriverCensusScopedRoots { subject: subject, against: optional_absent(), roots: [word] }
+      }
+    DriverCensusScopedSeekAgainst { subject: subject } =>
+      DriverCensusScopedRoots { subject: subject, against: optional_present(value: word), roots: [] }
+    DriverCensusScopedRoots { subject: subject, against: against, roots: roots } =>
+      DriverCensusScopedRoots { subject: subject, against: against, roots: list_snoc_item(xs: roots, item: word) }
     DriverAdjudicateSeekFacts =>
       DriverAdjudicateOptions { facts_path: word }
     DriverAdjudicateOptions { facts_path: facts_path } =>
@@ -1411,8 +1425,15 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
         reason: ^native_driver_census_scoped_without_subject,
         detail: native_driver_census_scoped_needs_subject
       }
-    DriverCensusScopedRoots { subject: subject, roots: roots } =>
-      NativeDriverPlanned { verb: NativeDriverCensusScoped { subject: subject, source_roots: roots } }
+    DriverCensusScopedAfterSubject { subject: subject } =>
+      NativeDriverPlanned { verb: NativeDriverCensusScoped { subject: subject, against: optional_absent(), source_roots: [] } }
+    DriverCensusScopedSeekAgainst { subject: _ } =>
+      NativeDriverPlanRefused {
+        reason: ^native_driver_census_scoped_against_without_path,
+        detail: native_driver_census_scoped_needs_against
+      }
+    DriverCensusScopedRoots { subject: subject, against: against, roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusScoped { subject: subject, against: against, source_roots: roots } }
     DriverAdjudicateOptions { facts_path: facts_path } =>
       NativeDriverPlanned {
         verb: NativeDriverAdjudicate {
@@ -1452,7 +1473,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
         NativeDriverCensusResolve { source_roots: roots } => roots
         NativeDriverCensusInfer { source_roots: roots } => roots
         NativeDriverDemandCensus { source_roots: roots } => roots
-        NativeDriverCensusScoped { subject: _, source_roots: roots } => roots
+        NativeDriverCensusScoped { subject: _, against: _, source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
       }
   }

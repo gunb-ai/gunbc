@@ -3,6 +3,7 @@ module v2.test.claim.native_driver_plan
 import std.types { List }
 import v2.std.text { String }
 import std.algebra { length }
+import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ExitFailure, ExitSuccess }
 import extdeps.bazel.target_pattern { render_target_pattern }
@@ -20,6 +21,7 @@ import v2.compiler.source_root_eval {
   native_driver_adjudicate_needs_facts,
   native_driver_adjudicate_needs_pattern,
   native_driver_census_scoped_needs_subject,
+  native_driver_census_scoped_needs_against,
   native_driver_parse,
   native_driver_plan_exit,
   native_driver_plan_source_roots,
@@ -48,7 +50,7 @@ fn parsed_verb_is_census(argv: List<String>) -> Bool {
         NativeDriverCensusResolve { source_roots: _ } => false
         NativeDriverCensusInfer { source_roots: _ } => false
         NativeDriverDemandCensus { source_roots: _ } => false
-        NativeDriverCensusScoped { subject: _, source_roots: _ } => false
+        NativeDriverCensusScoped { subject: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
       }
   }
@@ -63,7 +65,7 @@ fn parsed_verb_is_census_resolve(argv: List<String>) -> Bool {
         NativeDriverCensusResolve { source_roots: _ } => true
         NativeDriverCensusInfer { source_roots: _ } => false
         NativeDriverDemandCensus { source_roots: _ } => false
-        NativeDriverCensusScoped { subject: _, source_roots: _ } => false
+        NativeDriverCensusScoped { subject: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
       }
   }
@@ -78,7 +80,7 @@ fn parsed_verb_is_adjudicate(argv: List<String>) -> Bool {
         NativeDriverCensusResolve { source_roots: _ } => false
         NativeDriverCensusInfer { source_roots: _ } => false
         NativeDriverDemandCensus { source_roots: _ } => false
-        NativeDriverCensusScoped { subject: _, source_roots: _ } => false
+        NativeDriverCensusScoped { subject: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => true
       }
   }
@@ -105,7 +107,7 @@ fn planned_facts_path(argv: List<String>) -> String {
         NativeDriverCensusResolve { source_roots: _ } => ""
         NativeDriverCensusInfer { source_roots: _ } => ""
         NativeDriverDemandCensus { source_roots: _ } => ""
-        NativeDriverCensusScoped { subject: _, source_roots: _ } => ""
+        NativeDriverCensusScoped { subject: _, against: _, source_roots: _ } => ""
       }
   }
 }
@@ -143,7 +145,7 @@ fn parsed_verb_is_census_infer(argv: List<String>) -> Bool {
         NativeDriverCensus { source_roots: _ } => false
         NativeDriverCensusResolve { source_roots: _ } => false
         NativeDriverDemandCensus { source_roots: _ } => false
-        NativeDriverCensusScoped { subject: _, source_roots: _ } => false
+        NativeDriverCensusScoped { subject: _, against: _, source_roots: _ } => false
         NativeDriverCensusInfer { source_roots: _ } => true
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
       }
@@ -221,7 +223,7 @@ fn planned_pattern_render(argv: List<String>) -> String {
         NativeDriverCensusResolve { source_roots: _ } => ""
         NativeDriverCensusInfer { source_roots: _ } => ""
         NativeDriverDemandCensus { source_roots: _ } => ""
-        NativeDriverCensusScoped { subject: _, source_roots: _ } => ""
+        NativeDriverCensusScoped { subject: _, against: _, source_roots: _ } => ""
       }
   }
 }
@@ -281,7 +283,7 @@ fn parsed_verb_is_demand_census(argv: List<String>) -> Bool {
         NativeDriverCensusResolve { source_roots: _ } => false
         NativeDriverCensusInfer { source_roots: _ } => false
         NativeDriverDemandCensus { source_roots: _ } => true
-        NativeDriverCensusScoped { subject: _, source_roots: _ } => false
+        NativeDriverCensusScoped { subject: _, against: _, source_roots: _ } => false
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => false
       }
   }
@@ -303,7 +305,7 @@ fn planned_scoped_subject(argv: List<String>) -> String {
     NativeDriverPlanRefused { reason: _, detail: _ } => ""
     NativeDriverPlanned { verb: verb } =>
       match verb {
-        NativeDriverCensusScoped { subject: subject, source_roots: _ } => subject
+        NativeDriverCensusScoped { subject: subject, against: _, source_roots: _ } => subject
         NativeDriverCensus { source_roots: _ } => ""
         NativeDriverCensusResolve { source_roots: _ } => ""
         NativeDriverCensusInfer { source_roots: _ } => ""
@@ -331,4 +333,36 @@ test fn a_census_scoped_subject_that_names_no_module_refuses_as_misuse_holds() -
 test fn census_scoped_without_a_subject_refuses_with_its_message_holds() -> Bool {
   (refusal_detail(argv: ["census-scoped"]) == native_driver_census_scoped_needs_subject)
   && plan_exit_is_misuse(argv: ["census-scoped"])
+}
+
+// THE BASELINE IS AN OPERAND OF ITS OWN, right after the subject: its path is never counted as a
+// root, a flag with no path refuses as misuse, and a run without one plans no baseline.
+fn planned_scoped_against(argv: List<String>) -> String {
+  match native_driver_parse(argv: argv) {
+    NativeDriverPlanRefused { reason: _, detail: _ } => "<refused>"
+    NativeDriverPlanned { verb: verb } =>
+      match verb {
+        NativeDriverCensusScoped { subject: _, against: against, source_roots: _ } =>
+          match against {
+            Present { value: path } => path
+            Absent => "<none>"
+          }
+        NativeDriverCensus { source_roots: _ } => "<other>"
+        NativeDriverCensusResolve { source_roots: _ } => "<other>"
+        NativeDriverCensusInfer { source_roots: _ } => "<other>"
+        NativeDriverDemandCensus { source_roots: _ } => "<other>"
+        NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: _ } => "<other>"
+      }
+  }
+}
+
+test fn census_scoped_against_names_a_baseline_and_not_a_root_holds() -> Bool {
+  (planned_scoped_against(argv: ["census-scoped", "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all", "--against", "before.json", "dag", "src/v2"]) == "before.json")
+  && (planned_root_count(argv: ["census-scoped", "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all", "--against", "before.json", "dag", "src/v2"]) == 2)
+  && (planned_scoped_against(argv: ["census-scoped", "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all", "dag"]) == "<none>")
+}
+
+test fn census_scoped_against_without_a_path_refuses_as_misuse_holds() -> Bool {
+  (refusal_detail(argv: ["census-scoped", "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all", "--against"]) == native_driver_census_scoped_needs_against)
+  && plan_exit_is_misuse(argv: ["census-scoped", "//v2/test/claim/parse/expression_bodied_fn_decl_parse:all", "--against"])
 }

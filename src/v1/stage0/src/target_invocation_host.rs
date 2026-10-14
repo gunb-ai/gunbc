@@ -1349,7 +1349,7 @@ fn run_v2_native_census_scoped(subject: &str, source_roots: &[String]) -> Invoca
             message: format!(
                 "v2-native-census-scoped: subject={} scope={} modules={} file_refusals={} \
                  advised_files={} residual_rows={} inferred={} infer_refused={} cause_groups={} \
-                 roots={}; the population is the subject's acquired closure (census_scope line \
+                 roots={} diff={}; the population is the subject's acquired closure (census_scope line \
                  above), its rows grouped by fatal reason in the cause_group lines; run record {}",
                 run.subject,
                 match run.scope {
@@ -1365,6 +1365,7 @@ fn run_v2_native_census_scoped(subject: &str, source_roots: &[String]) -> Invoca
                 run.infer_refused,
                 run.cause_groups,
                 run.roots,
+                run.diff,
                 run.record.display()
             ),
         },
