@@ -39,7 +39,10 @@ test fn witness_live_plan_is_conservation_sound() -> Bool {
           }
           && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
           && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: h.runner_count))
-          && hardware_thread_count_value(t: h.build_tokens) > 0
+          && match h.per_runner_cpu_boundary {
+            CapacityQuota { threads: t } => hardware_thread_count_value(t: t) > 0
+            NoCpuCeiling => false
+          }
       )
 }
 
@@ -330,7 +333,6 @@ test fn a_refused_host_does_not_erase_a_derived_one() -> Bool {
         HostAllocationUnchargeableOnHost { cause: _ } => false
         ZeroRunnerWidth => false
         CommittedWidthUnresolved { cause: _ } => false
-        JobserverCitationAbsent { cause: _ } => false
         HostCpuAllocationUnchargeable { cause: _ } => false
         HostNotEnrolledInFleet => false
       }
@@ -432,4 +434,60 @@ test fn srv1_derives_with_the_shakedown_slot_charged_at_its_real_size() -> Bool 
       runner_count_is_the_derived_width(host: operator_host_srv1, count: d.runner_count)
     HostRunnerDeploymentRefused { refusal: _ } => false
   }
+}
+
+// THE CPU ALLOCATION FOLD AT SUPPLIED VALUES (DESIGN 3, a witness discriminates at one interface).
+// The figures are the shapes the overseer reported placing by hand on 2026-10-14 -- srv1 128
+// threads, 512GiB, sessions 128GiB, 11 slots; srv3 128 threads, no sessions slice, 16 slots; srv4
+// 17 slots -- and the fold must reproduce 32 / 7, 0 / 7 and 0 / 7 with the 8-thread host reserve.
+fn gib(n: Nat) -> ByteSize {
+  byte_size(count: nat_mul(a: n, b: 1073741824))
+}
+
+fn allocation_is(r: HostCpuAllocationResolution, sessions: Nat, per_slot: Nat) -> Bool {
+  match r {
+    HostCpuAllocationDerived { allocation: a } =>
+      hardware_thread_count_value(t: a.sessions_cpu_cap) == sessions
+        && hardware_thread_count_value(t: a.per_slot) == per_slot
+    HostCpuAllocationRefused { reason: _ } => false
+  }
+}
+
+fn allocation_refused(r: HostCpuAllocationResolution) -> Bool {
+  match r {
+    HostCpuAllocationDerived { allocation: _ } => false
+    HostCpuAllocationRefused { reason: _ } => true
+  }
+}
+
+test fn host_cpu_allocation_charges_sessions_by_memory_share_and_the_reserve() -> Bool {
+  allocation_is(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 512), session_pool: gib(n: 128), slots: 11), sessions: 32, per_slot: 7)
+    && allocation_is(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 502), session_pool: byte_size(0), slots: 16), sessions: 0, per_slot: 7)
+    && allocation_is(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 502), session_pool: byte_size(0), slots: 17), sessions: 0, per_slot: 7)
+}
+
+// The RED arm: a width the runner threads cannot give one whole thread each refuses, rather than
+// rendering a zero-percent quota; a zero width refuses as well.
+test fn host_cpu_allocation_refuses_a_width_it_cannot_feed() -> Bool {
+  allocation_refused(r: host_cpu_allocation(threads: hardware_thread_count(count: 16), reserve: host_cpu_reserve_threads, host_ram: gib(n: 64), session_pool: byte_size(0), slots: 9))
+    && allocation_refused(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 512), session_pool: byte_size(0), slots: 0))
+}
+
+// THE INHABITANCE CLAIM: the production plan's every derived host carries the fold's own answer
+// as its CPU boundary, so supplying values above cannot have removed the real route.
+test fn every_derived_host_carries_the_fold_as_its_cpu_quota() -> Bool {
+  let hosts = live_derived()
+  hosts.length() > 0
+    && all(hosts, h => match h.per_runner_cpu_boundary {
+      CapacityQuota { threads: t } =>
+        // host_cpu_admitted_width admits at one core per slot, so its answer is the host's threads.
+        match host_cpu_admitted_width(host: h.identity) {
+          CpuWidthDerived { slots: n } =>
+            (hardware_thread_count_value(t: t) as Int) * h.runner_count
+              + (hardware_thread_count_value(t: h.sessions_cpu_cap) as Int)
+              + (hardware_thread_count_value(t: host_cpu_reserve_threads) as Int) <= n
+          CpuWidthOfferAbsent { host: _ } => false
+        }
+      NoCpuCeiling => false
+    })
 }

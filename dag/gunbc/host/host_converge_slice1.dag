@@ -174,7 +174,6 @@ fn host_converge_slice1_per_slot_memory_max_knob(host: HostIdentity) -> Converge
               }
             SliceProperty { unit: _, property: _, apply_value: _, expected_effective: _ } => none
             RunnerWidth { instance_glob: _ } => none
-            JobserverTokens { env_file: _, env_key: _, service_unit: _ } => none
             VerifyOnlyCap { slice_unit: _, property: _ } => none
             GunbcPinnedTree { gunbc_root_env_key: _, gunbc_root_path: _, dag_root: _, ctrl_checkout_path: _, binary: _, pin_read_script: _, green_place_marker: _, live_apply: _ } => none
             CodexRuntimeBundle { host_identity: _ } => none
@@ -363,7 +362,6 @@ fn host_converge_slice1_tasks_knob(host: HostIdentity) -> ConvergeKnob? {
               }
             SliceProperty { unit: _, property: _, apply_value: _, expected_effective: _ } => none
             RunnerWidth { instance_glob: _ } => none
-            JobserverTokens { env_file: _, env_key: _, service_unit: _ } => none
             VerifyOnlyCap { slice_unit: _, property: _ } => none
             GunbcPinnedTree { gunbc_root_env_key: _, gunbc_root_path: _, dag_root: _, ctrl_checkout_path: _, binary: _, pin_read_script: _, green_place_marker: _, live_apply: _ } => none
             CodexRuntimeBundle { host_identity: _ } => none

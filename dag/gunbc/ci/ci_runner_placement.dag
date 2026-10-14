@@ -3,7 +3,9 @@ module gunbc.ci.ci_runner_placement
 import gunbc.ci.ci_fleet { ComputeOffer }
 import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
 import product.host_identity { HostIdentity }
-import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_le, HardwareThreadCount }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_fit_count_floor, measure_le, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.realization_width { hardware_thread_count_saturating_sub }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import std.types { Int, List, String, Bool }
 import std.disposition { Disposition, Terminal }
 import extdeps.github.actions { RunnerSpec }
@@ -11,7 +13,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { HostWidthFacts, host_width_facts, committed_width_of, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text, gunbc_runner_slice_cap_for_width, host_runner_pool_charge }
-import gunbc.runner.runner_slot_desired { RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
   SessionReservationNotApplicable, SessionReservationAuthorityDisagreement,
@@ -159,7 +161,7 @@ type RunnerCpuBoundaryResolution
 //
 //   sessions_cpu_cap  = floor(threads * session_pool / host_ram)   -- the sessions' CPU share is
 //                       their memory share; a host with no session reservation charges zero
-//   per_slot          = floor((threads - sessions_cpu_cap) / slots)
+//   per_slot          = floor((threads - host_cpu_reserve_threads - sessions_cpu_cap) / slots)
 //
 // per_slot is the slot's CPUQuota AND its CARGO_BUILD_JOBS (gunbc.runner.runner_unit_file binds
 // jobs_per_slot to this field), so compile parallelism cannot disagree with the ceiling it runs
@@ -168,6 +170,12 @@ type RunnerCpuBoundaryResolution
 // as you can" is the memory axis's answer, and the CPU is then divided among exactly the slots that
 // fit. A width so large that the division floors to zero is refused rather than rendered as a
 // zero-percent quota, which systemd would read as no CPU at all.
+// THE HOST RESERVE IS A POLICY PICK, NOT A MEASUREMENT. Overseer policy, 2026-10-14, reported to
+// the operator and revisable: eight threads stay outside every slot and the sessions slice, for
+// the host's own daemons. It replaces the deleted ctrl-jobserver margin (also 8), which held the same
+// threads back only as unissued permits; here they are held back by construction.
+data host_cpu_reserve_threads: HardwareThreadCount = hardware_thread_count(count: 8)
+
 type HostCpuAllocation {
   sessions_cpu_cap: HardwareThreadCount
   per_slot: HardwareThreadCount
@@ -177,21 +185,26 @@ type HostCpuAllocationResolution
   = HostCpuAllocationDerived { allocation: HostCpuAllocation }
   | HostCpuAllocationRefused { reason: String }
 
-fn host_cpu_allocation(threads: HardwareThreadCount, host_ram: ByteSize, session_pool: ByteSize, slots: Int) -> HostCpuAllocationResolution {
+fn host_cpu_allocation(threads: HardwareThreadCount, reserve: HardwareThreadCount, host_ram: ByteSize, session_pool: ByteSize, slots: Int) -> HostCpuAllocationResolution {
   if byte_size_count(b: host_ram) == 0 {
     HostCpuAllocationRefused { reason: "host RAM is zero bytes, so the sessions' share of the CPU has no denominator" }
   } else if slots <= 0 {
     HostCpuAllocationRefused { reason: "the committed width is zero, so there is no slot to divide the runner CPU among" }
   } else {
     let sessions_cpu_cap = measure_scale_fraction_floor(m: threads, num: byte_size_count(b: session_pool), den: byte_size_count(b: host_ram))
-    let runner_threads = hardware_thread_count_saturating_sub(a: threads, b: sessions_cpu_cap)
-    let per_slot = hardware_thread_count(count: measure_fit_count_floor(capacity: runner_threads, each: hardware_thread_count(count: slots as Nat)))
-    if hardware_thread_count_value(t: per_slot) == 0 {
-      HostCpuAllocationRefused {
-        reason: join(["the ", to_string(hardware_thread_count_value(t: runner_threads)), " runner threads left after the sessions' share do not give each of ", to_string(slots), " slots one whole thread"], ""),
+    let runner_threads = hardware_thread_count_saturating_sub(a: hardware_thread_count_saturating_sub(a: threads, b: reserve), b: sessions_cpu_cap)
+    match checked_int_magnitude(a: slots) {
+      CheckedNatOverflow { cause: c } => HostCpuAllocationRefused { reason: concat("the committed width has no natural-number magnitude: ", c) }
+      CheckedNatReady { value: slot_count } => {
+        let per_slot = hardware_thread_count(count: measure_fit_count_floor(capacity: runner_threads, each: hardware_thread_count(count: slot_count)))
+        if hardware_thread_count_value(t: per_slot) == 0 {
+          HostCpuAllocationRefused {
+            reason: join(["the ", to_string(hardware_thread_count_value(t: runner_threads)), " runner threads left after the host reserve and the sessions' share do not give each of ", to_string(slots), " slots one whole thread"], ""),
+          }
+        } else {
+          HostCpuAllocationDerived { allocation: HostCpuAllocation { sessions_cpu_cap: sessions_cpu_cap, per_slot: per_slot } }
+        }
       }
-    } else {
-      HostCpuAllocationDerived { allocation: HostCpuAllocation { sessions_cpu_cap: sessions_cpu_cap, per_slot: per_slot } }
     }
   }
 }
@@ -717,7 +730,7 @@ fn host_standing_at_width(
                 cause: concat(concat("host allocation unchargeable on ", host_id), concat(": ", c))
               })
             HostAllocationConserves =>
-              match host_cpu_allocation(threads: cpu_facts_threads(cpu: cpu), host_ram: host_ram, session_pool: session_pool, slots: slots) {
+              match host_cpu_allocation(threads: cpu_facts_threads(cpu: cpu), reserve: host_cpu_reserve_threads, host_ram: host_ram, session_pool: session_pool, slots: slots) {
                 HostCpuAllocationRefused { reason: ar } =>
                   refuse_host(host: host_id, cause: HostCpuAllocationUnchargeable { cause: ar })
                 HostCpuAllocationDerived { allocation: alloc } =>
