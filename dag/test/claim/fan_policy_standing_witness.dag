@@ -91,7 +91,6 @@ import product.fan_policy_standing {
   FanPolicyFailsafeWindowOverCeiling,
   FanPolicySteadyCurveOverCeiling,
   FanPolicyWithinSiteCeiling,
-  ConvergeRouteUnbound,
   fan_drive_against_duty_ceiling,
   fan_policy_against_ceiling,
   fan_policy_standing_label,
@@ -125,7 +124,7 @@ import gunbc.fleet.fleet_acoustic_intent {
   operator_residence_duty_ceiling,
   residence_duty_verdict,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
 
 // WHAT IS SUPPLIED HERE AND WHAT IS EXECUTED, STATED FIRST BECAUSE THE PAIRING OBLIGATION TURNS ON
@@ -750,22 +749,18 @@ fn witness_standing(duty_count: Int, post: HostPostState, elapsed: Int) -> FanPo
 // Mt. Jade's fan standing dispatches on them, so this claim exercises the rows a real host uses
 // rather than a witness-local pair that happened to have the same shape.
 
-// A FAMILY WITH NO CONVERGE ROUTE REFUSES, AND REFUSES FIRST. MegaRAC's production route is now
-// Bound (fan_pwm_all from the served UI). This claim still needs the Unenforceable arm, so it
-// supplies an unbound fixture rather than the live family row.
+// A FAMILY WITH NO CONVERGE ROUTE REFUSES, AND REFUSES FIRST. This is the arm that matters most and
+// the one MegaRAC lands on today: the GET surface is Bound and the converge route is Unbound, so no
+// ceiling can be honoured OR refused against it, and reading that as "within ceiling" would be a
+// fabricated answer about the operator's own room. It fires before the level is even consulted.
 test fn witness_ceiling_is_unenforceable_without_a_converge_route() -> Bool {
   match fan_policy_against_ceiling(
     standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
     ceiling: witness_datasheet_ceiling,
     level_at_drive: Present { value: tenths_dba(200) },
-    route: ConvergeRouteUnbound {
-      authority: FanPolicyAuthority {
-        declaration: decl_ref("extdeps.bmc.megarac_fan_policy", "megarac_fan_mode_surface"),
-      },
-      read_obligation: "fixture: no write surface" as NonEmptyStr,
-    },
+    route: fan_converge_route_for_family(family: AmiMegaRac),
   ) {
-    FanPolicyCeilingUnenforceable { cause: c } => string_contains(c as String, "fixture: no write surface")
+    FanPolicyCeilingUnenforceable { cause: c } => string_contains(c as String, "megarac_fan_mode_surface")
     _ => false
   }
 }
