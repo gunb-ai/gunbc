@@ -10022,6 +10022,55 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// Heal regen of `std.algebra` calls kernel `empty_map()` while the pool uniquely
+    /// census-declares `v2.std.collection.empty_map`. Gate one keeps that owner off-product.
+    /// Census-before-kernel used to admit it as `v2.std.collection.empty_map` and refuse
+    /// `AdmissionBearingDeclarationUnavailable`.
+    #[test]
+    fn host_reconcile_kernel_empty_map_skips_off_product_census_declaration() {
+        let fixture = Fixture::new(&[
+            (
+                "collection.dag",
+                "module v2.std.collection\nfn empty_map() -> Int { 0 }\n",
+            ),
+            (
+                "helper.dag",
+                "module fx.helper\nfn unused_import() -> Int { 0 }\n",
+            ),
+            (
+                "entry.dag",
+                "module fx.entry\nimport fx.helper { unused_import }\nfn main() -> Int { if map_contains_key(empty_map(), \"k\") { 1 } else { 0 } }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let (graph, _) =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy())
+                .expect(
+                    "kernel empty_map must not fail host resolve because a census empty_map exists",
+                );
+        let blocking: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        assert!(
+            blocking
+                .iter()
+                .all(|d| !d.contains("v2.std.collection") && !d.contains("AdmissionBearing")),
+            "kernel empty_map must not run declaration admission against the census owner: {blocking:?}"
+        );
+        let names: BTreeSet<_> = graph
+            .modules
+            .iter()
+            .map(|m| m.type_env.module_path.clone())
+            .collect();
+        assert!(
+            !names.contains("v2.std.collection"),
+            "off-product census empty_map must stay out of the typed graph: {names:?}"
+        );
+    }
+
     /// THE INDEX ROUTE READS THE INDEX'S PARSE. `load_sources_for_entry_with_index` (the discovery
     /// route's loader) follows a dotted reference through the one parse per file the index owns:
     /// after the first entry its closure files are in `parsed_references`, and a second entry

@@ -75,7 +75,7 @@ import v1.compiler.infer_service {
   check_service_method_call_node
 }
 
-import v1.compiler.infer_method { infer_builtin_call_type }
+import v1.compiler.infer_method { infer_builtin_call_type, is_empty_map_constructor, is_empty_set_constructor }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
@@ -413,6 +413,13 @@ fn resolved_plain_call_target_for_outcome(outcome: CallTargetOutcome) -> CallTar
 // path or several change which order the candidates are collected in and cannot change the
 // verdict, because the verdict is taken on the population and a position is read only after the
 // count has proven the population is a singleton.
+fn census_fallback_skips_non_declaration_binding(name: String) -> Bool {
+  is_empty_map_constructor(name: name) || is_empty_set_constructor(name: name) || match infer_builtin_call_type(name: name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn callable_lookup_over_candidates(
   func_env: ResolvedFuncEnv,
   type_env: TypeEnv,
@@ -422,6 +429,9 @@ fn callable_lookup_over_candidates(
     Present { value: sig } =>
       FuncSigResolved { sig: sig, declared: DeclaredCallableIdentity { owner_module_path: func_env.name, decl_name: qualified_last_segment(name: name) } }
     Absent =>
+      if census_fallback_skips_non_declaration_binding(name: name) {
+        FuncSigUnresolved
+      } else {
       let declared = parent_closure_callable_candidates(env: func_env, name: name)
       let builtin_admissible = match author_named_visibility(type_env: type_env, name: name) {
         AuthorNamedThisName => []
@@ -438,11 +448,16 @@ fn callable_lookup_over_candidates(
         FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
         FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
         FuncSigUnresolved =>
-          if (admissible |> count) == 0 {
-            func_sig_from_global_bare(type_env: type_env, name: name)
-          } else {
+          if census_fallback_skips_non_declaration_binding(name: name) {
             FuncSigUnresolved
+          } else {
+            if (admissible |> count) == 0 {
+              func_sig_from_global_bare(type_env: type_env, name: name)
+            } else {
+              FuncSigUnresolved
+            }
           }
+      }
       }
   }
 }
@@ -463,16 +478,21 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
       match lookup_resolved_sig(env: func_env, name: name) {
         FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
         FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
-        FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
+        FuncSigUnresolved =>
+          if census_fallback_skips_non_declaration_binding(name: name) {
+            FuncSigUnresolved
+          } else {
+            func_sig_from_global_bare(type_env: type_env, name: name)
+          }
       }
     }
   }
 }
 
 // Direct-call target selection must not consult the whole-tree census before builtin /
-// empty-collection classification. `lookup_func_sig` still does (func_sig_from_global_bare),
-// which reinterprets a kernel `empty_map` as `v2.std.collection.empty_map` whenever that
-// spelling is unique in the pool. This lookup is func-env / import-closure declarations only.
+// empty-collection classification. `lookup_func_sig` / `callable_lookup_over_candidates`
+// skip the same census fallback for those names. This lookup is func-env / import-closure
+// declarations only.
 fn func_env_declared_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> FuncSigLookup {
   if listed_import_required_bare_call_blocked(env: type_env, name: name) {
     FuncSigUnresolved
@@ -488,14 +508,22 @@ fn func_env_declared_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name
             }
           }
         Absent =>
-          match decide_callable_candidates(candidates: parent_closure_callable_candidates(env: func_env, name: name)) {
-            FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
-            FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
-            FuncSigUnresolved => FuncSigUnresolved
+          if census_fallback_skips_non_declaration_binding(name: name) {
+            FuncSigUnresolved
+          } else {
+            match decide_callable_candidates(candidates: parent_closure_callable_candidates(env: func_env, name: name)) {
+              FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
+              FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
+              FuncSigUnresolved => FuncSigUnresolved
+            }
           }
       }
     } else {
-      lookup_resolved_sig(env: func_env, name: name)
+      if census_fallback_skips_non_declaration_binding(name: name) {
+        FuncSigUnresolved
+      } else {
+        lookup_resolved_sig(env: func_env, name: name)
+      }
     }
   }
 }

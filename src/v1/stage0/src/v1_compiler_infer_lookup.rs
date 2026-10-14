@@ -49,7 +49,9 @@ pub use crate::v1_compiler_infer_items::ItemKind;
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, OtherItem, ServiceItem, TypeItem,
 };
-pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
+pub use crate::v1_compiler_infer_method::{
+    infer_builtin_call_type, is_empty_map_constructor, is_empty_set_constructor,
+};
 pub use crate::v1_compiler_infer_resolve::{fn_type_param_names, peel_nominal_alias_identity};
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
@@ -305,6 +307,12 @@ pub fn resolved_plain_call_target_for_outcome(
     }
 }
 
+pub fn census_fallback_skips_non_declaration_binding(name: String) -> bool {
+    is_empty_map_constructor(name.clone())
+        || is_empty_set_constructor(name.clone())
+        || infer_builtin_call_type(name.clone()).is_some()
+}
+
 pub fn callable_lookup_over_candidates(
     func_env: Rc<ResolvedFuncEnv>,
     type_env: Rc<TypeEnv>,
@@ -319,6 +327,9 @@ pub fn callable_lookup_over_candidates(
             }),
         }),
         std::option::Option::None => {
+            if census_fallback_skips_non_declaration_binding(name.clone()) {
+                return Rc::new(FuncSigLookup::FuncSigUnresolved);
+            }
             let declared = crate::v1_compiler_infer_sigs::parent_closure_callable_candidates(
                 func_env.clone(),
                 name.clone(),
@@ -354,10 +365,14 @@ pub fn callable_lookup_over_candidates(
                     candidates: cands.clone(),
                 }),
                 FuncSigLookup::FuncSigUnresolved => {
-                    if ((admissible.clone().len() as i64) == 0) {
-                        func_sig_from_global_bare(type_env.clone(), name.clone())
-                    } else {
+                    if census_fallback_skips_non_declaration_binding(name.clone()) {
                         Rc::new(FuncSigLookup::FuncSigUnresolved)
+                    } else {
+                        if ((admissible.clone().len() as i64) == 0) {
+                            func_sig_from_global_bare(type_env.clone(), name.clone())
+                        } else {
+                            Rc::new(FuncSigLookup::FuncSigUnresolved)
+                        }
                     }
                 }
             }
@@ -397,7 +412,11 @@ pub fn lookup_func_sig(
                     candidates: cands.clone(),
                 }),
                 FuncSigLookup::FuncSigUnresolved => {
-                    func_sig_from_global_bare(type_env.clone(), name.clone())
+                    if census_fallback_skips_non_declaration_binding(name.clone()) {
+                        Rc::new(FuncSigLookup::FuncSigUnresolved)
+                    } else {
+                        func_sig_from_global_bare(type_env.clone(), name.clone())
+                    }
                 }
             }
         }
@@ -424,29 +443,37 @@ pub fn func_env_declared_func_sig(
                 }),
             }),
             std::option::Option::None => {
-                match (*crate::v1_compiler_infer_sigs::decide_callable_candidates(
-                    crate::v1_compiler_infer_sigs::parent_closure_callable_candidates(
-                        func_env.clone(),
-                        name.clone(),
-                    ),
-                ))
-                .clone()
-                {
-                    FuncSigLookup::FuncSigResolved { sig, declared, .. } => {
-                        Rc::new(FuncSigLookup::FuncSigResolved {
-                            sig: sig.clone(),
-                            declared: declared.clone(),
-                        })
+                if census_fallback_skips_non_declaration_binding(name.clone()) {
+                    Rc::new(FuncSigLookup::FuncSigUnresolved)
+                } else {
+                    match (*crate::v1_compiler_infer_sigs::decide_callable_candidates(
+                        crate::v1_compiler_infer_sigs::parent_closure_callable_candidates(
+                            func_env.clone(),
+                            name.clone(),
+                        ),
+                    ))
+                    .clone()
+                    {
+                        FuncSigLookup::FuncSigResolved { sig, declared, .. } => {
+                            Rc::new(FuncSigLookup::FuncSigResolved {
+                                sig: sig.clone(),
+                                declared: declared.clone(),
+                            })
+                        }
+                        FuncSigLookup::FuncSigAmbiguous {
+                            candidates: cands, ..
+                        } => Rc::new(FuncSigLookup::FuncSigAmbiguous {
+                            candidates: cands.clone(),
+                        }),
+                        FuncSigLookup::FuncSigUnresolved => {
+                            Rc::new(FuncSigLookup::FuncSigUnresolved)
+                        }
                     }
-                    FuncSigLookup::FuncSigAmbiguous {
-                        candidates: cands, ..
-                    } => Rc::new(FuncSigLookup::FuncSigAmbiguous {
-                        candidates: cands.clone(),
-                    }),
-                    FuncSigLookup::FuncSigUnresolved => Rc::new(FuncSigLookup::FuncSigUnresolved),
                 }
             }
         }
+    } else if census_fallback_skips_non_declaration_binding(name.clone()) {
+        Rc::new(FuncSigLookup::FuncSigUnresolved)
     } else {
         crate::v1_compiler_infer_sigs::lookup_resolved_sig(func_env.clone(), name.clone())
     }
