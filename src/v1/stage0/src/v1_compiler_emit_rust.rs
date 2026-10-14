@@ -958,7 +958,22 @@ pub fn render_rust_optional_carrier_inner(
             variant_to_enum.clone(),
             env.clone(),
         ),
-        std::option::Option::None => "()".to_string(),
+        std::option::Option::None => emit_rust_compile_error_expr(v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "optional carrier payload type node absent for ".to_string(),
+                            n.name.clone(),
+                        ),
+                        " at ".to_string(),
+                    ),
+                    n.span.clone().file.clone(),
+                ),
+                ":".to_string(),
+            ),
+            crate::v1_compiler_emit_core_support::to_string(n.span.clone().start.clone()),
+        )),
     }
 }
 
