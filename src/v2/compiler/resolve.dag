@@ -585,7 +585,7 @@ type Scope
 type FrameKind
   = ParameterFrame { arrow_path: QualifiedName }
   | LexicalFrame { binders: Map<Symbol, LexicalBinding> }
-  | TypeParameterFrame
+  | TypeParameterFrame { binders: Map<Symbol, LexicalBinding> }
 
 // A LEXICAL BINDER, AS THE FRAME THAT INTRODUCES IT RECORDED IT. A `let`, a match-arm pattern binder
 // and a lambda's parameter are not declarations: nothing indexes them at a path, so the frame keys
@@ -2234,7 +2234,7 @@ fn resolve_frame_bound_reference(
   pending: Diagnostics
 ) -> Outcome<ResolvedAtom> {
   match kind {
-    TypeParameterFrame =>
+    TypeParameterFrame { binders: _ } =>
       Accepted {
         value: ResolvedAtom { node: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id), lexical: [] },
         diagnostics: pending
@@ -2381,7 +2381,11 @@ fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbo
             path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
             pending: pending
           ))
-        ScopeUnbound => resolved_atom_plain(o: resolve_atom_unscoped(ctx: ctx, n: n, identity: identity, pending: pending))
+        ScopeUnbound =>
+          match resolve_type_parameter_value_reading(ctx: ctx, identity: identity) {
+            Present { value: binding } => resolve_lexical_reference(n: n, canonical: identity, binding: optional_present(value: binding), pending: pending)
+            Absent => resolved_atom_plain(o: resolve_atom_unscoped(ctx: ctx, n: n, identity: identity, pending: pending))
+          }
       }
       Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     }
@@ -4103,7 +4107,7 @@ fn resolve_scope_binds_type_parameter(s: Scope, name: Symbol) -> Bool {
       match found {
         BoundInFrame { canonical: _, kind: k } =>
           match k {
-            TypeParameterFrame => true
+            TypeParameterFrame { binders: _ } => true
             ParameterFrame { arrow_path: _ } => false
             LexicalFrame { binders: _ } => false
           }
@@ -4529,8 +4533,47 @@ fn resolve_type_param_frame(n: Node, outer: Scope) -> Scope {
           map_insert(acc, name, name)
         }),
         outer: outer,
-        kind: TypeParameterFrame
+        kind: TypeParameterFrame { binders: type_param_value_binders(n: n) }
       }
+  }
+}
+
+// A KINDED BINDER IS ALSO READABLE AS A VALUE: ONE DECLARATION, TWO READINGS (A0-1). The binder stays the
+// single entry of this frame; a kinded one additionally records the LexicalBinding a value read of it
+// is minted under (resolve_type_parameter_value_reading), keyed by the binder's own occurrence with
+// its declared kind as the standing. "Kinded" is the existing language-level literal rule, not a
+// per-kind roster (std.machine_constraints machine_width_literal_roster_frontier): an unkinded
+// binder records nothing, so its value read keeps refusing
+// resolve_reason_type_parameter_in_value_position.
+fn type_param_value_binders(n: Node) -> Map<Symbol, LexicalBinding> {
+  fold(n.children, init: empty_map(), f: fn(acc, e) {
+    if edge_is_type_params(e: e) {
+      fold(e.target.children, init: acc, f: fn(inner, b) {
+        match node_atom_identity_optional(node: b.target) {
+          Present { value: name } =>
+            match type_param_kind_optional(binder: b.target) {
+              Present { value: kind } =>
+                map_insert(inner, name, LexicalBinding { binder_site: b.target.occurrence_id, standing: LexicalDeclared { node: kind } })
+              Absent => inner
+            }
+          Absent => inner
+        }
+      })
+    } else {
+      acc
+    }
+  })
+}
+
+// THE VALUE READING OF A TYPE PARAMETER, when its binder is kinded: the binding its frame recorded.
+fn resolve_type_parameter_value_reading(ctx: ResolveContext, identity: Symbol) -> Optional<LexicalBinding> {
+  match lookup_chain(s: ctx.type_scope, name: identity) {
+    Accepted { value: BoundInFrame { canonical: canonical, kind: TypeParameterFrame { binders: binders } }, diagnostics: _ } =>
+      map_lookup(m: binders, key: canonical)
+    Accepted { value: BoundInFrame { canonical: _, kind: _ }, diagnostics: _ } => optional_absent()
+    Accepted { value: BoundAtRoot { canonical: _ }, diagnostics: _ } => optional_absent()
+    Accepted { value: ScopeUnbound, diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 

@@ -364,7 +364,7 @@ test fn pr_unkeyed_lexical_reference_refuses_and_type_parameter_stays_atom_holds
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_lexical_reference_unkeyed
     Accepted { value: _, diagnostics: _ } => false
   }
-  let type_param_atom = match resolve_node(ctx: pr_ctx(kind: TypeParameterFrame), n: pr_x_atom) {
+  let type_param_atom = match resolve_node(ctx: pr_ctx(kind: TypeParameterFrame { binders: empty_map() }), n: pr_x_atom) {
     Accepted { value: v, diagnostics: _ } => v == pr_x_atom
     Rejected { diagnostics: _ } => false
   }
