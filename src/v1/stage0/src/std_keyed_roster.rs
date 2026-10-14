@@ -180,7 +180,7 @@ pub fn keyed_roster_index<K: Clone, V: Clone>(
 ) -> Rc<KeyedRosterIndex<K, V>> {
     {
         let build = rows.iter().cloned().fold(Rc::new(KeyedRosterIndexBuild {
-    slots: v1_rt::rc_empty_map::<Rc<SubjectKey<compile_error!("unit-variant marker identity evidence unavailable for K at <kernel:K>:0")>>, Rc<KeyedRosterSlot<compile_error!("unit-variant marker identity evidence unavailable for K at <kernel:K>:0"), compile_error!("unit-variant marker identity evidence unavailable for V at <kernel:V>:0")>>>(),
+    slots: v1_rt::rc_empty_map::<Rc<SubjectKey<K>>, Rc<KeyedRosterSlot<K, V>>>(),
     distinct_reversed: Rc::new(vec![]),
     duplicated_reversed: Rc::new(vec![]),
     earliest_duplicate: std::option::Option::None,

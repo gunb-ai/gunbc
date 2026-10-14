@@ -12,7 +12,7 @@ import std.key_relation {
   KeyRelation,
   ScopedKey,
   KeyedResourceRelation,
-  keyed_resource_subject_value_eq,
+  keyed_resource_subject_value_equal,
   key_relation_scoped_key,
   SubjectKey,
 }
@@ -171,7 +171,7 @@ fn membership_reconcile_built<M, K>(
     left: observed_rows,
     right: desired_rows,
     key_eq: key_eq,
-    value_eq: value_eq,
+    value_eq: fn(a, b) { keyed_resource_subject_value_equal(resource: resource, left: a, right: b) },
   )
   MembershipPlan {
     actions: map(patch.hunks, h => plain_hunk_to_action(hunk: h, ownership_of: ownership_of))
@@ -271,7 +271,6 @@ fn membership_reconcile_scoped_built<M, Relation, Scope, K, State>(
   resource: KeyedResourceRelation<Relation, M, Scope, K, State>,
   ownership_of: fn(M) -> Ownership?,
 ) -> MembershipPlan<M, ScopedKey<Relation, Scope, K>> {
-  let value_eq = keyed_resource_subject_value_eq(resource: resource)
   let patch = keyed_two_way_diff(
     left: observed_rows,
     right: desired_rows,

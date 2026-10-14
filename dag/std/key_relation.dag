@@ -85,12 +85,14 @@ type KeyedResourceRelation<Relation, Subject, ScopeId, Key, State> {
   state: StateRelation<Relation, Subject, State>
 }
 
-fn keyed_resource_subject_value_eq<M, Relation, ScopeId, Key, State>(
+fn keyed_resource_subject_value_equal<M, Relation, ScopeId, Key, State>(
   resource: KeyedResourceRelation<Relation, M, ScopeId, Key, State>,
-) -> fn(M, M) -> Bool {
+  left: M,
+  right: M,
+) -> Bool {
   let state_of = resource.state.state_of
   let state_eq = resource.state.state_eq
-  fn(a: M, b: M) { state_eq(state_of(a), state_of(b)) }
+  state_eq(state_of(left), state_of(right))
 }
 
 fn key_resource_relation_global<Relation, Subject, Key, State>(

@@ -41,7 +41,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // lower_bind(key, value, <rest of the block>), so `let a = x; let b = x; b` is a Bind whose tail is a
 // Bind. target_project_bind_let read that tail as a binding atom and refused every other shape with
 // transform_shape_invalid -- the gen-two refusal of dag/std/key_relation.dag, whose
-// key_relation_scoped_key and keyed_resource_subject_value_eq each end two lets in a non-name tail.
+// key_relation_scoped_key and keyed_resource_subject_value_equal each end two lets in a non-name tail.
 // The inputs are supplied at that one interface; the gen-two emit of std.key_relation is the
 // inhabitance check that the real route reaches it.
 

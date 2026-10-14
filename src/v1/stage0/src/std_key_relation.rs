@@ -109,13 +109,15 @@ pub struct KeyedResourceRelation<Relation, Subject, ScopeId, Key, State> {
     pub _phantom: std::marker::PhantomData<(Relation, Subject, ScopeId, Key, State)>,
 }
 
-pub fn keyed_resource_subject_value_eq<M, Relation, ScopeId, Key, State>(
+pub fn keyed_resource_subject_value_equal<M, Relation, ScopeId, Key, State>(
     resource: Rc<KeyedResourceRelation<Relation, M, ScopeId, Key, State>>,
-) -> Rc<dyn Fn(M, M) -> bool> {
+    left: M,
+    right: M,
+) -> bool {
     {
         let state_of = resource.state.clone().state_of.clone();
         let state_eq = resource.state.clone().state_eq.clone();
-        |a, b| state_eq(state_of(a.clone()), state_of(b.clone()))
+        state_eq(state_of(left.clone()), state_of(right.clone()))
     }
 }
 
