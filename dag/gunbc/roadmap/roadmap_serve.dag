@@ -66,7 +66,6 @@ import gunbc.auth.request_authentication {
   RequestIngress, IngressUnattested, IngressAttestedPeer, request_ingress_is_the_proxy,
   authenticated_viewer_label,
   human_write_admission,
-  csrf_write_decision,
   tracker_write_authorization_policy,
   roadmap_deployment_access_policy,
   ServeActionAssignIssue,
@@ -638,74 +637,10 @@ fn serve_publish_with_follow_ups(instance: HostDashboardInstance, outcome: BeltP
 // that vendor's selection, which refuses typed when the vendor's offer or standing does not admit it.
 // An unknown label is a 400 naming the accepted set -- never a dispatch to the default, which would
 // run the attempt somewhere the operator did not ask.
-// CSRF IS DECIDABLE WITHOUT THE CLOCK. Session expiry is not: human_authentication_decision
-// reads observed_at only on GoogleOidcSession. A live session with no token must not Get
-// Clock.Now before csrf_write_decision refuses — that turned dispatch_without_csrf into
-// HostEffectRefused { operation: Now } instead of 403.
 fn serve_after_human_write(
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   route_path: NonEmptyStr,
   action: ServeRouteAction,
-  proceed: fn() -> ServeHttpResponse,
-) -> ServeHttpResponse {
-  let csrf_presented = issue_form_field(body: request.body, name: "csrf")
-  match request.security.authentication {
-    GoogleOidcSession { session: _ } =>
-      match csrf_write_decision(
-        route_path: route_path,
-        action: action,
-        security: request.security,
-        csrf_presented: csrf_presented,
-      ) {
-        Deny { refusal } =>
-          serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
-        Permit =>
-          match human_write_admission(
-            route_path: route_path,
-            action: action,
-            security: request.security,
-            authorization_policy: tracker_write_authorization_policy,
-            deployment_policy: roadmap_deployment_access_policy,
-            csrf_presented: csrf_presented,
-            observed_at: human_write_observed_at(security: request.security),
-          ) {
-            Deny { refusal } =>
-              serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
-            Permit => proceed()
-          }
-      }
-    FabricServiceEvidence { kind: _, authenticated_at: _ } =>
-      serve_after_human_write_rest(
-        request: request,
-        route_path: route_path,
-        action: action,
-        csrf_presented: csrf_presented,
-        proceed: proceed,
-      )
-    SessionStandingInvalid { standing: _ } =>
-      serve_after_human_write_rest(
-        request: request,
-        route_path: route_path,
-        action: action,
-        csrf_presented: csrf_presented,
-        proceed: proceed,
-      )
-    AuthAbsent =>
-      serve_after_human_write_rest(
-        request: request,
-        route_path: route_path,
-        action: action,
-        csrf_presented: csrf_presented,
-        proceed: proceed,
-      )
-  }
-}
-
-fn serve_after_human_write_rest(
-  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
-  route_path: NonEmptyStr,
-  action: ServeRouteAction,
-  csrf_presented: String,
   proceed: fn() -> ServeHttpResponse,
 ) -> ServeHttpResponse {
   match human_write_admission(
@@ -714,8 +649,8 @@ fn serve_after_human_write_rest(
     security: request.security,
     authorization_policy: tracker_write_authorization_policy,
     deployment_policy: roadmap_deployment_access_policy,
-    csrf_presented: csrf_presented,
-    observed_at: human_write_observed_at(security: request.security),
+    csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    observed_at: fn() { human_write_observed_at(security: request.security) },
   ) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
     Permit => proceed()
@@ -1062,11 +997,8 @@ fn assignee_lookup_refusal(raw: String) -> String {
   }
 }
 
-// A HUMAN WRITE READS THE CLOCK ONLY WHERE A READING IS CONSUMED. The write law
-// (gunbc.auth.request_authentication human_authentication_decision) reads observed_at only on the
-// GoogleOidcSession arm -- session expiry -- and only that arm can reach the append that records
-// it; absent, invalid and service evidence refuse at the authentication axis without it. So the
-// early refusals (404 unknown issue, 403 without a session) answer before any host read.
+// A HUMAN WRITE READS THE CLOCK ONLY WHERE A READING IS CONSUMED. human_write_admission takes
+// this as a thunk and human_authentication_decision forces it only on GoogleOidcSession expiry.
 fn human_write_observed_at(security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> String {
   match security.authentication {
     GoogleOidcSession { session: _ } => match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
@@ -1105,14 +1037,15 @@ fn serve_issue_assign_response_over(
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
-  let observed_at = human_write_observed_at(security: request.security)
-  if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
-  else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/assign")) as NonEmptyStr,
+  match human_write_admission(route_path: concat("/issue/", concat(node_id, "/assign")) as NonEmptyStr,
     action: ServeActionAssignIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
-    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    observed_at: fn() { human_write_observed_at(security: request.security) }) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
-    Permit => serve_issue_assign_permitted(instance: instance, plan: plan, request: request, node_id: node_id, observed_at: observed_at)
-  } }
+    Permit =>
+      if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+      else { serve_issue_assign_permitted(instance: instance, plan: plan, request: request, node_id: node_id, observed_at: human_write_observed_at(security: request.security)) }
+  }
 }
 
 fn serve_issue_assign_permitted(
@@ -1161,10 +1094,10 @@ fn serve_issue_create_response_over(
   instance: HostDashboardInstance,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
-  let observed_at = human_write_observed_at(security: request.security)
   match human_write_admission(route_path: "/issues" as NonEmptyStr,
     action: ServeActionCreateIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
-    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    observed_at: fn() { human_write_observed_at(security: request.security) }) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
     Permit => if !roadmap_operation_identity_valid(operation: issue_form_field(body: request.body, name: "key")) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "create refused: a valid operation key is required") }
       else { match authenticated_write_author_principal(security: request.security) {
@@ -1360,14 +1293,15 @@ fn serve_issue_comment_response_over(
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
-  let observed_at = human_write_observed_at(security: request.security)
-  if !issue_detail_node_exists(proj: roadmap_plan_projection(), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
-  else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/comment")) as NonEmptyStr,
+  match human_write_admission(route_path: concat("/issue/", concat(node_id, "/comment")) as NonEmptyStr,
     action: ServeActionCommentIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
-    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    observed_at: fn() { human_write_observed_at(security: request.security) }) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
-    Permit => serve_issue_comment_permitted(instance: instance, request: request, node_id: node_id, observed_at: observed_at)
-  } }
+    Permit =>
+      if !issue_detail_node_exists(proj: roadmap_plan_projection(), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+      else { serve_issue_comment_permitted(instance: instance, request: request, node_id: node_id, observed_at: human_write_observed_at(security: request.security)) }
+  }
 }
 
 fn serve_issue_comment_permitted(
@@ -2480,7 +2414,7 @@ fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: S
   match request.security.authentication {
     GoogleOidcSession { session } => {
       if saving {
-        match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: request.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: human_write_observed_at(security: request.security)) {
+        match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: request.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: fn() { human_write_observed_at(security: request.security) }) {
           Deny { refusal: _ } => issue_view_response(status: 403, body: "Preference save requires a valid session and CSRF proof.")
           Permit => match issue_view_preferences_of(text: issue_form_field(body: request.body, name: "preferences")) {
             Absent => issue_view_response(status: 400, body: "Invalid issue view preferences.")

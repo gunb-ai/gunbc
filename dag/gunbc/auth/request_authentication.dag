@@ -366,9 +366,10 @@ data tracker_write_authorization_policy: ServeWriteAuthorizationPolicy = ServeWr
 
 // ── The human-write law, projected into std.access ─────────────────────────────────────────────
 
-// THE ONE ENTRY POINT a human-write handler consults. The answer is the std.access conjunction
-// of four independent decisions; each is computed over the projected AccessRequest so every
-// refusal carries structured coordinates (profile, subject, action, object).
+// THE ONE ENTRY POINT a human-write handler consults. CSRF is decidable without a clock and is
+// judged first; a missing token refuses before observed_at is forced. Session expiry is the only
+// arm that reads the instant, so observed_at is a thunk forced there, never at the call site.
+// The remaining axes stay a std.access conjunction over the projected AccessRequest.
 fn human_write_admission(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
@@ -376,18 +377,24 @@ fn human_write_admission(
   authorization_policy: ServeWriteAuthorizationPolicy,
   deployment_policy: DeploymentAccessPolicy,
   csrf_presented: String,
-  observed_at: Timestamp,
+  observed_at: fn() -> Timestamp,
 ) -> AccessDecision {
-  decision_meet(
-    human_authentication_decision(route_path: route_path, action: action, security: security, observed_at: observed_at),
-    decision_meet(
-      human_action_authorization_decision(route_path: route_path, action: action, security: security, policy: authorization_policy),
+  match csrf_write_decision(
+    route_path: route_path,
+    action: action,
+    security: security,
+    csrf_presented: csrf_presented,
+  ) {
+    Deny { refusal } => Deny { refusal: refusal }
+    Permit =>
       decision_meet(
-        csrf_write_decision(route_path: route_path, action: action, security: security, csrf_presented: csrf_presented),
-        deployment_path_decision(route_path: route_path, action: action, security: security, policy: deployment_policy),
-      ),
-    ),
-  )
+        human_authentication_decision(route_path: route_path, action: action, security: security, observed_at: observed_at),
+        decision_meet(
+          human_action_authorization_decision(route_path: route_path, action: action, security: security, policy: authorization_policy),
+          deployment_path_decision(route_path: route_path, action: action, security: security, policy: deployment_policy),
+        ),
+      )
+  }
 }
 
 // AUTHENTICATION IS SESSION-EVIDENCE ONLY. A Google OIDC session that is present and unexpired
@@ -398,7 +405,7 @@ fn human_authentication_decision(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
   security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
-  observed_at: Timestamp,
+  observed_at: fn() -> Timestamp,
 ) -> AccessDecision {
   match security.authentication {
     AuthAbsent =>
@@ -423,7 +430,7 @@ fn human_authentication_decision(
         cause: AccessEvidenceRejected { evidence: "fabric-service-evidence", reason: "service evidence authorizes service writes, never human writes" },
       )
     GoogleOidcSession { session } =>
-      if session_not_expired(session: session, observed_at: observed_at) {
+      if session_not_expired(session: session, observed_at: observed_at()) {
         Permit
       } else {
         write_refused(

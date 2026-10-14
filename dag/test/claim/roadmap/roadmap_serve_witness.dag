@@ -14,6 +14,7 @@ import gunbc.roadmap.roadmap_serve {
   BeltPublishHandler,
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler, IssueCreateHandler, IssueCreatePageHandler,
   serve_issue_assignment_context_over, serve_issue_view_preferences_over,
+  serve_issue_assign_response_over,
   IssueViewPreferencesReadHandler, IssueViewPreferencesSaveHandler,
   AuthSessionHandler, AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler,
   roadmap_serve_route_table_build,
@@ -239,11 +240,31 @@ test fn authenticated_dispatch_with_csrf_passes_the_write_law() -> Bool {
     authorization_policy: tracker_write_authorization_policy,
     deployment_policy: roadmap_deployment_access_policy,
     csrf_presented: "csrf-1",
-    observed_at: "2026-09-27T01:00:00Z",
+    observed_at: fn() { "2026-09-27T01:00:00Z" },
   ) {
     Permit => true
     Deny { refusal: _ } => false
   }
+}
+
+// CSRF-BEFORE-CLOCK ON AN EXISTING CALLER: assign goes through human_write_admission, not a
+// serve wrapper. A live session with no token must 403 without Clock.Now.
+test fn assign_without_csrf_refuses_without_the_clock() -> Bool {
+  let r = serve_issue_assign_response_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: caller_supplied_plan_fixture(),
+    request: ServeHttpRequest {
+      method: POST,
+      path: "/issue/demo-node/assign",
+      body: "",
+      security: RequestSecurityContext {
+        access_path: AccessPathLocalDev,
+        authentication: GoogleOidcSession { session: fixture_live_session() },
+      },
+    },
+    params: [PathParamBinding { name: "node_id", value: "demo-node" }],
+  )
+  r.status == 403 && string_contains(s: r.body, pattern: "CSRF token")
 }
 
 test fn unauthenticated_cleanup_refuses_before_actuation() -> Bool {
@@ -1193,7 +1214,7 @@ test fn preference_routes_are_account_scoped_and_require_csrf_before_store_acces
     && selects(method: POST, path: "/preferences/issues", want: IssueViewPreferencesSaveHandler)
     && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: anonymous, saving: false).status == 401
     && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: anonymous, saving: true).status == 401
-    && match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: no_csrf.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: "", observed_at: "2026-09-27T01:00:00Z") {
+    && match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: no_csrf.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: "", observed_at: fn() { "2026-09-27T01:00:00Z" }) {
       Deny { refusal: _ } => true
       Permit => false
     }
