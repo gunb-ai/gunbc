@@ -51,13 +51,21 @@ test fn witness_envelope_missing_memavailable_refuses_not_widens() -> Bool {
   }
 }
 
-test fn witness_observed_slice_filter_keeps_hyphenated_runner_parent() -> Bool {
-  is_observed_slice_unit(unit: "system.slice" as NonEmptyStr)
-    && is_observed_slice_unit(unit: "sessions.slice" as NonEmptyStr)
-    && is_observed_slice_unit(unit: "system-actions-runner.slice" as NonEmptyStr)
-    && is_observed_slice_unit(unit: "gunbc-roadmap.slice" as NonEmptyStr)
-    && !is_observed_slice_unit(unit: "-.slice" as NonEmptyStr)
-    && !is_observed_slice_unit(unit: "actions-runner@srv1-01.service" as NonEmptyStr)
+test fn witness_top_level_slice_is_direct_child_of_root_cgroup() -> Bool {
+  is_top_level_slice_unit(unit: "system.slice" as NonEmptyStr)
+    && is_top_level_slice_unit(unit: "sessions.slice" as NonEmptyStr)
+    && is_top_level_slice_unit(unit: "user.slice" as NonEmptyStr)
+    && is_top_level_slice_unit(unit: "gunbc.slice" as NonEmptyStr)
+    && !is_top_level_slice_unit(unit: "system-actions-runner.slice" as NonEmptyStr)
+    && !is_top_level_slice_unit(unit: "gunbc-roadmap.slice" as NonEmptyStr)
+    && !is_top_level_slice_unit(unit: "-.slice" as NonEmptyStr)
+    && !is_top_level_slice_unit(unit: "actions-runner@srv1-01.service" as NonEmptyStr)
+}
+
+test fn witness_runner_parent_slice_is_read_though_not_top_level() -> Bool {
+  !is_top_level_slice_unit(unit: runner_parent_slice_unit)
+    && host_memory_envelope_includes_slice(unit: runner_parent_slice_unit)
+    && (runner_parent_slice_unit as String) == "system-actions-runner.slice"
 }
 
 test fn witness_envelope_projects_host_mem_available_observation() -> Bool {

@@ -1,8 +1,9 @@
 module gunbc.host.host_memory_envelope_observe
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, kibibyte, kibibyte_to_byte_size }
-import std.algebra { list_reverse }
+import std.algebra { list_snoc_item }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.optional { Present }
 import product.host_identity { HostIdentity }
@@ -27,6 +28,8 @@ import extdeps.systemd {
   MemoryMax, MemoryHigh, MemoryCurrent, MemorySwapMax, SystemdUnitProperty,
   SystemdCgroupMemoryLimit, MemoryLimitBytes, MemoryLimitUnbounded, MemoryLimitAbsent,
   parse_systemd_memory_limit_show,
+  systemd_slice_cgroup_path, SliceCgroupPath, SliceNameNotASlice,
+  systemd_slice_ancestor_names, systemd_slice_suffix, systemd_root_slice_name,
 }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -129,9 +132,34 @@ fn host_memory_envelope_from_meminfo_text(
   }
 }
 
-fn is_observed_slice_unit(unit: NonEmptyStr) -> Bool {
-  let name = unit as String
-  ends_with(s: name, suffix: ".slice") && name != "-.slice"
+data runner_parent_slice_unit: NonEmptyStr = "system-actions-runner.slice" as NonEmptyStr
+
+fn slice_hierarchy_depth(unit: NonEmptyStr) -> Nat? {
+  match systemd_slice_cgroup_path(mount_point: "/" as NonEmptyStr, slice: unit) {
+    SliceNameNotASlice { spelling: _ } => none
+    SliceCgroupPath { path: _ } =>
+      if (unit as String) == systemd_root_slice_name {
+        let empty: List<String> = []
+        Present { value: length(empty) }
+      } else {
+        let name = unit as String
+        let stem = substring(s: name, start: 0, end: length(name) - length(systemd_slice_suffix))
+        Present { value: length(systemd_slice_ancestor_names(stem: stem)) }
+      }
+  }
+}
+
+fn is_top_level_slice_unit(unit: NonEmptyStr) -> Bool {
+  match slice_hierarchy_depth(unit: unit) {
+    Absent => false
+    Present { value: depth } =>
+      let one: List<String> = ["."]
+      depth == length(one)
+  }
+}
+
+fn host_memory_envelope_includes_slice(unit: NonEmptyStr) -> Bool {
+  is_top_level_slice_unit(unit: unit) || (unit as String) == (runner_parent_slice_unit as String)
 }
 
 fn slice_property_raw(unit: NonEmptyStr, property: SystemdUnitProperty) -> String? {
@@ -219,13 +247,13 @@ fn observed_slice_readings_accumulate(
 ) -> List<SliceMemoryReading>? {
   match acc {
     Absent => none
-    Present { value: reversed } =>
-      if !is_observed_slice_unit(unit: unit) {
-        Present { value: reversed }
+    Present { value: so_far } =>
+      if !host_memory_envelope_includes_slice(unit: unit) {
+        Present { value: so_far }
       } else {
         match slice_memory_reading_from_unit(unit: unit) {
           Absent => none
-          Present { value: row } => Present { value: concat([row], reversed) }
+          Present { value: row } => Present { value: list_snoc_item(xs: so_far, item: row) }
         }
       }
   }
@@ -236,12 +264,9 @@ fn host_memory_envelope_observed_slice_readings() -> List<SliceMemoryReading>? {
     Absent => none
     Present { value: units } =>
       let empty: List<SliceMemoryReading> = []
-      match fold(units, init: Present { value: empty }, f: fn(acc, unit) {
+      fold(units, init: Present { value: empty }, f: fn(acc, unit) {
         observed_slice_readings_accumulate(acc: acc, unit: unit)
-      }) {
-        Absent => none
-        Present { value: reversed } => Present { value: list_reverse(xs: reversed) }
-      }
+      })
   }
 }
 
