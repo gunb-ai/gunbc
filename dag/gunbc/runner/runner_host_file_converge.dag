@@ -652,21 +652,24 @@ type RunnerSlotUnitReading {
   environment: String
 }
 
-// WHAT A SLOT MUST CARRY BEYOND ITS TEARDOWN: the derived CPU ceiling, always, and -- where this
-// run delivers the unit fragment -- the compile environment that fragment renders: CARGO_BUILD_JOBS
-// at the same per-slot figure and no MAKEFLAGS. A host whose fragment is withheld still runs a unit
-// this converge did not write, so its environment is reported by the receipt and not judged.
+// WHAT A SLOT MUST CARRY BEYOND ITS TEARDOWN: the derived CPU ceiling, always; CARGO_BUILD_JOBS at
+// the same per-slot figure where this run delivers the unit fragment that renders it; and no
+// MAKEFLAGS whenever the fragment is delivered OR the jobserver residue is absent -- a host whose
+// daemon is gone (retired here or by hand) must not hand cargo an auth clause for a FIFO nobody
+// serves, whoever wrote its unit.
 type RunnerSlotExpectation {
   intent: RunnerUnitLifecycleIntent
   cpu_quota_identity: String
   compile_jobs: HardwareThreadCount?
+  forbid_makeflags: Bool
 }
 
-fn runner_slot_expectation(per_slot: HardwareThreadCount, fragment_delivered: Bool) -> RunnerSlotExpectation {
+fn runner_slot_expectation(per_slot: HardwareThreadCount, fragment_delivered: Bool, residue_absent: Bool) -> RunnerSlotExpectation {
   RunnerSlotExpectation {
     intent: gunbc_runner_lifecycle_intent,
     cpu_quota_identity: systemd_cpu_quota_per_sec_magnitude_identity(usec: systemd_cpu_quota_per_sec_of_threads(threads: per_slot)),
     compile_jobs: if fragment_delivered { Present { value: per_slot } } else { none },
+    forbid_makeflags: fragment_delivered || residue_absent,
   }
 }
 
@@ -689,17 +692,18 @@ fn classify_slot_allocation(reading: RunnerSlotUnitReading, expect: RunnerSlotEx
   if !cpu_ok {
     SlotAllocationNotEffective { detail: join(["CPUQuotaPerSecUSec=", trim(s: reading.cpu_quota_per_sec), " want=", expect.cpu_quota_identity, "us"], "") }
   } else {
-    match expect.compile_jobs {
-      Absent => SlotTeardownEffective
-      Present { value: jobs } => {
-        let env = trim(s: reading.environment)
-        if slot_environment_names(environment: env, name: jobserver_makeflags_env_name) {
-          SlotAllocationNotEffective { detail: "Environment still carries MAKEFLAGS" }
-        } else if !slot_environment_assigns(environment: env, name: cargo_environment_variable_name(variable: CargoBuildJobsEnv) as String, value: to_string(hardware_thread_count_value(t: jobs))) {
-          SlotAllocationNotEffective { detail: join(["Environment does not assign CARGO_BUILD_JOBS=", to_string(hardware_thread_count_value(t: jobs))], "") }
-        } else {
-          SlotTeardownEffective
-        }
+    let env = trim(s: reading.environment)
+    if expect.forbid_makeflags && slot_environment_names(environment: env, name: jobserver_makeflags_env_name) {
+      SlotAllocationNotEffective { detail: "Environment still carries MAKEFLAGS" }
+    } else {
+      match expect.compile_jobs {
+        Absent => SlotTeardownEffective
+        Present { value: jobs } =>
+          if !slot_environment_assigns(environment: env, name: cargo_environment_variable_name(variable: CargoBuildJobsEnv) as String, value: to_string(hardware_thread_count_value(t: jobs))) {
+            SlotAllocationNotEffective { detail: join(["Environment does not assign CARGO_BUILD_JOBS=", to_string(hardware_thread_count_value(t: jobs))], "") }
+          } else {
+            SlotTeardownEffective
+          }
       }
     }
   }
@@ -1299,6 +1303,7 @@ type RetiredResidueResult
   | ResidueObservedPresent { observation: RetiredResidueObservation }
   | ResidueRetireRefused { step: String, reason: String }
   | ResidueNotAttempted { reason: String }
+  | ResidueRetirementWithheld { reason: String }
 
 // One elevated leg; a nonzero exit is a refusal at that step, never swallowed.
 fn retire_leg(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, step: String, argv: List<String>) -> String?
@@ -1341,35 +1346,74 @@ fn run_retire_legs(subject: RunnerHostFileSubject, context: FleetSshExecutionCon
   })
 }
 
+// RETIREMENT WAITS FOR ITS REPLACEMENT TO HOLD (review 80136). The daemon is removed only once the
+// unit fragment that stops pointing cargo at its FIFO has landed on this host AND every slot reads
+// back that environment; otherwise retiring it would leave units still carrying MAKEFLAGS for a FIFO
+// nobody serves while the run reported success. Absent residue is a Noop whatever the gate says.
+type ResidueRetirementGate
+  = ResidueRetirementAdmitted
+  | ResidueRetirementGated { reason: String }
+
+fn residue_retirement_gate(withheld: List<RunnerHostFileWithheld>, fragment_delivered: Bool, slots_effective: Bool) -> ResidueRetirementGate {
+  if length(withheld) > 0 {
+    ResidueRetirementGated { reason: join(["withheld: ", join(map(withheld, w => w.subject as String), ",")], "") }
+  } else if !fragment_delivered {
+    ResidueRetirementGated { reason: "the unit fragment is not part of this run" }
+  } else if !slots_effective {
+    ResidueRetirementGated { reason: "the slot readback does not yet hold the fragment's environment" }
+  } else {
+    ResidueRetirementAdmitted
+  }
+}
+
+// THE DECISION BEFORE ANY LEG, pure so its RED is authorable: Present is the final result with no
+// actuation, Absent means retire now.
+fn retired_residue_precheck(
+  observed: RetiredResidueObservation,
+  mode: RunnerHostFileConvergeMode,
+  privilege: RunnerHostPrivilegeStanding,
+  gate: ResidueRetirementGate,
+) -> RetiredResidueResult? {
+  match observed {
+    ResidueAbsent => Present { value: ResidueAlreadyAbsent }
+    ResidueUnobservable { cause: c } => Present { value: ResidueNotAttempted { reason: concat("residue unobservable: ", c) } }
+    ResiduePresent { unit_known: _, present: _ } =>
+      match mode {
+        RunnerHostFilesObserveOnly => Present { value: ResidueObservedPresent { observation: observed } }
+        RunnerHostFilesApply =>
+          match gate {
+            ResidueRetirementGated { reason: why } => Present { value: ResidueRetirementWithheld { reason: why } }
+            ResidueRetirementAdmitted =>
+              match privilege {
+                AdministratorPrivilegeRefused { reason: why } => Present { value: ResidueNotAttempted { reason: concat("administrator privilege refused: ", why) } }
+                AdministratorPrivilegeAvailable => none
+              }
+          }
+      }
+  }
+}
+
 fn converge_retired_residue(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
   mode: RunnerHostFileConvergeMode,
   privilege: RunnerHostPrivilegeStanding,
   residue: RetiredHostResidue,
+  observed: RetiredResidueObservation,
+  gate: ResidueRetirementGate,
 ) -> RetiredResidueResult
 {
-  let observed = observe_retired_residue(subject: subject, context: context, residue: residue)
-  match observed {
-    ResidueAbsent => ResidueAlreadyAbsent
-    ResidueUnobservable { cause: c } => ResidueNotAttempted { reason: concat("residue unobservable: ", c) }
-    ResiduePresent { unit_known: _, present: _ } =>
-      match mode {
-        RunnerHostFilesObserveOnly => ResidueObservedPresent { observation: observed }
-        RunnerHostFilesApply =>
-          match privilege {
-            AdministratorPrivilegeRefused { reason: why } => ResidueNotAttempted { reason: concat("administrator privilege refused: ", why) }
-            AdministratorPrivilegeAvailable =>
-              match run_retire_legs(subject: subject, context: context, legs: retire_legs_for(residue: residue, observation: observed)) {
-                Present { value: why } => ResidueRetireRefused { step: "retire", reason: why }
-                Absent =>
-                  match observe_retired_residue(subject: subject, context: context, residue: residue) {
-                    ResidueAbsent => ResidueRetired
-                    ResidueUnobservable { cause: c } => ResidueRetireRefused { step: "readback", reason: c }
-                    ResiduePresent { unit_known: k, present: ps } =>
-                      ResidueRetireRefused { step: "readback", reason: join(["still present after retirement: unit_known=", if k { "yes" } else { "no" }, " paths=", join(ps, ",")], "") }
-                  }
-              }
+  match retired_residue_precheck(observed: observed, mode: mode, privilege: privilege, gate: gate) {
+    Present { value: settled } => settled
+    Absent =>
+      match run_retire_legs(subject: subject, context: context, legs: retire_legs_for(residue: residue, observation: observed)) {
+        Present { value: why } => ResidueRetireRefused { step: "retire", reason: why }
+        Absent =>
+          match observe_retired_residue(subject: subject, context: context, residue: residue) {
+            ResidueAbsent => ResidueRetired
+            ResidueUnobservable { cause: c } => ResidueRetireRefused { step: "readback", reason: c }
+            ResiduePresent { unit_known: k, present: ps } =>
+              ResidueRetireRefused { step: "readback", reason: join(["still present after retirement: unit_known=", if k { "yes" } else { "no" }, " paths=", join(ps, ",")], "") }
           }
       }
   }
@@ -1382,6 +1426,7 @@ fn retired_residue_settled(result: RetiredResidueResult) -> Bool {
     ResidueObservedPresent { observation: _ } => false
     ResidueRetireRefused { step: _, reason: _ } => false
     ResidueNotAttempted { reason: _ } => false
+    ResidueRetirementWithheld { reason: _ } => false
   }
 }
 
@@ -1393,6 +1438,7 @@ fn retired_residue_observed(result: RetiredResidueResult) -> Bool {
     ResidueObservedPresent { observation: _ } => true
     ResidueRetireRefused { step: _, reason: _ } => false
     ResidueNotAttempted { reason: _ } => false
+    ResidueRetirementWithheld { reason: _ } => true
   }
 }
 
@@ -1407,6 +1453,7 @@ fn retired_residue_result_line(result: RetiredResidueResult) -> String {
     }
     ResidueRetireRefused { step: st, reason: why } => join(["REFUSED step=", st, " ", why], "")
     ResidueNotAttempted { reason: why } => concat("NOT-ATTEMPTED ", why)
+    ResidueRetirementWithheld { reason: why } => concat("RETIREMENT-WITHHELD ", why)
   }, "\n"], "")
 }
 
@@ -1525,6 +1572,7 @@ type RunnerHostFileRun {
   mode: RunnerHostFileConvergeMode
   privilege: RunnerHostPrivilegeStanding
   results: List<RunnerHostFileResult>
+  withheld: List<RunnerHostFileWithheld>
   residue: RetiredResidueResult
   reload: RunnerHostManagerReload
   slots: RunnerSlotPopulation
@@ -1574,8 +1622,9 @@ fn run_runner_host_files(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
   files: List<RunnerHostFileDesired>,
+  withheld: List<RunnerHostFileWithheld>,
   mode: RunnerHostFileConvergeMode,
-  expect: RunnerSlotExpectation,
+  per_slot: HardwareThreadCount,
 ) -> RunnerHostFileRun
 {
   let privilege = observe_runner_host_administrator_privilege(subject: subject, context: context)
@@ -1592,22 +1641,35 @@ fn run_runner_host_files(
           }
       },
     })
-  let residue = converge_retired_residue(subject: subject, context: context, mode: mode, privilege: privilege, residue: ctrl_jobserver_retired_residue)
+  let residue_observed = observe_retired_residue(subject: subject, context: context, residue: ctrl_jobserver_retired_residue)
+  let fragment_delivered = runner_host_files_deliver_fragment(files: files)
+  let expect = runner_slot_expectation(per_slot: per_slot, fragment_delivered: fragment_delivered, residue_absent: match residue_observed {
+    ResidueAbsent => true
+    ResiduePresent { unit_known: _, present: _ } => false
+    ResidueUnobservable { cause: _ } => false
+  })
   let before = observe_runner_slot_population(subject: subject, context: context, expect: expect)
   let reload = runner_host_manager_reload_step(subject: subject, context: context, mode: mode, privilege: privilege, before: before)
+  let slots = match reload {
+    ManagerReloaded => observe_runner_slot_population(subject: subject, context: context, expect: expect)
+    ManagerReloadNotOwed => before
+    ManagerReloadRefused { reason: _ } => before
+    ManagerReloadOwedNotAttempted { reason: _ } => before
+  }
+  let gate = residue_retirement_gate(
+    withheld: withheld,
+    fragment_delivered: fragment_delivered && all(results, r => runner_host_file_outcome_settled(outcome: r.outcome)),
+    slots_effective: runner_slot_population_effective(population: slots),
+  )
   RunnerHostFileRun {
     subject: subject,
     mode: mode,
     privilege: privilege,
     results: results,
-    residue: residue,
+    withheld: withheld,
+    residue: converge_retired_residue(subject: subject, context: context, mode: mode, privilege: privilege, residue: ctrl_jobserver_retired_residue, observed: residue_observed, gate: gate),
     reload: reload,
-    slots: match reload {
-      ManagerReloaded => observe_runner_slot_population(subject: subject, context: context, expect: expect)
-      ManagerReloadNotOwed => before
-      ManagerReloadRefused { reason: _ } => before
-      ManagerReloadOwedNotAttempted { reason: _ } => before
-    },
+    slots: slots,
   }
 }
 
@@ -1650,6 +1712,7 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         && runner_slot_population_read_completely(population: run.slots)
     RunnerHostFilesApply =>
       all(run.results, r => runner_host_file_outcome_settled(outcome: r.outcome))
+        && length(run.withheld) == 0
         && retired_residue_settled(result: run.residue)
         && (match run.reload {
           ManagerReloadNotOwed => true
@@ -1732,7 +1795,7 @@ fn runner_host_file_ci_wet(mode: RunnerHostFileConvergeMode) -> ProcessExit
                   match runner_slot_cpu_desired(host: raw_host as HostIdentity) {
                     SlotCpuRefused { cause: c } => exit_failure(reason: c as String)
                     SlotCpuDesired { per_slot: per_slot, file: _ } => {
-                  let run = run_runner_host_files(subject: subject, context: context, files: files, mode: mode, expect: runner_slot_expectation(per_slot: per_slot, fragment_delivered: runner_host_files_deliver_fragment(files: files)))
+                  let run = run_runner_host_files(subject: subject, context: context, files: files, withheld: withheld, mode: mode, per_slot: per_slot)
                   let body = join([
                     "runner_host_file_converge probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
                     context_receipt,

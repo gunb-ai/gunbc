@@ -79,6 +79,12 @@ import gunbc.runner.runner_host_file_converge {
   ResidueObservedPresent,
   ResidueRetireRefused,
   ResidueNotAttempted,
+  ResidueRetirementWithheld,
+  ResidueRetirementGate,
+  ResidueRetirementAdmitted,
+  ResidueRetirementGated,
+  residue_retirement_gate,
+  retired_residue_precheck,
   retired_residue_settled,
   retired_residue_observed,
   HostFilePathPresent,
@@ -567,11 +573,11 @@ fn allocated_reading(cpu: String, env: String) -> RunnerSlotUnitReading {
 
 // The supplied expectation: 7 threads per slot, fragment withheld (environment reported, not judged).
 fn fixture_expect() -> RunnerSlotExpectation {
-  runner_slot_expectation(per_slot: hardware_thread_count(count: 7), fragment_delivered: false)
+  runner_slot_expectation(per_slot: hardware_thread_count(count: 7), fragment_delivered: false, residue_absent: false)
 }
 
 fn fixture_expect_fragment() -> RunnerSlotExpectation {
-  runner_slot_expectation(per_slot: hardware_thread_count(count: 7), fragment_delivered: true)
+  runner_slot_expectation(per_slot: hardware_thread_count(count: 7), fragment_delivered: true, residue_absent: false)
 }
 
 fn standing_wire_of(st: RunnerSlotUnitStanding) -> String {
@@ -712,6 +718,7 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
               },
               outcome: match mode { RunnerHostFilesObserveOnly => HostFileNotAppliedObserveOnly RunnerHostFilesApply => HostFileLeftInPlace },
             }],
+            withheld: [],
             residue: ResidueAlreadyAbsent,
             reload: reload,
             slots: slots,
@@ -1234,4 +1241,89 @@ test fn an_unreadable_residue_is_not_absent() -> Bool {
       ResiduePresent { unit_known: _, present: _ } => false
     })
     && !retired_residue_observed(result: ResidueNotAttempted { reason: "residue unobservable" })
+}
+
+// ── Retirement waits for its replacement (review 80136) ──────────────────────────────────────────
+
+fn fixture_withheld_fragment() -> List<RunnerHostFileWithheld> {
+  [RunnerHostFileWithheld { subject: "runner-unit-fragment" as NonEmptyStr, cause: "fixture: uid not read" as NonEmptyStr }]
+}
+
+fn result_is_withheld(r: RetiredResidueResult) -> Bool {
+  match r {
+    ResidueRetirementWithheld { reason: _ } => true
+    ResidueAlreadyAbsent => false
+    ResidueRetired => false
+    ResidueObservedPresent { observation: _ } => false
+    ResidueRetireRefused { step: _, reason: _ } => false
+    ResidueNotAttempted { reason: _ } => false
+  }
+}
+
+fn result_is_already_absent(r: RetiredResidueResult) -> Bool {
+  match r {
+    ResidueAlreadyAbsent => true
+    ResidueRetirementWithheld { reason: _ } => false
+    ResidueRetired => false
+    ResidueObservedPresent { observation: _ } => false
+    ResidueRetireRefused { step: _, reason: _ } => false
+    ResidueNotAttempted { reason: _ } => false
+  }
+}
+
+fn is_retirement_withheld(r: RetiredResidueResult?) -> Bool {
+  match r {
+    Present { value: v } => result_is_withheld(r: v)
+    Absent => false
+  }
+}
+
+// RED: the fragment is withheld and the daemon is still there -- the run must NOT retire it (the
+// precheck settles with no leg to run) and must not count it settled, so apply refuses and the
+// residue is left in place for the run that delivers the fragment.
+test fn a_withheld_fragment_with_residue_present_refuses_and_leaves_the_residue() -> Bool {
+  let gate = residue_retirement_gate(withheld: fixture_withheld_fragment(), fragment_delivered: false, slots_effective: true)
+  let present = ResiduePresent { unit_known: true, present: ["/usr/local/sbin/ctrl-jobserver"] }
+  let result = retired_residue_precheck(observed: present, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: gate)
+  is_retirement_withheld(r: result)
+    && (match result { Present { value: r } => !retired_residue_settled(result: r) Absent => false })
+}
+
+// POSITIVE CONTROL: the same residue with the fragment landed and read back is retired (no settled
+// precheck, so the legs run); already-absent residue is a Noop under any gate.
+test fn retirement_proceeds_only_once_the_fragment_holds_and_absent_is_a_noop() -> Bool {
+  let present = ResiduePresent { unit_known: true, present: [] }
+  let admitted = residue_retirement_gate(withheld: [], fragment_delivered: true, slots_effective: true)
+  (match retired_residue_precheck(observed: present, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: admitted) { Absent => true Present { value: _ } => false })
+    && is_retirement_withheld(r: retired_residue_precheck(observed: present, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: residue_retirement_gate(withheld: [], fragment_delivered: true, slots_effective: false)))
+    && (match retired_residue_precheck(observed: ResidueAbsent, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, gate: residue_retirement_gate(withheld: fixture_withheld_fragment(), fragment_delivered: false, slots_effective: false)) {
+      Present { value: v } => result_is_already_absent(r: v)
+      Absent => false
+    })
+}
+
+// RED: a withheld file makes apply refuse even when everything else settled.
+test fn a_withheld_file_makes_apply_refuse() -> Bool {
+  match witness_subject() {
+    Absent => false
+    Present { value: s } =>
+      !runner_host_file_run_succeeded(run: RunnerHostFileRun {
+        subject: s,
+        mode: RunnerHostFilesApply,
+        privilege: AdministratorPrivilegeAvailable,
+        results: [],
+        withheld: fixture_withheld_fragment(),
+        residue: ResidueAlreadyAbsent,
+        reload: ManagerReloadNotOwed,
+        slots: population_of(standings: [SlotTeardownEffective]),
+      })
+  }
+}
+
+// A HAND-CLEANED HOST STILL VERIFIES ITS ENVIRONMENT: residue absent forbids MAKEFLAGS even where
+// this run did not deliver the fragment.
+test fn absent_residue_forbids_makeflags_without_the_fragment() -> Bool {
+  let cleaned = runner_slot_expectation(per_slot: hardware_thread_count(count: 7), fragment_delivered: false, residue_absent: true)
+  starts_with(s: allocation_wire(cpu: "7s", env: "MAKEFLAGS=--jobserver-auth=fifo:/var/lib/ctrl/jobserver/host.fifo", expect: cleaned), prefix: "allocation-not-effective:")
+    && allocation_wire(cpu: "7s", env: "RUNNER_DIR=/opt/x", expect: cleaned) == "effective"
 }
