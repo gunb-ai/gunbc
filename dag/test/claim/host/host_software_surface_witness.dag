@@ -31,10 +31,25 @@ import gunbc.host.host_software_surface {
   host_coreutils_timeout_expired_exit_code,
   srv1_software_inhabitance_probe_commands,
   srv1_os_release_probe,
-  apparmor_sysctl_name_from_upstream,
+  srv1_apparmor_sysctl_probe,
 }
-import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name, apparmor_unprivileged_userns_restricted }
-import extdeps.procps.kill { procps_ng_kill_term_pgid_argv, procps_ng_kill_term_pgid_without_end_of_options_argv }
+import extdeps.linux.apparmor_userns {
+  apparmor_restrict_unprivileged_userns_sysctl_name,
+  apparmor_unprivileged_userns_restricted,
+  apparmor_userns_restriction_standing,
+}
+import extdeps.systemd.user_manager_sandbox { user_manager_sandbox_standing }
+import extdeps.procps.kill {
+  procps_ng_kill_term_pgid_argv,
+  procps_ng_kill_term_pgid_without_end_of_options_argv,
+  procps_kill_standing,
+}
+import extdeps.external_authority {
+  CitedFigureStanding,
+  CitedToAuthority,
+  TranscribedUncited,
+  ObservedByReceipt,
+}
 import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 import product.host_identity { host_identity_eq }
 
@@ -71,7 +86,7 @@ test fn srv1_user_manager_does_not_enforce_sandbox_because_of_the_sysctl() -> Bo
   match user_manager_sandbox_enforcement(surface: srv1_software_surface()) {
     UserManagerDoesNotEnforceSandbox =>
       srv1_software_surface().apparmor_userns.value.value == Present { value: apparmor_unprivileged_userns_restricted }
-        && apparmor_sysctl_name_from_upstream() == apparmor_restrict_unprivileged_userns_sysctl_name
+        && srv1_software_surface().apparmor_userns.value.name == apparmor_restrict_unprivileged_userns_sysctl_name
     UserManagerEnforcesSandbox => false
     UserManagerSandboxUnobserved { obligation: _ } => false
     UserManagerSandboxSysctlUnreadable { value: _ } => false
@@ -137,7 +152,8 @@ test fn inhabitance_recipe_names_the_probes_the_brief_named() -> Bool {
   cmds.length() == 12
     && cmds[0] == Present { value: srv1_os_release_probe }
     && any(cmds, c => (c as String) == "uname -r")
-    && any(cmds, c => (c as String) == "sysctl -n kernel.apparmor_restrict_unprivileged_userns")
+    && any(cmds, c => c == srv1_apparmor_sysctl_probe())
+    && (srv1_apparmor_sysctl_probe() as String).contains(apparmor_restrict_unprivileged_userns_sysctl_name as String)
     && any(cmds, c => (c as String) == "sudo -n -l")
     && any(cmds, c => (c as String) == "kill -V")
     && any(cmds, c => (c as String) == "timeout --version")
@@ -145,6 +161,20 @@ test fn inhabitance_recipe_names_the_probes_the_brief_named() -> Bool {
     && any(cmds, c => (c as String) == "jq --version")
     && any(cmds, c => (c as String) == "systemctl --version")
     && any(cmds, c => (c as String) == "command -v git; command -v jq; command -v timeout; command -v systemd-run")
+}
+
+fn standing_is_cited_to_authority(s: CitedFigureStanding) -> Bool {
+  match s {
+    CitedToAuthority { authority: _ } => true
+    TranscribedUncited { read_obligation: _ } => false
+    ObservedByReceipt { observed: _ } => false
+  }
+}
+
+test fn upstream_sandbox_procps_and_apparmor_figures_are_cited_to_authority() -> Bool {
+  standing_is_cited_to_authority(s: user_manager_sandbox_standing())
+    && standing_is_cited_to_authority(s: apparmor_userns_restriction_standing())
+    && standing_is_cited_to_authority(s: procps_kill_standing())
 }
 
 test fn unobserved_apparmor_is_not_a_default_enforcement() -> Bool {

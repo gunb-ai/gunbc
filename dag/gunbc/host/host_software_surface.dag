@@ -31,13 +31,11 @@ import extdeps.external_authority {
 import extdeps.linux.apparmor_userns {
   apparmor_restrict_unprivileged_userns_sysctl_name,
   apparmor_unprivileged_userns_restricted,
-  apparmor_userns_restriction_standing,
 }
 import extdeps.systemd.user_manager_sandbox {
   user_manager_enforces_protect_home_under_userns_sysctl,
-  user_manager_sandbox_standing,
 }
-import extdeps.procps.kill { procps_ng_4_0_4_label, procps_kill_standing, procps_ng_kill_term_pgid_argv }
+import extdeps.procps.kill { procps_ng_4_0_4_label, procps_ng_kill_term_pgid_argv }
 import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 import gunbc.fleet.fleet_posix_accounts {
   GroundedPosixPrincipal,
@@ -138,7 +136,10 @@ fn unobserved_standing(probe: NonEmptyStr) -> CitedFigureStanding {
 
 data srv1_os_release_probe: NonEmptyStr = "cat /etc/os-release"
 data srv1_kernel_release_probe: NonEmptyStr = "uname -r"
-data srv1_apparmor_sysctl_probe: NonEmptyStr = "sysctl -n kernel.apparmor_restrict_unprivileged_userns"
+
+fn srv1_apparmor_sysctl_probe() -> NonEmptyStr {
+  join(["sysctl -n ", apparmor_restrict_unprivileged_userns_sysctl_name as String], "") as NonEmptyStr
+}
 data srv1_sudo_list_probe: NonEmptyStr = "sudo -n -l"
 data srv1_procps_probe: NonEmptyStr = "kill -V"
 data srv1_timeout_probe: NonEmptyStr = "timeout --version"
@@ -153,7 +154,7 @@ fn srv1_software_inhabitance_probe_commands() -> List<NonEmptyStr> {
   [
     srv1_os_release_probe,
     srv1_kernel_release_probe,
-    srv1_apparmor_sysctl_probe,
+    srv1_apparmor_sysctl_probe(),
     srv1_sudo_list_probe,
     srv1_procps_probe,
     srv1_timeout_probe,
@@ -291,7 +292,7 @@ fn blank_apparmor() -> HostSysctlFact {
   HostSysctlFact {
     name: apparmor_restrict_unprivileged_userns_sysctl_name,
     value: none,
-    standing: unobserved_standing(probe: srv1_apparmor_sysctl_probe),
+    standing: unobserved_standing(probe: srv1_apparmor_sysctl_probe()),
   }
 }
 
@@ -363,7 +364,7 @@ fn srv1_software_surface() -> HostSoftwareSurface {
     apparmor: HostSysctlFact {
       name: apparmor_restrict_unprivileged_userns_sysctl_name,
       value: Present { value: apparmor_unprivileged_userns_restricted },
-      standing: unobserved_standing(probe: srv1_apparmor_sysctl_probe),
+      standing: unobserved_standing(probe: srv1_apparmor_sysctl_probe()),
     },
     procps: HostToolVersionFact {
       kind: ProcpsNgTool,
@@ -462,7 +463,7 @@ fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManager
     Absent => UserManagerSandboxUnobserved {
       obligation: match cited_figure_obligation(standing: surface.apparmor_userns.value.standing) {
         Present { value: o } => o
-        Absent => srv1_apparmor_sysctl_probe
+        Absent => srv1_apparmor_sysctl_probe()
       }
     }
     Present { value: n } =>
@@ -523,18 +524,3 @@ fn host_sudo_observed_all_is_not_the_declared_roster(surface: HostSoftwareSurfac
   }
 }
 
-fn apparmor_sysctl_name_from_upstream() -> NonEmptyStr {
-  apparmor_restrict_unprivileged_userns_sysctl_name
-}
-
-fn user_manager_sandbox_is_cited() -> CitedFigureStanding {
-  user_manager_sandbox_standing()
-}
-
-fn apparmor_restriction_is_cited() -> CitedFigureStanding {
-  apparmor_userns_restriction_standing()
-}
-
-fn procps_kill_is_cited() -> CitedFigureStanding {
-  procps_kill_standing()
-}
