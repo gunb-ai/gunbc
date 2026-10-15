@@ -118,6 +118,6 @@ data rented_serve_launch_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.rented_serve_launch", decl_name: "rented_detach_leg"),
     reason: "no modeled route sets a child's stdout to a file, so a setsid-detached engine would keep the ssh channel as stdout; the card's PID 1 is bash and its systemd manager is offline, so systemd_run is not used",
-    dissolution: unbound_dissolution(description: "feature:rented-stdout-to-file-route — a modeled route directing a child's stdout and stderr to a file exists, sufficient for the launch leg to emit the detached launch command"),
+    dissolution: unbound_dissolution(description: "a modeled route that sets a launched program's stdout and stderr to a file over the card's transport, sufficient for the launch leg to emit the detached launch command"),
   ),
 ]
