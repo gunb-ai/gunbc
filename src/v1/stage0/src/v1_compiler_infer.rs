@@ -8931,6 +8931,69 @@ pub fn type_node_is_arrow(n: Rc<Node>) -> bool {
     (n.connective.clone() == Connective::Arrow)
 }
 
+fn unify_position_is_type_variable(n: Rc<Node>) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { .. }) => true,
+        _ => false,
+    }
+}
+
+fn unify_walk_heads_agree(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    let formal_name = crate::v1_std_core::authored_name_at(source_indices.clone(), formal.clone());
+    let actual_name = crate::v1_std_core::authored_name_at(source_indices.clone(), actual.clone());
+    formal_name != "".to_string()
+        && crate::v1_std_core::qualified_last_segment(formal_name.clone())
+            == crate::v1_std_core::qualified_last_segment(actual_name)
+}
+
+fn unify_concrete_heads_or_arity_disagree(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<crate::v1_compiler_infer_types::TextJudgment>,
+) -> bool {
+    if unify_position_is_type_variable(formal.clone())
+        || unify_position_is_type_variable(actual.clone())
+    {
+        false
+    } else if type_node_is_arrow(formal.clone()) && type_node_is_arrow(actual.clone()) {
+        callable_signature_mismatch(formal.clone(), actual.clone(), source_indices.clone())
+    } else if ((formal.children.clone().len() as i64) == 1)
+        && ((actual.children.clone().len() as i64) == 1)
+    {
+        match (
+            formal.children.clone().first().cloned(),
+            actual.children.clone().first().cloned(),
+        ) {
+            (Some(fc), Some(ac)) => {
+                unify_concrete_heads_or_arity_disagree(fc, ac, source_indices, text)
+            }
+            _ => false,
+        }
+    } else {
+        let f_n = formal.children.clone().len() as i64;
+        let a_n = actual.children.clone().len() as i64;
+        if (f_n == a_n)
+            && unify_walk_heads_agree(formal.clone(), actual.clone(), source_indices.clone())
+        {
+            false
+        } else if (f_n == 0) && (a_n == 0) {
+            !crate::v1_compiler_infer_types::node_type_equals(
+                formal.clone(),
+                actual.clone(),
+                source_indices.clone(),
+                text.clone(),
+            )
+        } else {
+            true
+        }
+    }
+}
+
 pub fn direct_call_arg_type_mismatch(
     formal: Rc<Node>,
     substitution_basis: Rc<Node>,
@@ -8964,16 +9027,16 @@ pub fn direct_call_arg_type_mismatch(
                         type_env.clone(),
                     ))
                 } else {
-                    if (direct_call_formal_has_unbound_type_variable(substitution_basis.clone())
-                        || direct_call_formal_has_unbound_type_variable(actual.clone()))
-                    {
-                        false
+                    if unify_concrete_heads_or_arity_disagree(
+                        substitution_basis.clone(),
+                        actual.clone(),
+                        source_indices.clone(),
+                        Rc::new(crate::v1_compiler_infer_types::TextJudgment::TextJudgedIn {
+                            env: type_env.clone(),
+                        }),
+                    ) {
+                        true
                     } else {
-                        if (type_node_is_callable(formal.clone())
-                            || type_node_is_callable(actual.clone()))
-                        {
-                            false
-                        } else {
                             if produced_is_kernel_grounded_carrier_or_its_alias(
                                 crate::v1_std_core::authored_name_at(
                                     source_indices.clone(),
@@ -9715,10 +9778,7 @@ match app.matched_argument_index.clone() {
     Some(arg_index) => match typed_args.clone().get((arg_index.clone()) as usize).cloned() {
     Some(ta) => {
                 let actual_expr = crate::v1_std_core::arg_value(ta.clone());
-if match (*actual_expr.expr_data.clone()).clone() {
-    ExprData::ExprRecordLit { parent_enum: _, .. } => true,
-    _ => false,
-} {
+if false {
                     Rc::new(vec![])
                 } else {
                     {

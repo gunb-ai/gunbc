@@ -108,6 +108,7 @@ import v1.compiler.infer_types {
   callable_inferred,
   normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
+  type_heads_agree,
   is_declared_container_alias_spelling, structural_carrier_template_name,
   is_product_type,
   node_type_deps,
@@ -6417,8 +6418,10 @@ fn direct_call_arg_type_mismatch(
       formal: formal, formal_basis: substitution_basis, actual: actual)
       && one_sided_callable_mismatch(formal: formal, actual: actual, type_env: type_env)
   }
-  else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
-  else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
+  else if unify_concrete_heads_or_arity_disagree(
+      formal: substitution_basis, actual: actual, source_indices: source_indices, text: TextJudgedIn { env: type_env }) {
+    true
+  }
   else if produced_is_kernel_grounded_carrier_or_its_alias(
       declared_name: authored_name_at(source_indices: source_indices, node: formal),
       produced_name: authored_name_at(source_indices: source_indices, node: actual),
@@ -6775,12 +6778,6 @@ fn direct_call_arg_mismatch_diags(
         Present { value: arg_index } => match typed_args |> skip(arg_index) |> first {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if match actual_expr.expr_data {
-            ExprRecordLit { parent_enum: _ } => true
-            _ => false
-          } {
-            []
-          } else {
           let actual_raw = expression_value_type(e: actual_expr)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
           let formal_text = if formal_code_point_view(formal: app.formal, env: type_env) != none { CodePointSequence } else { text_representation_by_identity(n: formal, env: type_env) }
@@ -6801,7 +6798,6 @@ fn direct_call_arg_mismatch_diags(
           } else {
             []
           })
-          }
         Absent => []
         }
         Absent => []
@@ -14129,6 +14125,47 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
     && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
+fn unify_position_is_type_variable(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+}
+
+fn unify_walk_heads_agree(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let formal_name = authored_name_at(source_indices: source_indices, node: formal)
+  let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+  type_heads_agree(left: formal, right: actual, left_name: formal_name, right_name: actual_name)
+    || (formal_name != "" && qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name))
+}
+
+fn unify_concrete_heads_or_arity_disagree(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  if unify_position_is_type_variable(n: formal) || unify_position_is_type_variable(n: actual) {
+    false
+  } else if formal.connective == Arrow && actual.connective == Arrow {
+    callable_signature_mismatch(formal: formal, actual: actual, source_indices: source_indices)
+  } else if formal.children |> count == 1 && actual.children |> count == 1 {
+    match formal.children |> first {
+      Present { value: fc } =>
+        match actual.children |> first {
+          Present { value: ac } => unify_concrete_heads_or_arity_disagree(formal: fc, actual: ac, source_indices: source_indices, text: text)
+          Absent => false
+        }
+      Absent => false
+    }
+  } else {
+    let f_n = formal.children |> count
+    let a_n = actual.children |> count
+    if f_n == a_n && unify_walk_heads_agree(formal: formal, actual: actual, source_indices: source_indices) {
+      false
+    } else if f_n == 0 && a_n == 0 {
+      !node_type_equals(left: formal, right: actual, source_indices: source_indices, text: text)
+    } else {
+      true
+    }
+  }
+}
+
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>, text: TextJudgment, module_name: String) -> UnifyGenericsAcc {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
@@ -14174,6 +14211,16 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
           Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
         }
       Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
+    }
+  } else if unify_concrete_heads_or_arity_disagree(formal: formal, actual: actual, source_indices: source_indices, text: text) {
+    UnifyGenericsAcc {
+      subst: acc,
+      diagnostics: [type_mismatch_error(
+        expected: concat("concrete position ", node_type_shape(n: formal, source_indices: source_indices)),
+        got: node_type_shape(n: actual, source_indices: source_indices),
+        span: actual.span,
+        module_name: module_name
+      )]
     }
   } else { UnifyGenericsAcc { subst: acc, diagnostics: [] } }
 }
