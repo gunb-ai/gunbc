@@ -475,7 +475,7 @@ fn census_member_readback(medium: BootMedium, image_stem: NonEmptyStr, volume_id
 // CONSUMPTION (DESIGN §3c): invoked by the fleet-converge mode mtcollins1_census_member_readback,
 // which consumes the fleet SSH key; the receipt is uploaded as that run's artifact whatever the
 // verdict. The run exits nonzero unless the chain is identical AND the workspace was removed.
-fn census_member_readback_wet() -> ProcessExit {
+fn mtcollins1_census_member_readback_wet() -> ProcessExit {
   let attempt = census_member_readback(medium: mtcollins1_boot_medium, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id)
   let attributes = census_member_mapped_attributes(medium: mtcollins1_boot_medium, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id)
   let rendered = concat(render_census_member_attempt(attempt: attempt), "census_mapped_attributes=\n", attributes, "\n")

@@ -1093,7 +1093,7 @@ data gunbc_ci_mtcollins1_census_image_publish_target: GunbcRunStepTarget = Gunbc
 
 data gunbc_ci_mtcollins1_census_member_readback_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_census_member_readback.dag",
-  function: "census_member_readback_wet",
+  function: "mtcollins1_census_member_readback_wet",
 }
 
 data gunbc_ci_mtcollins1_census_qemu_host_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
