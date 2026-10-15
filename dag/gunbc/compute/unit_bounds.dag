@@ -342,6 +342,7 @@ fn user_work_scope_standing_with_root_memory(
   user_manager_reachable: Bool,
   xdg_runtime_dir: Bool,
   root_memory: RootCgroupMemoryRead,
+  slice_memory: RootCgroupMemoryRead,
   buildbuddy_run_id: BuildBuddyRunIdRead,
 ) -> UserWorkScopeStanding {
   if unit_test {
@@ -355,7 +356,7 @@ fn user_work_scope_standing_with_root_memory(
       cgroup: cgroup,
       user_manager_reachable: user_manager_reachable,
       xdg_runtime_dir: xdg_runtime_dir,
-      slice_memory: RootMemoryUnreadable,
+      slice_memory: slice_memory,
     )
   }
 }

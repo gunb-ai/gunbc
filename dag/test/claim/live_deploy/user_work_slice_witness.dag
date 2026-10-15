@@ -49,7 +49,8 @@ import gunbc.compute.unit_bounds {
   AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, ExemptSystemUnit, UncappedSystemSlice,
   ExemptBoundedContainer, BoundedContainerUncapped, BoundedContainerUnreadable,
   ExternallyBoundedExecutor,
-  RootMemoryCapped, RootMemoryUnbounded, RootMemoryUnreadable,
+  RootCgroupMemoryRead, RootMemoryCapped, RootMemoryUnbounded, RootMemoryUnreadable,
+  UserWorkScopeStanding,
   BuildBuddyRunIdPresent, BuildBuddyRunIdAbsent,
   UserSessionAbsent,
   UserManagerOwed, CgroupUnreadable, UserManagerProbeFailed,
@@ -363,6 +364,7 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
       user_manager_reachable: false,
       xdg_runtime_dir: false,
       root_memory: RootMemoryCapped { bytes: byte_size(25769803776) },
+      slice_memory: RootMemoryUnreadable,
       buildbuddy_run_id: BuildBuddyRunIdAbsent,
     ),
   )
@@ -375,6 +377,7 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
       user_manager_reachable: false,
       xdg_runtime_dir: false,
       root_memory: RootMemoryUnbounded,
+      slice_memory: RootMemoryUnreadable,
       buildbuddy_run_id: BuildBuddyRunIdAbsent,
     ),
   )
@@ -575,6 +578,7 @@ test fn a_root_cgroup_with_finite_memory_max_skips_wrap() -> Bool {
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryCapped { bytes: bytes },
+    slice_memory: RootMemoryUnreadable,
     buildbuddy_run_id: BuildBuddyRunIdAbsent,
   ) {
     ExemptBoundedContainer { bytes: b } =>
@@ -597,6 +601,7 @@ test fn a_root_cgroup_with_unbounded_memory_max_refuses() -> Bool {
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryUnbounded,
+    slice_memory: RootMemoryUnreadable,
     buildbuddy_run_id: BuildBuddyRunIdAbsent,
   ) {
     BoundedContainerUncapped =>
@@ -617,6 +622,7 @@ test fn a_root_cgroup_with_unreadable_memory_max_refuses() -> Bool {
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryUnreadable,
+    slice_memory: RootMemoryUnreadable,
     buildbuddy_run_id: BuildBuddyRunIdAbsent,
   ) {
     BoundedContainerUnreadable =>
@@ -643,6 +649,7 @@ test fn an_unidentified_namespaced_root_without_memory_max_refuses_despite_githu
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryUnreadable,
+    slice_memory: RootMemoryUnreadable,
     buildbuddy_run_id: BuildBuddyRunIdAbsent,
   ) {
     BoundedContainerUnreadable =>
@@ -663,6 +670,7 @@ test fn a_buildbuddy_namespaced_root_without_memory_max_is_externally_bounded() 
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryUnreadable,
+    slice_memory: RootMemoryUnreadable,
     buildbuddy_run_id: BuildBuddyRunIdPresent { id: "measured-rbe-run" },
   ) {
     ExternallyBoundedExecutor { run_id } =>
@@ -685,6 +693,7 @@ test fn an_unbounded_root_memory_max_refuses_even_with_a_buildbuddy_run_id() -> 
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryUnbounded,
+    slice_memory: RootMemoryUnreadable,
     buildbuddy_run_id: BuildBuddyRunIdPresent { id: "measured-rbe-run" },
   ) {
     BoundedContainerUncapped =>
@@ -705,6 +714,7 @@ test fn a_namespaced_root_with_a_systemd_manager_still_wraps() -> Bool {
     user_manager_reachable: true,
     xdg_runtime_dir: true,
     root_memory: RootMemoryCapped { bytes: byte_size(25769803776) },
+    slice_memory: RootMemoryUnreadable,
     buildbuddy_run_id: BuildBuddyRunIdAbsent,
   ) {
     UserManagerOwed =>
@@ -908,4 +918,39 @@ test fn skip_standings_ignore_a_missing_user_work_slice() -> Bool {
       }
     _ => false
   }
+}
+
+// THE COMPOSED ENTRY DECIDES A MODELED SYSTEM SLICE FROM ITS LIVE READING. Under a systemd manager the
+// composed entry reaches the modeled-slice arm; a finite slice memory.max exempts and an unbounded one
+// refuses. Before slice_memory was a parameter this entry always supplied an unreadable reading, so the
+// finite case could not yield ExemptSystemUnit (review 80620).
+fn composed_modeled_slice_standing(slice_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding {
+  user_work_scope_standing_with_root_memory(
+    unit_test: false,
+    github_actions: false,
+    cgroup: CgroupText {
+      text: join([
+        "0::/",
+        gunbc_repository_convergence_slice_unit_name as String,
+        "/",
+        gunbc_tree_sync_unit_name as String,
+      ], ""),
+    },
+    systemd_manager_present: true,
+    user_manager_reachable: false,
+    xdg_runtime_dir: false,
+    root_memory: RootMemoryUnreadable,
+    slice_memory: slice_memory,
+    buildbuddy_run_id: BuildBuddyRunIdAbsent,
+  )
+}
+
+test fn the_composed_entry_exempts_a_modeled_slice_with_a_finite_live_cap() -> Bool {
+  user_work_scope_standing_wire(s: composed_modeled_slice_standing(slice_memory: RootMemoryCapped { bytes: byte_size(25769803776) }))
+    == "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
+}
+
+test fn the_composed_entry_refuses_a_modeled_slice_with_an_unbounded_live_cap() -> Bool {
+  user_work_scope_standing_wire(s: composed_modeled_slice_standing(slice_memory: RootMemoryUnbounded))
+    == "UncappedSystemSlice:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
 }
