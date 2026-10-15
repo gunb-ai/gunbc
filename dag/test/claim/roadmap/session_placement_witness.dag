@@ -21,7 +21,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   AttemptUnitUnreadable, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished,
 }
 import extdeps.systemd { systemd_unit_property_wire }
-import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused }
 
 import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementGrant, SessionPlacementStores, session_process_bounds, session_unit_wire, session_attempt_record,
@@ -53,7 +53,10 @@ import extdeps.languages.json.emit { serialize_json }
 // The claims are about WHICH SETTINGS the unit binds; rendering the typed properties back to their
 // wire words here is a test observation, not a builder -- nothing hands these words to systemd-run.
 fn property_words(props: List<SystemdRunProperty>) -> List<String> {
-  props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
+  props |> map(p => match systemd_run_property_assignment(property: p) {
+    SystemdRunPropertyAssignmentReady { assignment: a } => a
+    SystemdRunPropertyAssignmentRefused { cause: _ } => ""
+  })
 }
 data node_a: String = "g5-node-a"
 data key_a: String = "feedfacefeedface"

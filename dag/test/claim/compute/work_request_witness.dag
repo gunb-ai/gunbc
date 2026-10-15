@@ -25,7 +25,7 @@ import gunbc.compute.attempt_lifecycle {
 }
 import std.measure { kibibyte }
 import extdeps.systemd { systemd_unit_property_wire }
-import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import std.content_hash { serialize_content_hash, content_hash_atom, content_hash_equal, sha256_hex_digest, as_content_hash_cryptographic }
 import std.cache_identity { compute_work_artifact_kind }
@@ -407,7 +407,10 @@ test fn a_lost_host_record_changes_no_contract_the_next_caller_reads() -> Bool {
 // SETTINGS the unit binds; rendering the typed properties back to their wire words here is a test
 // observation, not a builder -- nothing hands these words to systemd-run.
 fn property_words(props: List<SystemdRunProperty>) -> List<String> {
-  props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
+  props |> map(p => match systemd_run_property_assignment(property: p) {
+    SystemdRunPropertyAssignmentReady { assignment: a } => a
+    SystemdRunPropertyAssignmentRefused { cause: _ } => ""
+  })
 }
 
 test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -> Bool {

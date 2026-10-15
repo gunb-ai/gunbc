@@ -9,6 +9,7 @@ import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_user_scope_command,
   SystemdSummaryPrintingWaitReady, SystemdSummaryPrintingWaitRefused, systemd_summary_printing_wait_argv,
+  systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused,
 }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
@@ -51,7 +52,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data seed_user_work_scope_path: String = "src/v1/stage0/src/cli_run/user_work_scope.rs"
 
 fn property_words(props: List<SystemdRunProperty>) -> List<String> {
-  props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
+  props |> map(p => match systemd_run_property_assignment(property: p) {
+    SystemdRunPropertyAssignmentReady { assignment: a } => a
+    SystemdRunPropertyAssignmentRefused { cause: _ } => ""
+  })
 }
 
 fn has_property(props: List<SystemdRunProperty>, needle: String) -> Bool {
