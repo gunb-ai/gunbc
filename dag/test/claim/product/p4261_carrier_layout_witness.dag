@@ -16,6 +16,13 @@ import product.p4261_carrier_layout {
   OnPathByAdjacency,
   RatingAcrossInputRail,
   IdentifiedByDatasheetMarking,
+  MeasuredCircuit,
+  CircuitNode,
+  e1_j20_input_circuit,
+  membership_by_circuit,
+  j20_supply_node,
+  board_ground_node,
+  k1_adjacency_aux,
   PinRowContinuity,
   ToGround,
   ToFuse,
@@ -49,13 +56,44 @@ test fn d2_bounds_j20_and_the_capacitors_do_not() -> Bool {
     BoundByRatedParts { maximum: m, limiting: l, relation: r } =>
       volt_count(v: m) == 60
         && (l as String).contains("TVS")
-        && (r as String).contains("tied to J20's supply pins")
+        && (r as String).contains("'D2 tab nearer J20' is on node 'J20 supply'")
         && all(filter(p4261_k1_layout.power_components, c => is_capacitor_row(c: c)), c => match c.membership {
           OnPathByAdjacency { basis: _ } => true
           RatingAcrossInputRail { evidence: _ } => false
         })
     NoEstablishedBound { observed_ratings: _ } => false
   }
+}
+
+fn moved_d2_circuit() -> MeasuredCircuit {
+  MeasuredCircuit {
+    unit: e1_j20_input_circuit.unit,
+    read_on: e1_j20_input_circuit.read_on,
+    conditions: "supplied: D2's near tab read on the capacitor rail instead",
+    nodes: [
+      CircuitNode { name: j20_supply_node, terminals: ["J20 supply row (9 pins)"] },
+      CircuitNode { name: board_ground_node, terminals: ["J20 ground row (9 pins)", "D2 tab farther from J20"] },
+      CircuitNode { name: "capacitor rail", terminals: ["C10_P5 positive", "D2 tab nearer J20"] },
+    ],
+    junctions: [],
+  }
+}
+
+// THE DEDUCTION DISCRIMINATES. The same D2 with its near tab on the capacitor rail instead of J20's
+// supply is not across J20, so it falls back to adjacency and bounds nothing.
+test fn d2_off_the_supply_node_is_not_across_j20() -> Bool {
+  match membership_by_circuit(c: moved_d2_circuit(), positive: "D2 tab nearer J20", negative: "D2 tab farther from J20", supply: j20_supply_node, otherwise: k1_adjacency_aux) {
+    OnPathByAdjacency { basis: _ } => true
+    RatingAcrossInputRail { evidence: _ } => false
+  }
+}
+
+// A terminal belongs to at most one node: two nodes claiming one terminal would be joined, and the
+// circuit would be stating two nets where continuity found one.
+test fn measured_nodes_share_no_terminal() -> Bool {
+  let all_terminals = flat_map(e1_j20_input_circuit.nodes, n => n.terminals)
+  all(all_terminals, t => count(filter(all_terminals, u => u == t)) == 1)
+    && count(e1_j20_input_circuit.junctions) == 2
 }
 
 fn is_capacitor_row(c: ObservedComponent) -> Bool {

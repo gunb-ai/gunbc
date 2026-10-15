@@ -83,6 +83,35 @@ type PinRowContinuity {
   tied_together: Bool
 }
 
+// THE MEASURED CIRCUIT: the part of the board's netlist a multimeter has established, unpowered. A
+// node is a set of terminals continuity found joined to each other; a junction is a diode-mode reading
+// between two nodes. This is the single authority for whether a rated part sits ACROSS an input: its
+// two terminals on the input's supply node and on ground. A terminal no reading reached is absent,
+// never assumed. The circuit is an observation of one unit, so it carries the unit and conditions.
+type CircuitNode {
+  name: NonEmptyStr
+  terminals: List<NonEmptyStr>
+}
+
+type JunctionDirection
+  = ForwardFrom { anode_node: NonEmptyStr, cathode_node: NonEmptyStr }
+  | DirectionUnrecorded
+
+type JunctionReading {
+  between: List<NonEmptyStr>
+  forward_millivolts: Nat
+  direction: JunctionDirection
+  reverse_open: Bool
+}
+
+type MeasuredCircuit {
+  unit: NonEmptyStr
+  read_on: NonEmptyStr
+  conditions: NonEmptyStr
+  nodes: List<CircuitNode>
+  junctions: List<JunctionReading>
+}
+
 type ConnectorCensus
   = CensusComplete { count: Nat, family: NonEmptyStr }
   | CensusPartial { counted_at_least: Nat, obligation: NonEmptyStr }
@@ -108,6 +137,56 @@ data k1_adjacency_main: PathMembership = OnPathByAdjacency {
 
 data k1_adjacency_aux: PathMembership = OnPathByAdjacency {
   basis: "left-edge close-up: fuse F1, the R010 shunt, the R150 resistors and the polymer capacitors cluster beside connector J20; adjacency, not a traced net",
+}
+
+// J20'S INPUT CIRCUIT AS MEASURED on the E1 carrier, 2026-10-15. The nine J20 supply pins, both ends
+// of F1 (it tests intact, so its ends read joined) and D2's tab nearer J20 form one node; the nine
+// J20 ground pins, D2's farther tab and the cans' negative terminals form ground. The cans' positive
+// terminals are NOT joined to J20's supply: a one-way junction separates them (0.523 V one way, open
+// the other; which way was not recorded). D2 itself reads 0.6 V forward from ground to J20's supply,
+// so its cathode is on the supply. R010, the switch candidate and the third can were not probed.
+data j20_supply_node: NonEmptyStr = "J20 supply"
+data board_ground_node: NonEmptyStr = "ground"
+
+data e1_j20_input_circuit: MeasuredCircuit = MeasuredCircuit {
+  unit: "the E1-revision P4261 the operator believes was bought from Central Valley",
+  read_on: "2026-10-15",
+  conditions: "unpowered, module removed, handheld multimeter in continuity and diode modes",
+  nodes: [
+    CircuitNode { name: j20_supply_node, terminals: ["J20 supply row (9 pins)", "F1 end nearer J20", "F1 end farther from J20", "D2 tab nearer J20"] },
+    CircuitNode { name: board_ground_node, terminals: ["J20 ground row (9 pins)", "mounting-hole copper ring", "D2 tab farther from J20", "C10_P5 negative", "C12_P5 negative"] },
+    CircuitNode { name: "capacitor rail", terminals: ["C10_P5 positive", "C12_P5 positive"] },
+  ],
+  junctions: [
+    JunctionReading { between: [board_ground_node, j20_supply_node], forward_millivolts: 600, direction: ForwardFrom { anode_node: board_ground_node, cathode_node: j20_supply_node }, reverse_open: false },
+    JunctionReading { between: ["capacitor rail", j20_supply_node], forward_millivolts: 523, direction: DirectionUnrecorded, reverse_open: true },
+  ],
+}
+
+fn node_of(c: MeasuredCircuit, terminal: NonEmptyStr) -> NonEmptyStr? {
+  match filter(c.nodes, n => any(n.terminals, t => t == terminal)).first() {
+    Absent => Absent
+    Present { value: n } => Present { value: n.name }
+  }
+}
+
+fn on_node(c: MeasuredCircuit, terminal: NonEmptyStr, node: NonEmptyStr) -> Bool {
+  match node_of(c: c, terminal: terminal) {
+    Absent => false
+    Present { value: n } => n == node
+  }
+}
+
+// THE DEDUCTION. A part whose positive terminal is on the input's supply node and whose return
+// terminal is on ground is across that input, and the evidence says so from the circuit itself; any
+// other part keeps the membership it would have without the circuit.
+fn membership_by_circuit(c: MeasuredCircuit, positive: NonEmptyStr, negative: NonEmptyStr, supply: NonEmptyStr, otherwise: PathMembership) -> PathMembership {
+  if on_node(c: c, terminal: positive, node: supply) && on_node(c: c, terminal: negative, node: board_ground_node) {
+    RatingAcrossInputRail { evidence: join([
+      "measured circuit (", c.unit as String, ", ", c.read_on as String, ", ", c.conditions as String, "): '", positive as String,
+      "' is on node '", supply as String, "' and '", negative as String, "' is on node '", board_ground_node as String, "'",
+    ], "") as NonEmptyStr }
+  } else { otherwise }
 }
 
 // THE CAPACITORS' RAIL IS NOT SHOWN TO BE J20'S. Their rating is now a cited fact (63 V); what is not
@@ -174,7 +253,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       role: "unidirectional TVS diode beside J20, in an SMC-class package",
       identification: IdentifiedByDatasheetMarking { row: tvs_5_0smdj60a, marking_read: "5PGK / ZCN5U under a boxed maker logo (read 2026-10-15 from an in-focus close-up; the earlier reading '5P0X / ZCNSU' was a misread). 5PGK is 5.0SMDJ60A in Bourns's marking table; the logo is not Bourns-identified, so the match is by code" },
       path: AuxiliaryInputPath,
-      membership: RatingAcrossInputRail { evidence: "operator continuity readings on the E1 carrier, unpowered, 2026-10-15: D2's tab nearer J20 is tied to J20's supply pins, its farther tab to ground (beside the capacitors' grounded terminals); diode mode reads 0.6 V with the red probe on the ground tab and the black on the supply tab, so the cathode is on J20's supply -- the orientation of a TVS guarding that rail. A unidirectional TVS across a rail holds off its standoff voltage in normal operation, so J20's working voltage is at most 60 V; its lower limit is not established" },
+      membership: membership_by_circuit(c: e1_j20_input_circuit, positive: "D2 tab nearer J20", negative: "D2 tab farther from J20", supply: j20_supply_node, otherwise: k1_adjacency_aux),
     },
     ObservedComponent {
       designators: [],
@@ -214,7 +293,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       role: "SMD hybrid polymer capacitors, 150 uF 63 V; the third sits below J20 by U522",
       identification: IdentifiedByDatasheetMarking { row: eeh_zu1j151, marking_read: "150 / J ZU / 26AL on the two cans beside J20 (operator close-ups, 2026-10-15; an earlier transcription from listing photographs gave the lot line as 29AH)" },
       path: AuxiliaryInputPath,
-      membership: k1_aux_caps_membership,
+      membership: membership_by_circuit(c: e1_j20_input_circuit, positive: "C10_P5 positive", negative: "C10_P5 negative", supply: j20_supply_node, otherwise: k1_aux_caps_membership),
     },
     ObservedComponent {
       designators: [],
