@@ -4448,7 +4448,8 @@ fn resolve_type_param_frame(n: Node, outer: Scope, declaring: DeclaringPosition)
 fn type_param_value_binders(n: Node, declaring: DeclaringPosition) -> Map<Symbol, QualifiedName> {
   match declaring {
     DeclaringAt { path: path } =>
-      fold(kinded_type_param_names(n: n), init: empty_map(), f: fn(acc, name) {
+      let seed: Map<Symbol, QualifiedName> = empty_map()
+      fold(kinded_type_param_names(n: n), init: seed, f: fn(acc, name) {
         map_insert(acc, name, qualified_name_snoc(qn: path, segment: name))
       })
     DeclaringInSpine { path: _, body: _ } => empty_map()
