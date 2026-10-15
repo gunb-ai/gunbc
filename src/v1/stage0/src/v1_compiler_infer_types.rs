@@ -2824,66 +2824,74 @@ pub fn node_type_equals(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     text: Rc<TextJudgment>,
 ) -> bool {
-    {
-        let left_err = if (left.inferred.clone() != std::option::Option::None) {
-            crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
-        } else {
-            false
-        };
-        let right_err = if (right.inferred.clone() != std::option::Option::None) {
-            crate::v1_std_core::is_compiler_error(right.inferred.clone().clone().unwrap())
-        } else {
-            false
-        };
-        let left_tv = if (left.inferred.clone() != std::option::Option::None) {
-            is_type_variable(left.inferred.clone().clone().unwrap())
-        } else {
-            false
-        };
-        let right_tv = if (right.inferred.clone() != std::option::Option::None) {
-            is_type_variable(right.inferred.clone().clone().unwrap())
-        } else {
-            false
-        };
-        let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
-        let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
-        let right_is_unit_eq = is_unit_like(right.clone());
-        let left_is_unit_eq = is_unit_like(left.clone());
-        if (left_err.clone() || right_err.clone()) {
-            true
-        } else {
-            if (left_tv.clone() && right_tv.clone()) {
-                true
+    let left_err = if (left.inferred.clone() != std::option::Option::None) {
+        crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
+    } else {
+        false
+    };
+    let right_err = if (right.inferred.clone() != std::option::Option::None) {
+        crate::v1_std_core::is_compiler_error(right.inferred.clone().clone().unwrap())
+    } else {
+        false
+    };
+    let left_tv = if (left.inferred.clone() != std::option::Option::None) {
+        is_type_variable(left.inferred.clone().clone().unwrap())
+    } else {
+        false
+    };
+    let right_tv = if (right.inferred.clone() != std::option::Option::None) {
+        is_type_variable(right.inferred.clone().clone().unwrap())
+    } else {
+        false
+    };
+    let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
+    let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
+    let right_is_unit_eq = is_unit_like(right.clone());
+    let left_is_unit_eq = is_unit_like(left.clone());
+    if left_err || right_err {
+        return true;
+    }
+    let left_binder = type_parameter_binder(left.clone());
+    let right_binder = type_parameter_binder(right.clone());
+    if left_binder.is_some() && right_binder.is_some() {
+        return crate::std_decl_ref::declaration_ref_eq(
+            left_binder.unwrap(),
+            right_binder.unwrap(),
+        );
+    }
+    if left_tv && right_tv {
+        return false;
+    }
+    if left_tv || right_tv {
+        return false;
+    }
+    if left_opt && right_is_unit_eq {
+        return true;
+    }
+    if left_is_unit_eq && right_opt {
+        return true;
+    }
+    if left_opt && right_opt {
+        return node_type_equals_core(
+            crate::v1_std_core::with_required_cardinality(left.clone()),
+            crate::v1_std_core::with_required_cardinality(right.clone()),
+            source_indices.clone(),
+            text.clone(),
+        );
+    }
+    node_type_equals_core(left, right, source_indices, text)
+}
+
+pub fn type_parameter_binder(n: Rc<Node>) -> Option<Rc<crate::std_decl_ref::DeclarationRef>> {
+    match n.declaration.clone() {
+        Some(r) => {
+            if crate::std_decl_ref::declaration_ref_is_type_parameter(r.clone()) {
+                Some(r)
             } else {
-                if (left_tv.clone() || right_tv.clone()) {
-                    false
-                } else {
-                    if (left_opt.clone() && right_is_unit_eq.clone()) {
-                        true
-                    } else {
-                        if (left_is_unit_eq.clone() && right_opt.clone()) {
-                            true
-                        } else {
-                            if (left_opt.clone() && right_opt.clone()) {
-                                node_type_equals_core(
-                                    crate::v1_std_core::with_required_cardinality(left.clone()),
-                                    crate::v1_std_core::with_required_cardinality(right.clone()),
-                                    source_indices.clone(),
-                                    text.clone(),
-                                )
-                            } else {
-                                node_type_equals_core(
-                                    left.clone(),
-                                    right.clone(),
-                                    source_indices.clone(),
-                                    text.clone(),
-                                )
-                            }
-                        }
-                    }
-                }
+                None
             }
         }
+        None => None,
     }
 }
 
