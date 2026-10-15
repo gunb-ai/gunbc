@@ -16,7 +16,7 @@ import extdeps.linux.proc_pid_stat {
   StartTimeUnparseable,
 }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.gnu_coreutils { cat_command, readlink_command, ls_one_per_line_command, ls_long_directory_command }
+import extdeps.tools.gnu_coreutils { cat_command, readlink_command, ls_almost_all_one_per_line_command, ls_long_directory_command }
 import extdeps.tools.findutils { find_path_is_socket_command }
 import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
 import extdeps.linux.proc_self_cgroup {
@@ -428,8 +428,13 @@ type EndpointParentListing
   | ParentOmitsEntry
   | ParentListingUnread { detail: NonEmptyStr }
 
+// An empty name (a path ending in `/`) names no entry, so the parent cannot say it is absent: it refuses
+// as unread (review 80635), and the listing includes dot-prefixed entries (ls -A) so a hidden socket
+// whose find failed is never read as absent.
 fn endpoint_parent_listing_of(exit_success: Bool, stdout: String, stderr: String, name: String) -> EndpointParentListing {
-  if !exit_success {
+  if trim(name) == "" {
+    ParentListingUnread { detail: "the endpoint path ends in `/`, so it names no entry its parent could list" as NonEmptyStr }
+  } else if !exit_success {
     ParentListingUnread { detail: concat("the endpoint path's parent could not be listed: ", trim(stderr)) as NonEmptyStr }
   } else if any(split(s: stdout, delimiter: "\n"), e => trim(e) == name) {
     ParentListsEntry
@@ -469,7 +474,7 @@ fn endpoint_path_name(path: String) -> String {
 }
 
 fn endpoint_parent_listing_command(path: NonEmptyStr) -> ArgvCommand {
-  ls_one_per_line_command(path: endpoint_path_parent(path: path as String))
+  ls_almost_all_one_per_line_command(path: endpoint_path_parent(path: path as String))
 }
 
 fn currency_of_boot_id_read(read: HostRead) -> ObservationCurrency {

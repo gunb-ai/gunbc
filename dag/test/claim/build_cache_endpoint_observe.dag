@@ -1047,3 +1047,19 @@ test fn witness_the_owner_principal_is_read_from_ls_and_crosses_the_edge() -> Bo
       Present { value: _ } => true
     })
 }
+
+// Review 80635: a dot-prefixed socket name is listed (ls -A) and found, and a path ending in `/` names
+// no entry and refuses as unread rather than reading absent.
+test fn witness_a_hidden_socket_name_is_listed_and_a_trailing_slash_refuses() -> Bool {
+  (match gunbc.build_cache.build_cache_endpoint_observe.endpoint_parent_listing_of(exit_success: true, stdout: "other\n.sccache.sock\n", stderr: "", name: gunbc.build_cache.build_cache_endpoint_observe.endpoint_path_name(path: "/run/x/.sccache.sock")) {
+    gunbc.build_cache.build_cache_endpoint_observe.ParentListsEntry => true
+    gunbc.build_cache.build_cache_endpoint_observe.ParentOmitsEntry => false
+    gunbc.build_cache.build_cache_endpoint_observe.ParentListingUnread { detail: _ } => false
+  })
+    && (match gunbc.build_cache.build_cache_endpoint_observe.endpoint_parent_listing_of(exit_success: true, stdout: "other\n", stderr: "", name: gunbc.build_cache.build_cache_endpoint_observe.endpoint_path_name(path: "/run/x/")) {
+      gunbc.build_cache.build_cache_endpoint_observe.ParentListingUnread { detail: _ } => true
+      gunbc.build_cache.build_cache_endpoint_observe.ParentListsEntry => false
+      gunbc.build_cache.build_cache_endpoint_observe.ParentOmitsEntry => false
+    })
+    && argv_words(command: gunbc.build_cache.build_cache_endpoint_observe.endpoint_parent_listing_command(path: "/run/x/.sccache.sock" as NonEmptyStr)) == ["ls", "-1", "-A", "--", "/run/x"]
+}
