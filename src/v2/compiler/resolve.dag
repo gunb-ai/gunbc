@@ -165,6 +165,9 @@ import v2.std.symbol_index {
   symbol_index_declared_payload_at,
   symbol_index_declares_resource_at,
   symbol_index_global_unique_lookup,
+  MentionDeclaringContested,
+  MentionDeclaringUnavailable,
+  MentionDeclaringUnique,
   symbol_index_declaring_path_of,
   symbol_index_lexical_eligible,
   symbol_index_lexical_eligible_declared_payload,
@@ -2254,11 +2257,14 @@ fn resolve_kernel_candidates_all_denote(ctx: ResolveContext, class: AmbiguousLoo
 
 fn resolve_kernel_candidate_list_denotes(ctx: ResolveContext, cs: FreeMonoid<LexicalBindingCandidate>, canonical: Symbol) -> Bool {
   fold_list(xs: cs, empty: true, cons: fn(acc, c) {
-    acc && match dag_kernel_type_declaration_binding_optional(
-      path: symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: c.path)
-    ) {
-      Present { value: k } => k == canonical
-      Absent => false
+    acc && match symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: c.path) {
+      MentionDeclaringUnique { declaring: declaring } =>
+        match dag_kernel_type_declaration_binding_optional(path: declaring) {
+          Present { value: k } => k == canonical
+          Absent => false
+        }
+      MentionDeclaringUnavailable => false
+      MentionDeclaringContested { claimants: _ } => false
     }
   })
 }
@@ -4228,18 +4234,22 @@ fn resolve_kind_variant_paths_optional(ctx: ResolveContext, declaration: Qualifi
         required: TypeOccurrence
       ) {
         LexicalHit { node: kind_decl, path: kind_binding } =>
-          let kind_path = symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: kind_binding)
-          match kind_decl.kind {
-            TypeNode { connective: Disj } =>
-              optional_present(value: fold(kind_decl.children, init: Empty, f: fn(acc, e) {
-                match e.label {
-                  Authored { name: v } => list_snoc_item(xs: acc, item: qualified_name_snoc(qn: kind_path, segment: v))
-                  StructuralLabel { label: _ } => acc
-                  Positional => acc
-                }
-              }))
-            TypeNode { connective: _ } => optional_absent()
-            ComputationNode { behavior: _ } => optional_absent()
+          match symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: kind_binding) {
+            MentionDeclaringUnavailable => optional_absent()
+            MentionDeclaringContested { claimants: _ } => optional_absent()
+            MentionDeclaringUnique { declaring: kind_path } =>
+              match kind_decl.kind {
+                TypeNode { connective: Disj } =>
+                  optional_present(value: fold(kind_decl.children, init: Empty, f: fn(acc, e) {
+                    match e.label {
+                      Authored { name: v } => list_snoc_item(xs: acc, item: qualified_name_snoc(qn: kind_path, segment: v))
+                      StructuralLabel { label: _ } => acc
+                      Positional => acc
+                    }
+                  }))
+                TypeNode { connective: _ } => optional_absent()
+                ComputationNode { behavior: _ } => optional_absent()
+              }
           }
         LexicalAmbiguous { candidates: _ } => optional_absent()
         LexicalUnbound => optional_absent()

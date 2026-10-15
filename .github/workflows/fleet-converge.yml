@@ -757,7 +757,7 @@ jobs:
         id: wif_auth_hetzner_cloud_control
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
-          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-fleet-converge-dispatch/providers/github-branch-dispatch-oidc
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-fleet-converge-dispatch/providers/gh-fleet-converge-dispatch-oidc
           service_account: hetzner-cloud-control@gunbai-secrets.iam.gserviceaccount.com
           token_format: access_token
           create_credentials_file: false
@@ -2161,7 +2161,7 @@ jobs:
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
-          workload_identity_provider: ${{ github.ref == 'refs/heads/main' && 'projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc' || 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-converge-dispatch/providers/github-branch-dispatch-oidc' }}
+          workload_identity_provider: ${{ github.ref == 'refs/heads/main' && 'projects/582015116396/locations/global/workloadIdentityPools/github-mtcollins1-boot/providers/github-mtcollins1-boot-oidc' || 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-converge-dispatch/providers/gh-fleet-converge-dispatch-oidc' }}
           service_account: ${{ github.ref == 'refs/heads/main' && 'mtcollins1-boot@gunbai-secrets.iam.gserviceaccount.com' || 'mtcollins1-boot-run@gunbai-secrets.iam.gserviceaccount.com' }}
           token_format: access_token
           create_credentials_file: false
