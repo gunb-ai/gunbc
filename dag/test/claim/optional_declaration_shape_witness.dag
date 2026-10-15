@@ -1,4 +1,4 @@
-module test.claim.kernel_optional_mint_shape_witness
+module test.claim.optional_declaration_shape_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -11,10 +11,10 @@ import gunbc.instruments.multi_module_compile_fixture {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE KERNEL OPTIONAL'S DECLARATION, MUTATED AND HANDED TO THE COMPILER. The fixture compile is
+// THE DECLARATION `T?` DENOTES, MUTATED AND HANDED TO THE COMPILER. The fixture compile is
 // isolated from the corpus, so a fixture module may take the bound declaration's own module path
-// and declare it differently; the binding row is compiled into the seed and names that path, so
-// the shape judgment (v1.compiler.infer kernel_mint_shape_diagnostics) runs on the fixture's
+// and declare it differently; the row gunbc.structural_realization_bindings optional_declaration_ref is compiled into the seed and names that path, so
+// the shape judgment (v1.compiler.infer optional_declaration_shape_diagnostics) runs on the fixture's
 // declaration. Each refusal is read by its diagnostic CLASS and SUBJECT, never by a count of
 // diagnostics, so a fixture refusing for an unrelated reason does not satisfy a red.
 
@@ -29,7 +29,7 @@ fn shape_mismatch_count(source: String) -> Int {
 }
 
 fn shape_mismatch_rows(rows: List<CompileDiagnosticCensusRow>) -> Int {
-  count(rows |> filter(r => (r.diagnostic_class as String) == "KernelMintShapeMismatch" && r.subject_name == "Optional" && r.blocking))
+  count(rows |> filter(r => (r.diagnostic_class as String) == "OptionalDeclarationShapeMismatch" && r.subject_name == "Optional" && r.blocking))
 }
 
 data conforming_optional_source: String = "module v2.std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n"
