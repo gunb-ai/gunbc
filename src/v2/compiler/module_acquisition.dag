@@ -85,6 +85,7 @@ import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.optional_layers { occupancy_declaration_spelling }
 import v2.std.qualified_name { QualifiedName, qualified_name_init, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import extdeps.communication.medium { Lossless, Medium }
@@ -486,12 +487,24 @@ fn acquisition_read_requests(
   }
 }
 
+// `T?` is sugar for the declaration std.optional.Optional, so a member that writes it OWES that declaration: the
+// site is promoted from a qualified reference (whose unknown module requests nothing) to an imported member (whose
+// unknown module refuses). An authored reference spelled the same is owed the same declaration.
+fn acquisition_sugar_member_texts(references: List<String>) -> List<String> {
+  let sugar = qualified_name_to_dotted_string(qn: occupancy_declaration_spelling())
+  match list_find_first(xs: references, predicate: fn(t) { t == sugar }) {
+    Present { value: _ } => [sugar]
+    Absent => []
+  }
+}
+
 fn acquisition_requests_ok(front: AcquisitionFrontEnd, sites: ScopedReferenceSiteCollection, imported: List<String>) -> AcquisitionMemberRead {
+  let references = acquisition_reference_texts(collection: sites)
   AcquisitionMemberReadOk {
     requests: MemberRequests {
       imports: imported,
-      members: acquisition_uncovered_binding_texts(tree: front.tree, imported: imported),
-      references: acquisition_reference_texts(collection: sites)
+      members: concat(acquisition_uncovered_binding_texts(tree: front.tree, imported: imported), acquisition_sugar_member_texts(references: references)),
+      references: references
     },
     test_markers: list_map(xs: front.tree.test_markers.marked, f: fn(marked) { symbol_lexeme(sym: marked.name) })
   }
