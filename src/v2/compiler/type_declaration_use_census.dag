@@ -1,4 +1,4 @@
-module gunbc.instruments.type_declaration_use_census
+module v2.compiler.type_declaration_use_census
 
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, list_at_optional }
 import std.types { List }
@@ -940,7 +940,7 @@ fn type_census_receipt(run: TypeCensusRun) -> TypeCensusReceipt {
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 // THE WALK'S SIDE: one module in, one contribution out. The dispatch over the census-infer step's
-// outcome lives in the walk (v2.compiler.compile native_census_infer_type_contribution), which owns
+// outcome lives in the walk (v2.compiler.source_root_eval native_census_infer_type_contribution), which owns
 // that outcome; this module imports nothing from it, so the compiler can import this one.
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 //

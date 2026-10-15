@@ -7,7 +7,7 @@ import std.algebra { Cons, Empty, empty_map }
 import v2.compiler.infer { infer }
 import v2.compiler.name_resolve { validate_module_roots }
 import v2.compiler.normalized_tree { admit_normalized_tree, no_import_bindings, no_imported_modules, no_type_declaration_kinds, no_type_declaration_modifiers }
-import v2.compiler.resolve { ResolvedTree, resolve }
+import v2.compiler.resolve { empty_module_outcome_index, ResolvedTree, resolve }
 import v2.extdeps.languages.dag { dag_language_model_void }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.declaration_marker { test_marker_channel_empty }
@@ -84,7 +84,7 @@ test fn aoe_well_formed_refuses_a_named_domain_without_order() -> Bool {
 
 // PATH: infer, entered directly with a ResolvedTree.
 fn aoe_infer_reason(arrow: Node) -> Symbol {
-  match infer(tree: ResolvedTree { root: aoe_module_root(arrow: arrow), symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), module_outcomes: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }) {
+  match infer(tree: ResolvedTree { root: aoe_module_root(arrow: arrow), symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }) {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
     Accepted { value: _, diagnostics: _ } => ^aoe_accepted
   }

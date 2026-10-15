@@ -235,7 +235,7 @@ import v1.compiler.infer_lookup {
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
-  lookup_in_scope, lookup_func_sig, func_env_declared_func_sig,
+  lookup_in_scope, lookup_func_sig, func_env_declared_func_sig, func_sig_from_global_bare,
   resolved_plain_call_target_for_outcome, resolved_declaration_call_target, census_declaration_identity,
   global_bare_callable_node, constructor_declaration_for_admission,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
@@ -9408,7 +9408,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           match infer_variant_constructor_call(occurrence_identity: texpr.occurrence_identity, func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected) {
             Present { value: ctor_result } => ctor_result
             Absent =>
-              let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
+              // CallTargetOutcome already selected a census callable. lookup_type_by_name
+              // consults the same global_bare map and will return that function NODE as a
+              // type (Named(exit_failure)), so the call is typed as the name instead of the
+              // return (ProcessExit vs Named(exit_failure) at srv3_boot_once_cd).
+              let type_match = type_match_for_direct_call_target(type_env: scope.type_env, func_name: func_name, call_target: call_target)
               let global_bare_callable = match type_match {
                 Present { value: _ } => none
                 Absent => match call_target {
@@ -14003,6 +14007,16 @@ type SigParamSplit {
   generic_names: List<String>
 }
 
+// IdentityResolved is census-Present with FuncSigUnresolved (OtherItem: bodiless,
+// zero params, no inferred result, no type_annotation). That node is not a type;
+// lookup_type_by_name would still steal it as Named.
+fn type_match_for_direct_call_target(type_env: TypeEnv, func_name: String, call_target: CallTargetOutcome) -> Node? {
+  match call_target {
+    DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => none
+    _ => lookup_type_by_name(env: type_env, name: func_name)
+  }
+}
+
 // DISSOLVED body_shadow_aware_func_sig, WHICH LAUNDERED A SHADOW INTO "NO SIGNATURE".
 //
 // Its match answered FuncSigUnresolved for a body-local callee -- the same constructor the
@@ -14017,6 +14031,18 @@ type SigParamSplit {
 // one and absent from the other is a scope-construction defect rather than a case to absorb --
 // it REFUSES, and if that refusal ever fires it has found something real.
 fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTargetOutcome {
+  if contains(func_name, ".") {
+    match func_env_declared_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
+      FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
+      FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
+      FuncSigUnresolved =>
+        match func_sig_from_global_bare(type_env: scope.type_env, name: func_name) {
+          FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
+          FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
+          FuncSigUnresolved => CallableUnresolved { name: func_name }
+        }
+    }
+  } else {
   match map_get(scope.body_locals, func_name) {
     Present { value: _ } =>
       match map_get(scope.locals, func_name) {
@@ -14041,14 +14067,20 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
               }
             DeclarationOnly =>
               match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
-                Present { value: bd } => DeclaredCallableIdentityResolved {
-                  declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
-                  borrowed_declaration: bd.node
-                }
+                Present { value: bd } =>
+                  match func_sig_from_global_bare(type_env: scope.type_env, name: func_name) {
+                    FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
+                    FuncSigUnresolved => DeclaredCallableIdentityResolved {
+                      declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
+                      borrowed_declaration: bd.node
+                    }
+                    FuncSigAmbiguous { candidates: _ } => CallableUnresolved { name: func_name }
+                  }
                 Absent => CallableUnresolved { name: func_name }
               }
           }
       }
+  }
   }
 }
 

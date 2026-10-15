@@ -14,24 +14,14 @@ type OperatingSystemSurface {
   process_semantics: ProcessSemantics
 }
 
-// MODELING GAP (crisp-wren-896 finding, PR #8590): no host instance anywhere in gunbc.fleet.fleet_intent
-// or gunbc.ci.ci_fleet populates distro_or_product -- srv1-4 (gunbc.fleet.fleet_intent, ComputeHost rows)
-// and our own CI/falsifier runner (gunbc.ci.ci_fleet) all carry `OperatingSystemSurface {
-// distro_or_product: none, ... }`. This is not a missing field on the type:
-// UbuntuDistributionCatalogRow / WindowsDistributionCatalogRow / MacosDistributionCatalogRow below
-// already model a distro's package_manager, libc, and libc_version, and OsPackageManager is a
-// closed enum -- the catalog authority a real per-host join would need already exists in this
-// module. What is missing is the JOIN: no OperatingSystemSurface instance in the tree carries a
-// distro_or_product value that resolves to one of those catalog rows, so no typed question of the
-// form "does this host's package manager provide tool X" is answerable for ANY host in the fleet,
-// our own CI runner included. This is why extdeps.shell's shell.PosixCommandV.Check / former
-// shell.Which.Check presence probes are wet shell round-trips rather than typed catalog lookups:
-// there is no typed fact to look up. CLOSING THIS: populate distro_or_product (and version) on each
-// ComputeHost's OperatingSystemSurface with a real, cited observation of that host's actual OS --
-// not a default or an assumption -- so it joins to a *DistributionCatalogRow, and extend that
-// catalog with a package-set/tool-availability authority (e.g. which apt packages provide which
-// binaries) cited to the distro's own package index. Until both land, tool-presence questions stay
-// at the wet-probe rung (mitigatable, not mechanically preventable) for every host in this fleet.
+// MODELING GAP (crisp-wren-896 finding, PR #8590), PARTIALLY CLOSED for srv1's software side:
+// gunbc.host.host_software_surface host_operating_system_surface joins srv1's OS release to
+// UbuntuDistributionCatalogRow (Noble Numbat / Apt). srv2-4 and gunbc.ci.ci_fleet still carry
+// OperatingSystemSurface { distro_or_product: none } via fleet_intent_os_surface, which remains the
+// fleet-wide execution-surface default. The catalog rows below already model package_manager; the
+// remaining gap is those other hosts and a package-set/tool-availability authority cited to the
+// distro's own package index. Until those land, tool-presence questions stay at the wet-probe rung
+// for every host that has not joined.
 
 type UbuntuDistribution = | NobleNumbat2404Lts
 type WindowsDistribution = | Windows1124H2Build26100

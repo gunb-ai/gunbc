@@ -7,6 +7,8 @@ import std.measure { byte_size }
 import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity }
 import extdeps.ssh.keys { SshPublicKey, Ed25519 }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
+import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ScannedFirstContact }
@@ -37,19 +39,20 @@ import gunbc.serving.rented_allocation {
 // - the contract terms (machine id, dph_total, rental start) are behind the Vast API key, which has no
 //   custody here yet, so the contract is RentedContractUnread with that obligation;
 // - srv1 reaches the card's sshd through Vast's gateway ssh7.vast.ai on port 15648, which passes through to
-//   the instance's own sshd (public address 133.206.145.128). RentedHostAccessDeclaration has no port until
-//   S2(b) gives SshTarget and KnownHostKeyRow a SocketAddress; no leg dials this declaration before then, and
-//   the host key row is written under the bare gateway name for the same reason, while srv1's known_hosts
-//   holds it under [ssh7.vast.ai]:15648;
+//   the instance's own sshd (public address 133.206.145.128). The declaration and the host key row carry
+//   that SocketAddress (S2), so the row is pinned under [ssh7.vast.ai]:15648 exactly as srv1's known_hosts
+//   holds it, and a leg dials the gateway port rather than 22;
 // - the authorized key is srv1's host-held id_ed25519_gpu_pod (gap register G10), not an operator agent key.
 //
 // imported_at is the day this row was authored, at day grain: the import is this declaration, not an
 // observed event with a finer instant.
 data operator_pod_allocation_contract_obligation: NonEmptyStr = "Read Vast instance 55954143 (machine_id, dph_total, start_date) through the Vast API once its key has custody, and replace this standing with the RentedContractRead offer" as NonEmptyStr
 
+data operator_pod_card_address: SocketAddress = socket_address(host: host_by_name(name: HostName { name: DomainName { labels: ["ssh7" as DnsLabel, "vast" as DnsLabel, "ai" as DnsLabel] }, qualification: PartiallyQualified }), port: 15648)
+
 data operator_pod_card_host_key: KnownHostKeyRow = KnownHostKeyRow {
   host: "vast-55954143" as HostIdentity,
-  endpoint: "ssh7.vast.ai",
+  address: operator_pod_card_address,
   key_type: "ssh-ed25519",
   public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIB0yPz+2aPqwpIrAxGB70Mb2+7cpVPZ+dlBtT9QS78bH",
   sha256_fingerprint: "SHA256:2CtTlTTdlb/nFoKqzSO3mNSc6KRU+qarCYGrYuU1yB0",
@@ -73,7 +76,7 @@ data operator_pod_allocation: RentedServingAllocation = RentedServingAllocation 
   artifact: qwen3_8_27b_nvfp4_row,
   host: RentedHostAccessDeclaration {
     node: "vast-55954143" as NonEmptyStr,
-    endpoint: "ssh7.vast.ai" as NonEmptyStr,
+    address: operator_pod_card_address,
     principal: "root" as NonEmptyStr,
     host_key: operator_pod_card_host_key,
     operator_key: SshPublicKey { algorithm: Ed25519, material: "AAAAC3NzaC1lZDI1NTE5AAAAIAukWcfqhITs2EVxCXBGTcwKLTFHkzZePU5Yy3WFWSpY" as NonEmptyStr, comment: "srv1-gunbc-gpu-pod-tunnel" },

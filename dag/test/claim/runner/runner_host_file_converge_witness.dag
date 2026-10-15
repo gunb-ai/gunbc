@@ -1,5 +1,6 @@
 module test.claim.runner.runner_host_file_converge_witness
 
+import extdeps.ssh.known_hosts { known_hosts_host_field }
 import std.types { Bool, String, NonEmptyStr, Int, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess, serialize_systemd_drop_in }
@@ -123,6 +124,8 @@ import gunbc.runner.runner_host_file_converge {
   runner_host_path_ancestors,
   runner_host_root_only_find_argv,
   ctrl_jobserver_retired_residue,
+  RunnerHostActuationAdmission, ActuationAdmitted, ActuationSkipped,
+  runner_host_actuation_admission,
   runner_host_run_legs,
   runner_host_leg_argv,
   runner_host_leg_kind,
@@ -171,6 +174,7 @@ import gunbc.runner.runner_host_file_converge {
   RunnerHostFilePlanned,
   RunnerHostFileResult,
   HostFileLeftInPlace,
+  RunnerHostFileOutcome,
   HostFileConvergedByWrite,
   HostFileWriteRefused,
   HostFileNotAttempted,
@@ -351,7 +355,7 @@ test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_sl
     RunnerHostFileSubjectRefused { cause: _ } => false
     RunnerHostFileSubjectAdmitted { subject: s } =>
       (s.target.principal as String) == "ubuntu"
-        && (s.target.endpoint as String) == "srv1"
+        && (known_hosts_host_field(address: s.target.address) as String) == "srv1"
         && length(s.desired_units) > 1
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")
@@ -732,6 +736,9 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
               outcome: match mode { RunnerHostFilesObserveOnly => HostFileNotAppliedObserveOnly RunnerHostFilesApply => HostFileLeftInPlace },
             }],
             withheld: [],
+            pre_actuation_reload: ManagerReloadNotOwed,
+            actuation_admission: ActuationAdmitted,
+            actuations: [],
             residue: ResidueAlreadyAbsent,
             reload: reload,
             slots: slots,
@@ -1326,6 +1333,9 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
         privilege: AdministratorPrivilegeAvailable,
         results: [],
         withheld: fixture_withheld_fragment(),
+        pre_actuation_reload: ManagerReloadNotOwed,
+        actuation_admission: ActuationAdmitted,
+        actuations: [],
         residue: ResidueAlreadyAbsent,
         reload: ManagerReloadNotOwed,
         slots: population_of(standings: [SlotTeardownEffective]),
@@ -1439,4 +1449,66 @@ test fn a_fabric_member_with_no_show_block_is_unread_not_declared() -> Bool {
   let show = "Id=actions-runner@srv1-01.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment="
   population_holds(pop: fabric_population(show: show), unit: "actions-runner@srv1-13.service", wire: "unread")
     && !runner_slot_population_effective(population: fabric_population(show: show))
+}
+
+// ── Actuations only over converged, reloaded unit files (side-chat on 13abc311fd) ─────────────────
+
+fn admission_is_skipped(a: RunnerHostActuationAdmission) -> Bool {
+  match a { ActuationSkipped { cause: _ } => true ActuationAdmitted => false }
+}
+
+fn fixture_result(outcome: RunnerHostFileOutcome) -> List<RunnerHostFileResult> {
+  match teardown_desired() {
+    Absent => []
+    Present { value: f } => [RunnerHostFileResult {
+      planned: RunnerHostFilePlanned { file: f, observation: RunnerHostFileObservation { content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly }, action: HostFileWrite },
+      outcome: outcome,
+    }]
+  }
+}
+
+// RED: a refused unit-file write or a refused / unattempted pre-actuation reload skips every slot
+// actuation; POSITIVE CONTROL: written and reloaded, or nothing to reload, admits them.
+test fn actuations_are_skipped_over_a_refused_write_or_reload() -> Bool {
+  length(fixture_result(outcome: HostFileLeftInPlace)) == 1
+    && admission_is_skipped(a: runner_host_actuation_admission(results: fixture_result(outcome: HostFileWriteRefused { step: "rename", reason: "EACCES" }), pre_reload: ManagerReloadNotOwed))
+    && admission_is_skipped(a: runner_host_actuation_admission(results: fixture_result(outcome: HostFileLeftInPlace), pre_reload: ManagerReloadRefused { reason: "exit=1" }))
+    && admission_is_skipped(a: runner_host_actuation_admission(results: fixture_result(outcome: HostFileLeftInPlace), pre_reload: ManagerReloadOwedNotAttempted { reason: "privilege refused" }))
+    && !admission_is_skipped(a: runner_host_actuation_admission(results: fixture_result(outcome: HostFileLeftInPlace), pre_reload: ManagerReloaded))
+    && !admission_is_skipped(a: runner_host_actuation_admission(results: fixture_result(outcome: HostFileLeftInPlace), pre_reload: ManagerReloadNotOwed))
+}
+
+// The reload refusal lives in the run's typed reload field, and it alone refuses apply -- no slot
+// result stands in for it.
+test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> Bool {
+  match witness_subject() {
+    Absent => false
+    Present { value: s } =>
+      !runner_host_file_run_succeeded(run: RunnerHostFileRun {
+        subject: s,
+        mode: RunnerHostFilesApply,
+        privilege: AdministratorPrivilegeAvailable,
+        results: [],
+        withheld: [],
+        pre_actuation_reload: ManagerReloadRefused { reason: "exit=1" },
+        actuation_admission: ActuationSkipped { cause: "the pre-actuation reload did not settle" },
+        actuations: [],
+        residue: ResidueAlreadyAbsent,
+        reload: ManagerReloadNotOwed,
+        slots: population_of(standings: [SlotTeardownEffective]),
+      })
+      && runner_host_file_run_succeeded(run: RunnerHostFileRun {
+        subject: s,
+        mode: RunnerHostFilesApply,
+        privilege: AdministratorPrivilegeAvailable,
+        results: [],
+        withheld: [],
+        pre_actuation_reload: ManagerReloaded,
+        actuation_admission: ActuationAdmitted,
+        actuations: [],
+        residue: ResidueAlreadyAbsent,
+        reload: ManagerReloadNotOwed,
+        slots: population_of(standings: [SlotTeardownEffective]),
+      })
+  }
 }

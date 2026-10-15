@@ -12,36 +12,12 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value, millisecond, second }
 import std.optional { Present }
 import gunbc.machine_intake.oob_boot_handoff { oob_power_readback_allowance }
-import gunbc.machine_intake.mtcollins1_boot_run {
-  ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record,
-}
+import gunbc.machine_intake.mtcollins1_boot_run { ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   MediaAttachNotAttempted, HandoffMediaNotReached, EndMediaNotTaken, BootParam5Read, SmproNotTaken, SmproProbed, SmproReading, PoweredOffAfterCensusEnd, OverrideNotHandedOff, OverrideConsumedByCensusBoot, OverrideNoLongerPendingAfterAttempt,
 }
-import gunbc.machine_intake.mtcollins1_boot_run {
-  SolAcquirePlan, SolAcquireRefuse, SolAcquireBindHeldCollector, SolAcquireReleaseThenStart,
-  SolAcquireStart, sol_acquire_plan,
-  mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_in_run_smpro_allowance, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance, mtcollins1_sol_notice_ready_allowance, mtcollins1_sol_notice_final_allowance,
-  mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance,
-  mtcollins1_boot_sol_is_held,
-  SolCollectorObservation, SolCollectorHeld, SolCollectorExited, SolCollectorUnrecorded, SolCollectorUnobservable, SolCollectorPathUnset,
-  SolExitPidGone, SolExitPidReused, SolExitZombie, ProcReadOutcome, ProcRead, ProcReadRefused,
-  sol_collector_observation_of, held_lease_of_collector, sol_capture_opens_with_banner, SolActivationUnconfirmed,
-  SolObservationLoss, SolLostDuringWatch, sol_observation_loss_text,
-  mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_refusal_text, mtcollins1_boot_terminal_cause_text,
-  mtcollins1_boot_pre_os_verdict,
-  MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRefused, TerminalPending,
-  HardwareThreadCountMismatch, WorkloadWriteFailed,
-  mtcollins1_boot_medium_refusal,
-  SolEstablishmentFailure, SolSpawnRefused, SolActivateRefused, SolSessionRefused, SolCollectorLeftUnexplained,
-  sol_establishment_failure, sol_establishment_failure_text,
-  SolPidNotPublished,
-  SolChannelReading, SolChannelLive, SolChannelNotLive, sol_channel_reading,
-  SolClientDiagnostics, SolCollectorExitRecorded, SolCollectorExitUnrecorded,
-  SolClientReportedSessionClosed, SolClientReportedKeepaliveUnanswered, SolClientReportedNothing, sol_client_diagnostics,
-  sol_client_diagnostics_text,
-  WatchTick, WatchAccepted, WatchRefused, WatchChannelLost, WatchContinue, watch_tick,
-}
+import gunbc.machine_intake.mtcollins1_sol_notice_facts { mtcollins1_sol_notice_final_allowance }
+import gunbc.machine_intake.mtcollins1_boot_run { SolAcquirePlan, SolAcquireRefuse, SolAcquireBindHeldCollector, SolAcquireReleaseThenStart, SolAcquireStart, sol_acquire_plan, mtcollins1_boot_step_timeout_minutes, mtcollins1_boot_in_run_smpro_allowance, mtcollins1_boot_prelude_allowance, mtcollins1_boot_actuation_allowance, mtcollins1_sol_notice_ready_allowance, mtcollins1_boot_issue_allowance, mtcollins1_boot_cleanup_allowance, mtcollins1_boot_sol_is_held, SolCollectorObservation, SolCollectorHeld, SolCollectorExited, SolCollectorUnrecorded, SolCollectorUnobservable, SolCollectorPathUnset, SolExitPidGone, SolExitPidReused, SolExitZombie, ProcReadOutcome, ProcRead, ProcReadRefused, sol_collector_observation_of, held_lease_of_collector, sol_capture_opens_with_banner, SolActivationUnconfirmed, SolObservationLoss, SolLostDuringWatch, sol_observation_loss_text, mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_refusal_text, mtcollins1_boot_terminal_cause_text, mtcollins1_boot_pre_os_verdict, MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRefused, TerminalPending, HardwareThreadCountMismatch, WorkloadWriteFailed, mtcollins1_boot_medium_refusal, SolEstablishmentFailure, SolSpawnRefused, SolActivateRefused, SolSessionRefused, SolCollectorLeftUnexplained, sol_establishment_failure, sol_establishment_failure_text, SolPidNotPublished, SolChannelReading, SolChannelLive, SolChannelNotLive, sol_channel_reading, SolClientDiagnostics, SolCollectorExitRecorded, SolCollectorExitUnrecorded, SolClientReportedSessionClosed, SolClientReportedKeepaliveUnanswered, SolClientReportedNothing, sol_client_diagnostics, sol_client_diagnostics_text, WatchTick, WatchAccepted, WatchRefused, WatchChannelLost, WatchContinue, watch_tick }
 import extdeps.bmc.ipmi { SolPayloadAlreadyActive, SolPayloadActivationUnanswered }
 import gunbc.machine_intake.sol_hold { sol_hold_exit_record_prefix, sol_hold_pid_not_published_line, sol_hold_line_prefix, mtcollins1_sol_hold_activate_script, mtcollins1_sol_hold_release_script }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { BmcAuthRefused, BmcSessionUnestablished }
