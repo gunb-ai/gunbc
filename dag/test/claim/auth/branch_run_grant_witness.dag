@@ -195,7 +195,6 @@ test fn only_a_declared_mode_reaches_a_declared_account() -> Bool {
     && match run_scoped_federation_named(account_id: "fleet-cloud-convergence") { Present { value: _ } => false  Absent => true }
 }
 
-// THE KEY IS EXACTLY <run id>-<run attempt>, both positive.
 fn grant_secret_versions(grants: List<SecretAccessGrant>) -> List<String> {
   map(grants, g => join([g.target.secret as String, ":", g.target.version], ""))
 }
@@ -270,6 +269,7 @@ test fn boot_credential_source_is_the_authorization_pattern_selection() -> Bool 
       match site_verdict(row: r).conformance { Conforms => true  _ => false })
 }
 
+// THE KEY IS EXACTLY <run id>-<run attempt>, both positive.
 test fn the_run_key_parses_only_its_own_shape() -> Bool {
   match parse_branch_run_key(key: "37879231670-2") { Present { value: k } => k.run_id == 37879231670 && k.run_attempt == 2  Absent => false }
     && match parse_branch_run_key(key: "37879231670") { Present { value: _ } => false  Absent => true }
