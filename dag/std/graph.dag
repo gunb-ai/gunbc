@@ -21,12 +21,12 @@ type CallGraphAdjacencyViews<V> {
 }
 
 type DfsFinishAcc<V> {
-  visited: Set<V>
+  visited: Map<V, Bool>
   order: List<V>
 }
 
 type SccComponentAcc<V> {
-  visited: Set<V>
+  visited: Map<V, Bool>
   members: List<V>
 }
 
@@ -73,39 +73,39 @@ fn reverse_adjacency<V>(names: List<V>, graph: CallGraph<V>) -> Map<V, List<V>> 
 }
 
 fn dfs_finish_order<V>(node: V, adjacency: Map<V, List<V>>, acc: DfsFinishAcc<V>) -> DfsFinishAcc<V> {
-  if set_contains(acc.visited, node) {
-    acc
-  } else {
-    let next_visited = set_insert(acc.visited, node)
-    let neighbors = match map_get(adjacency, node) {
-      Present { value: ns } => ns
-      Absent => []
-    }
-    let explored = neighbors |> fold(init: DfsFinishAcc { visited: next_visited, order: acc.order }, f: (inner, neighbor) =>
-      dfs_finish_order(node: neighbor, adjacency: adjacency, acc: inner)
-    )
-    DfsFinishAcc { visited: explored.visited, order: explored.order |> list_push(node) }
+  match map_get(acc.visited, node) {
+    Present { value: _ } => acc
+    Absent =>
+      let next_visited = map_insert(acc.visited, node, true)
+      let neighbors = match map_get(adjacency, node) {
+        Present { value: ns } => ns
+        Absent => []
+      }
+      let explored = neighbors |> fold(init: DfsFinishAcc { visited: next_visited, order: acc.order }, f: (inner, neighbor) =>
+        dfs_finish_order(node: neighbor, adjacency: adjacency, acc: inner)
+      )
+      DfsFinishAcc { visited: explored.visited, order: explored.order |> list_push(node) }
   }
 }
 
 fn dfs_collect_component<V>(node: V, adjacency: Map<V, List<V>>, acc: SccComponentAcc<V>) -> SccComponentAcc<V> {
-  if set_contains(acc.visited, node) {
-    acc
-  } else {
-    let next_visited = set_insert(acc.visited, node)
-    let next_members = acc.members |> list_push(node)
-    let neighbors = match map_get(adjacency, node) {
-      Present { value: ns } => ns
-      Absent => []
-    }
-    neighbors |> fold(init: SccComponentAcc { visited: next_visited, members: next_members }, f: (inner, neighbor) =>
-      dfs_collect_component(node: neighbor, adjacency: adjacency, acc: inner)
-    )
+  match map_get(acc.visited, node) {
+    Present { value: _ } => acc
+    Absent =>
+      let next_visited = map_insert(acc.visited, node, true)
+      let next_members = acc.members |> list_push(node)
+      let neighbors = match map_get(adjacency, node) {
+        Present { value: ns } => ns
+        Absent => []
+      }
+      neighbors |> fold(init: SccComponentAcc { visited: next_visited, members: next_members }, f: (inner, neighbor) =>
+        dfs_collect_component(node: neighbor, adjacency: adjacency, acc: inner)
+      )
   }
 }
 
 type SccComponentsAcc<V> {
-  visited: Set<V>
+  visited: Map<V, Bool>
   components: List<List<V>>
 }
 
@@ -118,20 +118,20 @@ fn graph_strongly_connected_components<V>(
   graph: CallGraph<V>,
 ) -> List<List<V>> {
   let adjacency = build_adjacency_views(names: names, graph: graph)
-  let empty_finish: Set<V> = empty_set()
+  let empty_finish: Map<V, Bool> = empty_map()
   let finish = names |> fold(init: DfsFinishAcc { visited: empty_finish, order: [] }, f: (acc, name) =>
     dfs_finish_order(node: name, adjacency: adjacency.forward, acc: acc)
   )
-  let empty_scc: Set<V> = empty_set()
+  let empty_scc: Map<V, Bool> = empty_map()
   let result = finish.order |> reverse |> fold(init: SccComponentsAcc { visited: empty_scc, components: [] }, f: (acc, name) =>
-    if set_contains(acc.visited, name) {
-      acc
-    } else {
-      let component = dfs_collect_component(node: name, adjacency: adjacency.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
-      SccComponentsAcc {
-        visited: component.visited,
-        components: acc.components |> list_push(component.members)
-      }
+    match map_get(acc.visited, name) {
+      Present { value: _ } => acc
+      Absent =>
+        let component = dfs_collect_component(node: name, adjacency: adjacency.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
+        SccComponentsAcc {
+          visited: component.visited,
+          components: acc.components |> list_push(component.members)
+        }
     }
   )
   result.components
@@ -159,19 +159,19 @@ fn graph_cycle_members<V>(
   names: List<V>,
   graph: CallGraph<V>,
 ) -> List<V> {
-  let empty_self: Set<V> = empty_set()
+  let empty_self: Map<V, Bool> = empty_map()
   let self_scan = graph.edges
     |> filter(edge => edge.caller == edge.callee)
     |> fold(
       init: DfsFinishAcc { visited: empty_self, order: [] },
       f: fn(acc, edge) {
-        if set_contains(acc.visited, edge.caller) {
-          acc
-        } else {
-          DfsFinishAcc {
-            visited: set_insert(acc.visited, edge.caller),
-            order: list_push(acc.order, edge.caller),
-          }
+        match map_get(acc.visited, edge.caller) {
+          Present { value: _ } => acc
+          Absent =>
+            DfsFinishAcc {
+              visited: map_insert(acc.visited, edge.caller, true),
+              order: list_push(acc.order, edge.caller),
+            }
         }
       },
     )
@@ -190,7 +190,7 @@ fn graph_reverse_reachable_members<V>(
   graph: CallGraph<V>,
   start: V,
 ) -> List<V> {
-  let empty_reached: Set<V> = empty_set()
+  let empty_reached: Map<V, Bool> = empty_map()
   let reached = dfs_collect_component(
     node: start,
     adjacency: reverse_adjacency(names: names, graph: graph),

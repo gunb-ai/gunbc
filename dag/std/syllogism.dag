@@ -37,10 +37,11 @@ fn argument_inference_graph(a: Argument) -> CallGraph<String> {
   CallGraph { edges: argument_inference_edges(a) }
 }
 
-fn argument_reachable_from_axioms(a: Argument) -> Set<String> {
+fn argument_reachable_from_axioms(a: Argument) -> Map<String, Bool> {
   let ids = argument_node_ids(a)
   let views = build_adjacency_views(names: ids, graph: argument_inference_graph(a))
-  let walked = a.axioms |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, ax) =>
+  let empty: Map<String, Bool> = empty_map()
+  let walked = a.axioms |> fold(init: DfsFinishAcc { visited: empty, order: [] }, f: (acc, ax) =>
     dfs_finish_order(node: ax.id, adjacency: views.reverse, acc: acc)
   )
   walked.visited
@@ -48,7 +49,12 @@ fn argument_reachable_from_axioms(a: Argument) -> Set<String> {
 
 fn argument_has_no_orphan(a: Argument) -> Bool {
   let reachable = argument_reachable_from_axioms(a)
-  (a.propositions |> filter(p => set_contains(reachable, p.id) == false) |> count) == 0
+  (a.propositions |> filter(p =>
+    match map_get(reachable, p.id) {
+      Present { value: _ } => false
+      Absent => true
+    }
+  ) |> count) == 0
 }
 
 fn argument_is_acyclic(a: Argument) -> Bool {

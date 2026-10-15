@@ -459,7 +459,7 @@ fn program_reverse_reachable_members(
   let reached = dfs_collect_component(
     node: start,
     adjacency: reverse_adj,
-    acc: SccComponentAcc { visited: empty_set(), members: [] },
+    acc: SccComponentAcc { visited: empty_map(), members: [] },
   )
   reached.members |> filter(member => member != start)
 }
