@@ -2379,18 +2379,13 @@ test fn deploy_branch_policy_admits_any_observed_branch_when_unconstrained() -> 
 // it emits is what fleet apply executes after reobserving the same subject. So these rows drive it
 // rather than the helpers beneath it: a control that proved the realization and left the renderer
 // unexamined is how this branch previously shipped a teardown that never consulted retirement at all.
-// THE FIXTURE IS A REQUIRED RETIREE THE 2026-09-17 GRANT NAMES, ON A HOST WITH A NON-EMPTY
-// TRANSITION, NOT WIDTH+1. Review 80784: srv4's prior equals its committed width, so a surplus
-// named from allocation width is not in the obligation. Review 80828: 07..12 are required but
-// unpermitted; pick from the intersection with the declared grant (14..50). An empty or
-// unresolved set yields srv1-00, which is never a retiree, so the membership conjunct reds.
+// THE FIXTURE IS A REQUIRED RETIREE OF THE OPEN 12→7 CUT, NOT WIDTH+1. Review 80784: srv4's
+// prior equals its committed width. Escalation default (split): 07..11 are required and
+// unpermitted under the origin/main 13..50 grant. An empty or unresolved set yields srv1-00,
+// which is never a retiree, so the membership conjunct reds.
 fn witness_open_transition_delta_units() -> List<NonEmptyStr> {
   match required_retirees_for_host(host: operator_host_srv1) {
-    RetireesKnown { units: us } =>
-      us |> filter(u => interruption_authorization_covers(
-        auth: srv1_transition_interruption_authorization,
-        unit: u as String,
-      ))
+    RetireesKnown { units: us } => us
     RetireesUnresolved { host: _, cause: _ } => []
   }
 }
@@ -2430,6 +2425,10 @@ fn witness_open_transition_delta_is_a_required_retiree() -> Bool {
     RetireesKnown { units: us } =>
       any(us, u => (u as String) == (witness_open_transition_delta_unit(offset: 0) as String))
         && list_length(items: us) > 0
+        && !interruption_authorization_covers(
+          auth: srv1_transition_interruption_authorization,
+          unit: witness_open_transition_delta_unit(offset: 0) as String,
+        )
     RetireesUnresolved { host: _, cause: _ } => false
   }
 }
@@ -2494,20 +2493,18 @@ fn witness_open_transition_delta_apply(standings: List<RunnerRetirementStanding>
   )
 }
 
-// FIRST PASS: the unit is required, permitted, and not yet retired. The renderer must emit the mask
-// and no removal -- a pass that did both would establish its own postcondition.
-test fn the_first_pass_masks_an_open_transition_retiree_and_removes_no_tree() -> Bool {
+// FIRST PASS: the unit is required and UNPERMITTED. The renderer must neither mask nor remove.
+test fn the_first_pass_does_not_act_on_an_unpermitted_required_retiree() -> Bool {
   let lines = witness_open_transition_delta_apply(standings: [])
   witness_open_transition_delta_is_a_required_retiree()
-    && emits_mask_command(lines: lines)
+    && !emits_mask_command(lines: lines)
     && !removes_retired_tree(lines: lines)
 }
 
-// SECOND PASS: the same transition, the same identity, independently reobserved as complete. Only now
-// may the tree go -- and the mask must not be re-emitted, because the unit is already retired.
-test fn the_second_pass_removes_that_exact_tree_and_does_not_remask() -> Bool {
+// SECOND PASS: complete standing does not authorize teardown the grant does not name.
+test fn the_second_pass_does_not_remove_an_unpermitted_required_retiree() -> Bool {
   let lines = witness_open_transition_delta_apply(standings: [witness_open_transition_delta_complete_standing()])
-  removes_retired_tree(lines: lines)
+  !removes_retired_tree(lines: lines)
     && !emits_mask_command(lines: lines)
 }
 
