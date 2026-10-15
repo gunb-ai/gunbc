@@ -14115,7 +14115,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     match formal.children |> first {
       Present { value: fc } =>
         match actual.children |> first {
-          Present { value: ac } => unify_generics(formal: fc, actual: unify_container_element(ch: ac), generic_names: generic_names, source_indices: source_indices, acc: acc)
+          Present { value: ac } => unify_generics(formal: unify_container_element(ch: fc), actual: unify_container_element(ch: ac), generic_names: generic_names, source_indices: source_indices, acc: acc)
           Absent => acc
         }
       Absent => acc
@@ -14149,7 +14149,7 @@ fn unify_generic_children(formals: List<Node>, actuals: List<Node>, generic_name
             actuals: actuals |> skip(1),
             generic_names: generic_names,
             source_indices: source_indices,
-            acc: unify_generics(formal: f, actual: unify_container_element(ch: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
+            acc: unify_generics(formal: unify_container_element(ch: f), actual: unify_container_element(ch: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
           )
       }
   }
