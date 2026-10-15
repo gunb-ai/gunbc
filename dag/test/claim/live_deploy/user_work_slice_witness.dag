@@ -272,6 +272,7 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_user_slice_cgroup_needle, "\"")))
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_service_unit_suffix`")
     && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_service_unit_suffix, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds last_cgroup_unit_with_dot_suffix`")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds system_service_unit_from_cgroup`")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes` unit names")
     && string_contains(s: seed, pattern: concat("\"", concat(repository_convergence_slice_unit_name as String, "\"")))
@@ -301,6 +302,13 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "BoundedContainerUncapped")
     && string_contains(s: seed, pattern: "BoundedContainerUnreadable")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_with_root_memory`")
+}
+
+test fn a_path_segment_without_a_dot_suffix_is_not_a_unit() -> Bool {
+  match system_service_unit_from_cgroup(text: "0::/system.slice/gunbc-tree-syncservice") {
+    NotSystemService => true
+    SystemServiceNamed { unit: _, slice: _ } => false
+  }
 }
 
 test fn a_system_slice_named_service_cgroup_refuses_uncapped() -> Bool {

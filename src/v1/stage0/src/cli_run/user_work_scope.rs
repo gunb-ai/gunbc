@@ -308,10 +308,18 @@ fn wrap_now() {
     std::process::exit(1);
 }
 
+// SEED MIRROR of `gunbc.compute.unit_bounds last_cgroup_unit_with_dot_suffix`
 fn last_cgroup_unit_with_suffix(text: &str, suffix: &str) -> Option<String> {
     text.split(['/', '\n'])
         .map(str::trim)
-        .filter(|seg| seg.ends_with(suffix) && !seg.is_empty() && *seg != suffix)
+        .filter(|seg| {
+            if seg.is_empty() {
+                return false;
+            }
+            let mut parts = seg.rsplitn(2, '.');
+            let last = parts.next().unwrap_or("");
+            parts.next().is_some() && format!(".{last}") == suffix
+        })
         .last()
         .map(str::to_string)
 }
