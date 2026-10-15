@@ -1,6 +1,6 @@
 module test.claim.serving.rented_startup_witness
 
-import std.types { String, Bool, NonEmptyStr, List }
+import std.types { String, Bool, NonEmptyStr, List, list_length }
 import std.measure { byte_size }
 import std.content_hash { Sha256Digest }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -125,14 +125,17 @@ test fn a_mismatch_or_unreadable_readback_refuses() -> Bool {
     && (match rented_serve_decision(launch: operator_pod_ninfer_launch, reading: RentedServeUnreadable { cause: "timeout" as NonEmptyStr }) { RentedServeRefused { cause: _ } => true  _ => false })
 }
 
+fn argv_has(argv: List<String>, flag: String) -> Bool {
+  any(xs: argv, predicate: fn(a) { a == flag })
+}
+
 // THE LAUNCH ARGV: every flag the card's line carries, and neither unread one, and no credential.
 test fn the_launch_argv_has_every_read_flag_and_omits_the_unread_ones() -> Bool {
   let argv = ninfer_serve_launch_argv(launch: operator_pod_ninfer_launch, model_path: "/root/serve/model/model.ninfer" as NonEmptyStr, listen_port: operator_pod_listen_port)
-  let has = fn(f) { any(xs: argv, predicate: fn(a) { a == f }) }
-  has("--host") && has("--port") && has("--model-id") && has("--max-context") && has("--kv-capacity") && has("--max-concurrency")
-    && has("--kv-dtype") && has("--device-state-slots") && has("--spec") && has("--draft-tokens") && has("--lm-head-draft")
-    && has("--preserve-thinking") && has("--host-context-mib")
-    && !has("--max-pending-requests") && !has("--pending-timeout-ms") && !has("--default-max-tokens") && !has("--api-key")
+  argv_has(argv: argv, flag: "--host") && argv_has(argv: argv, flag: "--port") && argv_has(argv: argv, flag: "--model-id") && argv_has(argv: argv, flag: "--max-context") && argv_has(argv: argv, flag: "--kv-capacity") && argv_has(argv: argv, flag: "--max-concurrency")
+    && argv_has(argv: argv, flag: "--kv-dtype") && argv_has(argv: argv, flag: "--device-state-slots") && argv_has(argv: argv, flag: "--spec") && argv_has(argv: argv, flag: "--draft-tokens") && argv_has(argv: argv, flag: "--lm-head-draft")
+    && argv_has(argv: argv, flag: "--preserve-thinking") && argv_has(argv: argv, flag: "--host-context-mib")
+    && !argv_has(argv: argv, flag: "--max-pending-requests") && !argv_has(argv: argv, flag: "--pending-timeout-ms") && !argv_has(argv: argv, flag: "--default-max-tokens") && !argv_has(argv: argv, flag: "--api-key")
 }
 
 // THE FULL SEQUENCE: an absent engine reaches the launch leg, which refuses on the unbound key grant, AFTER the
@@ -145,5 +148,5 @@ test fn the_full_sequence_refuses_at_the_launch_leg_with_no_earlier_leg_skipped(
   )
   (match p.launch { RentedLaunchRefusedUnmetCauses { key_grant: _, detach: _ } => true  _ => false })
     && !rented_sequence_endangers(commands: p.placement_commands, protected: w_protected)
-    && (match p.placement_commands { [_, _] => true  _ => false })
+    && list_length(items: p.placement_commands) == 2
 }
