@@ -66,6 +66,13 @@ fn fabric_ci_calibration_entry(context: FabricCiCalibrationContext) -> String {
   concat(context.source_root, "/dag/gunbc/instruments/fabric_ci_evidence.dag")
 }
 
+// The argv mint for a calibration child: a runtime word list (fixed `run` words plus the row's own
+// `--function`/`--arg` words), carried as one CliSurface so no shell re-parses an argument boundary.
+// Same shape as gunbc.host.host_effect_realize run_argv_parameters_of.
+fn fabric_ci_calibration_argv(words: List<String>) -> ProcessArgvExpansion {
+  process_argv_expansion(surface: cli_surface_of_literal_words(words: words))
+}
+
 // One gunbc child. `arguments` are the words after `--function <function>`.
 fn fabric_ci_calibration_child(context: FabricCiCalibrationContext, function: String, arguments: List<String>) -> FabricCiChildObservation {
   let words = concat([
@@ -77,7 +84,7 @@ fn fabric_ci_calibration_child(context: FabricCiCalibrationContext, function: St
   ], arguments)
   let observed = shell.Exec.RunArgv(
     program: context.gunbc_bin,
-    arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: words)),
+    arguments: fabric_ci_calibration_argv(words: words),
   )
   FabricCiChildObservation { exit_code: observed.exit_code, diagnostics: concat(observed.stdout, observed.stderr) }
 }
