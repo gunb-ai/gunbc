@@ -399,9 +399,9 @@ fn symbol_index_fill_containment_node(
 // (infer_parameter_reference_facts) through the route a value parameter takes -- no second reference
 // form. Its value type is Int: the instance an application supplies is an integer literal
 // (std.machine_constraints machine_width_literal_roster_frontier), whose type is Int. An unkinded
-// binder is not indexed, so its value read keeps refusing. A path the fill already holds (a value
-// parameter of the same spelling) is left to that declaration; resolve refuses the shadowing
-// (resolve_reason_type_parameter_shadows_visible_name) before this can matter.
+// binder is not indexed, so its value read keeps refusing. A same-spelling value parameter of the same
+// arrow is refused before this runs (v2.compiler.resolve resolve_type_params_slot), so the insert
+// never overwrites a declaration.
 fn symbol_index_fill_kinded_type_params(index: SymbolIndex, path: QualifiedName, arrow: Node) -> SymbolIndex {
   match dag_binding_denotation(sym: ^dag_binding_type_int) {
     Absent => index

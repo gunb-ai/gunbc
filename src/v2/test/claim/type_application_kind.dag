@@ -230,3 +230,12 @@ test fn tak_binder_set_outside_the_rename_map_is_unchanged() -> Bool {
   let kept = body_lower_rename_fresh_type_variables(node: tak_set(binders: [tak_unkinded_binder(name: ^T)]), renames: tak_position_renames(), arrow_body: false)
   type_binder_conj_conforms(t: kept) && (binder_conj_names(conj: kept) == [^T])
 }
+
+// A kinded type parameter and a value parameter of ONE arrow sharing a spelling share one index key, so
+// the later insert would overwrite the earlier declaration. It refuses, located at the type-parameter set.
+test fn tak_kinded_type_param_sharing_a_value_parameter_spelling_refuses() -> Bool {
+  tak_refuses_with(
+    o: tak_assemble(src: concat(tak_prelude(), "fn clash<bits: Resolution>(bits: Int) -> Int {\n  bits\n}\n")),
+    reason: ^resolve_reason_type_parameter_shadows_visible_name
+  )
+}
