@@ -112,6 +112,10 @@ data probe_b_source: String = "module v2.test.probe_b\n\nimport v2.test.probe_a 
 
 data probe_c_source: String = "module v2.test.probe_c\n\ntype Rec = { }\n\ntype Alias = Int\n\ndata rec_rhs: Rec = Rec\n\ndata alias_rhs: Alias = Alias\n"
 
+data probe_live_tree_source: String = "module std.live_tree\n\ntype LiveTreeDisposition\n  = ReadsLiveTree\n  | SubstrateInputsOnly\n"
+
+data probe_d_source: String = "module v2.test.probe_d\n\nimport std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n"
+
 fn probe_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
@@ -298,6 +302,46 @@ fn probe_member_is_b(q: QualifiedName) -> Bool {
 
 fn probe_member_is_c(q: QualifiedName) -> Bool {
   qualified_name_to_dotted_string(qn: q) == "v2.test.probe_c"
+}
+
+fn probe_member_is_d(q: QualifiedName) -> Bool {
+  qualified_name_to_dotted_string(qn: q) == "v2.test.probe_d"
+}
+
+fn probe_live_tree_ingest() -> SourceRootIngest {
+  [
+    probe_read(source: probe_live_tree_source, id: ^probe_lt_read, path: "dag/std/live_tree.dag"),
+    probe_read(source: probe_d_source, id: ^probe_d_read, path: "src/v2/test/probe_d.dag")
+  ]
+}
+
+fn probe_d_arm_reason(modules: FreeMonoid<ClosureMemberEmission>) -> Optional<Symbol> {
+  match list_find_first(xs: modules, predicate: fn(m) {
+    match m {
+      ClosureMemberEmitted { module: q, text: _ } => probe_member_is_d(q: q)
+      ClosureMemberRefused { module: q, diagnostics: _ } => probe_member_is_d(q: q)
+    }
+  }) {
+    Absent => Absent
+    Present { value: m } =>
+      match m {
+        ClosureMemberEmitted { module: _, text: _ } => Absent
+        ClosureMemberRefused { module: _, diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+      }
+  }
+}
+
+fn probe_d_emit_reason() -> String {
+  let located = emit_closure_from_ingest_located(
+    ingest: probe_live_tree_ingest(),
+    entry: probe_qn(dotted: "v2.test.probe_d"),
+    entry_locus: node_synthetic(kind: TypeNode { connective: Atom { identity: ^probe_emit_d_locus } }, children: []),
+    target: rust_target_model()
+  )
+  match located.outcome {
+    Rejected { diagnostics: d } => probe_reason_text(o: Present { value: diagnostics_fatal_reason(d: d) })
+    Accepted { value: e, diagnostics: _ } => probe_reason_text(o: probe_d_arm_reason(modules: e.modules))
+  }
 }
 
 fn probe_b_emitted_text(modules: FreeMonoid<ClosureMemberEmission>) -> String {
@@ -644,6 +688,10 @@ test fn painted_facts_has_stamp_holds() -> Bool {
     Absent => false
     Present { value: b } => string_contains(s: b.emit_painted_facts, pattern: "marked")
   }
+}
+
+test fn imported_live_tree_disposition_data_row_emits_holds() -> Bool {
+  probe_d_emit_reason() == "accepted"
 }
 
 fn probe_line(k: String, v: String) -> String {
