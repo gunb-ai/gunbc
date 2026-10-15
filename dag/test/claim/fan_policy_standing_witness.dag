@@ -14,9 +14,10 @@ import extdeps.bmc.phosphor_fan_control {
 }
 import extdeps.bmc.megarac_fan_policy {
   MegaRacSpxRest,
-  megarac_fan_bound_transport,
   megarac_fan_mode_surface,
   megarac_fan_mode_surface_read_obligation,
+  megarac_fan_mode_surface_write_obligation,
+  megarac_fan_mode_transport,
   megarac_fan_policy_read_obligation,
   megarac_fan_sdr_protocol_floor,
 }
@@ -185,19 +186,23 @@ test fn witness_neither_family_asserts_a_failsafe_duty() -> Bool {
   }
 }
 
-// THE MEGARAC FAN-WRITE SURFACE IS SP-X REST. SDR tach stays the family IPMI floor; that floor
-// is not a nickname for the fan-control transport.
-test fn witness_megarac_fan_mode_surface_is_bound_spx_rest() -> Bool {
+// THE MEGARAC FAN-READ SURFACE IS SP-X REST AND READSBOUND. Writes remain obligated; SDR tach
+// stays the family IPMI floor; that floor is not a nickname for the fan-control transport.
+test fn witness_megarac_fan_mode_surface_is_reads_bound_spx_rest() -> Bool {
   match megarac_fan_mode_surface_read_obligation(surface: megarac_fan_mode_surface) {
     Present { value: _ } => false
     Absent =>
-      match megarac_fan_bound_transport(surface: megarac_fan_mode_surface) {
-        Present { value: MegaRacSpxRest } =>
-          match megarac_fan_sdr_protocol_floor() {
-            Ipmi => true
-            _ => false
-          }
+      match megarac_fan_mode_surface_write_obligation(surface: megarac_fan_mode_surface) {
         Absent => false
+        Present { value: _ } =>
+          match megarac_fan_mode_transport(surface: megarac_fan_mode_surface) {
+            Present { value: MegaRacSpxRest } =>
+              match megarac_fan_sdr_protocol_floor() {
+                Ipmi => true
+                _ => false
+              }
+            Absent => false
+          }
       }
   }
 }

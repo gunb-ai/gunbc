@@ -45,7 +45,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 //
 // IT IS A SEPARATE FILE FROM extdeps.bmc.megarac for the reason that module's own header gives:
 // megarac_api_operations is the SP-X REST shape this repository has executed (session, media,
-// fan GETs). Fan policy is a different subject: those GET rows are Bound; AMI's failsafe
+// fan GETs). Fan policy is a different subject: those GET rows are ReadsBound; AMI's failsafe
 // document is still uncited; UI-cited fan POSTs stay off that executed list until a wet
 // caller exists. Mixing those standings in the operation-shape module is how an uncited
 // failsafe or an unexecuted write gets read as an executed one.
@@ -68,21 +68,30 @@ fn megarac_fan_policy_read_obligation() -> NonEmptyStr? {
   cited_figure_read_obligation(standing: megarac_fan_policy_standing)
 }
 
-// THE CONVERGE SURFACE, BOUND TO THE FOXCONN MT. COLLINS SERVED-UI FAN CONTROL.
-//
-// Fan writes are SP-X REST, not IPMI and not Redfish. BmcProtocol has no REST arm, so that
-// family coproduct is not this field: stuffing Ipmi here would type a false protocol. SDR tach
-// still uses the family IPMI floor (megarac_fan_sdr_protocol_floor).
+// THE FAN-MODE SURFACE. ReadsBound is not WritesBound: holding Bound for GETs discharged
+// the write obligation that Bound used to mean. Fan writes are SP-X REST, not IPMI and not
+// Redfish. BmcProtocol has no REST arm, so that family coproduct is not this field: stuffing
+// Ipmi here would type a false protocol. SDR tach still uses the family IPMI floor
+// (megarac_fan_sdr_protocol_floor).
 type MegaRacFanControlTransport
   = MegaRacSpxRest
 
 type MegaRacFanModeSurface
   = MegaRacFanModeSurfaceUnbound { read_obligation: NonEmptyStr }
-  | MegaRacFanModeSurfaceBound { transport: MegaRacFanControlTransport, contract_note: NonEmptyStr }
+  | MegaRacFanModeSurfaceReadsBound {
+    transport: MegaRacFanControlTransport,
+    write_obligation: NonEmptyStr,
+    contract_note: NonEmptyStr,
+  }
+  | MegaRacFanModeSurfaceWritesBound {
+    transport: MegaRacFanControlTransport,
+    contract_note: NonEmptyStr,
+  }
 
-data megarac_fan_mode_surface: MegaRacFanModeSurface = MegaRacFanModeSurfaceBound {
+data megarac_fan_mode_surface: MegaRacFanModeSurface = MegaRacFanModeSurfaceReadsBound {
   transport: MegaRacSpxRest,
-  contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). Executed read-only 2026-10-14 ~21:50Z: POST /api/session, GET these two, DELETE /api/session. READ: GET /api/fan_control/get_manager_status manager_disabled 0 or 1, and GET /api/fan_control/get_fan_info rows id, fan_number, fan_speed, fan_pwm (UI labels speed as PWM percentage). WRITE manager: POST /api/fan_control/set_manager_status manager_disabled r; UI confirms both directions. WRITE PWM: POST /api/fan_control/set_fan_speed JSON fan_pwm_all r with r a STRING from select#fan_all_speed (20..100 step 5); no per-fan write; only while manager_disabled is 1. Instance values of executed reads live in gunbc.machine_intake.megarac_fan_mode_observation.",
+  write_obligation: "wet write/readback fold that POSTs set_fan_speed fan_pwm_all and set_manager_status and reads get_fan_info pwm echo plus thermal-guard dwell; catalog rows megarac_op_fan_set_fan_speed and megarac_op_session_login are shape, not that fold",
+  contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). GET /api/fan_control/get_manager_status manager_disabled 0 or 1, and GET /api/fan_control/get_fan_info rows id, fan_number, fan_speed, fan_pwm (UI labels speed as PWM percentage). Instance values of those GETs live in gunbc.machine_intake.megarac_fan_mode_observation.",
 }
 
 // A REST FAN_INFO ROW IS NOT A ROTOR. get_fan_info still lists a slot at pwm 0 after the
@@ -162,7 +171,16 @@ fn megarac_fan_pwm_all_body(pwm: MegaRacFanPwmAll) -> NonEmptyStr? {
 fn megarac_fan_mode_surface_read_obligation(surface: MegaRacFanModeSurface) -> NonEmptyStr? {
   match surface {
     MegaRacFanModeSurfaceUnbound { read_obligation: o } => Present { value: o }
-    MegaRacFanModeSurfaceBound { transport: _, contract_note: _ } => Absent
+    MegaRacFanModeSurfaceReadsBound { transport: _, write_obligation: _, contract_note: _ } => Absent
+    MegaRacFanModeSurfaceWritesBound { transport: _, contract_note: _ } => Absent
+  }
+}
+
+fn megarac_fan_mode_surface_write_obligation(surface: MegaRacFanModeSurface) -> NonEmptyStr? {
+  match surface {
+    MegaRacFanModeSurfaceUnbound { read_obligation: o } => Present { value: o }
+    MegaRacFanModeSurfaceReadsBound { transport: _, write_obligation: o, contract_note: _ } => Present { value: o }
+    MegaRacFanModeSurfaceWritesBound { transport: _, contract_note: _ } => Absent
   }
 }
 
@@ -170,9 +188,10 @@ fn megarac_fan_sdr_protocol_floor() -> BmcProtocol {
   Ipmi
 }
 
-fn megarac_fan_bound_transport(surface: MegaRacFanModeSurface) -> MegaRacFanControlTransport? {
+fn megarac_fan_mode_transport(surface: MegaRacFanModeSurface) -> MegaRacFanControlTransport? {
   match surface {
     MegaRacFanModeSurfaceUnbound { read_obligation: _ } => Absent
-    MegaRacFanModeSurfaceBound { transport: t, contract_note: _ } => Present { value: t }
+    MegaRacFanModeSurfaceReadsBound { transport: t, write_obligation: _, contract_note: _ } => Present { value: t }
+    MegaRacFanModeSurfaceWritesBound { transport: t, contract_note: _ } => Present { value: t }
   }
 }

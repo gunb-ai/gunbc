@@ -123,7 +123,7 @@ data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
 data megarac_op_fan_get_manager_status: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "GET",
   path: "/api/fan_control/get_manager_status",
-  contract_note: "Foxconn Mt. Collins MegaRAC 0.32 served UI source.min.js (gzip sha256 prefix ee9b14cbf7141b78, AMI copyright, off-tree); JSON manager_disabled 0 or 1; 1 is manual PWM, 0 is Cooling Manager automatic; executed read-only 2026-10-14 ~21:50Z after POST /api/session",
+  contract_note: "Foxconn Mt. Collins MegaRAC 0.32 served UI source.min.js (gzip sha256 prefix ee9b14cbf7141b78, AMI copyright, off-tree); JSON manager_disabled 0 or 1; 1 is manual PWM, 0 is Cooling Manager automatic",
 }
 
 data megarac_op_fan_get_fan_info: MegaRacApiOperation = MegaRacApiOperation {
