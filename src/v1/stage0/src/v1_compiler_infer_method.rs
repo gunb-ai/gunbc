@@ -1550,21 +1550,9 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: type_variable_node("declared_import_closure_binding_result".to_string()),
     }));
-                __m.insert("class_b_import_closure_gate_not_affected_skip".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
                 __m.insert("witness_layer_roots_compile_clean_check".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: bool_type(),
-    }));
-                __m.insert("witness_layer_roots_compile_clean_emit_check".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
-                __m.insert("install_or_consume_floor_compile_clean_gate_receipt".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: type_variable_node("gate_receipt_result".to_string()),
     }));
                 __m.insert("record_generated_artifact_drift_gate_failure_detail".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -1582,10 +1570,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
                 __m.insert("consume_generated_artifact_drift_gate_receipt".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: type_variable_node("gate_receipt_result".to_string()),
-    }));
-                __m.insert("witness_compile_clean_cli_floor_verdicts_agree".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
     }));
                 __m.insert("test_migration_debt_module_names".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),

@@ -30,21 +30,17 @@ import std.algebra {
   Empty,
   list_append,
   length,
-  fold_list
+  fold_list,
+  empty_map,
+  map_insert
 }
 import std.graph {
   CallGraph,
   GraphEdge,
   graph_has_multi_node_scc
 }
-import std.types { Int, NonEmptyStr, String, List }
-import v2.std.collection {
-  Absent,
-  Map,
-  Present,
-  empty_map,
-  map_insert
-}
+import std.types { Int, NonEmptyStr, String, List, Map }
+
 import std.optional {
   Absent,
   Optional,
