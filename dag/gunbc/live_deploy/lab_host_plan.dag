@@ -38,7 +38,7 @@ import extdeps.tailscale.serve { TailscaleServeCapability, ScopedRemovalUnobserv
 // (system_manager_launcher_wiring_frontier), not a comment.
 
 type WorkerSandboxChoice
-  = SystemManagerLauncherSelected
+  = | SystemManagerLauncherSelected
 
 type WorkerSandboxSelection
   = WorkerSandboxChosen { choice: WorkerSandboxChoice }
