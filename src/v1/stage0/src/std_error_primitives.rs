@@ -32,3 +32,16 @@ pub enum DivError {
 pub struct DivideByZero;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Overflow;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Never {}
+
+#[allow(unreachable_code)]
+pub fn never() -> Never {
+    v1_rt::never()
+}
+
+#[allow(unreachable_code)]
+pub fn absurd<T>(n: Never) -> T {
+    match n {}
+}

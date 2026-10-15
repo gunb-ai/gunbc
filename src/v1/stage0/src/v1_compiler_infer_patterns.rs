@@ -920,15 +920,24 @@ pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node>
     }
 }
 
-fn env_binds_std_types_never(env: Rc<TypeEnv>) -> bool {
+fn env_binds_never_declaration(env: Rc<TypeEnv>) -> bool {
     match crate::v1_compiler_infer_env::symbol_index_lookup(
         env.symbol_index.clone(),
-        crate::std_types::never_type_qualified_path(),
+        crate::std_primitive_projection::never_type_qualified_path(),
     ) {
-        std::option::Option::None => env.module_path.clone() == crate::std_types::never_type_module_path(),
+        std::option::Option::None => {
+            env.module_path.clone()
+                == crate::std_primitive_projection::never_type_declaration()
+                    .module_path
+                    .clone()
+                    .to_string()
+        }
         Some(indexed) => match crate::v1_compiler_infer_env::lookup_type_by_name(
             env.clone(),
-            crate::std_types::never_type_name(),
+            crate::std_primitive_projection::never_type_declaration()
+                .decl_name
+                .clone()
+                .to_string(),
         ) {
             std::option::Option::None => false,
             Some(bound) => bound.occurrence_identity == indexed.occurrence_identity,
@@ -941,10 +950,13 @@ fn is_uninhabited_sum(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
         (resolved.children.clone().len() as i64) == 0
     } else {
         (crate::v1_std_core::authored_name_at(env.source_indices.clone(), resolved.clone())
-            == crate::std_types::never_type_name())
+            == crate::std_primitive_projection::never_type_declaration()
+                .decl_name
+                .clone()
+                .to_string())
             && (resolved.connective.clone() == NoConnective)
             && ((resolved.children.clone().len() as i64) == 0)
-            && env_binds_std_types_never(env.clone())
+            && env_binds_never_declaration(env.clone())
     }
 }
 

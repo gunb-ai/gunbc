@@ -1,7 +1,7 @@
 module std.algebra
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
-import std.error_primitives { DivError, Result }
+import std.error_primitives { DivError, Result, absurd, never }
 
 type Magma<T> {
   op: fn(T, T) -> T
@@ -1211,10 +1211,11 @@ fn all_algebra_template_names() -> List<String> {
 // closure_independent_bare_free_call registry in v1.compiler.infer_env even when std.algebra is
 // already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).
 
-// HostRealizedSeam self-call: execution routes to free_call.trim / v1_rt::trim. Must not import
-// std.types (cycle: types → algebra). The declared input is named so wiring-liveness holds.
+// Host realization routes to free_call.trim / v1_rt::trim. The declared body is the named
+// Never seam (std.error_primitives never/absurd), so if the host arm is absent the call
+// refuses by that identity rather than self-recursing. `s` is read so wiring-liveness holds.
 fn trim(s: String) -> String {
-  trim(s: s)
+  if s == s { absurd(never()) } else { absurd(never()) }
 }
 
 // Substring search on kernel host text (`std.types` String / v1 `&str`), not on

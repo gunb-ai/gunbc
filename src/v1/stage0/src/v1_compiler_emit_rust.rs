@@ -13651,15 +13651,21 @@ pub fn is_parametric_opaque_type_decl_item(
 }
 
 pub fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> bool {
-    (module_path == crate::std_types::never_type_module_path())
-        && (name == crate::std_types::never_type_name())
+    crate::std_decl_ref::declaration_ref_eq(
+        crate::std_decl_ref::decl_ref(module_path.clone(), name.clone()),
+        crate::std_primitive_projection::never_type_declaration(),
+    )
 }
 
 pub fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
-    if (module_path == crate::std_types::never_type_module_path())
-        && ((name == crate::std_types::never_producer_name())
-            || (name == crate::std_types::never_eliminator_name()))
-    {
+    let here = crate::std_decl_ref::decl_ref(module_path.clone(), name.clone());
+    if crate::std_decl_ref::declaration_ref_eq(
+        here.clone(),
+        crate::std_primitive_projection::never_producer_declaration(),
+    ) || crate::std_decl_ref::declaration_ref_eq(
+        here,
+        crate::std_primitive_projection::never_eliminator_declaration(),
+    ) {
         "#[allow(unreachable_code)]\n".to_string()
     } else {
         "".to_string()

@@ -334,9 +334,10 @@ pub fn utf8_encode_bytes(s: String) -> Vec<u8> {
     s.into_bytes().into_iter().collect()
 }
 
-/// std.types never: bottom. Reached only if an arm its author proved unreachable was evaluated.
+/// std.error_primitives never: host producer of Never. Reached only if an arm its author
+/// treated as unreachable was evaluated. Named by declaration identity, not a bottom-type proof.
 pub fn never() -> ! {
-    unreachable!("never(): std.types never")
+    unreachable!("never(): std.error_primitives never")
 }
 
 /// See `char_at`: the ASCII fast path is bounded by `end`, not by the whole string.

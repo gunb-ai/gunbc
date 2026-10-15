@@ -1,6 +1,7 @@
 module gunbc.auth.approval_device_wire
 
-import std.types { NonEmptyStr, String, Timestamp, Int, List, absurd, never }
+import std.types { NonEmptyStr, String, Timestamp, Int, List }
+import std.error_primitives { absurd, never }
 import std.measure { Second, second }
 import extdeps.crypto.signature {
   VerifyingKey, SignatureBytes, SignatureSuite, EcdsaP256Sha256, PublicKeyEncoding, Sec1Uncompressed, SignatureEncoding, P1363FixedWidth,

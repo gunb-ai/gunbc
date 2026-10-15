@@ -12,11 +12,12 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// RED/control pair for the Never eliminator (DESIGN 4b: discriminating RED plus positive control).
-// absurd needs a Never argument; an Int at that position must refuse. Empty match is exhaustive
-// iff the scrutinee is an uninhabited sum (Never, or a coproduct with zero arms), not an opaque.
-//
-// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+// RED/control pair for Never / absurd inhabitance (DESIGN 4b). absurd needs a Never argument; an
+// Int at that position must refuse. Empty match is exhaustive iff the scrutinee is an uninhabited
+// sum (this Never declaration by identity, or a coproduct with zero arms), not an opaque.
+// never() / absurd(never()) are NOT a bottom-type discharge: they are mitigatable runtime
+// divergences (gunbc.guarantee_stall never_producer_is_runtime_divergence_stall) until checker
+// narrowing. dissolve-on: none -- permanent regression control per DESIGN 4b(4).
 
 fn never_eliminator_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
@@ -38,19 +39,19 @@ fn never_eliminator_no_arms_blocking_count(source: String) -> Int {
   }
 }
 
-data absurd_int_source: String = "module neverprobe.red_int\n\nimport std.types { Int, absurd }\n\nfn f() -> Int {\n  absurd(0)\n}\n"
+data absurd_int_source: String = "module neverprobe.red_int\n\nimport std.types { Int }\nimport std.error_primitives { absurd }\n\nfn f() -> Int {\n  absurd(0)\n}\n"
 
 test fn absurd_applied_to_int_must_refuse() -> Bool {
   never_eliminator_blocking_count(source: absurd_int_source) >= 1
 }
 
-data absurd_never_control_source: String = "module neverprobe.pos\n\nimport std.types { Bool, Int, absurd, never }\n\nfn f(selector: Bool) -> Int {\n  if selector { 1 } else { absurd(never()) }\n}\n"
+data absurd_never_control_source: String = "module neverprobe.pos\n\nimport std.types { Bool, Int }\nimport std.error_primitives { absurd, never }\n\nfn f(selector: Bool) -> Int {\n  if selector { 1 } else { absurd(never()) }\n}\n"
 
 test fn absurd_on_never_is_admitted() -> Bool {
   never_eliminator_blocking_count(source: absurd_never_control_source) == 0
 }
 
-data absurd_never_string_control_source: String = "module neverprobe.pos_str\n\nimport std.types { Bool, String, absurd, never }\n\nfn f(selector: Bool) -> String {\n  if selector { \"ok\" } else { absurd(never()) }\n}\n"
+data absurd_never_string_control_source: String = "module neverprobe.pos_str\n\nimport std.types { Bool, String }\nimport std.error_primitives { absurd, never }\n\nfn f(selector: Bool) -> String {\n  if selector { \"ok\" } else { absurd(never()) }\n}\n"
 
 test fn absurd_on_never_at_string_is_admitted() -> Bool {
   never_eliminator_blocking_count(source: absurd_never_string_control_source) == 0
@@ -62,7 +63,7 @@ test fn empty_match_on_inhabited_coproduct_must_refuse() -> Bool {
   never_eliminator_no_arms_blocking_count(source: empty_match_inhabited_source) >= 1
 }
 
-data empty_match_never_source: String = "module neverprobe.nv\n\nimport std.types { Never, Int }\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
+data empty_match_never_source: String = "module neverprobe.nv\n\nimport std.types { Int }\nimport std.error_primitives { Never }\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
 
 test fn empty_match_on_never_is_admitted() -> Bool {
   never_eliminator_no_arms_blocking_count(source: empty_match_never_source) == 0
@@ -93,23 +94,23 @@ test fn deleted_error_primitives_projections_are_unbound() -> Bool {
   never_eliminator_any_blocking_count(source: deleted_projections_unbound_source) >= 1
 }
 
-data never_emit_source: String = "module neverprobe.emit_never\n\nimport std.types { Never }\n\nfn f(n: Never) -> Never {\n  n\n}\n"
+data never_emit_source: String = "module neverprobe.emit_never\n\nimport std.error_primitives { Never }\n\nfn f(n: Never) -> Never {\n  n\n}\n"
 
 test fn emitted_never_is_empty_enum() -> Bool {
   compile_dag_rust_emit_check(
     never_emit_source,
-    "src/std_types.rs",
+    "src/std_error_primitives.rs",
     ["enum Never {}"],
     ["pub struct Never(", "type Never = !"]
   )
 }
 
-data never_fn_emit_source: String = "module neverprobe.emit_never_fn\n\nimport std.types { Never, never }\n\nfn f() -> Never {\n  never()\n}\n"
+data never_fn_emit_source: String = "module neverprobe.emit_never_fn\n\nimport std.error_primitives { Never, never }\n\nfn f() -> Never {\n  never()\n}\n"
 
 test fn emitted_never_fn_calls_the_named_host_arm() -> Bool {
   compile_dag_rust_emit_check(
     never_fn_emit_source,
-    "src/std_types.rs",
+    "src/std_error_primitives.rs",
     ["v1_rt::never()"],
     ["compile_error!"]
   )

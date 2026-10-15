@@ -1,7 +1,8 @@
 module gunbc.repo.repo_ruleset
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { HttpStatus, Never, NonEmptyStr }
+import std.types { HttpStatus, NonEmptyStr }
+import std.error_primitives { Never }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.repository { gunbc_repository }
 import gunbc.witness.witness_floor_workflow { witness_floor_workflow_job_id, witness_floor_lane_timeout }
@@ -1287,7 +1288,7 @@ fn observation_unknowns(observation: RulesetObservation) -> List<RulesetUnknown>
 // want of an unambiguous goal. Every other dimension is unaffected and is still compared.
 //
 // THERE IS THEREFORE NO WHOLE-ASSESSMENT REFUSAL LEFT FOR THIS SUBJECT, and the type says so:
-// AssessRefusal is std.types Never, which has no constructor. That is not a placeholder --
+// AssessRefusal is std.error_primitives Never, which has no constructor. That is not a placeholder --
 // it is the claim, checked, that no state of this subject leaves its inputs incomparable. The arm
 // stays in `verify`'s match because the coproduct is closed, and it is unreachable by
 // construction rather than by convention.
@@ -1387,7 +1388,7 @@ fn render_unknowns(us: List<RulesetUnknown>) -> String {
 // be read, and the drift beside it is what the previous shape suppressed.
 //
 // THE GoalAssessmentRefused ARM BELOW IS UNREACHABLE BY CONSTRUCTION, not by convention: this
-// assessment instantiates AssessRefusal at std.types Never, which has no constructor
+// assessment instantiates AssessRefusal at std.error_primitives Never, which has no constructor
 // anywhere, so no value can arrive there. It is written because the coproduct is CLOSED -- the
 // property that makes a fifth assessment arm a compile error rather than a silent fall-through --
 // and its reason is stated here rather than beside it because DESIGN section 4c models annotations

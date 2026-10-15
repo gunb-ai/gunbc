@@ -2,7 +2,8 @@ module v1.compiler.infer_patterns
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import std.types { SourceSpan, never_type_module_path, never_type_name, never_type_qualified_path }
+import std.types { SourceSpan }
+import std.primitive_projection { never_type_declaration, never_type_qualified_path }
 
 import std.syntax { LiteralValue }
 
@@ -551,14 +552,13 @@ fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
   }
 }
 
-// An uninhabited SUM: a coproduct with zero arms, or the std.types Never declaration.
-// Env's Never binding must be that declaration (symbol-index identity), not a local or
-// foreign type that happens to be spelled Never.
-fn env_binds_std_types_never(env: TypeEnv) -> Bool {
+// An uninhabited SUM: a coproduct with zero arms, or the std.error_primitives Never
+// declaration keyed by DeclarationRef (never_type_declaration), not by spelling.
+fn env_binds_never_declaration(env: TypeEnv) -> Bool {
   match symbol_index_lookup(index: env.symbol_index, qualified_name: never_type_qualified_path()) {
-    Absent => env.module_path == never_type_module_path()
+    Absent => env.module_path == (never_type_declaration.module_path as String)
     Present { value: indexed } =>
-      match lookup_type_by_name(env: env, name: never_type_name()) {
+      match lookup_type_by_name(env: env, name: never_type_declaration.decl_name as String) {
         Absent => false
         Present { value: bound } => bound.occurrence_identity == indexed.occurrence_identity
       }
@@ -569,10 +569,10 @@ fn is_uninhabited_sum(resolved: Node, env: TypeEnv) -> Bool {
   if resolved.connective == Disj {
     (resolved.children |> count) == 0
   } else {
-    authored_name_at(source_indices: env.source_indices, node: resolved) == never_type_name()
+    authored_name_at(source_indices: env.source_indices, node: resolved) == (never_type_declaration.decl_name as String)
       && resolved.connective == NoConnective
       && (resolved.children |> count) == 0
-      && env_binds_std_types_never(env: env)
+      && env_binds_never_declaration(env: env)
   }
 }
 

@@ -254,13 +254,47 @@ pub fn primitive_never() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
-pub fn primitive_trim() -> Rc<PrimitiveIdentity> {
+pub fn never_type_declaration() -> Rc<crate::std_decl_ref::DeclarationRef> {
     thread_local! {
-        static CACHED: Rc<PrimitiveIdentity> = {
-            primitive_identity_slug("trim".to_string())
+        static CACHED: Rc<crate::std_decl_ref::DeclarationRef> = {
+            crate::std_decl_ref::decl_ref(
+                "std.error_primitives".to_string(),
+                "Never".to_string(),
+            )
         };
     }
-    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+    CACHED.with(|c: &Rc<crate::std_decl_ref::DeclarationRef>| c.clone())
+}
+
+pub fn never_producer_declaration() -> Rc<crate::std_decl_ref::DeclarationRef> {
+    thread_local! {
+        static CACHED: Rc<crate::std_decl_ref::DeclarationRef> = {
+            crate::std_decl_ref::decl_ref(
+                "std.error_primitives".to_string(),
+                "never".to_string(),
+            )
+        };
+    }
+    CACHED.with(|c: &Rc<crate::std_decl_ref::DeclarationRef>| c.clone())
+}
+
+pub fn never_eliminator_declaration() -> Rc<crate::std_decl_ref::DeclarationRef> {
+    thread_local! {
+        static CACHED: Rc<crate::std_decl_ref::DeclarationRef> = {
+            crate::std_decl_ref::decl_ref(
+                "std.error_primitives".to_string(),
+                "absurd".to_string(),
+            )
+        };
+    }
+    CACHED.with(|c: &Rc<crate::std_decl_ref::DeclarationRef>| c.clone())
+}
+
+pub fn never_type_qualified_path() -> String {
+    v1_rt::concat(
+        v1_rt::concat(never_type_declaration().module_path.clone(), ".".to_string()),
+        never_type_declaration().decl_name.clone(),
+    )
 }
 
 pub fn primitive_to_string() -> Rc<PrimitiveIdentity> {
@@ -403,14 +437,8 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
         ),
         primitive_projection_row(
             primitive_never(),
-            "std.types".to_string(),
+            "std.error_primitives".to_string(),
             "never".to_string(),
-            Rc::new(ProjectionFidelity::HostRealizedSeam),
-        ),
-        primitive_projection_row(
-            primitive_trim(),
-            "std.algebra".to_string(),
-            "trim".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(

@@ -2,7 +2,7 @@ module v1.compiler.emit_rust
 
 import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list }
+import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
 import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
   VariantParentIdentity, VariantParentUnrecovered, VariantParentBeforeInference, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
   VariantTargetValueAmbiguous, VariantParentIdentityUnavailable, variant_value_realization_refusal_message,
@@ -14,7 +14,8 @@ import std.repair_input_origin {
   qualified_item_emit_surface_compatibility_names,
 }
 import std.primitive_projection {
-  primitive_identity_runtime_name, primitive_projection_row_for_declaration
+  primitive_identity_runtime_name, primitive_projection_row_for_declaration,
+  never_type_declaration, never_producer_declaration, never_eliminator_declaration
 }
 import gunbc.rust_emitted_crate { EmittedRustCrate, EmittedCrateDependencyDemand }
 import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, inline_path_reference_edge, service_runtime_surface_edge, RuntimePrelude, ReexportFacade }
@@ -185,7 +186,7 @@ import v1.compiler.trait_bound_witness {
   v1_equality_bound_param_name
 }
 
-import std.types { is_container_type, is_kernel_type, container_template_algebra, never_type_module_path, never_type_name, never_producer_name, never_eliminator_name }
+import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
@@ -6742,11 +6743,12 @@ fn is_parametric_opaque_type_decl_item(item: Node, source_indices: Map<String, N
 }
 
 fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> Bool {
-  module_path == never_type_module_path() && name == never_type_name()
+  declaration_ref_eq(a: decl_ref(module_path: module_path, decl_name: name), b: never_type_declaration)
 }
 
 fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
-  if module_path == never_type_module_path() && (name == never_producer_name() || name == never_eliminator_name()) {
+  let here = decl_ref(module_path: module_path, decl_name: name)
+  if declaration_ref_eq(a: here, b: never_producer_declaration) || declaration_ref_eq(a: here, b: never_eliminator_declaration) {
     "#[allow(unreachable_code)]\n"
   } else {
     ""

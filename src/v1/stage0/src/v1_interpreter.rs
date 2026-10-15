@@ -23547,7 +23547,7 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.never" { "never" } => {
                 Err(InterpError::TypeError {
-                    msg: "std.types never reached: an arm declared unreachable was evaluated".to_string(),
+                    msg: "std.error_primitives never reached: an arm declared unreachable was evaluated".to_string(),
                 })
             },
 

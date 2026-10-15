@@ -106,36 +106,9 @@ type Bool = True | False
 
 type Unit
 
-// THE UNINHABITED TYPE. An arm instantiated at Never has no constructor: the binding declares
-// that arm unreachable for that subject (std.goal_assessment AssessRefusal, an observe that cannot
-// fail). It lives beside Unit, not in v2.std.cardinality, so a dag-tree module may import it
-// (v2.std.cross_tree.import_model: dag may not import v2).
-type Never
-
-// THE DECLARATION IDENTITY of the uninhabited atom. Emit, v1 exhaustiveness and v2 match
-// coproduct-read all consume these; they do not restate the module or name.
-fn never_type_module_path() -> String { "std.types" }
-fn never_type_name() -> String { "Never" }
-fn never_type_qualified_path() -> String {
-  concat(never_type_module_path(), ".", never_type_name())
-}
-fn never_producer_name() -> String { "never" }
-fn never_eliminator_name() -> String { "absurd" }
-
-// THE ONE HOST PRODUCER OF NEVER. Never has no constructor, and checker narrowing is a separate
-// capability, so a HostRealizedSeam is the only way to name a Never value. Body is a self-call;
-// the interpreter refuses by this name if the seam is evaluated; emission is unreachable! by this name.
-fn never() -> Never {
-  never()
-}
-
-// THE ELIMINATOR. Zero arms are exhaustive iff the scrutinee is an uninhabited sum (a coproduct
-// with zero arms, or Never). An opaque without dag constructors is not uninhabited. absurd
-// inhabits every T; it cannot be applied to an Int.
-fn absurd<T>(n: Never) -> T {
-  match (n) {
-  }
-}
+// THE UNINHABITED TYPE, never() and absurd live in std.error_primitives so std.algebra can
+// name them without importing this module (cycle: types → algebra). Citation identity:
+// std.primitive_projection never_type_declaration (a DeclarationRef, not a restated path).
 
 type Json
 type Bytes

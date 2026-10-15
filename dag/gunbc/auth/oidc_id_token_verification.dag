@@ -23,7 +23,8 @@ module gunbc.auth.oidc_id_token_verification
 // module is the ECDSA twin, and it too stops at the same seam), so openssl IS the realization,
 // admitted as the one unverified step and named here rather than implied.
 
-import std.types { String, NonEmptyStr, Int, List, FilePath, Email, absurd, never }
+import std.types { String, NonEmptyStr, Int, List, FilePath, Email }
+import std.error_primitives { absurd, never }
 import std.encoding { base64_decode, base64_encode, base64_octets, UrlSafe, Standard, utf8_decode_octets }
 import std.coercion { unicode_scalar_fold }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }

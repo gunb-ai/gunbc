@@ -1,6 +1,7 @@
 module std.decimal
 
-import std.types { String, Int, Bool, range, absurd, never }
+import std.types { String, Int, Bool, range }
+import std.error_primitives { absurd, never }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.algebra { string_concat_join }
 import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_multiply, checked_int_subtract }

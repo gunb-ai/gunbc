@@ -34,7 +34,7 @@ import std.primitive_projection {
   primitive_type_declarer_qualified_names,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
-  primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_never, primitive_trim, primitive_to_string,
+  primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_never, primitive_to_string,
 }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
@@ -1107,7 +1107,6 @@ data primitive_projection_target_canonical_names: List<String> = [
   "bytes_octets",
   "utf8_encode_bytes",
   "never",
-  "trim",
   "to_string",
   "string_contains",
 ]
@@ -1460,8 +1459,6 @@ data primitive_utf8_encode_bytes_traversal: PrimitiveTraversalOrderFact = Primit
 // never produces no value at all -- it diverges -- so no order is consulted.
 data primitive_never_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_never, order: OrderFreeResult }
 
-data primitive_trim_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_trim, order: SourcePreservingOrder }
-
 // to_string RENDERS, and rendering a Map is a traversal of its entries, so it is classified here
 // rather than left Deterministic by non-membership (node adhoc-77383faf-d07). CanonicalOrder is the
 // EXECUTED READING of both realizations: the seed interpreter's Display for Value::Map orders
@@ -1491,7 +1488,6 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_bytes_octets_traversal,
   primitive_utf8_encode_bytes_traversal,
   primitive_never_traversal,
-  primitive_trim_traversal,
   primitive_to_string_traversal,
 ]
 
