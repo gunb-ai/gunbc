@@ -1,14 +1,14 @@
 module test.claim.serving.rented_ninfer_source_witness
 
 import std.types { String, Bool }
-import std.measure { byte_size_count }
+import std.measure { byte_size, byte_size_count }
 import std.content_hash { Sha256Digest }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.ninfer.ninfer_serve { NinferTarballUnobserved, ninfer_serve_81c8ce09_sm120_release }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.cloudflare.r2_origin { OriginCredentialMintEntryUnbuilt }
 import gunbc.serving.rented_ninfer_source {
-  rented_engine_source, rented_weights_source, rented_weights_pin_agreement, rented_artifact_url,
+  rented_engine_source, rented_weights_source, rented_qwen3_8_27b_nvfp4_weights_placement, rented_weights_pin_agreement, rented_artifact_url,
   RentedWeightsPinAgrees, RentedWeightsDigestDiffers, RentedWeightsBytesDiffer,
 }
 
@@ -42,7 +42,7 @@ test fn the_tarball_is_unobserved() -> Bool {
 test fn the_engine_and_weights_resolve_to_the_models_bucket_endpoint_and_keys() -> Bool {
   rented_artifact_url(source: rented_engine_source(release: ninfer_serve_81c8ce09_sm120_release))
       == "https://5f71db675ad3e94c16a3d5c159d16298.r2.cloudflarestorage.com/models/bin/ninfer-serve-81c8ce09-sm120.tgz"
-    && rented_artifact_url(source: rented_weights_source(row: qwen3_8_27b_nvfp4_row))
+    && rented_artifact_url(source: rented_weights_source(placement: rented_qwen3_8_27b_nvfp4_weights_placement))
       == "https://5f71db675ad3e94c16a3d5c159d16298.r2.cloudflarestorage.com/models/ninfer/qwen3_8_27b_nvfp4/qwen3_8_27b_nvfp4.ninfer"
 }
 
@@ -59,7 +59,7 @@ test fn the_weights_row_equals_the_measured_artifact() -> Bool {
 }
 
 test fn the_measured_weights_agree_with_the_model_row() -> Bool {
-  match rented_weights_pin_agreement(row: qwen3_8_27b_nvfp4_row, claimed_bytes: 23719715844, claimed_sha256: Sha256Digest { hex: "74d2c57145e6ff11d1d2faa79594477f9bc903a611af1fb20218189fbbb77d82" }) {
+  match rented_weights_pin_agreement(row: qwen3_8_27b_nvfp4_row, claimed_bytes: byte_size(count: 23719715844), claimed_sha256: Sha256Digest { hex: "74d2c57145e6ff11d1d2faa79594477f9bc903a611af1fb20218189fbbb77d82" }) {
     RentedWeightsPinAgrees => true
     _ => false
   }
@@ -67,14 +67,14 @@ test fn the_measured_weights_agree_with_the_model_row() -> Bool {
 
 // RED: a weights digest that differs from the model row's is refused, and so is a differing size.
 test fn a_weights_digest_differing_from_the_model_row_is_refused() -> Bool {
-  match rented_weights_pin_agreement(row: qwen3_8_27b_nvfp4_row, claimed_bytes: 23719715844, claimed_sha256: Sha256Digest { hex: "74d2c57145e6ff11d1d2faa79594477f9bc903a611af1fb20218189fbbb77d83" }) {
+  match rented_weights_pin_agreement(row: qwen3_8_27b_nvfp4_row, claimed_bytes: byte_size(count: 23719715844), claimed_sha256: Sha256Digest { hex: "74d2c57145e6ff11d1d2faa79594477f9bc903a611af1fb20218189fbbb77d83" }) {
     RentedWeightsDigestDiffers { pinned: _, claimed: _ } => true
     _ => false
   }
 }
 
 test fn a_weights_size_differing_from_the_model_row_is_refused() -> Bool {
-  match rented_weights_pin_agreement(row: qwen3_8_27b_nvfp4_row, claimed_bytes: 23719715843, claimed_sha256: Sha256Digest { hex: "74d2c57145e6ff11d1d2faa79594477f9bc903a611af1fb20218189fbbb77d82" }) {
+  match rented_weights_pin_agreement(row: qwen3_8_27b_nvfp4_row, claimed_bytes: byte_size(count: 23719715843), claimed_sha256: Sha256Digest { hex: "74d2c57145e6ff11d1d2faa79594477f9bc903a611af1fb20218189fbbb77d82" }) {
     RentedWeightsBytesDiffer { pinned: _, claimed: _ } => true
     _ => false
   }
