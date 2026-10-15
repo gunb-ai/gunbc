@@ -3,17 +3,10 @@ module gunbc.fleet.fleet_host_budget
 import std.types { Int, List, String, Bool }
 import std.measure {
   ByteSize, byte_size, byte_size_count,
-  Memory, One, Time, Nano,
-  time_measure, watt,
+  Memory, One,
   HardwareThreadCount, hardware_thread_count,
 }
 import std.realization_width { byte_size_saturating_sub, cpu_cores_available }
-import std.realization { RealizedStep, Placement, LocalFilesystem, Materialization, Share }
-import std.effects { EffectShape, CreateEffect, CreateCause, CreateIfAbsent, KeySource, CompositeKey }
-import std.realization_schedule {
-  CostAccount, CostAxis, CostAxisPredicted, CostAxisUnestablished,
-  CostTimeAxis, CostTimeUnestablished,
-}
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves }
 import product.host_identity { HostIdentity }
@@ -36,15 +29,6 @@ import gunbc.live_deploy.served_slice_charge {
 import gunbc.ci.ci_fleet { ComputeOffer }
 import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
 import extdeps.cpu { cpu_facts_threads }
-import extdeps.jobserver {
-  JobserverConfig,
-  JobserverCitation,
-  JobserverCited,
-  JobserverAbsent,
-  jobserver_config,
-  derive_jobserver_tokens,
-  jobserver_build_pool_bytes,
-}
 import gunbc.fleet.fleet_container {
   FleetContainerType,
   BaselineResolution,
@@ -81,27 +65,6 @@ import gunbc.oomd_install {
   gunbc_oomd_fleet_evidence,
   gunbc_oomd_sessions_policy,
   gunbc_oomd_sessions_pressure_limit,
-}
-
-// Only the space axis is a fact here: mib_per_job is the declared per-job memory envelope this
-// jobserver config is derived from. The time and power of a compile step are not predicted by
-// this config and were previously rendered as a predicted ZERO, which is a claim about a build
-// taking no time and drawing no power. They are unestablished, and say so.
-fn build_cost_account(cfg: JobserverConfig) -> CostAccount<Nano> {
-  CostAccount {
-    time: CostTimeUnestablished,
-    space: CostAxisPredicted { value: cfg.mib_per_job },
-    power: CostAxisUnestablished,
-  }
-}
-
-fn build_realization(cfg: JobserverConfig) -> RealizedStep<Nano> {
-  RealizedStep {
-    shape: CreateEffect { cause: CreateIfAbsent { key_source: CompositeKey { fields: ["compile_unit_content_hash", "toolchain_content_hash"] } } },
-    placement: LocalFilesystem,
-    materialization: Share,
-    cost: build_cost_account(cfg: cfg),
-  }
 }
 
 type HeadroomPolicy
@@ -164,36 +127,32 @@ fn gunbc_fleet_oomd_evidence_for(host: HostIdentity) -> OomdEnforcementEvidence 
 // among them, and no sccache process runs on the host at all -- the CI socket is present with zero
 // listeners behind it. The MECHANISM this paragraph exists for is untouched by that, which is why
 // the sentence is corrected rather than dropped: cache-miss compiles are children of whichever
-// server holds the endpoint, so that server's cgroup bounds them wherever it lands. Sizing is
-// jobserver_build_pool_bytes (tokens * mib_per_job) — the same cited authority that bounds build
-// concurrency, NOT a fresh literal: the pool must hold exactly the compiles the jobserver admits.
+// server holds the endpoint, so that server's cgroup bounds them wherever it lands. A separate pool
+// has no sizing authority since the jobserver was retired (compile_pool_bytes_for below).
 
-data gunbc_jobserver_token_override_note: String = "THE JOBSERVER OVERRIDE IS A PER-HOST FACT AND WAS RECORDED HERE AS A FLEET ONE. Observed on srv1 and srv2 on 2026-08-06, re-measured on all four hosts 2026-08-25T18:43Z; it is recorded here because it lands on exactly the axis the compile pool governs, and it is stated per host because the fleet is not uniform on either input the derivation takes.\n\n/usr/local/sbin/ctrl-jobserver derives tokens = min(cores - MARGIN, floor((MemTotal_gib - MEM_RESERVE_GIB) * 1024 / MIB_PER_JOB)) — the same derivation extdeps.jobserver.derive_jobserver_tokens carries. With the cited defaults (margin 8, reserve 16GiB, 1792MiB per job) the two bounds land differently on each machine, because MemTotal does. Measured 2026-08-25T18:43Z: srv2 at 125.09GiB yields min(120, 62) = 62 and the MEMORY bound binds below the core bound; srv1, srv3 and srv4 at about 502.25GiB yield min(120, 277) = 120 and the CORE bound binds. AN EARLIER REVISION OF THIS PARAGRAPH GAVE THE 125.09GiB FIGURE AS A PROPERTY OF `these hosts`, AND THAT SENTENCE COST REAL WORK: srv1 took the 64GiB DIMM population on 2026-08-22 that srv2's failed memory training reverted, so a session sizing the compile-pool flip read a memory bound that had stopped binding on three hosts of four and derived a pool wrong by roughly a factor of two. The figure was never false when written; it was written as a standing fact about a fleet, and a MemTotal is a fact about one machine at one moment.\n\nA SECOND NON-UNIFORMITY, measured the same moment and load-bearing for anyone reading the derivation as one authority: /usr/local/sbin/ctrl-jobserver exists on all four hosts and is TWO DIFFERENT PROGRAMS -- 14019 bytes dated May 31 on srv1 and srv2, 15406 bytes dated Jul 13 and Jul 22 on srv3 and srv4. The three defaults above are still documented in it, and citing `the installed script` cites four files of which two are a different version.\n\nsrv1 and srv2 set CTRL_JOBSERVER_TOKENS=128 in /etc/default/ctrl-jobserver and srv3 and srv4 set nothing there at all (measured 2026-08-25T18:43Z: both files carry no non-comment content), so two hosts short-circuit and two fall through to the derivation above. The script short-circuits on that variable — `if [[ -z \"$\{CTRL_JOBSERVER_TOKENS:-}\" ]]` guards the whole derivation, so an explicit setting skips the memory bound entirely rather than being clamped by it. 128 tokens at 1792MiB each is 224GiB of admissible concurrent compile memory, which is the over-admission on srv2's 125.09GiB and is no longer one on srv1's 502.24GiB -- the same override is a defect on one host and harmless on the other, which is precisely why it cannot be carried as a fleet claim.\n\nWHY THIS IS RECORDED AND NOT FIXED HERE: it is an operator configuration fact about a ctrl-era unit, not a gunbc-derived value, and gunbc has no realized knob for it (JobserverTokens is KnobUnimplemented — its presence is what makes interpret_host_converge refuse the whole host). Changing it is a host action with real consequences for build throughput and belongs to the jobserver re-homing lane, not to a budget module. What matters for THIS module is that the compile pool cannot be sized honestly against an admission ceiling that its own inputs disown — so when gunbc_compile_pool_placement flips to CompilePoolSliceDeclared, the pool must be sized from the DERIVED tokens, and the gap between derived and configured is the over-admission that flip would expose rather than create.\n\nTHE SWAP CORROBORATION THAT USED TO CLOSE THIS PARAGRAPH IS WITHDRAWN, AND THE WITHDRAWAL IS THE MORE USEFUL RECORD. It read: srv1 had 85GiB of swap in use against srv2's 1.3GiB, on identical hardware with identical swap provisioning (248GiB across two files), consistent with srv1's compile server thrashing under the starved cgroup gunbc_compile_pool_doc describes. It carried three claims and 2026-08-25T18:43Z falsifies two of them. Swap IN USE is now 5.4GiB on srv1 against 21MiB on srv2, so the asymmetry it inferred from is gone -- as it should be, since no sccache server runs on srv1 at all today. The hosts are not identical hardware, by the MemTotal split above. Only the provisioning half survives and only partly: srv1, srv2 and srv3 each carry 248GiB across two files and srv4 carries 128GiB."
 
 type CompilePoolResolution
   = CompilePoolDerived { bytes: ByteSize }
   | CompilePoolUnresolved { reason: String }
 
-fn compile_pool_bytes_for(
-  placement: CompilePoolPlacement,
-  nproc: HardwareThreadCount,
-  host: ByteSize,
-  citation: JobserverCitation
-) -> CompilePoolResolution {
+// THE SEPARATE COMPILE POOL HAS NO SIZING AUTHORITY, AND THAT IS THE ANSWER (operator ruling
+// 2026-10-14 (b), A2). It was sized as jobserver tokens x mib_per_job from extdeps.jobserver, which
+// is deleted with the ctrl-jobserver realization. Under CompilePoolInRunnerSlots compiler children
+// run inside each slot's own memory and CPU ceilings and the host charge is zero; a placement that
+// declares a separate pool slice refuses here rather than charging a pool nothing sizes.
+fn compile_pool_bytes_for(placement: CompilePoolPlacement) -> CompilePoolResolution {
   match placement {
     CompilePoolInRunnerSlots => CompilePoolDerived { bytes: byte_size(0) }
-    CompilePoolSliceDeclared { slice_unit: _ } => resolve_compile_pool(nproc: nproc, host: host, citation: citation)
+    CompilePoolSliceDeclared { slice_unit: u } =>
+      CompilePoolUnresolved { reason: concat("a separate compile-pool slice is declared and nothing sizes it since the jobserver token derivation was retired: ", u) }
   }
 }
 
-fn resolve_compile_pool(nproc: HardwareThreadCount, host: ByteSize, citation: JobserverCitation) -> CompilePoolResolution {
-  match citation {
-    JobserverAbsent =>
-      CompilePoolUnresolved { reason: "jobserver config citation absent: the compile pool is sized by the admitted build tokens (tokens * mib_per_job); refuse to size the pool — and therefore to claim the host allocation conserves — without the cited installer knobs" }
-    JobserverCited { config: cfg, provenance: _ } =>
-      CompilePoolDerived { bytes: jobserver_build_pool_bytes(nproc: nproc, mem_total: host, cfg: cfg) }
-  }
-}
+// THE HOST RESERVE IS A POLICY PICK, NOT A MEASUREMENT. Overseer policy, 2026-10-14, reported to
+// the operator and revisable: eight threads stay outside every runner slot and the sessions slice,
+// for the host's own daemons. It is the one host-reserve figure both gunbc.ci.ci_runner_placement
+// host_cpu_allocation and this module's effective runner CPU cap read.
+data host_cpu_reserve_threads: HardwareThreadCount = hardware_thread_count(count: 8)
 
 fn appropriation_of(b: ByteSize) -> Appropriation<Memory, One> {
   Appropriation { ceiling: b }
@@ -447,9 +406,7 @@ type FleetHostPlan
       name: String,
       tree: BudgetNode,
       runner_slice_cap: ByteSize,
-      effective_build_tokens: HardwareThreadCount,
       effective_runner_cpu_cap: HardwareThreadCount,
-      build_step: RealizedStep<Nano>
     }
   | FleetHostPlanUnsound { reason: String }
 
@@ -460,7 +417,6 @@ fn fleet_host_plan_for(
   nproc: HardwareThreadCount,
   runner: FleetContainerType,
   session_slice: ByteSize,
-  citation: JobserverCitation,
   policy: HeadroomPolicy,
   oomd: OomdEnforcementEvidence
 ) -> FleetHostPlan {
@@ -468,10 +424,6 @@ fn fleet_host_plan_for(
     OomdUnverified =>
       FleetHostPlanUnsound { reason: "oomd enforcement unverified: systemd-oomd is the eviction backstop (srv2-reboot fix + the conservation keystone); refuse to derive a host plan without it (fail closed)" }
     OomdEnforced =>
-      match citation {
-        JobserverAbsent =>
-          FleetHostPlanUnsound { reason: "jobserver config citation absent: refuse to derive the build token bound without the cited installer knobs (margin / mem_reserve / mib_per_job)" }
-        JobserverCited { config: cfg, provenance: _ } =>
           match container_baseline_bytes(c: runner) {
             BaselineUnmeasured { reason: r } => FleetHostPlanUnsound { reason: r }
             BaselineResolved { bytes: rb } => {
@@ -479,7 +431,7 @@ fn fleet_host_plan_for(
               match resolve_headroom(policy: policy, floor: floor) {
                 HeadroomUnsound { reason: r } => FleetHostPlanUnsound { reason: r }
                 HeadroomResolved { bytes: hr } =>
-                  match compile_pool_bytes_for(placement: gunbc_compile_pool_placement, nproc: nproc, host: host, citation: citation) {
+                  match compile_pool_bytes_for(placement: gunbc_compile_pool_placement) {
                     CompilePoolUnresolved { reason: cr } => FleetHostPlanUnsound { reason: cr }
                     CompilePoolDerived { bytes: compile_pool } => {
                       let slice = runner_slice_cap(host: host, overhead: overhead, session_slice: session_slice, headroom: hr, compile_pool: compile_pool)
@@ -488,16 +440,13 @@ fn fleet_host_plan_for(
                         name: name,
                         tree: tree,
                         runner_slice_cap: slice,
-                        effective_build_tokens: derive_jobserver_tokens(nproc: nproc, mem_total: host, cfg: cfg),
-                        effective_runner_cpu_cap: cpu_cores_available(nproc: nproc, margin: cfg.margin),
-                        build_step: build_realization(cfg: cfg),
+                        effective_runner_cpu_cap: cpu_cores_available(nproc: nproc, margin: host_cpu_reserve_threads),
                       }
                     }
                   }
               }
             }
           }
-      }
   }
 }
 
@@ -509,7 +458,6 @@ fn fleet_host_plan() -> FleetHostPlan {
     nproc: hardware_thread_count(count: 128),
     runner: gha_runner_container,
     session_slice: byte_size(0),
-    citation: jobserver_config,
     policy: gunbc_fleet_headroom_policy,
     oomd: OomdUnverified
   )
@@ -519,7 +467,6 @@ fn fleet_host_plan_for_offer(
   offer: ComputeOffer,
   overhead: ByteSize,
   session_slice: ByteSize,
-  citation: JobserverCitation,
   policy: HeadroomPolicy,
   oomd: OomdEnforcementEvidence
 ) -> FleetHostPlan {
@@ -534,7 +481,6 @@ fn fleet_host_plan_for_offer(
         nproc: cpu_facts_threads(cpu: cpu),
         runner: gha_runner_container,
         session_slice: session_slice,
-        citation: citation,
         policy: policy,
         oomd: oomd
       )
