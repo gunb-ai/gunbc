@@ -3,7 +3,7 @@ module v2.test.claim.long.cwc_resolution_probe
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.body_lowering_fold { DeclaredRecord }
 import v2.compiler.normalize { normalize }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_type_declaration_modifiers }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_imported_modules, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_string_literal_node, namespace_graft_module_body_marker_node }
 import v2.std.arrow_signature { declared_signature }
@@ -169,6 +169,7 @@ fn cwc_root_cwc_module() -> Node {
 fn cwc_tree(root: Node, records: List<Symbol>) -> Outcome<NormalizedTree> {
   admit_normalized_tree(
     import_bindings: no_import_bindings(),
+    imported_modules: no_imported_modules(),
     type_declaration_kinds: fold(records, init: [], f: fn(acc, name) { list_snoc_item(xs: acc, item: DeclaredRecord { name: name }) }),
     type_declaration_modifiers: no_type_declaration_modifiers(),
     root: root,

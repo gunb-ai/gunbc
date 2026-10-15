@@ -4,6 +4,7 @@ import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
 import std.types { Bool, CommitSha, String, List, Int }
+import std.algebra { list_append }
 import gunbc.live_deploy.deployed_tree_scope { path_is_deployed }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }

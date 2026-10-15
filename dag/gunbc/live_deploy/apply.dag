@@ -86,7 +86,7 @@ import gunbc.ci.ci_deploy_target_host {
   DeployTargetHostObservation,
   deploy_target_ssh_proof_structurally_valid,
 }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.host.host_effect {
   HostEffect,

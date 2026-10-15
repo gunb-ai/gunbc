@@ -1,54 +1,18 @@
 module v2.cli.population_verbs
 
 import std.types { Bool, Int, List, Map }
-import std.algebra { Cons, Empty, fold_list, is_empty, length, list_head, list_map, list_reverse, skip }
+import std.algebra { Cons, Empty, fold_list, is_empty, length, list_head, list_map, list_reverse, skip, empty_map, map_contains_key, map_insert, map_lookup }
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import gunbc.parse_population_refusals { RefusalClass, parse_population_declared_refusal_classes }
 import gunbc.source_layout_namespaces { layout_namespaces }
-import gunbc.source_root_read {
-  SourceRootPathsRead,
-  SourceRootPathsRefused,
-  SourceRootWalkTask,
-  source_root_child_path,
-  source_root_walk
-}
+import gunbc.source_root_read { SourceRootPathsRead, SourceRootPathsRefused, SourceRootWalkTask, source_root_child_path, source_root_walk }
 import v2.cli.repository_layout { repository_storage_layout }
-import v2.compiler.module_acquisition {
-  AcquisitionEnv,
-  AcquisitionEnvReady,
-  AcquisitionEnvUnprepared,
-  BoundModulesListed,
-  BoundModulesRefused,
-  MemberParseRefused,
-  MemberParses,
-  PopulationMemberRead,
-  PopulationMemberRefused,
-  SourceRootBinding,
-  acquisition_env,
-  acquisition_header_reader,
-  acquisition_parse,
-  acquisition_probe,
-  enumerate_bound_modules,
-  population_member
-}
-import v2.compiler.source_authority {
-  LayoutFileHeader,
-  LayoutHolds,
-  LayoutRefused,
-  LayoutVerdict,
-  ModuleFileAbsent,
-  ModuleFilePresent,
-  ModuleFileRef,
-  ModuleFileRefused,
-  layout_check,
-  layout_verdict_holds,
-  layout_verdict_text,
-  module_file_key
-}
+import v2.compiler.module_acquisition { AcquisitionEnv, AcquisitionEnvReady, AcquisitionEnvUnprepared, BoundModulesListed, BoundModulesRefused, MemberParseRefused, MemberParses, PopulationMemberRead, PopulationMemberRefused, SourceRootBinding, acquisition_env, acquisition_header_reader, acquisition_parse, acquisition_probe, enumerate_bound_modules, population_member }
+import v2.compiler.source_authority { LayoutFileHeader, LayoutHolds, LayoutRefused, LayoutVerdict, ModuleFileAbsent, ModuleFilePresent, ModuleFileRef, ModuleFileRefused, layout_check, layout_verdict_holds, layout_verdict_text, module_file_key }
 import v2.compiler.module_header { ModuleHeaderReader, module_header_read }
-import v2.std.collection { empty_map, map_contains_key, map_insert, map_lookup }
 import v2.std.text { String }
+
 
 // THE WHOLE-POPULATION VERBS. Compiling an entry reads the modules that entry requests and nothing
 // else (v2.compiler.module_acquisition); a job whose subject IS the population -- is every governed

@@ -23,7 +23,7 @@ import gunbc.auth.gcp_iam_converge {
   ConvergeCreateRole, ConvergeProviderRole, ConvergeAccountPolicyRole, ConvergeSecretPolicyRole, pool_resource,
   iam_converge_provider_role_permissions, iam_converge_account_policy_role_permissions, iam_converge_secret_policy_role_permissions,
   gcp_iam_observe_dedicated_federation,
-  plan_dedicated_federation, plan_estate, gcp_iam_converge_request_over, gcp_iam_estate_diff_preimage,
+  plan_dedicated_federation, plan_estate, gcp_iam_converge_request_over, gcp_iam_estate_diff_preimage, federation_input_refused_plan,
   gcp_iam_converge_escalation_prefix, gcp_iam_converge_targets,
   iam_converge_denied_permissions, iam_converge_create_role_permissions,
   service_account_resource,
@@ -700,4 +700,23 @@ test fn iam_converge_holds_no_payload_read_on_the_cursor_secret() -> Bool {
       ExpectAdmitted { resource: _, permission: _ } => false
     }))
     && !any(iam_converge_secret_policy_role_permissions, p => p == "secretmanager.secrets.create" || p == "secretmanager.versions.access")
+}
+
+// A target the upstream would refuse is refused before observation, naming its label, so consent is
+// never asked for a provider create that answers 400; a target within the caps plans as before.
+test fn a_target_with_a_refused_input_plans_refused_before_observation() -> Bool {
+  let f = heal_publisher_dedicated_federation()
+  let bad = DedicatedFederation { label: f.label, pool_id: f.pool_id, pool_display_name: f.pool_display_name, provider_id: "github-fleet-converge-dispatch-oidc" as NonEmptyStr,
+    attribute_mapping: f.attribute_mapping, attribute_condition: f.attribute_condition, impersonation: f.impersonation,
+    service_account: f.service_account, service_account_id: f.service_account_id, service_account_display_name: f.service_account_display_name,
+    service_account_member: f.service_account_member, secret_grants: f.secret_grants }
+  (match federation_input_refused_plan(f: bad) {
+    Present { value: p } => match p {
+      GcpIamRefused { target: t, reasons: rs } => t == f.label && count(rs) == 1
+      GcpIamNoop { target: _ } => false
+      GcpIamApply { diff: _ } => false
+    }
+    Absent => false
+  })
+    && (match federation_input_refused_plan(f: f) { Absent => true  Present { value: _ } => false })
 }

@@ -226,7 +226,7 @@ test fn w_grandfather_population_matches_the_grounded_surface() -> Bool {
 // reading.
 test fn w_a_second_nested_compile_operation_is_admitted() -> Bool {
   claim_preemption_admission(
-    OpaqueHostCallUnbounded { operation: "install_or_consume_floor_compile_clean_gate_receipt" }
+    OpaqueHostCallUnbounded { operation: "witness_layer_roots_compile_clean_check" }
   ) == true
 }
 
