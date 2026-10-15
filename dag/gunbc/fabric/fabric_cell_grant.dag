@@ -1,6 +1,6 @@
 module gunbc.fabric.fabric_cell_grant
 
-import std.types { NonEmptyStr, String, Timestamp }
+import std.types { NonEmptyStr, String, Timestamp, List }
 import std.decl_ref { decl_ref }
 import std.measure { Measure }
 import std.nat { Nat }
@@ -35,7 +35,20 @@ import product.fabric.execution {
 }
 import product.fabric.grant_issue { GrantIssue, GrantCommitted, GrantRefused, GrantIssueRefusal, issue_grant, derive_grant_key }
 import extdeps.accounting.encumbrance { EncumbranceLedger }
-import gunbc.fabric.fabric_control_plane { selected_cell_allocation_key }
+import gunbc.fabric.fabric_control_plane {
+  selected_cell_allocation_key, fabric_money_reservation_ref,
+  CellReservation, FabricCellCandidate, CellSelectionForDemand, CellSelectedForDemand, CellSelectionRefused,
+  broker_select_for_requirements,
+}
+import gunbc.fabric.fabric_executor_class { ExecutorSanction }
+import gunbc.floor.floor_demand { floor_execution_requirements }
+import gunbc.fabric.fabric_witness_run { floor_grant_duration }
+import product.fabric.demand { Demand }
+import product.fabric.supply { offer_quote_currency }
+import product.fabric.selection { selection_liability }
+import std.measure { Count, One, MoneyAmountMicro, MoneyPerSecond }
+import extdeps.currency.currency { Usd }
+import extdeps.accounting.budget { Appropriation }
 
 // FCI-2 OVER A CELL: SELECTION, RESERVATION AND COMMITMENT AS ONE DURABLE TRANSITION.
 //
@@ -257,5 +270,56 @@ fn reread_cell_grant(
     }
     HoldSlotUndecodable { generation: g, detail: d } => CellGrantReadUnreadable { generation: g, detail: d }
     HoldObservationUnavailable { cause: c } => CellGrantReadStoreUnobserved { cause: c }
+  }
+}
+
+// THE BROKER THAT ISSUES. fabric_control_plane broker_reserve_for_demand ranks, then reserves under
+// a hold owned by the money reservation reference and mints no grant. This is the same selection
+// (broker_select_for_requirements, one authority), followed by grant_selected_cell instead, so the
+// cell is held by the grant the ranking's winner was issued. The money request is the control
+// plane's (reserve_priced_cell): reference fabric_money_reservation_ref, generation 0 because this
+// is a mint, liability the selection's own. The resource ledger is the winning cell's threads: its
+// appropriation is the offer's thread count and the liability the Work's, so a Work larger than the
+// cell refuses as a resource reservation rather than being granted.
+type CellGrantDecision
+  = CellGrantDecided { outcome: CellGrant<Count, One> }
+  | CellGrantNotSelected { refusal: CellReservation }
+
+fn broker_grant_for_demand(
+  root: NonEmptyStr,
+  demand: Demand<NonEmptyStr>,
+  work: Work<NonEmptyStr>,
+  attempt: Attempt<NonEmptyStr>,
+  roster: List<FabricCellCandidate>,
+  sanctions: List<ExecutorSanction>,
+  account: MoneyAccount,
+  maximum_buy_order: MoneyAmountMicro,
+  delay_valuation: MoneyPerSecond,
+  evidence: FabricGrantEvidence,
+  issued_at: Timestamp,
+) -> CellGrantDecision {
+  match broker_select_for_requirements(demand: demand, requirements: floor_execution_requirements(),
+    duration: floor_grant_duration(), currency: Usd, roster: roster, sanctions: sanctions,
+    maximum_buy_order: maximum_buy_order, delay_valuation: delay_valuation) {
+    CellSelectionRefused { refusal: r } => CellGrantNotSelected { refusal: r }
+    CellSelectedForDemand { offer: offer, selected: selected, cost: cost } =>
+      CellGrantDecided { outcome: grant_selected_cell(
+        root: root,
+        work: work,
+        attempt: attempt,
+        selected: selected,
+        account: account,
+        money_request: MoneyReservationRequest {
+          reference: fabric_money_reservation_ref(demand: demand.id, offer: offer.id),
+          generation: 0,
+          maximum_liability: selection_liability(c: cost),
+          currency: offer_quote_currency(q: offer.quote),
+        },
+        ledger: EncumbranceLedger { appropriation: Appropriation { ceiling: offer.shape.hard.threads }, entries: [] },
+        resource_liability: work.requirements.shape.hard.threads,
+        demand: demand.id,
+        evidence: evidence,
+        issued_at: issued_at,
+      ) }
   }
 }

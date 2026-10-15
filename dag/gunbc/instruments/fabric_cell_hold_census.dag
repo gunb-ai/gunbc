@@ -1,0 +1,100 @@
+module gunbc.instruments.fabric_cell_hold_census
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+}
+import gunbc.durable_cas_file_store { CasSlotKeys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused, cas_slot_keys }
+import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
+import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root, fabric_cell_allocation_key }
+import gunbc.fabric.fabric_required_build_cell {
+  judge_cell_holder, ExpectGrantHolder, HolderMatches, HolderPreCutover, HolderMismatch, HeldByGrant, HeldByReservation,
+}
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.runner.runner_microvm_shakedown { microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_attempt_id }
+
+// WHAT THE GRANT CUTOVER MEETS ON A HOST, READ-ONLY. The FCI-3 cutover changes the shakedown cell's
+// hold owner from the money reservation reference to the grant key. A cell held under the old owner
+// is ReservationHeldPreCutover at the controller and is never planned over, so before the controller
+// release is redeployed an operator needs the population the cutover meets: every allocation slot
+// under the control plane's store root, its head generation and holder, and -- for the shakedown
+// slot, the only cell the grant path judges -- the judgement the new controller will make.
+//
+// It reads the store and writes nothing into it: Filesystem.List and Filesystem.Read through the
+// store's own observers. The report goes to fabric_cell_hold_census_report_path, outside the store,
+// because a run's only other output is its exit. Run it on the host as the store's owner:
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/fabric_cell_hold_census.dag --function fabric_cell_hold_census_main
+// Exit 0: the store was listed and the report written. Non-zero: the store could not be listed or
+// the report could not be written, and the reason carries the report text.
+//
+// CONSUMER: the operator's go-ahead for the srv1 controller redeploy that carries the cutover. It is
+// a one-shot reading for that decision; once no pre-cutover hold remains on any host it has nothing
+// to report and is deleted with the ReservationHeldPreCutover arm.
+
+fn census_slot_line(root: NonEmptyStr, key: NonEmptyStr) -> String {
+  match observe_file_hold(root: root, key: key) {
+    HoldSlotAbsent => join(["slot=", key as String, " state=absent"], "")
+    HoldSlotFree { generation: g, released_by: r } =>
+      join(["slot=", key as String, " state=free generation=", to_string(cas_generation_count(g: g)), " released_by=", r as String], "")
+    HoldSlotHeld { generation: g, owner: o } =>
+      join(["slot=", key as String, " state=held generation=", to_string(cas_generation_count(g: g)), " owner=", o as String,
+        shakedown_judgement_suffix(key: key, owner: o, generation: g)], "")
+    HoldSlotUndecodable { generation: g, detail: d } =>
+      join(["slot=", key as String, " state=undecodable generation=", to_string(cas_generation_count(g: g)), " detail=", d as String], "")
+    HoldObservationUnavailable { cause: _ } => join(["slot=", key as String, " state=unobserved"], "")
+  }
+}
+
+fn shakedown_judgement_suffix(key: NonEmptyStr, owner: DurableHoldOwnerRef, generation: CasGeneration) -> String {
+  let slot = srv1_microvm_shakedown_slot()
+  if (key as String) != (fabric_cell_allocation_key(slot: slot) as String) { "" } else {
+    let demand = microvm_shakedown_demand(slot: slot)
+    let verdict = match judge_cell_holder(
+      held: owner,
+      expected: ExpectGrantHolder { attempt: microvm_shakedown_attempt_id(slot: slot) },
+      work: demand.work,
+      demand: demand.id,
+      offer: microvm_shakedown_offer(slot: slot).id,
+      slot_key: key,
+      generation: generation,
+    ) {
+      HolderMatches { holder: HeldByGrant { attempt: _, grant: _ } } => "grant"
+      HolderMatches { holder: HeldByReservation } => "reservation"
+      HolderPreCutover => "pre-cutover"
+      HolderMismatch => "foreign"
+    }
+    concat(" shakedown-judgement=", verdict)
+  }
+}
+
+fn fabric_cell_hold_census() -> String {
+  let root = fabric_control_plane_store_root()
+  match cas_slot_keys(root: root) {
+    CasSlotKeysListingRefused { root: r, detail: d } => join(["census=unlisted root=", r as String, " detail=", d], "")
+    CasSlotKeysSubjectRefused { root: r, cause: c } => join(["census=unlisted root=", r as String, " cause=", c], "")
+    CasSlotKeysListed { keys: keys } =>
+      join(["census=listed root=", root as String, " slots=", to_string(count(keys)), "\n",
+        join(map(keys, k => census_slot_line(root: root, key: k)), "\n")], "")
+  }
+}
+
+data fabric_cell_hold_census_report_path: String = "/tmp/gunbc-fabric-cell-hold-census.txt"
+
+fn fabric_cell_hold_census_listed(report: String) -> Bool {
+  report.starts_with("census=listed ")
+}
+
+fn fabric_cell_hold_census_main() -> ProcessExit {
+  let report = fabric_cell_hold_census()
+  let w = Filesystem.Write(path: fabric_cell_hold_census_report_path, content: concat(report, "\n"))
+  if !w.success {
+    exit_failure(reason: join(["fabric_cell_hold_census: report write refused at ", fabric_cell_hold_census_report_path, ": ", w.error, "\n", report], ""))
+  } else if !fabric_cell_hold_census_listed(report: report) {
+    exit_failure(reason: report)
+  } else {
+    ExitSuccess
+  }
+}
