@@ -68,7 +68,7 @@ type NinferInstalledFile {
 }
 
 type NinferEngineRelease {
-  release: NonEmptyStr
+  release_name: NonEmptyStr
   source: NinferSourceRevision
   build_target: NinferBuildTarget
   binary: NinferInstalledFile
@@ -77,7 +77,7 @@ type NinferEngineRelease {
 }
 
 data ninfer_serve_81c8ce09_sm120_release: NinferEngineRelease = NinferEngineRelease {
-  release: "ninfer-serve-81c8ce09-sm120" as NonEmptyStr,
+  release_name: "ninfer-serve-81c8ce09-sm120" as NonEmptyStr,
   source: ninfer_qwen35_planner_revision,
   build_target: NinferSm120 {},
   binary: NinferInstalledFile {
@@ -105,13 +105,13 @@ type RentedTarballPin
 data rented_tarball_read_obligation: NonEmptyStr = "Read the sha256 and byte size of the engine tarball at its object key from the store that holds it, by an operator with custody of that store; then replace RentedTarballUnobserved with a pinned arm." as NonEmptyStr
 
 type RentedEngineArtifact {
-  release: NinferEngineRelease
+  engine_release: NinferEngineRelease
   object_key: NonEmptyStr
   tarball: RentedTarballPin
 }
 
 data rented_ninfer_81c8ce09_sm120_engine_artifact: RentedEngineArtifact = RentedEngineArtifact {
-  release: ninfer_serve_81c8ce09_sm120_release,
+  engine_release: ninfer_serve_81c8ce09_sm120_release,
   object_key: "bin/ninfer-serve-81c8ce09-sm120.tgz" as NonEmptyStr,
   tarball: RentedTarballUnobserved { read_obligation: rented_tarball_read_obligation },
 }

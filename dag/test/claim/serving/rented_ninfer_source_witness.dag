@@ -29,7 +29,7 @@ test fn the_rev_file_pin_equals_the_measured_install_and_the_source_revision() -
 
 test fn the_release_and_object_names_are_the_observed_ones() -> Bool {
   let r = ninfer_serve_81c8ce09_sm120_release
-  (r.release as String) == "ninfer-serve-81c8ce09-sm120"
+  (r.release_name as String) == "ninfer-serve-81c8ce09-sm120"
 }
 
 test fn the_tarball_is_unobserved() -> Bool {
