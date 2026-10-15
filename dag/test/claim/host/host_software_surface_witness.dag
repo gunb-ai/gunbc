@@ -51,6 +51,7 @@ import extdeps.procps.kill {
   procps_ng_kill_term_pgid_argv,
   procps_ng_kill_term_pgid_without_end_of_options_argv,
   procps_kill_standing,
+  kill_program,
 }
 import extdeps.external_authority {
   CitedFigureStanding,
@@ -157,6 +158,10 @@ test fn srv1_procps_kill_uses_end_of_options() -> Bool {
     Present { value: argv } =>
       argv == procps_ng_kill_term_pgid_argv(pgid: 1234)
         && argv != procps_ng_kill_term_pgid_without_end_of_options_argv(pgid: 1234)
+        && match argv[0] {
+          Present { value: bin } => bin == (kill_program().invocation as String)
+          Absent => false
+        }
   }
 }
 

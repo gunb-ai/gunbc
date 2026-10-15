@@ -38,9 +38,9 @@ fn procps_kill_standing() -> CitedFigureStanding {
 fn kill_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/kill")
 
 fn procps_ng_kill_term_pgid_argv(pgid: Int) -> List<String> {
-  ["kill", "-TERM", "--", concat("-", to_string(pgid))]
+  [kill_program().invocation as String, "-TERM", "--", concat("-", to_string(pgid))]
 }
 
 fn procps_ng_kill_term_pgid_without_end_of_options_argv(pgid: Int) -> List<String> {
-  ["kill", "-TERM", concat("-", to_string(pgid))]
+  [kill_program().invocation as String, "-TERM", concat("-", to_string(pgid))]
 }
