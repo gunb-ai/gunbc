@@ -49,10 +49,6 @@ fn osd_with_std(body: String) -> Outcome<ResolvedTree> {
   ])
 }
 
-fn osd_without_std(body: String) -> Outcome<ResolvedTree> {
-  osd_assemble(sources: [osd_witness(src: concat("module p\n\n", body), artifact: osd_artifact)])
-}
-
 fn osd_is_occupancy(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Occupancy } => true
@@ -75,7 +71,10 @@ fn osd_any(n: Node, pred: fn(Node) -> Bool) -> Bool {
   )
 }
 
-// Any node of the assembled tree satisfies `pred`. `name` is kept for the reader: the specimens declare only `p.U`.
+// `pred` over every node of the assembled tree. The lookup route (symbol_index_lookup `p.U`) returns the
+// pre-resolution declaration node, so it cannot witness resolve's rewrite; the tree is the resolved output.
+// Every specimen declares only `U`, and osd_std_optional_alone_holds_neither pins that std.optional itself
+// contributes no Occupancy or Instantiation, so a hit is `U`'s.
 fn osd_holds(o: Outcome<ResolvedTree>, name: String, pred: fn(Node) -> Bool) -> Bool {
   match o {
     Accepted { value: tree, diagnostics: _ } =>
@@ -128,4 +127,10 @@ test fn osd_specimens_are_accepted() -> Bool {
   osd_accepted(o: osd_with_std(body: "type U = Optional<Int>\n"))
     && osd_accepted(o: osd_with_std(body: "type U = Int?\n"))
     && osd_accepted(o: osd_assemble(sources: [osd_witness(src: "module p\n\ntype Optional<T>\n  = Nothing\n  | Something { value: T }\n\ntype U = Optional<Int>\n", artifact: osd_artifact)]))
+}
+
+test fn osd_std_optional_alone_holds_neither() -> Bool {
+  osd_accepted(o: osd_with_std(body: "type U = Int\n"))
+    && !osd_holds(o: osd_with_std(body: "type U = Int\n"), name: "p.U", pred: osd_is_occupancy)
+    && !osd_holds(o: osd_with_std(body: "type U = Int\n"), name: "p.U", pred: osd_is_instantiation)
 }

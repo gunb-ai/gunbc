@@ -100,8 +100,8 @@ fn wrap_type_node_occupancy_at(base: Node, occurrence_id: NodeOccurrenceIdentity
 
 // `T?` IS SUGAR DECLARED BY std.optional (ruling gunbc.design_ruling optional_sugar_is_declaration_bound): an
 // Occupancy node mentions the Optional declaration it lowers from, exactly as an authored qualified
-// `std.optional.Optional` would, so module acquisition requests std.optional and a missing or incompatible
-// declaration refuses through the same path as any other unresolved reference.
+// `std.optional.Optional` would, so module acquisition OWES std.optional (acquisition_sugar_member_texts promotes the site to an imported member) and a
+// source root lacking it refuses as an unknown imported member.
 fn occupancy_declaration_spelling() -> QualifiedName {
   [symbol_intern_lexeme(lexeme: "std"), symbol_intern_lexeme(lexeme: "optional"), symbol_intern_lexeme(lexeme: "Optional")]
 }
