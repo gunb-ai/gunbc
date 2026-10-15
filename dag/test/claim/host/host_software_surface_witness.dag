@@ -1,0 +1,281 @@
+module test.claim.host.host_software_surface_witness
+
+import std.types { Bool, Int, String }
+import std.optional { Absent, Present }
+import std.os.types { Apt, Winget, HomebrewDeFacto }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet.fleet_intent { srv1_host, srv2_host }
+import gunbc.host.host_software_surface {
+  srv1_software_surface,
+  host_software_surface_for_identity,
+  unobserved_software_surface,
+  software_surface,
+  blank_kernel,
+  blank_cgroup,
+  HostSysctlFact,
+  host_program_version,
+  host_operating_system_surface,
+  host_os_package_manager,
+  HostPackageManagerKnown,
+  HostPackageManagerUnobserved,
+  user_manager_sandbox_enforcement,
+  UserManagerDoesNotEnforceSandbox,
+  UserManagerSandboxEnforcementUnobserved,
+  UserManagerSandboxUnobserved,
+  UserManagerSandboxSysctlUnreadable,
+  srv1_software_inhabitance_probe_commands,
+  srv1_user_manager_protect_home_wrote_into_home,
+  user_manager_wrote_into_home_observed_on_this_host_obligation,
+}
+import extdeps.linux.apparmor_userns {
+  apparmor_restrict_unprivileged_userns_sysctl_name,
+  apparmor_unprivileged_userns_restricted,
+  apparmor_userns_restriction_standing,
+}
+import extdeps.git { git_program }
+import extdeps.tools.jq { jq_program }
+import extdeps.tailscale.serve { tailscale_program }
+import gunbc.host.srv1_software_inhabitance_receipt {
+  srv1_software_inhabitance_receipt,
+  srv1_os_release_probe,
+  srv1_apparmor_sysctl_probe,
+  srv1_procps_probe,
+  srv1_git_path_probe,
+  srv1_dpkg_query_probe,
+  host_software_probe_obligation,
+}
+import extdeps.procps.kill {
+  procps_ng_kill_term_pgid_argv,
+  procps_kill_standing,
+  kill_program,
+  procps_pgid_signal_host_consumer_frontier,
+}
+import extdeps.procps.sysctl { sysctl_standing }
+import extdeps.external_authority {
+  CitedFigureStanding,
+  CitedToAuthority,
+  TranscribedUncited,
+  ObservedByReceipt,
+  observed_receipt_ref,
+}
+import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code, timeout_program }
+import gunbc.fleet.fleet_posix_accounts {
+  fleet_posix_operator_sudo_grant_is_hostnamectl_only,
+  fleet_posix_operator_principal,
+}
+import std.dissolution { dissolution_is_bound }
+import product.host_identity { host_identity_eq }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn srv1_software_is_keyed_by_compute_host_identity() -> Bool {
+  host_identity_eq(a: srv1_software_surface().host, b: srv1_host.identity)
+    && host_identity_eq(a: host_software_surface_for_identity(identity: srv1_host.identity).host, b: operator_host_srv1)
+}
+
+test fn srv2_software_is_typed_unobserved() -> Bool {
+  match host_os_package_manager(surface: host_software_surface_for_identity(identity: srv2_host.identity)) {
+    HostPackageManagerUnobserved { obligation: _ } => true
+    HostPackageManagerKnown { manager: _ } => false
+  }
+}
+
+test fn srv1_os_joins_the_ubuntu_catalog_to_apt() -> Bool {
+  match host_os_package_manager(surface: srv1_software_surface()) {
+    HostPackageManagerKnown { manager: m } =>
+      match m {
+        Apt => (match host_operating_system_surface(surface: srv1_software_surface()).distro_or_product {
+          Present { value: d } => (d as String) == "Ubuntu"
+          Absent => false
+        })
+        Winget => false
+        HomebrewDeFacto => false
+      }
+    HostPackageManagerUnobserved { obligation: _ } => false
+  }
+}
+
+test fn srv1_user_manager_does_not_enforce_sandbox_because_of_the_sysctl() -> Bool {
+  match user_manager_sandbox_enforcement(surface: srv1_software_surface()) {
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: receipt } =>
+      srv1_software_surface().apparmor_userns.value.value == Present { value: apparmor_unprivileged_userns_restricted }
+        && srv1_software_surface().apparmor_userns.value.name == apparmor_restrict_unprivileged_userns_sysctl_name
+        && (receipt as String) == (srv1_user_manager_protect_home_wrote_into_home.receipt as String)
+        && host_identity_eq(a: srv1_user_manager_protect_home_wrote_into_home.host, b: srv1_software_surface().host)
+    UserManagerSandboxEnforcementUnobserved { obligation: _ } => false
+    UserManagerSandboxUnobserved { obligation: _ } => false
+    UserManagerSandboxSysctlUnreadable { value: _ } => false
+  }
+}
+
+test fn a_sysctl_zero_host_does_not_promote_the_enforcing_bet() -> Bool {
+  let surface = software_surface(
+    host: operator_host_srv1,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: HostSysctlFact {
+      name: apparmor_restrict_unprivileged_userns_sysctl_name,
+      value: Present { value: 0 },
+      standing: srv1_software_surface().apparmor_userns.value.standing,
+    },
+    programs: srv1_software_surface().programs.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match user_manager_sandbox_enforcement(surface: surface) {
+    UserManagerSandboxEnforcementUnobserved { obligation: _ } => true
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
+    UserManagerSandboxUnobserved { obligation: _ } => false
+    UserManagerSandboxSysctlUnreadable { value: _ } => false
+  }
+}
+
+test fn a_non_srv1_host_with_sysctl_one_does_not_inherit_the_srv1_receipt() -> Bool {
+  let surface = software_surface(
+    host: operator_host_srv2,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: srv1_software_surface().apparmor_userns.value,
+    programs: srv1_software_surface().programs.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match user_manager_sandbox_enforcement(surface: surface) {
+    UserManagerSandboxEnforcementUnobserved { obligation: o } =>
+      o == user_manager_wrote_into_home_observed_on_this_host_obligation
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
+    UserManagerSandboxUnobserved { obligation: _ } => false
+    UserManagerSandboxSysctlUnreadable { value: _ } => false
+  }
+}
+
+test fn sudo_all_is_observed_and_not_copied_into_the_declared_grants() -> Bool {
+  match srv1_software_surface().sudo_policy.value.observed_listing {
+    Absent => false
+    Present { value: _ } =>
+      fleet_posix_operator_sudo_grant_is_hostnamectl_only()
+        && srv1_software_surface().sudo_policy.value.principal.posix.name == fleet_posix_operator_principal().posix.name
+  }
+}
+
+test fn srv1_procps_kill_uses_end_of_options() -> Bool {
+  match host_program_version(surface: srv1_software_surface(), program: kill_program()) {
+    Absent => false
+    Present { value: _ } =>
+      match procps_ng_kill_term_pgid_argv(pgid: 1234)[0] {
+        Absent => false
+        Present { value: bin } =>
+          (bin as String) == (kill_program().invocation as String)
+            && match procps_ng_kill_term_pgid_argv(pgid: 1234)[2] {
+              Absent => false
+              Present { value: sep } => (sep as String) == "--"
+            }
+            && procps_ng_kill_term_pgid_argv(pgid: 1234) != [
+              kill_program().invocation as String,
+              "-TERM",
+              concat("-", to_string(1234)),
+            ]
+      }
+  }
+}
+
+test fn unobserved_procps_does_not_keep_srv1s_kill_form() -> Bool {
+  match host_program_version(surface: unobserved_software_surface(host: operator_host_srv2), program: kill_program()) {
+    Absent => true
+    Present { value: fact } =>
+      match fact.version_label {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+test fn srv1_timeout_is_observed_and_coreutils_deadline_is_124() -> Bool {
+  match host_program_version(surface: srv1_software_surface(), program: timeout_program()) {
+    Absent => false
+    Present { value: fact } =>
+      match fact.version_label {
+        Absent => false
+        Present { value: _ } => coreutils_timeout_expired_exit_code == 124
+      }
+  }
+}
+
+test fn procps_pgid_signal_host_consumer_is_a_named_unbound_frontier() -> Bool {
+  !dissolution_is_bound(condition: procps_pgid_signal_host_consumer_frontier)
+}
+
+test fn inhabitance_recipe_names_the_probes_the_brief_named() -> Bool {
+  let cmds = srv1_software_inhabitance_probe_commands()
+  cmds.length() == 16
+    && match cmds[0] {
+      Present { value: p } => p.program.invocation == srv1_os_release_probe().program.invocation
+      Absent => false
+    }
+    && any(cmds, c => (c.program.invocation as String) == "uname")
+    && any(cmds, c =>
+      (host_software_probe_obligation(p: c) as String).contains(apparmor_restrict_unprivileged_userns_sysctl_name as String)
+    )
+    && any(cmds, c => (host_software_probe_obligation(p: srv1_procps_probe()) as String) == (host_software_probe_obligation(p: c) as String))
+    && any(cmds, c => c.program.invocation == srv1_git_path_probe().program.invocation && c.arguments.length() == 0)
+    && any(cmds, c => c.program.invocation == srv1_dpkg_query_probe().program.invocation)
+}
+
+fn standing_is_cited_to_authority(s: CitedFigureStanding) -> Bool {
+  match s {
+    CitedToAuthority { authority: _ } => true
+    TranscribedUncited { read_obligation: _ } => false
+    ObservedByReceipt { observed: _ } => false
+  }
+}
+
+test fn upstream_sandbox_procps_and_apparmor_figures_are_cited_to_authority() -> Bool {
+  standing_is_cited_to_authority(s: apparmor_userns_restriction_standing())
+    && standing_is_cited_to_authority(s: procps_kill_standing())
+    && standing_is_cited_to_authority(s: sysctl_standing())
+}
+
+test fn srv1_software_is_observed_by_the_inhabitance_receipt() -> Bool {
+  let r = srv1_software_inhabitance_receipt
+  match srv1_software_surface().os_release.value.standing {
+    ObservedByReceipt { observed: o } =>
+      (observed_receipt_ref(observed: o).decl_name as String) == "srv1_software_inhabitance_receipt"
+        && srv1_software_surface().apparmor_userns.value.value == Present { value: r.apparmor_userns }
+        && r.apparmor_userns == apparmor_unprivileged_userns_restricted
+        && match host_program_version(surface: srv1_software_surface(), program: tailscale_program()) {
+          Present { value: ts } => ts.version_label == Present { value: r.tailscale_version_label }
+          Absent => false
+        }
+        && match host_program_version(surface: srv1_software_surface(), program: jq_program()) {
+          Present { value: jq } =>
+            jq.version_label == Present { value: r.jq_version_label }
+              && jq.package_version_label == Present { value: r.jq_package }
+          Absent => false
+        }
+        && match host_program_version(surface: srv1_software_surface(), program: git_program()) {
+          Present { value: g } => g.program.invocation == git_program().invocation
+          Absent => false
+        }
+        && srv1_software_surface().kernel_release.value.kernel_release_label == Present { value: r.kernel_release_label }
+        && srv1_software_surface().os_release.value.pretty_name == Present { value: r.os_pretty_name }
+        && (r.os_codename as String) == "noble"
+        && (r.observer_login as String) == "briansrls"
+        && r.observer_uid == 1000
+        && (r.sudo_all_as_all as String) == "(ALL : ALL) ALL"
+        && (r.sudo_nopasswd_all as String) == "(ALL) NOPASSWD: ALL"
+        && (r.parent_transcript_sha256 as String) == "0ff37aa1418aafdc17cd3cd7d44d8577ab758e549fa98b5ad773152a1d3de9b2"
+    CitedToAuthority { authority: _ } => false
+    TranscribedUncited { read_obligation: _ } => false
+  }
+}
+
+test fn unobserved_apparmor_is_not_a_default_enforcement() -> Bool {
+  match user_manager_sandbox_enforcement(surface: unobserved_software_surface(host: operator_host_srv2)) {
+    UserManagerSandboxUnobserved { obligation: _ } => true
+    UserManagerSandboxEnforcementUnobserved { obligation: _ } => false
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
+    UserManagerSandboxSysctlUnreadable { value: _ } => false
+  }
+}
