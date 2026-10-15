@@ -8027,7 +8027,16 @@ fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<S
           TypeDeclResolved { identity: identity, decl: _ } =>
             if set_contains(recursive_types, identity) { NeedsBox } else { NeedsNoBox }
           TypeDeclLeafAmbiguous { leaf: amb } => NeedsBoxRefuse { leaf: amb, cause: "TypeDeclLeafAmbiguous" }
-          TypeDeclKernelSpellingUndecided { leaf: und } => NeedsBoxRefuse { leaf: und, cause: "TypeDeclKernelSpellingUndecided" }
+          TypeDeclKernelSpellingUndecided { leaf: und } =>
+            let corpus = type_decl_identities_of_leaf(index: type_decl_items, leaf: und)
+            let rec_n = corpus |> filter(id => set_contains(recursive_types, id)) |> count
+            if rec_n == (corpus |> count) && (corpus |> count) > 0 {
+              NeedsBox
+            } else if rec_n == 0 || is_kernel_type(name: und) {
+              NeedsNoBox
+            } else {
+              NeedsBoxRefuse { leaf: und, cause: "TypeDeclKernelSpellingUndecided candidates disagree on box" }
+            }
           TypeDeclNotDeclared => NeedsNoBox
         }
       }

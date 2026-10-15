@@ -16679,7 +16679,7 @@ pub fn needs_box_wrapping(
                 }
             } else {
                 match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_routed(
-                    type_decl_items,
+                    type_decl_items.clone(),
                     n,
                     source_indices,
                 )
@@ -16701,9 +16701,26 @@ pub fn needs_box_wrapping(
                         }
                     }
                     TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: und } => {
-                        NeedsBoxAnswer::NeedsBoxRefuse {
-                            leaf: und,
-                            cause: "TypeDeclKernelSpellingUndecided".to_string(),
+                        let corpus =
+                            crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
+                                type_decl_items.clone(),
+                                und.clone(),
+                            );
+                        let rec_n = corpus
+                            .iter()
+                            .filter(|id| v1_rt::set_contains(&recursive_types, (*id).clone()))
+                            .count() as i64;
+                        let all_n = corpus.len() as i64;
+                        if rec_n == all_n && all_n > 0 {
+                            NeedsBoxAnswer::NeedsBox
+                        } else if rec_n == 0 || crate::std_types::is_kernel_type(und.clone()) {
+                            NeedsBoxAnswer::NeedsNoBox
+                        } else {
+                            NeedsBoxAnswer::NeedsBoxRefuse {
+                                leaf: und,
+                                cause: "TypeDeclKernelSpellingUndecided candidates disagree on box"
+                                    .to_string(),
+                            }
                         }
                     }
                     TypeDeclResolution::TypeDeclNotDeclared => NeedsBoxAnswer::NeedsNoBox,
