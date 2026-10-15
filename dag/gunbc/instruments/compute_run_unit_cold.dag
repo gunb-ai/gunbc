@@ -15,9 +15,16 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import extdeps.shell
 import extdeps.rust.cargo { cargo_environment_variable_name, CargoHomeEnv }
-import extdeps.cache.sccache { sccache_installed_binary_path, sccache_server_default_tcp_port }
+import extdeps.cache.sccache {
+  sccache_installed_binary_path, sccache_server_default_tcp_port,
+  SccacheServerUnixSocket, SccacheServerTcpPort,
+}
 import extdeps.tools.id { id_binary_path }
 import extdeps.iproute2.ss { ss_binary_path }
+import extdeps.tools.stat { stat_program }
+import extdeps.systemd.systemctl { systemctl_user_manager_probe_command }
+import gunbc.build_cache.build_cache_instance { ci_cache_instance }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import extdeps.rust.rustup { rustup_home_env_name }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
@@ -385,16 +392,25 @@ fn observe_sccache_stats_debug() -> String {
   }
 }
 
+fn ci_cache_uds_path() -> String {
+  match ci_cache_instance(host: operator_host_srv1).endpoint {
+    SccacheServerUnixSocket { path } => path as String
+    SccacheServerTcpPort { port: _ } => ""
+  }
+}
+
 fn observe_sccache_host_probe() -> String {
   let tcp_sport = join(["sport = :", to_string(value: sccache_server_default_tcp_port)], "")
+  let uds = ci_cache_uds_path()
+  let user_mgr = systemctl_user_manager_probe_command()
   let id_out = observe_argv(program: id_binary_path as String, args: [])
   let host_out = observe_argv(program: "/usr/bin/hostname", args: [])
   let ps_out = observe_argv(program: "/usr/bin/ps", args: ["-eo", "user,uid,pid,args"])
   let ss_out = observe_argv(program: ss_binary_path as String, args: ["-ltnp", tcp_sport])
-  let mgr_env = observe_argv(program: "/usr/bin/systemctl", args: ["--user", "show-environment"])
+  let mgr_env = observe_argv(program: user_mgr.program.invocation as String, args: user_mgr.arguments)
   let sock_stat = observe_argv(
-    program: "/usr/bin/stat",
-    args: ["-c", "%U %u %a %n", "/var/lib/ctrl/sccache-ci/server.sock"],
+    program: stat_program().invocation as String,
+    args: ["-c", "%U %u %a %n", uds],
   )
   let ss_unix = observe_argv(program: ss_binary_path as String, args: ["-xlp"])
   join([
@@ -406,7 +422,7 @@ fn observe_sccache_host_probe() -> String {
     "=== systemctl --user show-environment SCCACHE/RUSTC_WRAPPER ===\n",
     lines_with_needle(text: mgr_env, needle: "SCCACHE"), "\n",
     lines_with_needle(text: mgr_env, needle: "RUSTC_WRAPPER"), "\n",
-    "=== stat CI UDS /var/lib/ctrl/sccache-ci/server.sock ===\n", sock_stat, "\n",
+    "=== stat CI UDS ", uds, " ===\n", sock_stat, "\n",
     "=== ss -xlp sccache/server.sock ===\n",
     lines_with_needle(text: ss_unix, needle: "sccache"), "\n",
     lines_with_needle(text: ss_unix, needle: "server.sock"), "\n",
