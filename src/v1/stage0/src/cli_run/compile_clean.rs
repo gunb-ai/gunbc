@@ -93,23 +93,6 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-/// Live compile-clean pipeline module paths for census exclusion silent-loss checks.
-/// Shard entry paths plus their import closures — modules the compile-clean gate may touch.
-pub fn compile_clean_live_pipeline_module_paths() -> Vec<String> {
-    let pool_roots = default_source_roots();
-    let facts = build_module_graph_facts_live(&pool_roots);
-    let mut paths = BTreeSet::new();
-    let roster = compile_clean_shard_entry_paths_fast().unwrap_or_else(|reason| {
-        panic!("compile_clean_live_pipeline_module_paths: {reason}");
-    });
-    for entry in roster {
-        for path in import_closure_live_paths_with_facts(&entry, &facts) {
-            paths.insert(path);
-        }
-    }
-    paths.into_iter().collect()
-}
-
 pub(crate) fn compile_clean_resolve_has_hard_errors(
     result: &v1_compiler_compile::ResolvedPipelineResult,
 ) -> bool {
