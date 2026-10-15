@@ -1,0 +1,13 @@
+module v2.test.claim.cardinality_realization_entry_6l
+
+import std.types { String }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld }
+import v2.test.claim.cardinality_realization_list_specimen { tag_list_entries, specimen_present_absent_list_entries }
+
+// SPECIMEN 6 OVER List, as a program of gunbc.instruments.cardinality_realization_conformance (see
+// cardinality_realization_entry_1).
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn native_claim_report() -> NativeClaimReport {
+  NativeClaimReport { stdout: concat("tag=", to_string(value: tag_list_entries(x: specimen_present_absent_list_entries()))), terminal: NativeClaimHeld }
+}

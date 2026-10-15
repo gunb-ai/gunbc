@@ -41,6 +41,7 @@ import v2.std.type_binder {
   PureRenamingOf,
   TypeAlias,
   binder_conj_names,
+  refinement_declaration_of_node,
   type_alias_renaming,
   type_decl_view
 }
@@ -438,6 +439,25 @@ fn symbol_index_is_module_root_at(index: SymbolIndex, qualified_path: QualifiedN
   map_contains_key(m: index.module_roots, key: qualified_path)
 }
 
+// THE FILL-TIME OWNER OF A DECLARATION PATH. v2.compiler.symbol_index_fill
+// symbol_index_fill_module_declarations marks exactly one `module_qn` as a module root per
+// compilation unit and keys every declaration of that unit under that qn. Nested units
+// (`v2.p` and `v2.p.child`) are two roots, not containment: the child's entries are never
+// filled under the parent. The unique marked root that prefixes the declaring path and is
+// longest is that fill-time `module_qn`. This reads the fill-written `module_roots` map; it
+// is not a count of remaining path segments after a refused prefix.
+fn symbol_index_owning_module_of(index: SymbolIndex, path: QualifiedName) -> Optional<QualifiedName> {
+  match path {
+    Empty => optional_absent()
+    Cons { head: _, tail: _ } =>
+      if symbol_index_is_module_root_at(index: index, qualified_path: path) {
+        optional_present(value: path)
+      } else {
+        symbol_index_owning_module_of(index: index, path: qualified_name_init(qn: path))
+      }
+  }
+}
+
 fn symbol_index_binds_namespace_body_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
   map_contains_key(m: index.namespace_bodies, key: qualified_path)
 }
@@ -747,13 +767,17 @@ fn symbol_index_lexical_lookup(
 // They disagreed on Atom: TypeOccurrence as a declaration (a module-level `type T = Name`)
 // vs not a type-child walk (the same Atom shape is a construct field). A PlainTypeDecl Conj
 // is a record only when the declaring path is RecordTypePayload — an import residual is also
-// a Conj. Those are two projections of one shape, not two facts.
+// a Conj — and a refinement when it carries a where clause (v2.std.type_binder
+// refinement_declaration_of_node): `type Char = Int where ...` declares a type, so a type
+// position may bind it, and its children keep the inherited walk they had as an unclassified
+// Conj. Those are two projections of one shape, not two facts.
 type TypeDeclMemberShape
   = TypeDeclShapeRecordOrCoproduct
   | TypeDeclShapeAliasAtom
   | TypeDeclShapeCallable
   | TypeDeclShapeValue
   | TypeDeclShapeBinderWrapper
+  | TypeDeclShapeRefinement
 
 type TypeDeclChildWalk
   = TypeDeclChildrenTypeOccurrence
@@ -771,7 +795,11 @@ fn type_decl_member_shape(index: SymbolIndex, path: QualifiedName, node: Node) -
           match symbol_index_declared_payload_at(index: index, qualified_path: path) {
             Present { value: RecordTypePayload } => TypeDeclShapeRecordOrCoproduct
             Present { value: VariantArmPayload } => TypeDeclShapeValue
-            Absent => TypeDeclShapeValue
+            Absent =>
+              match refinement_declaration_of_node(decl: member) {
+                Present { value: _ } => TypeDeclShapeRefinement
+                Absent => TypeDeclShapeValue
+              }
           }
         TypeNode { connective: Disj } => TypeDeclShapeRecordOrCoproduct
         TypeNode { connective: Instantiation } => TypeDeclShapeRecordOrCoproduct
@@ -788,6 +816,7 @@ fn type_decl_member_occurrence_category(shape: TypeDeclMemberShape) -> Occurrenc
     TypeDeclShapeRecordOrCoproduct => TypeOccurrence
     TypeDeclShapeAliasAtom => TypeOccurrence
     TypeDeclShapeBinderWrapper => TypeOccurrence
+    TypeDeclShapeRefinement => TypeOccurrence
     TypeDeclShapeCallable => CallableOccurrence
     TypeDeclShapeValue => LexicalValueOccurrence
   }
@@ -800,6 +829,7 @@ fn type_decl_member_child_walk(shape: TypeDeclMemberShape) -> TypeDeclChildWalk 
     TypeDeclShapeAliasAtom => TypeDeclChildrenInherited
     TypeDeclShapeCallable => TypeDeclChildrenInherited
     TypeDeclShapeValue => TypeDeclChildrenInherited
+    TypeDeclShapeRefinement => TypeDeclChildrenInherited
   }
 }
 

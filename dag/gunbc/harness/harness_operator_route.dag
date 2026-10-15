@@ -11,9 +11,8 @@ import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable
 import extdeps.network.endpoint { SocketAddress, socket_address, render_uri_host, host_by_ipv4 }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward }
-import std.measure { millisecond, token_count }
-import extdeps.external_authority { TranscribedUncited }
-import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list, NinferServeLaunch, NinferKvFp8, NinferMtp, ninfer_upstream_read_obligation, ninfer_authorization_header_line, ninfer_models_path, ninfer_chat_completions_path, ninfer_health_path }
+import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list, ninfer_authorization_header_line, ninfer_models_path, ninfer_chat_completions_path, ninfer_health_path }
+import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_unit_model_id }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
 import std.list { list_member }
@@ -35,15 +34,16 @@ data operator_placement_ruling: DeclarationRef = decl_ref(
 )
 
 // THE TUNNEL, AS THE SHAPE OPENSSH ALREADY MODELS. srv1 runs a hand-placed systemd --user unit
-// (gunbc-gpu-pod-tunnel.service, observed 2026-10-11) executing `ssh -N -L 127.0.0.1:18090:127.0.0.1:8080`
-// to the pod. The row lives HERE, in the consumer, and not in extdeps.ssh.openssh_port_forwarding: that
+// (gunbc-gpu-pod-tunnel.service, observed 2026-10-11, repointed 2026-10-13 to the operator's Vast card)
+// executing `ssh -N -L 127.0.0.1:18090:127.0.0.1:8000` to the card. The target port is the launch's own
+// (gunbc.harness.operator_pod_launch operator_pod_listen_port), not a second spelling of it. The row lives HERE, in the consumer, and not in extdeps.ssh.openssh_port_forwarding: that
 // module is the agnostic OpenSSH interface and DESIGN 3 forbids it from carrying a consumer's rows or
 // coverage. The unit itself is still unmodeled (no realization starts or checks it); a dead tunnel is
 // surfaced by the roster probe as HarnessBackendUnreachable instead.
 data operator_endpoint_tunnel: PortForwardSpec = PortForwardSpec {
   direction: LocalForward,
   listener: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)), port: 18090),
-  target: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)), port: 8080),
+  target: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)), port: operator_pod_listen_port),
 }
 
 // THE ORIGIN IS DERIVED FROM THE TUNNEL'S LISTENER, so the address a request is sent to cannot disagree with
@@ -96,26 +96,11 @@ type HarnessOperatorRoute {
   quality_floor: OperatorQualityFloor
 }
 
-// THIS OPERATOR'S LAUNCH of ninfer-serve on the pod (a consumer-layer observation, not a fact of the upstream): the command line observed (host and port bind loopback; the API key is a flag value that is
-// deliberately NOT a field here -- the key lives in a 0600 file on the consuming host).
-data operator_observed_launch: NinferServeLaunch = NinferServeLaunch {
-  model_id: "qwen3.8-27b" as NonEmptyStr,
-  max_concurrency: 8,
-  max_context: token_count(count: 262144),
-  max_pending_requests: 64,
-  pending_timeout: millisecond(count: 900000),
-  default_max_tokens: token_count(count: 32768),
-  kv_dtype: NinferKvFp8,
-  kv_capacity_auto: true,
-  speculation: NinferMtp { draft_tokens: 3, lm_head_draft: true },
-  standing: TranscribedUncited { read_obligation: ninfer_upstream_read_obligation },
-}
-
 data harness_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
   unit: Qwen3_8_27bOnNinfer,
   group_wire: "operator:ninfer-gpu-pod" as NonEmptyStr,
   credential_relative_path: ".config/gunbc-gpu-pod/api-key" as NonEmptyStr,
-  concurrency_ceiling: operator_observed_launch.max_concurrency,
+  concurrency_ceiling: operator_pod_ninfer_launch.max_concurrency,
   quality_floor: OperatorQualityFloor {
     admitted_class: BatchQualityTolerant,
     consequence: "the operator route serves a 27B-parameter NVFP4 model, not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by the smaller model, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,

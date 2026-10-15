@@ -166,7 +166,8 @@ fn cbs_root_scope_declaring(name: Symbol) -> Scope {
       module_qn: Empty,
       test_code: test_code_index_empty(),
       declared_in: Empty,
-      imported_origins: empty_map()
+      imported_origins: empty_map(),
+    module_outcomes: []
     }
   }
 }

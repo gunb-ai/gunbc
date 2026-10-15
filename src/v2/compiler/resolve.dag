@@ -1,4 +1,5 @@
 module v2.compiler.resolve
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b, nfr_reason_landed_after_typed_census }
 import v2.std.language_model { LanguageModel }
 
 import v2.compiler.normalized_tree { normalized_tree_record_declarations, MemberDeclarationsNotRead, MemberDeclarationsRead, NormalizedTree, normalized_tree_resource_declarations }
@@ -113,6 +114,7 @@ import v2.std.diagnostic {
   Unavailable,
   Accepted,
   None,
+  Some,
   diagnostics_merge,
   diagnostics_fatal_reason,
   diagnostics_singleton,
@@ -178,7 +180,8 @@ import v2.std.symbol_index {
   type_decl_member_child_walk,
   TypeDeclChildrenInherited,
   TypeDeclChildrenTypeOccurrence,
-  TypeDeclChildWalk
+  TypeDeclChildWalk,
+  symbol_index_owning_module_of
 }
 import v2.std.node {
   BinderTypeEdge,
@@ -282,6 +285,8 @@ import v2.std.map_introduction {
   map_introduction_expected_head_is_map
 }
 import std.types { List }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
 // stage that needs a reference's declaration asks the SAME authority resolution asked
@@ -311,47 +316,153 @@ type ResolvedTree {
   symbol_index: SymbolIndex
   resolved_declarations: SymbolIndex
   lexical_bindings: Map<OccurrenceId, LexicalBinding>
-  unavailable_providers: List<ClosureProviderRefusal>
+  // THE CLOSURE'S PUBLICATION ROSTER. Includes DeclarationAvailable rows; unavailability is
+  // read from it by ClosureProviderRefusal (unavailable_provider_for_path).
+  module_outcomes: List<ModuleOutcome>
   member_kinds: MemberKindChannel
   type_declaration_modifiers: TypeDeclarationModifierChannel
   constructing_module: Optional<Symbol>
 }
 
-// A CLOSURE ROOT WHOSE OWN RESOLVE REFUSED, AND WHY. v2.compiler.name_resolve closure_declarations_demand
-// resolves every root in the closure to fill the index inference reads; a root that refuses contributes no
-// declarations, and until this carrier that absence was SILENT -- a receiver typed by one of its records
-// refused as a bare lookup miss (infer_reason_projection_receiver_declaration_unavailable) with nothing to
-// say the provider never resolved, so the provider's real defect never ranked (DESIGN section 5, the
-// absorbing fallback's signal loss). The roster rides on the tree so every lookup miss can name its cause.
+// A LOOKUP READING: this path's provider refused, and this is the chain. Constructed from
+// ModuleOutcome; not a second publication roster.
 type ClosureProviderRefusal {
   module: QualifiedName
   refusal: NonEmptyDiagnostics
 }
 
-// THE ONE READ every closure-index miss consults: the refused provider whose module path is a prefix of
-// the missed declaration's path, if any. A miss with no refused provider over it stays the bare miss.
-fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  fold(tree.unavailable_providers, init: optional_absent(), f: fn(acc, p) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => if qualified_name_is_proper_prefix(prefix: p.module, path: path) { optional_present(value: p) } else { acc }
+type DeclarationOutcome
+  = DeclarationAvailable { path: QualifiedName }
+  | DeclarationRefused { path: QualifiedName, refusal: NonEmptyDiagnostics }
+
+// THE ONE PUBLICATION ROSTER. ModuleUnavailable is ingest or admission: the module's declarations
+// were never observed. ModuleObserved is the only grain at which a declaration is published, and
+// only DeclarationAvailable rows are published. Nothing provisional is ever a ModuleObserved
+// DeclarationAvailable.
+type ModuleOutcome
+  = ModuleUnavailable { module: QualifiedName, refusal: NonEmptyDiagnostics }
+  | ModuleObserved { module: QualifiedName, declarations: List<DeclarationOutcome> }
+
+fn module_outcome_module(o: ModuleOutcome) -> QualifiedName {
+  match o {
+    ModuleUnavailable { module: m, refusal: _ } => m
+    ModuleObserved { module: m, declarations: _ } => m
+  }
+}
+
+// THE ONE AUTHORITY for "is this declaration available": a DeclarationAvailable row on some
+// ModuleObserved. Census, lookup, and infer read this; they do not re-test the module walk.
+fn declaration_available(outcomes: List<ModuleOutcome>, path: QualifiedName) -> Bool {
+  fold_list(xs: outcomes, empty: false, cons: fn(found, o) {
+    found || match o {
+      ModuleUnavailable { module: _, refusal: _ } => false
+      ModuleObserved { module: _, declarations: ds } =>
+        fold_list(xs: ds, empty: false, cons: fn(hit, d) {
+          hit || match d {
+            DeclarationAvailable { path: p } => p == path
+            DeclarationRefused { path: _, refusal: _ } => false
+          }
+        })
     }
   })
 }
 
-fn qualified_name_is_proper_prefix(prefix: QualifiedName, path: QualifiedName) -> Bool {
-  match prefix {
-    Empty =>
-      match path {
-        Empty => false
-        Cons { head: _, tail: _ } => true
-      }
-    Cons { head: ph, tail: pt } =>
-      match path {
-        Empty => false
-        Cons { head: h, tail: t } => ph == h && qualified_name_is_proper_prefix(prefix: pt, path: t)
+fn module_outcomes_provider_refusals(outcomes: List<ModuleOutcome>) -> List<ClosureProviderRefusal> {
+  fold_list(xs: outcomes, empty: [], cons: fn(acc, o) {
+    match o {
+      ModuleUnavailable { module: m, refusal: r } =>
+        list_snoc_item(xs: acc, item: ClosureProviderRefusal { module: m, refusal: r })
+      ModuleObserved { module: m, declarations: ds } =>
+        fold_list(xs: ds, empty: acc, cons: fn(a, d) {
+          match d {
+            DeclarationAvailable { path: _ } => a
+            DeclarationRefused { path: _, refusal: r } =>
+              list_snoc_item(xs: a, item: ClosureProviderRefusal { module: m, refusal: r })
+          }
+        })
+    }
+  })
+}
+
+fn unavailable_declaration_refusal(
+  providers: List<ModuleOutcome>,
+  path: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  fold_list(xs: providers, empty: optional_absent(), cons: fn(acc, o) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match o {
+          ModuleUnavailable { module: _, refusal: _ } => acc
+          ModuleObserved { module: m, declarations: ds } =>
+            fold_list(xs: ds, empty: optional_absent(), cons: fn(hit, d) {
+              match hit {
+                Present { value: _ } => hit
+                Absent =>
+                  match d {
+                    DeclarationAvailable { path: _ } => hit
+                    DeclarationRefused { path: p, refusal: r } =>
+                      if p == path {
+                        optional_present(value: ClosureProviderRefusal { module: m, refusal: r })
+                      } else {
+                        hit
+                      }
+                  }
+              }
+            })
+        }
+    }
+  })
+}
+
+// THE ONE READ every closure-index miss consults: a DeclarationRefused at this exact path, else a
+// ModuleUnavailable whose module IS the declaration's fill-time owning module. A proper-prefix join
+// would attribute v2.p.child.R to refused parent v2.p. A miss with neither stays the bare miss.
+fn unavailable_provider_for_path(
+  index: SymbolIndex,
+  providers: List<ModuleOutcome>,
+  path: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  match unavailable_declaration_refusal(providers: providers, path: path) {
+    Present { value: p } => optional_present(value: p)
+    Absent =>
+      match symbol_index_owning_module_of(index: index, path: path) {
+        Present { value: owner } => unavailable_provider_for_module(providers: providers, module: owner)
+        Absent => optional_absent()
       }
   }
+}
+
+fn unavailable_provider_for_module(providers: List<ModuleOutcome>, module: QualifiedName) -> Optional<ClosureProviderRefusal> {
+  fold(providers, init: optional_absent(), f: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match p {
+          ModuleUnavailable { module: m, refusal: r } =>
+            if m == module {
+              optional_present(value: ClosureProviderRefusal { module: m, refusal: r })
+            } else {
+              acc
+            }
+          ModuleObserved { module: _, declarations: _ } => acc
+        }
+    }
+  })
+}
+
+fn module_outcomes_except_subject(providers: List<ModuleOutcome>, subject: QualifiedName) -> List<ModuleOutcome> {
+  fold_list(xs: providers, empty: [], cons: fn(acc, p) {
+    if module_outcome_module(o: p) == subject {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: p)
+    }
+  })
+}
+
+fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
+  unavailable_provider_for_path(index: tree.symbol_index, providers: tree.module_outcomes, path: path)
 }
 
 // The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
@@ -392,7 +503,7 @@ fn resolved_tree_of(
   root: Node,
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
-  unavailable_providers: List<ClosureProviderRefusal>,
+  module_outcomes: List<ModuleOutcome>,
   member_kinds: MemberKindChannel,
   type_declaration_modifiers: TypeDeclarationModifierChannel,
   lexical: List<LexicalBindingEntry>
@@ -402,7 +513,7 @@ fn resolved_tree_of(
     symbol_index: symbol_index,
     resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
     lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) }),
-    unavailable_providers: unavailable_providers,
+    module_outcomes: module_outcomes,
     member_kinds: member_kinds,
     type_declaration_modifiers: type_declaration_modifiers,
     constructing_module: resolved_tree_constructing_module_of(root: root)
@@ -526,6 +637,25 @@ type Namespace {
   test_code: TestCodeIndex
   declared_in: QualifiedName
   imported_origins: Map<Symbol, QualifiedName>
+  // THE CLOSURE'S MODULE OUTCOMES, OVERLAID FOR THIS SUBJECT WALK. Empty until
+  // closure_declarations_demand has run; never the subject's own row (that walk is how
+  // the row was recorded). An imported name whose declaration is DeclarationRefused, or
+  // whose module is ModuleUnavailable, refuses with that chain, not as unbound
+  // (resolve_reason_declarer_refused).
+  module_outcomes: List<ModuleOutcome>
+}
+
+fn namespace_with_module_outcomes(namespace: Namespace, providers: List<ModuleOutcome>) -> Namespace {
+  Namespace {
+    bindings: namespace.bindings,
+    canonical_symbols: namespace.canonical_symbols,
+    symbol_index: namespace.symbol_index,
+    module_qn: namespace.module_qn,
+    test_code: namespace.test_code,
+    declared_in: namespace.declared_in,
+    imported_origins: namespace.imported_origins,
+    module_outcomes: providers
+  }
 }
 
 type Scope
@@ -640,7 +770,8 @@ fn empty_namespace() -> Namespace {
     module_qn: Empty,
     test_code: test_code_index_empty(),
     declared_in: Empty,
-    imported_origins: empty_map()
+    imported_origins: empty_map(),
+    module_outcomes: []
   }
 }
 
@@ -950,7 +1081,8 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
       channel: tree.test_markers
     ),
     declared_in: declared_in,
-    imported_origins: empty_map()
+    imported_origins: empty_map(),
+    module_outcomes: []
   }
 }
 
@@ -1251,6 +1383,7 @@ type ResolveRefusalReason
   | ResolveKernelTypeSpellingNamesAForeignDeclaration
   | ResolveObservationIncomplete
   | ResolveTypeParameterShadowsVisibleName
+  | ResolveDeclarerRefused
 
 // The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
 fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
@@ -1265,6 +1398,7 @@ fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
     ResolveKernelTypeSpellingNamesAForeignDeclaration => ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration
     ResolveObservationIncomplete => ^resolve_reason_observation_incomplete
     ResolveTypeParameterShadowsVisibleName => ^resolve_reason_type_parameter_shadows_visible_name
+    ResolveDeclarerRefused => ^resolve_reason_declarer_refused
   }
 }
 
@@ -1282,6 +1416,21 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
     at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
+}
+
+fn declarer_refused_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_declarer_refused,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn declarer_refused_diagnostics(n: Node, provider: ClosureProviderRefusal) -> NonEmptyDiagnostics {
+  rejected_with_pending(
+    pending: Some { diagnostics: provider.refusal },
+    rejected: diagnostics_singleton(d: declarer_refused_diagnostic(n: n))
+  )
 }
 
 // A `_` IN VALUE POSITION NAMES NOTHING, AND THE REFUSAL SAYS WHY. An anonymous parameter slot is
@@ -1868,15 +2017,39 @@ fn resolve_declared_path_reading(
     required: ctx.reference_category,
     candidates: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path)
   ) {
-    Empty =>
+    Empty => resolve_reference_path_miss(ctx: ctx, n: n, path: path, pending: pending)
+    Cons { head: candidate, tail: rest } =>
+      resolve_declared_path_candidates(ctx: ctx, n: n, candidate: candidate, rest: rest, pending: pending)
+  }
+}
+
+// A QUALIFIED PATH THAT NAMES NO INDEXED CANDIDATE. If the path's fill-time owning module
+// (`symbol_index_owning_module_of`) is in the refused-provider roster, that chain is the cause.
+// Otherwise the path refuses unbound at its own locus — never a last-segment reread (that would
+// accept foo.bar.Int as canonical Int, and would attribute declarer-refused from an unrelated
+// imported leaf) and never a proper-prefix of the path (that would attribute v2.p.child.R to
+// refused parent v2.p).
+fn resolve_reference_path_miss(
+  ctx: ResolveContext,
+  n: Node,
+  path: QualifiedName,
+  pending: Diagnostics
+) -> Outcome<Node> {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, path: path) {
+    Present { value: provider } =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: declarer_refused_diagnostics(n: n, provider: provider)
+        )
+      }
+    Absent =>
       Rejected {
         diagnostics: rejected_with_pending(
           pending: pending,
           rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: n))
         )
       }
-    Cons { head: candidate, tail: rest } =>
-      resolve_declared_path_candidates(ctx: ctx, n: n, candidate: candidate, rest: rest, pending: pending)
   }
 }
 
@@ -1941,6 +2114,15 @@ fn resolve_atom_bound(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, path: path) {
+    Present { value: provider } =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: declarer_refused_diagnostics(n: n, provider: provider)
+        )
+      }
+    Absent =>
   match test_code_reach(index: ctx.namespace.test_code, path: path) {
     ReachesNoTestCode =>
       Accepted {
@@ -1957,6 +2139,7 @@ fn resolve_atom_bound(
           rejected: diagnostics_singleton(d: test_code_referenced_diagnostic(reason: ^resolve_reason_test_code_referenced, n: n))
         )
       }
+  }
   }
 }
 
@@ -2089,6 +2272,23 @@ fn resolve_kernel_type_atom_optional(n: Node, identity: Symbol) -> Optional<Node
 }
 
 fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
+  match map_lookup(m: ctx.namespace.imported_origins, key: identity) {
+    Present { value: origin } =>
+      match unavailable_provider_for_module(providers: ctx.namespace.module_outcomes, module: origin) {
+        Present { value: provider } =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: pending,
+              rejected: declarer_refused_diagnostics(n: n, provider: provider)
+            )
+          }
+        Absent => resolve_atom_unbound_after_declarer(ctx: ctx, n: n, identity: identity, pending: pending)
+      }
+    Absent => resolve_atom_unbound_after_declarer(ctx: ctx, n: n, identity: identity, pending: pending)
+  }
+}
+
+fn resolve_atom_unbound_after_declarer(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
   if namespace_has_canonical_symbol(
     namespace: ctx.namespace,
     name: identity
@@ -2471,14 +2671,14 @@ fn resolved_tree_outcome(
   w: ResolveNodeWalk,
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
-  unavailable_providers: List<ClosureProviderRefusal>,
+  module_outcomes: List<ModuleOutcome>,
   member_kinds: MemberKindChannel,
   type_declaration_modifiers: TypeDeclarationModifierChannel
 ) -> Outcome<ResolvedTree> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
       Accepted {
-        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, unavailable_providers: unavailable_providers, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, lexical: l),
+        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, module_outcomes: module_outcomes, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, lexical: l),
         diagnostics: d
       }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
@@ -2667,7 +2867,6 @@ fn resolve_transform_children(
     )
   }))
 }
-
 
 // A MATCH ARM'S BINDERS ARE A LEXICAL FRAME, LIKE PARAMETERS AND `let`. Normalize lowers a pat
 // over a fielded variant to the construct shape (v2.std.node_query construct_node): a tag edge that
@@ -3260,7 +3459,6 @@ fn resolve_elided_construct_is_map_literal(n: Node) -> Bool {
   }
 }
 
-
 fn resolve_map_literal_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
   let type_args = node_positional_child_targets(node: x.expected)
   match list_at_optional(xs: type_args, index: 1) {
@@ -3569,6 +3767,7 @@ fn resolve_construct_tag_walk(ctx: ResolveContext, reference: Node) -> ResolveNo
 fn resolve_construct_tag_from_payload_lookup(
   ctx: ResolveContext,
   reference: Node,
+  identity: Symbol,
   lookup: LexicalLookup
 ) -> Outcome<Node> {
   match lookup {
@@ -3580,7 +3779,7 @@ fn resolve_construct_tag_from_payload_lookup(
           class: AmbiguousOnLexicalChain { candidates: candidates }
         )
       }
-    LexicalUnbound => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
+    LexicalUnbound => resolve_atom_unbound(ctx: ctx, n: reference, identity: identity, pending: None)
   }
 }
 
@@ -3590,6 +3789,7 @@ fn resolve_construct_tag_reference(ctx: ResolveContext, reference: Node, path: Q
       resolve_construct_tag_from_payload_lookup(
         ctx: ctx,
         reference: reference,
+        identity: only,
         lookup: symbol_index_lexical_lookup_for_declared_payload(
           index: ctx.namespace.symbol_index,
           position: symbol_index_lookup_position(ctx: ctx),
@@ -3674,13 +3874,7 @@ fn resolve_construct_tag_declared_payload_path(
     index: ctx.namespace.symbol_index,
     candidates: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path)
   ) {
-    Empty =>
-      Rejected {
-        diagnostics: rejected_with_pending(
-          pending: pending,
-          rejected: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference))
-        )
-      }
+    Empty => resolve_reference_path_miss(ctx: ctx, n: reference, path: path, pending: pending)
     Cons { head: candidate, tail: rest } =>
       resolve_declared_path_candidates(ctx: ctx, n: reference, candidate: candidate, rest: rest, pending: pending)
   }
@@ -4291,7 +4485,6 @@ fn resolve_preserve_module_root_named_edge(e: Edge) -> Bool {
     || labeled_named_is(x: e, label_of: edge_label_of, wanted: ^grammar_production_identity_node_projection)
 }
 
-
 // ONE EDGE'S TARGET, OBSERVED. A preserved metadata edge is accepted as its own target unchanged,
 // so the caller rebuilding Edge { label, target } reproduces the edge exactly.
 fn resolve_child_edge(
@@ -4511,7 +4704,6 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
     n: n
   )
 }
-
 
 // THE BODY OF AN ARROW IS WALKED UNDER ITS DECLARED RETURN, as authored: a `data x: T = e` lowers to
 // Arrow(<empty domain>, T, T, body: e) and a `fn f(..) -> T { e }` to the same shape, so this one
@@ -4898,7 +5090,7 @@ fn resolve_with_namespace_policy(
     ),
     symbol_index: namespace.symbol_index,
     closure_declarations: empty_symbol_index(),
-    unavailable_providers: [],
+    module_outcomes: [],
     member_kinds: channel,
     type_declaration_modifiers: type_declaration_modifier_channel_of_tree(tree: tree)
   )
@@ -4929,3 +5121,25 @@ fn resolve_walk_with_namespace_policy(
     )))
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "arrow_domain_has_named_bindings" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_arrow_domain_walk" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_arrow_resource_requirements" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_bind_binder_target" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_construct_tag_names_constructor" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_declaring_entering" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_elided_construct_walk" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_expected_head_node_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_expected_head_path_as_written" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_expected_rename_chain" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_loop_node" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_map_key_type_is_string_literal_type" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_realized_declaration" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_record_field_type_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_transform_operator_child" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "arrow_domain_frame_binders" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "bind_frame_binders" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_loop_carrier_binder" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_where_predicate_operator" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+]

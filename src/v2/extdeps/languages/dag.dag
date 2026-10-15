@@ -75,7 +75,8 @@ import v2.std.grammar {
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
   grammar_relation_row_to_node,
-  node_atom_identity_optional
+  node_atom_identity_optional,
+  parse_production_emitted_identity_optional
 }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature }
@@ -902,7 +903,6 @@ fn emit_grammar_relation_row(
     occurrence_id: OccurrenceSynthetic
 }
 }
-
 
 fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   grammar_expr_terminal(token_class: token_class)
@@ -7278,7 +7278,6 @@ fn dag_round_trip_authorities_ready() -> Bool {
   dag_round_trip_grammar_ready(lm: lm) &&
   dag_round_trip_trivia_fidelity_resolved()
 }
-
 
 fn dag_surface_identity_is_top_level_item(id: Symbol) -> Bool {
   fold_list(

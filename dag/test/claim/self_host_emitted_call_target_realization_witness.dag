@@ -312,6 +312,19 @@ test fn w_bridged_modeled_primitive_still_lowers_to_the_bridge() -> Bool {
   )
 }
 
+// A REGISTRATION GAP, THE DISCRIMINATING RED. json_unescape_checked has a v1_rt body (v1.runtime_rust) and
+// a std.primitives contract but had no rt_function_registry row, so is_rt was false and every call emitted
+// `v1_rt::unrealized_host_seam::<_>(..)`, a runtime panic that reached json_member_presence and
+// json_field_string. The row registers the existing realization; the call must lower to the bridge.
+test fn w_registered_json_unescape_checked_lowers_to_its_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.json_unescape_probe\nimport std.types { String }\nimport std.occurrence_identity { OccurrenceId }\nfn probe(s: String) -> String? { json_unescape_checked(s: s) }\n",
+    "src/test_claim_json_unescape_probe.rs",
+    ["v1_rt::json_unescape_checked("],
+    ["unrealized_host_seam"]
+  )
+}
+
 // CLASS B, THE DISCRIMINATING RED. tier0 method resolution resolves an ordinary fn-typed RECORD
 // FIELD through lookup_field_in_product, so a field call arrived as AlgebraMethodSemantics and the
 // fallback at the end of that arm passed runtime_bridge: true unconditionally -- emitting

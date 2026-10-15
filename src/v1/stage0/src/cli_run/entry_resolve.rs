@@ -1554,7 +1554,6 @@ fn multi_entry_index_shell_body(
         source_roots: source_roots.to_vec(),
         pool_parse: RefCell::new(None),
         reference_pool_names: RefCell::new(None),
-        pool_qualified_fill: RefCell::new(None),
         tree_bare_census: RefCell::new(std::collections::HashMap::new()),
         #[cfg(any(test, feature = "interp_test_witness"))]
         pool_bare_census: RefCell::new(None),
@@ -2931,7 +2930,7 @@ impl ReferencePoolNames {
 }
 
 /// The name index from the POOL CENSUS'S OWN heads reading (`pool_parse`), which every resolve
-/// through this index already forces for its qualified fill and bare census. A resolve therefore
+/// through this index already forces for its bare census. A resolve therefore
 /// reads the pool's heads once, not once for the census and again for reference edges.
 ///
 /// ONE DERIVATION PER INDEX. The index is a function of `pool_parse`, which this index holds for
