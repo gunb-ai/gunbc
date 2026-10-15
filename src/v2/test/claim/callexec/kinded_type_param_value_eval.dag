@@ -1,7 +1,7 @@
 module v2.test.claim.callexec.kinded_type_param_value_eval
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.infer { infer }
+import v2.compiler.infer { infer, infer_diagnostics_none, inferred_facts_grounding_derived }
 import v2.test.claim.callexec.declaration_reference_eval {
   cref_assemble,
   cref_eval_of_call_to,
@@ -211,3 +211,36 @@ test fn kpy_kinded_no_body_read_runs() -> Bool { kpt_runs(src: concat(kpy_pre(),
 test fn kpy_mk8_runs() -> Bool { kpt_runs(src: concat(kpy_pre(), "fn consumer() -> Int {\n  3\n}\n"), name: ^mk8) }
 test fn kpy_box_param_nongeneric_runs() -> Bool { kpt_runs(src: concat(kpy_pre(), "fn take(x: Box<8>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  take(x: mk8())\n}\n"), name: ^take) }
 test fn kpy_unkinded_box_runs() -> Bool { kpt_runs(src: "module p\n\ntype Box<n> = Int\n\nfn mk8() -> Box<8> {\n  0\n}\n\nfn constant<n>(x: Box<n>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  constant(x: mk8())\n}\n", name: ^constant) }
+
+fn kpz_unkinded_src() -> String {
+  "module p\n\ntype Box<n> = Int\n\nfn mk8() -> Box<8> {\n  0\n}\n\nfn constant<n>(x: Box<n>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  constant(x: mk8())\n}\n"
+}
+fn kpz_infer_clean(src: String) -> Bool {
+  match cref_assemble(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: d } => infer_diagnostics_none(d: d)
+      }
+  }
+}
+fn kpz_call_grounded(src: String, name: Symbol) -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: src)) {
+    Absent => false
+    Present { value: tree } =>
+      match cref_the_call_to(root: tree.root, name: name) {
+        Absent => false
+        Present { value: call } =>
+          match tree.facts.lookup(call) {
+            Absent => false
+            Present { value: facts } => inferred_facts_grounding_derived(facts: facts)
+          }
+      }
+  }
+}
+test fn kpz_unkinded_infer_clean() -> Bool { kpz_infer_clean(src: kpz_unkinded_src()) }
+test fn kpz_unkinded_call_grounded() -> Bool { kpz_call_grounded(src: kpz_unkinded_src(), name: ^constant) }
+test fn kpz_alias_kinded_infer_clean() -> Bool { kpz_infer_clean(src: kpw_src()) }
+test fn kpz_alias_kinded_call_grounded() -> Bool { kpz_call_grounded(src: kpw_src(), name: ^width_of) }
+test fn kpz_take_call_grounded() -> Bool { kpz_call_grounded(src: concat(kpy_pre(), "fn take(x: Box<8>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  take(x: mk8())\n}\n"), name: ^take) }
