@@ -51,7 +51,7 @@ import extdeps.linux.apparmor_userns {
   apparmor_unprivileged_userns_restricted,
 }
 import extdeps.exec.program { ProgramIdentity }
-import extdeps.procps.kill { kill_program }
+import extdeps.procps.kill { kill_program, KillSignalRealization, ExecveKill }
 import extdeps.git { git_program }
 import extdeps.tools.jq { jq_program }
 import extdeps.systemd.systemctl { systemctl_path_resolved_program }
@@ -313,8 +313,9 @@ fn unobserved_software_surface(host: HostIdentity) -> HostSoftwareSurface {
 }
 
 // srv1 values are derived from srv1_software_inhabitance_receipt. jq version_label is the
-// binary self-report; jq package_version_label is the dpkg version. Lab deploy reads PATH
-// and the binary label.
+// binary self-report. Package versions were not in the HOST-1 inhabitance comment and stay
+// Absent (obligation: srv1_package_version_read_obligation). Lab deploy reads PATH and the
+// binary label.
 fn srv1_software_surface() -> HostSoftwareSurface {
   let r = srv1_software_inhabitance_receipt
   let standing = srv1_software_inhabitance_ground()
@@ -336,12 +337,12 @@ fn srv1_software_surface() -> HostSoftwareSurface {
       standing: standing,
     },
     programs: [
-      observed_program(program: kill_program(), version_label: r.procps_version_label, package_version_label: Present { value: r.procps_package }, standing: standing),
-      observed_program(program: timeout_program(), version_label: r.coreutils_version_label, package_version_label: Present { value: r.coreutils_package }, standing: standing),
-      observed_program(program: git_program(), version_label: r.git_version_label, package_version_label: Present { value: r.git_package }, standing: standing),
-      observed_program(program: jq_program(), version_label: r.jq_version_label, package_version_label: Present { value: r.jq_package }, standing: standing),
-      observed_program(program: systemctl_path_resolved_program(), version_label: r.systemd_version_label, package_version_label: Present { value: r.systemd_package }, standing: standing),
-      observed_program(program: tailscale_program(), version_label: r.tailscale_version_label, package_version_label: Present { value: r.tailscale_package }, standing: standing),
+      observed_program(program: kill_program(), version_label: r.procps_version_label, package_version_label: r.procps_package, standing: standing),
+      observed_program(program: timeout_program(), version_label: r.coreutils_version_label, package_version_label: r.coreutils_package, standing: standing),
+      observed_program(program: git_program(), version_label: r.git_version_label, package_version_label: r.git_package, standing: standing),
+      observed_program(program: jq_program(), version_label: r.jq_version_label, package_version_label: r.jq_package, standing: standing),
+      observed_program(program: systemctl_path_resolved_program(), version_label: r.systemd_version_label, package_version_label: r.systemd_package, standing: standing),
+      observed_program(program: tailscale_program(), version_label: r.tailscale_version_label, package_version_label: r.tailscale_package, standing: standing),
     ],
     sudo_policy: HostSudoPolicyFact {
       principal: fleet_posix_operator_principal(),
@@ -459,6 +460,17 @@ fn host_program_version(surface: HostSoftwareSurface, program: ProgramIdentity) 
         }
     }
   )
+}
+
+fn host_kill_signal_realization(surface: HostSoftwareSurface) -> KillSignalRealization? {
+  match host_program_version(surface: surface, program: kill_program()) {
+    Absent => none
+    Present { value: fact } =>
+      match fact.version_label {
+        Absent => none
+        Present { value: _ } => Present { value: ExecveKill { program: fact.program } }
+      }
+  }
 }
 
 // OBSERVATION PLUS A BET, NOT A CITED systemd FACT (DESIGN 4d). srv1 on 2026-10-14: a user-manager
