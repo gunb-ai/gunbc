@@ -16,6 +16,7 @@ pub use crate::std_measure::Second;
 pub use crate::std_measure::{second, second_count};
 pub use crate::std_nat::nat_range_inclusive;
 pub use crate::std_nat::Nat;
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, HttpStatus};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

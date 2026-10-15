@@ -46,6 +46,10 @@ import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.languages.swift { swift_target_model }
 import v2.std.compilers.target_model { TargetModel }
 
+import v2.compiler.dependency_demand_census {
+  demand_census_unbound_locus_from_diagnostics,
+  demand_census_unbound_site_text
+}
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.lens_verdict {
   lens_verdict_diagnostic_locus_text_in_spans,
@@ -566,19 +570,26 @@ fn cli_if_arm_reader_differential_outcome(census: IardCensus) -> CliRunOutcome {
 }
 
 // ONE RENDERING OF A LOCATED REFUSAL, for a refused closure and for a refused member alike: the whole
-// ordered chain, then the fatal's file and extent. A member's refusal fails the process as a closure
-// refusal does, so its status line owes the same located cause and not a summary sentence.
+// ordered chain, then (when the fatal is an unbound mention) the census projection of WHAT failed,
+// then the fatal's file and extent. `FATAL AT` stays last so suffix controls still hold. The
+// projection is demand_census_unbound_locus_from_diagnostics; this renderer does not re-walk the node.
 fn v2_cli_refusal_detail(d: NonEmptyDiagnostics, spans: SpanIndex) -> String {
-  concat(
-    concat(
-      "the closure did not emit; diagnostic chain: ",
-      lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: spans)
-    ),
-    concat(
-      " | FATAL AT ",
-      lens_verdict_diagnostic_locus_text_in_spans(d: diagnostics_fatal(d: d), index: spans)
-    )
+  let chain = concat(
+    "the closure did not emit; diagnostic chain: ",
+    lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: spans)
   )
+  let fatal = concat(
+    " | FATAL AT ",
+    lens_verdict_diagnostic_locus_text_in_spans(d: diagnostics_fatal(d: d), index: spans)
+  )
+  match demand_census_unbound_locus_from_diagnostics(d: d) {
+    Absent => concat(chain, fatal)
+    Present { value: loc } =>
+      concat(
+        concat(chain, concat(" | ", demand_census_unbound_site_text(u: optional_present(value: loc)))),
+        fatal
+      )
+  }
 }
 
 // The entry's locus, for the one refusal that has no node of its own: an entry no ingested module

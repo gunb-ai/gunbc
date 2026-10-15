@@ -1,5 +1,6 @@
 module extdeps.languages.json.emit
 
+import std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme, json_number_lexeme }
 import extdeps.numeric.base16 { int_to_upper_hex }
