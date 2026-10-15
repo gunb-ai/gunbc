@@ -124,7 +124,6 @@ fn converge_target_live_verdict(
       }
     SliceProperty { unit: _, property: _, apply_value: _, expected_effective: _ } => none
     RunnerWidth { instance_glob: _ } => none
-    JobserverTokens { env_file: _, env_key: _, service_unit: _ } => none
     VerifyOnlyCap { slice_unit: _, property: _ } => none
     GunbcPinnedTree {
       gunbc_root_env_key: _,
