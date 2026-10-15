@@ -1533,12 +1533,14 @@ fn infer_nullary_zero_param_coproduct_arm_use(
             match symbol_index_lookup(index: index, qualified_path: path) {
               Absent => false
               Present { value: declared } =>
-                match infer_variant_arm_reference_value(
-                  index: index,
+                match infer_variant_arm_reference_value_joined(
+                  bindings: index,
                   arm_path: path,
                   declared: declared
                 ) {
                   VariantArmReferenceValueIdentityUnavailable => false
+                  VariantArmReferenceValueIdentityContested { claimants: _ } => false
+                  VariantArmReferenceValueBodyUnavailable => false
                   VariantArmReferenceValueNotDerived => false
                   VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
                     match symbol_index_declared_type_params_at(
