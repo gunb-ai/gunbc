@@ -1,5 +1,5 @@
 module v2.extdeps.languages.go
-import std.types { List }
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
@@ -44,7 +44,7 @@ import v2.std.compilers.lexing {
   TriviaRule,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { Absent, Map, PointwisePower, Present, empty_map, map_insert, optional_absent }
+import std.optional { Absent, Present, optional_absent }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
@@ -99,7 +99,7 @@ import v2.std.host_transport {
 }
 import v2.std.logic { bool_boolean_algebra, bool_node }
 import v2.std.diagnostic { bind_outcome, outcome_accepted, Outcome }
-import std.algebra { Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list }
+import std.algebra { Empty, list_append, list_snoc_item, BooleanAlgebra, fold_list, PointwisePower, empty_map, map_insert }
 import v2.std.algebra_structure_signature { approximate_field_node, boolean_algebra_node, commutative_ring_node, free_monoid_node }
 import v2.std.text { String }
 
