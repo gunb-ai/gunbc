@@ -1194,7 +1194,7 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
     conditional_form: TargetConditionalShape {
       if_token: ^rust_token_kw_if,
       then_token: ^rust_token_lbrace,
-      else_token: ^rust_token_unwired_else,
+      else_token: ^rust_token_kw_else,
       delimiting: ConditionalClosedByToken { close_token: ^rust_token_rbrace }
     },
     let_form: TargetBindLetShape {
@@ -2374,6 +2374,8 @@ fn rust_value_expression_family_lex_rules() -> List<LexRule> {
     rust_lex_rule(token_class: ^rust_token_closure_pipe, text: "|"),
     rust_lex_rule(token_class: ^rust_token_closure_nop, text: ""),
     rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
+    rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
+    rust_lex_rule(token_class: ^rust_token_kw_else, text: " else "),
     rust_lex_rule(token_class: ^rust_token_kw_type, text: "type "),
     rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
     rust_lex_rule(token_class: ^rust_token_semicolon, text: "; "),
