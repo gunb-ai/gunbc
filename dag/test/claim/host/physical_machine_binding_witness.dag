@@ -1,0 +1,143 @@
+module test.claim.host.physical_machine_binding_witness
+
+// Witnesses for the SEALED PHYSICAL MACHINE JOIN (gunbc.host.physical_machine_binding). The sealed
+// join must admit the one machine the three axes agree on, and REFUSE to seal it whenever the axes
+// point at different machines. The required REDs:
+//   RED1  a receipt bound to a SUPERSEDED subject (changed firmware) refuses to apply.
+//   RED2  a HostIdentity whose allocation points at ANOTHER UnitKey refuses.
+//   RED3  an UNENROLLED unit is still a valid subject with an absent host (no fleet axis needed).
+// Positive control: mtcollins1 resolves to its unit and current subject.
+
+import std.optional { Absent, Present, none }
+import gunbc.host.physical_machine_binding {
+  PhysicalMachineBinding,
+  PhysicalMachineAdmitted,
+  PhysicalMachineRefused,
+  PhysicalMachineHostAllocationMismatch,
+  physical_machine_admission,
+  receipt_applies_to_binding,
+}
+import gunbc.machine_intake.subject {
+  UnitKey,
+  UnitKeyBound,
+  IntakeAttemptId,
+  MachineIntakeSubject,
+  FirmwareEntry,
+  FirmwareManifest,
+  qualification_subject_of,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
+import gunbc.fleet.fleet_host_backing { OwnedMachine, BmcVirtualMediaInstall }
+import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
+  mtcollins1_unit_key_standing,
+  mtcollins1_assembly,
+  mtcollins1_firmware_manifest,
+}
+import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
+
+// ---- fixture unit keys (board serials; distinct from mtcollins1's real unit) ----
+data unit_a: UnitKey = "02030A800FIXTUREA" as UnitKey
+data unit_b: UnitKey = "02030A800FIXTUREB" as UnitKey
+data attempt: IntakeAttemptId = "attn-1" as IntakeAttemptId
+
+// The CURRENT subject for a unit, built from the real mtcollins1 assembly + firmware manifests.
+fn subject_for(unit: UnitKey) -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: qualification_subject_of(unit_key: unit, assembly: mtcollins1_assembly, firmware: mtcollins1_firmware_manifest),
+    attempt_id: attempt,
+  }
+}
+
+// A SUPERSEDED subject for the same unit: same assembly, but a different (older) firmware build.
+// A receipt taken against this must not apply to the repaired (current) assembly.
+fn stale_firmware() -> FirmwareManifest {
+  FirmwareManifest { entries: [FirmwareEntry { component: "bmc", version: "0.31-stale" }], configuration_digests: [] }
+}
+fn stale_subject_for(unit: UnitKey) -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: qualification_subject_of(unit_key: unit, assembly: mtcollins1_assembly, firmware: stale_firmware()),
+    attempt_id: attempt,
+  }
+}
+
+// An enrolled host whose OWNED-MACHINE allocation resolves to a DIFFERENT unit than the physical
+// observation. This is the RED2 machine-identity disagreement.
+data red2_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+  host: operator_host_mtcollins1,
+  participation: [],
+  backing: OwnedMachine {
+    provisioning: BmcVirtualMediaInstall,
+    unit: Present { value: UnitKeyBound { key: unit_b } },
+  },
+}
+
+// A sealed binding for unit_a (the current subject, no fleet axis, no control axis).
+data binding_a: PhysicalMachineBinding = PhysicalMachineBinding {
+  unit_key: unit_a,
+  subject: subject_for(unit_a),
+  fleet: none,
+  control: none,
+}
+
+// RED1: a receipt bound to a superseded subject (changed firmware) refuses to apply to the
+// repaired assembly.
+test fn red1_superseded_receipt_refuses() -> Bool {
+  receipt_applies_to_binding(binding: binding_a, receipt_subject: stale_subject_for(unit_a)) == false
+}
+
+// RED2: a HostIdentity whose allocation points at another UnitKey refuses.
+test fn red2_host_allocation_other_unit_refuses() -> Bool {
+  match physical_machine_admission(
+    host: operator_host_mtcollins1,
+    unit_standing: UnitKeyBound { key: unit_a },
+    current_subject: Present { value: subject_for(unit_a) },
+    fleet: Present { value: red2_enrollment },
+    control: none,
+  ) {
+    PhysicalMachineRefused { cause: PhysicalMachineHostAllocationMismatch { physical_unit: p, allocated_unit: a } } =>
+      p == unit_a && a == unit_b
+    _ => false
+  }
+}
+
+// RED3: an unenrolled unit is still a valid subject with an absent host.
+test fn red3_unenrolled_unit_is_valid_subject() -> Bool {
+  match physical_machine_admission(
+    host: operator_host_mtcollins1,
+    unit_standing: UnitKeyBound { key: unit_a },
+    current_subject: Present { value: subject_for(unit_a) },
+    fleet: none,
+    control: none,
+  ) {
+    PhysicalMachineAdmitted { binding } =>
+      match binding.fleet {
+        Absent => binding.unit_key == unit_a
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Positive control: mtcollins1 resolves to its unit and current subject.
+test fn positive_mtcollins1_resolves_to_unit_and_current_subject() -> Bool {
+  let current = mtcollins1_current_intake_subject()
+  match current {
+    Present { value: cs } =>
+      match physical_machine_admission(
+        host: operator_host_mtcollins1,
+        unit_standing: mtcollins1_unit_key_standing,
+        current_subject: Present { value: cs },
+        fleet: none,
+        control: none,
+      ) {
+        PhysicalMachineAdmitted { binding } =>
+          match mtcollins1_unit_key_standing {
+            UnitKeyBound { key: u } => binding.unit_key == u && (binding.subject.subject.unit_key == u)
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}

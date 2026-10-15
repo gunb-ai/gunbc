@@ -1,0 +1,204 @@
+module gunbc.host.physical_machine_binding
+
+// A SEALED JOIN OF THREE EXISTING AXES about one physical machine. It does not replace any of
+// them with a bigger ManagedHost; it joins them so an EFFECT TARGET can name the exact physical
+// subject (unit + current intake subject) plus the fleet and control standings that go with it,
+// and REFUSES to seal that join when the axes point at different machines.
+//
+// A host label alone is insufficient to seal this join. A host identity can outlive a board
+// swap, an arrival boots before any host identity exists, and a receipt taken before a DIMM or
+// firmware change must not apply to the repaired assembly. Sealing requires the axes to agree on
+// the physical unit:
+//   axis 1  physical identity  = UnitKey + current MachineIntakeSubject
+//                                (gunbc.machine_intake.subject)
+//   axis 2  fleet binding      = HostEnrollmentIntent?
+//                                (gunbc.fleet.fleet_enrollment; Absent before enrollment is valid)
+//   axis 3  control standing   = BmcSecureStanding?
+//                                (gunbc.machine_intake.bmc_secure; present only when observed)
+//
+// The operator supplies a HostIdentity; admission resolves it against the physical observation
+// before any effect is permitted. See the ruling one_physical_machine_boot_transaction (one
+// transaction surface, no label branching) and physical_and_guest_control_remain_distinct.
+//
+// NOTE ON AXIS 3: today it carries BmcSecureStanding (the secured subject + policy + outcome).
+// cut 2 (snappy-seal-211) wraps this in BmcControlBinding { endpoint, unit, secured } keyed by the
+// controller endpoint and unit, not by host label; this module retypes axis 3 to BmcControlBinding
+// on the cut-2 rebase. It is present only when observed and, like axis 2, needs no HostIdentity.
+
+import std.optional { Absent, Present, none }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.machine_intake.subject {
+  UnitKey,
+  UnitKeyStanding,
+  UnitKeyBound,
+  UnitKeyRefused,
+  UnitKeyRefusalCause,
+  MachineIntakeSubject,
+  compare_qualification_subject,
+  SubjectStale,
+}
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
+import gunbc.fleet.fleet_host_backing {
+  HostUnitResolved,
+  HostUnitRefused,
+  HostUnitNotOwned,
+  resolve_host_unit,
+}
+import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
+
+// THE SEALED JOIN. Every field names a separate existing axis; none is a ManagedHost.
+type PhysicalMachineBinding sole_constructor {
+  // axis 1: the physical unit + the CURRENT intake subject (the subject an effect must match).
+  unit_key: UnitKey
+  subject: MachineIntakeSubject
+  // axis 2: the fleet enrollment for this host, when present. Absent is a valid sealed state for
+  // an unenrolled machine (arrival, mtcollins1/mtjade1) -- RED3.
+  fleet: HostEnrollmentIntent?
+  // axis 3: the control standing, when observed. Absent is a valid sealed state; its presence
+  // needs no HostIdentity.
+  control: BmcSecureStanding?
+}
+
+// WHY THE JOIN WILL NOT SEAL. Each cause names the axis and the disagreement, so a consumer can
+// report the exact refusal rather than a bare "no binding."
+type PhysicalMachineRefusalCause
+  // axis 1: no board-serial observation has been taken, so there is no physical unit at all.
+  | PhysicalMachineUnitKeyAbsent
+  // axis 1: the unit was read but bind_unit_key refused it (duplicated / contradictory).
+  | PhysicalMachineUnitKeyRefused { cause: UnitKeyRefusalCause }
+  // axis 1: the unit is known but the current intake subject could not be observed.
+  | PhysicalMachineCurrentSubjectAbsent
+  // axis 1 internal consistency: the supplied subject was built for a different unit than the
+  // physical observation bound.
+  | PhysicalMachineSubjectUnitMismatch { physical_unit: UnitKey, subject_unit: UnitKey }
+  // axis 2: the supplied enrollment is for a different host than the one supplied.
+  | PhysicalMachineHostEnrollmentMismatch { supplied_host: HostIdentity, enrollment_host: HostIdentity }
+  // axis 2: the host's backing is a ProviderGuest, which is not a physical machine, so it has no
+  // physical unit to join against.
+  | PhysicalMachineHostAllocationNotOwned
+  // axis 2: the host's backing unit read was refused (ambiguous / contradictory serial).
+  | PhysicalMachineHostAllocationRefused { cause: UnitKeyRefusalCause }
+  // axis 2: THE HOST ALLOCATION POINTS AT ANOTHER UNIT. The enrolled host's allocation resolved to
+  // a UnitKey that is not the unit the physical observation bound. (RED2)
+  | PhysicalMachineHostAllocationMismatch { physical_unit: UnitKey, allocated_unit: UnitKey }
+  // axis 3: the control standing was observed for a different unit than the physical observation
+  // bound.
+  | PhysicalMachineControlSubjectMismatch { physical_unit: UnitKey, control_unit: UnitKey }
+
+type PhysicalMachineAdmission
+  | PhysicalMachineAdmitted { binding: PhysicalMachineBinding }
+  | PhysicalMachineRefused { cause: PhysicalMachineRefusalCause }
+
+// A host allocation whose unit has not yet been read seals fine: the fleet axis is present (the
+// host is enrolled) and the hardware allocation is simply an unobserved frontier, not a machine
+// identity the axes disagree on. Only an allocation that RESOLVES to a different unit refuses.
+fn physical_machine_admission(
+  host: HostIdentity,
+  unit_standing: UnitKeyStanding,
+  current_subject: MachineIntakeSubject?,
+  fleet: HostEnrollmentIntent?,
+  control: BmcSecureStanding?,
+) -> PhysicalMachineAdmission {
+  // axis 1: the physical unit.
+  match unit_standing {
+    UnitKeyRefused { cause } =>
+      PhysicalMachineRefused { cause: PhysicalMachineUnitKeyRefused { cause } }
+    UnitKeyBound { key: unit } =>
+      // axis 1: the current subject.
+      match current_subject {
+        Absent => PhysicalMachineRefused { cause: PhysicalMachineCurrentSubjectAbsent }
+        Present { value: subject } =>
+          // axis 1 internal consistency: the subject was built for the same unit.
+          match (subject.subject.unit_key == unit) {
+            true =>
+              // axis 2: if enrolled, the enrollment must be for THIS host and its allocation must
+              // not point at a different unit.
+              match fleet {
+                Absent =>
+                  physical_machine_axis3(unit: unit, subject: subject, fleet: fleet, control: control)
+                Present { value: enrollment } =>
+                  match (host_identity_eq(a: host, b: enrollment.host)) {
+                    true =>
+                      // the allocation must not point at a different unit (RED2).
+                      match resolve_host_unit(backing: enrollment.backing) {
+                        HostUnitNotOwned =>
+                          PhysicalMachineRefused { cause: PhysicalMachineHostAllocationNotOwned }
+                        HostUnitRefused { cause } =>
+                          PhysicalMachineRefused { cause: PhysicalMachineHostAllocationRefused { cause } }
+                        HostUnitUnobserved { read_obligation: _ } =>
+                          // allocation not yet read: seal with the fleet axis present; it is an
+                          // unobserved frontier, not a machine-identity disagreement.
+                          physical_machine_axis3(unit: unit, subject: subject, fleet: fleet, control: control)
+                        HostUnitResolved { unit: allocated } =>
+                          match (allocated == unit) {
+                            true =>
+                              physical_machine_axis3(unit: unit, subject: subject, fleet: fleet, control: control)
+                            false =>
+                              PhysicalMachineRefused {
+                                cause: PhysicalMachineHostAllocationMismatch {
+                                  physical_unit: unit,
+                                  allocated_unit: allocated,
+                                }
+                              }
+                          }
+                      }
+                    false =>
+                      PhysicalMachineRefused {
+                        cause: PhysicalMachineHostEnrollmentMismatch {
+                          supplied_host: host,
+                          enrollment_host: enrollment.host,
+                        }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// axis 3 is checked last: a present control standing must be the standing of THIS unit.
+fn physical_machine_axis3(
+  unit: UnitKey,
+  subject: MachineIntakeSubject,
+  fleet: HostEnrollmentIntent?,
+  control: BmcSecureStanding?,
+) -> PhysicalMachineAdmission {
+  match control {
+    Absent =>
+      PhysicalMachineAdmitted {
+        binding: PhysicalMachineBinding { unit_key: unit, subject, fleet, control: none }
+      }
+    Present { value: standing } =>
+      match (standing.subject.subject.unit_key == unit) {
+        true =>
+          PhysicalMachineAdmitted {
+            binding: PhysicalMachineBinding {
+              unit_key: unit,
+              subject,
+              fleet,
+              control: Present { value: standing },
+            }
+          }
+        false =>
+          PhysicalMachineRefused {
+            cause: PhysicalMachineControlSubjectMismatch {
+              physical_unit: unit,
+              control_unit: standing.subject.subject.unit_key,
+            }
+          }
+      }
+}
+
+// RECEIPT CURRENCY FOR THE SEALED SUBJECT. A receipt taken against a subject (the MachineIntakeSubject
+// it named at effect time) APPLIES to the sealed binding only when it names the same physical unit
+// AND its qualification subject is still the current one -- i.e. compare_qualification_subject says
+// SubjectCurrent. A receipt taken before a DIMM or firmware change is SubjectStale and does NOT apply
+// to the repaired assembly (RED1). This reuses the existing subject-currency vocabulary, not a new
+// join.
+fn receipt_applies_to_binding(binding: PhysicalMachineBinding, receipt_subject: MachineIntakeSubject) -> Bool {
+  let unit_ok = receipt_subject.subject.unit_key == binding.unit_key
+  match compare_qualification_subject(admitted: receipt_subject.subject, observed: binding.subject.subject) {
+    SubjectCurrent => unit_ok
+    SubjectStale { axes: _ } => false
+  }
+}
