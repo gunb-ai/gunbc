@@ -4970,15 +4970,6 @@ fn try_build_module_index_primary_precedence(
     Ok(index)
 }
 
-fn index_source_root_into_module_index(
-    root: &str,
-    index: &mut ModuleSourceIndex,
-    pool_fill_only: bool,
-) {
-    try_index_source_root_into_module_index(root, index, pool_fill_only)
-        .unwrap_or_else(|e| panic!("{e}"))
-}
-
 /// THE ROOT IS ANCHORED HERE, as `try_build_module_index` already anchors its own.
 ///
 /// The two module-index builders forked: the strict one resolved each root through
@@ -6324,65 +6315,6 @@ fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &s
         .edited_test_fns
         .iter()
         .any(|(file, _)| diff_file_matches_entry(file, entry_path))
-}
-
-/// Skip-before-resolve (discovery corpus, SelectionApplied): when the diff cannot possibly
-/// affect any witness in this entry — outside import-closure, no edited test fn, not a
-/// host-scaffold entry file — elide the cold entry resolve and treat every kernel witness
-/// row as assumed-green.
-///
-/// The entry_file_touched axis delegates to `entry_file_touched_via_import_closure`
-/// (host rendering of `v2.lens.module_graph.entry_affected_by_touched_paths`), which is
-/// the consolidated §3 authority for the "which tests are affected?" question per the
-/// 2026-09-05 replacement migration. The skip-before-resolve logic is a PERFORMANCE
-/// optimization (not a selection mechanism) and dissolves when `floor_kernel_precompute_would_skip`
-/// in `.dag` (ROADMAP `2-provenance-ingest`) is the general per-entry authority.
-fn entry_eligible_for_discovery_skip_before_resolve(
-    skip_enabled: bool,
-    reads_live_tree: bool,
-    entry_path: &str,
-    facts: &ModuleGraphFactsLive,
-    declared_paths: &HashSet<String>,
-    touched_paths: &[String],
-    diff_edits: &FloorDiffEdits,
-) -> Result<bool, String> {
-    if !skip_enabled {
-        return Ok(false);
-    }
-    // Fail-closed on the substrate-declared disposition (std.live_tree): a
-    // `ReadsLiveTree` entry reads state outside its resolved closure, so the diff
-    // cannot bound its inputs — it never predict-skips. Replaces the deleted
-    // entry-text classifier (`entry_text_indicates_live_host_scan`); the disposition
-    // is entry-grain, parsed onto every DiscoveryRow of the entry.
-    if reads_live_tree {
-        return Ok(false);
-    }
-    if entry_has_edited_test_fn_in_entry(diff_edits, entry_path) {
-        return Ok(false);
-    }
-    if entry_file_touched_via_import_closure(entry_path, facts, declared_paths, touched_paths)? {
-        return Ok(false);
-    }
-    if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_paths) {
-        return Ok(false);
-    }
-    let declared_axis = declared_source_refs_axis_for_entry(
-        entry_path,
-        facts,
-        &default_source_roots(),
-        touched_paths,
-    );
-    if declared_axis != DeclaredSourceRefAxis::Absent {
-        if declared_source_refs_blocks_skip(declared_axis) {
-            return Ok(false);
-        }
-    } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_paths) {
-        return Ok(false);
-    }
-    if compile_clean_broad_stop_line_blocks_skip(entry_path, touched_paths) {
-        return Ok(false);
-    }
-    Ok(true)
 }
 
 /// The closure-node definition SHARED by the falsifier/floor calibration emission and the
@@ -10079,43 +10011,6 @@ pub struct SharedBuildObservation {
     pub source_files: usize,
     pub bare_eligible: usize,
     pub provenance: SharedBuildProvenance,
-}
-
-/// Measure a shared preparation build at its owner. Floor preparation explicitly asks
-/// for whole-pool edge coverage because its later claims collectively consume that pool;
-/// an entry compile has no such demand. Each protected phase uses this same measurement
-/// boundary and the existing FloorPreparationRefused budget adjudication.
-fn observe_shared_build<T>(
-    already_built: bool,
-    triggered_by: &'static str,
-    build: impl FnOnce() -> T,
-) -> (T, SharedBuildObservation) {
-    let provenance = if already_built {
-        SharedBuildProvenance::AlreadyWarmOnEntry { triggered_by }
-    } else {
-        SharedBuildProvenance::BuiltByPreparation
-    };
-    let rss_before = current_rss_bytes().unwrap_or(0);
-    let cpu_before = v1_interpreter::thread_cpu_nanos();
-    let wall_before = std::time::Instant::now();
-    let out = build();
-    let wall_ms = wall_before.elapsed().as_millis() as u64;
-    let cpu_ms =
-        ((v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_before)) / 1_000_000) as u64;
-    let rss_growth_bytes = current_rss_bytes()
-        .unwrap_or(rss_before)
-        .saturating_sub(rss_before);
-    (
-        out,
-        SharedBuildObservation {
-            cpu_ms,
-            wall_ms,
-            rss_growth_bytes,
-            source_files: 0,
-            bare_eligible: 0,
-            provenance,
-        },
-    )
 }
 
 pub fn warm_bare_reference_edge_index(
@@ -15204,22 +15099,6 @@ mod runtime_error_location_tests {
     }
 }
 
-/// Render one per-witness claim-result line through the `.dag` authority. Every choice about
-/// how the line READS lives in `gunbc.observation_ci_render ci_witness_claim_result_text`; the
-/// seed transports subject, function, verdict and wall time only.
-fn render_witness_claim_result_text(
-    subject: &str,
-    function: &str,
-    wall_nanos: u128,
-    verdict: CiWitnessVerdict,
-) -> Option<String> {
-    // Fail-closed: policy install must have run before any witness line prints.
-    OBSERVATION_SOURCE_ROOTS.get()?;
-    Some(render_witness_claim_result_text_mirror(
-        subject, function, wall_nanos, verdict,
-    ))
-}
-
 /// THE ROOTS THE PARSE SWEEP WALKS — one authority for the standalone bin and for the
 /// composed `--required-ci` phase, so the cheapest local check and the required run cannot
 /// disagree about what they cover.
@@ -20183,10 +20062,6 @@ fn peak_rss_getrusage_bytes() -> Option<u64> {
     Some(ru.ru_maxrss as u64)
 }
 
-fn path_matches_any_substring(path: &str, subs: &[String]) -> bool {
-    subs.iter().any(|sub| path.contains(sub.as_str()))
-}
-
 // SCAFFOLD (§7 HAND-RUST — `cli_run_witness_admission_source_scan`):
 // Registered planning artifact: `gunbc.cli_run_witness_admission_scaffold` (review 44487
 // checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness.dag`.
@@ -21442,23 +21317,6 @@ fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, Hash
     out
 }
 
-fn newline_index_for_span<'a>(
-    span: &SourceSpan,
-    source_indices: &'a HashMap<String, Rc<NewlineIndex>>,
-) -> Option<&'a Rc<NewlineIndex>> {
-    let file = normalize_repo_path(&span.file);
-    source_indices.get(&span.file).or_else(|| {
-        source_indices.iter().find_map(|(path, idx)| {
-            let norm = normalize_repo_path(path);
-            if norm == file || file.ends_with(&norm) || norm.ends_with(&file) {
-                Some(idx)
-            } else {
-                None
-            }
-        })
-    })
-}
-
 fn span_file_matches(span_file: &str, target_norm: &str) -> bool {
     let s = normalize_repo_path(span_file);
     s == target_norm || s.ends_with(target_norm) || target_norm.ends_with(&s)
@@ -21592,19 +21450,6 @@ fn call_test_claim_fn_bool(
 
 fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Value {
     v1_interpreter::list_value(items)
-}
-
-fn decl_span_end_line(sorted_decl_lines: &[i64], decl_line: i64) -> i64 {
-    sorted_decl_lines
-        .iter()
-        .position(|&line| line == decl_line)
-        .map(|idx| {
-            sorted_decl_lines
-                .get(idx + 1)
-                .map(|&next| next - 1)
-                .unwrap_or(i64::MAX)
-        })
-        .unwrap_or(i64::MAX)
 }
 
 // SCAFFOLD (DESIGN §6–§7): host-side diff→declaration attribution
@@ -22273,10 +22118,6 @@ fn entry_has_declared_source_refs(entry_path: &str, facts: &ModuleGraphFactsLive
     !declared_source_ref_paths_for_entry(entry_path, facts).is_empty()
 }
 
-fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
-    rows.iter().filter(|r| r.reads_live_tree).count()
-}
-
 pub(crate) fn apply_effect_reach_derived_reads_live_tree(
     rows: &mut [DiscoveryRow],
     facts: &ModuleGraphFactsLive,
@@ -22329,53 +22170,6 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
             })
             .collect()
     }
-}
-
-/// Precompute-grain count for axis (iv): the number of distinct entries among `rows` whose
-/// import closure reaches a declared live-read carrier home
-/// (`runtime_data_dependency_touched_via_carrier_closure`), given the full raw touched-path
-/// set. Feeds `floor_row_precompute_would_skip`'s `touched_runtime_dependency_entry_count` —
-/// nonzero pins the whole-tree precompute exactly as the other three axes do.
-fn discovery_rows_runtime_dependency_touched_count(
-    rows: &[DiscoveryRow],
-    facts: &ModuleGraphFactsLive,
-    touched_paths: &[String],
-) -> usize {
-    if touched_paths.is_empty() {
-        return 0;
-    }
-    let mut seen: HashSet<&str> = HashSet::new();
-    rows.iter()
-        .filter(|row| seen.insert(row.entry.as_str()))
-        .filter(|row| {
-            runtime_data_dependency_touched_via_carrier_closure(&row.entry, facts, touched_paths)
-        })
-        .count()
-}
-
-/// Skip-before-resolve fast path (affected-set precompute-pruning Step 4 consumer-2):
-/// when import-closure `entry_file_touched` is false and no declaration-level edit
-/// targets this entry, every kernel witness in the entry would skip — receipt:
-/// `green_skip_for_file_outside_import_closure` (diff outside import closure → empty
-/// frontier / no touch). Live-tree entries are excluded (`reads_live_tree`: their inputs
-/// are outside the resolved closure, so the diff cannot bound them). Data-item edits land
-/// in `overlapping_data_items` (not `touched_entry_files`); any edited data-item file in
-/// the entry import closure must resolve so `rerun_frontier_nodes_for_entry` can
-/// discriminate referenced nodes (`red_node_frontier_fires_for_referenced_data_item`).
-// SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): pre-resolve skip for rows
-// provably outside all three skip axes without loading the resolved graph. Dissolves at
-// Step 5 (`affected-set-precompute-pruning (plan doc deleted 2026-08-28)`) when the Rust parallel
-// (`NodeFrontierSeeds` selection) is deleted and the `.dag`
-// `floor_witness_run_disposition` query owns the same predicate end-to-end.
-/// Keep the width-1 closure calibration oracle honest when resolve is skipped: count the
-/// same loader-closure module names `roster_import_closure_nodes_pre_resolve` uses —
-/// a genuinely elided resolve stays elided (the skip path must never be the heavy path).
-fn augment_closure_modules_from_import_facts(
-    index: &MultiEntryIndex,
-    entry_path: &str,
-    out: &mut HashSet<String>,
-) -> Result<(), String> {
-    collect_both_closure_module_names_for_entry(index, entry_path, out)
 }
 
 fn parse_unified_diff_departed_paths(diff_text: &str) -> HashSet<String> {
@@ -34773,98 +34567,6 @@ mod identity_set_difference_tests {
 /// `stale_non_verdict`.
 pub fn non_verdict_admits(admission: &NonVerdictAdmission) -> bool {
     admission.added.is_empty() && admission.repaid.is_empty()
-}
-
-fn emit_expected_red_roster_join_summary(
-    report: &Rc<crate::v1_compiler_expected_red_roster_join::ExpectedRedRosterJoinReport>,
-) {
-    use crate::v1_compiler_expected_red_roster_join::{
-        disposition_reason, expected_red_roster_join_not_evaluated,
-        expected_red_roster_join_now_passes, expected_red_roster_join_roster_len,
-        expected_red_roster_join_still_red, expected_red_roster_join_suppressed, is_not_evaluated,
-        is_suppressed,
-    };
-    let head = report.run_head.as_deref().unwrap_or("(unresolved)");
-    eprintln!(
-        "[expected-red-roster-join] roster={} still_red={} now_passes={} not_evaluated={} \
-         suppressed={} (head={head})",
-        expected_red_roster_join_roster_len(report.clone()),
-        expected_red_roster_join_still_red(report.clone()),
-        expected_red_roster_join_now_passes(report.clone()),
-        expected_red_roster_join_not_evaluated(report.clone()),
-        expected_red_roster_join_suppressed(report.clone()),
-    );
-    eprintln!("[expected-red-roster-join] {}", report.run_note);
-    // Reason counts for BOTH absence-of-verdict arms, printed under their own prefix so
-    // `not_evaluated.budget_refused` and `suppressed.outside_required_gate` cannot be read as
-    // one population: the first was attempted and produced nothing, the second was never
-    // attempted at all.
-    let mut reason_counts: std::collections::BTreeMap<String, usize> =
-        std::collections::BTreeMap::new();
-    let mut suppressed_counts: std::collections::BTreeMap<String, usize> =
-        std::collections::BTreeMap::new();
-    for row in report.rows.iter() {
-        if is_not_evaluated(row.disposition.clone()) {
-            *reason_counts
-                .entry(disposition_reason(row.disposition.clone()))
-                .or_default() += 1;
-        } else if is_suppressed(row.disposition.clone()) {
-            *suppressed_counts
-                .entry(disposition_reason(row.disposition.clone()))
-                .or_default() += 1;
-        }
-    }
-    for (reason, count) in reason_counts {
-        eprintln!("[expected-red-roster-join] not_evaluated.{reason}={count}");
-    }
-    for (reason, count) in suppressed_counts {
-        eprintln!("[expected-red-roster-join] {reason}={count}");
-    }
-}
-
-fn write_expected_red_roster_join_tsv(
-    path: &str,
-    report: &Rc<crate::v1_compiler_expected_red_roster_join::ExpectedRedRosterJoinReport>,
-) -> Result<(), String> {
-    use crate::v1_compiler_expected_red_roster_join::{
-        disposition_label, disposition_reason, expected_red_roster_join_not_evaluated,
-        expected_red_roster_join_now_passes, expected_red_roster_join_roster_len,
-        expected_red_roster_join_still_red, expected_red_roster_join_suppressed,
-    };
-    let mut file = std::fs::File::create(path)
-        .map_err(|e| format!("expected_red_roster_join create {path}: {e}"))?;
-    match &report.run_head {
-        Some(head) => writeln!(file, "# run_head\t{head}")
-            .map_err(|e| format!("expected_red_roster_join header: {e}"))?,
-        None => writeln!(file, "# run_head\t")
-            .map_err(|e| format!("expected_red_roster_join header: {e}"))?,
-    }
-    writeln!(file, "# run_note\t{}", report.run_note.replace('\t', " "))
-        .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
-    writeln!(
-        file,
-        "# summary\troster={}\tstill_red={}\tnow_passes={}\tnot_evaluated={}\tsuppressed={}",
-        expected_red_roster_join_roster_len(report.clone()),
-        expected_red_roster_join_still_red(report.clone()),
-        expected_red_roster_join_now_passes(report.clone()),
-        expected_red_roster_join_not_evaluated(report.clone()),
-        expected_red_roster_join_suppressed(report.clone()),
-    )
-    .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
-    writeln!(file, "identity\tdisposition\treason\tdetail")
-        .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
-    for row in report.rows.iter() {
-        writeln!(
-            file,
-            "{}\t{}\t{}\t{}",
-            row.identity,
-            disposition_label(row.disposition.clone()),
-            disposition_reason(row.disposition.clone()),
-            row.detail.replace('\t', " ").replace('\n', " ")
-        )
-        .map_err(|e| format!("expected_red_roster_join row: {e}"))?;
-    }
-    Ok(())
 }
 
 /// `None` for an outcome the roster-join's GENERATED verdict vocabulary cannot spell.
