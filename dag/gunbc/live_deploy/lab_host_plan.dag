@@ -1,6 +1,6 @@
 module gunbc.live_deploy.lab_host_plan
 
-import std.types { Bool, Int, NonEmptyStr, String, FilePath }
+import std.types { Bool, NonEmptyStr, String, FilePath }
 import std.optional { Absent, Present }
 import std.os.types { OsPackageManager, Apt, Winget, HomebrewDeFacto }
 import gunbc.host.host_software_surface {
@@ -11,10 +11,12 @@ import gunbc.host.host_software_surface {
   UserManagerSandboxUnobserved,
   UserManagerSandboxEnforcementUnobserved,
   UserManagerSandboxSysctlUnreadable,
+  UserManagerSandboxEnforcement,
   host_software_surface_for_identity,
   host_os_package_manager,
   user_manager_sandbox_enforcement,
   host_tailscale_client,
+  host_toolchain_read_obligation,
   srv1_software_surface,
 }
 import product.host_identity { HostIdentity }
@@ -34,23 +36,16 @@ import gunbc.roadmap.roadmap_dashboard_instance { srv1_linux_toolchain }
 // selected realization identity here; this module does not import that PR's types (COORDINATE:
 // session/bold-dove-819). Wiring the launcher itself stays with that change.
 
-type WorkerSandboxRefusal
-  = WorkerSandboxUnobserved { obligation: NonEmptyStr }
-  | WorkerSandboxEnforcementUnobserved { obligation: NonEmptyStr }
-  | WorkerSandboxSysctlUnreadable { value: Int }
-
 type WorkerSandboxChoice
   = SystemManagerLauncherSelected
 
 type WorkerSandboxSelection
   = WorkerSandboxChosen { choice: WorkerSandboxChoice }
-  | WorkerSandboxRefused { cause: WorkerSandboxRefusal }
+  | WorkerSandboxRefused { cause: UserManagerSandboxEnforcement }
 
 type LabDeployPlanRefusal
   = LabOsUnobserved { obligation: NonEmptyStr }
-  | LabSandboxUnobserved { obligation: NonEmptyStr }
-  | LabSandboxEnforcementUnobserved { obligation: NonEmptyStr }
-  | LabSandboxSysctlUnreadable { value: Int }
+  | LabSandbox { cause: UserManagerSandboxEnforcement }
   | LabToolchainUnobserved { obligation: NonEmptyStr }
 
 type LabDeployPlan
@@ -67,14 +62,14 @@ type LabDeployPlan
 
 fn select_worker_sandbox(surface: HostSoftwareSurface) -> WorkerSandboxSelection {
   match user_manager_sandbox_enforcement(surface: surface) {
-    UserManagerSandboxUnobserved { obligation: o } =>
-      WorkerSandboxRefused { cause: WorkerSandboxUnobserved { obligation: o } }
-    UserManagerSandboxSysctlUnreadable { value: n } =>
-      WorkerSandboxRefused { cause: WorkerSandboxSysctlUnreadable { value: n } }
     UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } =>
       WorkerSandboxChosen { choice: SystemManagerLauncherSelected }
+    UserManagerSandboxUnobserved { obligation: o } =>
+      WorkerSandboxRefused { cause: UserManagerSandboxUnobserved { obligation: o } }
     UserManagerSandboxEnforcementUnobserved { obligation: o } =>
-      WorkerSandboxRefused { cause: WorkerSandboxEnforcementUnobserved { obligation: o } }
+      WorkerSandboxRefused { cause: UserManagerSandboxEnforcementUnobserved { obligation: o } }
+    UserManagerSandboxSysctlUnreadable { value: n } =>
+      WorkerSandboxRefused { cause: UserManagerSandboxSysctlUnreadable { value: n } }
   }
 }
 
@@ -83,29 +78,21 @@ fn lab_deploy_plan_from_software(surface: HostSoftwareSurface) -> LabDeployPlan 
     HostPackageManagerUnobserved { obligation: o } => LabPlanRefused { cause: LabOsUnobserved { obligation: o } }
     HostPackageManagerKnown { manager: manager } =>
       match select_worker_sandbox(surface: surface) {
-        WorkerSandboxRefused { cause: c } =>
-          match c {
-            WorkerSandboxUnobserved { obligation: o } =>
-              LabPlanRefused { cause: LabSandboxUnobserved { obligation: o } }
-            WorkerSandboxEnforcementUnobserved { obligation: o } =>
-              LabPlanRefused { cause: LabSandboxEnforcementUnobserved { obligation: o } }
-            WorkerSandboxSysctlUnreadable { value: n } =>
-              LabPlanRefused { cause: LabSandboxSysctlUnreadable { value: n } }
-          }
+        WorkerSandboxRefused { cause: c } => LabPlanRefused { cause: LabSandbox { cause: c } }
         WorkerSandboxChosen { choice: choice } =>
           match surface.toolchain_paths.value.git {
             Absent => LabPlanRefused {
-              cause: LabToolchainUnobserved { obligation: "command -v git" as NonEmptyStr }
+              cause: LabToolchainUnobserved { obligation: host_toolchain_read_obligation(surface: surface) }
             }
             Present { value: git } =>
               match surface.toolchain_paths.value.jq {
                 Absent => LabPlanRefused {
-                  cause: LabToolchainUnobserved { obligation: "command -v jq" as NonEmptyStr }
+                  cause: LabToolchainUnobserved { obligation: host_toolchain_read_obligation(surface: surface) }
                 }
                 Present { value: jq } =>
                   match surface.toolchain_paths.value.timeout {
                     Absent => LabPlanRefused {
-                      cause: LabToolchainUnobserved { obligation: "command -v timeout" as NonEmptyStr }
+                      cause: LabToolchainUnobserved { obligation: host_toolchain_read_obligation(surface: surface) }
                     }
                     Present { value: timeout } => LabPlanReady {
                       host: surface.host,

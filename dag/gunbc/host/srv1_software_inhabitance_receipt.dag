@@ -1,7 +1,21 @@
 module gunbc.host.srv1_software_inhabitance_receipt
 
 import std.types { NonEmptyStr, Int, FilePath, List, String }
-import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
+import extdeps.exec.program { ProgramIdentity }
+import extdeps.linux.apparmor_userns {
+  apparmor_restrict_unprivileged_userns_sysctl_name,
+  sysctl_program,
+}
+import extdeps.tools.gnu_coreutils { cat_program, timeout_program }
+import extdeps.tools.uname { uname_program }
+import extdeps.sudo.elevation { sudo_program }
+import extdeps.procps.kill { kill_program }
+import extdeps.git { git_program }
+import extdeps.tools.jq { jq_program }
+import extdeps.systemd.systemctl { systemctl_path_resolved_program }
+import extdeps.systemd.systemd_run { systemd_run_program }
+import extdeps.tailscale.serve { tailscale_program }
+import extdeps.package_managers.dpkg { dpkg_query_identity }
 
 // Receipt of HOST-1 inhabitance on srv1 as briansrls uid 1000 at 2026-10-15T01:17:54Z
 // (parent bright-moth-475). BOUNDARY TRANSCRIPTION (DESIGN 4b): these fields ARE the probe
@@ -9,30 +23,123 @@ import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sys
 // not a second copy of that file. Next-rung trigger: an executing probe route that writes
 // this record from live argv.
 
-data srv1_os_release_probe: NonEmptyStr = "cat /etc/os-release"
-data srv1_kernel_release_probe: NonEmptyStr = "uname -r"
-
-fn srv1_apparmor_sysctl_probe() -> NonEmptyStr {
-  join(["sysctl -n ", apparmor_restrict_unprivileged_userns_sysctl_name as String], "") as NonEmptyStr
+type HostSoftwareProbe {
+  program: ProgramIdentity
+  arguments: List<String>
 }
 
-data srv1_sudo_list_probe: NonEmptyStr = "sudo -n -l"
-data srv1_procps_probe: NonEmptyStr = "/usr/bin/kill -V"
-data srv1_timeout_probe: NonEmptyStr = "timeout --version"
-data srv1_git_probe: NonEmptyStr = "git --version"
-data srv1_jq_probe: NonEmptyStr = "jq --version"
-data srv1_systemd_probe: NonEmptyStr = "systemctl --version"
-data srv1_cgroup_delegation_probe: NonEmptyStr = "cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers"
-data srv1_tailscale_probe: NonEmptyStr = "tailscale version"
-data srv1_toolchain_which_probe: NonEmptyStr = "command -v git; command -v jq; command -v timeout; command -v systemd-run"
-data srv1_dpkg_query_probe: NonEmptyStr = "dpkg-query -W -f='${Package} ${Version}\\n' procps coreutils git jq systemd tailscale"
+fn host_software_probe_obligation(p: HostSoftwareProbe) -> NonEmptyStr {
+  fold(p.arguments, init: p.program.invocation as String, f: (acc, a) => join([acc, " ", a], "")) as NonEmptyStr
+}
+
+fn srv1_os_release_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: cat_program(), arguments: ["/etc/os-release"] }
+}
+
+fn srv1_kernel_release_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: uname_program(), arguments: ["-r"] }
+}
+
+fn srv1_apparmor_sysctl_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe {
+    program: sysctl_program(),
+    arguments: ["-n", apparmor_restrict_unprivileged_userns_sysctl_name as String],
+  }
+}
+
+fn srv1_sudo_list_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: sudo_program(), arguments: ["-n", "-l"] }
+}
+
+fn srv1_procps_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: kill_program(), arguments: ["-V"] }
+}
+
+fn srv1_timeout_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: timeout_program(), arguments: ["--version"] }
+}
+
+fn srv1_git_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: git_program(), arguments: ["--version"] }
+}
+
+fn srv1_jq_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: jq_program(), arguments: ["--version"] }
+}
+
+fn srv1_systemd_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: systemctl_path_resolved_program(), arguments: ["--version"] }
+}
+
+fn srv1_cgroup_delegation_probe(uid: Int) -> HostSoftwareProbe {
+  HostSoftwareProbe {
+    program: cat_program(),
+    arguments: [
+      join([
+        "/sys/fs/cgroup/user.slice/user-",
+        to_string(uid),
+        ".slice/user@",
+        to_string(uid),
+        ".service/cgroup.controllers",
+      ], ""),
+    ],
+  }
+}
+
+fn srv1_tailscale_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: tailscale_program(), arguments: ["version"] }
+}
+
+fn srv1_git_path_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: git_program(), arguments: [] }
+}
+
+fn srv1_jq_path_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: jq_program(), arguments: [] }
+}
+
+fn srv1_timeout_path_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: timeout_program(), arguments: [] }
+}
+
+fn srv1_systemd_run_path_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: systemd_run_program(), arguments: [] }
+}
+
+fn srv1_toolchain_path_probes() -> List<HostSoftwareProbe> {
+  [
+    srv1_git_path_probe(),
+    srv1_jq_path_probe(),
+    srv1_timeout_path_probe(),
+    srv1_systemd_run_path_probe(),
+  ]
+}
+
+fn srv1_toolchain_read_obligation() -> NonEmptyStr {
+  join([
+    host_software_probe_obligation(p: srv1_git_path_probe()) as String,
+    "; ",
+    host_software_probe_obligation(p: srv1_jq_path_probe()) as String,
+    "; ",
+    host_software_probe_obligation(p: srv1_timeout_path_probe()) as String,
+    "; ",
+    host_software_probe_obligation(p: srv1_systemd_run_path_probe()) as String,
+  ], "") as NonEmptyStr
+}
+
+fn srv1_dpkg_query_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe {
+    program: dpkg_query_identity(),
+    arguments: ["-W", "procps", "coreutils", "git", "jq", "systemd", "tailscale"],
+  }
+}
 
 type Srv1SoftwareInhabitanceReading {
   observer_login: NonEmptyStr
   observer_uid: Int
   observed_at: NonEmptyStr
   parent_transcript_sha256: NonEmptyStr
-  probe_commands: List<NonEmptyStr>
+  probes: List<HostSoftwareProbe>
   os_version_id: NonEmptyStr
   os_pretty_name: NonEmptyStr
   os_codename: NonEmptyStr
@@ -64,20 +171,23 @@ data srv1_software_inhabitance_receipt: Srv1SoftwareInhabitanceReading = Srv1Sof
   observer_uid: 1000,
   observed_at: "2026-10-15T01:17:54Z",
   parent_transcript_sha256: "0ff37aa1418aafdc17cd3cd7d44d8577ab758e549fa98b5ad773152a1d3de9b2",
-  probe_commands: [
-    srv1_os_release_probe,
-    srv1_kernel_release_probe,
+  probes: [
+    srv1_os_release_probe(),
+    srv1_kernel_release_probe(),
     srv1_apparmor_sysctl_probe(),
-    srv1_sudo_list_probe,
-    srv1_procps_probe,
-    srv1_timeout_probe,
-    srv1_git_probe,
-    srv1_jq_probe,
-    srv1_systemd_probe,
-    srv1_cgroup_delegation_probe,
-    srv1_tailscale_probe,
-    srv1_toolchain_which_probe,
-    srv1_dpkg_query_probe,
+    srv1_sudo_list_probe(),
+    srv1_procps_probe(),
+    srv1_timeout_probe(),
+    srv1_git_probe(),
+    srv1_jq_probe(),
+    srv1_systemd_probe(),
+    srv1_cgroup_delegation_probe(uid: 1000),
+    srv1_tailscale_probe(),
+    srv1_git_path_probe(),
+    srv1_jq_path_probe(),
+    srv1_timeout_path_probe(),
+    srv1_systemd_run_path_probe(),
+    srv1_dpkg_query_probe(),
   ],
   os_version_id: "24.04",
   os_pretty_name: "Ubuntu 24.04.4 LTS",

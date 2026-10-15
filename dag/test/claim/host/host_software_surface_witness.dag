@@ -42,6 +42,10 @@ import gunbc.host.srv1_software_inhabitance_receipt {
   srv1_software_inhabitance_receipt,
   srv1_os_release_probe,
   srv1_apparmor_sysctl_probe,
+  srv1_procps_probe,
+  srv1_git_path_probe,
+  srv1_dpkg_query_probe,
+  host_software_probe_obligation,
 }
 import extdeps.procps.kill {
   procps_ng_kill_term_pgid_argv,
@@ -171,19 +175,18 @@ test fn srv1_timeout_expired_is_coreutils_124() -> Bool {
 
 test fn inhabitance_recipe_names_the_probes_the_brief_named() -> Bool {
   let cmds = srv1_software_inhabitance_probe_commands()
-  cmds.length() == 13
-    && cmds[0] == Present { value: srv1_os_release_probe }
-    && any(cmds, c => (c as String) == "uname -r")
-    && any(cmds, c => c == srv1_apparmor_sysctl_probe())
-    && (srv1_apparmor_sysctl_probe() as String).contains(apparmor_restrict_unprivileged_userns_sysctl_name as String)
-    && any(cmds, c => (c as String) == "sudo -n -l")
-    && any(cmds, c => (c as String) == "/usr/bin/kill -V")
-    && any(cmds, c => (c as String) == "timeout --version")
-    && any(cmds, c => (c as String) == "git --version")
-    && any(cmds, c => (c as String) == "jq --version")
-    && any(cmds, c => (c as String) == "systemctl --version")
-    && any(cmds, c => (c as String) == "command -v git; command -v jq; command -v timeout; command -v systemd-run")
-    && any(cmds, c => (c as String).contains("dpkg-query"))
+  cmds.length() == 16
+    && match cmds[0] {
+      Present { value: p } => p.program.invocation == srv1_os_release_probe().program.invocation
+      Absent => false
+    }
+    && any(cmds, c => (c.program.invocation as String) == "uname")
+    && any(cmds, c =>
+      (host_software_probe_obligation(p: c) as String).contains(apparmor_restrict_unprivileged_userns_sysctl_name as String)
+    )
+    && any(cmds, c => (host_software_probe_obligation(p: srv1_procps_probe()) as String) == (host_software_probe_obligation(p: c) as String))
+    && any(cmds, c => c.program.invocation == srv1_git_path_probe().program.invocation && c.arguments.length() == 0)
+    && any(cmds, c => c.program.invocation == srv1_dpkg_query_probe().program.invocation)
 }
 
 fn standing_is_cited_to_authority(s: CitedFigureStanding) -> Bool {

@@ -30,6 +30,8 @@ import extdeps.external_authority {
 }
 import std.decl_ref { decl_ref }
 import gunbc.host.srv1_software_inhabitance_receipt {
+  HostSoftwareProbe,
+  host_software_probe_obligation,
   srv1_software_inhabitance_receipt,
   srv1_os_release_probe,
   srv1_kernel_release_probe,
@@ -42,7 +44,7 @@ import gunbc.host.srv1_software_inhabitance_receipt {
   srv1_systemd_probe,
   srv1_cgroup_delegation_probe,
   srv1_tailscale_probe,
-  srv1_toolchain_which_probe,
+  srv1_toolchain_read_obligation,
 }
 import extdeps.linux.apparmor_userns {
   apparmor_restrict_unprivileged_userns_sysctl_name,
@@ -153,8 +155,8 @@ fn srv1_software_inhabitance_ground() -> CitedFigureStanding {
   }
 }
 
-fn srv1_software_inhabitance_probe_commands() -> List<NonEmptyStr> {
-  srv1_software_inhabitance_receipt.probe_commands
+fn srv1_software_inhabitance_probe_commands() -> List<HostSoftwareProbe> {
+  srv1_software_inhabitance_receipt.probes
 }
 
 fn software_surface(
@@ -220,14 +222,14 @@ fn blank_os() -> HostOsReleaseFact {
     version_id: none,
     pretty_name: none,
     distro: none,
-    standing: unobserved_standing(probe: srv1_os_release_probe),
+    standing: unobserved_standing(probe: host_software_probe_obligation(p: srv1_os_release_probe())),
   }
 }
 
 fn blank_kernel() -> HostKernelReleaseFact {
   HostKernelReleaseFact {
     kernel_release_label: none,
-    standing: unobserved_standing(probe: srv1_kernel_release_probe),
+    standing: unobserved_standing(probe: host_software_probe_obligation(p: srv1_kernel_release_probe())),
   }
 }
 
@@ -235,7 +237,7 @@ fn blank_apparmor() -> HostSysctlFact {
   HostSysctlFact {
     name: apparmor_restrict_unprivileged_userns_sysctl_name,
     value: none,
-    standing: unobserved_standing(probe: srv1_apparmor_sysctl_probe()),
+    standing: unobserved_standing(probe: host_software_probe_obligation(p: srv1_apparmor_sysctl_probe())),
   }
 }
 
@@ -250,12 +252,12 @@ fn blank_program(program: ProgramIdentity, probe: NonEmptyStr) -> HostProgramVer
 
 fn unobserved_programs() -> List<HostProgramVersionFact> {
   [
-    blank_program(program: kill_program(), probe: srv1_procps_probe),
-    blank_program(program: timeout_program(), probe: srv1_timeout_probe),
-    blank_program(program: git_program(), probe: srv1_git_probe),
-    blank_program(program: jq_program(), probe: srv1_jq_probe),
-    blank_program(program: systemctl_path_resolved_program(), probe: srv1_systemd_probe),
-    blank_program(program: tailscale_program(), probe: srv1_tailscale_probe),
+    blank_program(program: kill_program(), probe: host_software_probe_obligation(p: srv1_procps_probe())),
+    blank_program(program: timeout_program(), probe: host_software_probe_obligation(p: srv1_timeout_probe())),
+    blank_program(program: git_program(), probe: host_software_probe_obligation(p: srv1_git_probe())),
+    blank_program(program: jq_program(), probe: host_software_probe_obligation(p: srv1_jq_probe())),
+    blank_program(program: systemctl_path_resolved_program(), probe: host_software_probe_obligation(p: srv1_systemd_probe())),
+    blank_program(program: tailscale_program(), probe: host_software_probe_obligation(p: srv1_tailscale_probe())),
   ]
 }
 
@@ -277,14 +279,14 @@ fn blank_sudo() -> HostSudoPolicyFact {
   HostSudoPolicyFact {
     principal: fleet_posix_operator_principal(),
     observed_listing: none,
-    standing: unobserved_standing(probe: srv1_sudo_list_probe),
+    standing: unobserved_standing(probe: host_software_probe_obligation(p: srv1_sudo_list_probe())),
   }
 }
 
 fn blank_cgroup() -> HostCgroupDelegationFact {
   HostCgroupDelegationFact {
     user_manager_controllers: none,
-    standing: unobserved_standing(probe: srv1_cgroup_delegation_probe),
+    standing: unobserved_standing(probe: host_software_probe_obligation(p: srv1_cgroup_delegation_probe(uid: srv1_software_inhabitance_receipt.observer_uid))),
   }
 }
 
@@ -294,7 +296,7 @@ fn blank_toolchain() -> HostToolchainPathFact {
     jq: none,
     timeout: none,
     systemd_run: none,
-    standing: unobserved_standing(probe: srv1_toolchain_which_probe),
+    standing: unobserved_standing(probe: srv1_toolchain_read_obligation()),
   }
 }
 
@@ -402,12 +404,19 @@ fn cited_figure_obligation(standing: CitedFigureStanding) -> NonEmptyStr? {
   }
 }
 
+fn host_toolchain_read_obligation(surface: HostSoftwareSurface) -> NonEmptyStr {
+  match cited_figure_obligation(standing: surface.toolchain_paths.value.standing) {
+    Present { value: o } => o
+    Absent => srv1_toolchain_read_obligation()
+  }
+}
+
 fn host_os_package_manager(surface: HostSoftwareSurface) -> HostPackageManagerReading {
   match surface.os_release.value.distro {
     Absent => HostPackageManagerUnobserved {
       obligation: match cited_figure_obligation(standing: surface.os_release.value.standing) {
         Present { value: o } => o
-        Absent => srv1_os_release_probe
+        Absent => host_software_probe_obligation(p: srv1_os_release_probe())
       }
     }
     Present { value: distro } =>
@@ -464,7 +473,7 @@ fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManager
     Absent => UserManagerSandboxUnobserved {
       obligation: match cited_figure_obligation(standing: surface.apparmor_userns.value.standing) {
         Present { value: o } => o
-        Absent => srv1_apparmor_sysctl_probe()
+        Absent => host_software_probe_obligation(p: srv1_apparmor_sysctl_probe())
       }
     }
     Present { value: n } =>
@@ -491,13 +500,13 @@ fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManager
 
 fn host_tailscale_client(surface: HostSoftwareSurface) -> TailscaleServeCapability {
   match host_program_version(surface: surface, program: tailscale_program()) {
-    Absent => ScopedRemovalUnobserved { reason: srv1_tailscale_probe as String }
+    Absent => ScopedRemovalUnobserved { reason: host_software_probe_obligation(p: srv1_tailscale_probe()) as String }
     Present { value: fact } =>
       match fact.version_label {
         Absent => ScopedRemovalUnobserved {
           reason: match cited_figure_obligation(standing: fact.standing) {
             Present { value: o } => o as String
-            Absent => srv1_tailscale_probe as String
+            Absent => host_software_probe_obligation(p: srv1_tailscale_probe()) as String
           }
         }
         Present { value: label } =>
