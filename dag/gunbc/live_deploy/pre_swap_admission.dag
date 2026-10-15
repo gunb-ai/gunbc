@@ -1,10 +1,11 @@
 module gunbc.live_deploy.pre_swap_admission
 
-import std.types { String, Bool, Int, NonEmptyStr, GitRef }
+import std.types { String, Bool, Int, NonEmptyStr, GitRef, List }
 import std.algebra { trim }
 import std.integer { int_to_decimal_string }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
+  CompileDiagnosticCensusRow,
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
@@ -50,7 +51,7 @@ type TargetBranchAdmission
 
 type ServeEntryCompileVerdict
   = ServeEntryCompileAdmitted
-  | ServeEntryCompileBlocked { blocking: Int }
+  | ServeEntryCompileBlocked { blocking: Int, rows: List<CompileDiagnosticCensusRow> }
   | ServeEntryCompileUnobserved { detail: String }
 
 type PreSwapAdmission
@@ -81,11 +82,33 @@ fn serve_entry_compile_of(census: CompileDiagnosticCensus) -> ServeEntryCompileV
     CensusObserved { rows } => {
       let blocking = census_total_count(rows: census_blocking_rows(rows: rows))
       if blocking > 0 {
-        ServeEntryCompileBlocked { blocking: blocking }
+        ServeEntryCompileBlocked { blocking: blocking, rows: census_blocking_rows(rows: rows) }
       } else {
         ServeEntryCompileAdmitted
       }
     }
+  }
+}
+
+// A refusal names what blocked it: the blocking census rows (class, subject, count), the first eight
+// in census order, then how many rows it left out. A bare count sent the operator to a second compile
+// to find out why the swap was refused.
+data serve_entry_blocking_rows_shown: Int = 8
+
+fn serve_entry_blocking_summary(rows: List<CompileDiagnosticCensusRow>) -> String {
+  let shown = map(rows.take(n: serve_entry_blocking_rows_shown), r => join([
+    r.diagnostic_class as String,
+    " ",
+    r.subject_name,
+    " (",
+    int_to_decimal_string(value: r.count),
+    ")",
+  ], ""))
+  let hidden = count(rows) - count(shown)
+  if hidden > 0 {
+    join([join(shown, "; "), "; and ", int_to_decimal_string(value: hidden), " more row(s)"], "")
+  } else {
+    join(shown, "; ")
   }
 }
 
@@ -255,12 +278,14 @@ fn live_deploy_pre_swap_admission(
     TargetBranchAdmitted =>
       match compile {
         ServeEntryCompileAdmitted => PreSwapAdmitted
-        ServeEntryCompileBlocked { blocking } =>
+        ServeEntryCompileBlocked { blocking, rows } =>
           PreSwapRefused {
             reason: join([
               "live_deploy: ServeEntryCompileBlocked — the candidate serve entry has ",
               int_to_decimal_string(value: blocking),
-              " blocking diagnostic(s); nothing was mutated",
+              " blocking diagnostic(s): ",
+              serve_entry_blocking_summary(rows: rows),
+              "; nothing was mutated",
             ], ""),
           }
         ServeEntryCompileUnobserved { detail } =>

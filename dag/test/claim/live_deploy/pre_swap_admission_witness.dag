@@ -130,6 +130,22 @@ test fn a_blocking_compile_refuses_with_nothing_mutated() -> Bool {
   }
 }
 
+// RED on edb604a2822, whose reason carried only the count: the refusal names the blocking row's
+// class and subject, so the operator reads why without running a second compile.
+test fn a_blocking_compile_refusal_names_what_blocked_it() -> Bool {
+  let compile = serve_entry_compile_of(census: CensusObserved { rows: [blocking_row()] })
+  match live_deploy_pre_swap_admission(
+    admitted: production_admitted_branch,
+    observed_branch: "main",
+    compile: compile,
+  ) {
+    PreSwapAdmitted => false
+    PreSwapRefused { reason } =>
+      string_contains(s: reason, pattern: "DeclaredTypeInhabitanceMismatch f (1)")
+        && string_contains(s: reason, pattern: "nothing was mutated")
+  }
+}
+
 // Positive control: a clean compile on an admitted branch proceeds.
 test fn a_clean_compile_on_main_to_production_proceeds() -> Bool {
   match live_deploy_pre_swap_admission(
@@ -156,7 +172,7 @@ test fn an_unobserved_compile_refuses() -> Bool {
 test fn a_not_runnable_census_is_unobserved_not_clean() -> Bool {
   match serve_entry_compile_of(census: CensusNotRunnable { cause: "harness" as NonEmptyStr }) {
     ServeEntryCompileAdmitted => false
-    ServeEntryCompileBlocked { blocking: _ } => false
+    ServeEntryCompileBlocked { blocking: _, rows: _ } => false
     ServeEntryCompileUnobserved { detail } => detail == "harness"
   }
 }
@@ -164,7 +180,7 @@ test fn a_not_runnable_census_is_unobserved_not_clean() -> Bool {
 test fn an_empty_observed_census_is_admitted() -> Bool {
   match serve_entry_compile_of(census: CensusObserved { rows: [] }) {
     ServeEntryCompileAdmitted => true
-    ServeEntryCompileBlocked { blocking: _ } => false
+    ServeEntryCompileBlocked { blocking: _, rows: _ } => false
     ServeEntryCompileUnobserved { detail: _ } => false
   }
 }
@@ -175,7 +191,7 @@ test fn a_wrong_branch_refuses_before_the_compile_reason() -> Bool {
   let reason = pre_swap_reason(a: live_deploy_pre_swap_admission(
     admitted: production_admitted_branch,
     observed_branch: "session/x",
-    compile: ServeEntryCompileBlocked { blocking: 1 },
+    compile: ServeEntryCompileBlocked { blocking: 1, rows: [blocking_row()] },
   ))
   string_contains(s: reason, pattern: "DeployTargetBranchRefused")
     && !string_contains(s: reason, pattern: "ServeEntryCompileBlocked")
@@ -188,7 +204,7 @@ test fn a_type_error_fixture_is_a_blocked_verdict() -> Bool {
   match serve_entry_compile_of(
     census: compile_dag_diagnostic_census("module probe_serve_entry_red\nfn f() -> Int { \"x\" }\n"),
   ) {
-    ServeEntryCompileBlocked { blocking } => blocking > 0
+    ServeEntryCompileBlocked { blocking, rows: _ } => blocking > 0
     ServeEntryCompileAdmitted => false
     ServeEntryCompileUnobserved { detail: _ } => false
   }
@@ -198,7 +214,7 @@ test fn an_empty_serve_entry_path_is_unobserved() -> Bool {
   match observe_serve_entry_file_compile(entry: "") {
     ServeEntryCompileUnobserved { detail } => string_contains(s: detail, pattern: "empty")
     ServeEntryCompileAdmitted => false
-    ServeEntryCompileBlocked { blocking: _ } => false
+    ServeEntryCompileBlocked { blocking: _, rows: _ } => false
   }
 }
 
@@ -207,7 +223,7 @@ test fn a_clean_int_fixture_is_an_admitted_verdict() -> Bool {
     census: compile_dag_diagnostic_census("module probe_serve_entry_green\nfn f() -> Int { 1 }\n"),
   ) {
     ServeEntryCompileAdmitted => true
-    ServeEntryCompileBlocked { blocking: _ } => false
+    ServeEntryCompileBlocked { blocking: _, rows: _ } => false
     ServeEntryCompileUnobserved { detail: _ } => false
   }
 }
