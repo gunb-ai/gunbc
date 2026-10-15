@@ -174,6 +174,10 @@ import v2.std.symbol_index {
   symbol_index_lexical_eligible_declared_payload,
   symbol_index_lexical_lookup,
   symbol_index_lexical_lookup_for,
+  symbol_index_lexical_eligibility,
+  LexicalEligibility,
+  EligibleLookup,
+  ExcludedByCategory,
   symbol_index_lexical_lookup_for_declared_payload,
   symbol_index_declared_binders_at,
   symbol_index_declared_type_params_at,
@@ -1654,6 +1658,7 @@ type SymbolIndexAtomLookup
   = SymbolIndexAtomHit { path: QualifiedName }
   | SymbolIndexAtomAmbiguous { class: AmbiguousLookupClass }
   | SymbolIndexAtomUnbound
+  | SymbolIndexAtomExcludedByCategory
 
 // NOTHING FOLLOWS AN EXHAUSTED CHAIN, which is what the LexicalUnbound arm below now says by
 // answering SymbolIndexAtomUnbound. That arm used to ask the corpus-wide bare-name index under
@@ -1677,16 +1682,20 @@ fn lookup_symbol_index_atom_identity(
   ctx: ResolveContext,
   name: Symbol
 ) -> SymbolIndexAtomLookup {
-  match symbol_index_lexical_lookup_for(
+  match symbol_index_lexical_eligibility(
     index: ctx.namespace.symbol_index,
     position: symbol_index_lookup_position(ctx: ctx),
     name: name,
     required: ctx.reference_category
   ) {
-    LexicalHit { node: _, path: path } => SymbolIndexAtomHit { path: path }
-    LexicalAmbiguous { candidates: candidates } =>
-      SymbolIndexAtomAmbiguous { class: AmbiguousOnLexicalChain { candidates: candidates } }
-    LexicalUnbound => SymbolIndexAtomUnbound
+    EligibleLookup { lookup: lookup } =>
+      match lookup {
+        LexicalHit { node: _, path: path } => SymbolIndexAtomHit { path: path }
+        LexicalAmbiguous { candidates: candidates } =>
+          SymbolIndexAtomAmbiguous { class: AmbiguousOnLexicalChain { candidates: candidates } }
+        LexicalUnbound => SymbolIndexAtomUnbound
+      }
+    ExcludedByCategory { required: _, excluded: _ } => SymbolIndexAtomExcludedByCategory
   }
 }
 
@@ -2534,14 +2543,41 @@ fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending
             )
           }
       }
-    SymbolIndexAtomUnbound =>
-      match resolve_kernel_type_atom_optional(n: n, identity: identity) {
-        Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
-        Absent =>
-          match collection_roster_primitive_call_row_optional(head: identity) {
-            Present { value: r } => resolve_atom_bound(ctx: ctx, n: n, path: declaration_ref_path(r: r.row), pending: pending)
-            Absent => resolve_atom_primitive_authority(ctx: ctx, n: n, identity: identity, pending: pending)
-          }
+    SymbolIndexAtomUnbound => resolve_atom_unscoped_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+    SymbolIndexAtomExcludedByCategory =>
+      resolve_atom_category_mismatch(o: resolve_atom_unscoped_unbound(ctx: ctx, n: n, identity: identity, pending: pending), n: n, pending: pending)
+  }
+}
+
+// THE TIERS AFTER THE INDEX DECLINES A NAME (kernel type, collection roster, primitive authority), shared
+// by a name the index does not bind and a name it binds only as a kind the position excludes.
+fn resolve_atom_unscoped_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
+  match resolve_kernel_type_atom_optional(n: n, identity: identity) {
+    Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
+    Absent =>
+      match collection_roster_primitive_call_row_optional(head: identity) {
+        Present { value: r } => resolve_atom_bound(ctx: ctx, n: n, path: declaration_ref_path(r: r.row), pending: pending)
+        Absent => resolve_atom_primitive_authority(ctx: ctx, n: n, identity: identity, pending: pending)
+      }
+  }
+}
+
+// A NAME THE INDEX BINDS ONLY AS A KIND THE POSITION EXCLUDES, that no later tier claims, refuses as
+// the category mismatch it is, from the one eligibility verdict (v2.std.symbol_index
+// ExcludedByCategory) -- not as an unbound name, and not by a second lookup under another category.
+// Only the terminal unbound refusal is retyped; any other outcome is the tiers' own answer.
+fn resolve_atom_category_mismatch(o: Outcome<Node>, n: Node, pending: Diagnostics) -> Outcome<Node> {
+  match o {
+    Accepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
+    Rejected { diagnostics: d } =>
+      if diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol {
+        Rejected { diagnostics: rejected_with_pending(pending: pending, rejected: diagnostics_singleton(d: Diagnostic {
+          reason: ^resolve_reason_reference_category_mismatch,
+          at: node_locus(node: n),
+          correction: Unavailable { reason: UserInputBoundary }
+        })) }
+      } else {
+        Rejected { diagnostics: d }
       }
   }
 }
@@ -4122,7 +4158,7 @@ fn resolve_node_walk_entered(
 // coproduct (resolve_kind_variant_paths_optional Absent: it admits no variant, and conformance
 // refuses it as kind_unresolved), keep the ctx's category. No current kind admits both a type and a
 // variant: the only kind shape that resolves is a coproduct, so the two admissions never meet at one
-// position (tak_record_kind_keeps_type_occurrence pins it).
+// position (tak_record_kind_keeps_type_eligibility pins it).
 fn resolve_instantiation_children(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   match n.children {
     Empty => resolve_children_homogeneous_scope(ctx: ctx, n: n)
@@ -4131,11 +4167,26 @@ fn resolve_instantiation_children(ctx: ResolveContext, n: Node) -> ResolveNodeWa
   }
 }
 
+// ARITY IS DECIDED BEFORE ANY ARGUMENT IS WALKED: an application whose argument count differs from its
+// declaration's binders refuses as arity (the verdict resolve_type_application would reach), never as
+// whatever an argument that has no parameter to be judged against happens to resolve to.
 fn resolve_instantiation_walk_from_head(ctx: ResolveContext, n: Node, head_walk: ResolveNodeWalk) -> ResolveNodeWalk {
   let kinds = match head_walk {
     ResolveWalkAccepted { value: head, diagnostics: _, lexical: _ } => resolve_instantiation_argument_kinds(ctx: ctx, head: head)
-    ResolveWalkRefused { first: _, rest: _, observation: _ } => Empty
+    ResolveWalkRefused { first: _, rest: _, observation: _ } => optional_absent()
   }
+  match kinds {
+    Present { value: declared } =>
+      if count(declared) != count(node_positional_child_targets(node: n)) - 1 {
+        resolve_walk_refused_one(chain: diagnostics_singleton(d: resolve_type_application_diagnostic(reason: ^resolve_reason_type_application_arity_mismatch, at: n)))
+      } else {
+        resolve_instantiation_walk_arguments(ctx: ctx, n: n, head_walk: head_walk, kinds: declared)
+      }
+    Absent => resolve_instantiation_walk_arguments(ctx: ctx, n: n, head_walk: head_walk, kinds: Empty)
+  }
+}
+
+fn resolve_instantiation_walk_arguments(ctx: ResolveContext, n: Node, head_walk: ResolveNodeWalk, kinds: List<Optional<Node>>) -> ResolveNodeWalk {
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     if acc.ordinal == 0 {
       child_walk_step(w: acc, e: e, r: head_walk)
@@ -4149,31 +4200,39 @@ fn resolve_instantiation_walk_from_head(ctx: ResolveContext, n: Node, head_walk:
   }))
 }
 
-// The kind of each declared binder, in authored order; Absent where unkinded or malformed.
-fn resolve_instantiation_argument_kinds(ctx: ResolveContext, head: Node) -> List<Optional<Node>> {
+// The kind each declared binder ADMITS, in authored order: Present where the kind names a coproduct (it
+// admits that coproduct's variants), Absent where the binder is unkinded or its kind names no coproduct
+// (it admits types only; conformance refuses a non-coproduct kind as kind_unresolved). The whole answer
+// is Absent for a head the index does not hold -- outside the check, as resolve_type_application_
+// refusal_optional states -- and Present(empty) for an indexed declaration that binds none.
+fn resolve_instantiation_argument_kinds(ctx: ResolveContext, head: Node) -> Optional<List<Optional<Node>>> {
   match declaration_reference_path_optional(node: head) {
-    Absent => Empty
+    Absent => optional_absent()
     Present { value: path } =>
-      match symbol_index_declared_binders_at(index: ctx.namespace.symbol_index, qualified_path: path) {
-        Absent => Empty
-        Present { value: binders } =>
-          match type_param_order(binders: binders) {
-            TypeParamOrderMalformed => Empty
-            TypeParamOrderDeclared { labels: labels } =>
-              fold(labels, init: Empty, f: fn(acc, l) {
-                list_snoc_item(xs: acc, item: match type_binder_target_of(binders: binders, name: l) {
-                  Absent => optional_absent()
-                  Present { value: b } =>
-                    match type_param_kind_optional(binder: b) {
+      match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+        Absent => optional_absent()
+        Present { value: _ } =>
+          match symbol_index_declared_binders_at(index: ctx.namespace.symbol_index, qualified_path: path) {
+            Absent => optional_present(value: Empty)
+            Present { value: binders } =>
+              match type_param_order(binders: binders) {
+                TypeParamOrderMalformed => optional_absent()
+                TypeParamOrderDeclared { labels: labels } =>
+                  optional_present(value: fold(labels, init: Empty, f: fn(acc, l) {
+                    list_snoc_item(xs: acc, item: match type_binder_target_of(binders: binders, name: l) {
                       Absent => optional_absent()
-                      Present { value: kind } =>
-                        match resolve_kind_variant_paths_optional(ctx: ctx, declaration: path, kind: kind) {
-                          Present { value: _ } => optional_present(value: kind)
+                      Present { value: b } =>
+                        match type_param_kind_optional(binder: b) {
                           Absent => optional_absent()
+                          Present { value: kind } =>
+                            match resolve_kind_variant_paths_optional(ctx: ctx, declaration: path, kind: kind) {
+                              Present { value: _ } => optional_present(value: kind)
+                              Absent => optional_absent()
+                            }
                         }
-                    }
-                })
-              })
+                    })
+                  }))
+              }
           }
       }
   }
@@ -4463,6 +4522,7 @@ fn realized_head_lookup(ctx: ResolveContext, identity: Symbol) -> Outcome<Realiz
             SymbolIndexAtomHit { path: path } => Accepted { value: RealizedHeadBound { path: path }, diagnostics: pending }
             SymbolIndexAtomAmbiguous { class: class } => Accepted { value: RealizedHeadAmbiguous { class: class }, diagnostics: pending }
             SymbolIndexAtomUnbound => Accepted { value: RealizedHeadUnbound, diagnostics: pending }
+            SymbolIndexAtomExcludedByCategory => Accepted { value: RealizedHeadUnbound, diagnostics: pending }
           }
       }
   }
