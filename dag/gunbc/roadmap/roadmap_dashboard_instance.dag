@@ -5,6 +5,8 @@ import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef 
 import std.measure { ByteSize }
 import std.materialization_store_grant {
   MaterializationStoreRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace,
+}
+import gunbc.persistent_instance_roots {
   materialization_store_persistent_macbook_scope, materialization_store_persistent_srv2_scope,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }

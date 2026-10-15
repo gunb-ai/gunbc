@@ -13,6 +13,9 @@ import std.effect_grant {
 import std.filesystem_path_grant { absolute_path_position }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_tmp_scratch_store_root }
+import gunbc.persistent_instance_roots {
+  materialization_store_persistent_macbook_scope, materialization_store_persistent_srv2_scope,
+}
 
 // THE STORE ROOT IS A COPRODUCT SO DURABILITY IS CONSTRUCTED, NOT INFERRED FROM A PATH.
 //
@@ -27,7 +30,9 @@ import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_
 //     target. A PersistentInstanceWorkspace asked to write `/tmp/...` is Deny, not Permit.
 //   FrameJobWorkspace — EphemeralToFrame. Constructors that take the root as a parameter
 //     (isolated_dashboard_instance, fleet_compute_hermetic_dashboard_instance_at) pick this arm;
-//     the grant is that frame's store, so any scope_root is the frame, not DurableAcrossRuns.
+//     the grant is that frame's store, so a scope_root names the frame, not DurableAcrossRuns.
+//     A frame store that equals, contains or lies inside a DurableAcrossRuns store path is Deny:
+//     one path may not carry both durabilities.
 // Same leaf is not a nickname: durability is the modeled consequence.
 //
 // WitnessScratchRoot is the only arm that takes a path; it admits only /tmp/gunbc_* scratch.
@@ -61,11 +66,8 @@ data materialization_store_host_volume_path: String = "/var/lib/gunbc/materializ
 
 data materialization_store_workspace_leaf: String = "materialization-store"
 
-// THE PERSISTENT SCOPES ARE THE GRANT, not a comment on constructors. Roadmap instance_root rows
-// for macbook_local and srv2_deploy are these strings; a third persistent host is a new row here
-// before it can Permit.
-data materialization_store_persistent_macbook_scope: String = "/Users/briansrls/.local/share/gunbc-macbook-local"
-data materialization_store_persistent_srv2_scope: String = "/home/briansrls/.local/share/gunbc-srv2-deploy"
+// THE PERSISTENT SCOPES ARE THE GRANT, not a comment on constructors. They are declared once in
+// gunbc.persistent_instance_roots, which the roadmap instance_root rows read too.
 
 fn materialization_store_persistent_scope_store_path(scope: String) -> String {
   join([scope, "/", materialization_store_workspace_leaf], "")
@@ -114,6 +116,22 @@ fn materialization_store_durability_name(d: MaterializationStoreDurability) -> S
   }
 }
 
+fn materialization_store_durable_store_paths() -> List<String> {
+  [
+    materialization_store_host_volume_path,
+    materialization_store_persistent_scope_store_path(scope: materialization_store_persistent_macbook_scope),
+    materialization_store_persistent_scope_store_path(scope: materialization_store_persistent_srv2_scope),
+  ]
+}
+
+fn materialization_store_paths_overlap(a: String, b: String) -> Bool {
+  (a == b) || starts_with(s: a, prefix: join([b, "/"], "")) || starts_with(s: b, prefix: join([a, "/"], ""))
+}
+
+fn materialization_store_path_aliases_a_durable_store(path: String) -> Bool {
+  any(materialization_store_durable_store_paths(), d => materialization_store_paths_overlap(a: path, b: d))
+}
+
 fn materialization_store_host_volume_envelope(path: String) -> Envelope {
   Envelope {
     frame: materialization_store_frame,
@@ -132,9 +150,14 @@ fn materialization_store_envelope(root: MaterializationStoreRoot, scope_root: St
   match root {
     DurableHostVolume => materialization_store_host_volume_envelope(path: materialization_store_host_volume_path)
     PersistentInstanceWorkspace => materialization_store_persistent_workspace_envelope()
-    FrameJobWorkspace => materialization_store_host_volume_envelope(
-      path: materialization_store_root_path(root: root, scope_root: scope_root)
-    )
+    FrameJobWorkspace => {
+      let path = materialization_store_root_path(root: root, scope_root: scope_root)
+      if materialization_store_path_aliases_a_durable_store(path: path) {
+        Envelope { frame: materialization_store_frame, grants: [] }
+      } else {
+        materialization_store_host_volume_envelope(path: path)
+      }
+    }
     WitnessScratchRoot { root: r } =>
       if is_gunbc_tmp_scratch_store_root(store_root: r) {
         Envelope {

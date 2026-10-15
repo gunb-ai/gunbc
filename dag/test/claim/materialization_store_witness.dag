@@ -30,9 +30,11 @@ import std.materialization_provider {
 import std.materialization_store_grant {
   WitnessScratchRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace,
   materialization_store_root_path, materialization_store_durability, materialization_store_host_volume_path,
-  materialization_store_admissible, materialization_store_persistent_macbook_scope,
-  materialization_store_persistent_srv2_scope,
+  materialization_store_admissible,
   DurableAcrossRuns, EphemeralToFrame,
+}
+import gunbc.persistent_instance_roots {
+  materialization_store_persistent_macbook_scope, materialization_store_persistent_srv2_scope,
 }
 import std.access { Permit, Deny }
 import std.effect_grant { Read, Write }
@@ -866,6 +868,27 @@ test fn persistent_instance_workspace_admission_refuses_an_undeclared_scope() ->
       Deny { refusal: _ } => false
     }
     && match materialization_store_admissible(root: PersistentInstanceWorkspace, scope_root: materialization_store_persistent_srv2_scope, verb: Write) {
+      Permit => true
+      Deny { refusal: _ } => false
+    }
+}
+
+// A frame store may not alias a durable one: the srv1 volume's parent, a persistent scope, and a
+// path inside the srv1 store all refuse, while an ordinary job workspace is admitted.
+test fn frame_job_workspace_admission_refuses_a_durable_store_path() -> Bool {
+  match materialization_store_admissible(root: FrameJobWorkspace, scope_root: "/var/lib/gunbc", verb: Write) {
+    Permit => false
+    Deny { refusal: _ } => true
+  }
+    && match materialization_store_admissible(root: FrameJobWorkspace, scope_root: materialization_store_persistent_srv2_scope, verb: Write) {
+      Permit => false
+      Deny { refusal: _ } => true
+    }
+    && match materialization_store_admissible(root: FrameJobWorkspace, scope_root: join([materialization_store_host_volume_path, "/frame"], ""), verb: Read) {
+      Permit => false
+      Deny { refusal: _ } => true
+    }
+    && match materialization_store_admissible(root: FrameJobWorkspace, scope_root: "/home/ghrunner/work/gunbc/.gunbc-compute-hermetic/1", verb: Write) {
       Permit => true
       Deny { refusal: _ } => false
     }
