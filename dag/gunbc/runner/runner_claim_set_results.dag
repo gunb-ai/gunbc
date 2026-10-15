@@ -8,6 +8,7 @@ import std.content_hash {
   content_hash_tagged_structural, as_content_hash_structural, serialize_content_hash,
 }
 import extdeps.bazel.label { Label, render_label }
+import std.measure { ByteSize, byte_size_count }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
 import gunbc.durable_cas_file_store { cas_name_is_digits }
@@ -62,7 +63,9 @@ type ClaimSetResult {
 }
 
 type ClaimSetResultsUndecodable
-  = ResultsDriveSizeMismatch { staged: Int, observed: Int }
+  = ResultsDriveSizeMismatch { staged: ByteSize, observed: ByteSize }
+  // The drive's size or text could not be read at all: not a size, so not a mismatch.
+  | ResultsDriveUnobserved { detail: String }
   | ResultsDriveUnwritten
   | ResultsMagicMismatch
   | ResultsCountMissing
@@ -132,8 +135,8 @@ fn decode_claim_set_records(lines: List<String>) -> ClaimSetResultsDecode {
 // THE DECODE, OVER THE DRIVE'S TEXT AND ITS OBSERVED SIZE. `staged_bytes` is the size the host
 // staged; `observed_bytes` the size it read back after exit. The frame ends at the first NUL; what
 // follows must be NUL to the end.
-fn decode_claim_set_results(text: String, staged_bytes: Int, observed_bytes: Int) -> ClaimSetResultsDecode {
-  if observed_bytes != staged_bytes {
+fn decode_claim_set_results(text: String, staged_bytes: ByteSize, observed_bytes: ByteSize) -> ClaimSetResultsDecode {
+  if byte_size_count(b: observed_bytes) != byte_size_count(b: staged_bytes) {
     ClaimSetResultsRefused { cause: ResultsDriveSizeMismatch { staged: staged_bytes, observed: observed_bytes } }
   } else {
     let pieces: List<String> = text.split(delimiter: claim_set_results_nul)
