@@ -264,6 +264,9 @@ pub fn census_declaration_identity(
     type_env: Rc<TypeEnv>,
     func_name: String,
 ) -> Option<Rc<BorrowedCensusDecl>> {
+    if crate::std_algebra::algebra_method_template_name(func_name.clone()) {
+        return std::option::Option::None;
+    }
     match (*borrowed_census_decl(type_env.clone(), func_name.clone())).clone() {
         BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
             declaration: bd, ..
@@ -315,7 +318,7 @@ pub fn census_fallback_skips_non_declaration_binding(name: String) -> bool {
     match crate::v1_compiler_infer_method::bare_call_non_declaration_binding(name.clone()) {
         NonDeclarationBinding::EmptyCollectionConstructor => true,
         NonDeclarationBinding::BuiltinFunction => false,
-        NonDeclarationBinding::KernelMethodOnly => false,
+        NonDeclarationBinding::KernelMethodOnly => true,
         NonDeclarationBinding::DeclarationOnly => false,
     }
 }

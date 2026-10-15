@@ -624,6 +624,33 @@ fn orphan_entry_compile_has_a_controlled_red_and_clean_control() {
     );
 }
 
+// Kernel-method names (`map`, `join`) must not bind a unique census declaration in the same
+// fixture pool. A decoy `fn map` returning Int cannot inhabit List<Int>; the known-method
+// bridge can. Regression: #13925 CallTargetOutcome censused KernelMethodOnly.
+#[test]
+fn unique_census_map_does_not_bind_a_bare_kernel_map_call() {
+    let outcome = compile_dag_multi_module_fixture(
+        &[
+            "kmfx_decoy.dag".to_string(),
+            "kmfx_probe.dag".to_string(),
+        ],
+        &[
+            "module kmfx.decoy\nfn map(xs: List<Int>, f: fn(Int) -> Int) -> Int { 0 }\n"
+                .to_string(),
+            "module kmfx.probe\nfn mapped(xs: List<Int>) -> List<Int> { map(xs, x => x) }\nfn joined() -> String { join([\"a\", \"b\"], \",\") }\n"
+                .to_string(),
+        ],
+        "kmfx_probe.dag",
+    );
+    assert!(
+        matches!(
+            outcome,
+            MultiModuleCompileFixtureOutcome::CompileCompleted { .. }
+        ),
+        "bare map/join must type as kernel methods, not the decoy census map, got {outcome:?}"
+    );
+}
+
 // ARM 3 — module authorship. The live corpus is 72 of 72 green, so this is the arm whose
 // red MUST be authorable somewhere or the check is a decoration. It is authorable here.
 #[test]
