@@ -40,3 +40,20 @@ fn type_parameter_compares_by_binder_not_spelling() {
         "T of f vs T of g must not be equal"
     );
 }
+
+#[test]
+fn inference_variable_compares_by_id_not_leaf_name() {
+    let si = empty_si();
+    let t = text();
+    let a = type_variable_node("tv.1".to_string());
+    let a_again = type_variable_node("tv.1".to_string());
+    let b = type_variable_node("tv.2".to_string());
+    assert!(
+        node_type_equals(a.clone(), a_again, si.clone(), t.clone()),
+        "same inference-variable id must be equal"
+    );
+    assert!(
+        !node_type_equals(a, b, si, t),
+        "distinct inference-variable ids must not be equal"
+    );
+}

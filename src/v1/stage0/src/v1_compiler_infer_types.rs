@@ -83,6 +83,13 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
+pub fn type_variable_id(n: Rc<Node>) -> String {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id, .. }) => id,
+        _ => "".to_string(),
+    }
+}
+
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -2859,8 +2866,13 @@ pub fn node_type_equals(
             right_binder.unwrap(),
         );
     }
-    if left_tv && right_tv {
+    if left_binder.is_some() || right_binder.is_some() {
         return false;
+    }
+    if left_tv && right_tv {
+        let lid = type_variable_id(left.clone());
+        let rid = type_variable_id(right.clone());
+        return lid != "" && lid == rid;
     }
     if left_tv || right_tv {
         return false;

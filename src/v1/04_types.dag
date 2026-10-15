@@ -56,6 +56,13 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   }
 }
 
+fn type_variable_id(n: Node) -> String {
+  match n.inferred {
+    Present { value: TypeVariable { id: id } } => id
+    _ => ""
+  }
+}
+
 fn type_variable_node(id: String) -> Node {
   Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
@@ -1113,10 +1120,10 @@ fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, New
 }
 
 // A TYPE PARAMETER COMPARES BY BINDER IDENTITY (owner, TypeParameter { name }), never by
-// the spelling "T" and never by both sides merely carrying a TypeVariable mark. Two T's of
-// one fn are the same parameter; T of f and T of g are not. A side with no TypeParameter
-// DeclarationRef is not identified, so it is not equal to a marked parameter and two
-// unmarked TypeVariable leaves are not equal to each other by spelling.
+// the authored spelling "T". Two T's of one fn are the same parameter; T of f and T of g
+// are not. An unmarked TypeVariable leaf is identified by its inference-variable id, not
+// by leaf name. A marked parameter is never equal to an unmarked leaf (the mark is the
+// binder; spelling must not complete it).
 fn type_parameter_binder(n: Node) -> DeclarationRef? {
   match n.declaration {
     Present { value: r } =>
@@ -1147,7 +1154,12 @@ fn node_type_equals(left: Node, right: Node, source_indices: Map<String, Newline
       Absent => false
     }
   }
-  else if left_tv && right_tv { false }
+  else if left_binder != none || right_binder != none { false }
+  else if left_tv && right_tv {
+    let lid = type_variable_id(n: left)
+    let rid = type_variable_id(n: right)
+    lid != "" && lid == rid
+  }
   else if left_tv || right_tv { false }
   else if left_opt && right_is_unit_eq { true }
   else if left_is_unit_eq && right_opt { true }
