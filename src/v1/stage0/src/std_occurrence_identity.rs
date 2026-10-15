@@ -614,7 +614,7 @@ pub fn occurrence_transport_index_build(
 ) -> Rc<OccurrenceTransportIndexBuild> {
     index.entries.clone().iter().cloned().fold(
         Rc::new(OccurrenceTransportIndexBuild {
-            entries_by_id: v1_rt::rc_empty_map::<_, _>(),
+            entries_by_id: v1_rt::rc_empty_map::<i64, Rc<OccurrenceIndexEntry>>(),
             refusal: std::option::Option::None,
         }),
         |build: Rc<OccurrenceTransportIndexBuild>, entry: Rc<OccurrenceIndexEntry>| match build
@@ -683,8 +683,8 @@ pub fn occurrence_transport_role_index_build(
     {
         let declaration_build = declarations.iter().cloned().fold(
             Rc::new(OccurrenceTransportRoleIndexBuild {
-                declarations_by_id: v1_rt::rc_empty_map::<_, _>(),
-                references_by_id: v1_rt::rc_empty_map::<_, _>(),
+                declarations_by_id: v1_rt::rc_empty_map::<i64, Rc<DeclarationOccurrence>>(),
+                references_by_id: v1_rt::rc_empty_map::<i64, Rc<ReferenceOccurrence>>(),
                 refusal: std::option::Option::None,
             }),
             |build: Rc<OccurrenceTransportRoleIndexBuild>,

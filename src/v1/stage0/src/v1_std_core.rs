@@ -5104,7 +5104,7 @@ pub struct InternResult {
 pub fn empty_intern_table() -> Rc<InternTable> {
     Rc::new(InternTable {
         strings: Rc::new(vec!["".to_string()]),
-        index: v1_rt::rc_map_insert(v1_rt::rc_empty_map::<_, _>(), "".to_string(), 0),
+        index: v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, i64>(), "".to_string(), 0),
         next_id: 1,
         authored_token_ordinals:
             crate::std_occurrence_identity::authored_token_ordinal_space_initial(),

@@ -10,6 +10,7 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::CompilerDiagnostic;
 use crate::v1_std_core::CompilerDiagnostic::ParseError;
+pub use crate::v1_std_core::NewlineIndex;
 pub use crate::v1_std_core::{build_newline_index, empty_intern_table};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -123,7 +124,7 @@ pub fn parse_source(source: String) -> Rc<ParseWithTableResult> {
             dag_parse_environment(),
         ),
         v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<_, _>(),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             keyword_binder_file(),
             crate::v1_std_core::build_newline_index(keyword_binder_file(), source.clone()),
         ),

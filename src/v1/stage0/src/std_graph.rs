@@ -41,12 +41,12 @@ pub struct SccComponentAcc {
 }
 
 pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    names
-        .iter()
-        .cloned()
-        .fold(v1_rt::rc_empty_map::<_, _>(), |acc: _, name: String| {
+    names.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| {
             v1_rt::rc_map_insert(acc, name.clone(), Rc::new(vec![]))
-        })
+        },
+    )
 }
 
 pub fn build_call_graph_from_proof_edges(

@@ -110,7 +110,7 @@ pub fn flatten_parent_envs(
         });
         let dedup = ordered.iter().cloned().fold(
             Rc::new(FlattenAccum {
-                seen: v1_rt::rc_empty_map::<_, _>(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 out: Rc::new(vec![]),
             }),
             |acc: Rc<FlattenAccum>, p: Rc<ResolvedFuncEnv>| {
@@ -629,12 +629,12 @@ pub fn func_reaches_self(
 }
 
 pub fn build_name_set(names: Rc<Vec<String>>) -> Rc<HashMap<String, bool>> {
-    names
-        .iter()
-        .cloned()
-        .fold(v1_rt::rc_empty_map::<_, _>(), |acc: _, name: String| {
+    names.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, name: String| {
             v1_rt::rc_map_insert(acc, name.clone(), true)
-        })
+        },
+    )
 }
 
 pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
@@ -895,12 +895,12 @@ pub fn topo_resolve_loop(
                 std::option::Option::None => acc.clone(),
             },
         );
-        let ready_set = ready
-            .iter()
-            .cloned()
-            .fold(v1_rt::rc_empty_map::<_, _>(), |acc: _, fn_name: String| {
+        let ready_set = ready.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, fn_name: String| {
                 v1_rt::rc_map_insert(acc, fn_name.clone(), true)
-            });
+            },
+        );
         let next_remaining = Rc::new({
             let mut __result = Vec::new();
             for fn_name in remaining.iter().cloned() {
@@ -977,7 +977,7 @@ pub fn resolve_func_sigs(
         );
         topo_resolve_loop(
             local_func_names.clone(),
-            v1_rt::rc_empty_map::<_, _>(),
+            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
             declared_sigs.clone(),
             call_edges.clone(),
             local_func_set.clone(),

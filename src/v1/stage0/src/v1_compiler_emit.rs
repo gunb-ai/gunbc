@@ -80,6 +80,7 @@ use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling, EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration;
+pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{
     authored_name, empty_symbol_index, lookup_type_for, type_reference_declaration_reading,
 };
@@ -611,33 +612,36 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: Rc::new(TypeEnv {
             module_path: "".to_string(),
-            bindings: v1_rt::rc_empty_map::<_, _>(),
-            str_bindings: v1_rt::rc_empty_map::<_, _>(),
-            ancestry_str_bindings: v1_rt::rc_empty_map::<_, _>(),
+            bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
-            recursive_type_set: v1_rt::rc_empty_map::<_, _>(),
-            inductive_fields: v1_rt::rc_empty_map::<_, _>(),
-            source_indices: v1_rt::rc_empty_map::<_, _>(),
+            recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
+            inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+            source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             intern_table: crate::v1_std_core::empty_intern_table(),
-            source_visible_names: v1_rt::rc_empty_map::<_, _>(),
-            authored_import_names: v1_rt::rc_empty_map::<_, _>(),
+            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
-            unit_variant_index: v1_rt::rc_empty_map::<_, _>(),
+            unit_variant_index: v1_rt::rc_empty_map::<
+                String,
+                Rc<HashMap<String, Rc<UnitVariantContribution>>>,
+            >(),
             unit_variant_index_observed: false,
         }),
         func_env: Rc::new(ResolvedFuncEnv {
             name: "".to_string(),
-            local: v1_rt::rc_empty_map::<_, _>(),
+            local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
             parents: Rc::new(vec![]),
         }),
-        locals: v1_rt::rc_empty_map::<_, _>(),
-        body_locals: v1_rt::rc_empty_map::<_, _>(),
-        match_bound_names: v1_rt::rc_empty_map::<_, _>(),
+        locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        body_locals: v1_rt::rc_empty_map::<String, bool>(),
+        match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: "".to_string(),
-        service_registry: v1_rt::rc_empty_map::<_, _>(),
-        item_registry: v1_rt::rc_empty_map::<_, _>(),
-        lambda_param_provenance: v1_rt::rc_empty_map::<_, _>(),
+        service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+        item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+        lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         caller_decl_name: "".to_string(),
         in_flight_lambda_param_names: Rc::new(vec![]),
         enclosing_declared_type_param_names: Rc::new(vec![]),
@@ -648,16 +652,16 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: typed_module.type_env.clone(),
         func_env: typed_module.func_env.clone(),
-        locals: v1_rt::rc_empty_map::<_, _>(),
-        body_locals: v1_rt::rc_empty_map::<_, _>(),
-        match_bound_names: v1_rt::rc_empty_map::<_, _>(),
+        locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        body_locals: v1_rt::rc_empty_map::<String, bool>(),
+        match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: crate::v1_std_core::authored_name_at(
             typed_module.type_env.clone().source_indices.clone(),
             typed_module.module.clone(),
         ),
-        service_registry: v1_rt::rc_empty_map::<_, _>(),
+        service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
         item_registry: typed_module.item_registry.clone(),
-        lambda_param_provenance: v1_rt::rc_empty_map::<_, _>(),
+        lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         caller_decl_name: "".to_string(),
         in_flight_lambda_param_names: Rc::new(vec![]),
         enclosing_declared_type_param_names: Rc::new(vec![]),
@@ -742,8 +746,8 @@ pub fn order_typed_call_args(
                 std::option::Option::None => args.clone(),
                 Some(sig) => {
                     let arg_map = args.iter().cloned().fold(
-                        v1_rt::rc_empty_map::<_, _>(),
-                        |acc: _, arg: Rc<Node>| {
+                        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                        |acc: Rc<HashMap<String, Rc<Node>>>, arg: Rc<Node>| {
                             let n = crate::v1_std_core::arg_name_at(
                                 arg.clone(),
                                 scope.type_env.clone().source_indices.clone(),
@@ -756,8 +760,8 @@ pub fn order_typed_call_args(
                         },
                     );
                     let param_label_set = sig.params.clone().iter().cloned().fold(
-                        v1_rt::rc_empty_map::<_, _>(),
-                        |acc: _, param: Rc<Node>| {
+                        v1_rt::rc_empty_map::<String, bool>(),
+                        |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| {
                             crate::v1_compiler_infer::call_param_caller_labels(
                                 crate::v1_std_core::param_node_name_at(
                                     param.clone(),
@@ -766,9 +770,12 @@ pub fn order_typed_call_args(
                             )
                             .iter()
                             .cloned()
-                            .fold(acc, |labels: _, label: String| {
-                                v1_rt::rc_map_insert(labels, label.clone(), true)
-                            })
+                            .fold(
+                                acc,
+                                |labels: Rc<HashMap<String, bool>>, label: String| {
+                                    v1_rt::rc_map_insert(labels, label.clone(), true)
+                                },
+                            )
                         },
                     );
                     let ordered = Rc::new({
@@ -9298,7 +9305,11 @@ pub fn emit_typed_tco_reassign_shared(
 }
 
 pub fn seed_bindings(key: String, value: String) -> Rc<HashMap<String, String>> {
-    v1_rt::rc_map_insert(v1_rt::rc_empty_map::<_, _>(), key.clone(), value.clone())
+    v1_rt::rc_map_insert(
+        v1_rt::rc_empty_map::<String, String>(),
+        key.clone(),
+        value.clone(),
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

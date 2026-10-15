@@ -203,7 +203,7 @@ pub fn binding_candidates_from_supplied_declarations(
 ) -> Rc<OccurrenceCandidatePopulationBuild> {
     supplied_candidates.iter().cloned().fold(Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: Rc::new(vec![]),
-    seen_candidate_ids: v1_rt::rc_empty_map::<_, _>(),
+    seen_candidate_ids: v1_rt::rc_empty_map::<i64, OccurrenceId>(),
     refusal: std::option::Option::None,
 }), |build: Rc<OccurrenceCandidatePopulationBuild>, candidate_occurrence: OccurrenceId| match build.refusal.clone() {
     Some(_) => build.clone(),

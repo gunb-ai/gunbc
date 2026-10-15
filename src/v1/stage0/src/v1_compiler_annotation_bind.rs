@@ -162,8 +162,8 @@ pub fn annotation_regions(
 ) -> Rc<Vec<Rc<AnnotationRegion>>> {
     {
         let recorded = extents.extents.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<_, _>(),
-            |acc: _, row: Rc<ParsedSourceExtent>| {
+            v1_rt::rc_empty_map::<i64, Rc<SourceSpan>>(),
+            |acc: Rc<HashMap<i64, Rc<SourceSpan>>>, row: Rc<ParsedSourceExtent>| {
                 v1_rt::rc_map_insert(
                     acc,
                     row.occurrence.clone().value.clone(),
@@ -260,8 +260,8 @@ pub fn region_key_index(
             .iter()
             .cloned()
             .fold(
-                v1_rt::rc_empty_map::<_, _>(),
-                |acc: _, entry: Rc<OccurrenceIndexEntry>| {
+                v1_rt::rc_empty_map::<i64, String>(),
+                |acc: Rc<HashMap<i64, String>>, entry: Rc<OccurrenceIndexEntry>| {
                     v1_rt::rc_map_insert(
                         acc,
                         entry.projection.clone().occurrence.clone().value.clone(),
@@ -280,8 +280,8 @@ pub fn region_key_index(
         });
         let stepped = ordered.iter().cloned().fold(
             Rc::new(RegionKeyStepAcc {
-                seen: v1_rt::rc_empty_map::<_, _>(),
-                step_of: v1_rt::rc_empty_map::<_, _>(),
+                seen: v1_rt::rc_empty_map::<Rc<AnnotationScope>, i64>(),
+                step_of: v1_rt::rc_empty_map::<Rc<AnnotationScope>, String>(),
             }),
             |acc: Rc<RegionKeyStepAcc>, region: Rc<AnnotationRegion>| {
                 let parent_key = region.parent.clone();
@@ -308,8 +308,9 @@ pub fn region_key_index(
         );
         Rc::new(RegionKeyIndex {
             parent_of: regions.iter().cloned().fold(
-                v1_rt::rc_empty_map::<_, _>(),
-                |acc: _, region: Rc<AnnotationRegion>| {
+                v1_rt::rc_empty_map::<Rc<AnnotationScope>, Rc<AnnotationScope>>(),
+                |acc: Rc<HashMap<Rc<AnnotationScope>, Rc<AnnotationScope>>>,
+                 region: Rc<AnnotationRegion>| {
                     v1_rt::rc_map_insert(acc, region.scope.clone(), region.parent.clone())
                 },
             ),

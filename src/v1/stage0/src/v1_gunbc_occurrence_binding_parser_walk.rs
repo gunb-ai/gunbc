@@ -71,7 +71,11 @@ pub fn parse_authored_occurrence_binding_source(
                 file.clone(),
                 dag_parse_environment(),
             ),
-            v1_rt::rc_map_insert(v1_rt::rc_empty_map::<_, _>(), file.clone(), index.clone()),
+            v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                file.clone(),
+                index.clone(),
+            ),
             crate::v1_std_core::empty_intern_table(),
         );
         match crate::v1_compiler_parse::parse_with_table_ready_module_path(parsed.clone()) {

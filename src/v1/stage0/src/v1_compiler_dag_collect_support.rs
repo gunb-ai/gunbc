@@ -62,8 +62,10 @@ pub fn dag_collect_pack_slots(
             __result
         });
         let seen = ordered_slots.iter().cloned().fold(
-            v1_rt::rc_empty_map::<_, _>(),
-            |acc: _, s: Rc<DagCollectSlot>| v1_rt::rc_map_insert(acc, s.key.clone(), s.fp.clone()),
+            v1_rt::rc_empty_map::<String, String>(),
+            |acc: Rc<HashMap<String, String>>, s: Rc<DagCollectSlot>| {
+                v1_rt::rc_map_insert(acc, s.key.clone(), s.fp.clone())
+            },
         );
         Rc::new(DagCollectAcc {
             seen: seen.clone(),

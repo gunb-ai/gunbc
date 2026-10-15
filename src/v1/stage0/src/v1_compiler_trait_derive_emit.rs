@@ -4256,7 +4256,7 @@ pub fn v1_clone_bounded_type_params(
         let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
         let seeded = generic_type_names.iter().cloned().fold(
             Rc::new(CloneBoundRound {
-                bounds: v1_rt::rc_empty_map::<_, _>(),
+                bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 added: 0,
             }),
             |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
@@ -4326,7 +4326,7 @@ pub fn v1_clone_impl_required_type_params(
         let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
         let seeded = generic_type_names.iter().cloned().fold(
             Rc::new(CloneBoundRound {
-                bounds: v1_rt::rc_empty_map::<_, _>(),
+                bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 added: 0,
             }),
             |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
@@ -4562,7 +4562,7 @@ pub fn v1_map_key_bounded_type_params(
         let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
         let seeded = generic_type_names.iter().cloned().fold(
             Rc::new(CloneBoundRound {
-                bounds: v1_rt::rc_empty_map::<_, _>(),
+                bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 added: 0,
             }),
             |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
@@ -4608,10 +4608,9 @@ pub fn v1_emit_type_params_with_map_key_bounds(
 ) -> String {
     v1_emit_type_params_with_bounds(
         params.clone(),
-        params
-            .iter()
-            .cloned()
-            .fold(v1_rt::rc_empty_map::<_, _>(), |m: _, p: Rc<Node>| {
+        params.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, p: Rc<Node>| {
                 let n =
                     crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone());
                 let c = if {
@@ -4646,7 +4645,8 @@ pub fn v1_emit_type_params_with_map_key_bounds(
                     Rc::new(vec![])
                 };
                 v1_rt::rc_map_insert(m, n.clone(), v1_rt::concat(c.clone(), k.clone()))
-            }),
+            },
+        ),
         source_indices.clone(),
     )
 }
@@ -4658,12 +4658,12 @@ pub fn v1_emit_type_params_with_clone_bounds(
 ) -> String {
     v1_emit_type_params_with_bounds(
         params.clone(),
-        clone_param_names
-            .iter()
-            .cloned()
-            .fold(v1_rt::rc_empty_map::<_, _>(), |m: _, n: String| {
+        clone_param_names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
                 v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
-            }),
+            },
+        ),
         source_indices.clone(),
     )
 }

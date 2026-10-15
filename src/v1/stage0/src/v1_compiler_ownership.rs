@@ -147,7 +147,7 @@ pub struct UsageAccum {
 
 pub fn empty_usage_accum() -> Rc<UsageAccum> {
     Rc::new(UsageAccum {
-        bindings: v1_rt::rc_empty_map::<_, _>(),
+        bindings: v1_rt::rc_empty_map::<String, Rc<BindingUsage>>(),
         fold_call_nodes: Rc::new(vec![]),
         touched: Rc::new(vec![]),
     })
@@ -1255,14 +1255,12 @@ pub fn fold_body_safe_field_moves(
     {
         let summary =
             fold_lambda_acc_use_summary(lambda_node.clone(), acc_name.clone(), si.clone());
-        let deduped = summary
-            .field_moves
-            .clone()
-            .iter()
-            .cloned()
-            .fold(v1_rt::rc_empty_map::<_, _>(), |seen: _, field: String| {
+        let deduped = summary.field_moves.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |seen: Rc<HashMap<String, bool>>, field: String| {
                 v1_rt::rc_map_insert(seen, field.clone(), true)
-            });
+            },
+        );
         ((!summary.nested_acc_refs.clone() && (summary.whole_acc_uses.clone() == 0))
             && ((Rc::new(v1_rt::map_keys(&deduped)).len() as i64)
                 == (summary.field_moves.clone().len() as i64)))

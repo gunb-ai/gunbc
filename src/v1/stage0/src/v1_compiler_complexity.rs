@@ -180,7 +180,7 @@ pub struct CostInternTable {
 
 pub fn empty_cost_intern_table() -> Rc<CostInternTable> {
     Rc::new(CostInternTable {
-        summaries: v1_rt::rc_empty_map::<_, _>(),
+        summaries: v1_rt::rc_empty_map::<String, Rc<ComplexitySummary>>(),
     })
 }
 
@@ -212,7 +212,7 @@ pub fn evict_summary(table: Rc<CostInternTable>, func_name: String) -> Rc<CostIn
         Rc::new(ComplexitySummary {
             work: Rc::new(CostExpr::CostConst { value: 0 }),
             span: Rc::new(CostExpr::CostConst { value: 0 }),
-            output_size: v1_rt::rc_empty_map::<_, _>(),
+            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
             certainty: Certainty::Proven,
             peak_space: None,
         }),
@@ -385,8 +385,8 @@ pub fn strict_after_parser_witness(input: DescentEvidence) -> DescentEvidence {
 
 pub fn empty_parser_progress_env() -> Rc<ParserProgressEnv> {
     Rc::new(ParserProgressEnv {
-        state_aliases: v1_rt::rc_empty_map::<_, _>(),
-        result_sources: v1_rt::rc_empty_map::<_, _>(),
+        state_aliases: v1_rt::rc_empty_map::<String, DescentEvidence>(),
+        result_sources: v1_rt::rc_empty_map::<String, Rc<ParserResultSource>>(),
     })
 }
 
@@ -1423,7 +1423,7 @@ pub fn parser_member_is_always_advancing(
                 parser_name_set.clone(),
                 empty_parser_progress_env(),
                 proven.clone(),
-                v1_rt::rc_empty_map::<_, _>(),
+                v1_rt::rc_empty_map::<String, bool>(),
                 si.clone(),
             );
             ({
@@ -1443,7 +1443,7 @@ pub fn parser_member_is_always_advancing(
                 state_param.clone(),
                 empty_parser_progress_env(),
                 proven.clone(),
-                v1_rt::rc_empty_map::<_, _>(),
+                v1_rt::rc_empty_map::<String, bool>(),
                 si.clone(),
             ) == DescentEvidence::Strict))
         }
@@ -1569,12 +1569,12 @@ pub fn infer_parser_always_advancing_members(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, bool>> {
     {
-        let parser_name_set = members
-            .iter()
-            .cloned()
-            .fold(v1_rt::rc_empty_map::<_, _>(), |acc: _, name: String| {
+        let parser_name_set = members.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
-            });
+            },
+        );
         let parser_entries = Rc::new({
             let mut __result = Vec::new();
             for name in members.iter().cloned() {
@@ -1597,7 +1597,7 @@ pub fn infer_parser_always_advancing_members(
             func_index.clone(),
             parser_name_set.clone(),
             reverse_graph.clone(),
-            v1_rt::rc_empty_map::<_, _>(),
+            v1_rt::rc_empty_map::<String, bool>(),
             si.clone(),
         )
     }
@@ -1635,22 +1635,34 @@ pub fn infer_all_parser_always_advancing(
 }
 
 pub fn seed_string_map(key: String, value: String) -> Rc<HashMap<String, String>> {
-    v1_rt::rc_map_insert(v1_rt::rc_empty_map::<_, _>(), key.clone(), value.clone())
+    v1_rt::rc_map_insert(
+        v1_rt::rc_empty_map::<String, String>(),
+        key.clone(),
+        value.clone(),
+    )
 }
 
 pub fn seed_bool_map(key: String) -> Rc<HashMap<String, bool>> {
-    v1_rt::rc_map_insert(v1_rt::rc_empty_map::<_, _>(), key.clone(), true)
+    v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, bool>(), key.clone(), true)
 }
 
 pub fn seed_cost_map(key: String, value: Rc<CostExpr>) -> Rc<HashMap<String, Rc<CostExpr>>> {
-    v1_rt::rc_map_insert(v1_rt::rc_empty_map::<_, _>(), key.clone(), value.clone())
+    v1_rt::rc_map_insert(
+        v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+        key.clone(),
+        value.clone(),
+    )
 }
 
 pub fn seed_func_entry_map(
     key: String,
     value: Rc<FuncEntry>,
 ) -> Rc<HashMap<String, Rc<FuncEntry>>> {
-    v1_rt::rc_map_insert(v1_rt::rc_empty_map::<_, _>(), key.clone(), value.clone())
+    v1_rt::rc_map_insert(
+        v1_rt::rc_empty_map::<String, Rc<FuncEntry>>(),
+        key.clone(),
+        value.clone(),
+    )
 }
 
 pub fn build_call_graph_from_parser_edges(
@@ -1774,7 +1786,7 @@ pub fn collect_parser_edges_for_scc(
                                             scc_name_set.clone(),
                                             empty_parser_progress_env(),
                                             parser_always_advancing.clone(),
-                                            v1_rt::rc_empty_map::<_, _>(),
+                                            v1_rt::rc_empty_map::<String, bool>(),
                                             si.clone(),
                                         ),
                                         std::option::Option::None => Rc::new(vec![]),
@@ -1799,12 +1811,12 @@ pub fn classify_parser_scc_recursion_pattern(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<LoweringTarget>> {
     {
-        let scc_name_set = members
-            .iter()
-            .cloned()
-            .fold(v1_rt::rc_empty_map::<_, _>(), |acc: _, name: String| {
+        let scc_name_set = members.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
-            });
+            },
+        );
         let edges = collect_parser_edges_for_scc(
             members.clone(),
             func_index.clone(),
@@ -2337,24 +2349,20 @@ pub fn build_scc_measure_params(
     func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<HashMap<String, String>>>> {
-    members
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<_, _>(),
-            |acc: _, name: String| match v1_rt::map_get(&func_index, name.clone()) {
-                Some(entry) => v1_rt::rc_map_insert(
-                    acc.clone(),
-                    name.clone(),
-                    recursive_measure_param_names(
-                        entry.body.clone(),
-                        entry.params.clone(),
-                        si.clone(),
-                    ),
-                ),
-                std::option::Option::None => acc.clone(),
-            },
-        )
+    members.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<HashMap<String, String>>>(),
+        |acc: Rc<HashMap<String, Rc<HashMap<String, String>>>>, name: String| match v1_rt::map_get(
+            &func_index,
+            name.clone(),
+        ) {
+            Some(entry) => v1_rt::rc_map_insert(
+                acc.clone(),
+                name.clone(),
+                recursive_measure_param_names(entry.body.clone(), entry.params.clone(), si.clone()),
+            ),
+            std::option::Option::None => acc.clone(),
+        },
+    )
 }
 
 pub fn target_call_has_arithmetic_descent(
@@ -2374,7 +2382,7 @@ pub fn target_call_has_arithmetic_descent(
                     let callee_measure_params =
                         match v1_rt::map_get(&scc_measure_params, callee.clone()) {
                             Some(params) => params.clone(),
-                            std::option::Option::None => v1_rt::rc_empty_map::<_, _>(),
+                            std::option::Option::None => v1_rt::rc_empty_map::<String, String>(),
                         };
                     {
                         let mut __found = false;
@@ -2485,8 +2493,8 @@ pub fn descending_name_set_without_key(
     key: String,
 ) -> Rc<HashMap<String, String>> {
     Rc::new(v1_rt::map_keys(&names)).iter().cloned().fold(
-        v1_rt::rc_empty_map::<_, _>(),
-        |acc: _, name: String| {
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, name: String| {
             if (name.clone() == key.clone()) {
                 acc.clone()
             } else {
@@ -2563,12 +2571,12 @@ pub fn condition_param_names(
                 let name = crate::v1_std_core::expr_var_name_at(expr.clone(), si.clone());
                 match v1_rt::map_get(&param_set, name.clone()) {
                     Some(_) => seed_string_map(name.clone(), name.clone()),
-                    std::option::Option::None => v1_rt::rc_empty_map::<_, _>(),
+                    std::option::Option::None => v1_rt::rc_empty_map::<String, String>(),
                 }
             }
             _ => expr.children.clone().iter().cloned().fold(
-                v1_rt::rc_empty_map::<_, _>(),
-                |acc: _, child: Rc<Node>| {
+                v1_rt::rc_empty_map::<String, String>(),
+                |acc: Rc<HashMap<String, String>>, child: Rc<Node>| {
                     v1_rt::rc_map_merge(
                         acc,
                         condition_param_names(child.clone(), param_set.clone(), si.clone()),
@@ -2586,8 +2594,8 @@ pub fn recursive_measure_param_names(
 ) -> Rc<HashMap<String, String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let param_set = params.iter().cloned().fold(
-            v1_rt::rc_empty_map::<_, _>(),
-            |acc: _, param: Rc<Node>| {
+            v1_rt::rc_empty_map::<String, String>(),
+            |acc: Rc<HashMap<String, String>>, param: Rc<Node>| {
                 v1_rt::rc_map_insert(
                     acc,
                     crate::v1_std_core::param_node_name_at(param.clone(), si.clone()),
@@ -2606,7 +2614,7 @@ pub fn recursive_measure_param_names(
                     Some(eb) => {
                         recursive_measure_param_names(eb.clone(), params.clone(), si.clone())
                     }
-                    std::option::Option::None => v1_rt::rc_empty_map::<_, _>(),
+                    std::option::Option::None => v1_rt::rc_empty_map::<String, String>(),
                 };
                 v1_rt::rc_map_merge(
                     v1_rt::rc_map_merge(
@@ -2630,8 +2638,8 @@ pub fn recursive_measure_param_names(
                     .iter()
                     .cloned()
                     .fold(
-                        v1_rt::rc_empty_map::<_, _>(),
-                        |acc: _, arm_node: Rc<Node>| {
+                        v1_rt::rc_empty_map::<String, String>(),
+                        |acc: Rc<HashMap<String, String>>, arm_node: Rc<Node>| {
                             v1_rt::rc_map_merge(
                                 acc,
                                 recursive_measure_param_names(
@@ -2646,11 +2654,11 @@ pub fn recursive_measure_param_names(
             }
             ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
                 Some(b) => recursive_measure_param_names(b.clone(), params.clone(), si.clone()),
-                std::option::Option::None => v1_rt::rc_empty_map::<_, _>(),
+                std::option::Option::None => v1_rt::rc_empty_map::<String, String>(),
             },
             ExprData::ExprBlock => body.children.clone().iter().cloned().fold(
-                v1_rt::rc_empty_map::<_, _>(),
-                |acc: _, stmt: Rc<Node>| {
+                v1_rt::rc_empty_map::<String, String>(),
+                |acc: Rc<HashMap<String, String>>, stmt: Rc<Node>| {
                     v1_rt::rc_map_merge(
                         acc,
                         recursive_measure_param_names(stmt.clone(), params.clone(), si.clone()),
@@ -2658,8 +2666,8 @@ pub fn recursive_measure_param_names(
                 },
             ),
             _ => body.children.clone().iter().cloned().fold(
-                v1_rt::rc_empty_map::<_, _>(),
-                |acc: _, child: Rc<Node>| {
+                v1_rt::rc_empty_map::<String, String>(),
+                |acc: Rc<HashMap<String, String>>, child: Rc<Node>| {
                     v1_rt::rc_map_merge(
                         acc,
                         recursive_measure_param_names(child.clone(), params.clone(), si.clone()),
@@ -3509,8 +3517,8 @@ pub fn is_match_option_descent(
                                     ..
                                 } => {
                                     let binding_names = bindings.iter().cloned().fold(
-                                        v1_rt::rc_empty_map::<_, _>(),
-                                        |acc: _, fb: Rc<Node>| {
+                                        v1_rt::rc_empty_map::<String, bool>(),
+                                        |acc: Rc<HashMap<String, bool>>, fb: Rc<Node>| {
                                             collect_field_binding_names(fb.clone(), acc)
                                         },
                                     );
@@ -3921,7 +3929,7 @@ pub fn all_self_calls_descend(
         body.clone(),
         func_name.clone(),
         param_name.clone(),
-        v1_rt::rc_empty_map::<_, _>(),
+        v1_rt::rc_empty_map::<String, bool>(),
         check_child.clone(),
         check_list.clone(),
         si.clone(),
@@ -4686,7 +4694,7 @@ pub fn try_dimension_for_param(
         body.clone(),
         func_name.clone(),
         param_name.clone(),
-        v1_rt::rc_empty_map::<_, _>(),
+        v1_rt::rc_empty_map::<String, bool>(),
         check_child.clone(),
         check_list.clone(),
         false,
@@ -4706,7 +4714,7 @@ pub fn try_branching_dimension_for_param(
         body.clone(),
         func_name.clone(),
         param_name.clone(),
-        v1_rt::rc_empty_map::<_, _>(),
+        v1_rt::rc_empty_map::<String, bool>(),
         check_child.clone(),
         check_list.clone(),
         true,
@@ -5453,7 +5461,7 @@ pub fn construct_termination_proof(
                         self_set.clone(),
                         empty_parser_progress_env(),
                         parser_always_advancing.clone(),
-                        v1_rt::rc_empty_map::<_, _>(),
+                        v1_rt::rc_empty_map::<String, bool>(),
                         si.clone(),
                     );
                     if (((edges.clone().len() as i64) > 0) && {
@@ -6158,12 +6166,12 @@ pub fn build_call_graph(
             }
             __result
         });
-        let local_func_set = names
-            .iter()
-            .cloned()
-            .fold(v1_rt::rc_empty_map::<_, _>(), |acc: _, name: String| {
+        let local_func_set = names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
-            });
+            },
+        );
         let edges = Rc::new({
             let mut __result = Vec::new();
             for entry in func_entries.iter().cloned() {
@@ -6370,7 +6378,9 @@ pub fn collect_scc_child_edges(
                         let callee_params =
                             match v1_rt::map_get(&scc_measure_params, callee.clone()) {
                                 Some(p) => p.clone(),
-                                std::option::Option::None => v1_rt::rc_empty_map::<_, _>(),
+                                std::option::Option::None => {
+                                    v1_rt::rc_empty_map::<String, String>()
+                                }
                             };
                         let progress = body.children.clone().iter().cloned().fold(
                             DescentEvidence::DescentUnknown,
@@ -6926,7 +6936,7 @@ pub fn is_scc_container_child_descent(
                                     let descent_vars = collect_descent_vars(
                                         entry.body.clone(),
                                         pname.clone(),
-                                        v1_rt::rc_empty_map::<_, _>(),
+                                        v1_rt::rc_empty_map::<String, bool>(),
                                         true,
                                         true,
                                         si.clone(),
@@ -7021,69 +7031,29 @@ pub fn collect_scc_proof_edges_for_dim(
         Rc::new({
             let mut __result = Vec::new();
             for name in members.iter().cloned() {
-                __result.extend(
-                    (*match v1_rt::map_get(&func_index, name.clone()) {
-                        Some(entry) => {
-                            let best_map = entry.params.clone().iter().cloned().fold(
-                                v1_rt::rc_empty_map::<_, _>(),
-                                |best: _, p: Rc<Node>| {
-                                    let pname = crate::v1_std_core::param_node_name_at(
-                                        p.clone(),
-                                        si.clone(),
-                                    );
-                                    let descent_vars = collect_descent_vars(
-                                        entry.body.clone(),
-                                        pname.clone(),
-                                        v1_rt::rc_empty_map::<_, _>(),
-                                        check_child.clone(),
-                                        check_list.clone(),
-                                        si.clone(),
-                                    );
-                                    let param_edges = collect_scc_child_edges(
-                                        entry.body.clone(),
-                                        name.clone(),
-                                        pname.clone(),
-                                        descent_vars.clone(),
-                                        scc_name_set.clone(),
-                                        check_child.clone(),
-                                        check_list.clone(),
-                                        measure_params.clone(),
-                                        si.clone(),
-                                    );
-                                    let param_map = param_edges.iter().cloned().fold(
-                                        v1_rt::rc_empty_map::<_, _>(),
-                                        |bm: _, pe: Rc<ParserProgressEdge>| {
-                                            merge_edge_evidence(bm, pe.clone())
-                                        },
-                                    );
-                                    pick_best_param_edges(best, param_map.clone())
-                                },
-                            );
-                            Rc::new({
-                                let mut __result = Vec::new();
-                                for callee in Rc::new(v1_rt::map_keys(&best_map)).iter().cloned() {
-                                    __result.push({
-                                        let ev = match v1_rt::map_get(&best_map, callee.clone()) {
-                                            Some(e) => e.clone(),
-                                            std::option::Option::None => {
-                                                DescentEvidence::DescentUnknown
-                                            }
-                                        };
-                                        Rc::new(ProofEdge {
-                                            caller: name.clone(),
-                                            callee: callee.clone(),
-                                            evidence: Rc::new(vec![ev.clone()]),
-                                        })
-                                    });
-                                }
-                                __result
-                            })
-                        }
-                        std::option::Option::None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
+                __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
+    Some(entry) => {
+            let best_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+                let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
+let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), check_child.clone(), check_list.clone(), si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone(), check_child.clone(), check_list.clone(), measure_params.clone(), si.clone());
+let param_map = param_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+pick_best_param_edges(best, param_map.clone())
+});
+Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&best_map)).iter().cloned() { __result.push({
+                let ev = match v1_rt::map_get(&best_map, callee.clone()) {
+    Some(e) => e.clone(),
+    std::option::Option::None => DescentEvidence::DescentUnknown,
+};
+Rc::new(ProofEdge {
+    caller: name.clone(),
+    callee: callee.clone(),
+    evidence: Rc::new(vec![ev.clone()]),
+})
+}); } __result })
+},
+    std::option::Option::None => Rc::new(vec![]),
+}).iter().cloned());
             }
             __result
         })
@@ -7140,129 +7110,45 @@ pub fn collect_scc_independent_dim_edges(
         Rc::new({
             let mut __result = Vec::new();
             for name in members.iter().cloned() {
-                __result.extend(
-                    (*match v1_rt::map_get(&func_index, name.clone()) {
-                        Some(entry) => {
-                            let tree_edge_seed = v1_rt::rc_empty_map::<_, _>();
-                            let tree_edge_map = entry.params.clone().iter().cloned().fold(
-                                tree_edge_seed.clone(),
-                                |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
-                                    let pname = crate::v1_std_core::param_node_name_at(
-                                        p.clone(),
-                                        si.clone(),
-                                    );
-                                    let tree_vars = collect_descent_vars(
-                                        entry.body.clone(),
-                                        pname.clone(),
-                                        v1_rt::rc_empty_map::<_, _>(),
-                                        true,
-                                        false,
-                                        si.clone(),
-                                    );
-                                    let param_edges = collect_scc_child_edges(
-                                        entry.body.clone(),
-                                        name.clone(),
-                                        pname.clone(),
-                                        tree_vars.clone(),
-                                        scc_name_set.clone(),
-                                        true,
-                                        false,
-                                        measure_params.clone(),
-                                        si.clone(),
-                                    );
-                                    let param_map = param_edges.iter().cloned().fold(
-                                        v1_rt::rc_empty_map::<_, _>(),
-                                        |bm: _, pe: Rc<ParserProgressEdge>| {
-                                            merge_edge_evidence(bm, pe.clone())
-                                        },
-                                    );
-                                    pick_best_param_edges(best_map, param_map.clone())
-                                },
-                            );
-                            let list_edge_seed = v1_rt::rc_empty_map::<_, _>();
-                            let list_edge_map = entry.params.clone().iter().cloned().fold(
-                                list_edge_seed.clone(),
-                                |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
-                                    let pname = crate::v1_std_core::param_node_name_at(
-                                        p.clone(),
-                                        si.clone(),
-                                    );
-                                    let list_vars = collect_descent_vars(
-                                        entry.body.clone(),
-                                        pname.clone(),
-                                        v1_rt::rc_empty_map::<_, _>(),
-                                        false,
-                                        true,
-                                        si.clone(),
-                                    );
-                                    let param_edges = collect_scc_child_edges(
-                                        entry.body.clone(),
-                                        name.clone(),
-                                        pname.clone(),
-                                        list_vars.clone(),
-                                        scc_name_set.clone(),
-                                        false,
-                                        true,
-                                        measure_params.clone(),
-                                        si.clone(),
-                                    );
-                                    let param_map = param_edges.iter().cloned().fold(
-                                        v1_rt::rc_empty_map::<_, _>(),
-                                        |bm: _, pe: Rc<ParserProgressEdge>| {
-                                            merge_edge_evidence(bm, pe.clone())
-                                        },
-                                    );
-                                    pick_best_param_edges(best_map, param_map.clone())
-                                },
-                            );
-                            let all_keys = v1_rt::concat(
-                                Rc::new(v1_rt::map_keys(&tree_edge_map)),
-                                Rc::new(v1_rt::map_keys(&list_edge_map)),
-                            );
-                            let unique_seed = v1_rt::rc_empty_map::<_, _>();
-                            let unique_keys = all_keys.iter().cloned().fold(
-                                unique_seed.clone(),
-                                |acc: Rc<HashMap<String, bool>>, k: String| {
-                                    v1_rt::rc_map_insert(acc, k.clone(), true)
-                                },
-                            );
-                            Rc::new({
-                                let mut __result = Vec::new();
-                                for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned()
-                                {
-                                    __result.push({
-                                        let tree_ev =
-                                            match v1_rt::map_get(&tree_edge_map, callee.clone()) {
-                                                Some(ev) => ev.clone(),
-                                                std::option::Option::None => {
-                                                    DescentEvidence::DescentUnknown
-                                                }
-                                            };
-                                        let list_ev =
-                                            match v1_rt::map_get(&list_edge_map, callee.clone()) {
-                                                Some(ev) => ev.clone(),
-                                                std::option::Option::None => {
-                                                    DescentEvidence::DescentUnknown
-                                                }
-                                            };
-                                        Rc::new(ProofEdge {
-                                            caller: name.clone(),
-                                            callee: callee.clone(),
-                                            evidence: Rc::new(vec![
-                                                tree_ev.clone(),
-                                                list_ev.clone(),
-                                            ]),
-                                        })
-                                    });
-                                }
-                                __result
-                            })
-                        }
-                        std::option::Option::None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
+                __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
+    Some(entry) => {
+            let tree_edge_seed = v1_rt::rc_empty_map::<String, DescentEvidence>();
+let tree_edge_map = entry.params.clone().iter().cloned().fold(tree_edge_seed.clone(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+                let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
+let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
+let param_map = param_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+pick_best_param_edges(best_map, param_map.clone())
+});
+let list_edge_seed = v1_rt::rc_empty_map::<String, DescentEvidence>();
+let list_edge_map = entry.params.clone().iter().cloned().fold(list_edge_seed.clone(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+                let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
+let list_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), false, true, si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), list_vars.clone(), scc_name_set.clone(), false, true, measure_params.clone(), si.clone());
+let param_map = param_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+pick_best_param_edges(best_map, param_map.clone())
+});
+let all_keys = v1_rt::concat(Rc::new(v1_rt::map_keys(&tree_edge_map)), Rc::new(v1_rt::map_keys(&list_edge_map)));
+let unique_seed = v1_rt::rc_empty_map::<String, bool>();
+let unique_keys = all_keys.iter().cloned().fold(unique_seed.clone(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
+Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
+                let tree_ev = match v1_rt::map_get(&tree_edge_map, callee.clone()) {
+    Some(ev) => ev.clone(),
+    std::option::Option::None => DescentEvidence::DescentUnknown,
+};
+let list_ev = match v1_rt::map_get(&list_edge_map, callee.clone()) {
+    Some(ev) => ev.clone(),
+    std::option::Option::None => DescentEvidence::DescentUnknown,
+};
+Rc::new(ProofEdge {
+    caller: name.clone(),
+    callee: callee.clone(),
+    evidence: Rc::new(vec![tree_ev.clone(), list_ev.clone()]),
+})
+}); } __result })
+},
+    std::option::Option::None => Rc::new(vec![]),
+}).iter().cloned());
             }
             __result
         })
@@ -7314,114 +7200,39 @@ pub fn collect_scc_tree_parser_dim_edges(
                 Rc::new({
                     let mut __result = Vec::new();
                     for name in members.iter().cloned() {
-                        __result.extend(
-                            (*match v1_rt::map_get(&func_index, name.clone()) {
-                                Some(entry) => {
-                                    let tree_edge_seed = v1_rt::rc_empty_map::<_, _>();
-                                    let tree_edge_map = entry.params.clone().iter().cloned().fold(
-                                        tree_edge_seed.clone(),
-                                        |best_map: Rc<HashMap<String, DescentEvidence>>,
-                                         p: Rc<Node>| {
-                                            let pname = crate::v1_std_core::param_node_name_at(
-                                                p.clone(),
-                                                si.clone(),
-                                            );
-                                            let tree_vars = collect_descent_vars(
-                                                entry.body.clone(),
-                                                pname.clone(),
-                                                v1_rt::rc_empty_map::<_, _>(),
-                                                true,
-                                                false,
-                                                si.clone(),
-                                            );
-                                            let param_edges = collect_scc_child_edges(
-                                                entry.body.clone(),
-                                                name.clone(),
-                                                pname.clone(),
-                                                tree_vars.clone(),
-                                                scc_name_set.clone(),
-                                                true,
-                                                false,
-                                                measure_params.clone(),
-                                                si.clone(),
-                                            );
-                                            let param_map = param_edges.iter().cloned().fold(
-                                                v1_rt::rc_empty_map::<_, _>(),
-                                                |bm: _, pe: Rc<ParserProgressEdge>| {
-                                                    merge_edge_evidence(bm, pe.clone())
-                                                },
-                                            );
-                                            pick_best_param_edges(best_map, param_map.clone())
-                                        },
-                                    );
-                                    let my_parser_edges = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for pe in all_parser_edges.iter().cloned() {
-                                            if (pe.caller.clone() == name.clone()) {
-                                                __result.push(pe);
-                                            }
-                                        }
-                                        __result
-                                    });
-                                    let parser_edge_map = my_parser_edges.iter().cloned().fold(
-                                        v1_rt::rc_empty_map::<_, _>(),
-                                        |bm: _, pe: Rc<ParserProgressEdge>| {
-                                            merge_edge_evidence(bm, pe.clone())
-                                        },
-                                    );
-                                    let all_keys = v1_rt::concat(
-                                        Rc::new(v1_rt::map_keys(&tree_edge_map)),
-                                        Rc::new(v1_rt::map_keys(&parser_edge_map)),
-                                    );
-                                    let unique_seed = v1_rt::rc_empty_map::<_, _>();
-                                    let unique_keys = all_keys.iter().cloned().fold(
-                                        unique_seed.clone(),
-                                        |acc: Rc<HashMap<String, bool>>, k: String| {
-                                            v1_rt::rc_map_insert(acc, k.clone(), true)
-                                        },
-                                    );
-                                    Rc::new({
-                                        let mut __result = Vec::new();
-                                        for callee in
-                                            Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned()
-                                        {
-                                            __result.push({
-                                                let tree_ev = match v1_rt::map_get(
-                                                    &tree_edge_map,
-                                                    callee.clone(),
-                                                ) {
-                                                    Some(ev) => ev.clone(),
-                                                    std::option::Option::None => {
-                                                        DescentEvidence::DescentUnknown
-                                                    }
-                                                };
-                                                let parser_ev = match v1_rt::map_get(
-                                                    &parser_edge_map,
-                                                    callee.clone(),
-                                                ) {
-                                                    Some(ev) => ev.clone(),
-                                                    std::option::Option::None => {
-                                                        DescentEvidence::DescentUnknown
-                                                    }
-                                                };
-                                                Rc::new(ProofEdge {
-                                                    caller: name.clone(),
-                                                    callee: callee.clone(),
-                                                    evidence: Rc::new(vec![
-                                                        tree_ev.clone(),
-                                                        parser_ev.clone(),
-                                                    ]),
-                                                })
-                                            });
-                                        }
-                                        __result
-                                    })
-                                }
-                                std::option::Option::None => Rc::new(vec![]),
-                            })
-                            .iter()
-                            .cloned(),
-                        );
+                        __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
+    Some(entry) => {
+                    let tree_edge_seed = v1_rt::rc_empty_map::<String, DescentEvidence>();
+let tree_edge_map = entry.params.clone().iter().cloned().fold(tree_edge_seed.clone(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+                        let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
+let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
+let param_map = param_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+pick_best_param_edges(best_map, param_map.clone())
+});
+let my_parser_edges = Rc::new({ let mut __result = Vec::new(); for pe in all_parser_edges.iter().cloned() { if (pe.caller.clone() == name.clone()) { __result.push(pe); } } __result });
+let parser_edge_map = my_parser_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+let all_keys = v1_rt::concat(Rc::new(v1_rt::map_keys(&tree_edge_map)), Rc::new(v1_rt::map_keys(&parser_edge_map)));
+let unique_seed = v1_rt::rc_empty_map::<String, bool>();
+let unique_keys = all_keys.iter().cloned().fold(unique_seed.clone(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
+Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
+                        let tree_ev = match v1_rt::map_get(&tree_edge_map, callee.clone()) {
+    Some(ev) => ev.clone(),
+    std::option::Option::None => DescentEvidence::DescentUnknown,
+};
+let parser_ev = match v1_rt::map_get(&parser_edge_map, callee.clone()) {
+    Some(ev) => ev.clone(),
+    std::option::Option::None => DescentEvidence::DescentUnknown,
+};
+Rc::new(ProofEdge {
+    caller: name.clone(),
+    callee: callee.clone(),
+    evidence: Rc::new(vec![tree_ev.clone(), parser_ev.clone()]),
+})
+}); } __result })
+},
+    std::option::Option::None => Rc::new(vec![]),
+}).iter().cloned());
                     }
                     __result
                 })
@@ -7844,12 +7655,12 @@ pub fn classify_scc_recursion_pattern(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<LoweringTarget> {
     {
-        let scc_name_set = members
-            .iter()
-            .cloned()
-            .fold(v1_rt::rc_empty_map::<_, _>(), |acc: _, name: String| {
+        let scc_name_set = members.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
-            });
+            },
+        );
         let proof = construct_scc_termination_proof(
             members.clone(),
             func_index.clone(),
@@ -7963,7 +7774,7 @@ pub fn build_scc_index(
         let result = topo_order.iter().cloned().fold(
             Rc::new(SccBuildAcc {
                 assigned: v1_rt::rc_empty_set::<String>(),
-                index: v1_rt::rc_empty_map::<_, _>(),
+                index: v1_rt::rc_empty_map::<String, Rc<SccInfo>>(),
             }),
             |acc: Rc<SccBuildAcc>, name: String| {
                 if v1_rt::set_contains(&acc.assigned.clone(), name.clone()) {
@@ -8350,7 +8161,7 @@ pub fn collection_output(binder: String, size: Rc<SizeExpr>) -> Rc<HashMap<Strin
 }
 
 pub fn scalar_output() -> Rc<HashMap<String, Rc<CostExpr>>> {
-    v1_rt::rc_empty_map::<_, _>()
+    v1_rt::rc_empty_map::<String, Rc<CostExpr>>()
 }
 
 pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
@@ -8509,7 +8320,7 @@ pub fn resolve_callback_cost(
             summary: Rc::new(ComplexitySummary {
                 work: Rc::new(CostExpr::CostConst { value: 1 }),
                 span: Rc::new(CostExpr::CostConst { value: 1 }),
-                output_size: v1_rt::rc_empty_map::<_, _>(),
+                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                 certainty: Certainty::Conservative,
                 peak_space: None,
             }),
@@ -8590,7 +8401,7 @@ pub fn cost_of_method_by_shape(
                     summary: Rc::new(ComplexitySummary {
                         work: Rc::new(CostExpr::CostConst { value: 1 }),
                         span: Rc::new(CostExpr::CostConst { value: 1 }),
-                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
@@ -8641,7 +8452,7 @@ pub fn cost_of_method_by_shape(
                     ),
                 )
             } else {
-                v1_rt::rc_empty_map::<_, _>()
+                v1_rt::rc_empty_map::<String, Rc<CostExpr>>()
             };
             Rc::new(SummaryResult {
                 summary: Rc::new(ComplexitySummary {
@@ -8664,7 +8475,7 @@ pub fn cost_of_method_by_shape(
                     recv_r.summary.clone().span.clone(),
                     Rc::new(CostExpr::CostConst { value: 1 }),
                 ),
-                output_size: v1_rt::rc_empty_map::<_, _>(),
+                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                 certainty: recv_r.summary.clone().certainty.clone(),
                 peak_space: None,
             }),
@@ -8700,9 +8511,9 @@ pub struct ComplexityReport {
 
 pub fn empty_complexity_report() -> Rc<ComplexityReport> {
     Rc::new(ComplexityReport {
-        function_classes: v1_rt::rc_empty_map::<_, _>(),
-        space_classes: v1_rt::rc_empty_map::<_, _>(),
-        function_space_bytes: v1_rt::rc_empty_map::<_, _>(),
+        function_classes: v1_rt::rc_empty_map::<String, String>(),
+        space_classes: v1_rt::rc_empty_map::<String, String>(),
+        function_space_bytes: v1_rt::rc_empty_map::<String, i64>(),
         violations: Rc::new(vec![]),
         structural_bounds: Rc::new(vec![]),
     })
@@ -9184,7 +8995,7 @@ pub fn build_legend(size_names: Rc<Vec<String>>) -> Rc<Legend> {
         let unique = deduplicate(size_names.clone());
         if ((unique.clone().len() as i64) == 0) {
             Rc::new(Legend {
-                substitution: v1_rt::rc_empty_map::<_, _>(),
+                substitution: v1_rt::rc_empty_map::<String, String>(),
                 suffix: "".to_string(),
             })
         } else {
@@ -9192,14 +9003,14 @@ pub fn build_legend(size_names: Rc<Vec<String>>) -> Rc<Legend> {
                 match unique.clone().first().cloned() {
                     Some(name) => Rc::new(Legend {
                         substitution: v1_rt::rc_map_insert(
-                            v1_rt::rc_empty_map::<_, _>(),
+                            v1_rt::rc_empty_map::<String, String>(),
                             name.clone(),
                             "n".to_string(),
                         ),
                         suffix: "".to_string(),
                     }),
                     std::option::Option::None => Rc::new(Legend {
-                        substitution: v1_rt::rc_empty_map::<_, _>(),
+                        substitution: v1_rt::rc_empty_map::<String, String>(),
                         suffix: "".to_string(),
                     }),
                 }
@@ -9207,7 +9018,7 @@ pub fn build_legend(size_names: Rc<Vec<String>>) -> Rc<Legend> {
                 {
                     let indexed = unique.iter().cloned().fold(
                         Rc::new(Legend {
-                            substitution: v1_rt::rc_empty_map::<_, _>(),
+                            substitution: v1_rt::rc_empty_map::<String, String>(),
                             suffix: "".to_string(),
                         }),
                         |acc: Rc<Legend>, name: String| {
@@ -9409,7 +9220,7 @@ pub fn deduplicate(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let result = items.iter().cloned().fold(
             Rc::new(DeduplicateAcc {
-                seen: v1_rt::rc_empty_map::<_, _>(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 out: Rc::new(vec![]),
             }),
             |acc: Rc<DeduplicateAcc>, item: String| match v1_rt::map_get(
@@ -9477,7 +9288,7 @@ pub fn cost_of_expr(
                 summary: Rc::new(ComplexitySummary {
                     work: Rc::new(CostExpr::CostConst { value: 1 }),
                     span: Rc::new(CostExpr::CostConst { value: 1 }),
-                    output_size: v1_rt::rc_empty_map::<_, _>(),
+                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Proven,
                     peak_space: None,
                 }),
@@ -9487,7 +9298,7 @@ pub fn cost_of_expr(
                 summary: Rc::new(ComplexitySummary {
                     work: Rc::new(CostExpr::CostConst { value: 1 }),
                     span: Rc::new(CostExpr::CostConst { value: 1 }),
-                    output_size: v1_rt::rc_empty_map::<_, _>(),
+                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Proven,
                     peak_space: None,
                 }),
@@ -9497,7 +9308,7 @@ pub fn cost_of_expr(
                 summary: Rc::new(ComplexitySummary {
                     work: Rc::new(CostExpr::CostConst { value: 0 }),
                     span: Rc::new(CostExpr::CostConst { value: 0 }),
-                    output_size: v1_rt::rc_empty_map::<_, _>(),
+                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Proven,
                     peak_space: None,
                 }),
@@ -9507,7 +9318,7 @@ pub fn cost_of_expr(
                 summary: Rc::new(ComplexitySummary {
                     work: Rc::new(CostExpr::CostConst { value: 1 }),
                     span: Rc::new(CostExpr::CostConst { value: 1 }),
-                    output_size: v1_rt::rc_empty_map::<_, _>(),
+                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Proven,
                     peak_space: None,
                 }),
@@ -9550,7 +9361,7 @@ pub fn cost_of_expr(
                                 rr.summary.clone().span.clone(),
                             ),
                         ),
-                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
@@ -9573,7 +9384,7 @@ pub fn cost_of_expr(
                         summary: Rc::new(ComplexitySummary {
                             work: Rc::new(CostExpr::CostConst { value: 1 }),
                             span: Rc::new(CostExpr::CostConst { value: 1 }),
-                            output_size: v1_rt::rc_empty_map::<_, _>(),
+                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Proven,
                             peak_space: None,
                         }),
@@ -9585,7 +9396,7 @@ pub fn cost_of_expr(
                         summary: Rc::new(ComplexitySummary {
                             work: Rc::new(CostExpr::CostConst { value: 0 }),
                             span: Rc::new(CostExpr::CostConst { value: 0 }),
-                            output_size: v1_rt::rc_empty_map::<_, _>(),
+                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Proven,
                             peak_space: None,
                         }),
@@ -9611,7 +9422,7 @@ pub fn cost_of_expr(
                                     acc.summary.clone().span.clone(),
                                     ar.summary.clone().span.clone(),
                                 ),
-                                output_size: v1_rt::rc_empty_map::<_, _>(),
+                                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                 certainty: Certainty::Proven,
                                 peak_space: None,
                             }),
@@ -9690,7 +9501,7 @@ pub fn cost_of_expr(
                                             recv_r.summary.clone().span.clone(),
                                             Rc::new(CostExpr::CostConst { value: 1 }),
                                         ),
-                                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                         certainty: recv_r.summary.clone().certainty.clone(),
                                         peak_space: None,
                                     }),
@@ -9709,7 +9520,7 @@ pub fn cost_of_expr(
                                 summary: Rc::new(ComplexitySummary {
                                     work: Rc::new(CostExpr::CostConst { value: 0 }),
                                     span: Rc::new(CostExpr::CostConst { value: 0 }),
-                                    output_size: v1_rt::rc_empty_map::<_, _>(),
+                                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                     certainty: Certainty::Proven,
                                     peak_space: None,
                                 }),
@@ -9735,7 +9546,7 @@ pub fn cost_of_expr(
                                             acc.summary.clone().span.clone(),
                                             ar.summary.clone().span.clone(),
                                         ),
-                                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                         certainty: Certainty::Proven,
                                         peak_space: None,
                                     }),
@@ -9759,7 +9570,7 @@ pub fn cost_of_expr(
                                         args_result.summary.clone().span.clone(),
                                     ),
                                 ),
-                                output_size: v1_rt::rc_empty_map::<_, _>(),
+                                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                 certainty: Certainty::Proven,
                                 peak_space: None,
                             }),
@@ -9786,7 +9597,7 @@ pub fn cost_of_expr(
                             summary: Rc::new(ComplexitySummary {
                                 work: Rc::new(CostExpr::CostConst { value: 0 }),
                                 span: Rc::new(CostExpr::CostConst { value: 0 }),
-                                output_size: v1_rt::rc_empty_map::<_, _>(),
+                                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                 certainty: Certainty::Proven,
                                 peak_space: None,
                             }),
@@ -9892,7 +9703,7 @@ pub fn cost_of_expr(
                         summary: Rc::new(ComplexitySummary {
                             work: Rc::new(CostExpr::CostConst { value: 0 }),
                             span: Rc::new(CostExpr::CostConst { value: 0 }),
-                            output_size: v1_rt::rc_empty_map::<_, _>(),
+                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Proven,
                             peak_space: None,
                         }),
@@ -9969,7 +9780,7 @@ pub fn cost_of_expr(
                     summary: Rc::new(ComplexitySummary {
                         work: Rc::new(CostExpr::CostConst { value: 0 }),
                         span: Rc::new(CostExpr::CostConst { value: 0 }),
-                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
@@ -10035,7 +9846,7 @@ pub fn cost_of_expr(
                     summary: Rc::new(ComplexitySummary {
                         work: cost_seq(c_r.summary.clone().work.clone(), loop_work.clone()),
                         span: cost_seq(c_r.summary.clone().span.clone(), loop_work.clone()),
-                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: bd_r.summary.clone().certainty.clone(),
                         peak_space: None,
                     }),
@@ -10047,7 +9858,7 @@ pub fn cost_of_expr(
                     summary: Rc::new(ComplexitySummary {
                         work: Rc::new(CostExpr::CostConst { value: 0 }),
                         span: Rc::new(CostExpr::CostConst { value: 0 }),
-                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
@@ -10086,7 +9897,7 @@ pub fn cost_of_expr(
                     summary: Rc::new(ComplexitySummary {
                         work: Rc::new(CostExpr::CostConst { value: 1 }),
                         span: Rc::new(CostExpr::CostConst { value: 1 }),
-                        output_size: v1_rt::rc_empty_map::<_, _>(),
+                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
@@ -10161,7 +9972,7 @@ pub fn get_or_compute_summary(
                 let zero_placeholder = Rc::new(ComplexitySummary {
                     work: Rc::new(CostExpr::CostConst { value: 0 }),
                     span: Rc::new(CostExpr::CostConst { value: 0 }),
-                    output_size: v1_rt::rc_empty_map::<_, _>(),
+                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Conservative,
                     peak_space: None,
                 });
@@ -10258,7 +10069,7 @@ pub fn get_or_compute_summary(
                                     func_name.clone(),
                                 ),
                             }),
-                            output_size: v1_rt::rc_empty_map::<_, _>(),
+                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Conservative,
                             peak_space: None,
                         });
@@ -10276,7 +10087,7 @@ pub fn get_or_compute_summary(
                             span: Rc::new(CostExpr::CostExtern {
                                 name: func_name.clone(),
                             }),
-                            output_size: v1_rt::rc_empty_map::<_, _>(),
+                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Conservative,
                             peak_space: None,
                         });
@@ -10343,7 +10154,7 @@ pub fn collect_self_call_evidence(
 ) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
     collect_call_evidence(
         body.clone(),
-        v1_rt::rc_map_insert(v1_rt::rc_empty_map::<_, _>(), fn_name.clone(), true),
+        v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, bool>(), fn_name.clone(), true),
         si.clone(),
     )
 }
@@ -10355,7 +10166,11 @@ pub fn collect_callee_evidence(
 ) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
     collect_call_evidence(
         body.clone(),
-        v1_rt::rc_map_insert(v1_rt::rc_empty_map::<_, _>(), callee_name.clone(), true),
+        v1_rt::rc_map_insert(
+            v1_rt::rc_empty_map::<String, bool>(),
+            callee_name.clone(),
+            true,
+        ),
         si.clone(),
     )
 }
@@ -10581,22 +10396,24 @@ pub fn distinct_descended_fields(
 ) -> i64 {
     {
         let field_set = all_calls.iter().cloned().fold(
-            v1_rt::rc_empty_map::<_, _>(),
-            |acc: _, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence
-                .clone()
-                .get((param_index.clone()) as usize)
-                .cloned()
-            {
-                Some(rel) => match (*rel.clone()).clone() {
-                    SubValueRelation::StrictSubValue { field: f, .. } => {
-                        v1_rt::rc_map_insert(acc.clone(), f.field_name.clone(), true)
-                    }
-                    SubValueRelation::IteratedSubValue { field: f, .. } => {
-                        v1_rt::rc_map_insert(acc.clone(), f.field_name.clone(), true)
-                    }
-                    _ => acc.clone(),
-                },
-                std::option::Option::None => acc.clone(),
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| {
+                match call_evidence
+                    .clone()
+                    .get((param_index.clone()) as usize)
+                    .cloned()
+                {
+                    Some(rel) => match (*rel.clone()).clone() {
+                        SubValueRelation::StrictSubValue { field: f, .. } => {
+                            v1_rt::rc_map_insert(acc.clone(), f.field_name.clone(), true)
+                        }
+                        SubValueRelation::IteratedSubValue { field: f, .. } => {
+                            v1_rt::rc_map_insert(acc.clone(), f.field_name.clone(), true)
+                        }
+                        _ => acc.clone(),
+                    },
+                    std::option::Option::None => acc.clone(),
+                }
             },
         );
         (Rc::new(v1_rt::map_keys(&field_set)).len() as i64)
@@ -10737,7 +10554,7 @@ pub fn build_complexity_report(
 ) -> Rc<ComplexityReport> {
     {
         let si = source_indices.clone();
-        let func_index_seed = v1_rt::rc_empty_map::<_, _>();
+        let func_index_seed = v1_rt::rc_empty_map::<String, Rc<FuncEntry>>();
         let func_index = func_entries.iter().cloned().fold(
             func_index_seed.clone(),
             |acc: Rc<HashMap<String, Rc<FuncEntry>>>, entry: Rc<FuncEntry>| {
@@ -10791,7 +10608,7 @@ pub fn build_complexity_report(
             }),
             scc_result.call_graph.clone(),
         );
-        let fan_in_seed = v1_rt::rc_empty_map::<_, _>();
+        let fan_in_seed = v1_rt::rc_empty_map::<String, i64>();
         let fan_in = func_entries.iter().cloned().fold(
             fan_in_seed.clone(),
             |acc: Rc<HashMap<String, i64>>, entry: Rc<FuncEntry>| {
@@ -10799,7 +10616,7 @@ pub fn build_complexity_report(
                     Some(cs) => cs.clone(),
                     std::option::Option::None => Rc::new(vec![]),
                 };
-                let unique_set_seed = v1_rt::rc_empty_map::<_, _>();
+                let unique_set_seed = v1_rt::rc_empty_map::<String, bool>();
                 let unique_set = callees.iter().cloned().fold(
                     unique_set_seed.clone(),
                     |s: Rc<HashMap<String, bool>>, c: String| {
@@ -10825,12 +10642,12 @@ pub fn build_complexity_report(
         let result = scc_result.processing_order.clone().iter().cloned().fold(
             Rc::new(TopoBuildAcc {
                 table: empty_cost_intern_table(),
-                classes: v1_rt::rc_empty_map::<_, _>(),
-                space_classes: v1_rt::rc_empty_map::<_, _>(),
-                function_space_bytes: v1_rt::rc_empty_map::<_, _>(),
+                classes: v1_rt::rc_empty_map::<String, String>(),
+                space_classes: v1_rt::rc_empty_map::<String, String>(),
+                function_space_bytes: v1_rt::rc_empty_map::<String, i64>(),
                 violations: Rc::new(vec![]),
                 fan_in: fan_in.clone(),
-                processed: v1_rt::rc_empty_map::<_, _>(),
+                processed: v1_rt::rc_empty_map::<String, bool>(),
             }),
             |acc: Rc<TopoBuildAcc>, func_name: String| match v1_rt::map_get(
                 &func_index,
@@ -10861,7 +10678,7 @@ pub fn build_complexity_report(
                     );
                     let space_bytes_opt = cost_account_space_from_summary(
                         sr.summary.clone(),
-                        v1_rt::rc_empty_map::<_, _>(),
+                        v1_rt::rc_empty_map::<String, i64>(),
                     );
                     let new_function_space_bytes = match space_bytes_opt.clone() {
                         Some(bs) => v1_rt::rc_map_insert(
@@ -10889,7 +10706,7 @@ pub fn build_complexity_report(
                         Some(cs) => cs.clone(),
                         std::option::Option::None => Rc::new(vec![]),
                     };
-                    let unique_set_seed = v1_rt::rc_empty_map::<_, _>();
+                    let unique_set_seed = v1_rt::rc_empty_map::<String, bool>();
                     let unique_set = callees.iter().cloned().fold(
                         unique_set_seed.clone(),
                         |s: Rc<HashMap<String, bool>>, c: String| {

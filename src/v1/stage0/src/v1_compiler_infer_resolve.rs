@@ -1599,7 +1599,7 @@ Rc::new(NodeResolveResult {
                         .iter()
                         .cloned()
                         .fold(
-                            v1_rt::rc_empty_map::<_, _>(),
+                            v1_rt::rc_empty_map::<String, Rc<Node>>(),
                             |acc: _, pair: (i64, Rc<Node>)| {
                                 let idx = pair.0.clone();
                                 let slot_name = crate::v1_std_core::authored_name_at(

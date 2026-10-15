@@ -343,8 +343,8 @@ pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
         let _memo_reset = crate::v1_compiler_dag_collect_support::dag_collect_fp_memo_reset();
         let collision_errors = Rc::new(vec![]);
         let slots = typed.modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<_, _>(),
-            |s: _, m: Rc<TypedModule>| {
+            v1_rt::rc_empty_map::<String, Rc<DagCollectSlot>>(),
+            |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, m: Rc<TypedModule>| {
                 dag_collect_from_module(m.clone(), s, collision_errors.clone())
             },
         );

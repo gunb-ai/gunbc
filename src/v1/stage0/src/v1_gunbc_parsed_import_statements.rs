@@ -23,7 +23,7 @@ pub fn parsed_import_statements(
         imports: crate::v1_compiler_parse::parse_import_statement_extents(
             tokens.clone(),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<_, _>(),
+                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                 file.clone(),
                 newline_index.clone(),
             ),
