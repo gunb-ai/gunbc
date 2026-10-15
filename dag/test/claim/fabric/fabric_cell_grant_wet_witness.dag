@@ -17,6 +17,7 @@ import gunbc.fabric.fabric_cell_grant {
   CellGrant, CellGranted, CellAlreadyGranted, CellGrantIssueRefused,
   CellGrantStanding, CellGrantLive, CellGrantReleased, CellGrantSuperseded, CellGrantNeverCommitted,
   grant_selected_cell, cell_grant_standing,
+  CellGrantReread, CellGrantReadLive, CellGrantReadAbsent, CellGrantReadReleased, CellGrantReadForeign, reread_cell_grant,
 }
 import test.claim.fabric.fabric_grant_issuance_witness {
   subject_work, first_attempt, second_attempt, misdirected_attempt, admitted_offer,
@@ -190,4 +191,44 @@ test fn a_grant_issued_outside_the_cell_transition_is_never_committed_by_real_ex
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
   standing && removed.success
+}
+
+// FCI-3'S RE-READ, BY COORDINATES. The executor re-derives the grant key; the four mutations FCI-3
+// names each read as not live.
+fn cg_reread(root: NonEmptyStr, attempt: Attempt<NonEmptyStr>) -> CellGrantReread {
+  reread_cell_grant(root: root, slot_key: admitted_offer.executor, work: subject_work.id, attempt: attempt.id, offer: admitted_offer.id)
+}
+
+test fn the_executor_reread_finds_the_live_grant_by_real_execution() -> Bool {
+  let root_path = cg_fresh_root()
+  let root = root_path as NonEmptyStr
+  let grants = cg_granted(outcomes: cg_grant(root: root, attempt: first_attempt))
+  let read = cg_reread(root: root, attempt: first_attempt)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  let live = match grants {
+    Cons { head: g, tail: _ } => match read {
+      CellGrantReadLive { generation: gen, grant: k } => (k as String) == (g.id.key as String) && cas_generation_count(g: gen) == 1
+      _ => false
+    }
+    Empty {} => false
+  }
+  live && removed.success
+}
+
+test fn the_executor_reread_refuses_absent_removed_foreign_and_expired_by_real_execution() -> Bool {
+  let root_path = cg_fresh_root()
+  let root = root_path as NonEmptyStr
+  let absent = match cg_reread(root: root, attempt: first_attempt) { CellGrantReadAbsent => true  _ => false }
+  let first = cg_granted(outcomes: cg_grant(root: root, attempt: first_attempt))
+  let foreign = match cg_reread(root: root, attempt: second_attempt) { CellGrantReadForeign { holder: _, generation: _ } => true  _ => false }
+  let released = cg_release(root: root, grants: first)
+  let removed_grant = match cg_reread(root: root, attempt: first_attempt) { CellGrantReadReleased { generation: _, released_by: _ } => true  _ => false }
+  let second = cg_granted(outcomes: cg_grant(root: root, attempt: second_attempt))
+  let expired = match cg_reread(root: root, attempt: first_attempt) {
+    CellGrantReadForeign { holder: _, generation: gen } => cas_generation_count(g: gen) == 3
+    _ => false
+  }
+  let second_live = match cg_reread(root: root, attempt: second_attempt) { CellGrantReadLive { generation: _, grant: _ } => true  _ => false }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  absent && foreign && released && removed_grant && expired && second_live && removed.success
 }
