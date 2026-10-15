@@ -25,8 +25,8 @@ import std.fabric_blob {
 }
 import std.checked_arithmetic { int_inclusive_max }
 import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
-import std.algebra { skip }
-import v2.std.collection { empty_map, map_lookup, map_insert }
+import std.algebra { skip, empty_map, map_lookup, map_insert }
+
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }

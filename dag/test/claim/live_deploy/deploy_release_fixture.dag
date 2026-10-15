@@ -63,6 +63,7 @@ fn deploy_witness_spec_with_only_directory(spec: DeploymentSpec, path: String) -
       ssh_host: spec.target.ssh_host,
       tailscale_endpoint: spec.target.tailscale_endpoint,
       tailnet_domain: spec.target.tailnet_domain,
+      lab_plan: spec.target.lab_plan,
       os_package_manager: spec.target.os_package_manager,
       tailscale_client: spec.target.tailscale_client,
       host_directories: filter(xs: spec.target.host_directories, predicate: t => (owned_directory_path(t: t) as String) == path),
