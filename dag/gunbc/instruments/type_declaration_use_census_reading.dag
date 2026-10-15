@@ -31,7 +31,7 @@ type TypeCensusFixtureFile {
 
 // THE FIXTURE CLOSURE. Every class the REAL route can decide today has one declaration or one cast
 // here. A cast INTO a nominal (`n as Port`) makes native infer refuse its module today (the N7
-// frontier), so `fx.intro` holds that one cast alone and its expected class is OperandTypeUndecided:
+// frontier), so `examples.intro` holds that one cast alone and its expected class is OperandTypeUndecided:
 // when native infer admits the crossing, the expectation goes red and is updated, which is the signal.
 // The brand arm and the hash, concat and genuine-conversion arms are exercised at the receipt's
 // interface by v2.test.claim.type_declaration_use_census_witness, because their evidence needs
@@ -39,16 +39,16 @@ type TypeCensusFixtureFile {
 fn type_census_fixture_files() -> List<TypeCensusFixtureFile> {
   [
     TypeCensusFixtureFile {
-      path: "fx/types.dag",
-      content: "module fx.types\n\ntype Alias = String\n\ntype Port = Int where port_ok\n\ntype Sealed nominal_opaque = String\n\ntype Pair { x: Int, y: Int }\n\ntype Choice = Left | Right\n\ntype Unused = Int\n\nfn port_ok(value: Int) -> Bool {\n  true\n}\n"
+      path: "examples/types.dag",
+      content: "module examples.types\n\ntype Alias = String\n\ntype Port = Int where port_ok\n\ntype Sealed nominal_opaque = String\n\ntype Pair { x: Int, y: Int }\n\ntype Choice = Left | Right\n\ntype Unused = Int\n\nfn port_ok(value: Int) -> Bool {\n  true\n}\n"
     },
     TypeCensusFixtureFile {
-      path: "fx/casts.dag",
-      content: "module fx.casts\n\nimport fx.types { Alias, Port, Sealed, Pair, Choice }\n\nfn project(p: Port) -> Int {\n  p as Int\n}\n\nfn compare(p: Port, q: Port) -> Bool {\n  (p as Int) == (q as Int)\n}\n\nfn identity(n: Int) -> Int {\n  n as Int\n}\n\nfn holders(a: Alias, s: Sealed, r: Pair, c: Choice) -> Int {\n  1\n}\n"
+      path: "examples/casts.dag",
+      content: "module examples.casts\n\nimport examples.types { Alias, Port, Sealed, Pair, Choice }\n\nfn project(p: Port) -> Int {\n  p as Int\n}\n\nfn compare(p: Port, q: Port) -> Bool {\n  (p as Int) == (q as Int)\n}\n\nfn identity(n: Int) -> Int {\n  n as Int\n}\n\nfn holders(a: Alias, s: Sealed, r: Pair, c: Choice) -> Int {\n  1\n}\n"
     },
     TypeCensusFixtureFile {
-      path: "fx/intro.dag",
-      content: "module fx.intro\n\nimport fx.types { Port }\n\nfn introduce(n: Int) -> Port {\n  n as Port\n}\n"
+      path: "examples/intro.dag",
+      content: "module examples.intro\n\nimport examples.types { Port }\n\nfn introduce(n: Int) -> Port {\n  n as Port\n}\n"
     }
   ]
 }
@@ -56,8 +56,8 @@ fn type_census_fixture_files() -> List<TypeCensusFixtureFile> {
 fn type_census_unindexed_files() -> List<TypeCensusFixtureFile> {
   [
     TypeCensusFixtureFile {
-      path: "fx/broken.dag",
-      content: "module fx.broken\n\nfn f() -> Int {\n  not_declared_anywhere()\n}\n"
+      path: "examples/broken.dag",
+      content: "module examples.broken\n\nfn f() -> Int {\n  not_declared_anywhere()\n}\n"
     }
   ]
 }
@@ -70,17 +70,17 @@ type ExpectedRow {
 
 fn type_census_fixture_expected() -> List<ExpectedRow> {
   [
-    ExpectedRow { prefix: "decl fx.types Alias ", class: "TrueAlias" },
-    ExpectedRow { prefix: "decl fx.types Port ", class: "CheckedConstructionStage" },
-    ExpectedRow { prefix: "decl fx.types Sealed ", class: "Opaque" },
-    ExpectedRow { prefix: "decl fx.types Pair ", class: "MultiFieldRecord" },
-    ExpectedRow { prefix: "decl fx.types Choice ", class: "Sum" },
-    ExpectedRow { prefix: "decl fx.types Unused ", class: "UNCONSUMED" },
-    ExpectedRow { prefix: "cast fx.casts project@", class: "NominalProjection" },
-    ExpectedRow { prefix: "cast fx.casts compare@", class: "OperationWorkaround:compare" },
-    ExpectedRow { prefix: "cast fx.casts compare@", class: "OperationWorkaround:compare" },
-    ExpectedRow { prefix: "cast fx.casts identity@", class: "AliasNoOp" },
-    ExpectedRow { prefix: "cast fx.intro introduce@", class: "OperandTypeUndecided" }
+    ExpectedRow { prefix: "decl examples.types Alias ", class: "TrueAlias" },
+    ExpectedRow { prefix: "decl examples.types Port ", class: "CheckedConstructionStage" },
+    ExpectedRow { prefix: "decl examples.types Sealed ", class: "Opaque" },
+    ExpectedRow { prefix: "decl examples.types Pair ", class: "MultiFieldRecord" },
+    ExpectedRow { prefix: "decl examples.types Choice ", class: "Sum" },
+    ExpectedRow { prefix: "decl examples.types Unused ", class: "UNCONSUMED" },
+    ExpectedRow { prefix: "cast examples.casts project@", class: "NominalProjection" },
+    ExpectedRow { prefix: "cast examples.casts compare@", class: "OperationWorkaround:compare" },
+    ExpectedRow { prefix: "cast examples.casts compare@", class: "OperationWorkaround:compare" },
+    ExpectedRow { prefix: "cast examples.casts identity@", class: "AliasNoOp" },
+    ExpectedRow { prefix: "cast examples.intro introduce@", class: "OperandTypeUndecided" }
   ]
 }
 

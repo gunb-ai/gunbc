@@ -178,9 +178,9 @@ fn binding_diff_observed(base_lines: List<String>, head_lines: List<String>, row
 
 // ---------------------------------------------------------------------------------------------------
 // THE CONTROLS. The RED is run on the REAL route: the host runs the native census-infer over two
-// fixture roots that differ by ONE IMPORT EDIT -- `helper` imported from fx.a on base, from fx.b on head
+// fixture roots that differ by ONE IMPORT EDIT -- `helper` imported from examples.a on base, from examples.b on head
 // -- so an existing spelling re-binds a different declaration with no body edit; the diff must refuse it
-// as TargetChanged naming `fx.uses helper#0`. The positive control is at the diff's own interface
+// as TargetChanged naming `examples.uses helper#0`. The positive control is at the diff's own interface
 // (supplied census lines, DESIGN section 3 "a witness discriminates at one interface"): an ambient
 // `Int` that binds its row's home on head is admitted. Its inhabitance claim -- that the real producer
 // emits an ambient kernel_type_spelling line of exactly this shape -- is the ambient-name-census
@@ -194,20 +194,20 @@ type BindingDiffFixtureFile {
 
 fn rebind_fixture_shared() -> List<BindingDiffFixtureFile> {
   [
-    BindingDiffFixtureFile { path: "fx/a.dag", content: "module fx.a\n\nfn helper() -> Int {\n  1\n}\n" },
-    BindingDiffFixtureFile { path: "fx/b.dag", content: "module fx.b\n\nfn helper() -> Int {\n  2\n}\n" }
+    BindingDiffFixtureFile { path: "examples/a.dag", content: "module examples.a\n\nfn helper() -> Int {\n  1\n}\n" },
+    BindingDiffFixtureFile { path: "examples/b.dag", content: "module examples.b\n\nfn helper() -> Int {\n  2\n}\n" }
   ]
 }
 
 fn binding_diff_rebind_base_files() -> List<BindingDiffFixtureFile> {
   rebind_fixture_shared() + [
-    BindingDiffFixtureFile { path: "fx/uses.dag", content: "module fx.uses\n\nimport fx.a { helper }\n\nfn call() -> Int {\n  helper()\n}\n" }
+    BindingDiffFixtureFile { path: "examples/uses.dag", content: "module examples.uses\n\nimport examples.a { helper }\n\nfn call() -> Int {\n  helper()\n}\n" }
   ]
 }
 
 fn binding_diff_rebind_head_files() -> List<BindingDiffFixtureFile> {
   rebind_fixture_shared() + [
-    BindingDiffFixtureFile { path: "fx/uses.dag", content: "module fx.uses\n\nimport fx.b { helper }\n\nfn call() -> Int {\n  helper()\n}\n" }
+    BindingDiffFixtureFile { path: "examples/uses.dag", content: "module examples.uses\n\nimport examples.b { helper }\n\nfn call() -> Int {\n  helper()\n}\n" }
   ]
 }
 
@@ -217,20 +217,20 @@ fn rebind_red_failure(base_stdout: String, head_stdout: String) -> Optional<Stri
   if count(diff.unreached_one_side + diff.unobserved_both_sides) != 0 {
     optional_present(value: "the re-bind fixture was not observed: " + ((diff.unreached_one_side + diff.unobserved_both_sides) |> join(separator: ", ")))
   } else {
-      if count(refused |> filter(d => delta_line(d: d) == "refused\tTargetChanged\tfx.uses helper#0\tdeclared fx.a.helper -> declared fx.b.helper")) == 1 {
+      if count(refused |> filter(d => delta_line(d: d) == "refused\tTargetChanged\tfx.uses helper#0\tdeclared examples.a.helper -> declared examples.b.helper")) == 1 {
         if count(refused) == 1 {
           optional_absent()
         } else {
           optional_present(value: "the re-bind fixture refused more than the one re-binding: " + (refused |> map(d => delta_line(d: d)) |> join(separator: "; ")))
         }
       } else {
-        optional_present(value: "the re-bind fixture did not refuse fx.uses helper#0 as TargetChanged fx.a.helper -> fx.b.helper; refused: " + (refused |> map(d => delta_line(d: d)) |> join(separator: "; ")))
+        optional_present(value: "the re-bind fixture did not refuse examples.uses helper#0 as TargetChanged examples.a.helper -> examples.b.helper; refused: " + (refused |> map(d => delta_line(d: d)) |> join(separator: "; ")))
       }
   }
 }
 
 fn home_control_rows() -> List<AmbientNameHome> {
-  [AmbientNameHome { name: "Int" as NonEmptyStr, home: "fx.home.Int" as NonEmptyStr, table: KernelTypeSpellingTable, origin: ExistingDeclaration }]
+  [AmbientNameHome { name: "Int" as NonEmptyStr, home: "examples.home.Int" as NonEmptyStr, table: KernelTypeSpellingTable, origin: ExistingDeclaration }]
 }
 
 fn home_control_failure() -> Optional<String> {

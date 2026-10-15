@@ -1496,7 +1496,7 @@ fn run_census_infer_reading(
     let mut write_root = |name: &str, function: &str| -> Result<String, String> {
         // A NATIVE SOURCE ROOT IS A GOVERNED TREE'S DIRECTORY (v2.cli.repository_layout
         // repository_root_argument_names_tree): the fixture is written as a `dag` tree under its own
-        // directory, so `fx.decls` lands at <root>/dag/fx/decls.dag and the driver binds the root.
+        // directory, so `examples.decls` lands at <root>/dag/examples/decls.dag and the driver binds the root.
         let _ = std::fs::remove_dir_all(scratch.join(name));
         let root = scratch.join(name).join("dag");
         let files = crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
@@ -1607,7 +1607,7 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
     let write_root = |name: &str, function: &str| -> Result<String, String> {
         // A NATIVE SOURCE ROOT IS A GOVERNED TREE'S DIRECTORY (v2.cli.repository_layout
         // repository_root_argument_names_tree): the fixture is written as a `dag` tree under its own
-        // directory, so `fx.decls` lands at <root>/dag/fx/decls.dag and the driver binds the root.
+        // directory, so `examples.decls` lands at <root>/dag/examples/decls.dag and the driver binds the root.
         let _ = std::fs::remove_dir_all(scratch.join(name));
         let root = scratch.join(name).join("dag");
         let files = crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)

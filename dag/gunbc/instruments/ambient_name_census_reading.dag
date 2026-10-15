@@ -37,15 +37,18 @@ type AmbientCensusFixtureFile {
   content: String
 }
 
+// The fixture modules live in a namespace gunbc.source_layout_namespaces declares (`examples`): the
+// driver lists a root's modules by the declared namespaces only, so a module in an undeclared one is
+// never read and the run observes nothing.
 fn ambient_census_fixture_files() -> List<AmbientCensusFixtureFile> {
   [
     AmbientCensusFixtureFile {
-      path: "fx/decls.dag",
-      content: "module fx.decls\n\nfn helper() -> Int {\n  1\n}\n"
+      path: "examples/decls.dag",
+      content: "module examples.decls\n\nfn helper() -> Int {\n  1\n}\n"
     },
     AmbientCensusFixtureFile {
-      path: "fx/uses.dag",
-      content: "module fx.uses\n\nimport fx.decls { helper }\n\nfn twice() -> Int {\n  helper() + helper()\n}\n\nfn yes() -> Bool {\n  true\n}\n"
+      path: "examples/uses.dag",
+      content: "module examples.uses\n\nimport examples.decls { helper }\n\nfn twice() -> Int {\n  helper() + helper()\n}\n\nfn yes() -> Bool {\n  true\n}\n"
     }
   ]
 }
@@ -53,8 +56,8 @@ fn ambient_census_fixture_files() -> List<AmbientCensusFixtureFile> {
 fn ambient_census_unindexed_files() -> List<AmbientCensusFixtureFile> {
   [
     AmbientCensusFixtureFile {
-      path: "fx/broken.dag",
-      content: "module fx.broken\n\nfn f() -> Int {\n  not_declared_anywhere()\n}\n"
+      path: "examples/broken.dag",
+      content: "module examples.broken\n\nfn f() -> Int {\n  not_declared_anywhere()\n}\n"
     }
   ]
 }
