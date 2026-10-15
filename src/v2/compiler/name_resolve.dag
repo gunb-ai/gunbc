@@ -1158,7 +1158,8 @@ fn closure_collect_declaration_callees(n: Node, acc: List<QualifiedName>) -> Lis
 fn closure_unavailable_by_module(
   unavailable: List<ModuleOutcome>
 ) -> Map<QualifiedName, NonEmptyDiagnostics> {
-  fold_list(xs: unavailable, empty: empty_map(), cons: fn(acc, o) {
+  let empty: Map<QualifiedName, NonEmptyDiagnostics> = empty_map()
+  fold_list(xs: unavailable, empty: empty, cons: fn(acc, o) {
     match o {
       ModuleUnavailable { module: m, refusal: r } => map_insert(m: acc, key: m, value: r)
       ModuleObserved { module: _, declarations: _ } => acc
@@ -1242,9 +1243,14 @@ fn closure_decl_call_graph(rows: List<DeclPhase1Row>) -> CallGraph<QualifiedName
 }
 
 fn closure_rows_by_path(rows: List<DeclPhase1Row>) -> Map<QualifiedName, DeclPhase1Row> {
-  fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
+  let empty: Map<QualifiedName, DeclPhase1Row> = empty_map()
+  fold_list(xs: rows, empty: empty, cons: fn(acc, row) {
     map_insert(m: acc, key: row.path, value: row)
   })
+}
+
+fn closure_row_at(rows: Map<QualifiedName, DeclPhase1Row>, path: QualifiedName) -> Optional<DeclPhase1Row> {
+  map_lookup(m: rows, key: path)
 }
 
 fn closure_reverse_components(xs: List<List<QualifiedName>>) -> List<List<QualifiedName>> {
@@ -1261,7 +1267,7 @@ fn closure_component_blocking_refusal(
     match found {
       Present { value: _ } => found
       Absent =>
-        match map_lookup(m: rows, key: name) {
+        match closure_row_at(rows: rows, path: name) {
           Absent => found
           Present { value: row } =>
             match row.local_refusal {
@@ -1294,7 +1300,8 @@ fn closure_phase2_blocked(
 ) -> Map<QualifiedName, NonEmptyDiagnostics> {
   let by_path = closure_rows_by_path(rows: rows)
   let unavailable_by_module = closure_unavailable_by_module(unavailable: unavailable)
-  let seed = fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
+  let seed_empty: Map<QualifiedName, NonEmptyDiagnostics> = empty_map()
+  let seed = fold_list(xs: rows, empty: seed_empty, cons: fn(acc, row) {
     match row.local_refusal {
       Absent => acc
       Present { value: r } => map_insert(m: acc, key: row.path, value: r)
