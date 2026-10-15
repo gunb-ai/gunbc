@@ -1,5 +1,6 @@
 module gunbc.runner.runner_revision_job_spec
 
+import gunbc.target_invocation { ClaimHeld, ClaimDidNotHold, ClaimUnobserved }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.algebra { FreeSemigroup, Cons, Empty }
@@ -188,30 +189,20 @@ fn decode_revision_job_spec(text: String) -> RevisionJobSpecDecode {
 
 // ── the job's standing, read from its admitted results ─────────────────────────────────────────
 
-// THREE ANSWERS, AND ONLY ONE QUALIFIES. Every claim held (exit 0); some claim did not hold (exit 1)
-// with every claim observed; or some claim was not observed (exit 2: an unresolved label at this
-// commit, or no observation) -- which never counts toward the held arm, whatever the others did, so
+// THREE ANSWERS, AND ONLY ONE QUALIFIES. Every claim held; some claim did not hold with every claim
+// observed; or some claim was not observed (an unresolved label at this commit, or no observation) -- which never counts toward the held arm, whatever the others did, so
 // a typo in a label reads as an unresolved, non-qualifying job naming that label, never a pass.
 type RevisionJobStanding
   = RevisionJobAllHeld
   | RevisionJobSomeNotHeld { not_held: List<String> }
   | RevisionJobSomeUnobserved { unobserved: List<String>, not_held: List<String> }
 
-// ONLY exit 0 IS HELD. The decoder already refuses an exit outside {0,1,2}
-// (gunbc.runner.runner_claim_set_results ResultsExitNotAStanding); this fold does not rely on that:
-// anything that is not 0 or 1 is unobserved, so no value can fall through to the qualifying arm.
+// Read from each claim's ClaimRouteVerdict: an unobserved claim never counts toward the held arm,
+// whatever the others did.
 fn revision_job_standing(results: List<ClaimSetResult>) -> RevisionJobStanding {
-  let unobserved = map(filter(results, r => r.exit != 0 && r.exit != 1), r => r.label as String)
-  let not_held = map(filter(results, r => r.exit == 1), r => r.label as String)
+  let unobserved = map(filter(results, r => match r.verdict { ClaimUnobserved => true  ClaimHeld => false  ClaimDidNotHold => false }), r => r.label as String)
+  let not_held = map(filter(results, r => match r.verdict { ClaimDidNotHold => true  ClaimHeld => false  ClaimUnobserved => false }), r => r.label as String)
   if count(unobserved) > 0 { RevisionJobSomeUnobserved { unobserved: unobserved, not_held: not_held } }
   else if count(not_held) > 0 { RevisionJobSomeNotHeld { not_held: not_held } }
   else { RevisionJobAllHeld }
-}
-
-fn revision_job_qualifies(standing: RevisionJobStanding) -> Bool {
-  match standing {
-    RevisionJobAllHeld => true
-    RevisionJobSomeNotHeld { not_held: _ } => false
-    RevisionJobSomeUnobserved { unobserved: _, not_held: _ } => false
-  }
 }

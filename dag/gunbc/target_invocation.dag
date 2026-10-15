@@ -298,6 +298,18 @@ fn invocation_exit_status(t: InvocationTermination) -> Int {
   }
 }
 
+// ONE CLAIM'S VERDICT AS ITS `gunbc test` EXIT, AND BACK. A claim run alone in a guest returns only
+// its exit, so a reader of that exit decodes into ClaimRouteVerdict. The exit is DERIVED from the
+// route's own fold over that one verdict -- not a second table -- and decoding is the inverse over
+// the three verdicts, so a status the fold never produces has no verdict and the reader refuses it.
+fn claim_route_verdict_exit(v: ClaimRouteVerdict) -> Int {
+  invocation_exit_status(t: claim_route_termination(verdicts: [v]))
+}
+
+fn claim_route_verdict_of_exit(code: Int) -> ClaimRouteVerdict? {
+  filter([ClaimHeld, ClaimDidNotHold, ClaimUnobserved], v => claim_route_verdict_exit(v: v) == code).first()
+}
+
 // THE CANONICALITY CAUSE REACHES THE USER, WHICH IS THE POINT OF CARRYING IT AT ALL.
 //
 // `extdeps.bazel.label` splits a non-canonical label into two facts with two different repairs: a

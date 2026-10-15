@@ -544,37 +544,28 @@ fn observed_cgroup_bound_in(proc_self_cgroup: &str, sysfs_root: &std::path::Path
 #[cfg(test)]
 mod observed_cgroup_bound_tests {
     use super::{observed_cgroup_bound_in, CgroupBound};
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static NEXT: AtomicUsize = AtomicUsize::new(0);
 
-    struct FixtureRoot(std::path::PathBuf);
-
-    impl FixtureRoot {
-        fn new() -> Self {
-            let dir = std::env::temp_dir().join(format!(
-                "gunbc-cgroup-bound-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::SeqCst)
-            ));
-            std::fs::create_dir_all(&dir).expect("fixture root");
-            FixtureRoot(dir)
-        }
-        fn path(&self) -> &std::path::Path {
-            &self.0
-        }
+    // Plain functions rather than a struct with impls: an impl method is not citable as a
+    // DeclarationRef, and this module's items are enumerated in
+    // gunbc.user_work_observed_bound_seed_growth.
+    fn fixture_root() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-cgroup-bound-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::create_dir_all(&dir).expect("fixture root");
+        dir
     }
 
-    impl Drop for FixtureRoot {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
-    fn tree(levels: &[(&str, &str, &str)]) -> FixtureRoot {
-        let root = FixtureRoot::new();
+    fn tree(levels: &[(&str, &str, &str)]) -> PathBuf {
+        let root = fixture_root();
         for (path, max, swap) in levels {
-            let dir = root.path().join(path.trim_start_matches('/'));
+            let dir = root.join(path.trim_start_matches('/'));
             std::fs::create_dir_all(&dir).expect("mkdir");
             std::fs::write(dir.join("memory.max"), format!("{max}\n")).expect("max");
             std::fs::write(dir.join("memory.swap.max"), format!("{swap}\n")).expect("swap");
@@ -582,21 +573,23 @@ mod observed_cgroup_bound_tests {
         root
     }
 
-    fn verdict(root: &FixtureRoot, leaf: &str) -> &'static str {
-        match observed_cgroup_bound_in(&format!("0::{leaf}\n"), root.path()) {
+    // Reads the verdict and removes the fixture, so each tree is read exactly once.
+    fn verdict(root: PathBuf, leaf: &str) -> &'static str {
+        let v = match observed_cgroup_bound_in(&format!("0::{leaf}\n"), &root) {
             CgroupBound::Bounded => "bounded",
             CgroupBound::Unbounded => "unbounded",
             CgroupBound::Unread => "unread",
-        }
+        };
+        let _ = std::fs::remove_dir_all(&root);
+        v
     }
-
     #[test]
     fn a_finite_max_with_no_swap_on_the_unit_bounds_it() {
         let t = tree(&[
             ("/system.slice/job.service", "21474836480", "0"),
             ("/system.slice", "max", "max"),
         ]);
-        assert_eq!(verdict(&t, "/system.slice/job.service"), "bounded");
+        assert_eq!(verdict(t, "/system.slice/job.service"), "bounded");
     }
 
     #[test]
@@ -605,7 +598,7 @@ mod observed_cgroup_bound_tests {
             ("/system.slice/job.service", "max", "0"),
             ("/system.slice", "8589934592", "max"),
         ]);
-        assert_eq!(verdict(&t, "/system.slice/job.service"), "bounded");
+        assert_eq!(verdict(t, "/system.slice/job.service"), "bounded");
     }
 
     #[test]
@@ -614,30 +607,27 @@ mod observed_cgroup_bound_tests {
             ("/system.slice/job.service", "max", "max"),
             ("/system.slice", "8589934592", "0"),
         ]);
-        assert_eq!(verdict(&t, "/system.slice/job.service"), "bounded");
+        assert_eq!(verdict(t, "/system.slice/job.service"), "bounded");
     }
 
     #[test]
     fn unlimited_max_or_allowed_swap_or_out_of_range_never_bounds() {
         let unlimited = tree(&[("/system.slice/job.service", "max", "0")]);
-        assert_eq!(
-            verdict(&unlimited, "/system.slice/job.service"),
-            "unbounded"
-        );
+        assert_eq!(verdict(unlimited, "/system.slice/job.service"), "unbounded");
         let swap = tree(&[("/system.slice/job.service", "21474836480", "max")]);
-        assert_eq!(verdict(&swap, "/system.slice/job.service"), "unbounded");
+        assert_eq!(verdict(swap, "/system.slice/job.service"), "unbounded");
         let huge = tree(&[("/system.slice/job.service", "99999999999999999999999", "0")]);
-        assert_eq!(verdict(&huge, "/system.slice/job.service"), "unbounded");
+        assert_eq!(verdict(huge, "/system.slice/job.service"), "unbounded");
     }
 
     #[test]
     fn an_unreadable_chain_or_missing_line_is_unread_not_bounded() {
-        let empty = FixtureRoot::new();
-        assert_eq!(verdict(&empty, "/system.slice/job.service"), "unread");
+        let empty = fixture_root();
         assert!(matches!(
-            observed_cgroup_bound_in("1:name=systemd:/x\n", empty.path()),
+            observed_cgroup_bound_in("1:name=systemd:/x\n", &empty),
             CgroupBound::Unread
         ));
+        assert_eq!(verdict(empty, "/system.slice/job.service"), "unread");
     }
 }
 

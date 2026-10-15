@@ -1,5 +1,6 @@
 module test.claim.runner.runner_claim_set_guest_wet_witness
 
+import gunbc.target_invocation { ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold }
 import extdeps.shell
 import std.measure { ByteSize, byte_size }
 import std.types { Bool, Int, List, NonEmptyStr, String }
@@ -45,8 +46,8 @@ fn stage(root: String) -> Bool {
   Filesystem.Write(path: concat(root, "/device"), content: zeroed()).success
 }
 
-fn record(label: Label, exit: Int) -> ClaimSetResult {
-  ClaimSetResult { label: render_label(l: label) as NonEmptyStr, exit: exit, commit: commit_hex as NonEmptyStr, tree: tree_hex as NonEmptyStr }
+fn record(label: Label, verdict: ClaimRouteVerdict) -> ClaimSetResult {
+  ClaimSetResult { label: render_label(l: label) as NonEmptyStr, verdict: verdict, commit: commit_hex as NonEmptyStr, tree: tree_hex as NonEmptyStr }
 }
 
 fn admitted(root: String) -> String {
@@ -63,7 +64,7 @@ fn admitted(root: String) -> String {
 test fn the_guest_frame_on_a_zeroed_device_is_admitted_by_the_host_reader_by_real_execution() -> Bool {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_claimset.XXXXXX").path
   let staged = stage(root: root)
-  let wrote = match write_claim_set_frame(records: [record(label: self_host_label(), exit: 0), record(label: v2_native_cli_label(), exit: 1)], device: concat(root, "/device"), device_bytes: device_bytes()) {
+  let wrote = match write_claim_set_frame(records: [record(label: self_host_label(), verdict: ClaimHeld), record(label: v2_native_cli_label(), verdict: ClaimDidNotHold)], device: concat(root, "/device"), device_bytes: device_bytes()) {
     ClaimSetGuestWritten { records: n } => n == 2
     _ => false
   }

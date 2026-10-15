@@ -4,6 +4,7 @@ import extdeps.shell
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.algebra { trim }
+import gunbc.target_invocation { ClaimRouteVerdict, claim_route_verdict_of_exit }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -100,15 +101,17 @@ fn claim_set_spec_labels(text: String) -> List<String>? {
 }
 
 type ClaimRun
-  = ClaimRunExited { label: String, exit: Int }
+  = ClaimRunExited { label: String, verdict: ClaimRouteVerdict }
   | ClaimRunRefused { label: String, detail: String }
 
 fn run_claim(label: String) -> ClaimRun {
   match run_shell_command_observe_outcome(command: gunbc_test_command(label: label), transport: LocalExec) {
     ProcessNotSpawned { program: p, cause: c } => ClaimRunRefused { label: label, detail: join(["did not spawn ", p as String, ": ", c as String], "") }
     ProcessRan { observation: o } =>
-      if o.exit_code == 0 || o.exit_code == 1 || o.exit_code == 2 { ClaimRunExited { label: label, exit: o.exit_code } }
-      else { ClaimRunRefused { label: label, detail: join(["exit ", to_string(o.exit_code), " is not a gunbc test standing"], "") } }
+      match claim_route_verdict_of_exit(code: o.exit_code) {
+        Present { value: v } => ClaimRunExited { label: label, verdict: v }
+        Absent => ClaimRunRefused { label: label, detail: join(["exit ", to_string(o.exit_code), " is not a gunbc test standing"], "") }
+      }
   }
 }
 
@@ -121,8 +124,8 @@ fn run_claim_set(labels: List<String>, commit: NonEmptyStr, tree: NonEmptyStr) -
     ClaimSetGuestClaimRefused { label: l, detail: d } => ClaimSetGuestClaimRefused { label: l, detail: d }
     ClaimSetGuestRan { records: rs } => match run_claim(label: label) {
       ClaimRunRefused { label: l, detail: d } => ClaimSetGuestClaimRefused { label: l, detail: d }
-      ClaimRunExited { label: l, exit: e } =>
-        ClaimSetGuestRan { records: rs + [ClaimSetResult { label: l as NonEmptyStr, exit: e, commit: commit, tree: tree }] }
+      ClaimRunExited { label: l, verdict: v } =>
+        ClaimSetGuestRan { records: rs + [ClaimSetResult { label: l as NonEmptyStr, verdict: v, commit: commit, tree: tree }] }
     }
   })
 }

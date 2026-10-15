@@ -16,6 +16,7 @@ import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, json_object,
 import product.fabric.execution { Receipt, ExecutionReceipt }
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult }
+import gunbc.target_invocation { claim_route_verdict_exit }
 import gunbc.runner.runner_revision_job_stage { RevisionJobInputDigests }
 import gunbc.runner.runner_revision_job_spec {
   RevisionJobSpec, RevisionJobProvenance, RevisionJobStanding, RevisionJobAllHeld, RevisionJobSomeNotHeld,
@@ -76,19 +77,17 @@ fn provenance_json(p: RevisionJobProvenance?) -> JsonValue {
   }
 }
 
-fn revision_job_receipt_json(d: RevisionJobReceiptDocument) -> String {
-  let billable = match d.receipt.payload {
-    ExecutionReceipt { step_id: _, outputs: _, billable: b, completed_at: _ } => json_int(n: measure_count(b))
-    _ => JsonNull
+// THE DOCUMENT, OR NOTHING. A revision job is settled with an ExecutionReceipt; a fabric receipt of
+// any other kind (materialization, settlement) does not describe a job run, so it renders no
+// document -- never one with its billable time, outputs or completion left null.
+fn revision_job_receipt_json(d: RevisionJobReceiptDocument) -> String? {
+  match d.receipt.payload {
+    ExecutionReceipt { step_id: _, outputs: o, billable: b, completed_at: t } => Present { value: revision_job_execution_receipt_json(d: d, outputs: json_string(s: serialize_content_hash(hash: o) as String), billable: json_int(n: measure_count(b)), completed_at: json_string(s: t as String)) }
+    _ => none
   }
-  let completed_at = match d.receipt.payload {
-    ExecutionReceipt { step_id: _, outputs: _, billable: _, completed_at: t } => json_string(s: t as String)
-    _ => JsonNull
-  }
-  let outputs = match d.receipt.payload {
-    ExecutionReceipt { step_id: _, outputs: o, billable: _, completed_at: _ } => json_string(s: serialize_content_hash(hash: o) as String)
-    _ => JsonNull
-  }
+}
+
+fn revision_job_execution_receipt_json(d: RevisionJobReceiptDocument, outputs: JsonValue, billable: JsonValue, completed_at: JsonValue) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "kind", value: json_string(s: "gunbc.revision-job-receipt.v1")),
     json_kv(key: "subject", value: json_object(members: [
@@ -115,7 +114,7 @@ fn revision_job_receipt_json(d: RevisionJobReceiptDocument) -> String {
     ])),
     json_kv(key: "results", value: json_array(elements: map(d.results, r => json_object(members: [
       json_kv(key: "claim", value: json_string(s: r.label as String)),
-      json_kv(key: "exit", value: json_int(n: r.exit)),
+      json_kv(key: "exit", value: json_int(n: claim_route_verdict_exit(v: r.verdict))),
     ])))),
     json_kv(key: "standing", value: standing_json(s: revision_job_standing(results: d.results))),
   ]))
@@ -127,7 +126,9 @@ type RevisionJobPublication
   | RevisionJobPublicationRefused { step: NonEmptyStr, detail: String }
 
 fn publish_revision_job_receipt(store_root: String, staging_path: String, d: RevisionJobReceiptDocument) -> RevisionJobPublication {
-  let body = revision_job_receipt_json(d: d)
+  match revision_job_receipt_json(d: d) {
+  Absent => RevisionJobPublicationRefused { step: "receipt-payload", detail: "the fabric receipt is not an ExecutionReceipt, so it describes no job run" }
+  Present { value: body } => {
   let commit = git_object_id_wire_hex(oid: d.spec.commit) as String
   let staged = Filesystem.WriteCreateNew(path: staging_path, content: body)
   if !staged.success { RevisionJobPublicationRefused { step: "write-staging", detail: staged.error } }
@@ -166,4 +167,6 @@ fn publish_revision_job_receipt(store_root: String, staging_path: String, d: Rev
       }
     }
   } }
+  }
+  }
 }
