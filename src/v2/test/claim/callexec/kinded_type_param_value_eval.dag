@@ -289,4 +289,4 @@ test fn kpa_type_argument_instance_absent() -> Bool { kpa_reason() == Present { 
 test fn kpa_type_argument_read_as_value() -> Bool { kpa_reason() == Present { value: ^eval_rejected_type_argument_read_as_value } }
 test fn kpa_canonical_mismatch() -> Bool { kpa_reason() == Present { value: ^eval_rejected_canonical_mismatch } }
 test fn kpa_function_value_body() -> Bool { kpa_reason() == Present { value: ^eval_rejected_function_value_body } }
-test fn kpa_absent() -> Bool { kpa_reason() == Absent }\n
+test fn kpa_absent() -> Bool { kpa_reason() == Absent }
