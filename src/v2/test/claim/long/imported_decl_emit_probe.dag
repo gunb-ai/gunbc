@@ -59,6 +59,12 @@ import std.occurrence_identity {
   OccurrenceSynthetic
 }
 import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text_in_spans }
+import v2.compiler.inferred_tree {
+  DerivedGrounding,
+  GroundingNotDerived,
+  InferredTree,
+  inferred_facts_nullary_coproduct_arm
+}
 import v2.std.node {
   Arrow,
   Atom,
@@ -69,13 +75,27 @@ import v2.std.node {
   Edge,
   Instantiation,
   Node,
+  NodeFold,
   Occupancy,
   Positional,
   StructuralLabel,
   Symbol,
   TypeNode,
+  declaration_reference_body_marked,
+  fold_node,
   node_synthetic,
   symbol_lexeme
+}
+import v2.std.node_query { find_arrow_body_child }
+import v2.std.symbol_index {
+  DeclaredPayloadKind,
+  RecordTypePayload,
+  SymbolIndex,
+  VariantArmPayload,
+  symbol_index_declared_payload_at,
+  symbol_index_declaring_path_of,
+  symbol_index_is_module_root_at,
+  symbol_index_lookup
 }
 import v2.std.qualified_name {
   QualifiedName,
@@ -83,12 +103,6 @@ import v2.std.qualified_name {
   qualified_name_to_dotted_string
 }
 import v2.std.resolution_policy { default_name_resolution_policy }
-import v2.std.symbol_index {
-  SymbolIndex,
-  symbol_index_declaring_path_of,
-  symbol_index_is_module_root_at,
-  symbol_index_lookup
-}
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -186,6 +200,82 @@ fn probe_qn_text(qn: QualifiedName) -> String {
   }
 }
 
+fn probe_red_payload(index: SymbolIndex) -> String {
+  match symbol_index_declared_payload_at(index: index, qualified_path: probe_qn(dotted: "v2.test.probe_a.Red")) {
+    Absent => "payload-absent"
+    Present { value: k } =>
+      match k {
+        VariantArmPayload => "variant-arm"
+        RecordTypePayload => "record"
+      }
+  }
+}
+
+fn probe_find_named_target(root: Node, want: Symbol) -> Optional<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) {
+        fold(node.children, init: Absent, f: fn(acc, e) {
+          match acc {
+            Present { value: v } => Present { value: v }
+            Absent =>
+              match e.label {
+                Authored { name: n } =>
+                  match n == want {
+                    true => Present { value: e.target }
+                    false => Absent
+                  }
+                StructuralLabel { label: _ } => Absent
+                Positional => Absent
+              }
+          }
+        })
+      },
+      step: fn(acc, _e, child_r) {
+        match acc {
+          Present { value: v } => Present { value: v }
+          Absent => child_r
+        }
+      }
+    }
+  )
+}
+
+fn probe_facts_tag(tree: InferredTree, node: Node) -> String {
+  match tree.facts.lookup(node) {
+    Absent => "lookup-absent"
+    Present { value: facts } =>
+      if inferred_facts_nullary_coproduct_arm(facts: facts) {
+        "stamp"
+      } else {
+        match facts.grounding {
+          DerivedGrounding { grounding: _ } => "derived"
+          GroundingNotDerived { node: _ } => "not-derived"
+        }
+      }
+  }
+}
+
+fn probe_painted_facts(tree: InferredTree) -> String {
+  match probe_find_named_target(root: tree.root, want: ^painted) {
+    Absent => "painted-missing"
+    Present { value: decl } =>
+      match find_arrow_body_child(root: decl) {
+        Rejected { diagnostics: _ } =>
+          concat("body-unreadable:", concat(probe_kind_tag(n: decl), concat(":", probe_facts_tag(tree: tree, node: decl))))
+        Accepted { value: body, diagnostics: _ } =>
+          concat(
+            concat(probe_kind_tag(n: body), concat("@", concat(probe_occ_tag(n: body), ":"))),
+            concat(
+              if declaration_reference_body_marked(target: body) { "marked:" } else { "unmarked:" },
+              probe_facts_tag(tree: tree, node: body)
+            )
+          )
+      }
+  }
+}
+
 fn probe_red_declaring(index: SymbolIndex) -> String {
   let declaring = symbol_index_declaring_path_of(index: index, target: probe_qn(dotted: "v2.test.probe_a.Red"))
   if length(xs: declaring) == 0 {
@@ -276,6 +366,8 @@ type ProbeBundle {
   emit_resolve_ok: Bool
   emit_resolved_color: String
   native_resolved_color: String
+  emit_red_payload: String
+  emit_painted_facts: String
 }
 
 fn probe_bundle() -> Optional<ProbeBundle> {
@@ -364,6 +456,14 @@ fn probe_bundle() -> Optional<ProbeBundle> {
                 Rejected { diagnostics: d } => concat("infer:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
               }
           }
+          let emit_painted_facts = match emit_resolved {
+            Rejected { diagnostics: _ } => "resolve-refused"
+            Accepted { value: tree, diagnostics: _ } =>
+              match infer_and_discharge(tree: tree) {
+                Rejected { diagnostics: _ } => "infer-refused"
+                Accepted { value: inferred, diagnostics: _ } => probe_painted_facts(tree: inferred)
+              }
+          }
           Present {
             value: ProbeBundle {
               emit_color: probe_lookup_tag(index: emit_idx, dotted: "v2.test.probe_a.Color"),
@@ -385,7 +485,9 @@ fn probe_bundle() -> Optional<ProbeBundle> {
               native_red_body: probe_lookup_dump(index: native_idx, dotted: "v2.test.probe_a.Red"),
               emit_resolve_ok: probe_outcome_ok(o: emit_resolved),
               emit_resolved_color: probe_resolved_color(o: emit_resolved),
-              native_resolved_color: native_resolved_color
+              native_resolved_color: native_resolved_color,
+              emit_red_payload: probe_red_payload(index: emit_idx),
+              emit_painted_facts: emit_painted_facts
             }
           }
       }
@@ -616,6 +718,272 @@ test fn dump_native_red_declaring_is_sentinel_holds() -> Bool {
   match probe_bundle() {
     Absent => false
     Present { value: b } => b.native_red_declaring == "PROBE_DUMP"
+  }
+}
+
+test fn emit_reason_is_facts_absent_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "facts_absent")
+  }
+}
+
+test fn emit_reason_is_not_nullary_arm_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "not_nullary")
+  }
+}
+
+test fn emit_reason_is_path_absent_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "path_absent")
+  }
+}
+
+test fn emit_reason_is_transform_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "transform")
+  }
+}
+
+test fn emit_reason_is_unsupported_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "unsupported")
+  }
+}
+
+test fn emit_reason_is_accepted_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_b_reason == "accepted"
+  }
+}
+
+test fn emit_reason_is_whole_refusal_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_refusal_located, pattern: "whole:")
+  }
+}
+
+test fn emit_reason_has_generic_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "generic")
+  }
+}
+
+test fn emit_reason_has_grammar_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "grammar")
+  }
+}
+
+test fn emit_reason_has_member_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "member")
+  }
+}
+
+test fn emit_reason_has_shape_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "shape")
+  }
+}
+
+test fn emit_reason_has_produced_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "produced")
+  }
+}
+
+test fn emit_reason_has_serialize_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "serialize")
+  }
+}
+
+test fn emit_reason_has_bool_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "bool")
+  }
+}
+
+test fn emit_reason_has_arrow_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "arrow")
+  }
+}
+
+test fn emit_reason_has_binding_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "binding")
+  }
+}
+
+test fn emit_reason_has_alias_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "alias")
+  }
+}
+
+test fn emit_reason_has_value_expr_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "value_expr")
+  }
+}
+
+test fn emit_reason_has_literal_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "literal")
+  }
+}
+
+test fn emit_reason_has_token_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "token")
+  }
+}
+
+test fn emit_reason_has_layout_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "layout")
+  }
+}
+
+test fn emit_reason_has_conj_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "conj")
+  }
+}
+
+test fn emit_reason_has_expr_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "expr")
+  }
+}
+
+test fn emit_reason_has_translate_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "translate")
+  }
+}
+
+test fn emit_reason_has_target_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "target")
+  }
+}
+
+test fn emit_reason_has_emit_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_b_reason, pattern: "emit")
+  }
+}
+
+test fn emit_reason_empty_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => length(xs: b.emit_b_reason) == 0
+  }
+}
+
+test fn emit_refusal_is_no_member_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_refusal_located == "no-member-refusal"
+  }
+}
+
+test fn red_payload_is_variant_arm_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_red_payload == "variant-arm"
+  }
+}
+
+test fn painted_facts_has_stamp_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_painted_facts, pattern: "stamp")
+  }
+}
+
+test fn painted_facts_has_lookup_absent_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_painted_facts, pattern: "lookup-absent")
+  }
+}
+
+test fn painted_facts_has_not_derived_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_painted_facts, pattern: "not-derived")
+  }
+}
+
+test fn painted_facts_has_derived_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_painted_facts, pattern: "derived")
+  }
+}
+
+test fn painted_facts_has_marked_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_painted_facts, pattern: "marked")
+  }
+}
+
+test fn painted_facts_has_occupancy_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_painted_facts, pattern: "occupancy")
+  }
+}
+
+test fn painted_facts_has_body_unreadable_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => string_contains(s: b.emit_painted_facts, pattern: "body-unreadable")
+  }
+}
+
+test fn dump_painted_facts_is_sentinel_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_painted_facts == "PROBE_DUMP"
+  }
+}
+
+test fn dump_red_payload_is_sentinel_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_red_payload == "PROBE_DUMP"
   }
 }
 

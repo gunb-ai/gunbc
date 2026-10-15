@@ -799,6 +799,14 @@ fn emit_declaration_reference_facts_absent_diagnostic(body: Node) -> Diagnostic 
   }
 }
 
+fn emit_declaration_reference_not_nullary_arm_diagnostic(body: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_declaration_reference_not_nullary_coproduct_arm,
+    at: node_locus(node: body),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn emit_nullary_coproduct_arm_path_absent_diagnostic(body: Node) -> Diagnostic {
   Diagnostic {
     reason: ^emit_nullary_coproduct_arm_path_absent,
@@ -1057,7 +1065,12 @@ fn project_value_node_structurally(
       )
     TypeNode { connective: Conj } =>
       if declaration_reference_body_marked(target: node) {
-        outcome_rejected(d: emit_declaration_reference_facts_absent_diagnostic(body: node))
+        match inferred_facts_for_projected_node(tree: tree, node: node) {
+          Absent =>
+            outcome_rejected(d: emit_declaration_reference_facts_absent_diagnostic(body: node))
+          Present { value: _ } =>
+            outcome_rejected(d: emit_declaration_reference_not_nullary_arm_diagnostic(body: node))
+        }
       } else {
         target_value_expr_project_body_subexpression(
           arrow: arrow,
