@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.algebra { FreeSemigroup }
 import std.nat { Nat, nat_ceil_div }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.measure { Second, second }
+import std.measure { Second, second, ByteSize, byte_size, byte_size_count }
 import std.content_hash { ContentHash, serialize_content_hash, content_hash_of_value }
 import extdeps.bazel.label { Label }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -22,7 +22,7 @@ import product.fabric.sanitation { CellReadiness }
 import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
 import gunbc.fabric.fabric_cell_grant { CellGrantSettlement, settle_cell_grant }
 import gunbc.runner.runner_claim_set_results {
-  ClaimSetResultsDecode, ClaimSetResultsRefused, ResultsDriveSizeMismatch, ClaimSetResultsAdmission,
+  ClaimSetResultsDecode, ClaimSetResultsRefused, ResultsDriveSizeMismatch, ResultsDriveUnobserved, ClaimSetResultsAdmission,
   ClaimSetResultsAdmitted, decode_claim_set_results, admit_claim_set_results,
 }
 
@@ -102,18 +102,26 @@ fn read_unit_runtime(unit: NonEmptyStr) -> UnitRuntimeReading {
 }
 
 // THE DRIVE, READ AS THE HOST STAGED IT: its size by stat, then its text. A drive whose size is not
-// the staged size refuses inside the decode, before its text is interpreted.
-fn read_results_drive(path: String, staged_bytes: Int) -> ClaimSetResultsDecode {
+// the staged size refuses before its text is interpreted; a drive whose size or text could not be
+// read at all is ResultsDriveUnobserved, never a size.
+fn read_results_drive(path: String, staged_bytes: ByteSize) -> ClaimSetResultsDecode {
   match stat_field_reading(outcome: run_shell_command_capture(command: stat_size_bytes_command(path: path), transport: LocalExec)) {
-    StatFieldUnread { detail: _ } => ClaimSetResultsRefused { cause: ResultsDriveSizeMismatch { staged: staged_bytes, observed: 0 - 1 } }
+    StatFieldUnread { detail: d } => ClaimSetResultsRefused { cause: ResultsDriveUnobserved { detail: join(["stat of ", path, ": ", d], "") } }
     StatFieldRead { value: v } => match parse_int(s: v) {
-      Absent => ClaimSetResultsRefused { cause: ResultsDriveSizeMismatch { staged: staged_bytes, observed: 0 - 1 } }
-      Present { value: observed } =>
-        if observed != staged_bytes { ClaimSetResultsRefused { cause: ResultsDriveSizeMismatch { staged: staged_bytes, observed: observed } } }
-        else {
-          let r = Filesystem.Read(path: path)
-          decode_claim_set_results(text: r.content, staged_bytes: staged_bytes, observed_bytes: if r.success { observed } else { 0 - 1 })
+      Absent => ClaimSetResultsRefused { cause: ResultsDriveUnobserved { detail: join(["stat of ", path, " printed a non-integer size: ", v], "") } }
+      Present { value: n } => match checked_int_to_nat(n: n) {
+        Absent => ClaimSetResultsRefused { cause: ResultsDriveUnobserved { detail: join(["stat of ", path, " printed a negative size: ", v], "") } }
+        Present { value: observed_count } => {
+          let observed = byte_size(count: observed_count)
+          if byte_size_count(b: observed) != byte_size_count(b: staged_bytes) {
+            ClaimSetResultsRefused { cause: ResultsDriveSizeMismatch { staged: staged_bytes, observed: observed } }
+          } else {
+            let r = Filesystem.Read(path: path)
+            if !r.success { ClaimSetResultsRefused { cause: ResultsDriveUnobserved { detail: join(["read of ", path, ": ", r.error], "") } } }
+            else { decode_claim_set_results(text: r.content, staged_bytes: staged_bytes, observed_bytes: observed) }
+          }
         }
+      }
     }
   }
 }
@@ -168,7 +176,7 @@ fn claim_set_receipt_and_settle(
   claims: FreeSemigroup<Label>,
   revision: VerifiedGitCommitTree,
   results_drive_path: String,
-  results_drive_bytes: Int,
+  results_drive_bytes: ByteSize,
   attempt_unit: NonEmptyStr,
   readiness: CellReadiness,
   completed_at: Timestamp,

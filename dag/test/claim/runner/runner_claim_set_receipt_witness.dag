@@ -1,9 +1,10 @@
 module test.claim.runner.runner_claim_set_receipt_witness
 
+import std.checked_arithmetic { checked_int_to_nat }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.algebra { FreeSemigroup, Cons, Empty }
-import std.measure { measure_count, second }
+import std.measure { measure_count, second, ByteSize, byte_size }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import extdeps.bazel.label { Label, render_label }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey }
@@ -42,7 +43,7 @@ fn build(text: String, runtime: UnitRuntimeReading) -> String {
     Empty {} => "no-revision"
     Cons { head: rev, tail: _ } => match claim_set_receipt(
       attempt: attempt(), lease: lease(),
-      decode: decode_claim_set_results(text: text, staged_bytes: length(text), observed_bytes: length(text)),
+      decode: decode_claim_set_results(text: text, staged_bytes: text_bytes(text: text), observed_bytes: text_bytes(text: text)),
       claims: one_claim(), revision: rev, runtime: runtime, completed_at: "2026-10-15T00:00:00Z",
     ) {
       ClaimSetReceipted { receipt: r, outputs: o } => match r.payload {
@@ -76,4 +77,11 @@ test fn a_receipt_needs_admitted_results_and_a_measured_runtime() -> Bool {
   build(text: drive_text(), runtime: UnitRuntimeMeasured { billable: second(count: 7) }) == "receipted:7"
     && build(text: padding, runtime: UnitRuntimeMeasured { billable: second(count: 7) }) == "not-admitted"
     && build(text: drive_text(), runtime: UnitRuntimeUnread { detail: "fixture" }) == "no-runtime"
+}
+
+fn text_bytes(text: String) -> ByteSize {
+  match checked_int_to_nat(n: length(text)) {
+    Present { value: n } => byte_size(count: n)
+    Absent => byte_size(count: 0)
+  }
 }

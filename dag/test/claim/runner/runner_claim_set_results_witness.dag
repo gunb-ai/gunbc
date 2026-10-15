@@ -1,5 +1,7 @@
 module test.claim.runner.runner_claim_set_results_witness
 
+import std.measure { ByteSize, byte_size }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.algebra { FreeSemigroup, Cons, Empty }
@@ -12,7 +14,7 @@ import gunbc.fabric.fabric_witness_run {
 }
 import gunbc.runner.runner_claim_set_results {
   ClaimSetResult, ClaimSetResultsDecode, ClaimSetResultsDecoded, ClaimSetResultsRefused,
-  ResultsDriveSizeMismatch, ResultsDriveUnwritten, ResultsMagicMismatch, ResultsTruncated,
+  ResultsDriveSizeMismatch, ResultsDriveUnobserved, ResultsDriveUnwritten, ResultsMagicMismatch, ResultsTruncated,
   ResultsDigestMismatch, ResultsTrailingBytes, ResultsRecordMalformed, ResultsExitMalformed,
   ResultsCountMissing, ResultsCountMalformed, ResultsDigestMissing, ClaimSetResultsUndecodable,
   ClaimSetResultsAdmission, ClaimSetResultsAdmitted, ClaimSetResultsNotDecoded, ClaimSetResultsClaimMismatch,
@@ -57,7 +59,7 @@ fn good_results() -> List<ClaimSetResult> {
 }
 
 fn drive(text: String) -> ClaimSetResultsDecode {
-  decode_claim_set_results(text: text, staged_bytes: length(text), observed_bytes: length(text))
+  decode_claim_set_results(text: text, staged_bytes: text_bytes(text: text), observed_bytes: text_bytes(text: text))
 }
 
 fn cause(d: ClaimSetResultsDecode) -> String {
@@ -65,6 +67,7 @@ fn cause(d: ClaimSetResultsDecode) -> String {
     ClaimSetResultsDecoded { results: rs, stated_digest: _ } => concat("decoded:", to_string(count(rs)))
     ClaimSetResultsRefused { cause: c } => match c {
       ResultsDriveSizeMismatch { staged: _, observed: _ } => "size"
+      ResultsDriveUnobserved { detail: _ } => "unobserved"
       ResultsDriveUnwritten => "unwritten"
       ResultsMagicMismatch => "magic"
       ResultsCountMissing => "count-missing"
@@ -107,7 +110,7 @@ test fn every_framing_fault_refuses_by_name() -> Bool {
   let lines: List<String> = frame.split(delimiter: "\n")
   let without_second_record = join(take(lines, 3) + skip(lines, 4), "\n")
   let tampered = frame.replace("v2-native-cli 1 ", "v2-native-cli 0 ")
-  cause(d: decode_claim_set_results(text: concat(frame, padding), staged_bytes: length(frame) + 8, observed_bytes: length(frame) + 9)) == "size"
+  cause(d: decode_claim_set_results(text: concat(frame, padding), staged_bytes: text_bytes(text: concat(frame, padding)), observed_bytes: text_bytes(text: concat(concat(frame, padding), "\u{0}")))) == "size"
     && cause(d: drive(text: padding)) == "unwritten"
     && cause(d: drive(text: concat(frame.replace("GUNBC-CLAIMSET-RESULTS 1", "GUNBC-CLAIMSET-RESULTS 2"), padding))) == "magic"
     && cause(d: drive(text: concat(frame.replace("claims 2", "claims two"), padding))) == "count-malformed"
@@ -125,4 +128,11 @@ test fn results_for_another_tree_or_out_of_order_claims_are_not_admitted() -> Bo
     && admission(d: reversed, c: claims()) == "claim-mismatch"
     && admission(d: one, c: claims()) == "count-mismatch"
     && admission(d: drive(text: padding), c: claims()) == "not-decoded"
+}
+
+fn text_bytes(text: String) -> ByteSize {
+  match checked_int_to_nat(n: length(text)) {
+    Present { value: n } => byte_size(count: n)
+    Absent => byte_size(count: 0)
+  }
 }
