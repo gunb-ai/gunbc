@@ -37,26 +37,6 @@ fn rfm_row_parses() {
 }
 
 #[test]
-fn same_arm_cross_coproduct_is_observed() {
-    let msgs = blocking_messages(&same_arm_call("P1 { x: 1 }", "Q1 { x: 1 }"));
-    eprintln!(
-        "cross-coproduct same_arm seed blocking={msgs:?} rebind={}",
-        has_generic_rebind(&msgs)
-    );
-}
-
-#[test]
-fn same_arm_int_bool_is_observed() {
-    let msgs = blocking_messages(
-        "module locate.ib\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool { same_arm(a: 1, b: true) }\n",
-    );
-    eprintln!(
-        "int-bool same_arm seed blocking={msgs:?} rebind={}",
-        has_generic_rebind(&msgs)
-    );
-}
-
-#[test]
 fn same_arm_same_coproduct_is_accepted() {
     let msgs = blocking_messages(&same_arm_call("P1 { x: 1 }", "P2 { y: 2 }"));
     assert!(
@@ -77,17 +57,6 @@ fn same_arm_int_int_is_accepted() {
 }
 
 #[test]
-fn uninformative_then_int_then_bool_is_observed() {
-    let msgs = blocking_messages(
-        "module locate.tv3\nfn same_arm<T>(a: T, b: T, c: T) -> Bool { true }\nfn probe<U>(u: U) -> Bool { same_arm(a: u, b: 1, c: true) }\n",
-    );
-    eprintln!(
-        "U-then-Int-then-Bool seed blocking={msgs:?} rebind={}",
-        has_generic_rebind(&msgs)
-    );
-}
-
-#[test]
 fn uninformative_then_int_then_int_is_accepted() {
     let msgs = blocking_messages(
         "module locate.tv3ok\nfn same_arm<T>(a: T, b: T, c: T) -> Bool { true }\nfn probe<U>(u: U) -> Bool { same_arm(a: u, b: 1, c: 2) }\n",
@@ -99,19 +68,25 @@ fn uninformative_then_int_then_int_is_accepted() {
 }
 
 #[test]
-fn same_arm_two_outcome_accepted_ints_is_observed() {
+fn same_arm_two_outcome_accepted_ints_is_accepted() {
     let msgs = blocking_messages(
         "module locate.out\ntype Outcome<A> = Accepted { value: A } | Rejected { d: String }\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool { same_arm(a: Accepted { value: 1 }, b: Accepted { value: 2 }) }\n",
     );
-    eprintln!("outcome_accepted_ints blocking={msgs:?}");
+    assert!(
+        !has_generic_rebind(&msgs),
+        "two Accepted<Int> same_arm must not refuse: {msgs:?}"
+    );
 }
 
 #[test]
-fn same_arm_two_optional_int_params_is_observed() {
+fn same_arm_two_optional_int_params_is_accepted() {
     let msgs = blocking_messages(
         "module locate.opt\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Int?, y: Int?) -> Bool { same_arm(a: x, b: y) }\n",
     );
-    eprintln!("optional_int_params blocking={msgs:?}");
+    assert!(
+        !has_generic_rebind(&msgs),
+        "two Int? same_arm must not refuse: {msgs:?}"
+    );
 }
 
 #[test]
@@ -142,35 +117,14 @@ fn same_arm_two_applied_box_int_is_accepted() {
 }
 
 #[test]
-fn nested_list_int_vs_bool_is_observed() {
-    let msgs = blocking_messages(
-        "module locate.nlist\nfn nest<T>(a: List<T>, b: List<T>) -> Bool { true }\nfn probe(x: List<Int>, y: List<Bool>) -> Bool { nest(a: x, b: y) }\n",
-    );
-    eprintln!("nested_list_int_vs_bool blocking={msgs:?}");
-}
-
-#[test]
-fn record_box_int_vs_bool_is_observed() {
-    let msgs = blocking_messages(
-        "module locate.nbox\ntype Box<T> { value: T }\nfn nest<T>(a: Box<T>, b: Box<T>) -> Bool { true }\nfn probe() -> Bool { nest(a: Box { value: 1 }, b: Box { value: true }) }\n",
-    );
-    eprintln!("record_box_int_vs_bool blocking={msgs:?}");
-}
-
-#[test]
-fn same_arm_applied_box_int_vs_bool_is_observed() {
-    let msgs = blocking_messages(
-        "module locate.boxx\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool { same_arm(a: x, b: y) }\n",
-    );
-    eprintln!("Box<Int> vs Box<Bool> seed blocking={msgs:?}");
-}
-
-#[test]
-fn same_arm_two_list_int_params_is_observed() {
+fn same_arm_two_list_int_params_is_accepted() {
     let msgs = blocking_messages(
         "module locate.lst\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: List<Int>, y: List<Int>) -> Bool { same_arm(a: x, b: y) }\n",
     );
-    eprintln!("list_int_params blocking={msgs:?}");
+    assert!(
+        !has_generic_rebind(&msgs),
+        "two List<Int> same_arm must not refuse: {msgs:?}"
+    );
 }
 
 #[test]
