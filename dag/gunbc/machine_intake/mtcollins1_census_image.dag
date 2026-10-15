@@ -23,6 +23,7 @@ import gunbc.machine_intake.host_capture_envelope {
   host_capture_program,
 }
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
 
 // THE CENSUS IMAGE FOR MT. COLLINS UNIT 1: the 24.04.3 arm64 live-server medium with a NoCloud seed
 // that runs the host-capture census in the LIVE environment and powers off. It is a derived artifact
@@ -268,7 +269,7 @@ fn mtcollins1_census_medium_qualification(medium: BootMedium) -> CensusMediumQua
 }
 
 fn boot_image_export_text(export: BootImageExport) -> String {
-  concat(export.target.principal as String, "@", export.target.endpoint as String, ":", export.dir as String)
+  concat(export.target.principal as String, "@", known_hosts_host_field(address: export.target.address) as String, ":", export.dir as String)
 }
 
 // CENSUS STAGE 0D: THE MEDIUM MT. COLLINS UNIT 1 BOOTS. The digest is the publish receipt of the gated

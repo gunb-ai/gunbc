@@ -425,6 +425,7 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
 }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, list_length }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -3571,7 +3572,7 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
         success: false,
         stdout: join([
           "host_effect_apply: run_shell_transport refuses the FleetSsh transport for endpoint=",
-          t.endpoint as String,
+          known_hosts_host_field(address: t.address) as String,
           ". This carrier is a shell script BODY -- a command string, not argv -- and the fleet path admits",
           " only portable remote words, so there is no shaping that preserves the script's meaning. The refusal",
           " is the carrier's shape surfacing, not a missing case: the residue dissolves when the effect reaches",
@@ -3702,7 +3703,7 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
       RunArgvTransportRefused {
         reason: join([
           "host_effect_apply: run_argv_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
-          t.endpoint as String,
+          known_hosts_host_field(address: t.address) as String,
           ". The command is typed argv, so the old carrier objection (a script body where the fleet path",
           " admits portable words) does not apply; what remains is the transport's own authority: the fleet",
           " seam executes through its own session type and trust policy, and admitting shape_fleet_ssh_exec",
@@ -3749,7 +3750,7 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
       RunArgvTransportRefused {
         reason: join([
           "host_effect_apply: run_argv_stdin_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
-          t.endpoint as String,
+          known_hosts_host_field(address: t.address) as String,
           ". The command is typed argv with its payload on stdin, so the old carrier objection (a script",
           " body where the fleet path admits portable words) does not apply; what remains is the",
           " transport's own authority: the fleet seam executes through its own session type and trust",
@@ -4344,7 +4345,7 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
       ], "")
     FleetSsh { target: t, context: _ } =>
       join([
-        "live_deploy apply refused over fleet ssh endpoint=", t.endpoint as String,
+        "live_deploy apply refused over fleet ssh endpoint=", known_hosts_host_field(address: t.address) as String,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
       ], "")
