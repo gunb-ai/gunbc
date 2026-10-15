@@ -128,7 +128,7 @@ type SccInfo {
 }
 
 type SccBuildAcc {
-  assigned: Map<String, Bool>
+  assigned: Set<String>
   index: Map<String, SccInfo>
 }
 
@@ -136,7 +136,7 @@ type SccResult {
   index: Map<String, SccInfo>
   topo_order: List<String>
   processing_order: List<String>
-  call_graph: CallGraph<String>
+  call_graph: CallGraph
 }
 
 type ParserStateParam {
@@ -1038,7 +1038,7 @@ fn seed_func_entry_map(key: String, value: FuncEntry) -> Map<String, FuncEntry> 
   map_insert(empty_map(), key, value)
 }
 
-fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph<String> {
+fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph {
   CallGraph {
     edges: edges
       |> filter(edge => edge.caller != edge.callee)
@@ -2712,7 +2712,7 @@ fn collect_local_call_edges_in_expr(caller: String, body: Node, local_func_set: 
   concat(this_edges, child_edges)
 }
 
-fn build_call_graph(func_entries: List<FuncEntry>, si: Map<String, NewlineIndex>) -> CallGraph<String> {
+fn build_call_graph(func_entries: List<FuncEntry>, si: Map<String, NewlineIndex>) -> CallGraph {
   let names = func_entries |> map(entry => entry.name)
   let local_func_set = names |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
@@ -3326,16 +3326,14 @@ fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEn
   let graph = build_call_graph(func_entries: func_entries, si: si)
   let adjacency = forward_adjacency(names: names, graph: graph)
   let reverse_graph = reverse_adjacency(names: names, graph: graph)
-  let empty_finish: Map<String, Bool> = empty_map()
-  let finish = names |> fold(init: DfsFinishAcc { visited: empty_finish, order: [] }, f: (acc, name) =>
+  let finish = names |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, name) =>
     dfs_finish_order(node: name, adjacency: adjacency, acc: acc)
   )
   let topo_order = finish.order |> reverse
-  let empty_assigned: Map<String, Bool> = empty_map()
-  let result = topo_order |> fold(init: SccBuildAcc { assigned: empty_assigned, index: empty_map() }, f: fn(acc, name) {
-    match map_get(acc.assigned, name) {
-      Present { value: _ } => acc
-      Absent => {
+  let result = topo_order |> fold(init: SccBuildAcc { assigned: empty_set(), index: empty_map() }, f: fn(acc, name) {
+    if set_contains(acc.assigned, name) {
+      acc
+    } else {
       let component = dfs_collect_component(node: name, adjacency: reverse_graph, acc: SccComponentAcc { visited: acc.assigned, members: [] })
       let member_set = component.members |> fold(init: empty_set(), f: (inner, member) =>
         set_insert(inner, member)
@@ -3357,7 +3355,6 @@ fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEn
       } else {
         SccBuildAcc { assigned: next_assigned, index: acc.index }
       }
-    }
     }
   })
   SccResult { index: result.index, topo_order: topo_order, processing_order: finish.order, call_graph: graph }

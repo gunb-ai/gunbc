@@ -166,7 +166,7 @@ fn string_member(set: Map<String, Bool>, key: String) -> Bool {
   }
 }
 
-fn reached_set(names: List<String>, graph: CallGraph<String>, start: String) -> Map<String, Bool> {
+fn reached_set(names: List<String>, graph: CallGraph, start: String) -> Map<String, Bool> {
   graph_reverse_reachable_members(names: names, graph: graph, start: start)
     |> fold(init: empty_map(), f: (reached, member) => map_insert(reached, member, true))
 }
@@ -298,7 +298,7 @@ fn policy_partition_resolver_ref() -> DeclarationRef {
   }
 }
 
-fn partition_call_graph(edges: List<ModuleDagEdge>) -> CallGraph<String> {
+fn partition_call_graph(edges: List<ModuleDagEdge>) -> CallGraph {
   CallGraph {
     edges: edges |> map(edge => GraphEdge { caller: edge.from as String, callee: edge.to as String })
   }

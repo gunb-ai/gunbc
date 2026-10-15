@@ -1219,13 +1219,23 @@ fn closure_symbols_published(xs: FreeMonoid<Symbol>, published: Map<Symbol, Node
   })
 }
 
-fn closure_decl_name_list(rows: List<DeclPhase1Row>) -> List<QualifiedName> {
-  fold_list(xs: rows, empty: [], cons: fn(acc, row) {
-    list_snoc_item(xs: acc, item: row.path)
+fn closure_qn_vertex(qn: QualifiedName) -> String {
+  fold_list(xs: qn, empty: "", cons: fn(acc, sym) {
+    if acc == "" {
+      symbol_lexeme(sym: sym)
+    } else {
+      concat(acc, ".", symbol_lexeme(sym: sym))
+    }
   })
 }
 
-fn closure_decl_call_graph(rows: List<DeclPhase1Row>) -> CallGraph<QualifiedName> {
+fn closure_decl_name_list(rows: List<DeclPhase1Row>) -> List<String> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, row) {
+    list_snoc_item(xs: acc, item: closure_qn_vertex(qn: row.path))
+  })
+}
+
+fn closure_decl_call_graph(rows: List<DeclPhase1Row>) -> CallGraph {
   CallGraph {
     edges: fold_list(xs: rows, empty: [], cons: fn(acc, row) {
       fold_list(xs: row.callees, empty: acc, cons: fn(eacc, callee) {
@@ -1234,7 +1244,10 @@ fn closure_decl_call_graph(rows: List<DeclPhase1Row>) -> CallGraph<QualifiedName
         } else {
           list_snoc_item(
             xs: eacc,
-            item: GraphEdge { caller: row.path, callee: callee }
+            item: GraphEdge {
+              caller: closure_qn_vertex(qn: row.path),
+              callee: closure_qn_vertex(qn: callee)
+            }
           )
         }
       })
@@ -1242,26 +1255,26 @@ fn closure_decl_call_graph(rows: List<DeclPhase1Row>) -> CallGraph<QualifiedName
   }
 }
 
-fn closure_rows_by_path(rows: List<DeclPhase1Row>) -> Map<QualifiedName, DeclPhase1Row> {
-  let empty: Map<QualifiedName, DeclPhase1Row> = empty_map()
+fn closure_rows_by_path(rows: List<DeclPhase1Row>) -> Map<String, DeclPhase1Row> {
+  let empty: Map<String, DeclPhase1Row> = empty_map()
   fold_list(xs: rows, empty: empty, cons: fn(acc, row) {
-    map_insert(m: acc, key: row.path, value: row)
+    map_insert(m: acc, key: closure_qn_vertex(qn: row.path), value: row)
   })
 }
 
-fn closure_row_at(rows: Map<QualifiedName, DeclPhase1Row>, path: QualifiedName) -> Optional<DeclPhase1Row> {
+fn closure_row_at(rows: Map<String, DeclPhase1Row>, path: String) -> Optional<DeclPhase1Row> {
   map_lookup(m: rows, key: path)
 }
 
-fn closure_reverse_components(xs: List<List<QualifiedName>>) -> List<List<QualifiedName>> {
+fn closure_reverse_components(xs: List<List<String>>) -> List<List<String>> {
   fold_list(xs: xs, empty: [], cons: fn(acc, c) { Cons { head: c, tail: acc } })
 }
 
 fn closure_component_blocking_refusal(
-  rows: Map<QualifiedName, DeclPhase1Row>,
+  rows: Map<String, DeclPhase1Row>,
   blocked: Map<QualifiedName, NonEmptyDiagnostics>,
   unavailable: Map<QualifiedName, NonEmptyDiagnostics>,
-  component: List<QualifiedName>
+  component: List<String>
 ) -> Optional<NonEmptyDiagnostics> {
   fold_list(xs: component, empty: optional_absent(), cons: fn(found, name) {
     match found {

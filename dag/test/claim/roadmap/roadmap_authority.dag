@@ -245,7 +245,7 @@ fn node_count_with_carrier_path(path: String) -> Int {
   nodes() |> filter(n => n.carriers |> any(p => p.path == path)) |> count
 }
 
-fn mechanical_graph() -> CallGraph<String> {
+fn mechanical_graph() -> CallGraph {
   CallGraph {
     edges: edges() |> map(e => GraphEdge {
       caller: e.parent as String,

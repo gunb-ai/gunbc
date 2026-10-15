@@ -6,38 +6,37 @@ import std.termination {
   TerminationProof
 }
 
-type GraphEdge<V> {
-  caller: V
-  callee: V
+type GraphEdge {
+  caller: String
+  callee: String
 }
 
-type CallGraph<V> {
-  edges: List<GraphEdge<V>>
+type CallGraph {
+  edges: List<GraphEdge>
 }
 
-type CallGraphAdjacencyViews<V> {
-  forward: Map<V, List<V>>
-  reverse: Map<V, List<V>>
+type CallGraphAdjacencyViews {
+  forward: Map<String, List<String>>
+  reverse: Map<String, List<String>>
 }
 
-type DfsFinishAcc<V> {
-  visited: Map<V, Bool>
-  order: List<V>
+type DfsFinishAcc {
+  visited: Set<String>
+  order: List<String>
 }
 
-type SccComponentAcc<V> {
-  visited: Map<V, Bool>
-  members: List<V>
+type SccComponentAcc {
+  visited: Set<String>
+  members: List<String>
 }
 
-fn seed_adjacency_map<V>(names: List<V>) -> Map<V, List<V>> {
-  let empty: Map<V, List<V>> = empty_map()
-  names |> fold(init: empty, f: (acc, name) =>
+fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
+  names |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, [])
   )
 }
 
-fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph<String> {
+fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
   CallGraph {
     edges: edges
       |> filter(e => e.caller != e.callee)
@@ -45,7 +44,7 @@ fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>
   }
 }
 
-fn build_adjacency_views<V>(names: List<V>, graph: CallGraph<V>) -> CallGraphAdjacencyViews<V> {
+fn build_adjacency_views(names: List<String>, graph: CallGraph) -> CallGraphAdjacencyViews {
   let initial_forward = seed_adjacency_map(names: names)
   let initial_reverse = seed_adjacency_map(names: names)
   graph.edges |> fold(init: CallGraphAdjacencyViews { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
@@ -64,83 +63,81 @@ fn build_adjacency_views<V>(names: List<V>, graph: CallGraph<V>) -> CallGraphAdj
   )
 }
 
-fn forward_adjacency<V>(names: List<V>, graph: CallGraph<V>) -> Map<V, List<V>> {
+fn forward_adjacency(names: List<String>, graph: CallGraph) -> Map<String, List<String>> {
   build_adjacency_views(names: names, graph: graph).forward
 }
 
-fn reverse_adjacency<V>(names: List<V>, graph: CallGraph<V>) -> Map<V, List<V>> {
+fn reverse_adjacency(names: List<String>, graph: CallGraph) -> Map<String, List<String>> {
   build_adjacency_views(names: names, graph: graph).reverse
 }
 
-fn dfs_finish_order<V>(node: V, adjacency: Map<V, List<V>>, acc: DfsFinishAcc<V>) -> DfsFinishAcc<V> {
-  match map_get(acc.visited, node) {
-    Present { value: _ } => acc
-    Absent =>
-      let next_visited = map_insert(acc.visited, node, true)
-      let neighbors = match map_get(adjacency, node) {
-        Present { value: ns } => ns
-        Absent => []
-      }
-      let explored = neighbors |> fold(init: DfsFinishAcc { visited: next_visited, order: acc.order }, f: (inner, neighbor) =>
-        dfs_finish_order(node: neighbor, adjacency: adjacency, acc: inner)
-      )
-      DfsFinishAcc { visited: explored.visited, order: explored.order |> list_push(node) }
+fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: DfsFinishAcc) -> DfsFinishAcc {
+  if set_contains(acc.visited, node) {
+    acc
+  } else {
+    let next_visited = set_insert(acc.visited, node)
+    let neighbors = match map_get(adjacency, node) {
+      Present { value: ns } => ns
+      Absent => []
+    }
+    let explored = neighbors |> fold(init: DfsFinishAcc { visited: next_visited, order: acc.order }, f: (inner, neighbor) =>
+      dfs_finish_order(node: neighbor, adjacency: adjacency, acc: inner)
+    )
+    DfsFinishAcc { visited: explored.visited, order: explored.order |> list_push(node) }
   }
 }
 
-fn dfs_collect_component<V>(node: V, adjacency: Map<V, List<V>>, acc: SccComponentAcc<V>) -> SccComponentAcc<V> {
-  match map_get(acc.visited, node) {
-    Present { value: _ } => acc
-    Absent =>
-      let next_visited = map_insert(acc.visited, node, true)
-      let next_members = acc.members |> list_push(node)
-      let neighbors = match map_get(adjacency, node) {
-        Present { value: ns } => ns
-        Absent => []
-      }
-      neighbors |> fold(init: SccComponentAcc { visited: next_visited, members: next_members }, f: (inner, neighbor) =>
-        dfs_collect_component(node: neighbor, adjacency: adjacency, acc: inner)
-      )
+fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc: SccComponentAcc) -> SccComponentAcc {
+  if set_contains(acc.visited, node) {
+    acc
+  } else {
+    let next_visited = set_insert(acc.visited, node)
+    let next_members = acc.members |> list_push(node)
+    let neighbors = match map_get(adjacency, node) {
+      Present { value: ns } => ns
+      Absent => []
+    }
+    neighbors |> fold(init: SccComponentAcc { visited: next_visited, members: next_members }, f: (inner, neighbor) =>
+      dfs_collect_component(node: neighbor, adjacency: adjacency, acc: inner)
+    )
   }
 }
 
-type SccComponentsAcc<V> {
-  visited: Map<V, Bool>
-  components: List<List<V>>
+type SccComponentsAcc {
+  visited: Set<String>
+  components: List<List<String>>
 }
 
 // Kosaraju: the second pass visits the transpose in decreasing finish order, so the components
 // arrive in topological order of the condensation -- a component precedes every component its
 // members reach. Consumers that want dependencies first reverse the list; the order is a fact of
 // the algorithm, not a presentation choice.
-fn graph_strongly_connected_components<V>(
-  names: List<V>,
-  graph: CallGraph<V>,
-) -> List<List<V>> {
+fn graph_strongly_connected_components(
+  names: List<String>,
+  graph: CallGraph,
+) -> List<List<String>> {
   let adjacency = build_adjacency_views(names: names, graph: graph)
-  let empty_finish: Map<V, Bool> = empty_map()
-  let finish = names |> fold(init: DfsFinishAcc { visited: empty_finish, order: [] }, f: (acc, name) =>
+  let finish = names |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, name) =>
     dfs_finish_order(node: name, adjacency: adjacency.forward, acc: acc)
   )
-  let empty_scc: Map<V, Bool> = empty_map()
-  let result = finish.order |> reverse |> fold(init: SccComponentsAcc { visited: empty_scc, components: [] }, f: (acc, name) =>
-    match map_get(acc.visited, name) {
-      Present { value: _ } => acc
-      Absent =>
-        let component = dfs_collect_component(node: name, adjacency: adjacency.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
-        SccComponentsAcc {
-          visited: component.visited,
-          components: acc.components |> list_push(component.members)
-        }
+  let result = finish.order |> reverse |> fold(init: SccComponentsAcc { visited: empty_set(), components: [] }, f: (acc, name) =>
+    if set_contains(acc.visited, name) {
+      acc
+    } else {
+      let component = dfs_collect_component(node: name, adjacency: adjacency.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
+      SccComponentsAcc {
+        visited: component.visited,
+        components: acc.components |> list_push(component.members)
+      }
     }
   )
   result.components
 }
 
-fn graph_multi_node_scc_members<V>(
-  names: List<V>,
-  graph: CallGraph<V>,
-) -> List<V> {
+fn graph_multi_node_scc_members(
+  names: List<String>,
+  graph: CallGraph,
+) -> List<String> {
   graph_strongly_connected_components(names: names, graph: graph)
     |> fold(init: [], f: (acc, component) =>
       if (component |> count) > 1 {
@@ -151,27 +148,26 @@ fn graph_multi_node_scc_members<V>(
     )
 }
 
-fn graph_has_multi_node_scc<V>(names: List<V>, graph: CallGraph<V>) -> Bool {
+fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
   count(graph_multi_node_scc_members(names: names, graph: graph)) > 0
 }
 
-fn graph_cycle_members<V>(
-  names: List<V>,
-  graph: CallGraph<V>,
-) -> List<V> {
-  let empty_self: Map<V, Bool> = empty_map()
+fn graph_cycle_members(
+  names: List<String>,
+  graph: CallGraph,
+) -> List<String> {
   let self_scan = graph.edges
     |> filter(edge => edge.caller == edge.callee)
     |> fold(
-      init: DfsFinishAcc { visited: empty_self, order: [] },
+      init: DfsFinishAcc { visited: empty_set(), order: [] },
       f: fn(acc, edge) {
-        match map_get(acc.visited, edge.caller) {
-          Present { value: _ } => acc
-          Absent =>
-            DfsFinishAcc {
-              visited: map_insert(acc.visited, edge.caller, true),
-              order: list_push(acc.order, edge.caller),
-            }
+        if set_contains(acc.visited, edge.caller) {
+          acc
+        } else {
+          DfsFinishAcc {
+            visited: set_insert(acc.visited, edge.caller),
+            order: list_push(acc.order, edge.caller),
+          }
         }
       },
     )
@@ -185,17 +181,16 @@ fn graph_cycle_members<V>(
   )
 }
 
-fn graph_reverse_reachable_members<V>(
-  names: List<V>,
-  graph: CallGraph<V>,
-  start: V,
-) -> List<V> {
-  let empty_reached: Map<V, Bool> = empty_map()
+fn graph_reverse_reachable_members(
+  names: List<String>,
+  graph: CallGraph,
+  start: String,
+) -> List<String> {
   let reached = dfs_collect_component(
     node: start,
     adjacency: reverse_adjacency(names: names, graph: graph),
     acc: SccComponentAcc {
-      visited: empty_reached,
+      visited: empty_set(),
       members: [],
     },
   )

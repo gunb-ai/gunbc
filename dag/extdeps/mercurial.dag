@@ -1104,7 +1104,7 @@ fn mercurial_node_present(
 
 fn mercurial_first_cycle_node(
   nodes: List<MercurialNodeId>,
-  graph: CallGraph<String>,
+  graph: CallGraph,
 ) -> MercurialNodeId? {
   let names = nodes |> map(node => mercurial_node_id_text(node: node))
   match graph_cycle_members(
@@ -1123,7 +1123,7 @@ fn mercurial_first_cycle_node(
 
 fn mercurial_changeset_parent_graph(
   changesets: List<MercurialChangeset>,
-) -> CallGraph<String> {
+) -> CallGraph {
   CallGraph {
     edges: changesets |> flat_map(changeset =>
       mercurial_revision_parent_nodes(parents: changeset.parents)
@@ -1137,7 +1137,7 @@ fn mercurial_changeset_parent_graph(
 
 fn mercurial_file_revision_parent_graph(
   file_revisions: List<MercurialFileRevision>,
-) -> CallGraph<String> {
+) -> CallGraph {
   CallGraph {
     edges: file_revisions |> flat_map(file_revision =>
       mercurial_revision_parent_nodes(parents: file_revision.parents)
