@@ -415,6 +415,13 @@ fn claim_request(node_id: String, attempt_key: String) -> AttemptSystemUnitStart
   }
 }
 
+// THE `+` PREFIX IS THE CONFINEMENT, not its withdrawal. gunbc.roadmap.roadmap_attempt_exit_spool
+// attempt_exit_hook renders ExecStopPost through exec_command_line_full_privileges: a fixed
+// refuse-on-syntax mkdir of a create-only inbox path from root-derived facts, run outside the unit
+// sandbox so the confined process cannot write that inbox. An earlier conjunct asserted
+// !starts_with(exit_hook, "+") as if the prefix were a requester-chosen privilege grant; that
+// reading diverges from the spool's design. This claim requires the prefix because the launcher
+// inhabits that one hook, not a request-supplied line.
 test fn the_launcher_derives_the_exit_hook_from_the_attempt_identity() -> Bool {
   let inst = srv1_lab_dashboard_instance()
   let node = "n1"
