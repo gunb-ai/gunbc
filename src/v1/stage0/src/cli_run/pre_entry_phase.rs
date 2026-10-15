@@ -86,6 +86,14 @@ thread_local! {
 
 /// Record the demand-acquired set size for `gunbc run` so the population line is
 /// the closure, not `refused` from a missing whole-tree shared index.
+pub(crate) fn mark_demand_acquired_path() {
+    DEMAND_ACQUIRED_MODULES.with(|c| {
+        if c.get().is_none() {
+            c.set(Some(0));
+        }
+    });
+}
+
 pub(crate) fn record_demand_acquired_modules(n: usize) {
     DEMAND_ACQUIRED_MODULES.with(|c| c.set(Some(n)));
 }

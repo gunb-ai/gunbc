@@ -46,6 +46,7 @@ fn build_demand_acquired_index(
     source_roots: &[String],
     entry_file: &str,
 ) -> Result<Rc<MultiEntryIndex>, String> {
+    super::pre_entry_phase::mark_demand_acquired_path();
     let source_files = acquire_layout_closure(source_roots, entry_file)?;
     super::pre_entry_phase::record_demand_acquired_modules(source_files.len());
     let facts = module_graph_facts_from_acquired(&source_files, source_roots);
