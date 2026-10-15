@@ -8,6 +8,7 @@ import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, sy
 import v2.compiler.normalized_tree {
   NormalizedTree,
   normalized_tree_import_bindings,
+  normalized_tree_imported_modules,
   normalized_tree_record_declarations,
   normalized_tree_resource_declarations,
   normalized_tree_roots_to_binding_sources
@@ -759,6 +760,56 @@ fn import_edge_from_binding_row(row: AliasBindingRow) -> Import {
   }
 }
 
+// AN IMPORT NAMES A DEPENDENCY WHETHER OR NOT ANY NAME FROM IT IS DEMANDED. NamespaceOnlyY
+// previously admitted only captured alias rows, so a missing module whose listed names were unused
+// (or whose block was empty) never reached module_root_find. Existence is judged here without
+// merging the imported module's exports (that merge is ImportScoped / admit_import_visible_entry).
+fn admit_imported_module_existence(
+  roots: FreeMonoid<NormalizedTree>,
+  import_edge: Import,
+  state: AdmissionState
+) -> AdmissionState {
+  match state {
+    AdmissionRejected { diagnostics: d } =>
+      AdmissionRejected { diagnostics: d }
+    AdmissionAccepted { bindings: _, origins: _ } =>
+      match module_root_find(roots: roots, name: import_edge.target) {
+        Rejected { diagnostics: d } =>
+          AdmissionRejected { diagnostics: d }
+        Accepted { value: _, diagnostics: _ } => state
+      }
+  }
+}
+
+fn admit_imported_modules(
+  roots: FreeMonoid<NormalizedTree>,
+  modules: FreeMonoid<QualifiedName>,
+  state: AdmissionState,
+  subject_qn: QualifiedName,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>
+) -> AdmissionState {
+  fold_list(
+    xs: modules,
+    empty: state,
+    cons: fn(acc, target) {
+      let edge = Import { target: target, visibility: ImportVisible }
+      match admit_import_cross_tree_gate(
+        import_edge: edge,
+        state: acc,
+        subject_qn: subject_qn,
+        index: index,
+        active_roots: active_roots
+      ) {
+        AdmissionRejected { diagnostics: d } =>
+          AdmissionRejected { diagnostics: d }
+        AdmissionAccepted { bindings: _, origins: _ } =>
+          admit_imported_module_existence(roots: roots, import_edge: edge, state: acc)
+      }
+    }
+  )
+}
+
 fn admit_captured_import_rows(
   rows: FreeMonoid<AliasBindingRow>,
   state: AdmissionState,
@@ -966,6 +1017,19 @@ fn namespace_for_subject_root(
               diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
             }
           AdmissionAccepted { bindings: _, origins: _ } =>
+            match admit_imported_modules(
+              roots: validated_roots.roots,
+              modules: normalized_tree_imported_modules(tree: subject_module_root),
+              state: initial,
+              subject_qn: admission.subject.name,
+              index: index,
+              active_roots: active_roots
+            ) {
+              AdmissionRejected { diagnostics: missing } =>
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: validate_diag, rejected: missing)
+                }
+              AdmissionAccepted { bindings: _, origins: _ } =>
             match admit_captured_import_rows(
               rows: normalized_tree_import_bindings(tree: subject_module_root),
               state: initial,
@@ -990,6 +1054,7 @@ fn namespace_for_subject_root(
                   ),
                   diagnostics: validate_diag
                 }
+            }
             }
         }
       ImportScoped =>

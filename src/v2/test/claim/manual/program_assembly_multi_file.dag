@@ -139,6 +139,7 @@ fn pa_cross_file_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
     root: pa_graft_module_root(root: pa_subject_with_import_use()),
     test_markers: test_marker_channel_empty(),
     import_bindings: pa_subject_import_bindings(),
+    imported_modules: Cons { head: Cons { head: ^pa_imported_seg, tail: Empty }, tail: Empty },
     type_declaration_kinds: no_type_declaration_kinds(),
     type_declaration_modifiers: no_type_declaration_modifiers(),
     diagnostics: None

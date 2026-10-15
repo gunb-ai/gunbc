@@ -15,6 +15,16 @@ type AliasBindingRow {
   target: QualifiedName
 }
 
+// THE IMPORT LINE'S MODULE, ASIDE FROM THE BINDING ROWS. An import names a dependency even when
+// its block is empty: zero AliasBindingRow values is the using-directive exclusion (v2.extdeps.languages.dag
+// import_binding_rows_from_decl_node), not "this module imported nothing". The graft dissolves the
+// decl, so both facts are captured together at normalize. Checking only demanded names drops an
+// unresolvable import that uses nothing, which DESIGN section 5 forbids.
+type CapturedImports {
+  bindings: FreeMonoid<AliasBindingRow>
+  modules: FreeMonoid<QualifiedName>
+}
+
 // WHAT THE SYMBOL INDEX NEEDS FROM ONE MODULE IN ORDER TO BIND IT, and the reason it is a pair
 // rather than two parallel lists. The declarations come from the grafted root; the import rows
 // cannot, because the graft dissolved the decls that carried them, so they arrive from the carrier

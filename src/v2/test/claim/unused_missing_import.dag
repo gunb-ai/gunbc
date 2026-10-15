@@ -1,0 +1,78 @@
+module v2.test.claim.unused_missing_import
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_has_class,
+  fixture_blocking_rows
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SEED PATH: compile_fixture is the v1 pipeline over an authored manifest (no corpus roots).
+// An import names a dependency; a missing module must refuse even when no listed name is used.
+// A real unused import still accepts (unused-import lint is out of scope). A used missing import
+// keeps UnresolvedImport.
+
+data umi_peer_source: String = "module umi.peer\nfn umi_unused() -> Int { 1 }\n"
+
+data umi_entry_unused_missing: String = "module umi.entry\nimport umi.ghost { GhostUnused }\nfn umi_ok() -> Int { 1 }\n"
+
+data umi_entry_unused_real: String = "module umi.entry\nimport umi.peer { umi_unused }\nfn umi_ok() -> Int { 1 }\n"
+
+data umi_entry_used_missing: String = "module umi.entry\nimport umi.ghost { GhostUnused }\nfn umi_ok() -> Int { GhostUnused }\n"
+
+fn umi_run(entry: String, with_peer: Bool) -> MultiModuleCompileFixtureOutcome {
+  if with_peer {
+    compile_fixture(MultiModuleCompileFixture {
+      sources: [
+        fixture_source("umi/peer.dag", umi_peer_source),
+        fixture_source("umi/entry.dag", entry)
+      ],
+      entry: "umi/entry.dag"
+    })
+  } else {
+    compile_fixture(MultiModuleCompileFixture {
+      sources: [fixture_source("umi/entry.dag", entry)],
+      entry: "umi/entry.dag"
+    })
+  }
+}
+
+fn umi_refuses_unresolved(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows, "UnresolvedImport")
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+fn umi_compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(fixture_blocking_rows(rows)) == 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn unused_import_of_a_missing_module_refuses() -> Bool {
+  umi_refuses_unresolved(umi_run(umi_entry_unused_missing, false))
+}
+
+test fn unused_import_of_a_real_module_accepts() -> Bool {
+  umi_compiles_clean(umi_run(umi_entry_unused_real, true))
+}
+
+test fn used_import_of_a_missing_module_still_refuses() -> Bool {
+  umi_refuses_unresolved(umi_run(umi_entry_used_missing, false))
+}
