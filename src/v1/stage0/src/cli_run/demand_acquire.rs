@@ -406,27 +406,45 @@ mod tests {
             "dag/gunbc/v1/v1_maintenance_standing.dag",
         ];
         let function = "__no_such_function__";
+        let selected: Vec<&str> = match std::env::var("GUNBC_EQ_ENTRY") {
+            Ok(one) if !one.is_empty() => entries
+                .iter()
+                .copied()
+                .filter(|e| *e == one.as_str() || e.ends_with(one.as_str()))
+                .collect(),
+            _ => entries.to_vec(),
+        };
+        assert!(
+            !selected.is_empty(),
+            "GUNBC_EQ_ENTRY matched no probe entry"
+        );
         let mut failed = Vec::new();
         eprintln!("eq_table entry\tresolve\tdiags\tfunction");
-        for rel in entries {
+        for rel in selected {
             let entry = root.join(rel).to_string_lossy().into_owned();
+            eprintln!("eq_start demand {rel}");
             let demand = super::resolve_entry_graph_demand_acquired(&roots, &entry);
+            let demand_side = match demand {
+                Ok((gd, sd)) => {
+                    let diags = diag_msgs(&gd);
+                    let fn_d = function_result(&gd, sd, function);
+                    drop(gd);
+                    Ok((diags, fn_d))
+                }
+                Err(e) => Err(e),
+            };
+            eprintln!("eq_start tree {rel}");
             let tree = crate::cli_run::resolve_entry_graph(&roots, &entry);
-            let (resolve_match, diag_match, fn_match, fn_d, fn_t) = match (&demand, &tree) {
-                (Ok((gd, sd)), Ok((gt, st))) => {
-                    let d_ok = diag_msgs(gd) == diag_msgs(gt);
-                    let fd = function_result(gd, sd.clone(), function);
-                    let ft = function_result(gt, st.clone(), function);
+            let (resolve_match, diag_match, fn_match, fn_d, fn_t) = match (demand_side, tree) {
+                (Ok((dd, fd)), Ok((gt, st))) => {
+                    let d_ok = dd == diag_msgs(&gt);
+                    let ft = function_result(&gt, st, function);
+                    drop(gt);
                     (true, d_ok, fd == ft, fd, ft)
                 }
-                (Err(a), Err(b)) => (a == b, true, true, a.clone(), b.clone()),
-                _ => (
-                    false,
-                    false,
-                    false,
-                    format!("demand={demand:?}"),
-                    format!("tree={tree:?}"),
-                ),
+                (Err(a), Err(b)) => (a == b, true, true, a, b),
+                (Ok((_, fd)), Err(b)) => (false, false, false, fd, b),
+                (Err(a), Ok(_)) => (false, false, false, a, "tree=Ok".to_string()),
             };
             let ok = resolve_match && diag_match && fn_match;
             eprintln!(
