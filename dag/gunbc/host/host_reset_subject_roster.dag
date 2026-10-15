@@ -25,6 +25,11 @@ import gunbc.host.managed_host {
 import gunbc.machine_intake.subject { MachineIntakeSubject }
 import std.decl_ref { DeclarationRef }
 import gunbc.host.host_reset_boot_selection { reset_boot_selection }
+import gunbc.host.virtual_media_boot_selection {
+  VirtualMediaBootSelectionRefusal,
+  VirtualMediaBootSelectionAdmitted,
+  VirtualMediaBootSelectionRefused,
+}
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 
 // WHICH HOSTS THIS FLEET MAY DRIVE BACK TO A KNOWN STATE THROUGH THEIR CONTROLLERS, and it is a
@@ -54,15 +59,15 @@ type AdmittedResetSubject sole_constructor {
 type ResetSubjectAdmission
   = ResetSubjectAdmitted { subject: AdmittedResetSubject }
   | ResetSubjectUnbound { standing: ManagedHostBindingStanding }
-  | ResetSubjectNoSelection { host: HostIdentity }
+  | ResetSubjectNoSelection { host: HostIdentity, cause: VirtualMediaBootSelectionRefusal }
   | ResetSubjectControllerNotAdmitted { admission: OobBootHandoffAdmission }
 
 fn admit_reset_subject(host: ManagedHost) -> ResetSubjectAdmission {
   match managed_host_binding(host: host) {
     ManagedHostBound { binding: b } =>
       match reset_boot_selection(host: host) {
-        Absent => ResetSubjectNoSelection { host: host.host }
-        Present { value: selection } => {
+        VirtualMediaBootSelectionRefused { cause: c } => ResetSubjectNoSelection { host: host.host, cause: c }
+        VirtualMediaBootSelectionAdmitted { selection: selection } => {
           let admission = oob_boot_handoff_admission(observation: b.observation, capability_row: host.capability_row)
           if oob_handoff_is_admitted(admission: admission) {
             ResetSubjectAdmitted { subject: AdmittedResetSubject { binding: b, boot_selection: selection } }
@@ -87,7 +92,7 @@ fn admitted_reset_subjects(hosts: List<ManagedHost>) -> List<AdmittedResetSubjec
     f: (acc, h) => match admit_reset_subject(host: h) {
       ResetSubjectAdmitted { subject: s } => concat(acc, [s])
       ResetSubjectUnbound { standing: _ } => acc
-      ResetSubjectNoSelection { host: _ } => acc
+      ResetSubjectNoSelection { host: _, cause: _ } => acc
       ResetSubjectControllerNotAdmitted { admission: _ } => acc
     },
   )

@@ -4,9 +4,17 @@ import std.types { List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_virtual_media_boot_selection }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.boot_medium { BootMedium }
+import gunbc.host.board_platform_facts { host_board_architecture }
+import gunbc.host.controller_capability { controller_capability }
+import gunbc.host.virtual_media_boot_selection {
+  VirtualMediaBootSelectionOutcome,
+  VirtualMediaBootSelectionRefusal,
+  VirtualMediaBootSelectionAdmitted,
+  VirtualMediaBootSelectionRefused,
+  virtual_media_boot_selection,
+  virtual_media_boot_selection_refusal_text,
+}
 import gunbc.host.managed_host {
   ManagedHost,
   ManagedHostBinding,
@@ -22,15 +30,16 @@ import gunbc.host.managed_host {
 }
 
 // THE BOOT'S ONE-SHOT SELECTION IS BOOT POLICY for the pair (host, boot), so it is decided here and
-// never passed in: gunbc.host.host_reset_boot_selection decides the reset arm's own, and neither admission
-// accepts the other's value. A host with no selection here is not bootable however capable its
-// controller.
-fn boot_selection(host: ManagedHost) -> IpmiBootSelection? {
-  if host_identity_eq(a: host.host, b: operator_host_mtcollins1) {
-    Present { value: mtcollins1_virtual_media_boot_selection }
-  } else {
-    none
-  }
+// never passed in: gunbc.host.host_reset_boot_selection decides the reset arm's own, and neither
+// admission accepts the other's value. The selection is DERIVED from the host's facts — the
+// platform architecture its board establishes and the controller's virtual-media capability — with
+// no host-name branch: a second machine whose board admits the same SoC and whose controller row
+// carries the same media profile gets the same selection with no code change. A host that cannot
+// have a selection decided for it is not bootable however capable its controller.
+fn boot_selection(host: ManagedHost) -> VirtualMediaBootSelectionOutcome {
+  let arch = host_board_architecture(access: host.access)
+  let media = controller_capability(row: host.capability_row).virtual_media
+  virtual_media_boot_selection(arch: arch, media: media)
 }
 
 // THE ONE RECORD A BOOT ATTACHES, SELECTS, POWER-CYCLES AND JUDGES. sole_constructor, so admit_boot_subject
@@ -48,7 +57,7 @@ type AdmittedBootSubject sole_constructor {
 type BootSubjectRefusalCause
   = BootSubjectHostNotManaged
   | BootSubjectHostUnbound { standing: ManagedHostBindingStanding }
-  | BootSubjectNoSelection
+  | BootSubjectNoSelection { cause: VirtualMediaBootSelectionRefusal }
 
 type BootSubjectAdmission
   = BootSubjectAdmitted { subject: AdmittedBootSubject }
@@ -58,8 +67,9 @@ fn admit_boot_subject(host: ManagedHost, medium: BootMedium, execution_revision:
   match managed_host_binding(host: host) {
     ManagedHostBound { binding: b } =>
       match boot_selection(host: host) {
-        Absent => BootSubjectRefused { host: host.host, cause: BootSubjectNoSelection }
-        Present { value: s } =>
+        VirtualMediaBootSelectionRefused { cause: c } =>
+          BootSubjectRefused { host: host.host, cause: BootSubjectNoSelection { cause: c } }
+        VirtualMediaBootSelectionAdmitted { selection: s } =>
           BootSubjectAdmitted { subject: AdmittedBootSubject { binding: b, medium: medium, selection: s, execution_revision: execution_revision } }
       }
     ManagedHostAccessUnobserved { endpoint: e } =>
@@ -96,7 +106,7 @@ fn boot_subject_admission_for(host: HostIdentity, medium: BootMedium, execution_
 fn boot_subject_refusal_cause_text(cause: BootSubjectRefusalCause) -> String {
   match cause {
     BootSubjectHostNotManaged => "it is not a managed host (gunbc.host.managed_host managed_hosts has no row for it)"
-    BootSubjectNoSelection => "no boot selection is decided for it (gunbc.host.managed_host_boot boot_selection)"
+    BootSubjectNoSelection { cause: c } => virtual_media_boot_selection_refusal_text(cause: c)
     BootSubjectHostUnbound { standing: s } =>
       match s {
         ManagedHostBound { binding: _ } => "it is bound"
