@@ -58,7 +58,7 @@ pub enum ItemKind {
     OtherItem,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ResourceRequirement {
     pub binding_name: String,
     pub resource: Rc<Node>,
@@ -93,7 +93,7 @@ pub fn item_resource_names(info: Rc<ItemInfo>) -> Rc<Vec<String>> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ItemInfo {
     pub name: String,
     pub module_name: String,
@@ -110,7 +110,7 @@ pub fn item_is_effectful_callee(info: Rc<ItemInfo>) -> bool {
         || ((item_resource_names(info.clone()).len() as i64) > 0))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ItemLookup {
     ItemFound { info: Rc<ItemInfo> },
@@ -118,7 +118,7 @@ pub enum ItemLookup {
     ItemNotFound,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ModuleInterface {
     pub summary: Rc<InterfaceSummary>,
     pub env: Rc<TypeEnv>,
@@ -135,7 +135,16 @@ pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> Rc<Dissol
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum ModuleTypecheckProgress {

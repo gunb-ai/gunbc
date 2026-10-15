@@ -41,7 +41,7 @@ pub type SemVerIdentity = NonEmptyStr;
 
 pub type SemVerConstraint = NonEmptyStr;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Eq, std::hash::Hash)]
 pub struct SemVerNumericField {
     digits: Rc<Vec<i64>>,
 }
@@ -84,14 +84,14 @@ pub fn semver_numeric_field(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerNumericField>>
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum SemVerIdentifier {
     SemVerNumericIdentifier { digits: Rc<SemVerNumericField> },
     SemVerAlphanumericIdentifier { label: NonEmptyStr },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Eq, std::hash::Hash)]
 pub struct SemVerVersion {
     pub major: Rc<SemVerNumericField>,
     pub minor: Rc<SemVerNumericField>,
