@@ -1,10 +1,10 @@
 module v2.compiler.inferred_tree
 
-import std.types { List }
+import std.types { List, Map }
 import v2.std.cardinality { TerminationProof }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
-import std.algebra { list_snoc_item, PartialFunction }
+import std.algebra { list_snoc_item, PartialFunction, empty_map, map_insert, map_lookup }
 import std.optional { Absent, Optional, Present }
 import v2.std.constraints { CanonicalGrounding }
 import v2.std.node { Node }

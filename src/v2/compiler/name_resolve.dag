@@ -1,6 +1,6 @@
 module v2.compiler.name_resolve
 
-import std.types { List, String }
+import std.types { List, Map, String }
 import v2.std.language_model { LanguageModel }
 import v2.std.member_declaration_kind { MemberKindChannel, no_member_declaration_kinds }
 
@@ -8,12 +8,13 @@ import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, sy
 import v2.compiler.normalized_tree {
   NormalizedTree,
   normalized_tree_import_bindings,
+  normalized_tree_imported_modules,
   normalized_tree_record_declarations,
   normalized_tree_resource_declarations,
   normalized_tree_roots_to_binding_sources
 }
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
-import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.body_lowering_fold { TypeDeclarationModifierChannel }
 import v2.compiler.resolve {
@@ -61,14 +62,14 @@ import v2.compiler.namespace_graft {
   namespace_graft_module_body_root
 }
 import v2.compiler.parse { parse_tree_projection_edge }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, PointwisePower, empty_map, map_contains_key, map_lookup, map_insert }
 import std.graph {
   CallGraph,
   GraphEdge,
   graph_strongly_connected_components
 }
-import v2.std.collection { Absent, Map, Present, PointwisePower, empty_map, map_contains_key, map_get_checked, map_lookup, map_insert, optional_absent, optional_present }
-import std.optional { Optional }
+import v2.std.witness { map_get_checked }
+import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -334,7 +335,7 @@ fn admit_export_symbol(
       AdmissionRejected { diagnostics: d }
     AdmissionAccepted { bindings: b, origins: os } =>
 
-      match v2.std.collection.map_get_checked(os, sym) {
+      match map_get_checked(os, sym) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: _ } =>
             AdmissionRejected {
@@ -759,6 +760,65 @@ fn import_edge_from_binding_row(row: AliasBindingRow) -> Import {
   }
 }
 
+// AN IMPORT NAMES A DEPENDENCY WHETHER OR NOT ANY NAME FROM IT IS DEMANDED. NamespaceOnlyY
+// previously admitted only captured alias rows, so a missing module whose listed names were unused
+// (or whose block was empty) never reached module_root_find. Existence is judged here without
+// merging the imported module's exports (that merge is ImportScoped / admit_import_visible_entry).
+fn admit_imported_module_existence(
+  roots: FreeMonoid<NormalizedTree>,
+  located: CapturedImportTarget,
+  state: AdmissionState
+) -> AdmissionState {
+  match state {
+    AdmissionRejected { diagnostics: d } =>
+      AdmissionRejected { diagnostics: d }
+    AdmissionAccepted { bindings: _, origins: _ } =>
+      match module_root_find(roots: roots, name: located.target) {
+        Rejected { diagnostics: d } =>
+          AdmissionRejected {
+            diagnostics: NonEmptyDiagnostics {
+              head: Diagnostic {
+                reason: d.head.reason,
+                at: located.at,
+                correction: d.head.correction
+              },
+              tail: d.tail
+            }
+          }
+        Accepted { value: _, diagnostics: _ } => state
+      }
+  }
+}
+
+fn admit_imported_modules(
+  roots: FreeMonoid<NormalizedTree>,
+  modules: FreeMonoid<CapturedImportTarget>,
+  state: AdmissionState,
+  subject_qn: QualifiedName,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>
+) -> AdmissionState {
+  fold_list(
+    xs: modules,
+    empty: state,
+    cons: fn(acc, located) {
+      let edge = Import { target: located.target, visibility: ImportVisible }
+      match admit_import_cross_tree_gate(
+        import_edge: edge,
+        state: acc,
+        subject_qn: subject_qn,
+        index: index,
+        active_roots: active_roots
+      ) {
+        AdmissionRejected { diagnostics: d } =>
+          AdmissionRejected { diagnostics: d }
+        AdmissionAccepted { bindings: _, origins: _ } =>
+          admit_imported_module_existence(roots: roots, located: located, state: acc)
+      }
+    }
+  )
+}
+
 fn admit_captured_import_rows(
   rows: FreeMonoid<AliasBindingRow>,
   state: AdmissionState,
@@ -966,6 +1026,19 @@ fn namespace_for_subject_root(
               diagnostics: rejected_with_pending(pending: validate_diag, rejected: d)
             }
           AdmissionAccepted { bindings: _, origins: _ } =>
+            match admit_imported_modules(
+              roots: validated_roots.roots,
+              modules: normalized_tree_imported_modules(tree: subject_module_root),
+              state: initial,
+              subject_qn: admission.subject.name,
+              index: index,
+              active_roots: active_roots
+            ) {
+              AdmissionRejected { diagnostics: missing } =>
+                Rejected {
+                  diagnostics: rejected_with_pending(pending: validate_diag, rejected: missing)
+                }
+              AdmissionAccepted { bindings: _, origins: _ } =>
             match admit_captured_import_rows(
               rows: normalized_tree_import_bindings(tree: subject_module_root),
               state: initial,
@@ -990,6 +1063,7 @@ fn namespace_for_subject_root(
                   ),
                   diagnostics: validate_diag
                 }
+            }
             }
         }
       ImportScoped =>
