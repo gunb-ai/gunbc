@@ -335,7 +335,6 @@ import v2.std.compilers.cli_surface {
   process_argv_expansion,
   ProcessArgvExpansion,
 }
-import extdeps.jobserver { jobserver_config }
 import gunbc.host.host_layout {
   CompilePoolPlacement,
   CompilePoolSliceDeclared,
@@ -5544,7 +5543,7 @@ fn build_cache_ensure_step(
 // THE EFFECT CARRIES NO PAYLOAD, AND THAT IS DELIBERATE AFTER THE A5 LESSON. EnsureBuildCacheInstance carries
 // its BuildCacheInstance because the desired daemon is a row a realizer would otherwise have to guess. The
 // pool's desired state is not a row: the slice NAME comes from the topology and the SIZE is derived by
-// gunbc.fleet.fleet_host_budget compile_pool_bytes_for from the cited jobserver knobs. Putting either on the effect
+// gunbc.fleet.fleet_host_budget compile_pool_bytes_for (which refuses a separate pool now that the jobserver sizing is retired). Putting either on the effect
 // would mint a second answer to a question that already has one authority, so the effect names the target host
 // and the derivation happens here from that host's own facts.
 // WHICH SLICE IS OBSERVED WHEN THE TOPOLOGY DECLARES NONE. Under CompilePoolInRunnerSlots there is no declared
@@ -5678,19 +5677,7 @@ fn compile_pool_ensure_admission_for(
 // the host stops conserving, and they agree because there is one derivation, not because two call sites were
 // kept in step.
 fn compile_pool_sizing_for_host(node: ComputeHost, placement: CompilePoolPlacement) -> CompilePoolResolution {
-  match compute_host_primary_cpu(host: node) {
-    Absent =>
-      CompilePoolUnresolved {
-        reason: "compile pool unresolved: the target ComputeHost declares no primary CPU, so the jobserver token count that sizes the pool cannot be derived; fail-closed, no default size",
-      }
-    Present { value: cpu } =>
-      compile_pool_bytes_for(
-        placement: placement,
-        nproc: cpu_facts_threads(cpu: cpu),
-        host: compute_host_ram_bytes_total(host: node),
-        citation: jobserver_config,
-      )
-  }
+  compile_pool_bytes_for(placement: placement)
 }
 
 // The admission runs TWICE and the second run is not a formality: it is the postcondition, re-derived from a
