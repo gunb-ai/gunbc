@@ -23,7 +23,7 @@ import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, Fol
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string, qualified_name_snoc, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node, qualified_name_spine_segment_nodes, lexical_reference_node }
 import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY, default_name_resolution_policy }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations }
-import v2.std.symbol_index { symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of }
+import v2.std.symbol_index { symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of }
 import v2.std.node { BinderTypeEdge, core_edge, Occupancy, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge }
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query { field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, node_positional_child_targets, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
@@ -2000,11 +2000,14 @@ fn resolve_kernel_candidates_all_denote(ctx: ResolveContext, class: AmbiguousLoo
 
 fn resolve_kernel_candidate_list_denotes(ctx: ResolveContext, cs: FreeMonoid<LexicalBindingCandidate>, canonical: Symbol) -> Bool {
   fold_list(xs: cs, empty: true, cons: fn(acc, c) {
-    acc && match dag_kernel_type_declaration_binding_optional(
-      path: symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: c.path)
-    ) {
-      Present { value: k } => k == canonical
-      Absent => false
+    acc && match symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: c.path) {
+      MentionDeclaringUnique { declaring: declaring } =>
+        match dag_kernel_type_declaration_binding_optional(path: declaring) {
+          Present { value: k } => k == canonical
+          Absent => false
+        }
+      MentionDeclaringUnavailable => false
+      MentionDeclaringContested { claimants: _ } => false
     }
   })
 }
@@ -3974,18 +3977,22 @@ fn resolve_kind_variant_paths_optional(ctx: ResolveContext, declaration: Qualifi
         required: TypeOccurrence
       ) {
         LexicalHit { node: kind_decl, path: kind_binding } =>
-          let kind_path = symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: kind_binding)
-          match kind_decl.kind {
-            TypeNode { connective: Disj } =>
-              optional_present(value: fold(kind_decl.children, init: Empty, f: fn(acc, e) {
-                match e.label {
-                  Authored { name: v } => list_snoc_item(xs: acc, item: qualified_name_snoc(qn: kind_path, segment: v))
-                  StructuralLabel { label: _ } => acc
-                  Positional => acc
-                }
-              }))
-            TypeNode { connective: _ } => optional_absent()
-            ComputationNode { behavior: _ } => optional_absent()
+          match symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: kind_binding) {
+            MentionDeclaringUnavailable => optional_absent()
+            MentionDeclaringContested { claimants: _ } => optional_absent()
+            MentionDeclaringUnique { declaring: kind_path } =>
+              match kind_decl.kind {
+                TypeNode { connective: Disj } =>
+                  optional_present(value: fold(kind_decl.children, init: Empty, f: fn(acc, e) {
+                    match e.label {
+                      Authored { name: v } => list_snoc_item(xs: acc, item: qualified_name_snoc(qn: kind_path, segment: v))
+                      StructuralLabel { label: _ } => acc
+                      Positional => acc
+                    }
+                  }))
+                TypeNode { connective: _ } => optional_absent()
+                ComputationNode { behavior: _ } => optional_absent()
+              }
           }
         LexicalAmbiguous { candidates: _ } => optional_absent()
         LexicalUnbound => optional_absent()

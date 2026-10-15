@@ -491,25 +491,31 @@ fn symbol_index_claimants_at(
   }
 }
 
-// A RE-EXPORT'S DECLARING PATH IS THE HOME'S, NOT THE RELAY'S. A row's target names a POSITION
-// the index can answer at, and for a re-export chain that position is another row's BINDING --
-// `v2.compiler.normalize` imports `Absent` from `v2.std.collection`, which imports it from
-// `v2.std.optional` and declares it nowhere. Handing that target back as a declaring path would
-// give one declaration two identities, one per relay it was reached through, which is the fork this
-// index exists to close (review 70003 on gunbc#12048). The chase is one step and needs no new
-// authority: symbol_index_claimants_at ALREADY answers "who declares what lives at this position",
-// returning the position itself when pass A wrote a declaration there and the recorded declaring
-// path when a row bound there -- and a relay's own row was chased the same way when it bound, so
-// one step reaches the terminal home rather than the next link. A caller reaching here through
-// symbol_index_lookup has already been refused a contested position, so the claimant is unique;
-// an unoccupied target is its own name, which is the pass-A reading.
+// THE DECLARING IDENTITY AT A MENTION PATH IS THREE-VALUED. symbol_index_claimants_at already
+// answers who claims the position; taking list_head of that list was a fill-order pick whenever
+// two distinct declarations bound one mention, and the comment that callers were contest-aware
+// was false (alias unfold and identity join both unfolded the first claimant). No claimant:
+// identity unavailable — never the mention spelling as a fabricated home. Exactly one: that
+// declaring path (a re-export still chases one step, because claimants_at already did). Two or
+// more: contested, naming every claimant. A QualifiedName return made the silent pick unwritable
+// only by diligence; this type makes it unwritable.
+type MentionDeclaringIdentity
+  = MentionDeclaringUnique { declaring: QualifiedName }
+  | MentionDeclaringUnavailable
+  | MentionDeclaringContested { claimants: FreeMonoid<QualifiedName> }
+
 fn symbol_index_declaring_path_of(
   index: SymbolIndex,
   target: QualifiedName
-) -> QualifiedName {
-  match list_head(xs: symbol_index_claimants_at(index: index, binding_path: target)) {
-    Present { value: declaring } => declaring
-    Absent => target
+) -> MentionDeclaringIdentity {
+  match symbol_index_claimants_at(index: index, binding_path: target) {
+    Empty => MentionDeclaringUnavailable
+    Cons { head: declaring, tail: rest } =>
+      match rest {
+        Empty => MentionDeclaringUnique { declaring: declaring }
+        Cons { head: _, tail: _ } =>
+          MentionDeclaringContested { claimants: Cons { head: declaring, tail: rest } }
+      }
   }
 }
 

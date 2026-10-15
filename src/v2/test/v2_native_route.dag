@@ -72,7 +72,7 @@ import v2.std.diagnostic {
 }
 import std.algebra { Cons, FreeSemigroup, fold_list, length, empty_map, map_insert }
 import v2.std.node { Symbol }
-import v2.std.integer { Int }
+import std.integer { Int }
 
 // ── synthetic receipt constructors ─────────────────────────────────────────────────────────
 //
