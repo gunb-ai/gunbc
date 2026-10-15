@@ -41,13 +41,13 @@ fn known_hosts_host_field(address: SocketAddress) -> NonEmptyStr {
   }
 }
 
-// CONSUMED BY S2(b), a declared frontier (DESIGN §3c): the fleet ssh carriers SshTarget and
-// KnownHostKeyRow take `address: SocketAddress`, built by gunbc.fleet.fleet_reach_endpoint
-// fleet_probe_network_host. The row dissolves when that declaration appears.
+// CONSUMED BY S2(b), a declared frontier (DESIGN §3c): KnownHostKeyRow takes `address: SocketAddress`
+// and every reader of a row's host field goes through gunbc.fleet.fleet_host_key_enrollment
+// known_host_row_field. The row dissolves when that declaration appears.
 data known_hosts_host_field_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.ssh.known_hosts", decl_name: "known_hosts_host_field"),
     reason: "gunbc.fleet.fleet_host_key_enrollment known_hosts_line renders its host field through this once KnownHostKeyRow carries a SocketAddress",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_network_host")),
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "known_host_row_field")),
   )
 ]
