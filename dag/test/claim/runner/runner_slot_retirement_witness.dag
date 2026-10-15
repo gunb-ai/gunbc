@@ -946,8 +946,9 @@ test fn srv4s_authorization_does_not_cover_srv1s_obligation() -> Bool {
     }
 }
 
-// srv1'S OWN AUTHORIZATION COVERS ITS OBLIGATION (07..12 and 14..50). Without this row the production
-// observer stays absent.
+// srv1'S OWN AUTHORIZATION COVERS ITS OBLIGATION (07..12 and 14..50). This is the positive
+// coverage control; a sibling srv4 length==0 row was deleted because an empty obligation
+// cannot admit coverage. Without this row the production observer stays absent.
 test fn srv1s_obligation_is_fully_covered_by_its_declared_scope() -> Bool {
   let required = known_obligation_of(host: operator_host_srv1)
   list_length(items: required) > 0
@@ -975,14 +976,6 @@ test fn srv1s_obligation_is_fully_covered_by_its_declared_scope() -> Bool {
       auth: srv1_transition_interruption_authorization,
       unit: "actions-runner@srv1-13.service",
     )
-}
-
-// srv4'S PRIOR EQUALS ITS TARGET, SO THE OBLIGATION IS EMPTY. That is not a coverage admit: there
-// is nothing to cover. The positive control that actually admits is
-// `srv1s_obligation_is_fully_covered_by_its_declared_scope`.
-test fn srv4s_prior_equals_target_so_the_obligation_is_empty() -> Bool {
-  let required = known_obligation_of(host: operator_host_srv4)
-  list_length(items: required) == 0
 }
 
 // THE OBLIGATION DOES NOT READ THE CENSUS, which is the durability property the declaration exists
@@ -1143,6 +1136,13 @@ test fn srv1_at_width_7_owes_the_open_fifty_slot_delta() -> Bool {
         && any(units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(units, u => (u as String) == "actions-runner@srv1-13.service")
   }
+}
+
+test fn srv1_keeps_the_open_fifty_row_and_adds_twelve_to_seven() -> Bool {
+  let rows = transition_row_for_host(host: operator_host_srv1)
+  list_length(items: rows) == 2
+    && any(rows, t => (t.transition_id as String) == "runner-slot-26-25-gib" && t.prior_width == 50)
+    && any(rows, t => (t.transition_id as String) == "runner-slot-width-12-7" && t.prior_width == 12)
 }
 
 test fn a_host_at_its_current_width_owes_no_retirees() -> Bool {
