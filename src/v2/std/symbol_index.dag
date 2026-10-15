@@ -831,13 +831,14 @@ fn symbol_index_eligibility_partition(
     xs: candidates,
     empty: EligibilityPartition { eligible: Empty, excluded: Empty },
     cons: fn(acc, candidate) {
-      match occurrence_category_binding_verdict(reference: required, declaration: symbol_index_candidate_category(index: index, candidate: candidate)) {
+      let declared = symbol_index_candidate_category(index: index, candidate: candidate)
+      match occurrence_category_binding_verdict(reference: required, declaration: declared) {
         OccurrenceCategoryBindingAdmissible =>
           EligibilityPartition { eligible: list_snoc_item(xs: acc.eligible, item: candidate), excluded: acc.excluded }
         OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } =>
           EligibilityPartition {
             eligible: acc.eligible,
-            excluded: list_snoc_item(xs: acc.excluded, item: candidate)
+            excluded: list_snoc_item(xs: acc.excluded, item: ExcludedCandidate { candidate: candidate, category: declared })
           }
       }
     }
@@ -871,18 +872,24 @@ fn symbol_index_lexical_eligible_declared_payload(
 // is the wrong kind of declaration (a variant where a type is required), the second binds nothing.
 // Both were LexicalUnbound, so a caller that wanted to tell the author which it was had to
 // re-lookup the name under another category -- a second derivation of what this step already knew
-// (DESIGN section 2). That the set was excluded entirely is carried here, once; symbol_index_lexical_lookup_for is this verdict's projection onto LexicalLookup, so a
+// (DESIGN section 2). The excluded candidates and the category each was excluded for are carried
+// here, once; symbol_index_lexical_lookup_for is this verdict's projection onto LexicalLookup, so a
 // caller that does not ask the question sees the answer it always had. A genuinely empty set stays
 // EligibleLookup { LexicalUnbound }. Nothing here admits an excluded candidate: exclusion is
 // eligibility before none/one/many (#13832), and this arm only reports it.
+type ExcludedCandidate {
+  candidate: LexicalBindingCandidate
+  category: OccurrenceCategory
+}
+
 type EligibilityPartition {
   eligible: FreeMonoid<LexicalBindingCandidate>
-  excluded: FreeMonoid<LexicalBindingCandidate>
+  excluded: FreeMonoid<ExcludedCandidate>
 }
 
 type LexicalEligibility
   = EligibleLookup { lookup: LexicalLookup }
-  | ExcludedByCategory
+  | ExcludedByCategory { required: OccurrenceCategory, excluded: FreeMonoid<ExcludedCandidate> }
 
 fn symbol_index_lexical_eligibility(
   index: SymbolIndex,
@@ -896,7 +903,7 @@ fn symbol_index_lexical_eligibility(
       if is_empty(xs: part.excluded) {
         EligibleLookup { lookup: LexicalUnbound }
       } else {
-        ExcludedByCategory
+        ExcludedByCategory { required: required, excluded: part.excluded }
       }
     _ => EligibleLookup { lookup: symbol_index_lexical_selection(candidates: part.eligible) }
   }
@@ -910,7 +917,7 @@ fn symbol_index_lexical_lookup_for(
 ) -> LexicalLookup {
   match symbol_index_lexical_eligibility(index: index, position: position, name: name, required: required) {
     EligibleLookup { lookup: lookup } => lookup
-    ExcludedByCategory => LexicalUnbound
+    ExcludedByCategory { required: _, excluded: _ } => LexicalUnbound
   }
 }
 
