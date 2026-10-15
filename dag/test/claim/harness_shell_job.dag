@@ -8,11 +8,12 @@ import std.measure {
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int }
 import gunbc.harness.harness_wire { WireToolUseBlock }
+import extdeps.posix.process { ProcessReapOutcome, StillRunning, Exited }
 import gunbc.harness.harness_shell_job {
-  HarnessShellJob, HarnessShellJobState, JobRunning, JobFinished, JobExitedOutcome,
+  HarnessShellJob,
   harness_hand_in_blocked_by_running_jobs,
   StdioAtDestination, StdioKeptAtPending, harness_job_stdio_after_move, harness_job_stdio_path_of, harness_job_stdio_note,
-  HarnessTerminateProcessGroup, harness_kill_signal_note,
+  harness_kill_signal_note,
   harness_exit_is_harness_backstop, harness_command_table_exit_label,
   harness_backstop_standing, JobBackstopHit, JobOwnExit, JobBackstopUndecided,
   harness_elapsed_clock_resolution, ElapsedUnreadable, ElapsedWithinClockGrain,
@@ -33,7 +34,7 @@ fn unknown_elapsed() -> Second? {
   none
 }
 
-fn fixture_job(state: HarnessShellJobState) -> HarnessShellJob {
+fn fixture_job(reaped: ProcessReapOutcome, elapsed: Second?) -> HarnessShellJob {
   HarnessShellJob {
     id: "42",
     pid: 42,
@@ -42,15 +43,17 @@ fn fixture_job(state: HarnessShellJobState) -> HarnessShellJob {
     stderr: StdioAtDestination { path: "/tmp/job-42.err" as FilePath },
     started_at: "1970-01-01T00:00:00Z" as Timestamp,
     backstop: second(count: 20),
-    state: state,
+    reaped: reaped,
+    elapsed: elapsed,
   }
 }
 
+fn fixture_running() -> HarnessShellJob {
+  fixture_job(reaped: StillRunning, elapsed: none)
+}
+
 fn fixture_finished(code: Int, elapsed: Second?) -> HarnessShellJob {
-  fixture_job(state: JobFinished {
-    outcome: JobExitedOutcome { code: code },
-    elapsed: elapsed,
-  })
+  fixture_job(reaped: Exited { code: code }, elapsed: elapsed)
 }
 
 fn fixture_own_exit(code: Int) -> HarnessShellJob {
@@ -58,7 +61,7 @@ fn fixture_own_exit(code: Int) -> HarnessShellJob {
 }
 
 test fn hand_in_refuses_while_a_job_is_running() -> Bool {
-  match harness_hand_in_blocked_by_running_jobs(jobs: [fixture_job(state: JobRunning)]) {
+  match harness_hand_in_blocked_by_running_jobs(jobs: [fixture_running()]) {
     Absent => false
     Present { value: text } => text.contains("wait or job_kill")
   }
@@ -137,15 +140,8 @@ test fn wait_minutes_from_the_wire_are_a_minute_carrier() -> Bool {
 }
 
 test fn an_unconfirmed_kill_carries_the_terminate_stderr() -> Bool {
-  harness_kill_signal_note(
-    signaled: HarnessTerminateProcessGroup {
-      success: false,
-      stderr: "kill: (-9): Operation not permitted",
-    },
-  ).contains("Operation not permitted")
-    && harness_kill_signal_note(
-      signaled: HarnessTerminateProcessGroup { success: true, stderr: "" },
-    ) == ""
+  harness_kill_signal_note(success: false, stderr: "kill: (-9): Operation not permitted").contains("Operation not permitted")
+    && harness_kill_signal_note(success: true, stderr: "") == ""
 }
 
 test fn job_output_of_a_finished_exit_3_job_does_not_say_exit_0() -> Bool {
@@ -162,7 +158,7 @@ test fn job_output_of_a_finished_exit_3_job_does_not_say_exit_0() -> Bool {
 }
 
 test fn job_output_of_a_running_job_is_not_an_exit() -> Bool {
-  let job = fixture_job(state: JobRunning)
+  let job = fixture_running()
   match harness_job_output_for_state(job: job, jobs: [job], text: "so-far") {
     ToolJob { id, text } => id == "42" && text.contains("so-far")
     ToolCompleted { text: _, exit_code: _, standing: _ } => false
@@ -286,12 +282,13 @@ test fn a_failed_stdio_rename_keeps_the_mktemp_path_and_says_so() -> Bool {
     stderr: moved,
     started_at: "1970-01-01T00:00:00Z" as Timestamp,
     backstop: second(count: 20),
-    state: JobRunning,
+    reaped: StillRunning,
+    elapsed: none,
   }
   harness_job_stdio_path_of(stdio: kept) == pending
     && harness_job_stdio_path_of(stdio: moved) == ("/tmp/job-9.err" as FilePath)
     && (match kept { StdioKeptAtPending { path: _, intended: i } => i == dest  StdioAtDestination { path: _ } => false })
     && harness_job_stdio_note(job: job).contains("stdout kept at /tmp/pending-out")
     && !harness_job_stdio_note(job: job).contains("stderr")
-    && harness_job_stdio_note(job: fixture_job(state: JobRunning)) == ""
+    && harness_job_stdio_note(job: fixture_running()) == ""
 }

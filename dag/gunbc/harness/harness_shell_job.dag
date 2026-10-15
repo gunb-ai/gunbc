@@ -26,15 +26,9 @@ import gunbc.harness.harness_shell_job_policy {
 // gunbc.plans.harness_session_lifecycle requires the candidate not be mutated while acceptance
 // checks it.
 
-type HarnessShellJobOutcome
-  = JobExitedOutcome { code: Int }
-  | JobSignaledOutcome { signal: Int }
-  | JobReapRefusedOutcome { cause: NonEmptyStr }
-
-type HarnessShellJobState
-  = JobRunning
-  | JobFinished { outcome: HarnessShellJobOutcome, elapsed: Second? }
-
+// A JOB'S STANDING IS THE POSIX REAP ANSWER ITSELF (extdeps.posix.process ProcessReapOutcome):
+// StillRunning while it runs, then the first terminal answer, recorded once. elapsed is read at that
+// same reap edge, and is none while the job runs or when the clock read fails.
 type HarnessShellJob {
   id: String
   pid: Int
@@ -43,7 +37,8 @@ type HarnessShellJob {
   stderr: HarnessJobStdio
   started_at: Timestamp
   backstop: Second
-  state: HarnessShellJobState
+  reaped: ProcessReapOutcome
+  elapsed: Second?
 }
 
 // GNU timeout exits 124 when it kills the child. A command may also exit 124 itself, so 124 is
@@ -99,20 +94,17 @@ fn harness_elapsed_from_started_at(started_at: Timestamp) -> Second? {
   }
 }
 
-fn harness_finish_job(job: HarnessShellJob, outcome: HarnessShellJobOutcome) -> HarnessShellJob {
-  harness_job_with_state(
-    job: job,
-    state: JobFinished {
-      outcome: outcome,
-      elapsed: harness_elapsed_from_started_at(started_at: job.started_at),
-    },
-  )
-}
-
-fn harness_job_recorded_elapsed(job: HarnessShellJob) -> Second? {
-  match job.state {
-    JobRunning => none
-    JobFinished { outcome: _, elapsed } => elapsed
+fn harness_finish_job(job: HarnessShellJob, reaped: ProcessReapOutcome) -> HarnessShellJob {
+  HarnessShellJob {
+    id: job.id,
+    pid: job.pid,
+    command: job.command,
+    stdout: job.stdout,
+    stderr: job.stderr,
+    started_at: job.started_at,
+    backstop: job.backstop,
+    reaped: reaped,
+    elapsed: harness_elapsed_from_started_at(started_at: job.started_at),
   }
 }
 
@@ -139,43 +131,22 @@ fn harness_backstop_standing(code: Int, elapsed: Second?, backstop: Second) -> H
 fn harness_job_backstop_standing(job: HarnessShellJob, code: Int) -> HarnessJobBackstopStanding {
   harness_backstop_standing(
     code: code,
-    elapsed: harness_job_recorded_elapsed(job: job),
+    elapsed: job.elapsed,
     backstop: job.backstop,
   )
 }
 
-type HarnessShellJobObservation
-  = JobStillRunning { job: HarnessShellJob }
-  | JobExited { job: HarnessShellJob, code: Int }
-  | JobSignaled { job: HarnessShellJob, signal: Int }
-  | JobReapRefused { job: HarnessShellJob, cause: NonEmptyStr }
-
-fn harness_job_with_state(job: HarnessShellJob, state: HarnessShellJobState) -> HarnessShellJob {
-  HarnessShellJob {
-    id: job.id,
-    pid: job.pid,
-    command: job.command,
-    stdout: job.stdout,
-    stderr: job.stderr,
-    started_at: job.started_at,
-    backstop: job.backstop,
-    state: state,
-  }
-}
-
 fn harness_refresh_job(job: HarnessShellJob) -> HarnessShellJob {
-  match job.state {
-    JobFinished { outcome: _, elapsed: _ } => job
-    JobRunning =>
-      match posix.Process.Reap(pid: job.pid).reaped {
-        StillRunning => job
-        Exited { code } =>
-          harness_finish_job(job: job, outcome: JobExitedOutcome { code: code })
-        Signaled { signal } =>
-          harness_finish_job(job: job, outcome: JobSignaledOutcome { signal: signal })
-        ReapRefused { cause } =>
-          harness_finish_job(job: job, outcome: JobReapRefusedOutcome { cause: cause })
-      }
+  if !harness_job_is_running(job: job) {
+    job
+  } else {
+    let reaped = posix.Process.Reap(pid: job.pid).reaped
+    match reaped {
+      StillRunning => job
+      Exited { code: _ } => harness_finish_job(job: job, reaped: reaped)
+      Signaled { signal: _ } => harness_finish_job(job: job, reaped: reaped)
+      ReapRefused { cause: _ } => harness_finish_job(job: job, reaped: reaped)
+    }
   }
 }
 
@@ -184,26 +155,12 @@ fn harness_refresh_jobs(jobs: List<HarnessShellJob>) -> List<HarnessShellJob> {
 }
 
 fn harness_job_is_running(job: HarnessShellJob) -> Bool {
-  match job.state {
-    JobRunning => true
-    JobFinished { outcome: _, elapsed: _ } => false
+  match job.reaped {
+    StillRunning => true
+    Exited { code: _ } => false
+    Signaled { signal: _ } => false
+    ReapRefused { cause: _ } => false
   }
-}
-
-fn harness_observe_standing(job: HarnessShellJob) -> HarnessShellJobObservation {
-  match job.state {
-    JobRunning => JobStillRunning { job: job }
-    JobFinished { outcome, elapsed: _ } =>
-      match outcome {
-        JobExitedOutcome { code } => JobExited { job: job, code: code }
-        JobSignaledOutcome { signal } => JobSignaled { job: job, signal: signal }
-        JobReapRefusedOutcome { cause } => JobReapRefused { job: job, cause: cause }
-      }
-  }
-}
-
-fn harness_observe_job(job: HarnessShellJob) -> HarnessShellJobObservation {
-  harness_observe_standing(job: harness_refresh_job(job: job))
 }
 
 fn harness_command_table_exit_label(
@@ -224,19 +181,19 @@ fn harness_command_table_exit_label(
   }
 }
 
-fn harness_command_table_line(obs: HarnessShellJobObservation) -> String {
-  match obs {
-    JobStillRunning { job } =>
+fn harness_command_table_line(job: HarnessShellJob) -> String {
+  match job.reaped {
+    StillRunning =>
       join(["  ", job.id, "  running  $ ", job.command], "")
-    JobExited { job, code } =>
+    Exited { code } =>
       harness_command_table_exit_label(
         job: job,
         code: code,
         standing: harness_job_backstop_standing(job: job, code: code),
       )
-    JobSignaled { job, signal } =>
+    Signaled { signal } =>
       join(["  ", job.id, "  signaled ", to_string(value: signal), "  $ ", job.command], "")
-    JobReapRefused { job, cause } =>
+    ReapRefused { cause } =>
       join(["  ", job.id, "  reap refused: ", cause as String, "  $ ", job.command], "")
   }
 }
@@ -248,7 +205,7 @@ fn harness_command_table(jobs: List<HarnessShellJob>) -> String {
     join(
       concat(
         ["COMMAND TABLE:"],
-        map(jobs, j => harness_command_table_line(obs: harness_observe_standing(job: j))),
+        map(jobs, j => harness_command_table_line(job: j)),
       ),
       "\n",
     )
@@ -328,9 +285,9 @@ fn harness_await_pid(pid: Int, remaining: Second) -> ProcessReapOutcome {
           MeasureSubtrahendExceedsMinuend => StillRunning
         }
       }
-    Exited { code } => Exited { code: code }
-    Signaled { signal } => Signaled { signal: signal }
-    ReapRefused { cause } => ReapRefused { cause: cause }
+    Exited { code: _ } => reaped.reaped
+    Signaled { signal: _ } => reaped.reaped
+    ReapRefused { cause: _ } => reaped.reaped
   }
 }
 
@@ -347,7 +304,7 @@ fn harness_find_job(jobs: List<HarnessShellJob>, id: String) -> HarnessShellJob?
     })
 }
 
-fn harness_first_running_now_finished(before: List<HarnessShellJob>, after: List<HarnessShellJob>) -> HarnessShellJobObservation? {
+fn harness_first_running_now_finished(before: List<HarnessShellJob>, after: List<HarnessShellJob>) -> HarnessShellJob? {
   fold(after, init: none, f: (acc, j) =>
     match acc {
       Present { value: _ } => acc
@@ -356,7 +313,7 @@ fn harness_first_running_now_finished(before: List<HarnessShellJob>, after: List
           Absent => none
           Present { value: prior } =>
             if harness_job_is_running(job: prior) && !harness_job_is_running(job: j) {
-              Present { value: harness_observe_standing(job: j) }
+              Present { value: j }
             } else {
               none
             }
@@ -365,14 +322,14 @@ fn harness_first_running_now_finished(before: List<HarnessShellJob>, after: List
 }
 
 type HarnessWaitLoop
-  = WaitLoopFinished { jobs: List<HarnessShellJob>, observation: HarnessShellJobObservation }
+  = WaitLoopFinished { jobs: List<HarnessShellJob>, finished: HarnessShellJob }
   | WaitLoopExpired { jobs: List<HarnessShellJob> }
   | WaitLoopNoRunningJob { jobs: List<HarnessShellJob> }
 
 fn harness_wait_until_any(jobs: List<HarnessShellJob>, remaining: Second) -> HarnessWaitLoop {
   let stamped = harness_refresh_jobs(jobs: jobs)
   match harness_first_running_now_finished(before: jobs, after: stamped) {
-    Present { value: obs } => WaitLoopFinished { jobs: stamped, observation: obs }
+    Present { value: done } => WaitLoopFinished { jobs: stamped, finished: done }
     Absent =>
       if list_length(items: filter(stamped, j => harness_job_is_running(job: j))) == 0 {
         WaitLoopNoRunningJob { jobs: stamped }
@@ -459,7 +416,8 @@ fn harness_start_shell_job(
             stderr: harness_job_stdio_after_move(pending: pending_err.path, dest: dest_err, moved: moved_err.success),
             started_at: started_at,
             backstop: schedule.backstop,
-            state: JobRunning,
+            reaped: StillRunning,
+            elapsed: none,
           },
         }
       }
@@ -467,39 +425,31 @@ fn harness_start_shell_job(
   }
 }
 
-type HarnessTerminateProcessGroup {
-  success: Bool
-  stderr: String
-}
-
-fn harness_kill_process_group(pid: Int) -> HarnessTerminateProcessGroup {
-  let r = posix.Signal.TerminateProcessGroup(pgid: to_string(value: pid) as NonEmptyStr)
-  HarnessTerminateProcessGroup { success: r.success, stderr: r.stderr }
-}
-
-fn harness_kill_signal_note(signaled: HarnessTerminateProcessGroup) -> String {
-  if signaled.success {
+fn harness_kill_signal_note(success: Bool, stderr: String) -> String {
+  if success {
     ""
   } else {
-    join([" TerminateProcessGroup failed: ", signaled.stderr], "")
+    join([" TerminateProcessGroup failed: ", stderr], "")
   }
 }
+
+// HOW LONG job_kill WAITS FOR THE REAP THAT CONFIRMS THE KILL. SIGTERM is catchable, so no window
+// guarantees death; past it the kill is JobKillUnconfirmed and the job stays running in the table,
+// a loud answer rather than an escalation. The bound is what one job_kill tool round spends: the
+// shell and its children exit on SIGTERM within a second when they do not trap it, so five seconds
+// covers a group still flushing output without letting a trapping job stall the round.
+data harness_kill_reap_window: Second = second(count: 5)
 
 type HarnessJobKill
   = JobKillConfirmed { job: HarnessShellJob }
   | JobKillUnconfirmed { job: HarnessShellJob, detail: String }
 
 fn harness_kill_running_job(job: HarnessShellJob) -> HarnessJobKill {
-  let signaled = harness_kill_process_group(pid: job.pid)
-  match harness_await_pid(pid: job.pid, remaining: second(count: 5)) {
-    Exited { code } =>
-      JobKillConfirmed {
-        job: harness_finish_job(job: job, outcome: JobExitedOutcome { code: code }),
-      }
-    Signaled { signal } =>
-      JobKillConfirmed {
-        job: harness_finish_job(job: job, outcome: JobSignaledOutcome { signal: signal }),
-      }
+  let signaled = posix.Signal.TerminateProcessGroup(pgid: to_string(value: job.pid) as NonEmptyStr)
+  let reaped = harness_await_pid(pid: job.pid, remaining: harness_kill_reap_window)
+  match reaped {
+    Exited { code: _ } => JobKillConfirmed { job: harness_finish_job(job: job, reaped: reaped) }
+    Signaled { signal: _ } => JobKillConfirmed { job: harness_finish_job(job: job, reaped: reaped) }
     StillRunning =>
       JobKillUnconfirmed {
         job: job,
@@ -508,7 +458,7 @@ fn harness_kill_running_job(job: HarnessShellJob) -> HarnessJobKill {
             "job ",
             job.id,
             " is still running after TerminateProcessGroup",
-            harness_kill_signal_note(signaled: signaled),
+            harness_kill_signal_note(success: signaled.success, stderr: signaled.stderr),
           ],
           "",
         ),
@@ -522,7 +472,7 @@ fn harness_kill_running_job(job: HarnessShellJob) -> HarnessJobKill {
             job.id,
             " reap refused after TerminateProcessGroup: ",
             cause as String,
-            harness_kill_signal_note(signaled: signaled),
+            harness_kill_signal_note(success: signaled.success, stderr: signaled.stderr),
           ],
           "",
         ),
