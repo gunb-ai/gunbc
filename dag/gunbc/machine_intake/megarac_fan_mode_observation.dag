@@ -224,7 +224,7 @@ type MegaRacDutyConvergeVerdict
 fn megarac_rpm_abs_delta(a: RevolutionsPerMinute, b: RevolutionsPerMinute) -> Nat {
   let ac = rpm_count(r: a)
   let bc = rpm_count(r: b)
-  if ac >= bc {
+  if (ac >= bc) {
     ac - bc
   } else {
     bc - ac
@@ -232,7 +232,7 @@ fn megarac_rpm_abs_delta(a: RevolutionsPerMinute, b: RevolutionsPerMinute) -> Na
 }
 
 fn megarac_tach_rpm_unmoved(before: List<RevolutionsPerMinute>, after: List<RevolutionsPerMinute>, floor: RevolutionsPerMinute) -> Bool {
-  if before.length() != after.length() {
+  if (before.length() != after.length()) {
     false
   } else {
     match before.first() {
@@ -240,7 +240,7 @@ fn megarac_tach_rpm_unmoved(before: List<RevolutionsPerMinute>, after: List<Revo
       Present { value: b } => match after.first() {
         Absent => false
         Present { value: a } =>
-          if megarac_rpm_abs_delta(a: b, b: a) >= rpm_count(r: floor) {
+          if (megarac_rpm_abs_delta(a: b, b: a) >= rpm_count(r: floor)) {
             false
           } else {
             megarac_tach_rpm_unmoved(
@@ -263,19 +263,19 @@ fn megarac_duty_converge_verdict(
 ) -> MegaRacDutyConvergeVerdict {
   match fidelity {
     MegaRacTachFidelityUnestablished { clears_when: _ } =>
-      if !pwm_echo_matches_desired {
+      if (!pwm_echo_matches_desired) {
         MegaRacDutyNotConvergedEchoMismatch
-      } else if !guard_holds_over_dwell {
+      } else if (!guard_holds_over_dwell) {
         MegaRacDutyNotConvergedGuardOpen
       } else {
         MegaRacDutyConvergedEchoTachUnfaithful { fidelity: fidelity }
       }
     MegaRacTachFidelityEstablished =>
-      if megarac_tach_rpm_unmoved(
+      if (megarac_tach_rpm_unmoved(
         before: tach_before_rpm,
         after: tach_after_rpm,
         floor: megarac_duty_tach_move_floor,
-      ) {
+      )) {
         MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: pwm_echo_matches_desired }
       } else {
         MegaRacDutyConvergedTachMoved
