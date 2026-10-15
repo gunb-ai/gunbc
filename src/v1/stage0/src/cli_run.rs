@@ -9751,28 +9751,6 @@ mod closure_edge_demand_tests {
         );
     }
 
-    /// The floor's index controls run over a shared index the caller already built, and pass when
-    /// each file's reading was parsed once and no name set was indexed twice.
-    #[test]
-    fn floor_index_controls_hold_over_a_shared_index_the_closure_already_read() {
-        let fixture = Fixture::new(&[
-            (
-                "entry.dag",
-                "module ctl_entry\nfn main() -> Int { ctl.provider.one() }\n",
-            ),
-            (
-                "provider.dag",
-                "module ctl.provider\nfn one() -> Int { 1 }\n",
-            ),
-        ]);
-        let roots = vec![fixture.0.to_string_lossy().into_owned()];
-        let index = try_process_shared_index(&roots).unwrap();
-        load_sources_for_entry_with_pool(&index, &fixture.0.join("entry.dag").to_string_lossy())
-            .unwrap();
-        required_floor_runner::floor_index_controls("fixture", &[("fixture-roots", roots)])
-            .unwrap();
-    }
-
     /// A SECOND POOL REFUSES AT BUILD, naming both root sets and the demanding site, and the
     /// resident pool survives it: the residency control still reads one pool and the first
     /// roots are still served from the memo. Red before the build-site refusal (the second
@@ -18314,268 +18292,6 @@ fn hermetic_effect_ground_verdict(
     }
 }
 
-/// The completeness reconciliation, as ONE authority.
-///
-/// It is a free function rather than inline in the fold because the test that proves it must
-/// call THE PRODUCTION CODE. An earlier draft of that test carried its own copy of this loop:
-/// it passed, and it would have kept passing while production drifted arbitrarily far from it —
-/// a control sharing nothing with its subject except a name. Extracting it costs nothing and is
-/// the difference between a test of the reconciliation and a test of a paraphrase of it.
-///
-/// Returns (expected-without-observed, observed-without-expected, observed-duplicated). Three
-/// sets rather than a first-failure verdict: an omission and a duplicate arrive together and
-/// cancel in every count, so reporting only the first found would hide the half that explains it.
-///
-/// IT TAKES IDENTITIES, NOT ROWS, because the floor performs this join at more than one seam and
-/// the join is one fact. Downstream it is planned-claim identities against terminal ledger rows;
-/// upstream it is the offered witness population against the disposition projection
-/// (`run_required_floor`, `FloorDispositionJoinInexact`). A per-seam copy keyed on that seam's
-/// row type would be the same loop written twice, drifting independently — so each caller
-/// projects its own rows to identities and hands them here.
-pub fn reconcile_identity_population<'a>(
-    expected: &'a HashSet<String>,
-    observed: impl Iterator<Item = &'a str>,
-) -> (Vec<&'a str>, Vec<&'a str>, Vec<&'a str>) {
-    let mut seen: HashMap<&str, usize> = HashMap::new();
-    for identity in observed {
-        *seen.entry(identity).or_insert(0) += 1;
-    }
-    let mut missing: Vec<&str> = expected
-        .iter()
-        .map(|q| q.as_str())
-        .filter(|q| !seen.contains_key(q))
-        .collect();
-    let mut foreign: Vec<&str> = seen
-        .keys()
-        .filter(|q| !expected.contains(**q))
-        .copied()
-        .collect();
-    let mut duplicated: Vec<&str> = seen
-        .iter()
-        .filter(|(_, n)| **n > 1)
-        .map(|(q, _)| *q)
-        .collect();
-    missing.sort_unstable();
-    foreign.sort_unstable();
-    duplicated.sort_unstable();
-    (missing, foreign, duplicated)
-}
-
-/// One terminal row per PLANNED identity, mirroring `v2.workflow.floor_terminal_ledger`
-/// `ClaimTerminalRow`. v2 owns the evidence schema, its completeness law and the artifact's
-/// lifecycle; this side preserves the raw terminal fact it already holds. It does NOT yet
-/// serialize the ledger to that artifact — binding, footer and atomic publish are v2's and are
-/// not in this change; the rows are consumed in-process only, by the reconciliation refusal
-/// below and by the `passed` derivation.
-///
-/// WHY THE SEAM EXISTS, and it is not that the change is small. The v2 self-host program
-/// declares a per-identity completed-evidence obligation, and this process is the ONLY producer
-/// that holds a witness identity and its terminal outcome at the same moment. It destroys the
-/// identity at accumulation — `ClaimOutcome::Pass => outcome.passed += 1` keeps the count and
-/// drops the name — so the obligation is not realizable without a bridge here. Nothing about the
-/// diff's size bears on that: a zero-cost change with no v2 consumer would stay refused, and this
-/// one is admitted because a consumer lands with it.
-///
-/// It deliberately acquires NOTHING ELSE. No candidate digest, no expectation join, no artifact
-/// verification, no general evidence API. The BINDING — which candidate this evidence is for — is
-/// v2's to compute and mean; this side hands over facts, not identity semantics.
-///
-/// THIS TYPE IS A SECOND REPRESENTATION AND NOTHING CHECKS ITS AGREEMENT WITH THE FIRST.
-/// Stated rather than left silent, because the doc line above says "mirroring" and a reader
-/// could take that to mean the `.dag` schema is an authority this Rust derives from. It is not.
-/// `cli_run.rs` is HAND_MAINTAINED, so this struct and `ClaimDisposition` are hand-written beside
-/// a hand-written `v2.workflow.floor_terminal_ledger`, and the two share ONLY NAMES. Regen does
-/// not compare them — this file is not generated. The witnesses do not compare them — they
-/// exercise each side separately, never one against the other. So an arm added, renamed or
-/// re-meaned on either side leaves the other silently stale, and the seam is exactly the shape
-/// this change repaired one grain down: `reconcile_identity_population` was extracted so its test
-/// could not be a control that shares only a name with its subject. That rule condemns this seam
-/// too, and here it is declared debt rather than repaired.
-///
-/// Rung: *mitigatable* — the divergence is not prevented, not detected, and is currently held
-/// only by an author's diligence. No lens is built for it: the cheapest honest check is a v2-side
-/// reading of the seed's emitted ledger, which cannot exist before serialization does, so it
-/// belongs to that change rather than to a mechanism minted beside this one.
-///
-/// DISSOLUTION CONDITION, for this bridge and for the mirror above, one event for both: the
-/// self-emitted v2 claim executor. When the floor's execution is driven by v2 rather than by this
-/// seed, the producer that holds identity-and-outcome together IS the v2 side, so there is no
-/// seam to bridge and no second representation to keep in agreement — this struct,
-/// `claim_disposition`, `reconcile_identity_population` and the refusal below are deleted whole, and
-/// `v2.workflow.floor_terminal_ledger` is left as the sole authority it already claims to be.
-pub struct ClaimTerminalRow {
-    pub qualified: String,
-    pub expected_red: bool,
-    pub outcome: ClaimOutcome,
-}
-
-/// The lossless projection. One arm per terminal shape, so every counter the floor reports stays
-/// derivable from the rows — a projection that merged two of them could derive neither, and the
-/// counters would need a second authority, which is what this bridge exists to dissolve.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ClaimDisposition {
-    Passed,
-    Failed,
-    KnownRedHeld,
-    KnownRedNowPassing,
-    BudgetRefusedBeforeVerdict,
-    /// REACHED ITS VERDICT, then exceeded its budget. Deliberately NOT a `…BeforeVerdict` arm:
-    /// the whole defect this split repairs was a name asserting the verdict was never produced.
-    PassedOverBudget,
-    HostToolUnresolvedBeforeVerdict,
-    RouteGapBeforeVerdict,
-    RuntimeErroredBeforeVerdict,
-    /// THE HOST UNWOUND UNDER THIS CLAIM. Mirrors `v2.workflow.floor_terminal_ledger`'s arm of
-    /// the same name; the wire comparator requires the two mappings to agree per row.
-    PanickedBeforeVerdict,
-    /// PLANNED, AND THE FOLD STOPPED BEFORE IT. Not a decline — the floor admitted it — and not
-    /// an execution. Its own arm so a stopped fold's ledger states what happened to the
-    /// population behind the unwind instead of omitting it.
-    NotAttemptedAfterAbort,
-    ObservationUnreadableBeforeVerdict,
-}
-
-pub fn claim_disposition(row: &ClaimTerminalRow) -> ClaimDisposition {
-    match (&row.outcome, row.expected_red) {
-        (ClaimOutcome::Pass, false) => ClaimDisposition::Passed,
-        (ClaimOutcome::Pass, true) => ClaimDisposition::KnownRedNowPassing,
-        (ClaimOutcome::Fail, false) => ClaimDisposition::Failed,
-        (ClaimOutcome::Fail, true) => ClaimDisposition::KnownRedHeld,
-        // SAME DISPOSITIONS AS `Fail`, AND DELIBERATELY SO. A typed `ExitFailure` reached its
-        // verdict — the subject said no — so enrollment holds it exactly as a `Bool(false)`
-        // would be held. The refusal reason travels in the row's detail field, not in the
-        // disposition: the disposition decides nothing the reason would change.
-        (ClaimOutcome::ExitFailure { .. }, false) => ClaimDisposition::Failed,
-        (ClaimOutcome::ExitFailure { .. }, true) => ClaimDisposition::KnownRedHeld,
-        // EXPECTATION IS NOT CONSULTED FOR EITHER OF THESE, and it used to be. Both arms
-        // returned `KnownRedHeld` when the row was enrolled, while the correct disposition sat
-        // one line below for the unenrolled case. That was one state collapsed onto another
-        // already spelled correctly beside it — no missing vocabulary, just a wrong selection.
-        //
-        // `Held` asserts the claim RAN AND FAILED as predicted. A claim that threw, or answered
-        // with something that is not a verdict, produced no verdict to agree with. This file
-        // already settled the principle when the same defect was repaired for budget
-        // interruption and unresolved host tools: ENROLLMENT CANNOT HOLD A CLAIM THAT WAS NEVER
-        // DECIDED. A runtime error is not a semantic verdict either, and the principle does not
-        // distinguish being cut off at a budget from throwing.
-        (ClaimOutcome::NotBool { .. }, _) => ClaimDisposition::ObservationUnreadableBeforeVerdict,
-        (ClaimOutcome::RuntimeError { .. }, _) => ClaimDisposition::RuntimeErroredBeforeVerdict,
-        // SITE 2, AND THE WORST OF THE FIVE: the disposition's NAME asserts BEFORE VERDICT, so a
-        // completed-over-budget row was recorded as having produced no verdict when it demonstrably
-        // had one. The other four produce a wrong label; this one produced a wrong FACT.
-        (ClaimOutcome::BudgetInterrupted { .. }, _) => ClaimDisposition::BudgetRefusedBeforeVerdict,
-        (ClaimOutcome::CompletedOverBudget { .. }, false) => ClaimDisposition::PassedOverBudget,
-        // ENROLLED AND PASSING IS STILL NOW-PASSING. The cost half is not lost by this choice:
-        // it travels on the cost channel (`completed_over_cost_requirement`), which is where the
-        // floor already reports such a row alongside `stale_quarantine`. This surface has one
-        // channel per row, so the arm answers the question it is asked — did the enrollment's
-        // predicted failure occur — and the answer is no.
-        (ClaimOutcome::CompletedOverBudget { .. }, true) => ClaimDisposition::KnownRedNowPassing,
-        (ClaimOutcome::HostToolUnresolved { .. }, _) => {
-            ClaimDisposition::HostToolUnresolvedBeforeVerdict
-        }
-        (ClaimOutcome::HostEffectRefused { .. }, _) => ClaimDisposition::RouteGapBeforeVerdict,
-        // EXPECTATION IS NOT CONSULTED, for the reason the two arms above already state: an
-        // enrollment asserts an expected VERDICT, and a claim whose host unwound produced none.
-        (ClaimOutcome::Panicked { .. }, _) => ClaimDisposition::PanickedBeforeVerdict,
-        (ClaimOutcome::NotAttempted { .. }, _) => ClaimDisposition::NotAttemptedAfterAbort,
-    }
-}
-
-/// THE WIRE VOCABULARY, and the second half of the comparator.
-///
-/// `v2.workflow.floor_terminal_ledger_wire` derives a disposition from the TAG below plus the
-/// expectation; `claim_disposition` above derives one from the `ClaimOutcome` directly. Two
-/// independent paths over the same row — `(outcome -> disposition)` here and
-/// `(outcome -> tag -> disposition)` there — so publishing both and requiring agreement checks
-/// exactly the mapping that can silently drift. A tag this seed spells wrongly, or a disposition
-/// label the module does not know, refuses the whole ledger naming the identity.
-///
-/// These strings are NOT free-form: each is a token the module declares and refuses if
-/// unrecognised. That is why they are `&'static str` rather than computed — there is nothing here
-/// to compute, only a vocabulary to name.
-pub fn claim_terminal_tag(outcome: &ClaimOutcome) -> &'static str {
-    match outcome {
-        ClaimOutcome::Pass => "returned-true",
-        ClaimOutcome::Fail => "returned-false",
-        // A WIDENING, NOT A BEHAVIOUR CHANGE (the `route-gap-*` precedent below): the
-        // disposition every consumer decides on is unchanged — this reads back to
-        // `Failed`/`KnownRedHeld` exactly as `returned-false` does, in
-        // `v2.workflow.floor_terminal_ledger_wire readback_disposition` — and what becomes
-        // newly representable at the tag grain is the distinction between a claim that
-        // answered `Bool(false)` and one that returned a typed `ProcessExit::ExitFailure`
-        // refusal. The refusal's reason is the detail field's payload.
-        ClaimOutcome::ExitFailure { .. } => "exit-failure",
-        ClaimOutcome::NotBool { .. } => "returned-unreadable",
-        ClaimOutcome::RuntimeError { .. } => "runtime-errored",
-        // SITE 3.
-        ClaimOutcome::BudgetInterrupted { .. } => "budget-refused",
-        ClaimOutcome::CompletedOverBudget { .. } => "passed-over-budget",
-        ClaimOutcome::HostToolUnresolved { .. } => "host-tool-unresolved",
-        // THE TAG DESCENDS INTO THE GROUND, mirroring `render_route_gap_ground_tag` in
-        // `v2.workflow.floor_terminal_ledger_wire`. One tag over three grounds published an
-        // unpublished mock case and a filesystem removal as the same fact, and their remedies
-        // differ: record the case, versus give the operation a hermetic arm. The detail below
-        // already carried `operation`, so this is the half of the pair that was still fused.
-        ClaimOutcome::HostEffectRefused { ground, .. } => match ground {
-            v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
-                "route-gap-unpublished-mock-case"
-            }
-            v1_interpreter::HermeticEffectGround::NoMockResponse => "route-gap-no-mock-response",
-            v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
-                "route-gap-filesystem-removal"
-            }
-        },
-        ClaimOutcome::Panicked { .. } => "panicked",
-        ClaimOutcome::NotAttempted { .. } => "not-attempted",
-    }
-}
-
-/// The detail field, carrying what the arm actually knows and nothing invented.
-///
-/// A verdict-bearing arm has NO detail — the tag already says everything the wire preserves about
-/// it — and writing a placeholder there would be a value a reader could mistake for an
-/// observation. `TimedOut` contributes the clock that raised it, matching the module's
-/// `SafetyInterrupted.raised_by`; its millisecond pair is deliberately not carried, because the
-/// wire's declared fidelity boundary excludes cost telemetry, which has its own receipts.
-/// `ExitFailure` is the one verdict-bearing arm WITH a payload: the `.dag`-authored refusal
-/// reason is the fact this arm exists to carry (its absence is exactly the bare-`FAIL` state the
-/// `gunbc.instruments.emit_host_gate` narration scaffold existed to paper over), so it contributes the reason
-/// and nothing else — an absent reason renders empty, the same honest nothing `Fail` renders.
-pub fn claim_terminal_detail(outcome: &ClaimOutcome) -> String {
-    match outcome {
-        ClaimOutcome::Pass | ClaimOutcome::Fail => String::new(),
-        ClaimOutcome::ExitFailure { reason, .. } => reason.clone().unwrap_or_default(),
-        ClaimOutcome::NotBool { got } => got.clone(),
-        ClaimOutcome::RuntimeError { message, .. } => message.clone(),
-        ClaimOutcome::BudgetInterrupted { kind, .. }
-        | ClaimOutcome::CompletedOverBudget { kind, .. } => kind.label().to_string(),
-        ClaimOutcome::HostToolUnresolved { name, .. } => name.clone(),
-        ClaimOutcome::HostEffectRefused { operation, .. } => operation.clone(),
-        ClaimOutcome::Panicked { payload } => payload.clone(),
-        ClaimOutcome::NotAttempted { halted_by } => halted_by.clone(),
-    }
-}
-
-pub fn claim_disposition_wire(disposition: ClaimDisposition) -> &'static str {
-    match disposition {
-        ClaimDisposition::Passed => "passed",
-        ClaimDisposition::Failed => "failed",
-        ClaimDisposition::KnownRedHeld => "known-red-held",
-        ClaimDisposition::KnownRedNowPassing => "known-red-now-passing",
-        ClaimDisposition::BudgetRefusedBeforeVerdict => "budget-refused-before-verdict",
-        ClaimDisposition::PassedOverBudget => "passed-over-budget",
-        ClaimDisposition::HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict",
-        ClaimDisposition::RouteGapBeforeVerdict => "route-gap-before-verdict",
-        ClaimDisposition::RuntimeErroredBeforeVerdict => "runtime-errored-before-verdict",
-        ClaimDisposition::PanickedBeforeVerdict => "panicked-before-verdict",
-        ClaimDisposition::NotAttemptedAfterAbort => "not-attempted-after-abort",
-        ClaimDisposition::ObservationUnreadableBeforeVerdict => {
-            "observation-unreadable-before-verdict"
-        }
-    }
-}
-
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
     match outcome {
         ClaimOutcome::Pass => ExpectedRedArm::NowPassing,
@@ -18615,37 +18331,6 @@ mod exit_failure_outcome_tests {
             code: 1,
             reason: Some("emit-host smoke verdicts: rust=pass go=FAIL".to_string()),
         };
-        // The wire tag is its own token, NOT folded into `returned-false`: the return shape
-        // (typed refusal vs Bool(false)) is a fact the seed holds and the ledger publishes.
-        assert_eq!(claim_terminal_tag(&outcome), "exit-failure");
-        // The reason IS the detail payload; a missing reason renders honest empty, the same
-        // nothing `Fail` renders.
-        assert_eq!(
-            claim_terminal_detail(&outcome),
-            "emit-host smoke verdicts: rust=pass go=FAIL"
-        );
-        assert_eq!(
-            claim_terminal_detail(&ClaimOutcome::ExitFailure {
-                code: 1,
-                reason: None
-            }),
-            ""
-        );
-        // Disposition is unchanged from `Fail` — this is a widening, not a reclassification:
-        // unenrolled it failed; enrolled (expected-red) it is held.
-        let make_row = |expected_red: bool| ClaimTerminalRow {
-            qualified: "test.claim.example.gate".to_string(),
-            expected_red,
-            outcome: outcome.clone(),
-        };
-        assert!(matches!(
-            claim_disposition(&make_row(false)),
-            ClaimDisposition::Failed
-        ));
-        assert!(matches!(
-            claim_disposition(&make_row(true)),
-            ClaimDisposition::KnownRedHeld
-        ));
         // Expected-red agreement, same arm as `Fail`: a typed refusal IS a failing verdict.
         assert!(matches!(expected_red_arm(&outcome), ExpectedRedArm::Held));
         // The witness verdict is Failed, with no invented cause text beside it.
@@ -19006,28 +18691,7 @@ mod budget_completion_tests {
             CiWitnessVerdict::PassedOverBudget
         );
 
-        // 2. THE DISPOSITION, and the one that asserted a FACT rather than a label: a name
-        //    ending in `BeforeVerdict` for a claim whose verdict the same ledger reported.
-        let row = |outcome: ClaimOutcome| ClaimTerminalRow {
-            qualified: "m.f".to_string(),
-            outcome,
-            expected_red: false,
-        };
-        assert_eq!(
-            claim_disposition(&row(interrupted.clone())),
-            ClaimDisposition::BudgetRefusedBeforeVerdict
-        );
-        assert_eq!(
-            claim_disposition(&row(completed.clone())),
-            ClaimDisposition::PassedOverBudget
-        );
-
-        // 3. THE WIRE TAG AND 4. THE EXECUTION LABEL — the two strings the ledger's over-cost
-        //    and per-row lines are rendered from. `outcome=timed_out` was this one.
-        assert_ne!(
-            claim_terminal_tag(&interrupted),
-            claim_terminal_tag(&completed)
-        );
+        // Execution labels stay distinct — `outcome=timed_out` was the conflation this pair refuses.
         assert_ne!(
             witness_execution_outcome_label(&interrupted),
             witness_execution_outcome_label(&completed)
@@ -29671,12 +29335,8 @@ mod nfr_tests {
     fn nfr_frontier_reader_refuses_empty_list() {
         let synthetic = "module a\n\n\
              data non_fold_residue_frontier: List<FrontierRow> = []\n";
-        let message = super::non_fold_residue_units_from_module_source_with(
-            "a.dag",
-            synthetic,
-            super::NfrHomeCheck::Require,
-        )
-        .expect_err("an empty frontier list must refuse, not panic or contribute zero rows");
+        let message = super::non_fold_residue_units_from_module_source_with("a.dag", synthetic)
+            .expect_err("an empty frontier list must refuse, not panic or contribute zero rows");
         assert_eq!(
             message,
             "nfr frontier reader: `data non_fold_residue_frontier` in a.dag is empty; delete the decl \
@@ -29707,12 +29367,8 @@ mod nfr_tests {
                  dissolution: unbound_dissolution(description: \"d\")\n\
                }\n\
              ]\n";
-        let triples = super::non_fold_residue_triples_from_module_source_with(
-            "a.dag",
-            synthetic,
-            super::NfrHomeCheck::Require,
-        )
-        .expect("synthetic authority must parse");
+        let triples = super::non_fold_residue_triples_from_module_source_with("a.dag", synthetic)
+            .expect("synthetic authority must parse");
         assert_eq!(
             triples.iter().map(|t| t.path.as_str()).collect::<Vec<_>>(),
             vec!["a.dag::f", "a.dag::g"],
@@ -29738,11 +29394,7 @@ mod nfr_tests {
                FrontierRow { subject: PathSubject { path: \"f\" }, reason: r, dissolution: d },\n\
                FrontierRow { subject: PathSubject { path: \"f\" }, reason: r2, dissolution: d2 }\n\
              ]\n";
-        let refused = super::non_fold_residue_units_from_module_source_with(
-            "a.dag",
-            synthetic,
-            super::NfrHomeCheck::Require,
-        );
+        let refused = super::non_fold_residue_units_from_module_source_with("a.dag", synthetic);
         assert!(
             refused.is_err(),
             "a duplicate path key must refuse loudly (fail-closed); got {refused:?}"
@@ -29755,11 +29407,7 @@ mod nfr_tests {
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow { reason: r, dissolution: d }\n\
              ]\n";
-        let refused = super::non_fold_residue_units_from_module_source_with(
-            "a.dag",
-            synthetic,
-            super::NfrHomeCheck::Require,
-        );
+        let refused = super::non_fold_residue_units_from_module_source_with("a.dag", synthetic);
         assert!(
             refused.is_err(),
             "a row without a `subject` field must refuse loudly (fail-closed); got {refused:?}"
@@ -29772,12 +29420,8 @@ mod nfr_tests {
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow { subject: PathSubject { }, reason: r, dissolution: d }\n\
              ]\n";
-        let message = super::non_fold_residue_units_from_module_source_with(
-            "a.dag",
-            synthetic,
-            super::NfrHomeCheck::Require,
-        )
-        .expect_err("a PathSubject carrying no `path` field must refuse loudly (fail-closed)");
+        let message = super::non_fold_residue_units_from_module_source_with("a.dag", synthetic)
+            .expect_err("a PathSubject carrying no `path` field must refuse loudly (fail-closed)");
         assert!(
             message.contains("`PathSubject` but carries no `path` field"),
             "the refusal must LOCATE the missing `path` inside the present PathSubject, not \
@@ -29791,12 +29435,8 @@ mod nfr_tests {
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow { subject: PathSubject { path: \"b.dag::f\" }, reason: r, dissolution: d }\n\
              ]\n";
-        let message = super::non_fold_residue_units_from_module_source_with(
-            "a.dag",
-            synthetic,
-            super::NfrHomeCheck::Require,
-        )
-        .expect_err("a row whose subject file is not the hosting module must refuse");
+        let message = super::non_fold_residue_units_from_module_source_with("a.dag", synthetic)
+            .expect_err("a row whose subject file is not the hosting module must refuse");
         assert!(
             message.contains("not at home")
                 && message.contains("a.dag")
@@ -29811,12 +29451,8 @@ mod nfr_tests {
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow { subject: PathSubject { path: \"f\" }, reason: r, dissolution: d }\n\
              ]\n";
-        let triples = super::non_fold_residue_triples_from_module_source_with(
-            "a.dag",
-            synthetic,
-            super::NfrHomeCheck::Require,
-        )
-        .expect("at-home row must parse");
+        let triples = super::non_fold_residue_triples_from_module_source_with("a.dag", synthetic)
+            .expect("at-home row must parse");
         assert_eq!(
             triples
                 .iter()
@@ -29833,12 +29469,9 @@ mod nfr_tests {
              data non_fold_residue_frontier: List<FrontierRow> = [\n\
                FrontierRow { subject: PathSubject { path: \"f\" }, reason: r, dissolution: d }\n\
              ]\n";
-        let message = super::non_fold_residue_units_from_module_source_with(
-            "dag/extdeps/git.dag",
-            synthetic,
-            super::NfrHomeCheck::Require,
-        )
-        .expect_err("an upstream module must not host repository coverage rows");
+        let message =
+            super::non_fold_residue_units_from_module_source_with("dag/extdeps/git.dag", synthetic)
+                .expect_err("an upstream module must not host repository coverage rows");
         assert!(
             message.contains("coverage state in an upstream module")
                 && message.contains("dag/extdeps/git.dag"),
@@ -29855,7 +29488,6 @@ mod nfr_tests {
         let triples = super::non_fold_residue_triples_from_module_source_with(
             "dag/gunbc/non_fold_residue.dag",
             synthetic,
-            super::NfrHomeCheck::Require,
         )
         .expect("observing-host extdeps row must parse");
         assert_eq!(
@@ -29877,7 +29509,6 @@ mod nfr_tests {
         let triples = super::non_fold_residue_triples_from_module_source_with(
             "dag/gunbc/non_fold_residue.dag",
             synthetic,
-            super::NfrHomeCheck::Require,
         )
         .expect("seed-mirror exception host must parse");
         assert_eq!(
@@ -29894,12 +29525,8 @@ mod nfr_tests {
     fn nfr_frontier_reader_skips_comment_or_string_mention_without_a_decl() {
         let comment = "module m\n// data non_fold_residue_frontier: List<FrontierRow> = []\n";
         assert_eq!(
-            super::non_fold_residue_units_from_module_source_with(
-                "m.dag",
-                comment,
-                super::NfrHomeCheck::Require,
-            )
-            .expect("comment mention is not a decl"),
+            super::non_fold_residue_units_from_module_source_with("m.dag", comment,)
+                .expect("comment mention is not a decl"),
             Vec::<String>::new(),
             "a comment mention must be skipped, not refused"
         );
@@ -29908,7 +29535,6 @@ mod nfr_tests {
         let message = super::non_fold_residue_units_from_module_source_with(
             "dag/gunbc/non_fold_residue.dag",
             similarly_named,
-            super::NfrHomeCheck::Require,
         )
         .expect_err("a similarly-named data decl must refuse, not skip");
         assert!(
@@ -29922,12 +29548,8 @@ mod nfr_tests {
                FrontierRow { subject: PathSubject { path: \"m.dag::f\" }, reason: r, dissolution: d }\n\
              ]\n";
         assert_eq!(
-            super::non_fold_residue_units_from_module_source_with(
-                "m.dag",
-                comment_then_decl,
-                super::NfrHomeCheck::Require,
-            )
-            .expect("comment then decl must parse"),
+            super::non_fold_residue_units_from_module_source_with("m.dag", comment_then_decl,)
+                .expect("comment then decl must parse"),
             vec!["m.dag::f".to_string()],
             "a comment mention must not hide a later real decl"
         );
@@ -37789,151 +37411,6 @@ pub(crate) use emitted_closure_compile_host::{
 /// answer to a question this one already answers, and the two would drift.
 pub fn extract_module_path_public(content: &str) -> Option<String> {
     extract_module_path(content)
-}
-
-#[cfg(test)]
-mod terminal_ledger_completeness_law {
-    //! THE ONE TEST THAT DECIDES WHETHER THIS BRIDGE IS WORTH ANYTHING.
-    //!
-    //! A ledger that OMITS one identity and DUPLICATES another has the same row count as a
-    //! correct one, the same `passed`, and the same planned/executed/receipted triple. Every
-    //! aggregate in the run is byte-identical to a healthy run. If completeness is checked by
-    //! counting, that ledger is green and the missing witness — possibly the one the author just
-    //! added — reports as covered.
-    //!
-    //! These tests exercise the reconciliation as a pure function of the row population, and the
-    //! calibration pair is the point: the swap must be caught while every count stays equal.
-
-    use super::*;
-
-    fn row(qualified: &str, expected_red: bool, outcome: ClaimOutcome) -> ClaimTerminalRow {
-        ClaimTerminalRow {
-            qualified: qualified.to_string(),
-            expected_red,
-            outcome,
-        }
-    }
-
-    /// Calls THE PRODUCTION reconciliation. Not a paraphrase of it: a control that shares only
-    /// a name with its subject cannot see the subject drift.
-    fn reconcile<'a>(
-        planned: &[&str],
-        rows: &'a [ClaimTerminalRow],
-    ) -> (Vec<&'a str>, Vec<&'a str>, Vec<&'a str>) {
-        let owned: HashSet<String> = planned.iter().map(|q| q.to_string()).collect();
-        let (m, f, d) =
-            reconcile_identity_population(&owned, rows.iter().map(|r| r.qualified.as_str()));
-        (
-            m.into_iter().map(|s| leak(s)).collect(),
-            f.into_iter().map(|s| leak(s)).collect(),
-            d.into_iter().map(|s| leak(s)).collect(),
-        )
-    }
-
-    fn leak(s: &str) -> &'static str {
-        Box::leak(s.to_string().into_boxed_str())
-    }
-
-    #[test]
-    fn a_duplicate_replacing_an_omission_is_caught_while_every_count_stays_equal() {
-        let planned = ["m.a", "m.b", "m.c"];
-        let healthy = vec![
-            row("m.a", false, ClaimOutcome::Pass),
-            row("m.b", false, ClaimOutcome::Pass),
-            row("m.c", false, ClaimOutcome::Pass),
-        ];
-        // `m.c` never reached the ledger; `m.a` was written twice.
-        let swapped = vec![
-            row("m.a", false, ClaimOutcome::Pass),
-            row("m.b", false, ClaimOutcome::Pass),
-            row("m.a", false, ClaimOutcome::Pass),
-        ];
-
-        // EVERY COUNT IS EQUAL. This is the whole point of the test: the numbers cannot tell
-        // these apart, so anything that only counts is green over the broken one.
-        assert_eq!(healthy.len(), swapped.len());
-        let passed_of = |rows: &[ClaimTerminalRow]| {
-            rows.iter()
-                .filter(|r| claim_disposition(r) == ClaimDisposition::Passed)
-                .count()
-        };
-        assert_eq!(passed_of(&healthy), passed_of(&swapped));
-        assert_eq!(passed_of(&swapped), planned.len());
-
-        let (missing, foreign, duplicated) = reconcile(&planned, &healthy);
-        assert!(missing.is_empty() && foreign.is_empty() && duplicated.is_empty());
-
-        let (missing, foreign, duplicated) = reconcile(&planned, &swapped);
-        assert_eq!(missing, vec!["m.c"], "the omitted identity must be named");
-        assert!(foreign.is_empty());
-        assert_eq!(
-            duplicated,
-            vec!["m.a"],
-            "the duplicated identity must be named"
-        );
-    }
-
-    #[test]
-    fn a_terminal_row_for_an_unplanned_identity_is_foreign_execution() {
-        let planned = ["m.a"];
-        let rows = vec![
-            row("m.a", false, ClaimOutcome::Pass),
-            row("m.stray", false, ClaimOutcome::Pass),
-        ];
-        let (missing, foreign, duplicated) = reconcile(&planned, &rows);
-        assert!(missing.is_empty());
-        assert_eq!(foreign, vec!["m.stray"]);
-        assert!(duplicated.is_empty());
-    }
-
-    /// The projection must not merge arms the floor reports as separate counters. A collapsed
-    /// projection could not derive `host_tool_unresolved` or the route-gap counters at all.
-    #[test]
-    fn every_terminal_shape_projects_to_its_own_disposition() {
-        use ClaimDisposition::*;
-        let cases = [
-            (ClaimOutcome::Pass, false, Passed),
-            (ClaimOutcome::Pass, true, KnownRedNowPassing),
-            (ClaimOutcome::Fail, false, Failed),
-            (ClaimOutcome::Fail, true, KnownRedHeld),
-            (
-                ClaimOutcome::RuntimeError {
-                    cause: WitnessRuntimeCause::TypeError,
-                    message: "boom".into(),
-                    raised_in: Default::default(),
-                },
-                false,
-                RuntimeErroredBeforeVerdict,
-            ),
-            (
-                ClaimOutcome::NotBool { got: "unit".into() },
-                false,
-                ObservationUnreadableBeforeVerdict,
-            ),
-            (
-                ClaimOutcome::HostToolUnresolved {
-                    name: "rustfmt".into(),
-                    probed: vec![],
-                },
-                false,
-                HostToolUnresolvedBeforeVerdict,
-            ),
-        ];
-        let mut produced: Vec<ClaimDisposition> = Vec::new();
-        for (outcome, red, want) in cases {
-            let got = claim_disposition(&row("m.x", red, outcome));
-            assert_eq!(got, want);
-            produced.push(got);
-        }
-        // A projection that merged two of these would show up here as a repeat.
-        let mut deduped = produced.clone();
-        deduped.dedup();
-        assert_eq!(
-            deduped.len(),
-            produced.len(),
-            "two terminal shapes projected onto the same disposition"
-        );
-    }
 }
 
 /// THE REFERENCE COLLECTOR'S DISCRIMINATING EVIDENCE.

@@ -907,58 +907,6 @@ fn declaration_text_attribution(
     }
 }
 
-pub(crate) fn floor_index_controls(
-    at: &str,
-    root_sets: &[(&str, Vec<String>)],
-) -> Result<(), String> {
-    for (which, roots) in root_sets {
-        // Looked up, never built: an absent index is a control with nothing to inspect, and
-        // building one here would report on a population the control made itself.
-        let index =
-            super::entry_resolve::memoized_process_shared_index(roots).ok_or_else(|| {
-                format!(
-                "REQUIRED-FLOOR REFUSAL at={at} roots={which} cause=IndexControlsWithoutIndex -- \
-                 no shared index was built over these roots before the control ran"
-            )
-            })?;
-        let (files, parses) = super::reference_reading_parse_control(&index)
-            .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} roots={which} {e}"))?;
-        eprintln!(
-            "[floor-phase] phase=reference-reading-parses at={at} roots={which} \
-             index_generation={} files={files} full_parses={parses}",
-            index.generation
-        );
-    }
-    // The floor legitimately demands more than one name set (its source roots, the dag-only
-    // environment closure, the v1 attribution roots when src/v1 is touched), so the invariant is
-    // not a count: it is that no set is indexed twice.
-    let builds = super::multi_entry_index_builds();
-    let name_sets = super::multi_entry_index_sharing_control(&builds)
-        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} cause={e}"))?;
-    let resident = super::entry_resolve::shared_index_residency_control()
-        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL at={at} cause={e}"))?;
-    eprintln!("[floor-phase] phase=shared-index-residency at={at} resident_pools={resident}");
-    eprintln!(
-        "[floor-phase] phase=multi-entry-index-builds at={at} builds={} name_sets={name_sets} \
-         sites={:?}",
-        builds.len(),
-        builds
-            .iter()
-            .map(|b| format!("{}@{}", b.modules, b.site))
-            .collect::<Vec<_>>(),
-    );
-    Ok(())
-}
-
-/// Authored module names of `.dag` files whose non-data, non-test-fn declaration the diff
-/// touched. The spelling is the `module` header, the same key `assemble_prepared_subject_closure`
-/// matches with `starts_with`. A file with no module header refuses: dropping it would silently
-/// exempt the malformed case from the compile seed, which is the class this seed exists to close.
-///
-/// A touched file OUTSIDE THE FLOOR'S SOURCE ROOTS (a `src/v1` `.dag` mirror under the parse
-/// sweep but not under `--source-root dag --source-root src/v2`) names a module the prepared
-/// subject cannot contain, so it is not a seed. It is returned as its own typed row rather
-/// than dropped or counted: the reader sees which file seeded nothing and why.
 /// ONE SCHEDULED ROW of the local-repo wet lane, decoded from
 /// `v2.workflow.local_repo_wet_terminal.local_repo_wet_schedule`. The `.dag` declaration is the
 /// authority for membership and for the verdict each member is expected to reach; this struct is

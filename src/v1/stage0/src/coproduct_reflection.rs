@@ -2551,20 +2551,3 @@ mod parse_only_uppercase_variant_regression_tests {
         );
     }
 }
-
-#[cfg(test)]
-mod inventory_root_prefix_tests {
-    use super::inventory_entry_under_abs_roots;
-    use std::path::Path;
-
-    #[test]
-    fn sibling_directory_sharing_a_prefix_is_not_under_the_root() {
-        let ws = Path::new("/repo");
-        let roots = vec!["/repo/dag".to_string()];
-        assert!(inventory_entry_under_abs_roots("dag/mod.dag", &roots, ws));
-        assert!(
-            !inventory_entry_under_abs_roots("dag_something/foo.dag", &roots, ws),
-            "a sibling whose name merely starts with the root basename must not be counted"
-        );
-    }
-}

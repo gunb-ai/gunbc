@@ -83,15 +83,6 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-/// Whether a row's `PathSubject.path` file prefix must equal the file that hosts the decl.
-/// Production HEAD discovery Requires it. Skip is only for a floor base tree written before
-/// this policy existed (the pre-cut central list on origin/main). Parser tests Require.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum NfrHomeCheck {
-    Require,
-    Skip,
-}
-
 /// One co-located row as the identity-join prints it: path::fn, reason ident, dissolution ident.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct NfrFrontierTriple {
@@ -197,21 +188,20 @@ pub(crate) fn nfr_content_declares_frontier(content: &str) -> bool {
 pub(crate) fn non_fold_residue_triples_from_module_source_with(
     module_rel_path: &str,
     content: &str,
-    home: NfrHomeCheck,
 ) -> Result<Vec<NfrFrontierTriple>, String> {
     if !nfr_content_declares_frontier(content) {
         return Ok(Vec::new());
     }
-    non_fold_residue_units_from_parse_source(module_rel_path, content, home)
+    non_fold_residue_units_from_parse_source(module_rel_path, content)
 }
 
+#[cfg(test)]
 pub(crate) fn non_fold_residue_units_from_module_source_with(
     module_rel_path: &str,
     content: &str,
-    home: NfrHomeCheck,
 ) -> Result<Vec<String>, String> {
     Ok(
-        non_fold_residue_triples_from_module_source_with(module_rel_path, content, home)?
+        non_fold_residue_triples_from_module_source_with(module_rel_path, content)?
             .into_iter()
             .map(|t| t.path)
             .collect(),
@@ -221,7 +211,6 @@ pub(crate) fn non_fold_residue_units_from_module_source_with(
 fn non_fold_residue_units_from_parse_source(
     module_rel_path: &str,
     content: &str,
-    home: NfrHomeCheck,
 ) -> Result<Vec<NfrFrontierTriple>, String> {
     use crate::v1_std_core::{ExprData, LiteralValue};
 
@@ -357,14 +346,14 @@ fn non_fold_residue_units_from_parse_source(
                      `subject` field"
             )
         })?;
-        if home == NfrHomeCheck::Require && nfr_host_is_forbidden_upstream(module_rel_path) {
+        if nfr_host_is_forbidden_upstream(module_rel_path) {
             return Err(format!(
                 "nfr frontier reader: `{data_name}` in {module_rel_path} stores repository \
                  coverage state in an upstream module; the observing layer is \
                  {NFR_OBSERVING_LAYER_HOST}"
             ));
         }
-        if home == NfrHomeCheck::Require && authored_path.contains("::") {
+        if authored_path.contains("::") {
             let prefix = authored_path.split("::").next().unwrap_or("");
             if prefix != module_rel_path && !nfr_observing_layer_home_exception(module_rel_path) {
                 return Err(format!(
@@ -447,9 +436,7 @@ pub(crate) fn nfr_identity_join_from_files(
         if !nfr_content_declares_frontier(content) {
             continue;
         }
-        for triple in
-            non_fold_residue_triples_from_module_source_with(rel, content, NfrHomeCheck::Require)?
-        {
+        for triple in non_fold_residue_triples_from_module_source_with(rel, content)? {
             if !seen.insert(triple.path.clone()) {
                 return Err(format!(
                     "nfr frontier reader: duplicate path {:?} across co-located \
