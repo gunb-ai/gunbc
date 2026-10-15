@@ -1271,14 +1271,9 @@ fn run_verb(
     }
 
     let resolve_started = std::time::Instant::now();
-    // Default: layout-demand closure. `GUNBC_RUN_WHOLE_TREE=1` is the A/B control
-    // that still tokenizes --source-root (the pre-cut path). Production wet runs
-    // must not set it.
-    let resolved = if std::env::var("GUNBC_RUN_WHOLE_TREE").as_deref() == Ok("1") {
-        cli_run::resolve_entry_graph(source_roots, entry_file)
-    } else {
-        cli_run::resolve_entry_graph_demand_acquired(source_roots, entry_file)
-    };
+    // Demand-acquired layout closure is the only `gunbc run` resolve. Whole-tree
+    // `resolve_entry_graph` stays the compile / floor consumer, not a run fallback.
+    let resolved = cli_run::resolve_entry_graph_demand_acquired(source_roots, entry_file);
     report_pre_entry_phases(
         resolve_started.elapsed(),
         source_roots,

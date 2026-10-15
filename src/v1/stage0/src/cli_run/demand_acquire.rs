@@ -1,11 +1,11 @@
 //! Demand-acquired module index for plain `gunbc run`.
 //!
 //! `resolve_entry_graph` still builds a whole-tree `MultiEntryIndex`. That is the
-//! remaining consumer of tree-scale tokenize for compile and the floor. This
-//! module is the cut the operator asked for on the wet `gunbc run` path: locate
-//! the entry, follow import lines and dotted module prefixes through
-//! `source_layout_lookup`, and hand resolve an index whose `source_files` *are*
-//! that closure.
+//! remaining consumer of tree-scale tokenize for compile and the floor — not a
+//! `gunbc run` fallback. This module is the cut the operator asked for on the wet
+//! `gunbc run` path: locate the entry, follow import lines and dotted module
+//! prefixes through `source_layout_lookup`, and hand resolve an index whose
+//! `source_files` *are* that closure.
 //!
 //! Remaining tree-scale reads on this path: none. Census, graph facts and
 //! reconcile underlays run over the acquired set. `gunbc compile` still walks

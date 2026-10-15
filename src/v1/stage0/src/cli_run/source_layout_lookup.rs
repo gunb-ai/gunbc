@@ -1,9 +1,12 @@
-//! Seed mirror of `v2.compiler.source_authority` `module_file` over
-//! `gunbc.source_layout`: module `a.b.c` is stored at `<root(a)>/b/c.dag`.
+//! Seed encoding of `v2.compiler.source_authority` `module_file` handed
+//! `gunbc.source_layout` (`layout_tree_directory`, `layout_namespace_roots`,
+//! `layout_default_tree`): module `a.b.c` is stored at `<root(a)>/b/c.dag`.
 //!
-//! This is the name-to-path lookup `gunbc run` uses to acquire an entry's closure
-//! without walking the governed trees. The policy rows live in
-//! `gunbc.source_layout`; this file does not invent a second layout.
+//! `gunbc run` is still the v1 interpreter, so it cannot call those folds. The
+//! prefixes below are `layout_tree_directory` (`LayoutTreeV2` → `src/v2`,
+//! `LayoutTreeDag` → `dag`) and the one eliding root (`v2`). Drift against that
+//! policy source is the unit test `layout_tree_directory_literals_match_policy_source`.
+//! The self-host inhabitance of `module_file` is `v2.test.claim.source_layout_lookup`.
 
 #![allow(dead_code)]
 
@@ -75,5 +78,33 @@ mod tests {
     #[test]
     fn v2_namespace_alone_has_no_file() {
         assert!(module_storage_relative("v2").is_err());
+    }
+
+    #[test]
+    fn layout_tree_directory_literals_match_policy_source() {
+        let policy = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../dag/gunbc/source_layout.dag"
+        ));
+        assert!(
+            policy.contains("LayoutTreeV2 => \"src/v2\""),
+            "seed lookup prefixes must match gunbc.source_layout layout_tree_directory"
+        );
+        assert!(
+            policy.contains("LayoutTreeDag => \"dag\""),
+            "seed lookup prefixes must match gunbc.source_layout layout_tree_directory"
+        );
+        assert!(
+            policy.contains("namespace: \"v2\"") && policy.contains("elides_namespace: true"),
+            "seed v2 elision must match gunbc.source_layout layout_namespace_roots"
+        );
+        assert_eq!(
+            module_storage_relative("v2.compiler.compile").unwrap(),
+            "src/v2/compiler/compile.dag"
+        );
+        assert_eq!(
+            module_storage_relative("gunbc.source_layout").unwrap(),
+            "dag/gunbc/source_layout.dag"
+        );
     }
 }
