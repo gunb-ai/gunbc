@@ -717,8 +717,8 @@ fn dashboard_execution_environment(
 //
 // THE SET IS ONE ROSTER. Named constructors remain so a witness can name srv1-live without walking
 // a list, but membership is public_builtin_dashboard_instances, and every lookup folds that list. Adding
-// an instance is a constructor plus one row on that roster; host, repo-root and id resolution do
-// not get a second spelling.
+// an instance is a constructor plus one row on that roster; host, repo-root, instance-root and id
+// resolution do not get a second spelling.
 
 type DashboardInstanceLookup
   = DashboardInstanceResolved { instance: HostDashboardInstance }
@@ -751,6 +751,10 @@ type DashboardInstanceByHost
 type DashboardInstanceById
   = DashboardInstanceForId { instance: HostDashboardInstance }
   | DashboardInstanceIdUnknown { instance_id: String }
+
+type DashboardInstanceByInstanceRoot
+  = DashboardInstanceForInstanceRoot { instance: HostDashboardInstance }
+  | DashboardInstanceInstanceRootUnknown { instance_root: String }
 
 fn dashboard_instance_answers_host_lookup(instance: HostDashboardInstance) -> Bool {
   match instance.source_seed {
@@ -793,6 +797,16 @@ fn dashboard_instance_for_id(instance_id: String) -> DashboardInstanceById {
   {
     Present { value: instance } => DashboardInstanceForId { instance: instance }
     Absent => DashboardInstanceIdUnknown { instance_id: instance_id }
+  }
+}
+
+fn dashboard_instance_for_instance_root(instance_root: String) -> DashboardInstanceByInstanceRoot {
+  match public_builtin_dashboard_instances()
+    |> filter(i => i.instance_root as String == instance_root)
+    |> first
+  {
+    Present { value: instance } => DashboardInstanceForInstanceRoot { instance: instance }
+    Absent => DashboardInstanceInstanceRootUnknown { instance_root: instance_root }
   }
 }
 
@@ -1342,6 +1356,11 @@ fn dashboard_declared_instance_ids_are_unique() -> Bool {
 fn dashboard_declared_repo_roots_are_unique() -> Bool {
   let xs = public_builtin_dashboard_instances()
   all(xs, a => count(xs |> filter(b => b.repo_root == a.repo_root)) == 1)
+}
+
+fn dashboard_declared_instance_roots_are_unique() -> Bool {
+  let xs = public_builtin_dashboard_instances()
+  all(xs, a => count(xs |> filter(b => b.instance_root == a.instance_root)) == 1)
 }
 
 // AT MOST ONE per host_identity among instances that answer host lookup. Distinct instance_ids

@@ -87,7 +87,9 @@ import gunbc.executor_privileged_operation {
   gunbc_entry_run_argv, sudoers_argument_word, executor_sudoers_run_as,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
-  HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
+  HostDashboardInstance, srv1_live_dashboard_instance,
+  dashboard_instance_for_instance_root,
+  DashboardInstanceForInstanceRoot, DashboardInstanceInstanceRootUnknown,
 }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.roadmap.roadmap_dispatch_actuator {
@@ -852,12 +854,9 @@ fn attempt_system_unit_list_request_entries(instance_root: String) -> AttemptSys
 }
 
 fn attempt_system_unit_instance_for_root(instance_root: String) -> HostDashboardInstance? {
-  if instance_root == (srv1_live_dashboard_instance().instance_root as String) {
-    Present { value: srv1_live_dashboard_instance() }
-  } else if instance_root == (srv1_lab_dashboard_instance().instance_root as String) {
-    Present { value: srv1_lab_dashboard_instance() }
-  } else {
-    none
+  match dashboard_instance_for_instance_root(instance_root: instance_root) {
+    DashboardInstanceForInstanceRoot { instance } => Present { value: instance }
+    DashboardInstanceInstanceRootUnknown { instance_root: _ } => none
   }
 }
 

@@ -6,7 +6,11 @@ import std.measure { kibibyte, kibibyte_count, second_count }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
+  public_builtin_dashboard_instances, dashboard_instance_for_id,
+  DashboardInstanceForId, DashboardInstanceIdUnknown,
+}
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import gunbc.live_deploy.emit {
   attempt_system_unit_grant_steps, attempt_system_unit_grant_steps_for_instance,
@@ -28,7 +32,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_admitted,
   attempt_system_unit_privileged_effect, attempt_system_unit_sudoers_body,
   AttemptSystemUnitSudoersText, AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
-  attempt_system_unit_sudoers_path,
+  attempt_system_unit_sudoers_path, attempt_system_unit_instance_for_root,
   attempt_system_unit_systemd_run_command, attempt_system_unit_plan_from_facts,
   attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_dir,
   AttemptSystemUnitStartRequest, attempt_system_unit_start_facts_for_request,
@@ -272,6 +276,45 @@ test fn the_lab_full_install_apply_installs_only_the_lab_launcher_grant() -> Boo
     own: srv1_lab_dashboard_instance(),
     other: srv1_live_dashboard_instance(),
   )
+}
+
+fn instance_toolchain_has_systemd_run(instance: HostDashboardInstance) -> Bool {
+  match instance.toolchain.systemd_run {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn launcher_grant_exists_for(instance: HostDashboardInstance) -> Bool {
+  match dashboard_instance_for_id(instance_id: instance.instance_id as String) {
+    DashboardInstanceIdUnknown { instance_id: _ } => false
+    DashboardInstanceForId { instance: resolved } =>
+      resolved.instance_id == instance.instance_id
+        && match sudoers_ready_text(reading: attempt_system_unit_sudoers_body(
+          instance: instance,
+          revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+        )) {
+          Absent => false
+          Present { value: body } =>
+            string_contains(s: body, pattern: instance.instance_root as String)
+              && string_contains(s: attempt_system_unit_sudoers_path(instance: instance), pattern: instance.instance_id as String)
+        }
+  }
+}
+
+test fn every_systemd_run_roster_instance_resolves_at_the_launcher_and_has_its_grant() -> Bool {
+  all(
+    public_builtin_dashboard_instances() |> filter(i => instance_toolchain_has_systemd_run(instance: i)),
+    i => match attempt_system_unit_instance_for_root(instance_root: i.instance_root as String) {
+      Absent => false
+      Present { value: resolved } =>
+        resolved.instance_id == i.instance_id && launcher_grant_exists_for(instance: i)
+    },
+  )
+    && match attempt_system_unit_instance_for_root(instance_root: "/not-a-declared-dashboard-instance") {
+      Absent => true
+      Present { value: _ } => false
+    }
 }
 
 // THE REQUEST NAMES AN ATTEMPT; ROOT DERIVES EVERYTHING PRIVILEGED (review 80324). The requester
