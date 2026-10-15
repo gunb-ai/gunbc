@@ -1,16 +1,20 @@
 module gunbc.fabric.fabric_cell_grant
 
-import std.types { NonEmptyStr, String, Timestamp, List }
+import std.types { NonEmptyStr, String, Timestamp, List, Int }
 import std.decl_ref { decl_ref }
 import std.measure { Measure }
 import std.nat { Nat }
-import std.content_hash { content_hash_of_value }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact }
+import gunbc.durable_cas_file_store { cas_generation_of_digits }
 import std.durable_compare_and_set {
   CasGeneration, CasStoreFailure, CasSlotObservationRefused,
   CasSuccessorGeneration, CasSuccessorExhausted, cas_generation_count,
 }
 import std.durable_exclusive_hold {
-  DurableHoldOwnerRef,
+  DurableHoldOwnerRef, DurableHoldReleaseRef,
+  HoldReleaseSlotAbsent, HoldReleaseAlreadyFree, HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
+  HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
   HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable,
 }
 import gunbc.workspace_slot_mutation {
@@ -300,6 +304,7 @@ type CellGrantSettlement
   | CellGrantReceiptAlreadyAdmitted { slot_key: NonEmptyStr, released_at: CasGeneration }
   | CellGrantReceiptForeign { slot_key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration }
   | CellGrantReceiptLeaseNotThisCell { slot_key: NonEmptyStr }
+  | CellGrantReceiptGenerationInvalid { slot_key: NonEmptyStr, generation: Int }
   | CellGrantSanitationUnproven { cell: CellId, unproven: List<UnprovenFact> }
   | CellGrantSanitationForAnotherCell { slot_key: NonEmptyStr, sanitized: CellId }
   | CellGrantReleasedUnderAnotherReceipt { slot_key: NonEmptyStr, generation: CasGeneration, released_by: DurableHoldReleaseRef }
@@ -311,12 +316,6 @@ fn cell_grant_release_ref(receipt: Receipt<NonEmptyStr>, cell: CellId) -> Durabl
   (join(["receipt|", receipt.id.principal as String, "/", receipt.id.key as String, "|sanitized|", cell as String], "")) as DurableHoldReleaseRef
 }
 
-// The lease's generation is the CAS generation the grant landed on (cell_grant_lease): it enters as
-// a CasGeneration at this parameter rather than through a cast.
-fn lease_cas_generation(g: CasGeneration) -> CasGeneration {
-  g
-}
-
 fn settle_cell_grant(
   root: NonEmptyStr,
   work: FabricIdentity<NonEmptyStr, WorkKey>,
@@ -325,7 +324,12 @@ fn settle_cell_grant(
   readiness: CellReadiness,
 ) -> CellGrantSettlement {
   let slot_key = (receipt.lease.lease_key as String) as NonEmptyStr
-  let generation = lease_cas_generation(g: receipt.lease.generation)
+  // THE RECEIPT'S GENERATION IS CALLER DATA, SO IT CROSSES INTO A STORE GENERATION THROUGH THE
+  // DECLARED CHECKED ROUTE (gunbc.durable_cas_file_store cas_generation_of_digits: decimal, at least 1,
+  // within Int) and a value that route refuses is its own typed refusal, not an implicit coercion.
+  match cas_generation_of_digits(s: to_string(receipt.lease.generation)) {
+  Absent => CellGrantReceiptGenerationInvalid { slot_key: slot_key, generation: receipt.lease.generation }
+  Present { value: generation } => {
   let expected_lease = cell_grant_lease(slot_key: slot_key, generation: generation)
   if serialize_content_hash(hash: receipt.lease.resource_fingerprint) != serialize_content_hash(hash: expected_lease.resource_fingerprint) {
     CellGrantReceiptLeaseNotThisCell { slot_key: slot_key }
@@ -361,5 +365,7 @@ fn settle_cell_grant(
           }
         }
     }
+  }
+}
   }
 }
