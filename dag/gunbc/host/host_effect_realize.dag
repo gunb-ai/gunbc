@@ -308,6 +308,8 @@ import gunbc.build_cache.build_cache_endpoint_observe {
   owner_principal_command,
   owner_executable_command,
   path_kind_of_socket_test_read,
+  EndpointParentListing, ParentListsEntry, ParentOmitsEntry, ParentListingUnread,
+  endpoint_parent_listing_of, endpoint_parent_listing_command, endpoint_path_name,
   survey_build_cache_endpoint,
 }
 import gunbc.build_cache.build_cache_endpoint_path {
@@ -5166,11 +5168,17 @@ fn build_cache_path_kind_read(
     SccacheServerUnixSocket { path: p } =>
       match build_cache_host_read_observed(command: endpoint_path_kind_command(path: p), transport: transport) {
         BuildCacheReadRefused { reason: why } =>
-          path_kind_of_socket_test_read(read: HostReadFailed { detail: why as NonEmptyStr }, exit_success: true)
+          path_kind_of_socket_test_read(read: HostReadFailed { detail: why as NonEmptyStr }, exit_success: true, parent: ParentListsEntry)
         BuildCacheReadRan { observed: o } =>
           path_kind_of_socket_test_read(
             read: HostReadText { text: o.stdout },
             exit_success: o.success,
+            parent: if o.success { ParentListsEntry } else {
+              match build_cache_host_read_observed(command: endpoint_parent_listing_command(path: p), transport: transport) {
+                BuildCacheReadRefused { reason: why } => ParentListingUnread { detail: concat("the endpoint path's parent listing was refused: ", why) as NonEmptyStr }
+                BuildCacheReadRan { observed: l } => endpoint_parent_listing_of(exit_success: l.success, stdout: l.stdout, stderr: l.stderr, name: endpoint_path_name(path: p as String))
+              }
+            },
           )
       }
   }

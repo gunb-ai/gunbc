@@ -15,7 +15,7 @@ import extdeps.linux.proc_pid_stat {
   StartTimeUnparseable,
 }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.gnu_coreutils { cat_command, readlink_command }
+import extdeps.tools.gnu_coreutils { cat_command, readlink_command, ls_one_per_line_command }
 import extdeps.tools.stat { stat_owner_user_name_command }
 import extdeps.tools.findutils { find_path_is_socket_command }
 import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
@@ -401,11 +401,35 @@ fn pid_of_proc_fd_path(fd_path: String) -> EndpointListenerRead {
 // FleetSsh and SshShell this read never executed and every remote endpoint read PathKindUnreadable.
 // `extdeps.tools.findutils` `find_path_is_socket_command` asks the same question in admitted words:
 // the operand printed is a socket; exit 0 with nothing printed is an object that is not a socket
-// (its kind is no longer named, a loss stated rather than hidden); a nonzero exit is absence, which
-// is the one place in this module where a failed command is a positive reading.
-fn path_kind_of_socket_test_read(read: HostRead, exit_success: Bool) -> EndpointPathKind {
+// (its kind is no longer named, a loss stated rather than hidden).
+//
+// A NONZERO EXIT IS NOT ABSENCE. find fails the same way on ENOENT, EACCES on an ancestor, ELOOP and
+// EIO, so reading every failure as "no object there" was fail-open: an unlink or a unit start would
+// proceed over a socket nobody could look at. Absence is established by the PARENT'S LISTING, read
+// only when find failed: the parent omitting the entry is absent; the parent listing it, or a parent
+// that could not be listed, is unreadable.
+type EndpointParentListing
+  = ParentListsEntry
+  | ParentOmitsEntry
+  | ParentListingUnread { detail: NonEmptyStr }
+
+fn endpoint_parent_listing_of(exit_success: Bool, stdout: String, stderr: String, name: String) -> EndpointParentListing {
+  if !exit_success {
+    ParentListingUnread { detail: concat("the endpoint path's parent could not be listed: ", trim(stderr)) as NonEmptyStr }
+  } else if any(split(s: stdout, delimiter: "\n"), e => trim(e) == name) {
+    ParentListsEntry
+  } else {
+    ParentOmitsEntry
+  }
+}
+
+fn path_kind_of_socket_test_read(read: HostRead, exit_success: Bool, parent: EndpointParentListing) -> EndpointPathKind {
   if exit_success == false {
-    PathKindAbsent
+    match parent {
+      ParentOmitsEntry => PathKindAbsent
+      ParentListsEntry => PathKindUnreadable { detail: "find failed on an endpoint path its parent lists, so the object is there and could not be tested" as NonEmptyStr }
+      ParentListingUnread { detail: d } => PathKindUnreadable { detail: d }
+    }
   } else {
     match read {
       HostReadFailed { detail: d } => PathKindUnreadable { detail: d }
@@ -417,6 +441,20 @@ fn path_kind_of_socket_test_read(read: HostRead, exit_success: Bool) -> Endpoint
         }
     }
   }
+}
+
+fn endpoint_path_parent(path: String) -> String {
+  let parts = split(s: path, delimiter: "/")
+  let n = length(parts)
+  if n <= 2 { "/" } else { join(parts.take(n: n - 1), "/") }
+}
+
+fn endpoint_path_name(path: String) -> String {
+  match split(s: path, delimiter: "/").last() { Absent => path Present { value: l } => l }
+}
+
+fn endpoint_parent_listing_command(path: NonEmptyStr) -> ArgvCommand {
+  ls_one_per_line_command(path: endpoint_path_parent(path: path as String))
 }
 
 fn currency_of_boot_id_read(read: HostRead) -> ObservationCurrency {
