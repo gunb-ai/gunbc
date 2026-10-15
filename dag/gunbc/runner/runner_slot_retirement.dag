@@ -330,20 +330,19 @@ data srv4_transition_interruption_authorization: InterruptionAuthorization = Int
   operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
 }
 
-// srv1'S INTERRUPTION SCOPE COVERS THE OPEN 12→7 OBLIGATION AND THE HISTORICAL REMAINDER.
+// srv1'S INTERRUPTION SCOPE IS THE 2026-09-17 GRANT, NARROWED WHERE THAT GRANT WOULD HIT COMMITTED WORK.
 //
-// Committed at 7 is 01..06 plus shakedown 13. Prior 12 is 01..11 plus 13. The obligation is
-// 07..11. Permission still names 07..12 and 14..50 and skips 13. It does not name 01..06.
+// The operator named 13..50 and did not name 01..12. Slot 13 is now the shakedown fabric member, so
+// interrupting it would hit committed work: the live grant enumerates 14..50. Slots 07..12 are
+// required retirees of the open 12→7 cut and are NOT in this grant. Widening the row to name them
+// and dating the reason 2026-10-15 was a fabricated operator decision (review 80828; DESIGN §5).
 fn srv1_transition_interruption_scope() -> List<NonEmptyStr> {
-  concat(
-    desired_unit_names_range(host: operator_host_srv1, slot: 7, limit: 12),
-    desired_unit_names_range(host: operator_host_srv1, slot: 14, limit: 50),
-  ) |> map(u => u as NonEmptyStr)
+  desired_unit_names_range(host: operator_host_srv1, slot: 14, limit: 50) |> map(u => u as NonEmptyStr)
 }
 
 data srv1_transition_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
   scope: srv1_transition_interruption_scope(),
-  operator_reason: "operator decision 2026-10-15, scoped to srv1 surplus CI slots 07-12 and 14-50 (open 50-to-7 retirees): these may be interrupted; the decision does not name srv1-01..06 or the shakedown member srv1-13, sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
+  operator_reason: "operator decision 2026-09-17, scoped to srv1 surplus internal CI slots 13-50 (historical remainder 22-50 and the 21-to-12 retirees 13-21); slot 13 is now a committed fabric member so the live grant is 14-50; the decision does not name srv1-01..12, sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
 }
 
 type HostInterruptionAuthorizationStanding

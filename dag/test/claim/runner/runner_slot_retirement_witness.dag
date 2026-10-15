@@ -946,21 +946,26 @@ test fn srv4s_authorization_does_not_cover_srv1s_obligation() -> Bool {
     }
 }
 
-// srv1'S OWN AUTHORIZATION COVERS ITS OBLIGATION (07..12 and 14..50). This is the positive
-// coverage control; a sibling srv4 length==0 row was deleted because an empty obligation
-// cannot admit coverage. Without this row the production observer stays absent.
-test fn srv1s_obligation_is_fully_covered_by_its_declared_scope() -> Bool {
+// THE 2026-09-17 GRANT COVERS THE 14..50 REMAINDER AND NOT THE 12→7 CUT. 07..12 are required
+// retirees; interrupting them needs a separate operator decision (review 80828). A sibling
+// srv4 length==0 row was deleted because an empty obligation cannot admit coverage.
+test fn srv1s_declared_grant_covers_the_50_row_remainder_and_not_the_12_to_7_cut() -> Bool {
   let required = known_obligation_of(host: operator_host_srv1)
   list_length(items: required) > 0
     && match interruption_authorization_for_host(host: operator_host_srv1) {
       HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
       HostInterruptionAuthorizationPresent { authorization: auth } =>
         match transition_interruption_coverage(auth: auth, required: required) {
-          TransitionFullyPermitted { units: p } => list_length(items: p) == list_length(items: required)
-          TransitionRetireesNotPermitted { permitted: _, unpermitted: _ } => false
+          TransitionFullyPermitted { units: _ } => false
+          TransitionRetireesNotPermitted { permitted: p, unpermitted: u } =>
+            any(u, x => (x as String) == "actions-runner@srv1-07.service")
+              && any(u, x => (x as String) == "actions-runner@srv1-12.service")
+              && any(p, x => (x as String) == "actions-runner@srv1-14.service")
+              && any(p, x => (x as String) == "actions-runner@srv1-50.service")
+              && !any(p, x => (x as String) == "actions-runner@srv1-07.service")
         }
     }
-    && interruption_authorization_covers(
+    && !interruption_authorization_covers(
       auth: srv1_transition_interruption_authorization,
       unit: "actions-runner@srv1-07.service",
     )

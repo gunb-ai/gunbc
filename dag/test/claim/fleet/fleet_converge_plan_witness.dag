@@ -179,6 +179,7 @@ import gunbc.runner.runner_slot_retirement {
   cgroup_occupancy_from_reads,
   srv4_transition_interruption_authorization,
   srv1_transition_interruption_authorization,
+  interruption_authorization_covers,
   CgroupAbsent,
 }
 import gunbc.host.host_operation_exec { HostOperationObserved }
@@ -2378,14 +2379,18 @@ test fn deploy_branch_policy_admits_any_observed_branch_when_unconstrained() -> 
 // it emits is what fleet apply executes after reobserving the same subject. So these rows drive it
 // rather than the helpers beneath it: a control that proved the realization and left the renderer
 // unexamined is how this branch previously shipped a teardown that never consulted retirement at all.
-// THE FIXTURE IS A REQUIRED RETIREE OF A HOST WITH A NON-EMPTY OPEN TRANSITION, NOT WIDTH+1.
-// Review 80784: srv4's prior equals its committed width, so a surplus named from allocation
-// width is not in the obligation. Pick the nth identity from `required_retirees_for_host` on
-// srv1 (union of runner-slot-26-25-gib and runner-slot-width-12-7). An empty or unresolved
-// set yields srv1-00, which is never a retiree, so the membership conjunct reds.
+// THE FIXTURE IS A REQUIRED RETIREE THE 2026-09-17 GRANT NAMES, ON A HOST WITH A NON-EMPTY
+// TRANSITION, NOT WIDTH+1. Review 80784: srv4's prior equals its committed width, so a surplus
+// named from allocation width is not in the obligation. Review 80828: 07..12 are required but
+// unpermitted; pick from the intersection with the declared grant (14..50). An empty or
+// unresolved set yields srv1-00, which is never a retiree, so the membership conjunct reds.
 fn witness_open_transition_delta_units() -> List<NonEmptyStr> {
   match required_retirees_for_host(host: operator_host_srv1) {
-    RetireesKnown { units: us } => us
+    RetireesKnown { units: us } =>
+      us |> filter(u => interruption_authorization_covers(
+        auth: srv1_transition_interruption_authorization,
+        unit: u as String,
+      ))
     RetireesUnresolved { host: _, cause: _ } => []
   }
 }
