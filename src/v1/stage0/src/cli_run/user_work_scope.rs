@@ -23,6 +23,7 @@ const USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV: &str = "XDG_RUNTIME_DIR";
 #[derive(Clone, Copy)]
 enum UserWorkScopeStanding {
     AlreadyInSlice,
+    BoundedByObservedCgroup,
     RunnerSlotExempt,
     CiExempt,
     UnitTestExempt,
@@ -59,6 +60,7 @@ pub fn reexec_into_user_work_slice_if_owed() {
 fn standing_wire(s: UserWorkScopeStanding) -> &'static str {
     match s {
         UserWorkScopeStanding::AlreadyInSlice => "AlreadyInSlice",
+        UserWorkScopeStanding::BoundedByObservedCgroup => "BoundedByObservedCgroup",
         UserWorkScopeStanding::RunnerSlotExempt => "RunnerSlotExempt",
         UserWorkScopeStanding::CiExempt => "CiExempt",
         UserWorkScopeStanding::UnitTestExempt => "UnitTestExempt",
@@ -109,6 +111,9 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
     if cg.contains(RUNNER_SLOT_CGROUP_NEEDLE) {
         return UserWorkScopeStanding::RunnerSlotExempt;
     }
+    if observed_cgroup_bound(&cg) {
+        return UserWorkScopeStanding::BoundedByObservedCgroup;
+    }
     let probe_ok = Command::new("systemctl")
         .args(["--user", "show-environment"])
         .stdout(std::process::Stdio::null())
@@ -122,5 +127,31 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
         UserWorkScopeStanding::UserManagerProbeFailed
     } else {
         UserWorkScopeStanding::UserSessionAbsent
+    }
+}
+
+// SEED MIRROR of `gunbc.compute.unit_bounds observed_cgroup_bound`: the process's unified-hierarchy
+// cgroup (`0::<path>`) and each ancestor to the root; bounded when one carries a finite memory.max
+// AND memory.swap.max = 0. An unreadable chain is not a bound.
+fn observed_cgroup_bound(proc_self_cgroup: &str) -> bool {
+    let Some(path) = proc_self_cgroup.lines().find_map(|l| l.strip_prefix("0::")) else {
+        return false;
+    };
+    let mut current = path.trim().trim_end_matches('/').to_string();
+    loop {
+        let dir = format!("/sys/fs/cgroup{current}");
+        let max =
+            std::fs::read_to_string(format!("{dir}/memory.max")).map(|s| s.trim().to_string());
+        let swap =
+            std::fs::read_to_string(format!("{dir}/memory.swap.max")).map(|s| s.trim().to_string());
+        if let (Ok(max), Ok(swap)) = (max, swap) {
+            if swap == "0" && !max.is_empty() && max.bytes().all(|b| b.is_ascii_digit()) {
+                return true;
+            }
+        }
+        match current.rfind('/') {
+            Some(0) | None => return false,
+            Some(i) => current.truncate(i),
+        }
     }
 }

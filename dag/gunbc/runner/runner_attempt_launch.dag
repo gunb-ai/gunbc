@@ -411,11 +411,14 @@ fn plan_attempt_launch_cell_granted(
 type AttemptLaunchPayload
   = GitHubLaunchPayload { runner_name: JitRunnerName, registration_id: Int, device: BootstrapDeviceStaging }
   | WorkspaceLaunchPayload { bootstrap_identity: NonEmptyStr, device: BootstrapDeviceStaging }
+  // A revision job: its read-only spec device (the environment file the guest unit loads).
+  | ClaimSetLaunchPayload { grant: NonEmptyStr, device: BootstrapDeviceStaging }
 
 fn launch_payload_device(payload: AttemptLaunchPayload) -> BootstrapDeviceStaging {
   match payload {
     GitHubLaunchPayload { runner_name: _, registration_id: _, device: d } => d
     WorkspaceLaunchPayload { bootstrap_identity: _, device: d } => d
+    ClaimSetLaunchPayload { grant: _, device: d } => d
   }
 }
 

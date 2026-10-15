@@ -11,11 +11,13 @@ import extdeps.git {
 }
 import extdeps.rust.cargo_build { cargo_build_release_bin_offline_command }
 import gunbc.repo.repo_self_build { repo_self_build_package }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
+import std.measure { ByteSize, byte_size }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Description, SuccessAction, FailureAction, ServiceType, ExecMode,
   Restart, WorkingDirectory, Environment, EnvironmentFile, ServiceStandardOutput, ServiceStandardError,
   OutputJournalAndConsole, ExecStartPre, ExecStart, Installable, WantedBy, UnitActionPoweroffForce,
-  systemd_environment_reference,
+  systemd_environment_reference, ServiceMemoryMax, ServiceMemorySwapMax,
 }
 import gunbc.cli_invoke { release_bin_rel_path, gunbc_bin_name, gunbc_run_invocation_words, invocation_words_bare }
 import gunbc.runner.runner_guest_image {
@@ -46,6 +48,13 @@ import gunbc.runner.runner_guest_image {
 //      tree, with the image's /work/.cargo/config.toml pointing crates-io at /work/vendor;
 //   4. ExecStart: the built gunbc runs gunbc.runner.runner_claim_set_guest claim_set_guest_main,
 //      which runs each claim and frames the exits onto /dev/vde.
+// THE CLAIMS RUN BOUNDED INSIDE THE GUEST. The unit carries MemoryMax= and MemorySwapMax=0 on its own
+// cgroup, so `gunbc test` inside it reads a finite memory.max with no swap on its cgroup chain
+// (gunbc.compute.unit_bounds BoundedByObservedCgroup) -- bounded by the cgroup, not exempted by name.
+// The bound is the CI slot's declared per-job envelope (gunbc.runner.runner_slot_desired
+// gunbc_runner_slot_memory_max), since the claims are the labels CI runs; the VM's RAM is that bound
+// plus the guest OS allowance, read from this same row by the launch plan.
+//
 // The job's per-job values (the tree id the diff compares against) reach the argv through systemd's
 // ${NAME} substitution from the spec environment file (systemd.service(5), "Command lines"); every
 // other word is literal.
@@ -149,6 +158,8 @@ fn revision_job_guest_unit() -> RevisionJobGuestUnit {
         Environment { assignment: runner_guest_job_path },
         Environment { assignment: runner_guest_job_home },
         EnvironmentFile { path: revision_job_spec_device },
+        ServiceMemoryMax { bytes: gunbc_runner_slot_memory_max },
+        ServiceMemorySwapMax { bytes: byte_size(count: 0) },
         ServiceStandardOutput { stream: OutputJournalAndConsole },
         ServiceStandardError { stream: OutputJournalAndConsole },
       ] + flat_map(rendered, r => match r {

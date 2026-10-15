@@ -30,6 +30,7 @@ import gunbc.compute.unit_bounds {
   user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
   CgroupText, CgroupReadFailed,
   AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, UserSessionAbsent,
+  BoundedByObservedCgroup, CgroupBoundObservation, CgroupChainRead, CgroupChainUnread, CgroupLimitReading,
   UserManagerOwed, CgroupUnreadable, UserManagerProbeFailed,
   WrapIntoUserWorkSlice, SkipUserWorkScope, RefuseUserWorkScope,
 }
@@ -175,21 +176,21 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_prefix() -> Bool {
 }
 
 test fn user_work_scope_standing_selects_from_supplied_observations() -> Bool {
-  match user_work_scope_standing(unit_test: true, github_actions: true, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+  match user_work_scope_standing(unit_test: true, github_actions: true, cgroup: CgroupReadFailed, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: true, xdg_runtime_dir: true) {
     UnitTestExempt =>
-      match user_work_scope_standing(unit_test: false, github_actions: true, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+      match user_work_scope_standing(unit_test: false, github_actions: true, cgroup: CgroupReadFailed, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: true, xdg_runtime_dir: true) {
         CiExempt =>
-          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: true, xdg_runtime_dir: true) {
             CgroupUnreadable =>
-              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: user_work_slice_unit_name as String }, user_manager_reachable: false, xdg_runtime_dir: false) {
+              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: user_work_slice_unit_name as String }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false) {
                 AlreadyInSlice =>
-                  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: runner_unit_prefix }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: runner_unit_prefix }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false) {
                     RunnerSlotExempt =>
-                      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: true, xdg_runtime_dir: false) {
+                      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: true, xdg_runtime_dir: false) {
                         UserManagerOwed =>
-                          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: true) {
+                          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: true) {
                             UserManagerProbeFailed =>
-                              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false) {
                                 UserSessionAbsent => true
                                 _ => false
                               }
@@ -237,6 +238,8 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: CiExempt))
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: UserManagerOwed))
     && string_contains(s: seed, pattern: "UserWorkScopeStanding::UserSessionAbsent =>")
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds observed_cgroup_bound`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_standing_wire(s: BoundedByObservedCgroup { cgroup: "", memory_max: 0 }), "\"")))
     && string_contains(s: seed, pattern: "std::process::exit(2)")
 }
 
@@ -314,4 +317,28 @@ test fn slice_control_refuses_when_session_reservation_is_unestablished() -> Boo
     SliceControlNotOwed => false
     SliceControlDerived { caps: _ } => false
   }
+}
+
+// THE OBSERVED-BOUND ARM: a process whose cgroup chain carries a finite memory.max with no swap is
+// bounded whatever its unit is called; memory.max=max, swap allowed, or no reading never admits.
+fn bound_standing(chain: List<CgroupLimitReading>) -> String {
+  user_work_scope_standing_wire(s: user_work_scope_standing(unit_test: false, github_actions: false,
+    cgroup: CgroupText { text: "0::/system.slice/gunbc-revision-job.service" },
+    bound: CgroupChainRead { chain: chain }, user_manager_reachable: false, xdg_runtime_dir: false))
+}
+
+test fn a_finite_memory_max_with_no_swap_bounds_the_process_whatever_its_unit_is_called() -> Bool {
+  bound_standing(chain: [
+    CgroupLimitReading { cgroup: "/system.slice/gunbc-revision-job.service", memory_max: "21474836480", memory_swap_max: "0" },
+    CgroupLimitReading { cgroup: "/system.slice", memory_max: "max", memory_swap_max: "max" },
+  ]) == "BoundedByObservedCgroup"
+}
+
+test fn unbounded_or_swap_allowed_or_unread_chains_refuse() -> Bool {
+  bound_standing(chain: [CgroupLimitReading { cgroup: "/system.slice/x.service", memory_max: "max", memory_swap_max: "0" }]) == "UserSessionAbsent"
+    && bound_standing(chain: [CgroupLimitReading { cgroup: "/system.slice/x.service", memory_max: "21474836480", memory_swap_max: "max" }]) == "UserSessionAbsent"
+    && bound_standing(chain: []) == "UserSessionAbsent"
+    && user_work_scope_standing_wire(s: user_work_scope_standing(unit_test: false, github_actions: false,
+         cgroup: CgroupText { text: "0::/system.slice/x.service" }, bound: CgroupChainUnread { detail: "unreadable" },
+         user_manager_reachable: false, xdg_runtime_dir: false)) == "UserSessionAbsent"
 }

@@ -1,6 +1,8 @@
 module gunbc.compute.unit_bounds
 
-import std.types { String, List, NonEmptyStr, Bool }
+import std.types { String, List, NonEmptyStr, Bool, Int }
+import std.algebra { trim }
+import gunbc.durable_cas_file_store { cas_name_is_digits }
 import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count }
@@ -123,8 +125,55 @@ type UserWorkScopeCgroupRead
   = CgroupText { text: String }
   | CgroupReadFailed
 
+// THE BOUND, OBSERVED RATHER THAN NAMED. The memory-envelope ruling's fact is "this process runs
+// under a finite cgroup memory.max with no swap", so this arm reads that fact: the process's cgroup
+// (/proc/self/cgroup, the unified hierarchy's `0::<path>` line) and each ancestor up to the root,
+// each with its memory.max and memory.swap.max. One cgroup on that chain carrying a FINITE
+// memory.max AND memory.swap.max = 0 bounds the process, whatever the unit is called. A chain
+// with no such cgroup is unbounded, and a chain that could not be read is unread; neither admits
+// (they fall through to the user-manager arms below, which refuse where no user manager exists).
+// The readings are supplied, so the fold is the only policy; the seed trampoline performs the walk
+// and mirrors this decision (the_seed_trampoline_mirrors_the_declared_wrap_standing).
+//
+// RunnerSlotExempt could later dissolve into this arm (an Actions runner slot unit carries its own
+// MemoryMax= and MemorySwapMax=0); this cut does not widen to do it.
+type CgroupLimitReading {
+  cgroup: String
+  memory_max: String
+  memory_swap_max: String
+}
+
+type CgroupBoundObservation
+  = CgroupChainRead { chain: List<CgroupLimitReading> }
+  | CgroupChainUnread { detail: String }
+
+type CgroupBound
+  = CgroupBoundedBy { cgroup: String, memory_max: Int }
+  | CgroupChainUnbounded
+  | CgroupChainNotObserved { detail: String }
+
+fn cgroup_reading_bound(r: CgroupLimitReading) -> Int? {
+  if trim(s: r.memory_swap_max) != "0" { none }
+  else if !cas_name_is_digits(s: trim(s: r.memory_max)) { none }
+  else { parse_int(s: trim(s: r.memory_max)) }
+}
+
+fn observed_cgroup_bound(observation: CgroupBoundObservation) -> CgroupBound {
+  match observation {
+    CgroupChainUnread { detail: d } => CgroupChainNotObserved { detail: d }
+    CgroupChainRead { chain: c } => fold(c, init: CgroupChainUnbounded, f: (acc, r) => match acc {
+      CgroupBoundedBy { cgroup: _, memory_max: _ } => acc
+      _ => match cgroup_reading_bound(r: r) {
+        Present { value: m } => CgroupBoundedBy { cgroup: r.cgroup, memory_max: m }
+        Absent => acc
+      }
+    })
+  }
+}
+
 type UserWorkScopeStanding
   = AlreadyInSlice
+  | BoundedByObservedCgroup { cgroup: String, memory_max: Int }
   | RunnerSlotExempt
   | CiExempt
   | UnitTestExempt
@@ -142,6 +191,7 @@ fn user_work_scope_standing(
   unit_test: Bool,
   github_actions: Bool,
   cgroup: UserWorkScopeCgroupRead,
+  bound: CgroupBoundObservation,
   user_manager_reachable: Bool,
   xdg_runtime_dir: Bool,
 ) -> UserWorkScopeStanding {
@@ -157,20 +207,28 @@ fn user_work_scope_standing(
           AlreadyInSlice
         } else if string_contains(s: text, pattern: runner_unit_prefix) {
           RunnerSlotExempt
-        } else if user_manager_reachable {
+        } else { match observed_cgroup_bound(observation: bound) {
+          CgroupBoundedBy { cgroup: g, memory_max: m } => BoundedByObservedCgroup { cgroup: g, memory_max: m }
+          _ => user_work_scope_standing_unbounded(user_manager_reachable: user_manager_reachable, xdg_runtime_dir: xdg_runtime_dir)
+        } }
+    }
+  }
+}
+
+fn user_work_scope_standing_unbounded(user_manager_reachable: Bool, xdg_runtime_dir: Bool) -> UserWorkScopeStanding {
+        if user_manager_reachable {
           UserManagerOwed
         } else if xdg_runtime_dir {
           UserManagerProbeFailed
         } else {
           UserSessionAbsent
         }
-    }
-  }
 }
 
 fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
   match s {
     AlreadyInSlice => "AlreadyInSlice"
+    BoundedByObservedCgroup { cgroup: _, memory_max: _ } => "BoundedByObservedCgroup"
     RunnerSlotExempt => "RunnerSlotExempt"
     CiExempt => "CiExempt"
     UnitTestExempt => "UnitTestExempt"
@@ -185,6 +243,7 @@ fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeSta
   match s {
     UserManagerOwed => WrapIntoUserWorkSlice
     AlreadyInSlice => SkipUserWorkScope { standing: AlreadyInSlice }
+    BoundedByObservedCgroup { cgroup: g, memory_max: m } => SkipUserWorkScope { standing: BoundedByObservedCgroup { cgroup: g, memory_max: m } }
     UnitTestExempt => SkipUserWorkScope { standing: UnitTestExempt }
     RunnerSlotExempt => SkipUserWorkScope { standing: RunnerSlotExempt }
     CiExempt => SkipUserWorkScope { standing: CiExempt }
