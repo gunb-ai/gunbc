@@ -72,6 +72,7 @@ import gunbc.live_deploy.spec {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data seed_user_work_scope_path: String = "src/v1/stage0/src/cli_run/user_work_scope.rs"
+data claim_batch_bin_path: String = "src/v1/stage0/src/bin/claim_batch.rs"
 
 fn property_words(props: List<SystemdRunProperty>) -> List<String> {
   props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
@@ -472,7 +473,13 @@ test fn a_root_cgroup_with_unreadable_memory_max_refuses() -> Bool {
   }
 }
 
-test fn an_rbe_namespaced_root_without_memory_max_refuses_despite_github_actions() -> Bool {
+test fn remote_claim_batch_does_not_enter_the_user_work_wrap() -> Bool {
+  let src = filesystem_read(path: claim_batch_bin_path).content
+  !string_contains(s: src, pattern: "reexec_into_user_work_slice_if_owed")
+    && !string_contains(s: src, pattern: "bind_process_workspace_root")
+}
+
+test fn an_unidentified_namespaced_root_without_memory_max_refuses_despite_github_actions() -> Bool {
   match user_work_scope_standing_with_root_memory(
     unit_test: false,
     github_actions: true,
