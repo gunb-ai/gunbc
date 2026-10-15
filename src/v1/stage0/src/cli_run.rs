@@ -31197,7 +31197,9 @@ struct ClaWildcardFactsCache {
     facts: Vec<ComplexityLinearityWildcardFactRaw>,
 }
 
-fn cla_compute_wildcard_facts(roots: &[String]) -> Vec<ComplexityLinearityWildcardFactRaw> {
+fn cla_compute_wildcard_facts(
+    roots: &[String],
+) -> Result<Vec<ComplexityLinearityWildcardFactRaw>, String> {
     let walk = decl_facts_corpus_walk(roots);
     let closed = non_fold_residue_closed_coproduct_type_names();
     let mut out = Vec::new();
@@ -31216,27 +31218,30 @@ fn cla_compute_wildcard_facts(roots: &[String]) -> Vec<ComplexityLinearityWildca
             out.push(ComplexityLinearityWildcardFactRaw {
                 fn_name: fact.name.clone(),
                 closed_coproduct_wildcard: stats.closed_coproduct_wildcard_matches > 0,
-                rostered: non_fold_residue_site_is_rostered(&site)
-                    .unwrap_or_else(|cause| panic!("{cause}")),
+                rostered: non_fold_residue_site_is_rostered(&site)?,
                 site,
             });
         }
     }
     out.sort();
     out.dedup();
-    out
+    Ok(out)
 }
 
-fn cla_cached_wildcard_facts() -> &'static ClaWildcardFactsCache {
-    static CACHE: OnceLock<ClaWildcardFactsCache> = OnceLock::new();
-    shared_fill::once(
+fn cla_cached_wildcard_facts() -> Result<&'static ClaWildcardFactsCache, String> {
+    static CACHE: OnceLock<Result<ClaWildcardFactsCache, String>> = OnceLock::new();
+    match shared_fill::once(
         &CACHE,
         "complexity_linearity_wildcard",
         "witness_layer_roots",
-        || ClaWildcardFactsCache {
-            facts: cla_compute_wildcard_facts(&witness_layer_roots()),
+        || {
+            cla_compute_wildcard_facts(&witness_layer_roots())
+                .map(|facts| ClaWildcardFactsCache { facts })
         },
-    )
+    ) {
+        Ok(c) => Ok(c),
+        Err(e) => Err(e.clone()),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
