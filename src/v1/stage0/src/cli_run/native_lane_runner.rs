@@ -4162,6 +4162,15 @@ fn host_memory_budget_receipt_line(
         HostBudgetResolution::Unreadable { reason } => {
             format!("[v2-native-census] host_memory_budget source=unreadable reason=\"{reason}\"")
         }
+        HostBudgetResolution::ExternallyBounded { run_id } => format!(
+            "[v2-native-census] host_memory_budget source=externally_bounded \
+             executor={}",
+            super::user_work_scope::standing_wire(
+                &super::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                    run_id: run_id.clone(),
+                },
+            )
+        ),
     }
 }
 
@@ -6149,6 +6158,18 @@ mod tests {
             "got: {unreadable}"
         );
         assert!(!unreadable.contains("bytes="), "got: {unreadable}");
+        let external = host_memory_budget_receipt_line(&HostBudgetResolution::ExternallyBounded {
+            run_id: "bb77f2ae-888b-4f04-9bef-6dab045b1548".to_string(),
+        });
+        assert!(
+            external.contains("source=externally_bounded"),
+            "got: {external}"
+        );
+        assert!(
+            external.contains("ExternallyBoundedExecutor:bb77f2ae-888b-4f04-9bef-6dab045b1548"),
+            "got: {external}"
+        );
+        assert!(!external.contains("bytes="), "got: {external}");
     }
 
     /// THE MARKER'S COUNT AND THE ROWS MUST AGREE. A run that reports more advised files than it
