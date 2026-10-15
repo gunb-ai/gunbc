@@ -34,7 +34,7 @@ import gunbc.runner.runner_guest_image {
 //   /dev/vdc  the tree, a tar archive of exactly the admitted tree's files;
 //   /dev/vdd  the vendored crates the tree's Cargo.lock pins, a tar archive;
 //   /dev/vde  the results drive, raw, zeroed by the host (gunbc.runner.runner_claim_set_results).
-// The device names follow the order the launch plan attaches drives (S4b-2's host half); a drive
+// The device names follow the order the launch plan attaches drives (S4b-3, gunbc.runner.runner_revision_job_launch); a drive
 // out of that order is a launch-plan defect, not something the guest guesses around.
 //
 // The steps are ExecStartPre lines, each one typed argv command, and systemd runs them in order and

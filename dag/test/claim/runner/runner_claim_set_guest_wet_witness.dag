@@ -23,7 +23,7 @@ import test.claim.runner.runner_claim_set_results_witness { revision, commit_hex
 // claim exits onto it; the host stats, reads and decodes it exactly as after a VMM exit. This is the
 // writer's inhabitance claim at the device interface: the frame the guest writes is the frame the
 // host admits. The full guest program (fetch-free tree, offline build, claim runs) over the same
-// staged inputs is the S4b-2 stand-in that follows.
+// staged inputs is S4b-3's stand-in.
 
 // 2^12 NULs: twelve doublings of one, so the staged size is stated once (device_bytes) and the
 // zeroed text is built to it rather than spelled.
