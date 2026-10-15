@@ -252,7 +252,7 @@ fn observed_run(
 // ── THE SELECTION: EVERYTHING THE ASSESSMENT CONSUMES AND NEVER MINTS ─────────────────────────
 
 // THE HOST ALLOCATION IS A RECEIPT, NOT FACTS TO RE-PLAN FROM. `gunbc.fleet.fleet_host_budget
-// fleet_host_plan_for` derives the plan (refusing on unverified oomd, an absent jobserver citation,
+// fleet_host_plan_for` derives the plan (refusing on unverified oomd,
 // an unset headroom) and `host_allocation_verdict` says whether it conserves with the control plane
 // charged; `gunbc.runner.runner_throughput_selection selected_host_allocation` projects the two into this
 // carrier, admitting the slice and the effective runner CPU cap only when the plan derived AND the
