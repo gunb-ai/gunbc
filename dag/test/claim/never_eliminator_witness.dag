@@ -7,7 +7,9 @@ import gunbc.compile_diagnostic_census {
   census_rows_of_class,
   census_total_count,
 }
-import std.types { Bool, Int, String }
+import std.types { Bool, Int, String, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import v2.std.decl_ref_resolution { cited_declaration_ref_refusal_count_live }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -132,4 +134,39 @@ test fn emitted_opaque_handle_is_not_an_empty_enum() -> Bool {
     ["struct Handle"],
     ["enum Handle {}"]
   )
+}
+
+// TYPED RESOLVE OF EVERY MODULE THAT IMPORTS THE TYPE Never. generated_artifact_producer_coverage
+// resolves each gate producer's DeclarationRef, not those importers. Witness modules that import
+// Never (test.claim.fleet.app_control_plane_inspection_witness,
+// test.claim.fleet.org_actions_standing_witness) sit outside decl_facts by policy
+// (OutsideDeclIndexTestWitnessModule); their production subjects are in this list.
+data never_importer_census_pool_roots: List<String> = ["dag", "src/v2"]
+
+fn never_type_importer_refs() -> List<DeclarationRef> {
+  [
+    decl_ref(module_path: "std.error_primitives", decl_name: "Never"),
+    decl_ref(module_path: "v2.extdeps.languages.rust", decl_name: "RustNever"),
+    decl_ref(module_path: "gunbc.fleet.app_control_plane_inspection", decl_name: "app_control_plane_receipt_path"),
+    decl_ref(module_path: "gunbc.fleet.org_actions_inspection", decl_name: "org_admin_token_env_name"),
+    decl_ref(module_path: "gunbc.fleet.org_actions_standing", decl_name: "RepoRunnerAccess"),
+    decl_ref(module_path: "gunbc.repo.repo_ruleset", decl_name: "gunbc_passing_ci_ruleset_id"),
+    decl_ref(module_path: "gunbc.machine_intake.host_resource_observation", decl_name: "ResourceUnread"),
+    decl_ref(module_path: "gunbc.spark.fabric_switch_assessment", decl_name: "Crs812LaneReading"),
+    decl_ref(module_path: "product.cable_plant_assessment", decl_name: "CableLegReading"),
+    decl_ref(module_path: "product.fan_tach_health", decl_name: "FanRotationAbsence")
+  ]
+}
+
+test fn never_type_importer_modules_still_resolve() -> Bool {
+  let refs = never_type_importer_refs()
+  count(refs) == 10
+    && cited_declaration_ref_refusal_count_live(refs: refs, pool_roots: never_importer_census_pool_roots) == 0
+}
+
+test fn never_type_importer_census_refuses_a_missing_declaration() -> Bool {
+  cited_declaration_ref_refusal_count_live(
+    refs: [decl_ref(module_path: "std.error_primitives", decl_name: "NoSuchNeverImporter_RED")],
+    pool_roots: never_importer_census_pool_roots
+  ) == 1
 }
