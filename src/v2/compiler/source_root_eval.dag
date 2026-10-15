@@ -23,7 +23,6 @@ import gunbc.native_route_universe {
   native_route_label_in_package,
   native_route_module_package_text,
   native_route_module_probe_declaration,
-  native_route_universe_member,
 }
 // THE FRONTIER RATCHET JOINS THIS CLOSURE HERE. The adjudicating main renders a call to it beside
 // native_route_admission, and the emitted crate carries a module only when this closure reaches it.
@@ -1714,11 +1713,12 @@ fn native_driver_plan_exit(plan: NativeDriverPlan) -> ProcessExit {
 // identity (review 69565: the earlier pre-pass and filter each re-derived every label).
 // `the_default_pattern_admits_every_universe_member` pins that the default narrows nothing.
 //
-// THE UNIVERSE AND THE SELECTION ARE TWO AUTHORITIES. The universe is the floor's
-// (`native_route_universe_member`, the required gate's own prefix): only its members are labeled at
-// all, so a module outside it -- including a declaration no label can name, `test fn all` -- is
-// neither the lane's population nor the lane's defect (review 69555). The pattern only narrows
-// WITHIN the universe; a pattern reaching outside it selects nothing rather than widening the lane.
+// THE UNIVERSE AND THE SELECTION ARE TWO AUTHORITIES. The universe is the marked declarations of the
+// modules the acquirer returned, so every marked declaration is labeled and a marked declaration no
+// label can name, `test fn all`, is a located defect of the lane rather than a test that silently
+// is not one: a location predicate that excused it would be a second statement of what a test is.
+// The pattern only selects WITHIN the universe; a pattern reaching outside it selects nothing rather
+// than widening the lane.
 //
 // PER IDENTITY IS THE GRAIN THE SINGLE-TARGET FORM NEEDS: `//pkg:name` names a declaration, not a
 // module. A MODULE WITH NO ADMITTED DECLARATION IS NOT IN THE UNIVERSE, so the emptiness check
@@ -1769,8 +1769,7 @@ fn native_lane_label_rows(declared: String, rows: List<FloorDiscoveryRow>) -> Na
   )
 }
 
-// ONLY UNIVERSE MEMBERS ARE LABELED. The facts already hold nothing else; the guard keeps this fold
-// total over any list a caller hands it.
+// EVERY FACT IS LABELED, because the facts already hold only modules that carry a marker.
 fn native_lane_label_universe(facts: List<NativeLaneSourceFacts>) -> NativeLaneLabeling {
   fold_list(
     xs: facts,
@@ -1779,20 +1778,16 @@ fn native_lane_label_universe(facts: List<NativeLaneSourceFacts>) -> NativeLaneL
       match acc {
         NativeLaneLabelRefused { identity: _ } => acc
         NativeLaneLabeled { sources: sources } =>
-          if !native_route_universe_member(module_qn: f.module) {
-            acc
-          } else {
-            match native_lane_label_rows(declared: f.module, rows: f.discovery.rows) {
-              NativeLaneSourceLabelRefused { identity: identity } =>
-                NativeLaneLabelRefused { identity: identity }
-              NativeLaneSourceLabeled { identities: identities } =>
-                NativeLaneLabeled {
-                  sources: list_snoc_item(
-                    xs: sources,
-                    item: NativeLaneLabeledSource { module: f.module, path: f.path, identities: identities }
-                  )
-                }
-            }
+          match native_lane_label_rows(declared: f.module, rows: f.discovery.rows) {
+            NativeLaneSourceLabelRefused { identity: identity } =>
+              NativeLaneLabelRefused { identity: identity }
+            NativeLaneSourceLabeled { identities: identities } =>
+              NativeLaneLabeled {
+                sources: list_snoc_item(
+                  xs: sources,
+                  item: NativeLaneLabeledSource { module: f.module, path: f.path, identities: identities }
+                )
+              }
           }
       }
     }
