@@ -1,0 +1,117 @@
+module gunbc.serving.rented_ninfer_source
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count }
+import std.content_hash { Sha256Digest }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { bound_dissolution }
+import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault, r2_object_url }
+import extdeps.ninfer.ninfer_serve { NinferEngineRelease }
+import extdeps.ninfer.qwen3_8_27b_nvfp4 { NinferModelRow }
+import gunbc.cloudflare.r2_origin { fleet_cloudflare_account_id, OriginCredentialStanding, OriginCredentialMintEntryUnbuilt }
+
+// WHERE A RENTED CARD FETCHES THE NINFER ARTIFACTS FROM, AND UNDER WHAT CREDENTIAL. Both artifacts (the engine
+// tarball and the weights container) were read, from the live card on 2026-10-15, to come from one Cloudflare
+// R2 bucket, `models`, on this fleet's account, through credentialed S3 and not a public URL. The PINS are not
+// here: the engine's are extdeps.ninfer.ninfer_serve ninfer_serve_81c8ce09_sm120_release and the weights' are
+// extdeps.ninfer.qwen3_8_27b_nvfp4 qwen3_8_27b_nvfp4_row, and this module reuses both rather than minting a
+// second copy. It adds only the location and the credential binding.
+//
+// STATED DIVERGENCE (DESIGN 3b): `models` is not a gunbc.cloudflare.r2_origin BucketPurpose and no
+// R2OriginBucket is built for it. That roster is the injective, fleet-allocated fabric buckets, each with a
+// purpose-derived admission and a mint entry; `models` was created by hand outside it, and a purpose arm
+// would also widen every exhaustive match over BucketPurpose for a bucket nothing here writes. The R2
+// OBJECT address reuses extdeps.cloudflare.r2 R2ObjectLocator and the CREDENTIAL reuses
+// gunbc.cloudflare.r2_origin OriginCredentialStanding, so a later purpose arm re-homes this row and forks
+// nothing.
+//
+// THE CREDENTIAL IS A BINDING TO A CUSTODY LOCUS, NEVER A VALUE. The card today reads R2 with keys in its own
+// environment; those keys are not copied or named here. OriginCredentialMintEntryUnbuilt says that nothing
+// mints a read token for this bucket into custody yet, so a fetch that needs one refuses on the arm rather
+// than signing with an unnamed secret. The operator still owes rotating the keys the card holds.
+data rented_models_bucket_name: NonEmptyStr = "models" as NonEmptyStr
+
+data rented_models_read_secret_id: NonEmptyStr = "cloudflare-r2-models-read-token" as NonEmptyStr
+
+data rented_models_read_credential: OriginCredentialStanding = OriginCredentialMintEntryUnbuilt { secret_id: rented_models_read_secret_id }
+
+type RentedArtifactSource {
+  locator: R2ObjectLocator
+  read_credential: OriginCredentialStanding
+}
+
+fn rented_models_source(key: NonEmptyStr) -> RentedArtifactSource {
+  RentedArtifactSource {
+    locator: R2ObjectLocator {
+      endpoint: R2S3Endpoint { account_id: fleet_cloudflare_account_id as String, jurisdiction: R2JurisdictionDefault },
+      bucket_name: rented_models_bucket_name,
+      key: key,
+    },
+    read_credential: rented_models_read_credential,
+  }
+}
+
+fn rented_engine_source(release: NinferEngineRelease) -> RentedArtifactSource {
+  rented_models_source(key: release.object_key)
+}
+
+// The weights object sits under a per-model prefix and is named by the model row's own container file, so the
+// key carries no second spelling of the file name.
+data rented_weights_key_prefix: String = "ninfer/qwen3_8_27b_nvfp4/"
+
+fn rented_weights_source(row: NinferModelRow) -> RentedArtifactSource {
+  rented_models_source(key: concat(rented_weights_key_prefix, row.container_file as String) as NonEmptyStr)
+}
+
+// WHAT A PLACEMENT CLAIMS ABOUT THE WEIGHTS IT PLACED, JUDGED AGAINST THE MODEL ROW'S PIN. The pin is the row's
+// container_bytes and container_sha256 and nothing else; a claimed digest that differs is refused, never
+// accepted as a second pin.
+type RentedWeightsPinAgreement
+  = RentedWeightsPinAgrees
+  | RentedWeightsDigestDiffers { pinned: Sha256Digest, claimed: Sha256Digest }
+  | RentedWeightsBytesDiffer { pinned: Nat, claimed: Nat }
+
+fn rented_weights_pin_agreement(row: NinferModelRow, claimed_bytes: Nat, claimed_sha256: Sha256Digest) -> RentedWeightsPinAgreement {
+  if (row.container_sha256.hex as String) != (claimed_sha256.hex as String) {
+    RentedWeightsDigestDiffers { pinned: row.container_sha256, claimed: claimed_sha256 }
+  } else {
+    if byte_size_count(b: row.container_bytes) != claimed_bytes {
+      RentedWeightsBytesDiffer { pinned: byte_size_count(b: row.container_bytes), claimed: claimed_bytes }
+    } else {
+      RentedWeightsPinAgrees
+    }
+  }
+}
+
+fn rented_artifact_url(source: RentedArtifactSource) -> String {
+  r2_object_url(locator: source.locator)
+}
+
+// DECLARED FRONTIER (DESIGN 3c): the executing consumers are not in this change. The verified placement leg
+// (S3a, over gunbc.host.verified_archive_install) reads the sources and the weights agreement, and the
+// rented_allocation_roster slice (S4) reads the engine release through RentedNinferEngine. Until the roster
+// declaration appears the witness test.claim.serving.rented_ninfer_source_witness is the only caller.
+data rented_ninfer_source_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "rented_engine_source"),
+    reason: "no placement leg fetches the engine tarball from this source yet",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_allocation_roster", decl_name: "rented_allocation_roster")),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "rented_weights_source"),
+    reason: "no placement leg fetches the weights container from this source yet",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_allocation_roster", decl_name: "rented_allocation_roster")),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "rented_weights_pin_agreement"),
+    reason: "no placement leg reads back a placed weights digest to judge against the model row's pin yet",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_allocation_roster", decl_name: "rented_allocation_roster")),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "rented_artifact_url"),
+    reason: "no fetch leg renders the object address for a signed request yet",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.rented_allocation_roster", decl_name: "rented_allocation_roster")),
+  ),
+]
