@@ -40,14 +40,28 @@ const MODELED_CAPPED_SYSTEM_SLICES: &[&str] = &[
     "gunbc-repository-convergence.slice",
     "gunbc-approval-broker.slice",
 ];
+// SEED MIRROR of `gunbc.compute.unit_bounds recognized_system_slice`
+// (declared capped names plus `gunbc.oomd_install` `gunbc_oomd_sessions_slice`).
+const RECOGNIZED_SYSTEM_SLICES: &[&str] = &[
+    "gunbc-repository-convergence.slice",
+    "gunbc-approval-broker.slice",
+    "sessions.slice",
+];
 
 enum UserWorkScopeStanding {
     AlreadyInSlice,
     RunnerSlotExempt,
     CiExempt,
     UnitTestExempt,
-    ExemptSystemUnit { unit: String, slice: String },
-    UncappedSystemSlice { unit: String, slice: String },
+    ExemptSystemUnit {
+        unit: String,
+        slice: String,
+        bound: u64,
+    },
+    UncappedSystemSlice {
+        unit: String,
+        slice: String,
+    },
     UserSessionAbsent,
     UserManagerOwed,
     CgroupUnreadable,
@@ -55,10 +69,14 @@ enum UserWorkScopeStanding {
     UserWorkSliceAbsent,
     UserWorkSliceUncapped,
     CallerEnvelopeUnreadable,
-    ExemptBoundedContainer { bytes: u64 },
+    ExemptBoundedContainer {
+        bytes: u64,
+    },
     BoundedContainerUncapped,
     BoundedContainerUnreadable,
-    ExternallyBoundedExecutor { run_id: String },
+    ExternallyBoundedExecutor {
+        run_id: String,
+    },
 }
 
 pub fn reexec_into_user_work_slice_if_owed() {
@@ -106,8 +124,8 @@ fn standing_wire(s: &UserWorkScopeStanding) -> String {
         UserWorkScopeStanding::RunnerSlotExempt => "RunnerSlotExempt".to_string(),
         UserWorkScopeStanding::CiExempt => "CiExempt".to_string(),
         UserWorkScopeStanding::UnitTestExempt => "UnitTestExempt".to_string(),
-        UserWorkScopeStanding::ExemptSystemUnit { unit, slice } => {
-            format!("ExemptSystemUnit:{slice}:{unit}")
+        UserWorkScopeStanding::ExemptSystemUnit { unit, slice, bound } => {
+            format!("ExemptSystemUnit:{slice}:{unit}:{bound}")
         }
         UserWorkScopeStanding::UncappedSystemSlice { unit, slice } => {
             format!("UncappedSystemSlice:{slice}:{unit}")
@@ -370,7 +388,11 @@ fn live_modeled_slice_standing(
     slice_memory: RootMemoryRead,
 ) -> UserWorkScopeStanding {
     match slice_memory {
-        RootMemoryRead::Capped(_) => UserWorkScopeStanding::ExemptSystemUnit { unit, slice },
+        RootMemoryRead::Capped(n) => UserWorkScopeStanding::ExemptSystemUnit {
+            unit,
+            slice,
+            bound: n,
+        },
         RootMemoryRead::Unbounded | RootMemoryRead::Unreadable => {
             UserWorkScopeStanding::UncappedSystemSlice { unit, slice }
         }
@@ -381,7 +403,7 @@ fn live_modeled_slice_standing(
 fn innermost_modeled_capped_slice(text: &str) -> Option<String> {
     text.split(['/', '\n'])
         .map(str::trim)
-        .filter(|seg| MODELED_CAPPED_SYSTEM_SLICES.contains(seg))
+        .filter(|seg| RECOGNIZED_SYSTEM_SLICES.contains(seg))
         .last()
         .map(str::to_string)
 }
@@ -451,7 +473,7 @@ fn standing_from_supplied(
         return live_modeled_slice_standing(unit, slice, slice_memory);
     }
     if let Some((unit, slice)) = system_service_unit_from_cgroup(cg) {
-        if MODELED_CAPPED_SYSTEM_SLICES.contains(&slice.as_str()) {
+        if RECOGNIZED_SYSTEM_SLICES.contains(&slice.as_str()) {
             return live_modeled_slice_standing(unit, slice, slice_memory);
         }
         return UserWorkScopeStanding::UncappedSystemSlice { unit, slice };
@@ -501,7 +523,7 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
     let modeled = cg.and_then(innermost_modeled_capped_slice);
     let service_slice = cg.and_then(system_service_unit_from_cgroup).map(|(_, s)| s);
     let slice_for_live = modeled
-        .or_else(|| service_slice.filter(|s| MODELED_CAPPED_SYSTEM_SLICES.contains(&s.as_str())));
+        .or_else(|| service_slice.filter(|s| RECOGNIZED_SYSTEM_SLICES.contains(&s.as_str())));
     let slice_memory = match (cg, slice_for_live.as_deref()) {
         (Some(text), Some(slice)) => live_slice_memory(text, slice),
         _ => RootMemoryRead::Unreadable,
@@ -632,7 +654,64 @@ mod standing_fixture_tests {
         );
         assert_eq!(
             got,
-            "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
+            "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service:1"
+        );
+    }
+
+    #[test]
+    fn sessions_slice_with_finite_local_memory_max_skips() {
+        let cg = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
+        let got = wire(
+            false,
+            Some(cg),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Capped(137438953472),
+            None,
+        );
+        assert_eq!(
+            got,
+            "ExemptSystemUnit:sessions.slice:docker-deadbeef.scope:137438953472"
+        );
+    }
+
+    #[test]
+    fn sessions_slice_with_unbounded_local_memory_max_refuses() {
+        let cg = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
+        let got = wire(
+            false,
+            Some(cg),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Unbounded,
+            None,
+        );
+        assert_eq!(
+            got,
+            "UncappedSystemSlice:sessions.slice:docker-deadbeef.scope"
+        );
+    }
+
+    #[test]
+    fn sessions_slice_with_unreadable_local_memory_max_refuses() {
+        let cg = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
+        let got = wire(
+            false,
+            Some(cg),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Unreadable,
+            None,
+        );
+        assert_eq!(
+            got,
+            "UncappedSystemSlice:sessions.slice:docker-deadbeef.scope"
         );
     }
 }

@@ -18,6 +18,7 @@ import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
   modeled_system_slice_memory_max,
 }
+import gunbc.oomd_install { gunbc_oomd_sessions_slice }
 import gunbc.runner.runner_unit { runner_unit_prefix }
 
 // THE ONE FOLD FROM A CAPACITY GRANT TO THE PROPERTIES OF THE UNIT THAT HOLDS IT. It used to live in
@@ -118,11 +119,13 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // UserSessionAbsent refuses: a host that owes the bound and has no user manager must not run
 // unbounded (review 80042). CiExempt / RunnerSlotExempt skip because those processes already sit
 // in a declared slot cgroup, not because the user manager is missing.
-// ExemptSystemUnit skips only when a cgroup path segment is a modeled capped slice
-// AND that slice's live memory.max is finite (live_modeled_slice_standing). A name
-// in declared_system_slice_memory_maxes with unreadable or unbounded memory.max
-// refuses UncappedSystemSlice. sessions.slice is host policy, not a wrap census
-// name; a namespaced-root container is ExemptBoundedContainer only from a live
+// ExemptSystemUnit skips only when a cgroup path segment is a recognized slice
+// AND that slice's live memory.max is finite (live_modeled_slice_standing), carrying
+// the local bound. Membership (recognized_system_slice) is names only: it does not
+// consume declared_system_slice_memory_maxes magnitudes, which are host-parametric.
+// Unreadable, unbounded, or zero live memory.max refuses UncappedSystemSlice.
+// sessions.slice is recognized by name (gunbc_oomd_sessions_slice) and still refuses
+// without a local finite cap. A namespaced-root container is ExemptBoundedContainer only from a live
 // finite memory.max. An observed unbounded root memory.max refuses even when a
 // BuildBuddy run id is present. Unreadable root memory.max plus a non-empty
 // BUILDBUDDY_RUN_ID is ExternallyBoundedExecutor (the measured RBE case). A named
@@ -156,7 +159,7 @@ type UserWorkScopeStanding
   | RunnerSlotExempt
   | CiExempt
   | UnitTestExempt
-  | ExemptSystemUnit { unit: String, slice: String }
+  | ExemptSystemUnit { unit: String, slice: String, bound: ByteSize }
   | UncappedSystemSlice { unit: String, slice: String }
   | UserSessionAbsent
   | UserManagerOwed
@@ -199,13 +202,18 @@ fn last_cgroup_unit_with_dot_suffix(text: String, suffix: String) -> String? {
   }
 }
 
+fn recognized_system_slice(unit: String) -> Bool {
+  (unit == (gunbc_oomd_sessions_slice as String))
+    || match modeled_system_slice_memory_max(unit: unit) {
+      Present { value: _ } => true
+      Absent => false
+    }
+}
+
 fn innermost_modeled_capped_slice(text: String) -> String? {
   match reverse(
     cgroup_path_segments(text: text)
-      |> filter(seg => match modeled_system_slice_memory_max(unit: seg) {
-        Present { value: _ } => true
-        Absent => false
-      })
+      |> filter(seg => recognized_system_slice(unit: seg))
   ).first() {
     Absent => none
     Present { value: slice } => Present { value: slice }
@@ -233,7 +241,7 @@ fn live_modeled_slice_standing(unit: String, slice: String, slice_memory: RootCg
       if byte_size_count(b: bytes) == 0 {
         UncappedSystemSlice { unit: unit, slice: slice }
       } else {
-        ExemptSystemUnit { unit: unit, slice: slice }
+        ExemptSystemUnit { unit: unit, slice: slice, bound: bytes }
       }
     RootMemoryUnbounded => UncappedSystemSlice { unit: unit, slice: slice }
     RootMemoryUnreadable => UncappedSystemSlice { unit: unit, slice: slice }
@@ -273,12 +281,12 @@ fn system_unit_standing_from_cgroup(text: String, slice_memory: RootCgroupMemory
   match system_service_unit_from_cgroup(text: text) {
     NotSystemService => none
     SystemServiceNamed { unit, slice } =>
-      match modeled_system_slice_memory_max(unit: slice) {
-        Present { value: _ } =>
-          Present {
-            value: live_modeled_slice_standing(unit: unit, slice: slice, slice_memory: slice_memory),
-          }
-        Absent => Present { value: UncappedSystemSlice { unit: unit, slice: slice } }
+      if recognized_system_slice(unit: slice) {
+        Present {
+          value: live_modeled_slice_standing(unit: unit, slice: slice, slice_memory: slice_memory),
+        }
+      } else {
+        Present { value: UncappedSystemSlice { unit: unit, slice: slice } }
       }
   }
 }
@@ -408,7 +416,8 @@ fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
     RunnerSlotExempt => "RunnerSlotExempt"
     CiExempt => "CiExempt"
     UnitTestExempt => "UnitTestExempt"
-    ExemptSystemUnit { unit, slice } => join(["ExemptSystemUnit:", slice, ":", unit], "")
+    ExemptSystemUnit { unit, slice, bound } =>
+      join(["ExemptSystemUnit:", slice, ":", unit, ":", to_string(value: byte_size_count(b: bound))], "")
     UncappedSystemSlice { unit, slice } => join(["UncappedSystemSlice:", slice, ":", unit], "")
     UserSessionAbsent => "UserSessionAbsent"
     UserManagerOwed => "UserManagerOwed"
@@ -432,8 +441,8 @@ fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeSta
     UnitTestExempt => SkipUserWorkScope { standing: UnitTestExempt }
     RunnerSlotExempt => SkipUserWorkScope { standing: RunnerSlotExempt }
     CiExempt => SkipUserWorkScope { standing: CiExempt }
-    ExemptSystemUnit { unit, slice } =>
-      SkipUserWorkScope { standing: ExemptSystemUnit { unit: unit, slice: slice } }
+    ExemptSystemUnit { unit, slice, bound } =>
+      SkipUserWorkScope { standing: ExemptSystemUnit { unit: unit, slice: slice, bound: bound } }
     UncappedSystemSlice { unit, slice } =>
       RefuseUserWorkScope { standing: UncappedSystemSlice { unit: unit, slice: slice } }
     CgroupUnreadable => RefuseUserWorkScope { standing: CgroupUnreadable }

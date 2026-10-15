@@ -36,7 +36,7 @@ import gunbc.compute.unit_bounds {
   user_work_scope_systemd_manager_dir, user_work_scope_buildbuddy_run_id_env_name,
   user_work_scope_user_slice_cgroup_needle, user_work_scope_service_unit_suffix,
   user_work_scope_slice_unit_suffix, user_work_scope_scope_unit_suffix,
-  system_service_unit_from_cgroup,
+  system_service_unit_from_cgroup, recognized_system_slice,
   user_work_scope_standing_for_wrap,
   user_work_wrap_envelope_properties,
   user_work_wrap_ready_properties,
@@ -287,7 +287,8 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds system_service_unit_from_cgroup`")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes` unit names")
     && string_contains(s: seed, pattern: concat("\"", concat(repository_convergence_slice_unit_name as String, "\"")))
-    && !string_contains(s: seed, pattern: concat("\"", concat(gunbc_oomd_sessions_slice as String, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds recognized_system_slice`")
+    && string_contains(s: seed, pattern: concat("\"", concat(gunbc_oomd_sessions_slice as String, "\"")))
     && !any(
       declared_system_slice_memory_maxes(),
       row => byte_size_count(b: row.memory_max) > 0
@@ -406,11 +407,13 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
     && seed_fixture_assert_eq(seed: seed, wire: capped_wire)
     && seed_fixture_assert_eq(seed: seed, wire: unbounded_wire)
     && seed_fixture_assert_eq(seed: seed, wire: exempt_wire)
-    && sessions_wire == "UserSessionAbsent"
+    && seed_fixture_assert_eq(seed: seed, wire: "UncappedSystemSlice:sessions.slice:docker-deadbeef.scope")
+    && seed_fixture_assert_eq(seed: seed, wire: "ExemptSystemUnit:sessions.slice:docker-deadbeef.scope:137438953472")
+    && sessions_wire == "UncappedSystemSlice:sessions.slice:docker-deadbeef.scope"
     && system_wire == "UncappedSystemSlice:system.slice:gunbc-tree-sync.service"
     && capped_wire == "ExemptBoundedContainer:25769803776"
     && unbounded_wire == "BoundedContainerUncapped"
-    && exempt_wire == "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
+    && exempt_wire == "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service:1"
 }
 
 test fn a_path_segment_without_a_dot_suffix_is_not_a_unit() -> Bool {
@@ -453,12 +456,13 @@ test fn tree_sync_under_its_declared_slice_is_exempt() -> Bool {
     Present { value: max } =>
       byte_size_count(b: max) == byte_size_count(b: repository_convergence_slice_memory_max)
         && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: max }) {
-          ExemptSystemUnit { unit, slice } =>
+          ExemptSystemUnit { unit, slice, bound } =>
             unit == (gunbc_tree_sync_unit_name as String)
               && slice == (gunbc_repository_convergence_slice_unit_name as String)
-              && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: unit, slice: slice }) {
-                SkipUserWorkScope { standing: ExemptSystemUnit { unit: eu, slice: es } } =>
-                  eu == unit && es == slice
+              && byte_size_count(b: bound) == byte_size_count(b: max)
+              && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: unit, slice: slice, bound: bound }) {
+                SkipUserWorkScope { standing: ExemptSystemUnit { unit: eu, slice: es, bound: eb } } =>
+                  eu == unit && es == slice && byte_size_count(b: eb) == byte_size_count(b: bound)
                 _ => false
               }
           _ => false
@@ -539,14 +543,45 @@ test fn sessions_slice_is_not_a_fleet_wide_wrap_exempt() -> Bool {
   match modeled_system_slice_memory_max(unit: gunbc_oomd_sessions_slice as String) {
     Present { value: _ } => false
     Absent =>
-      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
-        UserSessionAbsent =>
-          match user_work_scope_standing_effect(s: UserSessionAbsent) {
-            RefuseUserWorkScope { standing: UserSessionAbsent } => true
-            _ => false
-          }
-        _ => false
-      }
+      recognized_system_slice(unit: gunbc_oomd_sessions_slice as String)
+        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
+          UncappedSystemSlice { unit, slice } =>
+            unit == "docker-deadbeef.scope" && slice == (gunbc_oomd_sessions_slice as String)
+          _ => false
+        }
+  }
+}
+
+fn sessions_scope_cgroup() -> String {
+  join([
+    "0::",
+    user_work_scope_user_slice_cgroup_needle,
+    "user-1000.slice/user@1000.service/app.slice/",
+    gunbc_oomd_sessions_slice as String,
+    "/docker-deadbeef.scope",
+  ], "")
+}
+
+test fn sessions_slice_with_a_finite_local_memory_max_exempts() -> Bool {
+  let bound = byte_size(137438953472)
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: sessions_scope_cgroup() }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: bound }) {
+    ExemptSystemUnit { unit, slice, bound: b } =>
+      unit == "docker-deadbeef.scope"
+        && slice == (gunbc_oomd_sessions_slice as String)
+        && byte_size_count(b: b) == 137438953472
+        && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: unit, slice: slice, bound: b }) {
+          SkipUserWorkScope { standing: ExemptSystemUnit { unit: _, slice: _, bound: _ } } => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn sessions_slice_with_an_unbounded_local_memory_max_refuses() -> Bool {
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: sessions_scope_cgroup() }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnbounded) {
+    UncappedSystemSlice { unit, slice } =>
+      unit == "docker-deadbeef.scope" && slice == (gunbc_oomd_sessions_slice as String)
+    _ => false
   }
 }
 
@@ -559,11 +594,8 @@ test fn a_user_manager_sessions_slice_path_still_wraps() -> Bool {
     "/run-u.scope",
   ], "")
   match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
-    UserManagerOwed =>
-      match user_work_scope_standing_effect(s: UserManagerOwed) {
-        WrapIntoUserWorkSlice => true
-        _ => false
-      }
+    UncappedSystemSlice { unit, slice } =>
+      unit == "run-u.scope" && slice == (gunbc_oomd_sessions_slice as String)
     _ => false
   }
 }
@@ -947,7 +979,7 @@ fn composed_modeled_slice_standing(slice_memory: RootCgroupMemoryRead) -> UserWo
 
 test fn the_composed_entry_exempts_a_modeled_slice_with_a_finite_live_cap() -> Bool {
   user_work_scope_standing_wire(s: composed_modeled_slice_standing(slice_memory: RootMemoryCapped { bytes: byte_size(25769803776) }))
-    == "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
+    == "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service:25769803776"
 }
 
 test fn the_composed_entry_refuses_a_modeled_slice_with_an_unbounded_live_cap() -> Bool {
