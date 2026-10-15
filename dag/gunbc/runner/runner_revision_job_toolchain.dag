@@ -10,7 +10,7 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.xz { xz_decompress_keep_command }
 import extdeps.tools.dpkg_deb { dpkg_deb_extract_command, dpkg_deb_control_fields_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
+import extdeps.tools.gnu_coreutils { ln_symbolic_force_command, cp_preserve_if_absent_command }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell, sha256sum_stdin_digest_via_shell }
 import extdeps.sequoia.sqv { sqv_verify_cleartext_command }
 import extdeps.glibc.ldconfig { ldconfig_root_command }
@@ -326,12 +326,16 @@ fn prepare_toolchain_closure(store: String, debs_dir: String) -> ToolchainClosur
   }
 }
 
-// THE MAINTAINER-SCRIPT EFFECTS THIS CLOSURE NEEDS, AS MODELED STEPS. Read from the 87 debs' scripts
+// THE MAINTAINER-SCRIPT EFFECTS THIS CLOSURE NEEDS, AS MODELED STEPS. Read from the 88 debs' scripts
 // (S4b-3c, 2026-10-15):
 //   - gcc's postinst registers the `cc` alternative to /usr/bin/gcc: /usr/bin/cc -> /usr/bin/gcc.
-//   - cpp's postinst registers /lib/cpp -> /usr/bin/cpp.
-//   - libc6 and 58 other library packages fire the ldconfig trigger: the tree's own ldconfig, rooted
-//     at the tree, rebuilds etc/ld.so.cache.
+//   - cpp's postinst registers /lib/cpp -> /usr/bin/cpp (/lib is usr/lib in this tree).
+//   - libc-bin's postinst installs /etc/nsswitch.conf from /usr/share/libc-bin/nsswitch.conf when
+//     the file is absent, and leaves an existing one alone: cp --update=none.
+//   - libc6 and 58 other library packages fire the ldconfig trigger, which libc-bin's postinst answers
+//     with `ldconfig -r`: the CLOSURE's own ldconfig.real (static-pie, so the host runs it), rooted at
+//     the tree, rebuilds etc/ld.so.cache. /usr/sbin/ldconfig is a wrapper script that execs
+//     /sbin/ldconfig.real by absolute path, so it is not run from the host.
 // RECORDED AS NO EFFECT ON THE BUILD: the c89/c99 and rmt alternatives (nothing invokes them), libc6's
 // upgrade logic (service restarts and version checks on a running system; there is none), doc and
 // conffile helpers, libselinux's tmpfiles registration, and dpkg's vendor setup. git, gcc and ld are
@@ -340,7 +344,8 @@ fn toolchain_effect_commands(tree: String) -> List<ArgvCommand> {
   [
     ln_symbolic_force_command(target: "/usr/bin/gcc", link_name: concat(tree, "/usr/bin/cc")),
     ln_symbolic_force_command(target: "/usr/bin/cpp", link_name: concat(tree, "/usr/lib/cpp")),
-    ldconfig_root_command(ldconfig: concat(tree, "/usr/sbin/ldconfig"), root: tree),
+    cp_preserve_if_absent_command(source: concat(tree, "/usr/share/libc-bin/nsswitch.conf"), destination: concat(tree, "/etc/nsswitch.conf")),
+    ldconfig_root_command(ldconfig: concat(tree, "/usr/sbin/ldconfig.real"), root: tree),
   ]
 }
 
@@ -350,11 +355,12 @@ fn toolchain_tree_commands(tree: String, closure: RevisionJobToolchainClosure) -
 }
 
 // What the image's toolchain receipt records about the closure: the row digest it was proven under,
-// and that the closure's libc6 REPLACES the base image's (the base's libc-bin, which the closure does
-// not carry, stays at the base's own version beside it).
+// and that the closure's glibc set (libc6, libc-bin, libc-dev-bin, libc6-dev, all one release)
+// replaces the base image's glibc files. Only the closure's version is stated: the base has no
+// package database, so what it carried before is not a package fact this receipt can name.
 fn toolchain_receipt_lines(closure: RevisionJobToolchainClosure) -> String {
   join([
     "toolchain-closure rows=", closure.rows_digest as String, " index=", toolchain_packages_index_sha256 as String, "\n",
-    "libc6 ", closure.libc6_version as String, " replaces the base image's libc6; the base's libc-bin is retained\n",
+    "glibc ", closure.libc6_version as String, " (libc6, libc-bin, libc-dev-bin, libc6-dev from the closure) replaces the base image's glibc files\n",
   ], "")
 }

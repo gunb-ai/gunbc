@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List }
 
 // GENERATED from the verified index; see gunbc.runner.runner_revision_job_toolchain for how it is
 // checked. THE PINNED TOOLCHAIN CLOSURE for the revision-job guest image: the dependency closure of
-// {git, gcc, binutils, libc6-dev} over the noble RELEASE pocket of ports.ubuntu.com, arm64 main.
+// {git, gcc, binutils, libc6-dev, libc-bin} over the noble RELEASE pocket of ports.ubuntu.com, arm64 main.
 // Observed 2026-10-15: InRelease Date 'Thu, 25 Apr 2024 15:10:33 UTC' (as read in the fetched file),
 // signed by F6ECB3762474EDA9D21B7022871920D1991BC93C ('Ubuntu Archive Automatic Signing Key (2018)
 // <ftpmaster@ubuntu.com>', ubuntu-keyring), verified with sqv --cleartext; a one-line tamper refuses.
@@ -12,6 +12,10 @@ import std.types { String, NonEmptyStr, List }
 // IN THIS CLOSURE HAS A '|' ALTERNATIVE, so every `alternatives` list is empty; a regenerated closure
 // that meets one records the branch it took there, and the completeness check holds it to that branch. The set is closed on its own: the base
 // image's dpkg database is stripped, so the base contributes nothing to the dependency proof.
+// libc-bin IS A ROOT, not something the other roots pull in: nothing here depends on it, but the closure
+// replaces the base's libc6, so the glibc set (libc6, libc-bin, libc-dev-bin, libc6-dev) comes from
+// this one release, and libc-bin's own `libc6 (>> 2.39), libc6 (<< 2.40)` is checked against the
+// closure's libc6 rather than against a base whose installed versions have no package record.
 
 type ToolchainAlternativeChoice { relation: String, chosen: String }
 
@@ -32,7 +36,7 @@ data toolchain_archive_suite: NonEmptyStr = "noble"
 data toolchain_inrelease_sha256: NonEmptyStr = "cdb2f31d809f589719a53c6ad15f255b27569c4059542ada282aaa21b8e164b0"
 data toolchain_packages_index_path: NonEmptyStr = "main/binary-arm64/Packages.xz"
 data toolchain_packages_index_sha256: NonEmptyStr = "4a1901e6124fb0a111f5dffc8f5c14474f449e2ecfa71f2eaf0b29917edb53f9"
-data toolchain_closure_roots: List<NonEmptyStr> = ["git", "gcc", "binutils", "libc6-dev"]
+data toolchain_closure_roots: List<NonEmptyStr> = ["git", "gcc", "binutils", "libc6-dev", "libc-bin"]
 
 data toolchain_pinned_debs: List<ToolchainPinnedDeb> = [
   ToolchainPinnedDeb { package: "binutils", version: "2.42-4ubuntu2", architecture: "arm64", sha256: "c6651ac4cee5b151c21f7c781f3918b233aa5fa4d40404a3304cc6ab557b6729", filename: "pool/main/b/binutils/binutils_2.42-4ubuntu2_arm64.deb", depends: "binutils-common (= 2.42-4ubuntu2), libbinutils (= 2.42-4ubuntu2), binutils-aarch64-linux-gnu (= 2.42-4ubuntu2)", pre_depends: "", alternatives: [] },
@@ -57,6 +61,7 @@ data toolchain_pinned_debs: List<ToolchainPinnedDeb> = [
   ToolchainPinnedDeb { package: "libbinutils", version: "2.42-4ubuntu2", architecture: "arm64", sha256: "f38ec0d006bf89d5b07f6dd2cf0f6206e78c79a04f4d6e41f680cddd75c13108", filename: "pool/main/b/binutils/libbinutils_2.42-4ubuntu2_arm64.deb", depends: "libc6 (>= 2.38), libsframe1, libzstd1 (>= 1.5.5), zlib1g (>= 1:1.2.0), binutils-common (= 2.42-4ubuntu2)", pre_depends: "", alternatives: [] },
   ToolchainPinnedDeb { package: "libbrotli1", version: "1.1.0-2build2", architecture: "arm64", sha256: "cabf3462d908e72f2e594f19ae87c581c4614f099947e38fbd865bf8eae27014", filename: "pool/main/b/brotli/libbrotli1_1.1.0-2build2_arm64.deb", depends: "libc6 (>= 2.29)", pre_depends: "", alternatives: [] },
   ToolchainPinnedDeb { package: "libbz2-1.0", version: "1.0.8-5.1", architecture: "arm64", sha256: "89eefec795475ab9fd9bd13d74412a4ec49b06bffb3a3fbd3af78aed60941aa9", filename: "pool/main/b/bzip2/libbz2-1.0_1.0.8-5.1_arm64.deb", depends: "libc6 (>= 2.17)", pre_depends: "", alternatives: [] },
+  ToolchainPinnedDeb { package: "libc-bin", version: "2.39-0ubuntu8", architecture: "arm64", sha256: "2ecb09dc18787ccef3abb87964e4b80d7bd96f2ef376a1e4b7f39765b94534d8", filename: "pool/main/g/glibc/libc-bin_2.39-0ubuntu8_arm64.deb", depends: "libc6 (>> 2.39), libc6 (<< 2.40)", pre_depends: "", alternatives: [] },
   ToolchainPinnedDeb { package: "libc-dev-bin", version: "2.39-0ubuntu8", architecture: "arm64", sha256: "151ec13d51227eaf412ae2ad891fb1484fb541d4c24034eca5bdb638ed99b5df", filename: "pool/main/g/glibc/libc-dev-bin_2.39-0ubuntu8_arm64.deb", depends: "libc6 (>> 2.39), libc6 (<< 2.40)", pre_depends: "", alternatives: [] },
   ToolchainPinnedDeb { package: "libc6", version: "2.39-0ubuntu8", architecture: "arm64", sha256: "04d7cb73e608b41713b63ef915577f7f5d75e95b1b33174e82e05687fdb6cfaf", filename: "pool/main/g/glibc/libc6_2.39-0ubuntu8_arm64.deb", depends: "libgcc-s1", pre_depends: "", alternatives: [] },
   ToolchainPinnedDeb { package: "libc6-dev", version: "2.39-0ubuntu8", architecture: "arm64", sha256: "cf8d2af040044ea5f9205a7a7a3eceabe9bc182fd780a1dac8e849f8eccee1f1", filename: "pool/main/g/glibc/libc6-dev_2.39-0ubuntu8_arm64.deb", depends: "libc6 (= 2.39-0ubuntu8), libc-dev-bin (= 2.39-0ubuntu8), linux-libc-dev, libcrypt-dev, rpcsvc-proto", pre_depends: "", alternatives: [] },
