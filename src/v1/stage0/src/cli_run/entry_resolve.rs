@@ -727,20 +727,20 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     with_module_path_index(&pool_roots_abs(&roots), |_| ());
     super::pre_entry_phase::record(
         "module_path_index_build",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         index_started
             .elapsed()
             .saturating_sub(super::pool_acquire::attributed() - acquired_before),
     );
     let observation = super::pre_entry_phase::timed(
         "graph_facts_import_edges",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         || import_resolution_facts_with_observation(&roots, &roots, EXCLUDE),
     );
     let edges = observation.facts;
     let nodes = super::pre_entry_phase::timed(
         "graph_facts_module_declarations",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         || module_declaration_facts(&roots),
     );
     // Loader tier: import edges only, unchanged. Every consumer that goes on to RESOLVE what it
@@ -1395,7 +1395,7 @@ pub fn try_process_shared_index_for_pool(
     };
     super::pre_entry_phase::record(
         "source_root_walk_and_read",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         walk_started.elapsed(),
     );
     let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots));
@@ -2969,7 +2969,7 @@ pub(crate) fn reference_pool_names_for_index(
     ));
     super::pre_entry_phase::record(
         "reference_pool_names_from_census",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         started.elapsed(),
     );
     *index.reference_pool_names.borrow_mut() = Some(names.clone());
@@ -3021,7 +3021,7 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
     ));
     super::pre_entry_phase::record(
         "reference_pool_names_heads",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         started.elapsed(),
     );
     shared_fill::record_fill(
@@ -3121,7 +3121,7 @@ impl ReferenceSelectionTier {
             .collect();
             super::pre_entry_phase::record(
                 "selection_tier_whole_pool",
-                super::pre_entry_phase::PhaseScale::Tree,
+                super::pre_entry_phase::index_scale(),
                 started.elapsed(),
             );
             (adjacency, unaccounted)

@@ -330,4 +330,60 @@ mod tests {
             "an unparseable sibling outside the layout closure must not change resolve: without={without:?} with={with:?}"
         );
     }
+
+    fn diag_msgs(g: &v1_compiler_compile::ResolvedGraph) -> Vec<String> {
+        let mut v: Vec<String> = g
+            .diagnostics
+            .iter()
+            .map(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// Whole-tree `resolve_entry_graph` vs demand acquire. Ignored: the tree arm builds the
+    /// shared index (~8 GiB). Run on a memory-capped remote, not in the default lib suite.
+    #[test]
+    #[ignore = "whole-tree shared index; remote memory-capped only"]
+    fn demand_matches_whole_tree_resolve_on_selected_entries() {
+        let root = repo_root();
+        let prev = std::env::current_dir().expect("cwd");
+        std::env::set_current_dir(&root).expect("chdir");
+        let roots = ["dag".to_string(), "src/v2".to_string()];
+        let entries = [
+            "dag/gunbc/source_layout.dag",
+            "dag/extdeps/network/ipv4.dag",
+            "dag/std/optional.dag",
+            "dag/std/syllogism.dag",
+            "dag/gunbc/machine_intake/mtcollins1_boot_admission.dag",
+            "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
+            "dag/gunbc/machine_intake/mtcollins1_sol_notice.dag",
+        ];
+        let mut failed = Vec::new();
+        for rel in entries {
+            let entry = root.join(rel).to_string_lossy().into_owned();
+            let demand = super::resolve_entry_graph_demand_acquired(&roots, &entry);
+            let tree = super::resolve_entry_graph(&roots, &entry);
+            let ok = match (&demand, &tree) {
+                (Ok((gd, _)), Ok((gt, _))) => diag_msgs(gd) == diag_msgs(gt),
+                (Err(a), Err(b)) => a == b,
+                _ => false,
+            };
+            eprintln!(
+                "eq {rel} demand={} tree={} match={ok}",
+                demand.is_ok(),
+                tree.is_ok(),
+                ok
+            );
+            if !ok {
+                failed.push(format!(
+                    "{rel}: demand_ok={} tree_ok={}",
+                    demand.is_ok(),
+                    tree.is_ok()
+                ));
+            }
+        }
+        let _ = std::env::set_current_dir(prev);
+        assert!(failed.is_empty(), "{}", failed.join("\n"));
+    }
 }

@@ -1409,7 +1409,7 @@ fn report_pre_entry_phases(
         ),
         ("reconcile_root_variant_base", st.assembly_root_variant_base),
     ] {
-        record(name, PhaseScale::Tree, ns(nanos));
+        record(name, cli_run::pre_entry_phase::index_scale(), ns(nanos));
     }
     record(
         "resolve_entry_graph_inclusive",

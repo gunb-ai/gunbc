@@ -8781,7 +8781,7 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
         .try_for_each(|source| admit_bare_references_of_file(index, source));
     pre_entry_phase::record(
         "pool_bare_reference_admission",
-        pre_entry_phase::PhaseScale::Tree,
+        pre_entry_phase::index_scale(),
         admission_started.elapsed(),
     );
     verdict
@@ -16349,7 +16349,7 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     });
     pre_entry_phase::record(
         "pool_census_parse",
-        pre_entry_phase::PhaseScale::Tree,
+        pre_entry_phase::index_scale(),
         pool_started.elapsed(),
     );
     *index.pool_parse.borrow_mut() = Some(parsed.clone());
@@ -16590,7 +16590,7 @@ fn closure_name_census(
         v1_compiler_infer::build_symbol_index_census_raw_nodes(nodes, pool.combined_si.clone());
     pre_entry_phase::record(
         "closure_name_census_build",
-        pre_entry_phase::PhaseScale::Tree,
+        pre_entry_phase::index_scale(),
         census_started.elapsed(),
     );
     index

@@ -90,6 +90,18 @@ pub(crate) fn record_demand_acquired_modules(n: usize) {
     DEMAND_ACQUIRED_MODULES.with(|c| c.set(Some(n)));
 }
 
+/// `tree` when the indexed pool is every file under `--source-root`; `closure` when
+/// `gunbc run` already replaced that pool with the demand-acquired set.
+pub fn index_scale() -> PhaseScale {
+    DEMAND_ACQUIRED_MODULES.with(|c| {
+        if c.get().is_some() {
+            PhaseScale::Closure
+        } else {
+            PhaseScale::Tree
+        }
+    })
+}
+
 /// The indexed pool's module count for `source_roots` (the population the `tree` rows scale
 /// with), or `None` when no index exists for them. Reads ONLY the index a resolve already
 /// memoized: it never builds one, so a resolve that refused on pool discovery is reported as
