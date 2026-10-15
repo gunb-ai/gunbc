@@ -90,24 +90,35 @@ fn run_archive_commands(commands: List<ArgvCommand>, transport: HostEffectTransp
   }
 }
 
-fn verify_archive_sha256_over_transport(
-  archive: NonEmptyStr,
-  expected: NonEmptyStr,
-  transport: HostEffectTransport,
-) -> ArchiveDigestVerdict {
-  match run_archive_argv(command: archive_sha256_verify_command(archive: archive), transport: transport) {
+fn archive_digest_from_sha256sum_stdout(stdout: String, expected: NonEmptyStr) -> ArchiveDigestVerdict {
+  match sha256sum_line_digest(line: stdout) {
+    Absent => ArchiveDigestUnverifiable { reason: "sha256sum printed no 64-hex digest field" }
+    Present { value: d } =>
+      if (d.hex as String) == (expected as String) { ArchiveDigestMatches } else { ArchiveDigestMismatch }
+  }
+}
+
+fn archive_digest_from_sha256_transport(outcome: RunArgvTransportOutcome, expected: NonEmptyStr) -> ArchiveDigestVerdict {
+  match outcome {
     RunArgvTransportRefused { reason: r } => ArchiveDigestUnverifiable { reason: r }
     RunArgvTransportObserved { observed: o } =>
       if o.success == false {
         ArchiveDigestUnverifiable { reason: o.stderr }
       } else {
-        match sha256sum_line_digest(line: o.stdout) {
-          Absent => ArchiveDigestUnverifiable { reason: "sha256sum printed no 64-hex digest field" }
-          Present { value: d } =>
-            if (d.hex as String) == (expected as String) { ArchiveDigestMatches } else { ArchiveDigestMismatch }
-        }
+        archive_digest_from_sha256sum_stdout(stdout: o.stdout, expected: expected)
       }
   }
+}
+
+fn verify_archive_sha256_over_transport(
+  archive: NonEmptyStr,
+  expected: NonEmptyStr,
+  transport: HostEffectTransport,
+) -> ArchiveDigestVerdict {
+  archive_digest_from_sha256_transport(
+    outcome: run_archive_argv(command: archive_sha256_verify_command(archive: archive), transport: transport),
+    expected: expected,
+  )
 }
 
 fn verify_archive_digest(archive: NonEmptyStr, pin: ArchiveDigestPin, transport: HostEffectTransport) -> ArchiveDigestVerdict {
