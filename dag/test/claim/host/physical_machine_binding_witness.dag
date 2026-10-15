@@ -8,7 +8,7 @@ module test.claim.host.physical_machine_binding_witness
 //   RED3  an UNENROLLED unit is still a valid subject with an absent host (no fleet axis needed).
 // Positive control: mtcollins1 resolves to its unit and current subject.
 
-import std.optional { Absent, Present, none }
+import std.optional { Absent, Present }
 import gunbc.host.physical_machine_binding {
   PhysicalMachineBinding,
   PhysicalMachineAdmitted,
@@ -76,8 +76,8 @@ data red2_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
 data binding_a: PhysicalMachineBinding = PhysicalMachineBinding {
   unit_key: unit_a,
   subject: subject_for(unit_a),
-  fleet: none,
-  control: none,
+  fleet: Absent,
+  control: Absent,
 }
 
 // RED1: a receipt bound to a superseded subject (changed firmware) refuses to apply to the
@@ -93,7 +93,7 @@ test fn red2_host_allocation_other_unit_refuses() -> Bool {
     unit_standing: UnitKeyBound { key: unit_a },
     current_subject: Present { value: subject_for(unit_a) },
     fleet: Present { value: red2_enrollment },
-    control: none,
+    control: Absent,
   ) {
     PhysicalMachineRefused { cause: PhysicalMachineHostAllocationMismatch { physical_unit: p, allocated_unit: a } } =>
       p == unit_a && a == unit_b
@@ -107,8 +107,8 @@ test fn red3_unenrolled_unit_is_valid_subject() -> Bool {
     host: operator_host_mtcollins1,
     unit_standing: UnitKeyBound { key: unit_a },
     current_subject: Present { value: subject_for(unit_a) },
-    fleet: none,
-    control: none,
+    fleet: Absent,
+    control: Absent,
   ) {
     PhysicalMachineAdmitted { binding } =>
       match binding.fleet {
@@ -128,8 +128,8 @@ test fn positive_mtcollins1_resolves_to_unit_and_current_subject() -> Bool {
         host: operator_host_mtcollins1,
         unit_standing: mtcollins1_unit_key_standing,
         current_subject: Present { value: cs },
-        fleet: none,
-        control: none,
+        fleet: Absent,
+        control: Absent,
       ) {
         PhysicalMachineAdmitted { binding } =>
           match mtcollins1_unit_key_standing {

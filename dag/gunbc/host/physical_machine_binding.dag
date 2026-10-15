@@ -25,7 +25,7 @@ module gunbc.host.physical_machine_binding
 // controller endpoint and unit, not by host label; this module retypes axis 3 to BmcControlBinding
 // on the cut-2 rebase. It is present only when observed and, like axis 2, needs no HostIdentity.
 
-import std.optional { Absent, Present, none }
+import std.optional { Absent, Present }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.machine_intake.subject {
   UnitKey,
@@ -166,7 +166,7 @@ fn physical_machine_axis3(
   match control {
     Absent =>
       PhysicalMachineAdmitted {
-        binding: PhysicalMachineBinding { unit_key: unit, subject, fleet, control: none }
+        binding: PhysicalMachineBinding { unit_key: unit, subject, fleet, control: Absent }
       }
     Present { value: standing } =>
       match (standing.subject.subject.unit_key == unit) {
