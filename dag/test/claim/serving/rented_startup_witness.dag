@@ -83,7 +83,7 @@ test fn the_fetch_leg_refuses_on_the_unbuilt_mint_for_both_artifacts() -> Bool {
 test fn engine_verification_passes_on_the_pinned_files() -> Bool {
   let r = ninfer_serve_81c8ce09_sm120_release
   match rented_engine_verdict(
-    release: r,
+    engine: r,
     binary: RentedInstalledFileRead { bytes: r.binary.bytes, sha256: r.binary.sha256 },
     rev_file: RentedInstalledFileRead { bytes: r.rev_file.bytes, sha256: r.rev_file.sha256 },
   ) {
@@ -95,7 +95,7 @@ test fn engine_verification_passes_on_the_pinned_files() -> Bool {
 test fn engine_verification_refuses_a_binary_whose_digest_differs() -> Bool {
   let r = ninfer_serve_81c8ce09_sm120_release
   match rented_engine_verdict(
-    release: r,
+    engine: r,
     binary: RentedInstalledFileRead { bytes: r.binary.bytes, sha256: Sha256Digest { hex: "00" } },
     rev_file: RentedInstalledFileRead { bytes: r.rev_file.bytes, sha256: r.rev_file.sha256 },
   ) {

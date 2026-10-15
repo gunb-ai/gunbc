@@ -164,19 +164,19 @@ fn rented_installed_file_verdict(pin: NinferInstalledFile, reading: RentedInstal
   }
 }
 
-fn rented_engine_verdict(release: NinferEngineRelease, binary: RentedInstalledFileReading, rev_file: RentedInstalledFileReading) -> RentedEngineVerdict {
-  match rented_installed_file_verdict(pin: release.binary, reading: binary) {
-    RentedEngineVerified => rented_installed_file_verdict(pin: release.rev_file, reading: rev_file)
+fn rented_engine_verdict(engine: NinferEngineRelease, binary: RentedInstalledFileReading, rev_file: RentedInstalledFileReading) -> RentedEngineVerdict {
+  match rented_installed_file_verdict(pin: engine.binary, reading: binary) {
+    RentedEngineVerified => rented_installed_file_verdict(pin: engine.rev_file, reading: rev_file)
     refused => refused
   }
 }
 
-fn rented_engine_directory(roots: RentedStoreRoots, release: NinferEngineRelease) -> String {
-  join([roots.root as String, "/engine/", release.release_name as String], "")
+fn rented_engine_directory(roots: RentedStoreRoots, engine: NinferEngineRelease) -> String {
+  join([roots.root as String, "/engine/", engine.release_name as String], "")
 }
 
-fn rented_engine_staging_directory(roots: RentedStoreRoots, release: NinferEngineRelease, attempt: NonEmptyStr) -> String {
-  join([roots.root as String, "/partial/engine.", release.release_name as String, ".", attempt as String], "")
+fn rented_engine_staging_directory(roots: RentedStoreRoots, engine: NinferEngineRelease, attempt: NonEmptyStr) -> String {
+  join([roots.root as String, "/partial/engine.", engine.release_name as String, ".", attempt as String], "")
 }
 
 // THE RENAME INTO PLACE EXISTS ONLY FOR A VERIFIED ENGINE, and a refusal names the file and the figure.
@@ -184,12 +184,12 @@ type RentedEnginePromotion
   = RentedEnginePromoted { commands: List<ArgvCommand> }
   | RentedEngineRefused { verdict: RentedEngineVerdict }
 
-fn rented_engine_promotion(roots: RentedStoreRoots, release: NinferEngineRelease, attempt: NonEmptyStr, verdict: RentedEngineVerdict) -> RentedEnginePromotion {
+fn rented_engine_promotion(roots: RentedStoreRoots, engine: NinferEngineRelease, attempt: NonEmptyStr, verdict: RentedEngineVerdict) -> RentedEnginePromotion {
   match verdict {
     RentedEngineVerified => RentedEnginePromoted {
       commands: [mv_exact_destination_command(
-        source: rented_engine_staging_directory(roots: roots, release: release, attempt: attempt),
-        destination: rented_engine_directory(roots: roots, release: release),
+        source: rented_engine_staging_directory(roots: roots, engine: release, attempt: attempt),
+        destination: rented_engine_directory(roots: roots, engine: release),
       )],
     }
     refused => RentedEngineRefused { verdict: refused }
