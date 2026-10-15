@@ -87,7 +87,7 @@ fn backing_microvm_forbidding_offer(backing: HostBacking) -> DeclarationRef? {
 type HostUnitAllocationStanding
   = HostUnitResolved { unit: UnitKey }
   | HostUnitRefused { cause: UnitKeyRefusalCause }
-  | HostUnitUnobserved
+  | HostUnitUnobserved { read_obligation: NonEmptyStr }
   | HostUnitNotOwned
 
 // Provider guests are not physical machines: they carry no UnitKey, and that is correct -- there is
@@ -96,7 +96,12 @@ fn resolve_host_unit(backing: HostBacking) -> HostUnitAllocationStanding {
   match backing {
     OwnedMachine { provisioning: _, unit: unit_standing } =>
       match unit_standing {
-        Absent => HostUnitUnobserved
+        Absent => HostUnitUnobserved {
+          // The read that would bind the unit: the board serial, read from SMBIOS type 2 on the owned
+          // host, or from the FRU through its controller. Naming it keeps the unobserved row a tracked
+          // frontier (a real follow-up observation) rather than a bare state.
+          read_obligation: "read the board serial (SMBIOS type 2 on the owned host, or the FRU through its controller) and bind it to a unit",
+        }
         Present { value: standing } =>
           match standing {
             UnitKeyBound { key: k } => HostUnitResolved { unit: k }
