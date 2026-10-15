@@ -14,7 +14,7 @@ data a_job_accepted_between_the_idle_read_and_the_stop_is_killed: RecurringFailu
 
     "DISTINGUISHING FACTS: the job's Runner.Worker started after the ps listing and before systemctl stop; the slot was masked first, so the runner does not restart, but the masked mid-job listener already holds the new job.",
 
-    "RUNG FOUND AT: mitigatable (mask-first narrows admission to the already-running listener; the read and the stop are adjacent legs). CEILING: structurally impossible -- the runner is removed from GitHub's scheduling before it is stopped, so no job can be assigned in the window. NEXT TRIGGER: GitHub Actions self-hosted runner deregistration (DELETE /orgs/{org}/actions/runners/{runner_id}) modeled in extdeps for the Actions API and consumed by drain_and_mask_runner_slot_over before the stop leg, with a read-back that the runner is gone from the org roster.",
+    "RUNG FOUND AT: mitigatable (mask-first narrows admission to the already-running listener; the read and the stop are adjacent legs). CEILING: structurally impossible -- the runner is removed from GitHub's scheduling before it is stopped, so no job can be assigned in the window. NEXT TRIGGER: GitHub Actions self-hosted runner deregistration (DELETE /orgs/ORG/actions/runners/RUNNER_ID, GitHub REST "Delete a self-hosted runner from an organization") modeled in extdeps for the Actions API and consumed by drain_and_mask_runner_slot_over before the stop leg, with a read-back that the runner is gone from the org roster.",
   ],
 
   evidence: [
