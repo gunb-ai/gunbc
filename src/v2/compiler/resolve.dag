@@ -1467,7 +1467,7 @@ fn lookup_symbol_index_atom_identity(
           SymbolIndexAtomAmbiguous { class: AmbiguousOnLexicalChain { candidates: candidates } }
         LexicalUnbound => SymbolIndexAtomUnbound
       }
-    ExcludedByCategory { required: _, excluded: _ } => SymbolIndexAtomExcludedByCategory
+    ExcludedByCategory => SymbolIndexAtomExcludedByCategory
   }
 }
 
@@ -4015,25 +4015,21 @@ fn resolve_instantiation_walk_arguments(ctx: ResolveContext, n: Node, head_walk:
 // category (type_decl_member_child_walk), so Int under `type Pos = Int where positive` is read in a value
 // context and is correctly a type there.
 fn resolve_instantiation_argument_edge(arg_ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
-  if resolve_argument_kernel_type_excluded(ctx: arg_ctx, n: e.target) {
-    resolve_walk_refused_one(chain: diagnostics_singleton(d: resolve_type_application_diagnostic(reason: ^resolve_reason_reference_category_mismatch, at: e.target)))
-  } else {
-    resolve_child_edge(ctx: arg_ctx, e: e)
+  match resolve_argument_kernel_type_optional(n: e.target) {
+    Absent => resolve_child_edge(ctx: arg_ctx, e: e)
+    Present { value: _ } =>
+      match occurrence_category_binding_verdict(reference: arg_ctx.reference_category, declaration: TypeOccurrence) {
+        OccurrenceCategoryBindingAdmissible => resolve_child_edge(ctx: arg_ctx, e: e)
+        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } =>
+          resolve_walk_refused_one(chain: diagnostics_singleton(d: resolve_type_application_diagnostic(reason: ^resolve_reason_reference_category_mismatch, at: e.target)))
+      }
   }
 }
 
-fn resolve_argument_kernel_type_excluded(ctx: ResolveContext, n: Node) -> Bool {
+fn resolve_argument_kernel_type_optional(n: Node) -> Optional<Node> {
   match type_binder_atom_identity_optional(n: n) {
-    Absent => false
-    Present { value: id } =>
-      match resolve_kernel_type_atom_optional(n: n, identity: id) {
-        Absent => false
-        Present { value: _ } =>
-          match occurrence_category_binding_verdict(reference: ctx.reference_category, declaration: TypeOccurrence) {
-            OccurrenceCategoryBindingAdmissible => false
-            OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } => true
-          }
-      }
+    Absent => optional_absent()
+    Present { value: id } => resolve_kernel_type_atom_optional(n: n, identity: id)
   }
 }
 
