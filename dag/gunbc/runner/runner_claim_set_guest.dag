@@ -20,11 +20,17 @@ import gunbc.runner.runner_claim_set_results { ClaimSetResult, claim_set_results
 // (`git rev-parse HEAD`, `git rev-parse HEAD^{tree}` after checking the tree against the job spec);
 // the host refuses any record naming another revision. A malformed exits file writes NOTHING, so the
 // zeroed device decodes as unwritten and the attempt is unreceipted -- never a partial frame.
+//
+// THE WHOLE DEVICE IS WRITTEN: the frame, then NUL to the device's declared size. A raw block device
+// keeps its size whatever is written, but a plain file truncates to what was written, so writing the
+// frame alone would make the stand-in and the device differ. Writing exactly the declared size makes
+// them byte-identical, and a frame larger than the device refuses rather than being cut.
 
 data claim_set_guest_exits_env: NonEmptyStr = "GUNBC_CLAIM_SET_EXITS"
 data claim_set_guest_commit_env: NonEmptyStr = "GUNBC_CLAIM_SET_COMMIT"
 data claim_set_guest_tree_env: NonEmptyStr = "GUNBC_CLAIM_SET_TREE"
 data claim_set_guest_device_env: NonEmptyStr = "GUNBC_CLAIM_SET_RESULTS_DEVICE"
+data claim_set_guest_device_bytes_env: NonEmptyStr = "GUNBC_CLAIM_SET_RESULTS_BYTES"
 
 type ClaimSetGuestWrite
   = ClaimSetGuestWritten { records: Int }
@@ -32,6 +38,7 @@ type ClaimSetGuestWrite
   | ClaimSetGuestExitsMalformed { line: String }
   | ClaimSetGuestExitsEmpty
   | ClaimSetGuestDeviceWriteRefused { device: String, detail: String }
+  | ClaimSetGuestFrameExceedsDevice { frame: Int, device: Int }
 
 fn claim_set_guest_exit_record(line: String, commit: NonEmptyStr, tree: NonEmptyStr) -> ClaimSetResult? {
   let parts: List<String> = line.split(delimiter: " ")
@@ -60,7 +67,17 @@ fn claim_set_guest_records(text: String, commit: NonEmptyStr, tree: NonEmptyStr)
   })
 }
 
-fn write_claim_set_results(exits_path: String, commit: NonEmptyStr, tree: NonEmptyStr, device: String) -> ClaimSetGuestWrite {
+// NUL to `n` characters, by doubling: the padding is built to the declared size, never spelled.
+fn nul_padding(n: Int) -> String {
+  if n <= 0 { "" }
+  else if n == 1 { "\u{0}" }
+  else {
+    let half = nul_padding(n: n / 2)
+    if n % 2 == 0 { concat(half, half) } else { concat(concat(half, half), "\u{0}") }
+  }
+}
+
+fn write_claim_set_results(exits_path: String, commit: NonEmptyStr, tree: NonEmptyStr, device: String, device_bytes: Int) -> ClaimSetGuestWrite {
   let read = Filesystem.Read(path: exits_path)
   if !read.success { ClaimSetGuestExitsUnreadable { path: exits_path, detail: read.error } }
   else { match claim_set_guest_records(text: read.content, commit: commit, tree: tree) {
@@ -68,9 +85,13 @@ fn write_claim_set_results(exits_path: String, commit: NonEmptyStr, tree: NonEmp
     ClaimSetGuestRecordsRead { records: rs } =>
       if count(rs) == 0 { ClaimSetGuestExitsEmpty }
       else {
-        let w = Filesystem.Write(path: device, content: claim_set_results_frame(results: rs))
-        if w.success { ClaimSetGuestWritten { records: count(rs) } }
-        else { ClaimSetGuestDeviceWriteRefused { device: device, detail: w.error } }
+        let frame = claim_set_results_frame(results: rs)
+        if length(frame) > device_bytes { ClaimSetGuestFrameExceedsDevice { frame: length(frame), device: device_bytes } }
+        else {
+          let w = Filesystem.Write(path: device, content: concat(frame, nul_padding(n: device_bytes - length(frame))))
+          if w.success { ClaimSetGuestWritten { records: count(rs) } }
+          else { ClaimSetGuestDeviceWriteRefused { device: device, detail: w.error } }
+        }
       }
   } }
 }
@@ -87,13 +108,15 @@ fn claim_set_guest_write_results_main() -> ProcessExit {
   let commit = claim_set_guest_env(name: claim_set_guest_commit_env)
   let tree = claim_set_guest_env(name: claim_set_guest_tree_env)
   let device = claim_set_guest_env(name: claim_set_guest_device_env)
-  if exits == "" || commit == "" || tree == "" || device == "" {
-    exit_failure(reason: "claim_set_guest_write_results: GUNBC_CLAIM_SET_EXITS, _COMMIT, _TREE and _RESULTS_DEVICE must all be set")
-  } else { match write_claim_set_results(exits_path: exits, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr, device: device) {
+  let bytes_text = claim_set_guest_env(name: claim_set_guest_device_bytes_env)
+  if exits == "" || commit == "" || tree == "" || device == "" || !cas_name_is_digits(s: bytes_text) {
+    exit_failure(reason: "claim_set_guest_write_results: GUNBC_CLAIM_SET_EXITS, _COMMIT, _TREE, _RESULTS_DEVICE and a decimal _RESULTS_BYTES must all be set")
+  } else { match write_claim_set_results(exits_path: exits, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr, device: device, device_bytes: match parse_int(s: bytes_text) { Present { value: n } => n  Absent => 0 }) {
     ClaimSetGuestWritten { records: _ } => ExitSuccess
     ClaimSetGuestExitsUnreadable { path: p, detail: d } => exit_failure(reason: join(["exits file unreadable at ", p, ": ", d], ""))
     ClaimSetGuestExitsMalformed { line: l } => exit_failure(reason: join(["exits line malformed: ", l], ""))
     ClaimSetGuestExitsEmpty => exit_failure(reason: "exits file names no claims")
     ClaimSetGuestDeviceWriteRefused { device: d, detail: e } => exit_failure(reason: join(["results device write refused at ", d, ": ", e], ""))
+    ClaimSetGuestFrameExceedsDevice { frame: f, device: d } => exit_failure(reason: join(["the results frame (", to_string(f), " bytes) exceeds the device (", to_string(d), " bytes)"], ""))
   } }
 }
