@@ -222,7 +222,7 @@ import v1.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
 }
 import v1.compiler.infer {
-  is_lambda_expr, unify_generics,
+  is_lambda_expr, unify_generics, type_node_label,
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
@@ -9092,7 +9092,7 @@ fn v1_call_forwarding_forwarded_param_names(
             match map_get(solved, g) {
               Absent => []
               Present { value: bound_to } =>
-                let wn = authored_name_at(source_indices: si, node: bound_to)
+                let wn = type_node_label(n: bound_to, source_indices: si)
                 if wrapper_generic_param_names |> any(w => w == wn) { [wn] } else { [] }
             }
           )
