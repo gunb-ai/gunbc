@@ -484,7 +484,7 @@ fn user_work_wrap_high_property(memory_max: ByteSize, memory_high: MemoryBound) 
     MemoryUnbounded => []
     MemoryCapped { bytes: h } =>
       [
-        SystemdRunProperty {
+        NamedUnitSetting {
           property: MemoryHigh,
           value: to_string(value: nat_min(a: byte_size_count(b: h), b: byte_size_count(b: memory_max))) as NonEmptyStr,
         },
@@ -497,7 +497,7 @@ fn user_work_wrap_envelope_properties(memory_max: ByteSize, memory_high: MemoryB
     user_work_slice_binding_properties(),
     concat(
       [
-        SystemdRunProperty {
+        NamedUnitSetting {
           property: MemoryMax,
           value: to_string(value: byte_size_count(b: memory_max)) as NonEmptyStr,
         },

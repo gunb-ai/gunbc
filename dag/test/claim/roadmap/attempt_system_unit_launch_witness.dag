@@ -71,9 +71,11 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_sudoers_line, attempt_system_unit_launcher_busy_exit,
   attempt_system_unit_launcher_flock_wait, attempt_system_unit_harness_start_from_launcher_exit,
 }
+import gunbc.executor_privileged_operation { sudoers_argument_word }
+import extdeps.systemd.service_exec { exec_full_privileges_prefix }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
-  dispatch_attempt_unit_stem,
+  dispatch_attempt_unit_stem, dispatch_pane_working_directory, GunbcHarnessProvider,
 }
 import gunbc.host.host_layout { attempt_unit_spool_drain_lock_path }
 import extdeps.tools.util_linux_flock { flock_absolute_path }
@@ -224,29 +226,40 @@ fn sudoers_ready_text(reading: AttemptSystemUnitSudoersText) -> String? {
   }
 }
 
-test fn each_instance_gets_its_own_sudoers_file_and_body() -> Bool {
+fn sudoers_instance_root_word(root: String) -> String {
+  sudoers_argument_word(w: join(["instance_root=", root], ""))
+}
+
+test fn each_instance_gets_its_own_sudoers_file() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let lab = srv1_lab_dashboard_instance()
+  let live_path = attempt_system_unit_sudoers_path(instance: live)
+  let lab_path = attempt_system_unit_sudoers_path(instance: lab)
+  live_path != lab_path
+    && string_contains(s: live_path, pattern: live.instance_id as String)
+    && string_contains(s: lab_path, pattern: lab.instance_id as String)
+    && !string_contains(s: live.instance_id as String, pattern: ".")
+    && !string_contains(s: lab.instance_id as String, pattern: ".")
+}
+
+test fn each_instance_sudoers_body_pins_its_named_instance_root() -> Bool {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
   let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
-  let live_path = attempt_system_unit_sudoers_path(instance: live)
-  let lab_path = attempt_system_unit_sudoers_path(instance: lab)
+  let live_word = sudoers_instance_root_word(root: live.instance_root as String)
+  let lab_word = sudoers_instance_root_word(root: lab.instance_root as String)
   match sudoers_ready_text(reading: attempt_system_unit_sudoers_body(instance: live, revision: rev)) {
     Absent => false
     Present { value: live_body } =>
       match sudoers_ready_text(reading: attempt_system_unit_sudoers_body(instance: lab, revision: rev)) {
         Absent => false
         Present { value: lab_body } =>
-          live_path != lab_path
-            && string_contains(s: live_path, pattern: live.instance_id as String)
-            && string_contains(s: lab_path, pattern: lab.instance_id as String)
-            && !string_contains(s: live.instance_id as String, pattern: ".")
-            && !string_contains(s: lab.instance_id as String, pattern: ".")
-            && string_contains(s: live_body, pattern: "attempt_system_unit_launch")
+          string_contains(s: live_body, pattern: "attempt_system_unit_launch")
             && string_contains(s: live_body, pattern: "NOPASSWD")
-            && string_contains(s: live_body, pattern: live.instance_root as String)
-            && !string_contains(s: live_body, pattern: lab.instance_root as String)
-            && string_contains(s: lab_body, pattern: lab.instance_root as String)
-            && !string_contains(s: lab_body, pattern: live.instance_root as String)
+            && string_contains(s: live_body, pattern: live_word)
+            && !string_contains(s: live_body, pattern: lab_word)
+            && string_contains(s: lab_body, pattern: lab_word)
+            && !string_contains(s: lab_body, pattern: live_word)
       }
   }
 }
@@ -402,7 +415,7 @@ fn claim_request(node_id: String, attempt_key: String) -> AttemptSystemUnitStart
   }
 }
 
-test fn the_launcher_derives_the_exit_hook_user_and_paths_from_the_attempt_identity() -> Bool {
+test fn the_launcher_derives_the_exit_hook_from_the_attempt_identity() -> Bool {
   let inst = srv1_lab_dashboard_instance()
   let node = "n1"
   let key = "k1"
@@ -413,12 +426,22 @@ test fn the_launcher_derives_the_exit_hook_user_and_paths_from_the_attempt_ident
         AttemptExitHookRefused { reason: _ } => false
         AttemptExitHookRendered { exec_line } =>
           (facts.exit_hook as String) == (exec_line as String)
-            && !starts_with(s: facts.exit_hook as String, prefix: "+")
-            && (facts.user as String) == (inst.directory_owner.user as String)
-            && facts.attempt_worktree == dispatch_worktree_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
-            && facts.stdout_path == dispatch_attempt_worker_log_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
-            && facts.working_directory == (inst.repo_root as String)
+            && starts_with(s: facts.exit_hook as String, prefix: exec_full_privileges_prefix)
       }
+  }
+}
+
+test fn the_launcher_derives_the_user_and_paths_from_the_attempt_identity() -> Bool {
+  let inst = srv1_lab_dashboard_instance()
+  let node = "n1"
+  let key = "k1"
+  match attempt_system_unit_start_facts_for_request(instance: inst, request: claim_request(node_id: node, attempt_key: key)) {
+    AttemptSystemUnitStartUnderivable { reason: _ } => false
+    AttemptSystemUnitStartDerived { facts } =>
+      (facts.user as String) == (inst.directory_owner.user as String)
+        && facts.attempt_worktree == dispatch_worktree_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
+        && facts.stdout_path == dispatch_attempt_worker_log_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
+        && facts.working_directory == dispatch_pane_working_directory(provider: GunbcHarnessProvider, instance: inst, worktree_path: facts.attempt_worktree)
   }
 }
 
