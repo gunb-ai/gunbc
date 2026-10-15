@@ -664,7 +664,12 @@ fn emit_partition_with_target(
       o: partition_inferred_tree(partition: partition),
       f: fn(tree) {
         if produced_module_bodies_declare_members(root: tree.root) {
-          emit_module_body_members(root: tree.root, target: target, realization_host: realization_host, kinds: kinds)
+          emit_module_body_members(
+            tree: InferredTree { root: tree.root, facts: partition.ambient.facts },
+            target: target,
+            realization_host: realization_host,
+            kinds: kinds
+          )
         } else {
           emit(tree: tree, target: target)
         }

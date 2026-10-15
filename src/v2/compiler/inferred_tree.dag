@@ -4,11 +4,20 @@ import std.types { List }
 import v2.std.cardinality { TerminationProof }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
-import std.algebra { list_snoc_item, PartialFunction }
-import std.optional { Absent, Optional, Present }
+import std.algebra { length, list_snoc_item, PartialFunction }
+import std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.constraints { CanonicalGrounding }
-import v2.std.node { Node }
-import std.optional { Optional, optional_absent }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Disj,
+  Instantiation,
+  Node,
+  Occupancy,
+  TypeNode
+}
 import v2.std.witness { Witness }
 
 // InferredFacts/InferredTree/InferredFactsEntry are the SHAPE infer's pass
@@ -57,6 +66,49 @@ type InferredFacts {
 type InferredTree {
   root: Node
   facts: PartialFunction<Node, InferredFacts>
+}
+
+// THE NULLARY COPRODUCT-ARM STAMP INFER ALREADY WROTE. denotation is the empty-product arm
+// declaration. derived type is infer_coproduct_type_applied_open: Instantiation when the coproduct
+// has parameters, otherwise the coproduct's declaration-reference Atom (not the Disj node).
+// Emit reads this; it does not re-derive constructor typing.
+fn inferred_facts_nullary_coproduct_arm(facts: InferredFacts) -> Bool {
+  if !inferred_facts_coproduct_value_type(facts: facts) {
+    false
+  } else {
+    match facts.denotation {
+      Absent => true
+      Present { value: declared } => inferred_facts_empty_product_shape(declared: declared)
+    }
+  }
+}
+
+fn inferred_facts_empty_product_shape(declared: Node) -> Bool {
+  match declared.kind {
+    TypeNode { connective: Conj } => length(xs: declared.children) == 0
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Occupancy } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn inferred_facts_coproduct_value_type(facts: InferredFacts) -> Bool {
+  match facts.grounding {
+    DerivedGrounding { grounding: g } =>
+      match g.witness.structural.evidence.kind {
+        TypeNode { connective: Disj } => true
+        TypeNode { connective: Instantiation } => true
+        TypeNode { connective: Atom { identity: _ } } => true
+        TypeNode { connective: Conj } => false
+        TypeNode { connective: Arrow } => false
+        TypeNode { connective: Occupancy } => false
+        ComputationNode { behavior: _ } => false
+      }
+    GroundingNotDerived { node: _ } => false
+  }
 }
 
 type InferredFactsEntry {

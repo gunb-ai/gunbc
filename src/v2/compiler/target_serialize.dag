@@ -1,8 +1,14 @@
 module v2.compiler.target_serialize
 
-import std.types { List }
+import std.types { Bool, List }
 import std.occurrence_identity {
+  OccurrenceId,
   OccurrenceSynthetic
+}
+import v2.compiler.inferred_tree {
+  InferredTree,
+  authored_occurrence_id,
+  inferred_facts_nullary_coproduct_arm
 }
 import v2.extdeps.languages.dag {
   dag_surface_operator_canonicalization_member,
@@ -23,6 +29,7 @@ import v2.std.compilers.target_model {
   canonical_operation_from_wire_node,
   target_bodied_arrow_compose_statement_tokens,
   target_project_arrow_body_to_value_expression,
+  target_value_expression_binding_ref,
   target_project_transform_primitive_apply_in_arrow_scope,
   target_project_transform_callable_apply_in_arrow_scope,
   target_transform_operator_child,
@@ -56,26 +63,46 @@ import v2.std.diagnostic {
   diagnostics_fatal_reason
 }
 import v2.std.node {
+  ArrowBodyForm,
   Atom,
+  ComputationBody,
   Conj,
+  DeclarationReferenceBody,
+  DirectAtomBody,
   Edge,
   Authored,
+  FunctionValueBody,
+  LexicalReferenceBody,
   Node,
+  ParameterReferenceBody,
   Positional,
+  RecordConstructBody,
   StructuralLabel,
   Symbol,
   TypeNode,
+  UnsupportedArrowBody,
+  classify_arrow_body_form,
+  fold_node,
+  NodeFold,
   node_subtree_count,
   Arrow,
   Occupancy,
   ComputationNode,
   Disj,
   Instantiation,
+  symbol_intern_lexeme,
+  symbol_lexeme
+}
+import v2.std.qualified_name {
+  declaration_reference_path_optional,
+  qualified_name_init,
+  qualified_name_last_segment
 }
 import v2.std.type_binder {
   type_param_names
 }
 import v2.std.node_query {
+  find_arrow_body_child,
   find_named_child,
   node_positional_child_targets,
   find_labeled_child,
@@ -153,7 +180,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import std.algebra { Empty, list_snoc_item, fold_list, is_empty, list_tail }
+import std.algebra { Empty, PartialFunction, list_snoc_item, fold_list, is_empty, list_tail }
 import v2.std.text {
   String
 }
@@ -748,9 +775,202 @@ fn translate_generic_arrow_not_rendered_diagnostic(arrow: Node) -> Diagnostic {
   }
 }
 
+fn serialize_facts_absent_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: PartialFunction {
+      lookup: fn(_key) {
+        Absent
+      }
+    }
+  }
+}
+
+fn emit_declaration_reference_facts_absent_diagnostic(body: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_declaration_reference_inferred_facts_absent,
+    at: node_locus(node: body),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_nullary_coproduct_arm_path_absent_diagnostic(body: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_nullary_coproduct_arm_path_absent,
+    at: node_locus(node: body),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn arrow_body_form_is_declaration_reference(form: ArrowBodyForm) -> Bool {
+  match form {
+    DeclarationReferenceBody => true
+    DirectAtomBody => false
+    RecordConstructBody => false
+    ParameterReferenceBody => false
+    LexicalReferenceBody => false
+    ComputationBody { behavior: _ } => false
+    FunctionValueBody => false
+    UnsupportedArrowBody => false
+  }
+}
+
+fn nullary_coproduct_arm_binding_spelling(body: Node) -> Optional<Symbol> {
+  match declaration_reference_path_optional(node: body) {
+    Absent => Absent
+    Present { value: path } =>
+      match qualified_name_last_segment(qn: path) {
+        Absent => Absent
+        Present { value: leaf } =>
+          match qualified_name_last_segment(qn: qualified_name_init(qn: path)) {
+            Absent => Present { value: leaf }
+            Present { value: parent } =>
+              Present {
+                value: symbol_intern_lexeme(
+                  lexeme: concat(symbol_lexeme(sym: parent), concat("::", symbol_lexeme(sym: leaf)))
+                )
+              }
+          }
+      }
+  }
+}
+
+fn optional_node_when(pred: Bool, node: Node) -> Optional<Node> {
+  if pred {
+    optional_present(value: node)
+  } else {
+    optional_absent()
+  }
+}
+
+fn optional_node_first_present(left: Optional<Node>, right: Optional<Node>) -> Optional<Node> {
+  match left {
+    Present { value: found } => Present { value: found }
+    Absent => right
+  }
+}
+
+fn first_nullary_coproduct_arm_at_node(tree: InferredTree, node: Node) -> Optional<Node> {
+  match tree.facts.lookup(node) {
+    Present { value: facts } =>
+      optional_node_when(pred: inferred_facts_nullary_coproduct_arm(facts: facts), node: node)
+    Absent => Absent
+  }
+}
+
+fn first_nullary_coproduct_arm_node(tree: InferredTree, n: Node) -> Optional<Node> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(node) { first_nullary_coproduct_arm_at_node(tree: tree, node: node) },
+      step: fn(acc, e, child_r) { optional_node_first_present(left: acc, right: child_r) }
+    }
+  )
+}
+
+fn node_has_occurrence(n: Node, want: OccurrenceId) -> Bool {
+  match authored_occurrence_id(n: n) {
+    Absent => false
+    Present { value: id } => id.value == want.value
+  }
+}
+
+fn subtree_has_occurrence(root: Node, want: OccurrenceId) -> Bool {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(node) { node_has_occurrence(n: node, want: want) },
+      step: fn(acc, e, child_r) { acc || child_r }
+    }
+  )
+}
+
+fn declaration_reference_leaf(node: Node) -> Optional<Symbol> {
+  match declaration_reference_path_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: path } => qualified_name_last_segment(qn: path)
+  }
+}
+
+fn declaration_reference_leaf_eq(a: Node, b: Node) -> Bool {
+  match declaration_reference_leaf(node: a) {
+    Absent => false
+    Present { value: sa } =>
+      match declaration_reference_leaf(node: b) {
+        Absent => false
+        Present { value: sb } => sa == sb
+      }
+  }
+}
+
+fn first_nullary_coproduct_arm_in_tree(tree: InferredTree) -> Optional<Node> {
+  first_nullary_coproduct_arm_node(tree: tree, n: tree.root)
+}
+
+fn first_nullary_coproduct_arm_for_body(tree: InferredTree, body: Node) -> Optional<Node> {
+  match first_nullary_coproduct_arm_node(tree: tree, n: body) {
+    Present { value: found } => optional_present(value: found)
+    Absent =>
+      match fold_node(
+        n: tree.root,
+        algebra: NodeFold {
+          init: fn(node) {
+            if declaration_reference_leaf_eq(a: node, b: body) {
+              first_nullary_coproduct_arm_at_node(tree: tree, node: node)
+            } else {
+              optional_absent()
+            }
+          },
+          step: fn(acc, e, child_r) { optional_node_first_present(left: acc, right: child_r) }
+        }
+      ) {
+        Present { value: found } => optional_present(value: found)
+        Absent => first_nullary_coproduct_arm_in_tree(tree: tree)
+      }
+  }
+}
+
+fn project_arrow_body_from_inferred_facts(
+  arrow: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match find_arrow_body_child(root: arrow) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: body, diagnostics: _ } =>
+      match first_nullary_coproduct_arm_for_body(tree: tree, body: body) {
+        Present { value: arm } =>
+          match nullary_coproduct_arm_binding_spelling(body: arm) {
+            Present { value: binding } =>
+              outcome_accepted(target_value_expression_binding_ref(binding: binding))
+            Absent =>
+              match nullary_coproduct_arm_binding_spelling(body: body) {
+                Present { value: binding } =>
+                  outcome_accepted(target_value_expression_binding_ref(binding: binding))
+                Absent =>
+                  outcome_rejected(d: emit_nullary_coproduct_arm_path_absent_diagnostic(body: arm))
+              }
+          }
+        Absent =>
+          if arrow_body_form_is_declaration_reference(form: classify_arrow_body_form(target: body)) {
+            outcome_rejected(d: emit_declaration_reference_facts_absent_diagnostic(body: body))
+          } else {
+            target_project_arrow_body_to_value_expression(
+              arrow: arrow,
+              target: target,
+              source_bool_form: dag_value_expression_projection().bool_literal_form,
+              handle_transform: handle_transform
+            )
+          }
+      }
+  }
+}
+
 fn target_serialize_bodied_arrow_from_model(
   target: TargetModel,
-  emitted: Node
+  emitted: Node,
+  tree: InferredTree
 ) -> Outcome<TargetText> {
   if count(type_param_names(n: emitted)) > 0 {
     outcome_rejected(d: translate_generic_arrow_not_rendered_diagnostic(arrow: emitted))
@@ -765,10 +985,10 @@ fn target_serialize_bodied_arrow_from_model(
             o: target_value_expression_projection_from_target(target: target),
             f: fn(projection) {
               bind_outcome(
-                o: target_project_arrow_body_to_value_expression(
+                o: project_arrow_body_from_inferred_facts(
                   arrow: emitted,
                   target: target,
-                  source_bool_form: dag_value_expression_projection().bool_literal_form,
+                  tree: tree,
                   handle_transform: fn(a, b, t) {
                     translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
                   }
@@ -823,7 +1043,7 @@ fn target_serialize_relation_row_with_lex_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
-    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted, tree: serialize_facts_absent_tree(root: emitted))
   } else {
     bind_outcome(
       o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
@@ -967,7 +1187,7 @@ fn target_serialize_source_from_model_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
-    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted, tree: serialize_facts_absent_tree(root: emitted))
   } else if is_dag_import_carrier(emitted: emitted) {
     bind_outcome(
       o: module_import_projection_from_target(target: target),
