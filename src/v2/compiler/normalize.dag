@@ -1,101 +1,23 @@
 module v2.compiler.normalize
 
 import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list }
-import v2.std.namespace_alias { AliasBindingRow }
-import v2.std.collection { Absent, Present, optional_absent, optional_present }
+import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget, CapturedImports }
+import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.grammar { ParseTree, parse_production_emitted_identity_optional }
-
-import v2.std.diagnostic {
-  Correction,
-  Diagnostic,
-  Diagnostics,
-  node_locus,
-  Outcome,
-  UserInputBoundary,
-  Accepted,
-  None,
-  diagnostics_merge,
-  diagnostics_singleton,
-  rejected_with_pending,
-  bind_outcome,
-  outcome_accepted,
-  Rejected,
-  Unavailable
-}
-import v2.std.node {
-  Edge,
-  Node,
-  Symbol,
-  TypeNode,
-  allocate_pending_occurrences,
-  content_hash,
-  node_occurrence_allocator_after,
-  node_rebuild,
-  node_subtree_nodes,
-  well_formed,
-  ComputationNode
-}
-import std.occurrence_identity { ScopedOccurrenceAllocator, scoped_occurrence_allocator }
-import v2.std.compilers.sugar {
-  ProductionIdentityKey,
-  SugarKey,
-  apply_sugar,
-  sugar_rule_for_key
-}
-import v2.compiler.body_lowering_fold {
-  BodyLowering,
-  body_term_of,
-  BodyLoweredTree,
-  WrapperRetention,
-  body_lowering_after_pending,
-  body_lower_finish_for_normalize,
-  body_lowered_tree_map_node,
-  body_lowered_tree_of,
-  body_lowered_tree_over,
-  body_lowered_tree_retained,
-  body_lowered_tree_then,
-  no_wrapper_retentions,
-  wrapper_retentions_concat,
-  body_lower_fn_decl_to_census_arrow,
-  body_lower_service_decl,
-  body_lower_resource_decl,
-  body_lower_resource_decl_declared_kind_optional,
-  body_lower_is_deferred_lower_at_normalize,
-  DeclaredTypeKind,
-  DeclaredTypeModifiers,
-  DeclaredTypeModifiersAbsent,
-  DeclaredTypeModifiersPresent,
-  body_lower_type_decl_declared_kind_optional,
-  body_lower_type_decl_declared_modifiers,
-  declared_record_names,
-  declared_resource_names
-}
+import v2.std.diagnostic { Correction, Diagnostic, Diagnostics, Locus, node_locus, Outcome, UserInputBoundary, Accepted, None, diagnostics_merge, diagnostics_singleton, rejected_with_pending, bind_outcome, outcome_accepted, Rejected, Unavailable }
+import v2.std.node { Edge, Node, Symbol, TypeNode, allocate_pending_occurrences, content_hash, node_occurrence_allocator_after, node_rebuild, node_subtree_nodes, well_formed, ComputationNode }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, ScopedOccurrenceAllocator, scoped_occurrence_allocator }
+import v2.std.compilers.sugar { ProductionIdentityKey, SugarKey, apply_sugar, sugar_rule_for_key }
+import v2.compiler.body_lowering_fold { BodyLowering, body_term_of, BodyLoweredTree, WrapperRetention, body_lowering_after_pending, body_lower_finish_for_normalize, body_lowered_tree_map_node, body_lowered_tree_of, body_lowered_tree_over, body_lowered_tree_retained, body_lowered_tree_then, no_wrapper_retentions, wrapper_retentions_concat, body_lower_fn_decl_to_census_arrow, body_lower_service_decl, body_lower_resource_decl, body_lower_resource_decl_declared_kind_optional, body_lower_is_deferred_lower_at_normalize, DeclaredTypeKind, DeclaredTypeModifiers, DeclaredTypeModifiersAbsent, DeclaredTypeModifiersPresent, body_lower_type_decl_declared_kind_optional, body_lower_type_decl_declared_modifiers, declared_record_names, declared_resource_names }
 import v2.std.compilers.body_lowering { Lowered, RawLeaf, RawParse }
-import v2.compiler.normalized_tree {
-  CensusTree,
-  NormalizedTree,
-  admit_census_tree,
-  admit_normalized_tree,
-  admit_retention_free,
-  normalized_tree_with_member_declarations
-}
+import v2.compiler.normalized_tree { CensusTree, NormalizedTree, admit_census_tree, admit_normalized_tree, admit_retention_free, normalized_tree_with_member_declarations }
 import v2.std.member_declaration_kind { DeclaredDataMember, DeclaredFnMember, DeclaredMember }
 import v2.compiler.test_marker_capture { test_marker_capture }
-import v2.compiler.namespace_graft {
-  module_header_containment_graft,
-  namespace_graft_collect_unit_nodes_against,
-  namespace_graft_is_graft_candidate,
-  namespace_graft_top_level_item_alternative_emitted_ids
-}
-import v2.extdeps.languages.dag {
-  dag_grammar_root,
-  dag_surface_kw_then_ident_from_captured,
-  alias_binding_row_from_decl_node,
-  import_binding_rows_from_decl_node,
-  namespace_graft_unwrap_module_working_root,
-  parse_production_captured_child_optional
-}
+import v2.compiler.namespace_graft { module_header_containment_graft, namespace_graft_collect_unit_nodes_against, namespace_graft_is_graft_candidate, namespace_graft_top_level_item_alternative_emitted_ids }
+import v2.extdeps.languages.dag { dag_grammar_root, dag_surface_kw_then_ident_from_captured, alias_binding_row_from_decl_node, import_binding_rows_from_decl_node, import_decl_target_module, namespace_graft_unwrap_module_working_root, parse_production_captured_child_optional }
 import std.types { List }
+import v2.std.provenance { SpanIndex, SourceExtentKnown, SourceExtentUnrepresentable, span_index_empty, span_index_extent }
+
 
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
@@ -441,14 +363,41 @@ fn normalize_node_fold_children_classified(n: Node, under_fn_decl: Bool, enclosi
 // (v2.compiler.namespace_graft namespace_graft_unit_disposition), so this is the only moment it can
 // be read. An import is the transmutation of N such rows (docs/plans/namespace-resolution-design.md
 // section 13), so both forms land on one carrier and one binding fold.
-fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<FreeMonoid<AliasBindingRow>> {
+fn import_decl_locus(decl: Node, spans: SpanIndex) -> Locus {
+  match decl.occurrence_id {
+    OccurrenceMinted { id: id } =>
+      import_decl_locus_from_id(id: id, spans: spans, fallback: decl)
+    OccurrenceProjected { id: id, caused_by: _ } =>
+      import_decl_locus_from_id(id: id, spans: spans, fallback: decl)
+    OccurrenceSynthetic =>
+      node_locus(node: decl)
+    OccurrencePending { caused_by: _ } =>
+      node_locus(node: decl)
+  }
+}
+
+fn import_decl_locus_from_id(id: OccurrenceId, spans: SpanIndex, fallback: Node) -> Locus {
+  match span_index_extent(index: spans, id: id) {
+    Present { value: recorded } =>
+      match recorded {
+        SourceExtentKnown { locus: locus } => locus
+        SourceExtentUnrepresentable => node_locus(node: fallback)
+      }
+    Absent => node_locus(node: fallback)
+  }
+}
+
+fn import_binding_capture(tree: ParseTree, nodes: List<Node>, spans: SpanIndex) -> Outcome<CapturedImports> {
   fold_list(
     xs: nodes,
-    empty: Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
+    empty: Accepted {
+      value: CapturedImports { bindings: Empty, modules: Empty },
+      diagnostics: v2.std.diagnostic.None
+    },
     cons: fn(acc, n) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: rows, diagnostics: _ } =>
+        Accepted { value: CapturedImports { bindings: bindings, modules: modules }, diagnostics: _ } =>
           match parse_production_emitted_identity_optional(node: n) {
             Absent => acc
             Present { value: id } =>
@@ -456,21 +405,40 @@ fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<FreeMon
                 match alias_binding_row_from_decl_node(decl: n, module_root: tree) {
                   Rejected { diagnostics: r } => Rejected { diagnostics: r }
                   Accepted { value: row, diagnostics: _ } =>
-                    Accepted { value: list_snoc_item(xs: rows, item: row), diagnostics: v2.std.diagnostic.None }
+                    Accepted {
+                      value: CapturedImports {
+                        bindings: list_snoc_item(xs: bindings, item: row),
+                        modules: modules
+                      },
+                      diagnostics: v2.std.diagnostic.None
+                    }
                 }
               } else if id != ^dag_surface_import_decl {
                 acc
               } else {
-                match import_binding_rows_from_decl_node(decl: n, module_root: tree) {
+                match import_decl_target_module(decl: n, module_root: tree) {
                   Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  Accepted { value: fresh, diagnostics: _ } =>
-                    Accepted {
-                      value: fold_list(
-                        xs: fresh,
-                        empty: rows,
-                        cons: fn(a, row) { list_snoc_item(xs: a, item: row) }
-                      ),
-                      diagnostics: v2.std.diagnostic.None
+                  Accepted { value: target_module, diagnostics: _ } =>
+                    match import_binding_rows_from_decl_node(decl: n, module_root: tree) {
+                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                      Accepted { value: fresh, diagnostics: _ } =>
+                        Accepted {
+                          value: CapturedImports {
+                            bindings: fold_list(
+                              xs: fresh,
+                              empty: bindings,
+                              cons: fn(a, row) { list_snoc_item(xs: a, item: row) }
+                            ),
+                            modules: list_snoc_item(
+                              xs: modules,
+                              item: CapturedImportTarget {
+                                target: target_module,
+                                at: import_decl_locus(decl: n, spans: spans)
+                              }
+                            )
+                          },
+                          diagnostics: v2.std.diagnostic.None
+                        }
                     }
                 }
               }
@@ -614,11 +582,11 @@ fn normalize_allocator_resolve(source: NormalizeAllocatorSource, parse_tree: Par
   }
 }
 
-fn normalize_scoped(parse_tree: ParseTree, allocator: ScopedOccurrenceAllocator) -> Outcome<ScopedNormalizedTree> {
-  normalize_with(parse_tree: parse_tree, source: NormalizeWithIngestAllocator { allocator: allocator })
+fn normalize_scoped(parse_tree: ParseTree, allocator: ScopedOccurrenceAllocator, spans: SpanIndex) -> Outcome<ScopedNormalizedTree> {
+  normalize_with(parse_tree: parse_tree, source: NormalizeWithIngestAllocator { allocator: allocator }, spans: spans)
 }
 
-fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Outcome<ScopedNormalizedTree> {
+fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource, spans: SpanIndex) -> Outcome<ScopedNormalizedTree> {
   match bind_retention_free(o: normalize_node(n: parse_tree)) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>
@@ -633,10 +601,10 @@ fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Ou
               Rejected { diagnostics: r } =>
                 Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
               Accepted { value: markers, diagnostics: _ } =>
-                match import_binding_capture(tree: parse_tree, nodes: parse_nodes) {
+                match import_binding_capture(tree: parse_tree, nodes: parse_nodes, spans: spans) {
                   Rejected { diagnostics: r } =>
                     Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
-                  Accepted { value: bindings, diagnostics: _ } =>
+                  Accepted { value: CapturedImports { bindings: bindings, modules: modules }, diagnostics: _ } =>
                     match type_declaration_modifier_capture(nodes: parse_nodes) {
                       Rejected { diagnostics: r } =>
                         Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
@@ -645,6 +613,7 @@ fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Ou
                           root: grafted,
                           test_markers: markers,
                           import_bindings: bindings,
+                          imported_modules: modules,
                           type_declaration_kinds: type_declaration_kind_capture(nodes: parse_nodes),
                           type_declaration_modifiers: modifiers,
                           diagnostics: d1
@@ -697,7 +666,7 @@ fn normalize_isolated_allocator(parse_tree: ParseTree) -> ScopedOccurrenceAlloca
 
 // A tree normalized on its own, for every caller that is not threading an ingest's allocator.
 fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
-  match normalize_with(parse_tree: parse_tree, source: NormalizeWithIsolatedAllocator) {
+  match normalize_with(parse_tree: parse_tree, source: NormalizeWithIsolatedAllocator, spans: span_index_empty()) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: scoped, diagnostics: d } => Accepted { value: scoped.tree, diagnostics: d }
   }
@@ -796,14 +765,15 @@ fn normalize_census(parse_tree: ParseTree) -> Outcome<CensusTree> {
           let grafted = allocate_pending_occurrences(root: lowered, allocator: normalize_isolated_allocator(parse_tree: parse_tree)).root
           if well_formed(n: grafted) {
             let parse_nodes = node_subtree_nodes(root: parse_tree)
-            match import_binding_capture(tree: parse_tree, nodes: parse_nodes) {
+            match import_binding_capture(tree: parse_tree, nodes: parse_nodes, spans: span_index_empty()) {
               Rejected { diagnostics: r } =>
                 Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
-              Accepted { value: bindings, diagnostics: _ } =>
+              Accepted { value: CapturedImports { bindings: bindings, modules: modules }, diagnostics: _ } =>
                 let kinds = type_declaration_kind_capture(nodes: parse_nodes)
                 admit_census_tree(
                   root: grafted,
                   import_bindings: bindings,
+                  imported_modules: modules,
                   record_declarations: declared_record_names(kinds: kinds),
                   resource_declarations: declared_resource_names(kinds: kinds),
                   diagnostics: d1

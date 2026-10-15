@@ -12,7 +12,7 @@ import v2.std.decl_facts_skeleton {
   resolve_decl_fact_by_qualified_name,
   skeleton_contains_marshal_atom_lexeme,
 }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.decl_index { DeclFact }
 import v2.std.node { Node }
 
