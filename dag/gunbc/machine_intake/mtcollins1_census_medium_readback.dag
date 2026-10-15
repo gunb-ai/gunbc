@@ -8,6 +8,7 @@ import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { argv_words }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.host.boot_medium { BootImageExport, BootMedium, BootMediumReadbackHeld, BootMediumReadbackDigestDiffers, bmc_boot_image_export, boot_medium_readback }
@@ -240,14 +241,15 @@ fn remote_answer_of(outcome: TypedArgvExecOutcome) -> RemoteAnswer {
 //
 // THE MEDIUM AND THE IMAGE ARE EXPLICIT PARAMETERS. The medium's own exporter target is the executor
 // host the readback reads from, and the image supplies the build input the record path and build key
-// are derived from. The qualification checks that the medium and the image agree on artifact identity
-// (the stem and the volume label); a mismatched binding -- a medium that names a stem or volume
-// different from the image it is read back for -- is refused as not the census before either leg runs,
-// which is control (b).
+// are derived from. The host the receipt names is DERIVED from that target's address
+// (known_hosts_host_field), not a free parameter the caller can cross -- the receipt cannot name a
+// host the leg did not run on. The qualification checks that the medium and the image agree on
+// artifact identity (the stem and the volume label); a mismatched binding -- a medium that names a
+// stem or volume different from the image it is read back for -- is refused as not the census before
+// either leg runs, which is control (b).
 fn census_medium_readback(
   medium: BootMedium,
   image: CensusImage,
-  host: NonEmptyStr,
   attempt: NonEmptyStr,
 ) -> CensusMediumReadback
 {
@@ -260,9 +262,10 @@ fn census_medium_readback(
         CensusMediumQualified { digest: _, export: export } =>
           match prepare_fleet_ssh_agent_context(attempt_raw: attempt) {
             FleetSshContextRefused { cause: c } =>
-              CensusMediumReadbackRecordUnreadable { host: host, record_path: census_record_path(input: input), reason: c }
+              CensusMediumReadbackRecordUnreadable { host: known_hosts_host_field(address: export.target.address) as NonEmptyStr, record_path: census_record_path(input: input), reason: c }
             FleetSshContextReady { context: context, receipt: _ } => {
               let target = export.target
+              let host = known_hosts_host_field(address: target.address) as NonEmptyStr
               let record = remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: census_record_argv(record_path: census_record_path(input: input))))
               match census_record_standing(medium: medium, host: host, input: input, record: record) {
                 CensusRecordRefused { readback: r } => r

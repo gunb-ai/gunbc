@@ -248,15 +248,15 @@ fn exporter_unsupported_naming(r: CensusMediumReadback, endpoint: String, princi
 // the real route; the answers composition shows the healthy answers cannot buy agreement.
 test fn a_census_medium_naming_another_exporter_endpoint_is_refused_not_read_back() -> Bool {
   let m = census_at_other_endpoint()
-  exporter_unsupported_naming(r: census_medium_readback(host: srv2, attempt: "mtcollins1-census-readback", medium: m, image: mtcollins1_census_image), endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
-    && (match census_readback_refusal_before_filing(subject: mtcollins1_census_machine, readback: census_medium_readback(host: srv2, attempt: "mtcollins1-census-readback", medium: m, image: mtcollins1_census_image)) { Present { value: w } => string_contains(s: w, pattern: "fixture-other-exporter") && string_contains(s: w, pattern: "controller untouched")  Absent => false })
+  exporter_unsupported_naming(r: census_medium_readback(attempt: "mtcollins1-census-readback", medium: m, image: mtcollins1_census_image), endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
+    && (match census_readback_refusal_before_filing(subject: mtcollins1_census_machine, readback: census_medium_readback(attempt: "mtcollins1-census-readback", medium: m, image: mtcollins1_census_image)) { Present { value: w } => string_contains(s: w, pattern: "fixture-other-exporter") && string_contains(s: w, pattern: "controller untouched")  Absent => false })
 }
 
 // RED: ANOTHER PRINCIPAL AT THE SAME ENDPOINT. The same host reached as another account is another
 // export (the account decides what may be read and written), so it is refused the same way.
 test fn a_census_medium_naming_another_principal_at_the_same_endpoint_is_refused_not_read_back() -> Bool {
   let m = census_as_other_principal()
-  exporter_unsupported_naming(r: census_medium_readback(host: srv2, attempt: "mtcollins1-census-readback", medium: m, image: mtcollins1_census_image), endpoint: ssh_target_wire(target: census.export.target) as String, principal: "fixture-other-principal")
+  exporter_unsupported_naming(r: census_medium_readback(attempt: "mtcollins1-census-readback", medium: m, image: mtcollins1_census_image), endpoint: ssh_target_wire(target: census.export.target) as String, principal: "fixture-other-principal")
 }
 
 // THE SAME TWO REDS OVER THE PURE COMPOSITION: the record and the image answer exactly as the supported
@@ -370,7 +370,7 @@ test fn control_b_medium_whose_stem_does_not_match_its_image_refuses_before_any_
     export: bmc_boot_image_export,
     terminal: BootMediumVolumeLabel { label: mtcollins1_census_volume_id },
   }
-  match census_medium_readback(medium: wrong_stem_medium, image: mtcollins1_census_image, host: srv2, attempt: "census2-readback") {
+  match census_medium_readback(medium: wrong_stem_medium, image: mtcollins1_census_image, attempt: "census2-readback") {
     CensusMediumReadbackNotCensus => true
     _ => false
   }
