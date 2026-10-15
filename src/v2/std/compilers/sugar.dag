@@ -20,7 +20,11 @@ import v2.std.diagnostic {
   Unavailable
 }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
-import v2.std.node_query { find_named_child, variant_declaration_edge_optional }
+import v2.std.node_query {
+  find_named_child,
+  repeated_authored_name_optional,
+  variant_declaration_edge_optional
+}
 import v2.std.qualified_name { qualified_name_from_node }
 import v2.extdeps.languages.dag { parse_production_captured_child_optional }
 import v2.std.node {
@@ -31,19 +35,15 @@ import v2.std.node {
   Connective,
   Disj,
   Edge,
-  EdgeLabel,
   LabeledEdges,
   Authored,
   Instantiation,
   Node,
   Occupancy,
-  Positional,
-  StructuralLabel,
   Symbol,
   TypeNode,
   edges_conform,
-  is_empty_conj_root,
-  label_occurrences
+  is_empty_conj_root
 }
 
 type SugarLowering
@@ -129,50 +129,23 @@ fn sugar_malformed_diagnostic(n: Node) -> Diagnostic {
 // names the type the declaration belongs to AND the name that was declared twice -- not the
 // generic ^sugar_reason_malformed over a bare node locus. The type name is read from the
 // enclosing type_decl (threaded down the normalize recursion, since a Node carries no parent
-// pointer) and the repeated name is the first authored label that occurs more than once.
-fn sugar_repeated_authored_name(edges: List<Edge>) -> Symbol? {
-  fold(
-    edges,
-    init: no_repeated_authored_name(),
-    f: fn(acc, e) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match e.label {
-            Authored { name: n } =>
-              if is_repeated_authored_name(name: n, edges: edges) {
-                optional_present(value: n)
-              } else {
-                optional_absent()
-              }
-            Positional => optional_absent()
-            StructuralLabel { label: _ } => optional_absent()
-          }
-      }
-    }
-  )
-}
-
-fn no_repeated_authored_name() -> Symbol? {
-  optional_absent()
-}
-
-fn is_repeated_authored_name(name: Symbol, edges: List<Edge>) -> Bool {
-  let label: EdgeLabel = Authored { name: name }
-  label_occurrences(label: label, children: edges) > 1
-}
-
-// TYPED REASON + DECLARATION LOCUS. The locus carries the declaration's qualified path
-// (the type's segments, then the repeated variant name) so a consumer names the subject by the
-// identity the containment tree already gives it -- the type T and the variant name declared
-// twice -- rather than re-parsing a rendering or pointing at a bare node. When the enclosing
-// type name is unavailable (no name could be read) the locus falls back to the node locus.
+// pointer) and the repeated name is read ONCE from v2.std.node_query
+// repeated_authored_name_optional -- the single O(n) scan that already decides all_names_distinct
+// -- so the reason and the name it reports come from one place.
+//
+// CAUSE DISCIPLINE (DESIGN section 3, section 5): this diagnostic is emitted ONLY where
+// edges_conform(children, LabeledEdges) refused a list that is pairwise-UNDISTINCT, so a repeat
+// is always present and the reason ^sugar_reason_duplicate_variant_name is never fabricated.
+// A list that fails conformance for any other reason -- an edge with no authored name -- is not a
+// duplicate and is NOT given this reason: it is reported with sugar_malformed_diagnostic, the
+// reason for a shape the sugar fold cannot read. The no-repeat Absent arm below keeps that
+// malformed reason so no accepted-shape edge can ever be mislabelled a duplicate variant.
 fn sugar_duplicate_variant_diagnostic(
   edges: List<Edge>,
   shell: Node,
   enclosing_type_name: Symbol?
 ) -> Diagnostic {
-  match sugar_repeated_authored_name(edges: edges) {
+  match repeated_authored_name_optional(children: edges) {
     Present { value: repeated } =>
       match enclosing_type_name {
         Present { value: type_name } =>
@@ -190,12 +163,7 @@ fn sugar_duplicate_variant_diagnostic(
             correction: Unavailable { reason: UserInputBoundary }
           }
       }
-    Absent =>
-      Diagnostic {
-        reason: ^sugar_reason_duplicate_variant_name,
-        at: node_locus(node: shell),
-        correction: Unavailable { reason: UserInputBoundary }
-      }
+    Absent => sugar_malformed_diagnostic(n: shell)
   }
 }
 
