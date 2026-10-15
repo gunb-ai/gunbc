@@ -12,6 +12,7 @@ import std.measure { MoneyPerHour }
 import extdeps.network.endpoint { SocketAddress, render_network_host }
 import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward }
 import extdeps.ninfer.ninfer_serve { NinferServeLaunch, ninfer_serve_program }
+import gunbc.serving.rented_ninfer_source { NinferEngineRelease }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { NinferModelRow }
 import gunbc.serving.rented_replica { RentedGpuDevice, RentedReplicaIdentity }
 import gunbc.serving.rented_host_access { RentedHostAccessDeclaration }
@@ -88,12 +89,13 @@ type RentedEndCondition
   = RentedEndsOnOperatorRelease { decided_by: PrincipalRef }
   | RentedEndsBy { at: EpochMs }
 
-// THE ENGINE THE CARD IS MEANT TO RUN: ninfer-serve at a build revision with its launch flags and listen
+// THE ENGINE THE CARD IS MEANT TO RUN: ninfer-serve at a pinned release (gunbc.serving.rented_ninfer_source
+// ninfer_serve_81c8ce09_sm120_release: source revision, build target, object, installed-file pins) with its launch flags and listen
 // port. One arm because one engine is consumed; vLLM (gunbc.serving.rented_replica rented_replica_launch)
 // joins as an arm when an allocation that runs it is enrolled. The probe, not this field, decides the wire
 // behaviour a turn sees (gunbc.harness.harness_reasoning_wire HarnessServingUnit).
 type RentedDesiredEngine
-  = RentedNinferEngine { revision: NonEmptyStr, launch: NinferServeLaunch, listen_port: Port }
+  = RentedNinferEngine { engine_release: NinferEngineRelease, launch: NinferServeLaunch, listen_port: Port }
 
 // HOW THE HARNESS REACHES THE ENGINE, AS ONE ROUTE WITH TWO REALIZATIONS. A port the provider publishes and
 // an ssh local forward placed on a harness host differ only in where the harness connects and which port on
@@ -141,13 +143,13 @@ type RentedAllocationEndpoint
 
 fn rented_engine_listen_port(engine: RentedDesiredEngine) -> Port {
   match engine {
-    RentedNinferEngine { revision: _, launch: _, listen_port: p } => p
+    RentedNinferEngine { engine_release: _, launch: _, listen_port: p } => p
   }
 }
 
 fn rented_engine_served_name(engine: RentedDesiredEngine) -> NonEmptyStr {
   match engine {
-    RentedNinferEngine { revision: _, launch: l, listen_port: _ } => l.model_id
+    RentedNinferEngine { engine_release: _, launch: l, listen_port: _ } => l.model_id
   }
 }
 
@@ -198,7 +200,7 @@ fn rented_allocation_enrollment(a: RentedServingAllocation) -> RentedAllocationE
     RentedEndpointRefused { allocation: id, obligation: o } => RentedAllocationNotEnrollable { allocation: id, obligation: o }
     RentedEndpointDerived { endpoint: e } =>
       match a.engine {
-        RentedNinferEngine { revision: _, launch: l, listen_port: _ } =>
+        RentedNinferEngine { engine_release: _, launch: l, listen_port: _ } =>
           RentedAllocationEnrollable {
             allocation: a.identity,
             enrollment: RentedEnrollment {
