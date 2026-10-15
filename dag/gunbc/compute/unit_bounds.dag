@@ -131,6 +131,7 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // after sessions and broker set-property have already run.
 data user_work_scope_ci_env_name: String = "GITHUB_ACTIONS"
 data user_work_scope_xdg_runtime_dir_env_name: String = "XDG_RUNTIME_DIR"
+data user_work_scope_systemd_manager_dir: String = "/run/systemd/system"
 data user_work_scope_user_slice_cgroup_needle: String = "/user.slice/"
 data user_work_scope_service_unit_suffix: String = ".service"
 data user_work_scope_slice_unit_suffix: String = ".slice"
@@ -271,33 +272,38 @@ fn bounded_container_standing(root_memory: RootCgroupMemoryRead) -> UserWorkScop
   }
 }
 
+fn namespaced_root_without_systemd(cgroup: UserWorkScopeCgroupRead, systemd_manager_present: Bool) -> Bool {
+  if systemd_manager_present {
+    false
+  } else {
+    match cgroup {
+      CgroupReadFailed => false
+      CgroupText { text } => cgroup_text_is_root(text: text)
+    }
+  }
+}
+
 fn user_work_scope_standing_with_root_memory(
   unit_test: Bool,
   github_actions: Bool,
   cgroup: UserWorkScopeCgroupRead,
+  systemd_manager_present: Bool,
   user_manager_reachable: Bool,
   xdg_runtime_dir: Bool,
   root_memory: RootCgroupMemoryRead,
 ) -> UserWorkScopeStanding {
-  let s = user_work_scope_standing(
-    unit_test: unit_test,
-    github_actions: github_actions,
-    cgroup: cgroup,
-    user_manager_reachable: user_manager_reachable,
-    xdg_runtime_dir: xdg_runtime_dir,
-  )
-  match s {
-    UserSessionAbsent =>
-      match cgroup {
-        CgroupText { text } =>
-          if cgroup_text_is_root(text: text) {
-            bounded_container_standing(root_memory: root_memory)
-          } else {
-            UserSessionAbsent
-          }
-        CgroupReadFailed => UserSessionAbsent
-      }
-    other => other
+  if unit_test {
+    UnitTestExempt
+  } else if namespaced_root_without_systemd(cgroup: cgroup, systemd_manager_present: systemd_manager_present) {
+    bounded_container_standing(root_memory: root_memory)
+  } else {
+    user_work_scope_standing(
+      unit_test: false,
+      github_actions: github_actions,
+      cgroup: cgroup,
+      user_manager_reachable: user_manager_reachable,
+      xdg_runtime_dir: xdg_runtime_dir,
+    )
   }
 }
 

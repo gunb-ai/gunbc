@@ -7,6 +7,7 @@
 //! (`src/cli_run/user_work_scope.rs`); trigger: Test/Run wrap is emitted, this file deletes.
 
 use std::os::unix::process::CommandExt;
+use std::path::Path;
 use std::process::Command;
 
 // SEED MIRROR of `gunbc.live_deploy.slice_bounds user_work_slice_unit_name`
@@ -19,6 +20,8 @@ const USER_WORK_SCOPE_CI_ENV: &str = "GITHUB_ACTIONS";
 const RUNNER_SLOT_CGROUP_NEEDLE: &str = "actions-runner@";
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_xdg_runtime_dir_env_name`
 const USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV: &str = "XDG_RUNTIME_DIR";
+// SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_systemd_manager_dir`
+const SYSTEMD_MANAGER_DIR: &str = "/run/systemd/system";
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_user_slice_cgroup_needle`
 const USER_SLICE_CGROUP_NEEDLE: &str = "/user.slice/";
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_service_unit_suffix`
@@ -347,19 +350,34 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
     if cfg!(test) {
         return UserWorkScopeStanding::UnitTestExempt;
     }
+    let cg_read = std::fs::read_to_string("/proc/self/cgroup");
+    if let Ok(cg) = &cg_read {
+        if cg.contains(USER_WORK_SLICE) {
+            return UserWorkScopeStanding::AlreadyInSlice;
+        }
+        if cg.contains(RUNNER_SLOT_CGROUP_NEEDLE) {
+            return UserWorkScopeStanding::RunnerSlotExempt;
+        }
+        let systemd_manager = Path::new(SYSTEMD_MANAGER_DIR).exists();
+        let is_root = matches!(cgroup_v2_rel_path(cg).as_deref(), Some("/") | Some(""));
+        if is_root && !systemd_manager {
+            // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_with_root_memory`
+            return match read_cgroup_memory_file("/", "memory.max") {
+                Some(MemoryBound::Capped(n)) if n > 0 => {
+                    UserWorkScopeStanding::ExemptBoundedContainer { bytes: n }
+                }
+                Some(_) => UserWorkScopeStanding::BoundedContainerUncapped,
+                None => UserWorkScopeStanding::BoundedContainerUnreadable,
+            };
+        }
+    }
     if std::env::var_os(USER_WORK_SCOPE_CI_ENV).is_some() {
         return UserWorkScopeStanding::CiExempt;
     }
-    let cg = match std::fs::read_to_string("/proc/self/cgroup") {
+    let cg = match cg_read {
         Ok(s) => s,
         Err(_) => return UserWorkScopeStanding::CgroupUnreadable,
     };
-    if cg.contains(USER_WORK_SLICE) {
-        return UserWorkScopeStanding::AlreadyInSlice;
-    }
-    if cg.contains(RUNNER_SLOT_CGROUP_NEEDLE) {
-        return UserWorkScopeStanding::RunnerSlotExempt;
-    }
     if let Some(slice) = innermost_modeled_capped_slice(&cg) {
         let unit = last_cgroup_unit_with_suffix(&cg, SCOPE_UNIT_SUFFIX)
             .or_else(|| last_cgroup_unit_with_suffix(&cg, SERVICE_UNIT_SUFFIX))
@@ -381,21 +399,9 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
         .unwrap_or(false);
     if probe_ok {
         UserWorkScopeStanding::UserManagerOwed
+    } else if std::env::var_os(USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV).is_some() {
+        UserWorkScopeStanding::UserManagerProbeFailed
     } else {
-        let is_root = matches!(cgroup_v2_rel_path(&cg).as_deref(), Some("/") | Some(""));
-        if is_root {
-            // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_with_root_memory`
-            match read_cgroup_memory_file("/", "memory.max") {
-                Some(MemoryBound::Capped(n)) if n > 0 => {
-                    UserWorkScopeStanding::ExemptBoundedContainer { bytes: n }
-                }
-                Some(_) => UserWorkScopeStanding::BoundedContainerUncapped,
-                None => UserWorkScopeStanding::BoundedContainerUnreadable,
-            }
-        } else if std::env::var_os(USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV).is_some() {
-            UserWorkScopeStanding::UserManagerProbeFailed
-        } else {
-            UserWorkScopeStanding::UserSessionAbsent
-        }
+        UserWorkScopeStanding::UserSessionAbsent
     }
 }

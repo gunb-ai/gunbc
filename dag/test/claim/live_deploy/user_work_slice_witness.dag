@@ -33,6 +33,7 @@ import gunbc.compute.unit_bounds {
   user_work_scope_standing, user_work_scope_standing_with_root_memory,
   user_work_scope_standing_effect, user_work_scope_standing_wire,
   user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
+  user_work_scope_systemd_manager_dir,
   user_work_scope_user_slice_cgroup_needle, user_work_scope_service_unit_suffix,
   user_work_scope_slice_unit_suffix, user_work_scope_scope_unit_suffix,
   system_service_unit_from_cgroup,
@@ -264,6 +265,8 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: concat("\"", concat(runner_unit_prefix, "\"")))
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_xdg_runtime_dir_env_name`")
     && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_xdg_runtime_dir_env_name, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_systemd_manager_dir`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_systemd_manager_dir, "\"")))
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: UserSessionAbsent))
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: RunnerSlotExempt))
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: CiExempt))
@@ -384,7 +387,7 @@ test fn a_user_session_cgroup_still_owes_the_wrap() -> Bool {
   }
 }
 
-test fn a_session_container_cgroup_under_sessions_slice_is_exempt() -> Bool {
+test fn a_host_visible_sessions_slice_cgroup_is_exempt() -> Bool {
   let cg = join([
     "0::",
     user_work_scope_user_slice_cgroup_needle,
@@ -415,6 +418,7 @@ test fn a_root_cgroup_with_finite_memory_max_skips_wrap() -> Bool {
     unit_test: false,
     github_actions: false,
     cgroup: CgroupText { text: "0::/" },
+    systemd_manager_present: false,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryCapped { bytes: bytes },
@@ -435,6 +439,7 @@ test fn a_root_cgroup_with_unbounded_memory_max_refuses() -> Bool {
     unit_test: false,
     github_actions: false,
     cgroup: CgroupText { text: "0::/" },
+    systemd_manager_present: false,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryUnbounded,
@@ -453,6 +458,7 @@ test fn a_root_cgroup_with_unreadable_memory_max_refuses() -> Bool {
     unit_test: false,
     github_actions: false,
     cgroup: CgroupText { text: "0::/" },
+    systemd_manager_present: false,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryUnreadable,
@@ -460,6 +466,44 @@ test fn a_root_cgroup_with_unreadable_memory_max_refuses() -> Bool {
     BoundedContainerUnreadable =>
       match user_work_scope_standing_effect(s: BoundedContainerUnreadable) {
         RefuseUserWorkScope { standing: BoundedContainerUnreadable } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn an_rbe_namespaced_root_without_memory_max_refuses_despite_github_actions() -> Bool {
+  match user_work_scope_standing_with_root_memory(
+    unit_test: false,
+    github_actions: true,
+    cgroup: CgroupText { text: "0::/" },
+    systemd_manager_present: false,
+    user_manager_reachable: false,
+    xdg_runtime_dir: false,
+    root_memory: RootMemoryUnreadable,
+  ) {
+    BoundedContainerUnreadable =>
+      match user_work_scope_standing_effect(s: BoundedContainerUnreadable) {
+        RefuseUserWorkScope { standing: BoundedContainerUnreadable } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn a_namespaced_root_with_a_systemd_manager_still_wraps() -> Bool {
+  match user_work_scope_standing_with_root_memory(
+    unit_test: false,
+    github_actions: false,
+    cgroup: CgroupText { text: "0::/" },
+    systemd_manager_present: true,
+    user_manager_reachable: true,
+    xdg_runtime_dir: true,
+    root_memory: RootMemoryCapped { bytes: byte_size(25769803776) },
+  ) {
+    UserManagerOwed =>
+      match user_work_scope_standing_effect(s: UserManagerOwed) {
+        WrapIntoUserWorkSlice => true
         _ => false
       }
     _ => false
