@@ -27,6 +27,16 @@ import gunbc.live_deploy.pre_swap_admission {
   TargetBranchAdmission,
   PreSwapAdmitted,
   PreSwapRefused,
+  checkout_branch_for_admission,
+  CheckoutNamedBranch,
+  DetachedHeadOnAdmittedBranch,
+  DetachedHeadNotOnAdmittedBranch,
+  pre_swap_from_checkout,
+}
+import extdeps.git.inspect {
+  MergeBaseReported,
+  NoCommonAncestor,
+  MergeBaseRefused,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -199,5 +209,87 @@ test fn a_clean_int_fixture_is_an_admitted_verdict() -> Bool {
     ServeEntryCompileAdmitted => true
     ServeEntryCompileBlocked { blocking: _ } => false
     ServeEntryCompileUnobserved { detail: _ } => false
+  }
+}
+
+// RED: detached HEAD not reachable from origin/main. GITHUB_REF_NAME is not an input of this
+// fold, so supplying the CI event name as "main" cannot admit (the hole review 80259 named).
+test fn a_detached_candidate_not_reachable_from_main_is_refused_for_production() -> Bool {
+  match pre_swap_from_checkout(
+    standing: checkout_branch_for_admission(
+      named: "HEAD",
+      admitted: production_admitted_branch,
+      head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      outcome: MergeBaseReported { base_hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+    ),
+    admitted: production_admitted_branch,
+    compile: ServeEntryCompileAdmitted,
+  ) {
+    PreSwapAdmitted => false
+    PreSwapRefused { reason } =>
+      string_contains(s: reason, pattern: "DetachedHeadNotOnAdmittedBranch")
+        && string_contains(s: reason, pattern: "refs/remotes/origin/main")
+  }
+}
+
+test fn a_detached_candidate_reachable_from_main_is_admitted() -> Bool {
+  let head = "cccccccccccccccccccccccccccccccccccccccc"
+  match pre_swap_from_checkout(
+    standing: checkout_branch_for_admission(
+      named: "HEAD",
+      admitted: production_admitted_branch,
+      head: head,
+      outcome: MergeBaseReported { base_hex: head },
+    ),
+    admitted: production_admitted_branch,
+    compile: ServeEntryCompileAdmitted,
+  ) {
+    PreSwapRefused { reason: _ } => false
+    PreSwapAdmitted => true
+  }
+}
+
+// Named checkout is still string equality; a refused merge-base does not rewrite the branch.
+test fn a_named_branch_checkout_ignores_merge_base_standing() -> Bool {
+  match checkout_branch_for_admission(
+    named: "main",
+    admitted: production_admitted_branch,
+    head: "dddddddddddddddddddddddddddddddddddddddd",
+    outcome: MergeBaseRefused { exit_code: 128, stderr: "not a git repository" },
+  ) {
+    CheckoutNamedBranch { branch } => branch == "main"
+    DetachedHeadOnAdmittedBranch { head: _, branch: _ } => false
+    DetachedHeadNotOnAdmittedBranch { head: _, branch: _, cause: _ } => false
+  }
+}
+
+test fn operator_local_admission_does_not_consult_github_ref_name() -> Bool {
+  let github_ref_name = "main"
+  match checkout_branch_for_admission(
+    named: "HEAD",
+    admitted: production_admitted_branch,
+    head: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    outcome: NoCommonAncestor,
+  ) {
+    DetachedHeadNotOnAdmittedBranch { cause } =>
+      string_contains(s: cause, pattern: "DetachedHeadNotOnAdmittedBranch")
+        && !string_contains(s: cause, pattern: "GITHUB_REF_NAME")
+        && github_ref_name == (production_admitted_branch as String)
+    CheckoutNamedBranch { branch: _ } => false
+    DetachedHeadOnAdmittedBranch { head: _, branch: _ } => false
+  }
+}
+
+test fn a_detached_merge_base_refusal_is_not_an_admission() -> Bool {
+  match checkout_branch_for_admission(
+    named: "HEAD",
+    admitted: production_admitted_branch,
+    head: "ffffffffffffffffffffffffffffffffffffffff",
+    outcome: MergeBaseRefused { exit_code: 128, stderr: "fatal: Not a valid object name" },
+  ) {
+    DetachedHeadNotOnAdmittedBranch { cause } =>
+      string_contains(s: cause, pattern: "exit 128")
+    CheckoutNamedBranch { branch: _ } => false
+    DetachedHeadOnAdmittedBranch { head: _, branch: _ } => false
   }
 }

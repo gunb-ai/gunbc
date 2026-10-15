@@ -1,6 +1,6 @@
 module gunbc.live_deploy.pre_swap_admission
 
-import std.types { String, Bool, Int, NonEmptyStr }
+import std.types { String, Bool, Int, NonEmptyStr, GitRef }
 import std.algebra { trim }
 import std.integer { int_to_decimal_string }
 import gunbc.compile_diagnostic_census {
@@ -15,9 +15,16 @@ import gunbc.live_deploy.desired {
   selected_deployment_spec,
 }
 import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.output_policy { OutcomeIsData }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
-import extdeps.shell
+import extdeps.git.inspect {
+  merge_base_outcome,
+  MergeBaseOutcome,
+  MergeBaseReported,
+  NoCommonAncestor,
+  MergeBaseRefused,
+}
 
 // PRE-MUTATION ADMISSION FOR A LIVE SWAP. Two observed holes, one decision, used by the CI
 // transaction, the operator-local converge deploy, and the desired-instance apply. Nothing here
@@ -100,20 +107,141 @@ fn observe_spec_serve_entry_compile(spec: DeploymentSpec) -> ServeEntryCompileVe
   observe_serve_entry_file_compile(entry: spec.service.serve_entry as String)
 }
 
-// Named checkout first. A sha checkout (Actions `ref: github.sha`) reports CurrentBranch HEAD;
-// then GITHUB_REF_NAME is the event branch, not a fabricated production class.
+// Named checkout as git reports it. A detached HEAD is the literal "HEAD"; provenance for that
+// case is checkout_branch_for_admission (merge-base of HEAD and refs/remotes/origin/<B>), never
+// GITHUB_REF_NAME. An environment variable that names a CI event is not proof of a commit's
+// ancestry (DESIGN §5). Operator-local and CI share this function; neither reads GITHUB_*.
 fn observe_checkout_branch() -> String {
-  let named = trim(s: git.Core.CurrentBranch().branch)
-  if named != "" && named != "HEAD" {
-    named
-  } else {
-    match shell.Env.Get(name: "GITHUB_REF_NAME" as NonEmptyStr).value {
-      Absent => named
-      Present { value: v } => {
-        let event = trim(s: v)
-        if event == "" { named } else { event }
+  trim(s: git.Core.CurrentBranch().branch)
+}
+
+fn origin_tracking_ref(branch: NonEmptyStr) -> GitRef {
+  join(["refs/remotes/origin/", branch as String], "") as GitRef
+}
+
+// Detached HEAD is on admitted branch B iff git's merge-base of HEAD and
+// refs/remotes/origin/<B> equals HEAD (HEAD is reachable from B's origin ref).
+// Exit 0 / 1 / 128 stay typed through merge_base_outcome; none of them admits.
+type CheckoutBranchForAdmission
+  = CheckoutNamedBranch { branch: String }
+  | DetachedHeadOnAdmittedBranch { head: String, branch: String }
+  | DetachedHeadNotOnAdmittedBranch { head: String, branch: String, cause: String }
+
+fn detached_head_on_admitted_branch(
+  head: String,
+  admitted: NonEmptyStr,
+  outcome: MergeBaseOutcome,
+) -> CheckoutBranchForAdmission {
+  let h = trim(s: head)
+  let b = admitted as String
+  match outcome {
+    MergeBaseReported { base_hex } => {
+      let base = trim(s: base_hex)
+      if h != "" && base == h {
+        DetachedHeadOnAdmittedBranch { head: h, branch: b }
+      } else {
+        DetachedHeadNotOnAdmittedBranch {
+          head: h,
+          branch: b,
+          cause: join([
+            "live_deploy: DetachedHeadNotOnAdmittedBranch — merge-base of HEAD and ",
+            origin_tracking_ref(branch: admitted) as String,
+            " is '",
+            base,
+            "', not HEAD '",
+            h,
+            "'",
+          ], ""),
+        }
       }
     }
+    NoCommonAncestor =>
+      DetachedHeadNotOnAdmittedBranch {
+        head: h,
+        branch: b,
+        cause: join([
+          "live_deploy: DetachedHeadNotOnAdmittedBranch — HEAD '",
+          h,
+          "' and ",
+          origin_tracking_ref(branch: admitted) as String,
+          " share no merge base",
+        ], ""),
+      }
+    MergeBaseRefused { exit_code, stderr } =>
+      DetachedHeadNotOnAdmittedBranch {
+        head: h,
+        branch: b,
+        cause: join([
+          "live_deploy: DetachedHeadNotOnAdmittedBranch — merge-base of HEAD '",
+          h,
+          "' and ",
+          origin_tracking_ref(branch: admitted) as String,
+          " refused (exit ",
+          int_to_decimal_string(value: exit_code),
+          "): ",
+          trim(s: stderr),
+        ], ""),
+      }
+  }
+}
+
+fn checkout_branch_for_admission(
+  named: String,
+  admitted: NonEmptyStr,
+  head: String,
+  outcome: MergeBaseOutcome,
+) -> CheckoutBranchForAdmission {
+  let seen = trim(s: named)
+  if seen != "" && seen != "HEAD" {
+    CheckoutNamedBranch { branch: seen }
+  } else {
+    detached_head_on_admitted_branch(head: head, admitted: admitted, outcome: outcome)
+  }
+}
+
+fn observe_detached_merge_base(admitted: NonEmptyStr) -> MergeBaseOutcome {
+  let root = git.Inspect.Toplevel()
+  let probe = git.Inspect.MergeBase(
+    repository_path: trim(s: root.path as String),
+    left: "HEAD" as GitRef,
+    right: origin_tracking_ref(branch: admitted),
+    expect: OutcomeIsData,
+  )
+  merge_base_outcome(exit_code: probe.exit_code, stdout: probe.sha as String, stderr: probe.stderr)
+}
+
+fn observe_checkout_for_admission(admitted: NonEmptyStr) -> CheckoutBranchForAdmission {
+  let named = observe_checkout_branch()
+  if named != "" && named != "HEAD" {
+    checkout_branch_for_admission(
+      named: named,
+      admitted: admitted,
+      head: "",
+      outcome: NoCommonAncestor,
+    )
+  } else {
+    let head = git.Inspect.HeadCommit(expect: OutcomeIsData)
+    checkout_branch_for_admission(
+      named: named,
+      admitted: admitted,
+      head: trim(s: head.sha as String),
+      outcome: observe_detached_merge_base(admitted: admitted),
+    )
+  }
+}
+
+fn pre_swap_from_checkout(
+  standing: CheckoutBranchForAdmission,
+  admitted: NonEmptyStr,
+  compile: ServeEntryCompileVerdict,
+) -> PreSwapAdmission {
+  match standing {
+    CheckoutNamedBranch { branch } =>
+      live_deploy_pre_swap_admission(admitted: admitted, observed_branch: branch, compile: compile)
+    DetachedHeadOnAdmittedBranch { head: _, branch } =>
+      live_deploy_pre_swap_admission(admitted: admitted, observed_branch: branch, compile: compile)
+    DetachedHeadNotOnAdmittedBranch { cause, head: _, branch: _ } =>
+      PreSwapRefused { reason: cause }
   }
 }
 
@@ -148,9 +276,9 @@ fn live_deploy_pre_swap_admission(
 }
 
 fn live_deploy_pre_swap_for_deployment(deployment: DesiredDeployment) -> PreSwapAdmission {
-  live_deploy_pre_swap_admission(
+  pre_swap_from_checkout(
+    standing: observe_checkout_for_admission(admitted: deployment.admitted_branch),
     admitted: deployment.admitted_branch,
-    observed_branch: observe_checkout_branch(),
     compile: observe_spec_serve_entry_compile(spec: selected_deployment_spec(row: deployment)),
   )
 }
