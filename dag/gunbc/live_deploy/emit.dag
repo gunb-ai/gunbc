@@ -164,6 +164,11 @@ import gunbc.owned_directory {
 }
 import gunbc.ensure { EnsurePlanAvailable, EnsurePlanUnavailable }
 import gunbc.roadmap.roadmap_dashboard_instance { dashboard_dispatch_worktree_member, dashboard_attempt_state_member }
+import gunbc.live_deploy.lab_host_plan {
+  LabPlanReady,
+  LabPlanRefused,
+  lab_plan_refused_emit_line,
+}
 import gunbc.live_deploy.spec {
   HoldsProdRoleSingletons, HoldsNoRoleSingleton, deployment_fabric_storage_door_socket,
   deployment_slice_unit_name, deployment_slice_unit_path,
@@ -4345,6 +4350,16 @@ fn retract_unobserved_client_poison(reason: String) -> String {
   )
 }
 
+fn apply_unobserved_client_poison(reason: String) -> String {
+  concat(
+    "__GUNBC_DEPLOY_REFUSED__ live-deploy apply NOT EMITTED: this target's tailscale client version is UNOBSERVED (",
+    concat(
+      reason,
+      "), so whether scoped serve exists on it is unknown. An unobserved version is not a capable one (DESIGN 5: refuse, never widen)",
+    ),
+  )
+}
+
 // THE RETRACT FRAME'S COMMENT BLOCK, DECLARED ONCE SO A CLAIM CAN READ IT WITHOUT RENDERING THE
 // WHOLE PROGRAM.
 //
@@ -4635,6 +4650,36 @@ fn live_deploy_apply_script_for(
   oidc_now: Second?,
   access: DeployAccess,
 ) -> String {
+  match spec.target.lab_plan {
+    LabPlanRefused { cause: c } => lab_plan_refused_emit_line(cause: c, fold_label: "apply")
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
+      match spec.target.tailscale_client {
+        ScopedRemovalUnobserved { reason: r } => apply_unobserved_client_poison(reason: r)
+        ScopedRemovalUnsupported { observed: _ } => live_deploy_apply_script_when_client_observed(
+          spec: spec,
+          plan: plan,
+          cap_authorization: cap_authorization,
+          oidc_now: oidc_now,
+          access: access,
+        )
+        ScopedRemovalSupported { observed: _ } => live_deploy_apply_script_when_client_observed(
+          spec: spec,
+          plan: plan,
+          cap_authorization: cap_authorization,
+          oidc_now: oidc_now,
+          access: access,
+        )
+      }
+  }
+}
+
+fn live_deploy_apply_script_when_client_observed(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  cap_authorization: CapConvergeDecision,
+  oidc_now: Second?,
+  access: DeployAccess,
+) -> String {
   match membership_effects(plan: deployment_apply_plan(spec: spec)) {
     EffectsReady { effects: es } =>
       emit_pipeline_or_poison(
@@ -4654,13 +4699,17 @@ fn live_deploy_apply_script_for(
 }
 
 fn live_deploy_retract_script_for(spec: DeploymentSpec, access: DeployAccess) -> String {
-  match spec.target.tailscale_client {
-    ScopedRemovalUnsupported { observed: v } =>
-      retract_unsupported_client_poison(observed: semver_version_label(v: v))
-    ScopedRemovalUnobserved { reason: r } =>
-      retract_unobserved_client_poison(reason: r)
-    ScopedRemovalSupported { observed: _ } =>
-      live_deploy_retract_script_with_scoped_removal(spec: spec, access: access)
+  match spec.target.lab_plan {
+    LabPlanRefused { cause: c } => lab_plan_refused_emit_line(cause: c, fold_label: "retract")
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
+      match spec.target.tailscale_client {
+        ScopedRemovalUnsupported { observed: v } =>
+          retract_unsupported_client_poison(observed: semver_version_label(v: v))
+        ScopedRemovalUnobserved { reason: r } =>
+          retract_unobserved_client_poison(reason: r)
+        ScopedRemovalSupported { observed: _ } =>
+          live_deploy_retract_script_with_scoped_removal(spec: spec, access: access)
+      }
   }
 }
 

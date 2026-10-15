@@ -3,7 +3,7 @@ module v2.test.claim.resolve.resolve_walk_population
 import std.algebra { empty_map, Cons, Empty, fold_list, length }
 import std.occurrence_identity { LexicalValueOccurrence, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.declaration_marker { test_code_index_empty }
-import v2.compiler.resolve { NotDeclaring, Namespace, ObservationComplete, ObservationIncomplete, ResolveContext, ResolveNodeWalk, ResolveWalkAccepted, ResolveWalkRefused, empty_canonical_symbol_set, resolve_node, resolve_node_walk, scope_from_namespace }
+import v2.compiler.resolve { empty_module_outcome_index, NotDeclaring, Namespace, ObservationComplete, ObservationIncomplete, ResolveContext, ResolveNodeWalk, ResolveWalkAccepted, ResolveWalkRefused, empty_canonical_symbol_set, resolve_node, resolve_node_walk, scope_from_namespace }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Accepted, DeclarationLocus, InvariantPortLocus, NodeLocus, NonEmptyDiagnostics, Rejected, SourcePortLocus, Textual, diagnostics_fatal }
 import v2.std.language_model { LanguageModel }
@@ -33,7 +33,7 @@ fn walk_probe_ctx() -> ResolveContext {
     test_code: test_code_index_empty(),
     declared_in: qualified_name_from_dotted_string(dotted: "m"),
     imported_origins: empty_map(),
-    module_outcomes: []
+    module_outcomes: empty_module_outcome_index()
   }
   ResolveContext {
     scope: scope_from_namespace(namespace: namespace),

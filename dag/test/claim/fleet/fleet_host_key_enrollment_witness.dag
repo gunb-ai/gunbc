@@ -3,6 +3,8 @@ module test.claim.fleet.fleet_host_key_enrollment_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
+import extdeps.network.endpoint { socket_address, host_by_ipv4 }
+import extdeps.network.ipv4 { ipv4_address }
 import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow,
   ScannedFirstContact,
@@ -45,12 +47,26 @@ test fn witness_unenrolled_host_yields_no_expectation_and_line_shape_is_exact() 
     }
     && known_hosts_line(k: KnownHostKeyRow {
       host: "srv5" as HostIdentity,
-      endpoint: "192.168.1.222",
+      address: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222)), port: 22),
       key_type: "ssh-ed25519",
       public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE",
       sha256_fingerprint: "SHA256:fakefake",
       provenance: ScannedFirstContact { scanned_from: "192.168.1.222 fixture" as NonEmptyStr },
     }) == "192.168.1.222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE"
+}
+
+// The same row behind a provider's ssh port mapping is written under the bracketed form ssh looks it up
+// by; the bare form above is the port-22 control, byte-identical to the line before the address had a
+// port.
+test fn witness_a_row_on_a_non_standard_port_writes_the_bracketed_host_field() -> Bool {
+  known_hosts_line(k: KnownHostKeyRow {
+    host: "srv5" as HostIdentity,
+    address: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222)), port: 15648),
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE",
+    sha256_fingerprint: "SHA256:fakefake",
+    provenance: ScannedFirstContact { scanned_from: "192.168.1.222 fixture" as NonEmptyStr },
+  }) == "[192.168.1.222]:15648 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE"
 }
 
 // A registry row's fingerprint reaches the probe classifier as a Present expectation:
