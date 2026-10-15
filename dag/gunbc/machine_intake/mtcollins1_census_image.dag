@@ -123,8 +123,9 @@ fn census_program_on_medium(nocloud_dir: NonEmptyStr, program_file: NonEmptyStr)
 // digest and name, built by the same derivation. Nothing here may run before the census stages or
 // between them and the envelope's END.
 // THE SEED'S USER-DATA: run the census program before any installer section, leave every section
-// to a human. The rendered body is the one build input that is not a constant or a parameter of
-// this module, so it is the parameter of the input below and the derivation renders it once.
+// to a human. The derivation builds the payload from the seed's location, so this row is the
+// MEASURED RECEIPT for mt. collins unit 1 -- the payload the derivation builds for its seed
+// directory and program file, and what the seeded user-data of the pinned image records.
 data mtcollins1_census_live_commands: UbuntuAutoinstallLiveCommands = UbuntuAutoinstallLiveCommands {
   autoinstall_version: 1,
   early_commands: [concat("sh ", census_program_on_medium(nocloud_dir: mtcollins1_census_nocloud_dir, program_file: mtcollins1_census_program_file) as String) as NonEmptyStr],
@@ -199,6 +200,10 @@ type CensusImage
 // user-data name the artifact. A DIFFERENT SUBJECT'S FACTS GIVE A DIFFERENT IMAGE AND A DIFFERENT NAME
 // through this same derivation -- that is the discriminating control of the cut. The mt. collins rows
 // below are the caller that feeds the mt. collins readings, and they stay this row's receipt.
+// THE EARLY COMMAND AND THE SEED FILE CANNOT DISAGREE: the user-data's early command is BUILT from
+// the seed's location inside this derivation (census_program_on_medium), so the command the installer
+// runs and the file the seed carries are one fact, not two parameters a caller can cross -- a path
+// mismatch is unwritable, not a validation.
 fn census_image_derivation(
   stages: List<HostCaptureStage>,
   machine: NonEmptyStr,
@@ -207,11 +212,14 @@ fn census_image_derivation(
   image_stem: NonEmptyStr,
   volume_id: NonEmptyStr,
   grub_kernel_cmdline: NonEmptyStr,
-  live_commands: UbuntuAutoinstallLiveCommands,
   nocloud_dir: NonEmptyStr,
   program_file: NonEmptyStr,
 ) -> CensusImage {
   let program = census_capture_program(machine: machine, console_device: console_device, halt_command: halt_command, stages: stages)
+  let live_commands = UbuntuAutoinstallLiveCommands {
+    autoinstall_version: 1,
+    early_commands: [concat("sh ", census_program_on_medium(nocloud_dir: nocloud_dir, program_file: program_file) as String) as NonEmptyStr],
+  }
   match autoinstall_live_commands_user_data(payload: live_commands) {
     AutoinstallUserDataRefused { reason: r } => CensusImageRefused { reason: r }
     AutoinstallUserDataRendered { content: body } =>
@@ -237,7 +245,6 @@ data mtcollins1_census_image: CensusImage = census_image_derivation(
   image_stem: mtcollins1_census_image_stem,
   volume_id: mtcollins1_census_volume_id,
   grub_kernel_cmdline: mtcollins1_census_grub_cmdline,
-  live_commands: mtcollins1_census_live_commands,
   nocloud_dir: mtcollins1_census_nocloud_dir,
   program_file: mtcollins1_census_program_file,
 )
@@ -253,7 +260,6 @@ data mtcollins1_census_pinned_image: CensusImage = census_image_derivation(
   image_stem: mtcollins1_census_image_stem,
   volume_id: mtcollins1_census_volume_id,
   grub_kernel_cmdline: mtcollins1_census_pinned_grub_cmdline,
-  live_commands: mtcollins1_census_live_commands,
   nocloud_dir: mtcollins1_census_nocloud_dir,
   program_file: mtcollins1_census_program_file,
 )
