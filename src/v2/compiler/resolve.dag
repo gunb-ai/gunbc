@@ -248,7 +248,7 @@ import v2.std.node {
   ArrowBodyEdge,
   BinderDefaultEdge,
 }
-import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names }
+import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, type_param_order, TypeParamOrderDeclared, TypeParamOrderMalformed, type_binder_target_of, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names }
 import v2.std.node_query {
   declared_field_list,
   node_is_coproduct,
@@ -4102,13 +4102,91 @@ fn resolve_node_walk_entered(
       }
       }
     TypeNode { connective: Instantiation } =>
-      resolve_type_application(ctx: ctx, walked: resolve_children_homogeneous_scope(ctx: ctx, n: n))
+      resolve_type_application(ctx: ctx, walked: resolve_instantiation_children(ctx: ctx, n: n))
     TypeNode { connective: Occupancy } =>
       resolve_occupancy(ctx: ctx, walked: resolve_children_homogeneous_scope(ctx: ctx, n: n))
     TypeNode { connective: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
     ComputationNode { behavior: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
+  }
+}
+
+// AN ARGUMENT POSITION'S REQUIRED OCCURRENCE CATEGORY COMES FROM WHAT ITS PARAMETER'S KIND ADMITS,
+// not from the blanket TypeOccurrence of a type position. A kind that names a coproduct admits that
+// coproduct's variants, which are ConstructorOccurrence declarations
+// (v2.std.symbol_index symbol_index_candidate_category); a TypeOccurrence reference excludes them
+// (std.occurrence_binding_resolve occurrence_category_binding_verdict), so `Width<Pointer>` came out
+// unbound_symbol (kind eligibility, #13832). Such a position walks as LexicalValueOccurrence, the
+// reference category that admits a constructor. An unkinded binder, and a kind that names no
+// coproduct (resolve_kind_variant_paths_optional Absent: it admits no variant, and conformance
+// refuses it as kind_unresolved), keep the ctx's category. No current kind admits both a type and a
+// variant: the only kind shape that resolves is a coproduct, so the two admissions never meet at one
+// position (tak_record_kind_keeps_type_occurrence pins it).
+fn resolve_instantiation_children(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  match n.children {
+    Empty => resolve_children_homogeneous_scope(ctx: ctx, n: n)
+    Cons { head: head_edge, tail: _ } =>
+      resolve_instantiation_walk_from_head(ctx: ctx, n: n, head_walk: resolve_child_edge(ctx: ctx, e: head_edge))
+  }
+}
+
+fn resolve_instantiation_walk_from_head(ctx: ResolveContext, n: Node, head_walk: ResolveNodeWalk) -> ResolveNodeWalk {
+  let kinds = match head_walk {
+    ResolveWalkAccepted { value: head, diagnostics: _, lexical: _ } => resolve_instantiation_argument_kinds(ctx: ctx, head: head)
+    ResolveWalkRefused { first: _, rest: _, observation: _ } => Empty
+  }
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    if acc.ordinal == 0 {
+      child_walk_step(w: acc, e: e, r: head_walk)
+    } else {
+      child_walk_step(
+        w: acc,
+        e: e,
+        r: resolve_child_edge(ctx: resolve_instantiation_argument_ctx(ctx: ctx, kinds: kinds, ordinal: acc.ordinal), e: e)
+      )
+    }
+  }))
+}
+
+// The kind of each declared binder, in authored order; Absent where unkinded or malformed.
+fn resolve_instantiation_argument_kinds(ctx: ResolveContext, head: Node) -> List<Optional<Node>> {
+  match declaration_reference_path_optional(node: head) {
+    Absent => Empty
+    Present { value: path } =>
+      match symbol_index_declared_binders_at(index: ctx.namespace.symbol_index, qualified_path: path) {
+        Absent => Empty
+        Present { value: binders } =>
+          match type_param_order(binders: binders) {
+            TypeParamOrderMalformed => Empty
+            TypeParamOrderDeclared { labels: labels } =>
+              fold(labels, init: Empty, f: fn(acc, l) {
+                list_snoc_item(xs: acc, item: match type_binder_target_of(binders: binders, name: l) {
+                  Absent => optional_absent()
+                  Present { value: b } =>
+                    match type_param_kind_optional(binder: b) {
+                      Absent => optional_absent()
+                      Present { value: kind } =>
+                        match resolve_kind_variant_paths_optional(ctx: ctx, declaration: path, kind: kind) {
+                          Present { value: _ } => optional_present(value: kind)
+                          Absent => optional_absent()
+                        }
+                    }
+                })
+              })
+          }
+      }
+  }
+}
+
+fn resolve_instantiation_argument_ctx(ctx: ResolveContext, kinds: List<Optional<Node>>, ordinal: Int) -> ResolveContext {
+  match list_at_optional(xs: kinds, index: ordinal - 1) {
+    Absent => ctx
+    Present { value: admitted } =>
+      match admitted {
+        Absent => ctx
+        Present { value: _ } => resolve_ctx_with_reference_category(ctx: ctx, category: LexicalValueOccurrence)
+      }
   }
 }
 
