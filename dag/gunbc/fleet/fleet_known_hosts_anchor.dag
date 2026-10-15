@@ -7,7 +7,7 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
 import extdeps.shell
 import extdeps.linux.unix_socket { linux_unix_socket_pathname_max_length }
-import std.measure { Second, second }
+import std.measure { Second, second, ByteSize, byte_size, byte_size_count }
 import std.algebra { trim, list_head, skip }
 import std.content_hash {
   ContentHash,
@@ -43,8 +43,6 @@ import extdeps.ssh.client_options {
   ControlPersist,
   ControlPersistIdle,
   openssh_control_path_temporary_suffix_length,
-  shape_openssh_control_command_argv,
-  SshControlExit,
   RemotePort,
 }
 import extdeps.network.endpoint {
@@ -849,9 +847,17 @@ fn fleet_ssh_multiplex_directory_seal(path: NonEmptyStr) -> FleetSshMultiplexDir
 
 // The longest socket name the directory must admit: the directory, a slash, the fixed-length name
 // and the temporary suffix ssh binds before renaming, inside unix(7)'s pathname bound.
+// MEASURED IN BYTES, because sun_path is a byte array: the directory's UTF-8 encoding, the slash and
+// the hex name (ASCII, one byte per digit) plus ssh's temporary suffix. A character count would
+// admit a non-ASCII directory whose socket the kernel then refuses to bind.
+fn fleet_ssh_multiplex_path_bytes(path: String) -> ByteSize {
+  byte_size(count: count(bytes_octets(b: utf8_encode_bytes(s: path))))
+}
+
 fn fleet_ssh_multiplex_directory_fits(path: String, multiplexing: FleetSshMultiplexing) -> Bool {
-  string_length(s: path) + 1 + multiplexing.socket_name_hex_length + openssh_control_path_temporary_suffix_length
-    <= linux_unix_socket_pathname_max_length()
+  byte_size_count(b: fleet_ssh_multiplex_path_bytes(path: path)) + 1 + multiplexing.socket_name_hex_length
+    + byte_size_count(b: openssh_control_path_temporary_suffix_length)
+    <= byte_size_count(b: linux_unix_socket_pathname_max_length())
 }
 
 fn fleet_ssh_multiplex_directory_path_for(runner_temp: String) -> String {
@@ -951,26 +957,6 @@ fn fleet_ssh_multiplex_options(context: FleetSshExecutionContext, target: SshTar
     ControlPath { value: ControlPathSocket { path: fleet_ssh_multiplex_control_path(context: context, target: target) } },
     ControlPersist { value: ControlPersistIdle { seconds: multiplexing.persist_idle } },
   ]
-}
-
-// THE JOB TEARDOWN'S FIRST HALF, rendered here beside the directory it empties so the path has one
-// authority; gunbc.fleet.fleet_workflow_steps ci_fleet_key_agent_cleanup_script runs it before the
-// agent kill. A master that does not acknowledge is named in the log; its socket is removed
-// regardless, so no later job can reach it, and ControlPersist ends it.
-data fleet_ssh_multiplex_teardown_destination: NonEmptyStr = "fleet-ssh-mux-teardown" as NonEmptyStr
-
-fn fleet_ssh_multiplex_teardown_script() -> String {
-  join([
-    "MUX_DIR=\"$", fleet_ssh_multiplex_runner_temp_env, "/", fleet_ssh_multiplex_directory_name, "\"\n",
-    "if [ -d \"$MUX_DIR\" ]; then\n",
-    "  for MUX_SOCKET in \"$MUX_DIR\"/*; do\n",
-    "    if [ -S \"$MUX_SOCKET\" ]; then ",
-    join(shape_openssh_control_command_argv(command: SshControlExit, control_path: "\"$MUX_SOCKET\"", destination: fleet_ssh_multiplex_teardown_destination), " "),
-    " || echo \"fleet ssh master at $MUX_SOCKET did not acknowledge exit\"; fi\n",
-    "  done\n",
-    "  rm -rf -- \"$MUX_DIR\"\n",
-    "fi\n",
-  ], "")
 }
 
 // The password session needs only the trust anchor, so a caller holding no fleet key (the first

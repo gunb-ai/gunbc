@@ -2086,13 +2086,9 @@ jobs:
         timeout-minutes: 10
       - name: End the fleet ssh masters, then kill the in-run ssh-agent (key never outlives the job)
         run: |
-          MUX_DIR="$RUNNER_TEMP/fleet-ssh-mux"
-          if [ -d "$MUX_DIR" ]; then
-            for MUX_SOCKET in "$MUX_DIR"/*; do
-              if [ -S "$MUX_SOCKET" ]; then ssh -F none -O exit -o ControlPath="$MUX_SOCKET" fleet-ssh-mux-teardown || echo "fleet ssh master at $MUX_SOCKET did not acknowledge exit"; fi
-            done
-            rm -rf -- "$MUX_DIR"
-          fi
+          MUX_DIR="$RUNNER_TEMP"'/fleet-ssh-mux'
+          if '[' '-d' "$MUX_DIR" ']'; then 'find' "$MUX_DIR" '-mindepth' '1' '-maxdepth' '1' '-type' 's' '-exec' 'ssh' '-F' 'none' '-S' '{}' '-O' 'exit' 'fleet-ssh-mux-teardown' ';'; 'rm' '-rf' '--' "$MUX_DIR"; fi
+
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
         if: always()
         timeout-minutes: 5
@@ -2308,13 +2304,9 @@ jobs:
         timeout-minutes: 10
       - name: End the fleet ssh masters, then kill the in-run ssh-agent (key never outlives the job)
         run: |
-          MUX_DIR="$RUNNER_TEMP/fleet-ssh-mux"
-          if [ -d "$MUX_DIR" ]; then
-            for MUX_SOCKET in "$MUX_DIR"/*; do
-              if [ -S "$MUX_SOCKET" ]; then ssh -F none -O exit -o ControlPath="$MUX_SOCKET" fleet-ssh-mux-teardown || echo "fleet ssh master at $MUX_SOCKET did not acknowledge exit"; fi
-            done
-            rm -rf -- "$MUX_DIR"
-          fi
+          MUX_DIR="$RUNNER_TEMP"'/fleet-ssh-mux'
+          if '[' '-d' "$MUX_DIR" ']'; then 'find' "$MUX_DIR" '-mindepth' '1' '-maxdepth' '1' '-type' 's' '-exec' 'ssh' '-F' 'none' '-S' '{}' '-O' 'exit' 'fleet-ssh-mux-teardown' ';'; 'rm' '-rf' '--' "$MUX_DIR"; fi
+
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
         if: always()
         timeout-minutes: 5
@@ -2951,13 +2943,9 @@ jobs:
         timeout-minutes: 10
       - name: End the fleet ssh masters, then kill the in-run ssh-agent (key never outlives the job)
         run: |
-          MUX_DIR="$RUNNER_TEMP/fleet-ssh-mux"
-          if [ -d "$MUX_DIR" ]; then
-            for MUX_SOCKET in "$MUX_DIR"/*; do
-              if [ -S "$MUX_SOCKET" ]; then ssh -F none -O exit -o ControlPath="$MUX_SOCKET" fleet-ssh-mux-teardown || echo "fleet ssh master at $MUX_SOCKET did not acknowledge exit"; fi
-            done
-            rm -rf -- "$MUX_DIR"
-          fi
+          MUX_DIR="$RUNNER_TEMP"'/fleet-ssh-mux'
+          if '[' '-d' "$MUX_DIR" ']'; then 'find' "$MUX_DIR" '-mindepth' '1' '-maxdepth' '1' '-type' 's' '-exec' 'ssh' '-F' 'none' '-S' '{}' '-O' 'exit' 'fleet-ssh-mux-teardown' ';'; 'rm' '-rf' '--' "$MUX_DIR"; fi
+
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
         if: always()
         timeout-minutes: 5

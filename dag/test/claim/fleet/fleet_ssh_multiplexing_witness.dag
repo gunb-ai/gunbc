@@ -1,6 +1,7 @@
 module test.claim.fleet.fleet_ssh_multiplexing_witness
 
 import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.measure { byte_size_count }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
@@ -17,7 +18,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshMultiplexPreparation,
   FleetSshMultiplexReady,
   FleetSshMultiplexRefused,
-  fleet_ssh_multiplex_teardown_script,
+  fleet_ssh_multiplex_path_bytes,
 }
 import extdeps.ssh.client_options { serialize_ssh_client_options, openssh_control_path_temporary_suffix_length }
 import extdeps.linux.unix_socket { linux_unix_socket_pathname_max_length }
@@ -130,7 +131,8 @@ test fn w_the_socket_name_length_is_independent_of_the_attempt() -> Bool {
   let short = path_of(context: context_at(attempt_raw: "a", rental: false, content_salt: "", key_material: base_key), t: t)
   let long = path_of(context: context_at(attempt_raw: "runner-host-file-converge-ci-with-a-much-longer-attempt-identity-than-any-today", rental: false, content_salt: "", key_material: base_key), t: t)
   short != "" && string_length(s: short) == string_length(s: long)
-    && string_length(s: long) + openssh_control_path_temporary_suffix_length <= linux_unix_socket_pathname_max_length()
+    && byte_size_count(b: fleet_ssh_multiplex_path_bytes(path: long)) + byte_size_count(b: openssh_control_path_temporary_suffix_length)
+      <= byte_size_count(b: linux_unix_socket_pathname_max_length())
 }
 
 fn is_ready(p: FleetSshMultiplexPreparation) -> Bool {
@@ -161,13 +163,16 @@ test fn red_a_directory_too_deep_for_sun_path_refuses() -> Bool {
   ))
 }
 
-// THE TEARDOWN HALF asks each master in the job directory to exit, then removes the directory.
-test fn w_the_teardown_exits_each_master_then_removes_the_directory() -> Bool {
-  let script = fleet_ssh_multiplex_teardown_script()
-  contains(script, "MUX_DIR=\"$RUNNER_TEMP/fleet-ssh-mux\"")
-    && contains(script, "for MUX_SOCKET in \"$MUX_DIR\"/*; do")
-    && contains(script, "if [ -S \"$MUX_SOCKET\" ]; then ssh -F none -O exit -o ControlPath=\"$MUX_SOCKET\" fleet-ssh-mux-teardown")
-    && contains(script, "rm -rf -- \"$MUX_DIR\"")
+// RED: sun_path is a byte array, so a directory whose characters fit but whose UTF-8 bytes do not
+// refuses. A slash and 43 two-byte characters are 44 characters and 87 bytes: by character count
+// the socket fits (44 + 1 + 32 + 17 = 94 <= 107), by bytes it does not (87 + 1 + 32 + 17 = 137).
+data non_ascii_runner_temp: String = "/ééééééééééééééééééééééééééééééééééééééééééé"
+
+test fn red_a_non_ascii_directory_that_fits_by_characters_but_not_bytes_refuses() -> Bool {
+  let path = non_ascii_runner_temp
+  string_length(s: path) + 1 + fleet_ssh_multiplexing.socket_name_hex_length + byte_size_count(b: openssh_control_path_temporary_suffix_length)
+    <= byte_size_count(b: linux_unix_socket_pathname_max_length())
+    && !is_ready(p: fleet_ssh_multiplex_directory_admitted(path: path, created: true, mode_text: "700", owner: "runner", runner_temp_owner: "runner"))
 }
 
 // The password session never multiplexes: it carries ControlPath none explicitly.

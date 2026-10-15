@@ -1,6 +1,6 @@
 module extdeps.linux.unix_socket
 
-import std.types { Int }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -27,8 +27,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // unix(7): struct sockaddr_un { sa_family_t sun_family; char sun_path[108]; }, with "#define
 // UNIX_PATH_MAX 108". A pathname socket's name is a null-terminated string inside sun_path, so the
 // longest bindable pathname is one byte shorter.
-data linux_sockaddr_un_sun_path_bytes: Int = 108
+data linux_sockaddr_un_sun_path_bytes: ByteSize = byte_size(count: 108)
 
-fn linux_unix_socket_pathname_max_length() -> Int {
-  linux_sockaddr_un_sun_path_bytes - 1
+fn linux_unix_socket_pathname_max_length() -> ByteSize {
+  byte_size(count: byte_size_count(b: linux_sockaddr_un_sun_path_bytes) - 1)
 }
