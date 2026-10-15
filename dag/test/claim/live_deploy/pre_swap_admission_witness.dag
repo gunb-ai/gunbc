@@ -11,7 +11,7 @@ import gunbc.compile_diagnostic_census {
 import gunbc.live_deploy.desired {
   srv2_deploy_desired_deployment,
   production_admitted_branch,
-  lab_integration_branch,
+  srv1_lab_desired_deployment,
 }
 import gunbc.live_deploy.pre_swap_admission {
   target_branch_admission,
@@ -66,12 +66,12 @@ fn branch_reason(a: TargetBranchAdmission) -> String {
 
 // RED: a non-main checkout aimed at the production admitted branch refuses.
 test fn a_non_main_revision_aimed_at_production_refuses() -> Bool {
-  match target_branch_admission(admitted: production_admitted_branch, observed: "lab-dev") {
+  match target_branch_admission(admitted: production_admitted_branch, observed: srv1_lab_desired_deployment().admitted_branch as String) {
     TargetBranchAdmitted => false
     TargetBranchRefused { reason } =>
       string_contains(s: reason, pattern: "DeployTargetBranchRefused")
         && string_contains(s: reason, pattern: production_admitted_branch)
-        && string_contains(s: reason, pattern: "lab-dev")
+        && string_contains(s: reason, pattern: srv1_lab_desired_deployment().admitted_branch as String)
   }
 }
 
@@ -83,9 +83,9 @@ test fn main_aimed_at_production_admits() -> Bool {
   }
 }
 
-// Control: lab-dev to the lab proceeds.
+// Control: the lab's own integration branch to the lab proceeds.
 test fn lab_dev_aimed_at_lab_admits() -> Bool {
-  match target_branch_admission(admitted: lab_integration_branch, observed: lab_integration_branch) {
+  match target_branch_admission(admitted: srv1_lab_desired_deployment().admitted_branch, observed: srv1_lab_desired_deployment().admitted_branch as String) {
     TargetBranchRefused { reason: _ } => false
     TargetBranchAdmitted => true
   }
@@ -93,16 +93,16 @@ test fn lab_dev_aimed_at_lab_admits() -> Bool {
 
 // Main is not the lab integration branch.
 test fn main_aimed_at_lab_refuses() -> Bool {
-  match target_branch_admission(admitted: lab_integration_branch, observed: "main") {
+  match target_branch_admission(admitted: srv1_lab_desired_deployment().admitted_branch, observed: "main") {
     TargetBranchAdmitted => false
-    TargetBranchRefused { reason } => string_contains(s: reason, pattern: lab_integration_branch)
+    TargetBranchRefused { reason } => string_contains(s: reason, pattern: srv1_lab_desired_deployment().admitted_branch as String)
   }
 }
 
 // srv2 declares main on its desired row; it is not an implicit production class.
 test fn srv2_deploy_declares_main() -> Bool {
   srv2_deploy_desired_deployment().admitted_branch == production_admitted_branch
-    && match target_branch_admission(admitted: srv2_deploy_desired_deployment().admitted_branch, observed: "lab-dev") {
+    && match target_branch_admission(admitted: srv2_deploy_desired_deployment().admitted_branch, observed: srv1_lab_desired_deployment().admitted_branch as String) {
       TargetBranchAdmitted => false
       TargetBranchRefused { reason } => string_contains(s: reason, pattern: production_admitted_branch)
     }
