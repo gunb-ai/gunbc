@@ -229,7 +229,6 @@ pub(crate) mod claim_call_site_demand;
 #[cfg(test)]
 #[path = "evaluation_budget_consequence_falsifier_host.rs"]
 mod evaluation_budget_consequence_falsifier_host;
-pub(crate) mod shared_fill;
 pub(crate) mod test_module_hygiene_bridge;
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
@@ -27775,7 +27774,7 @@ fn nfr_parse_params(s: &str) -> std::collections::BTreeMap<String, String> {
 fn nfr_closed_coproduct_name_set() -> &'static std::collections::BTreeSet<String> {
     static NAMES: std::sync::OnceLock<std::collections::BTreeSet<String>> =
         std::sync::OnceLock::new();
-    shared_fill::once(&NAMES, || nfr_closed_coproduct_names(&corpus_dag_files()))
+    NAMES.get_or_init(|| nfr_closed_coproduct_names(&corpus_dag_files()))
 }
 
 #[cfg(test)]
@@ -28243,7 +28242,7 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
 
 fn build_inert_carrier_data() -> &'static InertCarrierData {
     static CACHE: OnceLock<InertCarrierData> = OnceLock::new();
-    shared_fill::once(&CACHE, || compute_inert_carrier_data(&corpus_dag_files()))
+    CACHE.get_or_init(|| compute_inert_carrier_data(&corpus_dag_files()))
 }
 
 #[cfg(test)]
@@ -28647,7 +28646,7 @@ struct ClaAuditBuiltinCache {
 
 fn cla_cached_builtin_cache() -> &'static ClaAuditBuiltinCache {
     static CACHE: OnceLock<ClaAuditBuiltinCache> = OnceLock::new();
-    shared_fill::once(&CACHE, || {
+    CACHE.get_or_init(|| {
         let summary = complexity_linearity_audit_corpus_default_roots();
         ClaAuditBuiltinCache {
             finding_count: summary.findings.len() as i64,
@@ -28701,7 +28700,7 @@ fn cla_compute_wildcard_facts(
 
 fn cla_cached_wildcard_facts() -> Result<&'static ClaWildcardFactsCache, String> {
     static CACHE: OnceLock<Result<ClaWildcardFactsCache, String>> = OnceLock::new();
-    match shared_fill::once(&CACHE, || {
+    match CACHE.get_or_init(|| {
         cla_compute_wildcard_facts(&witness_layer_roots())
             .map(|facts| ClaWildcardFactsCache { facts })
     }) {
@@ -28907,7 +28906,7 @@ struct FacCensusCache {
 
 fn fac_cached_census_facts() -> &'static FacCensusCache {
     static CACHE: OnceLock<FacCensusCache> = OnceLock::new();
-    shared_fill::once(&CACHE, || FacCensusCache {
+    CACHE.get_or_init(|| FacCensusCache {
         facts: fac_compute_census_facts(&witness_layer_roots()),
     })
 }
