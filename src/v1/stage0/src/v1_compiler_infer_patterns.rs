@@ -920,34 +920,6 @@ pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node>
     }
 }
 
-fn env_binds_std_types_never(env: Rc<TypeEnv>) -> bool {
-    match crate::v1_compiler_infer_env::symbol_index_lookup(
-        env.symbol_index.clone(),
-        crate::std_types::never_type_qualified_path(),
-    ) {
-        std::option::Option::None => env.module_path.clone() == crate::std_types::never_type_module_path(),
-        Some(indexed) => match crate::v1_compiler_infer_env::lookup_type_by_name(
-            env.clone(),
-            crate::std_types::never_type_name(),
-        ) {
-            std::option::Option::None => false,
-            Some(bound) => bound.occurrence_identity == indexed.occurrence_identity,
-        },
-    }
-}
-
-fn is_uninhabited_sum(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    if resolved.connective.clone() == Disj {
-        (resolved.children.clone().len() as i64) == 0
-    } else {
-        (crate::v1_std_core::authored_name_at(env.source_indices.clone(), resolved.clone())
-            == crate::std_types::never_type_name())
-            && (resolved.connective.clone() == NoConnective)
-            && ((resolved.children.clone().len() as i64) == 0)
-            && env_binds_std_types_never(env.clone())
-    }
-}
-
 pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<ConstructorRoster> {
     {
         let resolved = resolve_scrutinee_type(type_node.clone(), env.clone());
@@ -982,7 +954,15 @@ pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Const
                         }),
                     })
                 } else {
-                    if is_uninhabited_sum(resolved.clone(), env.clone()) {
+                    if ((resolved.connective.clone() == NoConnective)
+                        && ((resolved.children.clone().len() as i64) == 0)
+                        && !crate::std_types::is_kernel_type(
+                            crate::v1_std_core::authored_name_at(
+                                env.source_indices.clone(),
+                                resolved.clone(),
+                            ),
+                        ))
+                    {
                         Rc::new(ConstructorRoster::ConstructorsClosed {
                             names: Rc::new(vec![]),
                         })
