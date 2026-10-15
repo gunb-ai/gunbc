@@ -64,11 +64,6 @@ fn revision_job_guest_memory_mib() -> Int {
   byte_size_count(b: gunbc_runner_slot_memory_max) / 1048576 + byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_os_allowance)) / 1048576
 }
 
-fn revision_job_spec_content(spec_text: String) -> String {
-  let sector = byte_size_count(b: firecracker_block_sector_size)
-  let tail = byte_size_count(b: jit_drive_utf8_size(text: spec_text)) % sector
-  if tail == 0 { spec_text } else { concat(spec_text, substring(s: jit_drive_newline_sector(), start: 0, end: sector - tail)) }
-}
 
 fn revision_job_vm_config(vcpus: Int) -> FirecrackerVmConfig {
   FirecrackerVmConfig {
@@ -95,7 +90,6 @@ fn revision_job_launch_plan(
   attempt: MicroVmAttempt,
   allocation_generation: Int,
   staged: RevisionJobStaged,
-  spec_text: String,
   image: RevisionJobGuestImage,
   vcpus: Int,
   ground: AttemptGround,
@@ -118,7 +112,7 @@ fn revision_job_launch_plan(
           payload: ClaimSetLaunchPayload { grant: (grant as String) as NonEmptyStr, device: BootstrapDeviceStaging {
             host_path: spec,
             create: install_empty_file_command(path: spec, octal_mode: "0400", uid: attempt_unprivileged_uid, gid: attempt_unprivileged_gid),
-            content: revision_job_spec_content(spec_text: spec_text),
+            content: staged.spec_text,
           } },
           workspace_grant: mebibyte_to_byte_size(m: revision_job_work_disk),
           lease_expires_unix: none,

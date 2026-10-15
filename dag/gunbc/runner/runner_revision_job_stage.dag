@@ -19,6 +19,8 @@ import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_sha1_
 import extdeps.rust.cargo_build { cargo_vendor_command, cargo_version_command }
 import extdeps.bazel.label { Label, render_label }
 import extdeps.tools.coreutils_truncate
+import extdeps.virtualization.firecracker { firecracker_block_sector_size }
+import gunbc.runner.runner_microvm { jit_drive_newline_sector, jit_drive_utf8_size }
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.fabric.fabric_witness_run {
   VerifiedGitCommitTree, GitCommitTreeVerified, GitCommitTreeMismatch, verify_git_commit_tree,
@@ -63,6 +65,7 @@ type RevisionJobStaged {
   tree_archive: String
   vendor_archive: String
   spec: String
+  spec_text: String
   results_drive: String
   results_bytes: ByteSize
   digests: RevisionJobInputDigests
@@ -115,6 +118,16 @@ fn revision_job_spec_text(revision: VerifiedGitCommitTree, claims: FreeSemigroup
     "GUNBC_CLAIM_SET_RESULTS_DEVICE=", results_device, "\n",
     "GUNBC_CLAIM_SET_RESULTS_BYTES=", to_string(byte_size_count(b: results_bytes)), "\n",
   ], "")
+}
+
+// THE SPEC DEVICE'S BYTES, ONCE: the environment file padded with newlines to whole block sectors
+// (Firecracker attaches whole sectors). Staging writes exactly these bytes and returns them, and the
+// launch plan stages the spec drive from them -- one producer, so the staged spec and the booted one
+// cannot differ.
+fn revision_job_spec_device_content(spec_text: String) -> String {
+  let sector = byte_size_count(b: firecracker_block_sector_size)
+  let tail = byte_size_count(b: jit_drive_utf8_size(text: spec_text)) % sector
+  if tail == 0 { spec_text } else { concat(spec_text, substring(s: jit_drive_newline_sector(), start: 0, end: sector - tail)) }
 }
 
 fn vendor_cache_key(lockfile: ContentHash, cargo_identity: NonEmptyStr) -> NonEmptyStr {
@@ -237,7 +250,8 @@ fn stage_spec_and_results(
 ) -> RevisionJobStage {
   let spec = concat(staging_dir, "/spec.env")
   let results = concat(staging_dir, "/results.bin")
-  let wrote_spec = Filesystem.WriteCreateNew(path: spec, content: revision_job_spec_text(revision: revision, claims: claims, results_device: results_device, results_bytes: results_bytes))
+  let spec_text = revision_job_spec_device_content(spec_text: revision_job_spec_text(revision: revision, claims: claims, results_device: results_device, results_bytes: results_bytes))
+  let wrote_spec = Filesystem.WriteCreateNew(path: spec, content: spec_text)
   if !wrote_spec.success { RevisionJobStageRefused { refusal: StageStepFailed { step: "write-spec", detail: wrote_spec.error } } }
   else {
     let created = Filesystem.WriteCreateNew(path: results, content: "")
@@ -246,7 +260,7 @@ fn stage_spec_and_results(
       RevisionJobStageRefused { refusal: StageResultsDriveRefused { path: results, detail: "truncate could not size the results drive" } }
     } else {
       RevisionJobStageReady { staged: RevisionJobStaged {
-        tree_archive: tree_archive, vendor_archive: vendor_archive, spec: spec, results_drive: results,
+        tree_archive: tree_archive, vendor_archive: vendor_archive, spec: spec, spec_text: spec_text, results_drive: results,
         results_bytes: results_bytes, digests: digests,
       } }
     }
