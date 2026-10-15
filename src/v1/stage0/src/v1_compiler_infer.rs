@@ -13451,7 +13451,10 @@ Rc::new(InferResult {
                             )
                         } else {
                             if ((has_lambda.clone() && ((call_args.clone().len() as i64) >= 2))
-                                && (sig.clone() == std::option::Option::None))
+                                && match sig.clone() {
+                                    std::option::Option::None => true,
+                                    Some(_) => false,
+                                })
                             {
                                 Rc::new(ArgGenericFoldState {
                                     subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),

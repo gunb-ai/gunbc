@@ -9818,6 +9818,452 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// Host reconcile after deleting `pool_qualified_fill`: a qualified call is typed from the
+    /// acquired closure, not from an ambient pool layer. The unrelated pool module must stay out.
+    #[test]
+    fn host_reconcile_types_a_qualified_reference_from_the_acquired_closure() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module dotted_entry\nfn main() -> Int { dotted.provider.one() }\n",
+            ),
+            (
+                "provider.dag",
+                "module dotted.provider\nfn one() -> Int { 1 }\n",
+            ),
+            (
+                "unrelated.dag",
+                "module unrelated\nfn unused() -> Int { 1 }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let (graph, _) =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy())
+                .expect("qualified provider is on the reference-closure fixpoint");
+        let blocking: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        assert!(
+            blocking.is_empty(),
+            "host reconcile must type the qualified call without pool fill: {blocking:?}"
+        );
+        let names: BTreeSet<_> = graph
+            .modules
+            .iter()
+            .map(|m| m.type_env.module_path.clone())
+            .collect();
+        assert!(
+            names.contains("dotted_entry") && names.contains("dotted.provider"),
+            "{names:?}"
+        );
+        assert!(
+            !names.contains("unrelated"),
+            "an unused pool module must not enter the typed graph: {names:?}"
+        );
+    }
+
+    /// A module path with no provider in the pool must refuse. Restoring fill cannot invent
+    /// one. `ghost.provider.one()` with no declared prefix is field access on unbound `ghost`
+    /// (`longest_declared_module_prefix` only classifies a chain whose prefix is already in
+    /// the pool). An `import` is the spelling the closure fixpoint treats as a module path
+    /// without that prefix.
+    #[test]
+    fn host_reconcile_refuses_a_qualified_name_with_no_provider() {
+        let fixture = Fixture::new(&[(
+            "entry.dag",
+            "module dotted_entry\nimport ghost.provider { one }\nfn main() -> Int { ghost.provider.one() }\n",
+        )]);
+        let index = fixture.index();
+        let outcome =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy());
+        let err = match outcome {
+            Err(e) => e,
+            Ok((graph, _)) => graph
+                .diagnostics
+                .iter()
+                .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+                .map(|d| format!("{:?}", d.diagnostic))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        assert!(
+            err.contains("ghost.provider"),
+            "missing qualified provider must refuse naming ghost.provider, not a generic failure: {err}"
+        );
+    }
+
+    /// The same missing module with no import is field access on unbound `ghost`, not a
+    /// qualified module path. A green here with the import-specimen diagnostic would mean
+    /// the two spellings had been collapsed.
+    #[test]
+    fn host_reconcile_refuses_unimported_ghost_provider_as_field_access() {
+        let fixture = Fixture::new(&[(
+            "entry.dag",
+            "module dotted_entry\nfn main() -> Int { ghost.provider.one() }\n",
+        )]);
+        let index = fixture.index();
+        let outcome =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy());
+        let err = match outcome {
+            Err(e) => e,
+            Ok((graph, _)) => graph
+                .diagnostics
+                .iter()
+                .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+                .map(|d| format!("{:?}", d.diagnostic))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        assert!(
+            !err.is_empty(),
+            "unimported ghost.provider.one() must refuse"
+        );
+        assert!(
+            err.contains("ghost") && !err.contains("ghost.provider"),
+            "unimported spelling is unbound ghost, not a module-path ghost.provider: {err}"
+        );
+    }
+
+    /// Unique-bare `secret` lives in an unacquired module. Gate one (an unrelated import)
+    /// turns the bare pull off, so fill used to supply Exact for admit_callers. After the
+    /// fill cut, constructor admission must still refuse rather than remap to a no-op.
+    #[test]
+    fn host_reconcile_refuses_unacquired_unique_bare_sealed_constructor() {
+        let fixture = Fixture::new(&[
+            (
+                "hidden.dag",
+                "module fx.hidden\nfn secret() -> Int\n  admit_callers: [decl_ref(module_path: \"fx.other\", decl_name: \"never\")]\n{ 7 }\n",
+            ),
+            (
+                "helper.dag",
+                "module fx.helper\nfn unused_import() -> Int { 0 }\n",
+            ),
+            (
+                "ambient.dag",
+                "module fx.ambient\nimport fx.helper { unused_import }\nfn main() -> Int { secret() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let outcome = resolve_entry_with_parse_cache(
+            &index,
+            &fixture.0.join("ambient.dag").to_string_lossy(),
+        );
+        let err = match outcome {
+            Err(e) => e,
+            Ok((graph, _)) => graph
+                .diagnostics
+                .iter()
+                .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+                .map(|d| format!("{:?}", d.diagnostic))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        assert!(
+            err.contains("fx.hidden") && err.contains("secret"),
+            "unacquired unique-bare sealed constructor must refuse naming fx.hidden.secret: {err}"
+        );
+    }
+
+    /// Regression specimen: `get` is a registered builtin. A same-spelled off-product census
+    /// declaration must not become an admission subject. Census-before-builtin / spelling
+    /// admission used to refuse this as if `fx.get_decl.get` were the callee.
+    #[test]
+    fn host_reconcile_builtin_get_skips_off_product_census_declaration() {
+        let fixture = Fixture::new(&[
+            (
+                "get_decl.dag",
+                "module fx.get_decl\nfn get(xs: List<Int>, index: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"fx.never\", decl_name: \"never\")]\n{ 0 }\n",
+            ),
+            (
+                "helper.dag",
+                "module fx.helper\nfn unused_import() -> Int { 0 }\n",
+            ),
+            (
+                "entry.dag",
+                "module fx.entry\nimport fx.helper { unused_import }\nfn main() -> Optional<Int> { get([1, 2], 0) }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let (graph, _) =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy())
+                .expect("builtin get must not fail host resolve because a census get exists");
+        let blocking: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        assert!(
+            blocking
+                .iter()
+                .all(|d| !d.contains("fx.get_decl") && !d.contains("admit")),
+            "builtin get must not run declaration admission against the census owner: {blocking:?}"
+        );
+        let names: BTreeSet<_> = graph
+            .modules
+            .iter()
+            .map(|m| m.type_env.module_path.clone())
+            .collect();
+        assert!(
+            !names.contains("fx.get_decl"),
+            "off-product census get must stay out of the typed graph: {names:?}"
+        );
+    }
+
+    /// A caller-imported, sealed constructor spelled `empty_map` still runs declaration
+    /// admission. Kernel empty_map is `BuiltinCallableResolved` only when no declaration is in
+    /// scope; last-segment spelling is not an exemption (review 79876).
+    #[test]
+    fn host_reconcile_imported_empty_map_still_enforces_admit_callers() {
+        let fixture = Fixture::new(&[
+            (
+                "sealed.dag",
+                "module fx.sealed\nfn empty_map() -> Int\n  admit_callers: [decl_ref(module_path: \"fx.never\", decl_name: \"never\")]\n{ 0 }\n",
+            ),
+            (
+                "entry.dag",
+                "module fx.entry\nimport fx.sealed { empty_map }\nfn main() -> Int { empty_map() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let outcome =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy());
+        let err = match outcome {
+            Err(e) => e,
+            Ok((graph, _)) => graph
+                .diagnostics
+                .iter()
+                .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+                .map(|d| format!("{:?}", d.diagnostic))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        assert!(
+            err.contains("fx.sealed") && err.contains("empty_map"),
+            "imported sealed empty_map must still refuse unpermitted callers: {err}"
+        );
+    }
+
+    /// A selected source declaration whose owner is spelled `v2.std.collection` still
+    /// enforces `admit_callers`. Module name is not an exemption.
+    #[test]
+    fn host_reconcile_collection_owner_still_enforces_admit_callers() {
+        let fixture = Fixture::new(&[
+            (
+                "collection.dag",
+                "module v2.std.collection\nfn secret() -> Int\n  admit_callers: [decl_ref(module_path: \"fx.never\", decl_name: \"never\")]\n{ 7 }\n",
+            ),
+            (
+                "entry.dag",
+                "module fx.entry\nimport v2.std.collection { secret }\nfn main() -> Int { secret() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let outcome =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy());
+        let err = match outcome {
+            Err(e) => e,
+            Ok((graph, _)) => graph
+                .diagnostics
+                .iter()
+                .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+                .map(|d| format!("{:?}", d.diagnostic))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        assert!(
+            err.contains("v2.std.collection") && err.contains("secret"),
+            "declared collection-owner sealed constructor must still refuse: {err}"
+        );
+    }
+
+    /// Heal regen of `std.algebra` calls kernel `empty_map()` while the pool uniquely
+    /// census-declares `v2.std.collection.empty_map`. Gate one keeps that owner off-product.
+    /// Census-before-kernel used to admit it as `v2.std.collection.empty_map` and refuse
+    /// `AdmissionBearingDeclarationUnavailable`.
+    #[test]
+    fn host_reconcile_kernel_empty_map_skips_off_product_census_declaration() {
+        let fixture = Fixture::new(&[
+            (
+                "collection.dag",
+                "module v2.std.collection\nfn empty_map() -> Int { 0 }\n",
+            ),
+            (
+                "helper.dag",
+                "module fx.helper\nfn unused_import() -> Int { 0 }\n",
+            ),
+            (
+                "entry.dag",
+                "module fx.entry\nimport fx.helper { unused_import }\nfn main() -> Int { if map_contains_key(empty_map(), \"k\") { 1 } else { 0 } }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let (graph, _) =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy())
+                .expect(
+                    "kernel empty_map must not fail host resolve because a census empty_map exists",
+                );
+        let blocking: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        assert!(
+            blocking
+                .iter()
+                .all(|d| !d.contains("v2.std.collection") && !d.contains("AdmissionBearing")),
+            "kernel empty_map must not run declaration admission against the census owner: {blocking:?}"
+        );
+        let names: BTreeSet<_> = graph
+            .modules
+            .iter()
+            .map(|m| m.type_env.module_path.clone())
+            .collect();
+        assert!(
+            !names.contains("v2.std.collection"),
+            "off-product census empty_map must stay out of the typed graph: {names:?}"
+        );
+    }
+
+    /// Kernel empty_map infers against a Map spelled as a type alias. node_is_keyed_collection
+    /// looks at the expected node's own children; an alias has none, so the classifier follows
+    /// lookup_type_for to the Map RHS instead of dropping the keyed-collection wall.
+    #[test]
+    fn host_reconcile_kernel_empty_map_inhabits_map_type_alias() {
+        let fixture = Fixture::new(&[(
+            "entry.dag",
+            "module fx.entry\ntype NamedMap = Map<String, Int>\nfn main() -> NamedMap { empty_map() }\n",
+        )]);
+        let index = fixture.index();
+        let (graph, _) =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy())
+                .expect("kernel empty_map must inhabit a Map type alias");
+        let blocking: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        assert!(
+            blocking
+                .iter()
+                .all(|d| !d.contains("expected type is not a keyed collection")),
+            "kernel empty_map must accept a Map alias as the expected keyed collection: {blocking:?}"
+        );
+    }
+
+    /// Concrete non-collection expected types still refuse. Fold-init / Outcome / alias
+    /// admission is the classifier, not deletion of this wall (review 79806).
+    #[test]
+    fn host_reconcile_kernel_empty_map_refuses_int_expected() {
+        let fixture = Fixture::new(&[(
+            "entry.dag",
+            "module fx.entry\nfn main() -> Int { empty_map() }\n",
+        )]);
+        let index = fixture.index();
+        let outcome =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy());
+        let err = match outcome {
+            Err(e) => e,
+            Ok((graph, _)) => graph
+                .diagnostics
+                .iter()
+                .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+                .map(|d| format!("{:?}", d.diagnostic))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        };
+        assert!(
+            err.contains("expected type is not a keyed collection"),
+            "empty_map against Int must refuse as a keyed-collection mismatch: {err}"
+        );
+    }
+
+    /// Generic fn&lt;V&gt; returning Map&lt;K2, Entry&lt;V&gt;&gt; via empty_map: emit the
+    /// instantiated argument types, or defer `::<_, _>()` because a Map child is still a
+    /// TypeVariable. Never `::<_, V>()` — that is Map's formal V captured as the fn parameter
+    /// by spelling (quiet-hawk msg_d56a8c65). rustc must accept the analog of the emitted arm.
+    #[test]
+    fn host_emit_generic_empty_map_map_k2_entry_v_turbofish_rustc() {
+        let fixture = Fixture::new(&[(
+            "entry.dag",
+            "module fx.entry\ntype K2 = String\ntype Entry<T> { x: T }\nfn make<V>() -> Map<K2, Entry<V>> { empty_map() }\n",
+        )]);
+        let index = fixture.index();
+        let sources = load_sources_for_entry_with_pool(
+            &index,
+            &fixture.0.join("entry.dag").to_string_lossy(),
+        )
+        .expect("generic empty_map Map<K2, Entry<V>> must load");
+        let compiled = v1_compiler_compile::compile_sources(
+            Rc::new(sources.iter().cloned().collect()),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let blocking: Vec<String> = compiled
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        assert!(
+            blocking.is_empty(),
+            "generic empty_map Map<K2, Entry<V>> must compile: {blocking:?}"
+        );
+        let rust: String = compiled
+            .files
+            .iter()
+            .map(|f| f.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            rust.contains("rc_empty_map::"),
+            "empty_map must take the rust_empty_map_init_expr route: {rust}"
+        );
+        assert!(
+            !rust.contains("rc_empty_map::<_, V>()"),
+            "Map's formal V must not capture the enclosing fn parameter by name: {rust}"
+        );
+        let turbofish = rust
+            .split("rc_empty_map::")
+            .nth(1)
+            .and_then(|rest| rest.split("()").next())
+            .map(|rest| {
+                if rest.starts_with('<') {
+                    format!("::{rest}")
+                } else {
+                    rest.to_string()
+                }
+            })
+            .expect("rc_empty_map turbofish");
+        assert!(
+            turbofish == "::<_, _>" || (!turbofish.contains("_,") && turbofish.contains("Entry")),
+            "emit instantiated args or typed defer, not a half-instantiated mix: {turbofish}"
+        );
+        let analog = format!(
+            "#![allow(dead_code)]\nuse std::collections::HashMap;\nuse std::rc::Rc;\nstruct Entry<T> {{ x: T }}\nfn make<V>() -> Rc<HashMap<String, Entry<V>>> {{\n    Rc::new(HashMap{turbofish}::new())\n}}\nfn main() {{}}\n"
+        );
+        let dir = std::env::temp_dir().join(format!("gunbc_empty_map_tf_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let src_path = dir.join("analog.rs");
+        std::fs::write(&src_path, analog).expect("analog write");
+        let rustc = std::process::Command::new("rustc")
+            .args(["--edition", "2021", "--crate-type", "bin", "-o"])
+            .arg(dir.join("analog"))
+            .arg(&src_path)
+            .output()
+            .expect("rustc analog");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            rustc.status.success(),
+            "analog of emitted empty_map turbofish must rustc: {}",
+            String::from_utf8_lossy(&rustc.stderr)
+        );
+    }
+
     /// THE INDEX ROUTE READS THE INDEX'S PARSE. `load_sources_for_entry_with_index` (the discovery
     /// route's loader) follows a dotted reference through the one parse per file the index owns:
     /// after the first entry its closure files are in `parsed_references`, and a second entry
@@ -12477,21 +12923,16 @@ pub struct MultiEntryIndex {
     /// per-tree bare census layers (a module's bare-name universe is its own tree).
     source_roots: Vec<String>,
     /// Parse-grade pool snapshot (every indexed module parsed once, with pool-wide
-    /// newline indexes) — the shared input of the qualified fill and the per-tree
-    /// bare layers below. Entry-independent, built once per process.
+    /// newline indexes) — the shared input of the per-tree bare layers below.
+    /// Entry-independent, built once per process.
     pool_parse: RefCell<Option<Rc<PoolParse>>>,
     /// The heads name index over `pool_parse` (`entry_resolve::reference_pool_names_for_index`):
     /// a fact of this index, demanded per out-of-tree bare name, so derived once here.
     reference_pool_names: RefCell<Option<Rc<entry_resolve::ReferencePoolNames>>>,
-    /// Whole-pool QUALIFIED-ONLY census layer (entries keyed by qualified name;
-    /// empty global_bare/services), built once per process and underlaid beneath
-    /// each entry's closure census (namespace-resolution-design.md §7.5: "fill =
-    /// whole tree; policy gates lookup, never fill").
-    pool_qualified_fill: RefCell<Option<Rc<SymbolIndex>>>,
     /// Per-source-root full census (bare + qualified + services) over that root's
     /// pool modules — the SAME-TREE bare layer underlaid beneath a module's closure
-    /// census when it typechecks (bare = own tree; qualified = whole pool; cross-
-    /// tree bare reach stays refused). Keyed by source root, built lazily.
+    /// census when it typechecks (bare = own tree; cross-tree bare reach stays
+    /// refused). Keyed by source root, built lazily.
     tree_bare_census: RefCell<std::collections::HashMap<String, Rc<SymbolIndex>>>,
     /// Previous resolved whole-pool reading, kept only as a differential oracle and
     /// explicit memory-decomposition instrument. Production uses closure_name_censuses.
@@ -12644,16 +13085,6 @@ pub fn both_closure_bare_edge_rows_for_test(index: &MultiEntryIndex) -> usize {
         .unwrap_or(0)
 }
 
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn pool_qualified_fill_initialized_for_test(index: &MultiEntryIndex) -> bool {
-    index.pool_qualified_fill.borrow().is_some()
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn reset_pool_qualified_fill_for_test(index: &MultiEntryIndex) {
-    *index.pool_qualified_fill.borrow_mut() = None;
-}
-
 // ---------------------------------------------------------------------------
 // Private-footprint decomposition instrumentation (work item
 // node://adhoc-2a689db3-964). Read/force/drop handles on the per-worker index
@@ -12673,11 +13104,6 @@ pub fn reset_pool_qualified_fill_for_test(index: &MultiEntryIndex) {
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn force_pool_parse_for_test(index: &MultiEntryIndex) -> Result<(), String> {
     pool_parse(index).map(|_| ())
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn force_pool_qualified_fill_for_test(index: &MultiEntryIndex) -> Result<(), String> {
-    pool_qualified_fill(index).map(|_| ())
 }
 
 #[cfg(any(test, feature = "interp_test_witness"))]
@@ -12789,7 +13215,6 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "ownership_diag_cache" => index.ownership_diag_cache.borrow_mut().clear(),
         "pool_parse" => *index.pool_parse.borrow_mut() = None,
         "reference_pool_names" => *index.reference_pool_names.borrow_mut() = None,
-        "pool_qualified_fill" => *index.pool_qualified_fill.borrow_mut() = None,
         "tree_bare_census" => index.tree_bare_census.borrow_mut().clear(),
         "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
         "closure_name_censuses" => index.closure_name_censuses.borrow_mut().clear(),
@@ -12851,7 +13276,6 @@ pub fn drop_attributable_terms_for_test() -> &'static [&'static str] {
         "bare_reference_admission",
         "pool_bare_census",
         "tree_bare_census",
-        "pool_qualified_fill",
         "entry_closure_sources",
         "intern_table",
         "normalize_diag_cache",
@@ -14371,10 +14795,6 @@ pub struct ResolveStageNanos {
     pub assembly_graph: u128,
     /// Closure-scoped symbol-index census construction (per entry with cache misses).
     pub assembly_symbol_index: u128,
-    /// Whole-pool qualified fill lookup/build (per index; later calls are memo hits).
-    pub assembly_pool_fill: u128,
-    /// Merge the closure census with the pool qualified fill (per entry with misses).
-    pub assembly_symbol_index_merge: u128,
     /// Closure variant-owner base construction (per entry with cache misses).
     pub assembly_variant_base: u128,
     /// Compose the closure index with one source tree's bare census (once per root used).
@@ -14463,7 +14883,7 @@ pub struct ResolveStageNanos {
     /// `build_symbol_index_census_nodes`, and nothing else.
     pub edge_index_tree_census_miss_nanos: u128,
     /// `pool_parse` — the WHOLE-CORPUS tokenize+parse behind every pool-derived term
-    /// (the per-root bare census, the qualified fill, the pool bare census). It is
+    /// (the per-root bare census, the pool bare census). It is
     /// memoized on the index and forced LAZILY by whichever consumer reaches it first,
     /// so it has no single owner: charging it to that consumer reports one term's cost
     /// under another term's name. Measured 2026-08-24 on `dag` + `src/v2`: 14.25s of
@@ -14476,10 +14896,7 @@ pub struct ResolveStageNanos {
     /// exclusive peer rather than a child of any of them:
     ///   - `load` -> the bare-reference closure -> the edge index -> the per-root census
     ///     (including the whole-pool heads name reading);
-    ///   - reconcile -> `assembly_pool_fill` (via `pool_qualified_fill`) and
-    ///     `assembly_root_symbol_index` (via the per-root census again).
-    /// `assembly_pool_fill` runs first in the reconcile path, so on that path it is the
-    /// real payer — not a hypothetical one (review 55349).
+    ///   - reconcile -> `assembly_root_symbol_index` (via the per-root census again).
     pub pool_parse: u128,
     /// Cold builds of the pool parse — 1 per index that forces it, 0 if nothing does.
     pub pool_parse_builds: u128,
@@ -14517,8 +14934,6 @@ impl ResolveStageNanos {
         self.assembly_probe += other.assembly_probe;
         self.assembly_graph += other.assembly_graph;
         self.assembly_symbol_index += other.assembly_symbol_index;
-        self.assembly_pool_fill += other.assembly_pool_fill;
-        self.assembly_symbol_index_merge += other.assembly_symbol_index_merge;
         self.assembly_variant_base += other.assembly_variant_base;
         self.assembly_root_symbol_index += other.assembly_root_symbol_index;
         self.assembly_root_variant_base += other.assembly_root_variant_base;
@@ -14578,8 +14993,6 @@ impl ResolveStageNanos {
             + self.assembly_probe
             + self.assembly_graph
             + self.assembly_symbol_index
-            + self.assembly_pool_fill
-            + self.assembly_symbol_index_merge
             + self.assembly_variant_base
             + self.assembly_root_symbol_index
             + self.assembly_root_variant_base
@@ -14602,8 +15015,6 @@ impl ResolveStageNanos {
             + self.assembly_probe
             + self.assembly_graph
             + self.assembly_symbol_index
-            + self.assembly_pool_fill
-            + self.assembly_symbol_index_merge
             + self.assembly_variant_base
             + self.assembly_root_symbol_index
             + self.assembly_root_variant_base
@@ -14632,8 +15043,6 @@ thread_local! {
             assembly_probe: 0,
             assembly_graph: 0,
             assembly_symbol_index: 0,
-            assembly_pool_fill: 0,
-            assembly_symbol_index_merge: 0,
             assembly_variant_base: 0,
             assembly_root_symbol_index: 0,
             assembly_root_variant_base: 0,
@@ -14688,9 +15097,9 @@ thread_local! {
 /// forced inside it.
 ///
 /// The whole-corpus pool parse is a SHARED, lazily-forced term: the per-root bare
-/// census, the qualified fill and the pool bare census all need it, none of them owns
-/// it, and whichever arrives first pays for all of them. A timer started around that
-/// first arrival therefore reports the corpus parse under the arriving consumer's name
+/// census and the pool bare census all need it, none of them owns it, and whichever
+/// arrives first pays for all of them. A timer started around that first arrival
+/// therefore reports the corpus parse under the arriving consumer's name
 /// — the mis-attribution measured 2026-08-24, where two `tree_bare_census_for_root`
 /// misses reported 23.02s of which 14.25s was this parse. Subtracting here (and
 /// reporting the parse once, on `pool_parse`) is what keeps the enclosing rows about
@@ -14974,35 +15383,27 @@ pub fn exclusive_cost_partition_from(
             name: "assembly_symbol_index",
             nanos: st.assembly_symbol_index,
         },
-        CostPartitionRow {
-            name: "assembly_pool_fill",
-            nanos: st.assembly_pool_fill,
-        },
         // The shared whole-corpus parse is an EXCLUSIVE PEER, not a child of any row.
         //
         // It was an inclusive row `contained_in: "load"` when this landed, and review
-        // 55349 was right that the claim is false: `build_symbol_index_for_reconcile`
-        // can force the parse through `pool_qualified_fill` while timing
-        // `assembly_pool_fill`, which is a top-level exclusive peer of `load`, not a
-        // descendant of it. There is no single true parent, because WHICH row forces the
-        // parse depends on the path — which is the whole defect restated one level up,
-        // and naming any one of them would have been the same lie in a smaller font.
+        // 55349 was right that the claim is false: reconcile can force the parse
+        // through `assembly_root_symbol_index`, which is a top-level exclusive peer
+        // of `load`, not a descendant of it. There is no single true parent, because
+        // WHICH row forces the parse depends on the path — which is the whole defect
+        // restated one level up, and naming any one of them would have been the same
+        // lie in a smaller font.
         //
         // Once every window that can contain it is recorded net of it (`load`,
-        // `assembly_pool_fill`, `assembly_root_symbol_index`, and the inclusive rows
-        // beneath `load`), the parse is carved out of all of them and is a disjoint
-        // window inside the parent span — which is exactly what an exclusive row is.
-        // This also keeps `sum_exclusive` invariant across the repair: before it, the
-        // parse was inside whichever row forced it; after it, the parse is its own row
-        // and is counted exactly once, rather than silently migrating into
+        // `assembly_root_symbol_index`, and the inclusive rows beneath `load`), the
+        // parse is carved out of all of them and is a disjoint window inside the
+        // parent span — which is exactly what an exclusive row is. This also keeps
+        // `sum_exclusive` invariant across the repair: before it, the parse was
+        // inside whichever row forced it; after it, the parse is its own row and is
+        // counted exactly once, rather than silently migrating into
         // `remainder_nanos` as the inclusive form would have done.
         CostPartitionRow {
             name: "pool_parse",
             nanos: st.pool_parse,
-        },
-        CostPartitionRow {
-            name: "assembly_symbol_index_merge",
-            nanos: st.assembly_symbol_index_merge,
         },
         CostPartitionRow {
             name: "assembly_variant_base",
@@ -15906,22 +16307,11 @@ fn parse_module_heads_for_pool_census(
     }
 }
 
-// SCAFFOLD (§7 seed-retained HAND-RUST — namespace lane, fill side)
-// LAYERED CENSUS (namespace-resolution-design.md §7.5: "fill is policy-agnostic —
-// fill = whole tree; policy gates lookup, never fill"): the entry's closure census
-// is built exactly as if the pool did not exist (bare-name visibility, variant-alias
-// gating, and services stay closure-scoped — a pool homonym must not shift what a
-// compiled module's bare names mean), and the ENTIRE indexed pool underlays it as a
-// QUALIFIED-ONLY entries layer, so dotted references reach any pool module. The
-// qualified fill is parse-grade (tokenize + parse, never resolve — a pool module's
-// imports belong to its own tree view) and entry-independent, so it is cached once
-// per process on `MultiEntryIndex`; the closure census is per-entry. The prior
-// whole-pool single census let fill homonyms vanish closure bare variant aliases
-// (corpus-count gating) and flip unique item bindings to ambiguous — bare names a
-// compiled module resolved on main went undefined (measured on the whole-tree gate:
-// bare GET/Persistent/JsonValue across 28 witness rows).
-// 🟡 dissolve-on: multi-entry SymbolIndex authority modeled in .dag (census over the
-// indexed pool — namespace-resolution-design.md / type-env-single-authority lane).
+// SCAFFOLD (§7 seed-retained HAND-RUST — namespace lane, pool snapshot)
+// `pool_parse` is the shared tokenize+parse snapshot for pool-derived terms that
+// still exist (per-tree bare census, heads name index). It is not a qualified-name
+// universe for product typecheck: a declaration that affects an entry belongs in
+// that entry's acquired dependency closure.
 fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     if let Some(cached) = index.pool_parse.borrow().clone() {
         return Ok(cached);
@@ -16110,24 +16500,6 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
     out
 }
 
-fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
-    if let Some(cached) = index.pool_qualified_fill.borrow().clone() {
-        return Ok(cached);
-    }
-    let pool = pool_parse(index)?;
-    let nodes: im::Vector<Rc<Node>> = pool
-        .nodes_by_file
-        .iter()
-        .map(|(_, node)| node.clone())
-        .collect();
-    let fill = v1_compiler_infer::build_symbol_index_qualified_fill(
-        Rc::new(nodes),
-        pool.combined_si.clone(),
-    );
-    *index.pool_qualified_fill.borrow_mut() = Some(fill.clone());
-    Ok(fill)
-}
-
 /// The source root (longest prefix match) a workspace-relative file lives under,
 /// or None for files outside every indexed root.
 fn source_tree_root_of(roots: &[String], file: &str) -> Option<String> {
@@ -16288,7 +16660,7 @@ fn tree_bare_census_for_root(
         .borrow_mut()
         .insert(root.to_string(), census.clone());
     // Net of the whole-corpus pool parse this build may have been the first to force:
-    // that parse is shared with the qualified fill and the pool bare census and is
+    // that parse is shared with the pool bare census and is
     // reported once on `pool_parse`. Before this subtraction the row read 23.02s for
     // two misses, 14.25s of which was the parse (measured 2026-08-24).
     let pool_here = resolve_stage_slot_snapshot()
@@ -16325,23 +16697,16 @@ fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> 
 }
 
 fn build_symbol_index_for_reconcile(
-    index: &MultiEntryIndex,
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Result<Rc<SymbolIndex>, String> {
+) -> Rc<SymbolIndex> {
     let symbol_index_started = std::time::Instant::now();
     let symbol_index =
         v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices);
     resolve_stage_slot_add(|s| {
         s.assembly_symbol_index += symbol_index_started.elapsed().as_nanos()
     });
-    let (pool_fill, pool_fill_nanos) = nanos_net_of_pool_parse(|| pool_qualified_fill(index));
-    let pool_fill = pool_fill?;
-    resolve_stage_slot_add(|s| s.assembly_pool_fill += pool_fill_nanos);
-    let merge_started = std::time::Instant::now();
-    let merged = v1_compiler_infer::symbol_index_with_qualified_fill(symbol_index, pool_fill);
-    resolve_stage_slot_add(|s| s.assembly_symbol_index_merge += merge_started.elapsed().as_nanos());
-    Ok(merged)
+    symbol_index
 }
 
 fn reconcile_with_typed_cache(
@@ -16387,21 +16752,20 @@ fn reconcile_with_typed_cache(
     }
     // Corpus-wide bare-name census lives on SymbolIndex.global_bare (namespace-resolution-design.md §8 PR-4):
     // built once, order-independent, over the whole graph before any module typechecks — see
-    // global_bare_fallback_invariant in v1_compiler_infer_env. Layering (§7.5 "fill =
-    // whole tree; policy gates lookup, never fill"): the base below is the entry's
-    // closure census plus the whole-pool QUALIFIED underlay; each module that
-    // actually typechecks additionally gets its OWN tree's bare census underlaid
-    // (bare = own tree, qualified = whole pool, cross-tree bare stays refused),
-    // composed lazily per root in `tree_symbol_index_memo`.
+    // global_bare_fallback_invariant in v1_compiler_infer_env. The base below is the
+    // entry's closure census; each module that actually typechecks additionally gets
+    // its OWN tree's bare census underlaid (bare = own tree, cross-tree bare stays
+    // refused), composed lazily per root in `tree_symbol_index_memo`. A declaration
+    // that affects this product belongs in the acquired dependency closure, not in an
+    // ambient whole-pool qualified underlay.
     //
     // Built AFTER the all-cache-hits shortcut (fix axis 2b,
     // floor-memory-pool-parse-regression-diagnosis (plan doc deleted 2026-08-28) §9): the shortcut
     // consumes no symbol index, so an all-hits entry — the warm single-process case,
     // and any cold child whose closure fully hits the typed/cross-process caches —
-    // must not pay the whole-pool census `pool_qualified_fill` performs. Genuine
-    // misses reach the build below exactly as before.
-    let symbol_index =
-        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
+    // must not pay closure census construction. Genuine misses reach the build below
+    // exactly as before.
+    let symbol_index = build_symbol_index_for_reconcile(graph.clone(), source_indices.clone());
     // Whole-closure variant-owner base for merge_global_bare_variant_locals
     // (the merge_global_bare_variant_locals_cost_note annotation in v1.compiler.infer): eligibility
     // depends only on (global_bare, si), so it is computed once per symbol index —
@@ -16535,8 +16899,9 @@ fn reconcile_with_typed_cache(
                                     );
                                 }
                                 // Same-tree bare underlay for the module being typechecked
-                                // (bare = own tree, qualified = whole pool); out-of-root
-                                // modules keep the closure-only bare universe.
+                                // (bare = own tree); out-of-root modules keep the
+                                // closure-only bare universe. Qualified names come from
+                                // the closure census, not a whole-pool fill.
                                 let (module_symbol_index, module_variant_base) =
                                     match source_tree_root_of(&index.source_roots, &decl_file) {
                                         Some(root) => match tree_symbol_index_memo.get(&root) {
@@ -35758,8 +36123,8 @@ mod exclusive_cost_partition_law {
     /// The pool parse is an EXCLUSIVE PEER, with no parent row at all.
     ///
     /// It shipped as an inclusive row `contained_in: "load"`, and review 55349 showed
-    /// that claim false: the reconcile path forces the parse through
-    /// `pool_qualified_fill` while timing `assembly_pool_fill`, which is a top-level
+    /// that claim false: the reconcile path forces the parse through the per-root
+    /// census while timing `assembly_root_symbol_index`, which is a top-level
     /// peer of `load` and not a descendant of it. No single parent is true, because
     /// which row forces the parse depends on the path — so the row has none.
     ///
