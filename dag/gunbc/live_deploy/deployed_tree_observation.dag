@@ -2,7 +2,7 @@ module gunbc.live_deploy.deployed_tree_observation
 
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, List, Bool, Int }
-import std.algebra { trim }
+import std.algebra { list_append, string_concat_join, trim }
 import extdeps.git
 import extdeps.git { git_in_trusted_repository_args }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
@@ -321,7 +321,7 @@ fn deployed_tree_content_reading(entries_nul: String, ignored_nul: String) -> De
     if length(changed) == 0 {
       ContentRead { state: DeployedScopeMatchesCommit }
     } else {
-      ContentRead { state: DeployedScopeDiverged { changed_paths: join(changed, " ") as NonEmptyStr } }
+      ContentRead { state: DeployedScopeDiverged { changed_paths: string_concat_join(fields: changed, separator: " ") as NonEmptyStr } }
     }
   }
 }
