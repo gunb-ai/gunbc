@@ -202,6 +202,7 @@ test fn srv1_software_is_observed_by_the_inhabitance_receipt() -> Bool {
         && (srv1_software_inhabitance_observer_login as String) == "briansrls"
         && srv1_software_inhabitance_observer_uid == 1000
         && (srv1_software_inhabitance_observed_at as String) == "2026-10-15T01:17:54Z"
+        && (srv1_software_inhabitance_parent_transcript_sha256 as String) == "0ff37aa1418aafdc17cd3cd7d44d8577ab758e549fa98b5ad773152a1d3de9b2"
     CitedToAuthority { authority: _ } => false
     TranscribedUncited { read_obligation: _ } => false
   }
