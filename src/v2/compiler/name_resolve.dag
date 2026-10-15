@@ -62,6 +62,11 @@ import v2.compiler.namespace_graft {
 }
 import v2.compiler.parse { parse_tree_projection_edge }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list }
+import std.graph {
+  CallGraph,
+  GraphEdge,
+  graph_strongly_connected_components
+}
 import v2.std.collection { Absent, Map, Present, PointwisePower, empty_map, map_contains_key, map_get_checked, map_lookup, map_insert, optional_absent, optional_present }
 import std.optional { Optional }
 import v2.std.diagnostic {
@@ -1213,6 +1218,79 @@ fn closure_symbols_published(xs: FreeMonoid<Symbol>, published: Map<Symbol, Node
   })
 }
 
+fn closure_decl_name_list(rows: List<DeclPhase1Row>) -> List<QualifiedName> {
+  fold_list(xs: rows, empty: [], cons: fn(acc, row) {
+    list_snoc_item(xs: acc, item: row.path)
+  })
+}
+
+fn closure_decl_call_graph(rows: List<DeclPhase1Row>) -> CallGraph<QualifiedName> {
+  CallGraph {
+    edges: fold_list(xs: rows, empty: [], cons: fn(acc, row) {
+      fold_list(xs: row.callees, empty: acc, cons: fn(eacc, callee) {
+        if callee == row.path {
+          eacc
+        } else {
+          list_snoc_item(
+            xs: eacc,
+            item: GraphEdge { caller: row.path, callee: callee }
+          )
+        }
+      })
+    })
+  }
+}
+
+fn closure_row_by_path(rows: List<DeclPhase1Row>, path: QualifiedName) -> Optional<DeclPhase1Row> {
+  fold_list(xs: rows, empty: optional_absent(), cons: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if row.path == path { optional_present(value: row) } else { acc }
+    }
+  })
+}
+
+fn closure_reverse_components(xs: List<List<QualifiedName>>) -> List<List<QualifiedName>> {
+  fold_list(xs: xs, empty: [], cons: fn(acc, c) { Cons { head: c, tail: acc } })
+}
+
+fn closure_component_blocking_refusal(
+  rows: List<DeclPhase1Row>,
+  blocked: Map<QualifiedName, NonEmptyDiagnostics>,
+  unavailable: List<ModuleOutcome>,
+  component: List<QualifiedName>
+) -> Optional<NonEmptyDiagnostics> {
+  fold_list(xs: component, empty: optional_absent(), cons: fn(found, name) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match closure_row_by_path(rows: rows, path: name) {
+          Absent => found
+          Present { value: row } =>
+            match row.local_refusal {
+              Present { value: r } => optional_present(value: r)
+              Absent =>
+                fold_list(xs: row.callees, empty: found, cons: fn(hit, callee) {
+                  match hit {
+                    Present { value: _ } => hit
+                    Absent =>
+                      if callee == row.path {
+                        hit
+                      } else {
+                        closure_callee_blocking_refusal(
+                          blocked: blocked,
+                          unavailable: unavailable,
+                          callee: callee
+                        )
+                      }
+                  }
+                })
+            }
+        }
+    }
+  })
+}
+
 fn closure_phase2_blocked(
   rows: List<DeclPhase1Row>,
   unavailable: List<ModuleOutcome>
@@ -1223,27 +1301,25 @@ fn closure_phase2_blocked(
       Present { value: r } => map_insert(m: acc, key: row.path, value: r)
     }
   })
-  fold_list(xs: rows, empty: seed, cons: fn(blocked, _) {
-    fold_list(xs: rows, empty: blocked, cons: fn(acc, row) {
-      match map_lookup(m: acc, key: row.path) {
-        Present { value: _ } => acc
-        Absent =>
-          fold_list(xs: row.callees, empty: acc, cons: fn(hit, callee) {
-            match map_lookup(m: hit, key: row.path) {
-              Present { value: _ } => hit
-              Absent =>
-                if callee == row.path {
-                  hit
-                } else {
-                  match closure_callee_blocking_refusal(blocked: hit, unavailable: unavailable, callee: callee) {
-                    Absent => hit
-                    Present { value: r } => map_insert(m: hit, key: row.path, value: r)
-                  }
-                }
-            }
-          })
-      }
-    })
+  let components = closure_reverse_components(
+    xs: graph_strongly_connected_components(
+      names: closure_decl_name_list(rows: rows),
+      graph: closure_decl_call_graph(rows: rows)
+    )
+  )
+  fold_list(xs: components, empty: seed, cons: fn(blocked, component) {
+    match closure_component_blocking_refusal(
+      rows: rows,
+      blocked: blocked,
+      unavailable: unavailable,
+      component: component
+    ) {
+      Absent => blocked
+      Present { value: r } =>
+        fold_list(xs: component, empty: blocked, cons: fn(acc, name) {
+          map_insert(m: acc, key: name, value: r)
+        })
+    }
   })
 }
 

@@ -20,7 +20,7 @@ type Argument {
   propositions: List<Proposition>
 }
 
-fn argument_inference_edges(a: Argument) -> List<GraphEdge> {
+fn argument_inference_edges(a: Argument) -> List<GraphEdge<String>> {
   a.propositions |> flat_map(p =>
     p.premises |> map(prem => GraphEdge { caller: p.id, callee: prem })
   )
@@ -33,7 +33,7 @@ fn argument_node_ids(a: Argument) -> List<String> {
   )
 }
 
-fn argument_inference_graph(a: Argument) -> CallGraph {
+fn argument_inference_graph(a: Argument) -> CallGraph<String> {
   CallGraph { edges: argument_inference_edges(a) }
 }
 

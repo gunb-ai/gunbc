@@ -136,7 +136,7 @@ type SccResult {
   index: Map<String, SccInfo>
   topo_order: List<String>
   processing_order: List<String>
-  call_graph: CallGraph
+  call_graph: CallGraph<String>
 }
 
 type ParserStateParam {
@@ -1038,7 +1038,7 @@ fn seed_func_entry_map(key: String, value: FuncEntry) -> Map<String, FuncEntry> 
   map_insert(empty_map(), key, value)
 }
 
-fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph {
+fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph<String> {
   CallGraph {
     edges: edges
       |> filter(edge => edge.caller != edge.callee)
@@ -2712,7 +2712,7 @@ fn collect_local_call_edges_in_expr(caller: String, body: Node, local_func_set: 
   concat(this_edges, child_edges)
 }
 
-fn build_call_graph(func_entries: List<FuncEntry>, si: Map<String, NewlineIndex>) -> CallGraph {
+fn build_call_graph(func_entries: List<FuncEntry>, si: Map<String, NewlineIndex>) -> CallGraph<String> {
   let names = func_entries |> map(entry => entry.name)
   let local_func_set = names |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)

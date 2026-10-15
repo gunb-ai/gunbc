@@ -386,7 +386,7 @@ fn c_translation_unit_spelling(
   }
 }
 
-fn c_unit_graph_call_graph(units: List<CompilationUnit>) -> CallGraph {
+fn c_unit_graph_call_graph(units: List<CompilationUnit>) -> CallGraph<String> {
   CallGraph {
     edges: units
       |> fold(init: Empty, f: fn(acc, unit) {

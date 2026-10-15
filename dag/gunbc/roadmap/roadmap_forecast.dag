@@ -699,7 +699,7 @@ fn calibration_gaps(
   })
 }
 
-fn dependency_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> CallGraph {
+fn dependency_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> CallGraph<String> {
   CallGraph {
     edges: edges |> map(e => GraphEdge { caller: e.child as String, callee: e.parent as String })
   }

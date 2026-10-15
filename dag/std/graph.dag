@@ -6,37 +6,37 @@ import std.termination {
   TerminationProof
 }
 
-type GraphEdge {
-  caller: String
-  callee: String
+type GraphEdge<V> {
+  caller: V
+  callee: V
 }
 
-type CallGraph {
-  edges: List<GraphEdge>
+type CallGraph<V> {
+  edges: List<GraphEdge<V>>
 }
 
-type CallGraphAdjacencyViews {
-  forward: Map<String, List<String>>
-  reverse: Map<String, List<String>>
+type CallGraphAdjacencyViews<V> {
+  forward: Map<V, List<V>>
+  reverse: Map<V, List<V>>
 }
 
-type DfsFinishAcc {
-  visited: Set<String>
-  order: List<String>
+type DfsFinishAcc<V> {
+  visited: Set<V>
+  order: List<V>
 }
 
-type SccComponentAcc {
-  visited: Set<String>
-  members: List<String>
+type SccComponentAcc<V> {
+  visited: Set<V>
+  members: List<V>
 }
 
-fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
+fn seed_adjacency_map<V>(names: List<V>) -> Map<V, List<V>> {
   names |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, [])
   )
 }
 
-fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
+fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph<String> {
   CallGraph {
     edges: edges
       |> filter(e => e.caller != e.callee)
@@ -44,7 +44,7 @@ fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>
   }
 }
 
-fn build_adjacency_views(names: List<String>, graph: CallGraph) -> CallGraphAdjacencyViews {
+fn build_adjacency_views<V>(names: List<V>, graph: CallGraph<V>) -> CallGraphAdjacencyViews<V> {
   let initial_forward = seed_adjacency_map(names: names)
   let initial_reverse = seed_adjacency_map(names: names)
   graph.edges |> fold(init: CallGraphAdjacencyViews { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
@@ -63,15 +63,15 @@ fn build_adjacency_views(names: List<String>, graph: CallGraph) -> CallGraphAdja
   )
 }
 
-fn forward_adjacency(names: List<String>, graph: CallGraph) -> Map<String, List<String>> {
+fn forward_adjacency<V>(names: List<V>, graph: CallGraph<V>) -> Map<V, List<V>> {
   build_adjacency_views(names: names, graph: graph).forward
 }
 
-fn reverse_adjacency(names: List<String>, graph: CallGraph) -> Map<String, List<String>> {
+fn reverse_adjacency<V>(names: List<V>, graph: CallGraph<V>) -> Map<V, List<V>> {
   build_adjacency_views(names: names, graph: graph).reverse
 }
 
-fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: DfsFinishAcc) -> DfsFinishAcc {
+fn dfs_finish_order<V>(node: V, adjacency: Map<V, List<V>>, acc: DfsFinishAcc<V>) -> DfsFinishAcc<V> {
   if set_contains(acc.visited, node) {
     acc
   } else {
@@ -87,7 +87,7 @@ fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: Dfs
   }
 }
 
-fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc: SccComponentAcc) -> SccComponentAcc {
+fn dfs_collect_component<V>(node: V, adjacency: Map<V, List<V>>, acc: SccComponentAcc<V>) -> SccComponentAcc<V> {
   if set_contains(acc.visited, node) {
     acc
   } else {
@@ -103,19 +103,19 @@ fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc
   }
 }
 
-type SccComponentsAcc {
-  visited: Set<String>
-  components: List<List<String>>
+type SccComponentsAcc<V> {
+  visited: Set<V>
+  components: List<List<V>>
 }
 
 // Kosaraju: the second pass visits the transpose in decreasing finish order, so the components
 // arrive in topological order of the condensation -- a component precedes every component its
 // members reach. Consumers that want dependencies first reverse the list; the order is a fact of
 // the algorithm, not a presentation choice.
-fn graph_strongly_connected_components(
-  names: List<String>,
-  graph: CallGraph,
-) -> List<List<String>> {
+fn graph_strongly_connected_components<V>(
+  names: List<V>,
+  graph: CallGraph<V>,
+) -> List<List<V>> {
   let adjacency = build_adjacency_views(names: names, graph: graph)
   let finish = names |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, name) =>
     dfs_finish_order(node: name, adjacency: adjacency.forward, acc: acc)
@@ -134,10 +134,10 @@ fn graph_strongly_connected_components(
   result.components
 }
 
-fn graph_multi_node_scc_members(
-  names: List<String>,
-  graph: CallGraph,
-) -> List<String> {
+fn graph_multi_node_scc_members<V>(
+  names: List<V>,
+  graph: CallGraph<V>,
+) -> List<V> {
   graph_strongly_connected_components(names: names, graph: graph)
     |> fold(init: [], f: (acc, component) =>
       if (component |> count) > 1 {
@@ -148,14 +148,14 @@ fn graph_multi_node_scc_members(
     )
 }
 
-fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
+fn graph_has_multi_node_scc<V>(names: List<V>, graph: CallGraph<V>) -> Bool {
   count(graph_multi_node_scc_members(names: names, graph: graph)) > 0
 }
 
-fn graph_cycle_members(
-  names: List<String>,
-  graph: CallGraph,
-) -> List<String> {
+fn graph_cycle_members<V>(
+  names: List<V>,
+  graph: CallGraph<V>,
+) -> List<V> {
   let self_scan = graph.edges
     |> filter(edge => edge.caller == edge.callee)
     |> fold(
@@ -181,11 +181,11 @@ fn graph_cycle_members(
   )
 }
 
-fn graph_reverse_reachable_members(
-  names: List<String>,
-  graph: CallGraph,
-  start: String,
-) -> List<String> {
+fn graph_reverse_reachable_members<V>(
+  names: List<V>,
+  graph: CallGraph<V>,
+  start: V,
+) -> List<V> {
   let reached = dfs_collect_component(
     node: start,
     adjacency: reverse_adjacency(names: names, graph: graph),

@@ -53,7 +53,7 @@ import std.graph { GraphEdge, CallGraph, reverse_adjacency, dfs_collect_componen
 // The roadmap's dependency relation as a call graph (parent -> child), for the reachability folds
 // below. It lived beside the page's focus filter until that filter was deleted (2026-09-30); this
 // module is its only consumer.
-fn roadmap_dependency_graph(edges: List<RoadmapEdge>) -> CallGraph {
+fn roadmap_dependency_graph(edges: List<RoadmapEdge>) -> CallGraph<String> {
   CallGraph {
     edges: edges |> map(e => GraphEdge {
       caller: e.parent as String,
