@@ -105,6 +105,7 @@ fn slot_drain_pending_cause_wire(c: SlotDrainPendingCause) -> String {
 type SlotActuationOutcome
   = SlotActuationNoop { unit: NonEmptyStr, state: String }
   | SlotActivated { unit: NonEmptyStr }
+  | SlotNotInstalled { unit: NonEmptyStr }
   | SlotDrainedAndMasked { unit: NonEmptyStr }
   | SlotDrainPending { unit: NonEmptyStr, cause: SlotDrainPendingCause }
   | SlotActuationRefused { unit: NonEmptyStr, step: String, reason: String }
@@ -113,6 +114,7 @@ fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
   match o {
     SlotActuationNoop { unit: _, state: _ } => true
     SlotActivated { unit: _ } => true
+    SlotNotInstalled { unit: _ } => true
     SlotDrainedAndMasked { unit: _ } => true
     SlotDrainPending { unit: _, cause: _ } => false
     SlotActuationRefused { unit: _, step: _, reason: _ } => false
@@ -123,6 +125,7 @@ fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
   match o {
     SlotActuationNoop { unit: u, state: st } => join(["actuation ", u as String, " noop ", st], "")
     SlotActivated { unit: u } => join(["actuation ", u as String, " activated-and-read-back"], "")
+    SlotNotInstalled { unit: u } => join(["actuation ", u as String, " not-installed (LoadState=not-found: nothing to drain)"], "")
     SlotDrainedAndMasked { unit: u } => join(["actuation ", u as String, " drained-masked-and-read-back"], "")
     SlotDrainPending { unit: u, cause: c } => join(["actuation ", u as String, " DRAIN-PENDING ", slot_drain_pending_cause_wire(c: c)], "")
     SlotActuationRefused { unit: u, step: st, reason: r } => join(["actuation ", u as String, " REFUSED step=", st, " ", r], "")
@@ -230,6 +233,7 @@ fn slot_activation_read_back_holds(r: SlotActuationReading) -> Bool {
 // (deregistration through the GitHub API) -- not modeled here.
 type SlotDrainPlan
   = DrainAlreadyMasked
+  | DrainUnitNotInstalled
   | DrainSteps { steps: List<List<String>> }
   | DrainWaitForJob { mask: List<List<String>> }
   | DrainWaitForStop { mask: List<List<String>> }
@@ -238,7 +242,7 @@ type SlotDrainPlan
 fn slot_drain_plan(r: SlotActuationReading, worker: SlotActivityObservation) -> SlotDrainPlan {
   let mask = if slot_is_masked(r: r) { [] } else { [systemctl_mask_argv(unit: r.unit)] }
   match r.load {
-    UnitLoadNotFound => DrainAlreadyMasked
+    UnitLoadNotFound => DrainUnitNotInstalled
     UnitLoadBadSetting => DrainRefused { reason: "the slot's unit file has a bad setting (LoadState=bad-setting)" }
     UnitLoadError => DrainRefused { reason: "the manager failed to load the slot's unit (LoadState=error)" }
     UnitLoaded => slot_drain_plan_loaded(r: r, worker: worker, mask: mask)
@@ -265,6 +269,9 @@ fn slot_drain_plan_running(r: SlotActuationReading, worker: SlotActivityObservat
   }
 }
 
+// A unit that disappeared between the drain legs and the re-read cannot be started again, so the drain
+// holds; it is read as not-installed, not as masked-and-stopped (review 80640), and the outcome of a
+// drain whose FIRST read found no unit is SlotNotInstalled rather than a masked no-op.
 fn slot_drain_read_back_holds(r: SlotActuationReading) -> Bool {
   match r.load {
     UnitLoadNotFound => true
@@ -411,6 +418,7 @@ fn drain_and_mask_runner_slot_over(target: SshTarget, context: FleetSshExecution
       let worker = if slot_state_active(active: r.active) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotIdle }
       match slot_drain_plan(r: r, worker: worker) {
         DrainAlreadyMasked => SlotActuationNoop { unit: unit, state: "masked-and-stopped" }
+        DrainUnitNotInstalled => SlotNotInstalled { unit: unit }
         DrainRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
         DrainWaitForJob { mask: m } =>
           match run_slot_steps_over(target: target, context: context, steps: m) {
