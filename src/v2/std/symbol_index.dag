@@ -816,16 +816,30 @@ fn symbol_index_lexical_eligible(
   required: OccurrenceCategory,
   candidates: FreeMonoid<LexicalBindingCandidate>
 ) -> FreeMonoid<LexicalBindingCandidate> {
+  symbol_index_eligibility_partition(index: index, required: required, candidates: candidates).eligible
+}
+
+// THE ONE ELIGIBILITY FOLD: every candidate is either admissible at the required category or excluded with
+// the category it is declared as. symbol_index_lexical_eligible and symbol_index_lexical_eligibility both
+// read this partition, so what is eligible and what is excluded cannot drift apart.
+fn symbol_index_eligibility_partition(
+  index: SymbolIndex,
+  required: OccurrenceCategory,
+  candidates: FreeMonoid<LexicalBindingCandidate>
+) -> EligibilityPartition {
   fold_list(
     xs: candidates,
-    empty: Empty,
+    empty: EligibilityPartition { eligible: Empty, excluded: Empty },
     cons: fn(acc, candidate) {
-      match occurrence_category_binding_verdict(
-        reference: required,
-        declaration: symbol_index_candidate_category(index: index, candidate: candidate)
-      ) {
-        OccurrenceCategoryBindingAdmissible => list_snoc_item(xs: acc, item: candidate)
-        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } => acc
+      let declared = symbol_index_candidate_category(index: index, candidate: candidate)
+      match occurrence_category_binding_verdict(reference: required, declaration: declared) {
+        OccurrenceCategoryBindingAdmissible =>
+          EligibilityPartition { eligible: list_snoc_item(xs: acc.eligible, item: candidate), excluded: acc.excluded }
+        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } =>
+          EligibilityPartition {
+            eligible: acc.eligible,
+            excluded: list_snoc_item(xs: acc.excluded, item: ExcludedCandidate { candidate: candidate, category: declared })
+          }
       }
     }
   )
@@ -883,22 +897,7 @@ fn symbol_index_lexical_eligibility(
   name: Symbol,
   required: OccurrenceCategory
 ) -> LexicalEligibility {
-  let part = fold_list(
-    xs: symbol_index_lexical_collect(index: index, position: position, name: name, acc: Empty),
-    empty: EligibilityPartition { eligible: Empty, excluded: Empty },
-    cons: fn(acc, candidate) {
-      let declared = symbol_index_candidate_category(index: index, candidate: candidate)
-      match occurrence_category_binding_verdict(reference: required, declaration: declared) {
-        OccurrenceCategoryBindingAdmissible =>
-          EligibilityPartition { eligible: list_snoc_item(xs: acc.eligible, item: candidate), excluded: acc.excluded }
-        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } =>
-          EligibilityPartition {
-            eligible: acc.eligible,
-            excluded: list_snoc_item(xs: acc.excluded, item: ExcludedCandidate { candidate: candidate, category: declared })
-          }
-      }
-    }
-  )
+  let part = symbol_index_eligibility_partition(index: index, required: required, candidates: symbol_index_lexical_collect(index: index, position: position, name: name, acc: Empty))
   match length(xs: part.eligible) {
     0 =>
       if is_empty(xs: part.excluded) {
