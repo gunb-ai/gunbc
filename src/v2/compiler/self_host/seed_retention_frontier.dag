@@ -2,7 +2,7 @@ module v2.compiler.self_host.seed_retention_frontier
 
 import std.types { List }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.dissolution { DissolutionCondition, unbound_dissolution, bound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { length, list_map }
 import v2.std.integer { Int }
 import v2.std.text { String }
@@ -197,7 +197,7 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
     cause: SupportDirectoryMemberSource,
     reason: ReasonDeclaredHere {
       detail: "Test/Run wrap trampoline, including MODELED_CAPPED_SYSTEM_SLICES, the wrap-time census of gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes. Seed cannot eval that fold at wrap time; standing_from_supplied plus standing_fixture_tests join the fold wires.",
-      dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.compute.unit_bounds", decl_name: "gunbc_user_work_scope_native_wrap"))
+      dissolution: unbound_dissolution(description: "native emission of the Test/Run wrap trampoline from gunbc.compute.unit_bounds (the seed evals that fold at wrap time); then src/cli_run/user_work_scope.rs and the mirrored MODELED_CAPPED_SYSTEM_SLICES census delete together. Unbound because that emission declaration does not exist yet; naming it would be the fabricated-citation class (DESIGN 3).")
     }
   },
   retained_support_dir_member(path: "src/module_path_index/index.rs"),
