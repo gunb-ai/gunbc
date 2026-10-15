@@ -7,7 +7,7 @@ import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_crypt
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, AuthorizationRequest }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, optional_present }
 import extdeps.crypto.sha2 { sha256_hex }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, wif_pool_resource }
 import extdeps.cloud.gcp.iam {
@@ -882,7 +882,7 @@ fn read_secret_policy(g: SecretAccessGrant, token: Secret) -> PolicyReading
 // consent is never requested for a create that cannot succeed and the rest of the estate still plans.
 fn federation_input_refused_plan(f: DedicatedFederation) -> GcpIamPlan? {
   let refusals = dedicated_federation_input_refusals(federations: [f])
-  if count(refusals) == 0 { Absent } else { Present { value: GcpIamRefused { target: f.label, reasons: refusals } } }
+  if count(refusals) == 0 { Absent } else { optional_present(value: GcpIamRefused { target: f.label, reasons: refusals }) }
 }
 
 fn observe_and_plan(f: DedicatedFederation, token: Secret) -> GcpIamPlan
