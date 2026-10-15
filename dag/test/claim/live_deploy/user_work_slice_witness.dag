@@ -242,7 +242,7 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds cgroup_bound_fallthrough_wire`")
     && string_contains(s: seed, pattern: concat("\"", concat(cgroup_bound_fallthrough_wire(bound: CgroupChainUnbounded), "\"")))
     && string_contains(s: seed, pattern: concat("\"", concat(cgroup_bound_fallthrough_wire(bound: CgroupChainNotObserved { detail: "" }), "\"")))
-    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_standing_wire(s: BoundedByObservedCgroup { cgroup: "", memory_max: 0 }), "\"")))
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_standing_wire(s: BoundedByObservedCgroup { cgroup: "", memory_max: byte_size(count: 0) }), "\"")))
     && string_contains(s: seed, pattern: "std::process::exit(2)")
 }
 
