@@ -25,6 +25,8 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   fleet_ssh_attempt_identity,
   FleetSshCredentialBinding,
   fleet_ssh_execution_context_of,
+  materialize_fleet_ssh_multiplex_directory,
+  fleet_ssh_multiplex_receipt,
   materialize_fleet_known_hosts_anchor,
   known_hosts_materialization_receipt,
   SshTarget,
@@ -409,9 +411,10 @@ fn spark_managed_access_apply_with_resolved_credentials(
     Absent => ApplyNotAttempted { cause: "attempt identity is not a safe path segment" }
     Present { value: attempt } => {
       let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
-      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential_binding) {
+      let multiplex = materialize_fleet_ssh_multiplex_directory()
+      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential_binding, multiplex: multiplex) {
         Absent => ApplyNotAttempted {
-          cause: join(["trust could not be established, so no ssh leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""),
+          cause: join(["trust could not be established, so no ssh leg ran: ", known_hosts_materialization_receipt(outcome: materialization), " ", fleet_ssh_multiplex_receipt(preparation: multiplex)], ""),
         }
         Present { value: context } => match portable_remote_word(raw: spark_managed_login) {
           Absent => ApplyNotAttempted { cause: "the managed login is not a portable word, so no script may name it" }

@@ -2084,8 +2084,11 @@ jobs:
           retention-days: 30
         if: always() && (github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge')
         timeout-minutes: 10
-      - name: Kill the in-run ssh-agent (key never outlives the job)
+      - name: End the fleet ssh masters, then kill the in-run ssh-agent (key never outlives the job)
         run: |
+          MUX_DIR="$RUNNER_TEMP"'/fleet-ssh-mux'
+          if '[' '-d' "$MUX_DIR" ']'; then 'find' "$MUX_DIR" '-mindepth' '1' '-maxdepth' '1' '-type' 's' '-exec' 'ssh' '-F' 'none' '-S' '{}' '-O' 'exit' 'fleet-ssh-mux-teardown' ';'; 'rm' '-rf' '--' "$MUX_DIR"; fi
+
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
         if: always()
         timeout-minutes: 5
@@ -2299,8 +2302,11 @@ jobs:
           retention-days: 30
         if: always() && github.event.inputs.mode == 'mtcollins1_boot'
         timeout-minutes: 10
-      - name: Kill the in-run ssh-agent (key never outlives the job)
+      - name: End the fleet ssh masters, then kill the in-run ssh-agent (key never outlives the job)
         run: |
+          MUX_DIR="$RUNNER_TEMP"'/fleet-ssh-mux'
+          if '[' '-d' "$MUX_DIR" ']'; then 'find' "$MUX_DIR" '-mindepth' '1' '-maxdepth' '1' '-type' 's' '-exec' 'ssh' '-F' 'none' '-S' '{}' '-O' 'exit' 'fleet-ssh-mux-teardown' ';'; 'rm' '-rf' '--' "$MUX_DIR"; fi
+
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
         if: always()
         timeout-minutes: 5
@@ -2935,8 +2941,11 @@ jobs:
           compression-level: 0
         if: always()
         timeout-minutes: 10
-      - name: Kill the in-run ssh-agent (key never outlives the job)
+      - name: End the fleet ssh masters, then kill the in-run ssh-agent (key never outlives the job)
         run: |
+          MUX_DIR="$RUNNER_TEMP"'/fleet-ssh-mux'
+          if '[' '-d' "$MUX_DIR" ']'; then 'find' "$MUX_DIR" '-mindepth' '1' '-maxdepth' '1' '-type' 's' '-exec' 'ssh' '-F' 'none' '-S' '{}' '-O' 'exit' 'fleet-ssh-mux-teardown' ';'; 'rm' '-rf' '--' "$MUX_DIR"; fi
+
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
         if: always()
         timeout-minutes: 5

@@ -1,0 +1,230 @@
+module gunbc.design.brand_mark
+
+import std.types { Int, String, List }
+import std.optional { Optional, Absent, Present }
+import std.markup { Fragment, Element, attr }
+import extdeps.color.srgb { Srgb8 }
+import gunbc.design.palette { Swatch }
+
+// THE GUNB MARKS, AND THE ONE PLACE THEY ARE DRAWN. Every surface that shows a gunb mark -- the
+// workspace's header and favicon, the robot avatars, the build-meter worker, and (as their
+// generation lands) gunb.ai's assets, the iOS app icon and the GitHub App avatars -- derives from
+// the model below. This repository is the authority and gunb-ai/frontend consumes what it emits;
+// a mark copied into another repository by hand is a second authority for one drawing.
+//
+// THREE SEPARATE FACTS: GEOMETRY, KIND, TREATMENT.
+// - Geometry is a BrandMark: named parts, each a typed shape, all in ONE coordinate space (the
+//   frame below). No part carries a transform and no renderer has to know which parts need one.
+// - Kind (FaceMark | RobotMark) selects geometry. Both are the same shell, mouth and eye centres;
+//   they differ only in the eyes' shape (round on the face, square on the robot) and the robot's
+//   antenna. The shared parts are declared once, so an edit to the shell or the mouth moves both.
+// - Treatment selects a realization of one geometry and owns composition and paint. The part a
+//   shape fills is its paint role: the shell and the antenna are the body paint, the eyes and the
+//   mouth are the features. Stencil cuts the features out of the shell. A treatment never edits
+//   geometry, so a silhouette is the same under every treatment.
+// A surface that adapts the mark (the build meter's pixel worker, an avatar without its antenna)
+// consumes a BrandMark and names the adaptation where it makes it; it never imports a serialized
+// path or a partial transform.
+//
+// The geometry was first authored in gunb-ai/frontend legacy/moodboard.html (symbols #stoic-idle
+// and #stoic-robot) and assets/mark.svg, in a 120-unit frame under translate(-12 -12) scale(1.2),
+// with the antenna outside that transform. Here every part is that drawing resolved into the frame
+// in tenths of a unit: a body coordinate v is 12v - 120, an antenna coordinate is 10v. All values
+// are exact integers.
+
+type BrandMarkKind = FaceMark | RobotMark
+
+type BrandMarkBox {
+  x: Int
+  y: Int
+  w: Int
+  h: Int
+  r: Int
+}
+
+type BrandMarkDisc {
+  cx: Int
+  cy: Int
+  r: Int
+}
+
+type BrandMarkShape = RoundedBox { box: BrandMarkBox } | Disc { disc: BrandMarkDisc }
+
+type BrandMarkAntenna {
+  stem: BrandMarkBox
+  tip: BrandMarkDisc
+}
+
+// Each part is a field, so each identity is present exactly once and needs no lookup.
+type BrandMark {
+  shell: BrandMarkBox
+  left_eye: BrandMarkShape
+  right_eye: BrandMarkShape
+  mouth: BrandMarkBox
+  antenna: Optional<BrandMarkAntenna>
+}
+
+// The frame: 1200 tenths square. The shell spans its full width.
+data brand_mark_frame: Int = 1200
+
+data brand_mark_shell: BrandMarkBox = BrandMarkBox { x: 0, y: 120, w: 1200, h: 960, r: 360 }
+data brand_mark_mouth: BrandMarkBox = BrandMarkBox { x: 504, y: 528, w: 192, h: 72, r: 24 }
+
+// The eyes' centres belong to the template; each kind draws its own eye around them.
+data brand_mark_left_eye_cx: Int = 300
+data brand_mark_right_eye_cx: Int = 900
+data brand_mark_eye_cy: Int = 456
+
+data brand_mark_face_eye_radius: Int = 96
+data brand_mark_robot_eye_side: Int = 168
+data brand_mark_robot_eye_corner: Int = 24
+
+data brand_mark_robot_antenna: BrandMarkAntenna = BrandMarkAntenna {
+  stem: BrandMarkBox { x: 580, y: 60, w: 40, h: 60, r: 0 },
+  tip: BrandMarkDisc { cx: 600, cy: 50, r: 50 },
+}
+
+fn brand_mark_eye(kind: BrandMarkKind, cx: Int) -> BrandMarkShape {
+  match kind {
+    FaceMark => Disc { disc: BrandMarkDisc { cx: cx, cy: brand_mark_eye_cy, r: brand_mark_face_eye_radius } }
+    RobotMark => RoundedBox { box: BrandMarkBox {
+      x: cx - brand_mark_robot_eye_side / 2,
+      y: brand_mark_eye_cy - brand_mark_robot_eye_side / 2,
+      w: brand_mark_robot_eye_side,
+      h: brand_mark_robot_eye_side,
+      r: brand_mark_robot_eye_corner,
+    } }
+  }
+}
+
+fn brand_mark(kind: BrandMarkKind) -> BrandMark {
+  BrandMark {
+    shell: brand_mark_shell,
+    left_eye: brand_mark_eye(kind: kind, cx: brand_mark_left_eye_cx),
+    right_eye: brand_mark_eye(kind: kind, cx: brand_mark_right_eye_cx),
+    mouth: brand_mark_mouth,
+    antenna: match kind {
+      FaceMark => Absent
+      RobotMark => Present { value: brand_mark_robot_antenna }
+    },
+  }
+}
+
+// A shape's bounding box, keeping its corner radius (a disc's is its radius).
+fn brand_mark_shape_bounds(shape: BrandMarkShape) -> BrandMarkBox {
+  match shape {
+    RoundedBox { box } => box
+    Disc { disc } => BrandMarkBox { x: disc.cx - disc.r, y: disc.cy - disc.r, w: 2 * disc.r, h: 2 * disc.r, r: disc.r }
+  }
+}
+
+// ═══ THE TWO BADGE PAINTS ═══
+//
+// The background is the owner's badge ruling (2026-09-30: "Badge background color #f4f1ec"), a
+// warm stone; the ink is the frontend's #0F0F0F. Named swatches so every stylesheet and badge
+// paints from them rather than restating hex.
+data brand_mark_badge_stone: Swatch = Swatch { name: "brand-badge-stone", color: Srgb8 { r: 244, g: 241, b: 236 } }
+
+data brand_mark_ink: Swatch = Swatch { name: "brand-mark-ink", color: Srgb8 { r: 15, g: 15, b: 15 } }
+
+// ═══ TREATMENTS ═══
+//
+// Stencil: the body paint fills the shell and the antenna, and the features are holes in the shell
+// that show whatever is behind the mark. UnderpaintedStencil: the same, over the shell's silhouette
+// filled with the host's underpaint, so the holes show that paint instead of what is behind.
+// A two-paint treatment (features painted over a solid shell, as the frontend's mark.svg is drawn)
+// lands with its first consumer, the generated logo targets.
+type BrandMarkTreatment = Stencil | UnderpaintedStencil { underpaint: String }
+
+// ═══ SVG SPELLING ═══
+
+fn brand_mark_n(v: Int) -> String {
+  to_string(v)
+}
+
+fn brand_mark_arc(r: Int, x: Int, y: Int) -> String {
+  join(["A", brand_mark_n(v: r), ",", brand_mark_n(v: r), " 0 0,1 ", brand_mark_n(v: x), ",", brand_mark_n(v: y)], "")
+}
+
+// A box with no corner radius is spelled as a plain rectangle: four lines, no zero-radius arcs.
+fn brand_mark_box_path(b: BrandMarkBox) -> String {
+  if b.r == 0 {
+    join(["M", brand_mark_n(v: b.x), ",", brand_mark_n(v: b.y), " H", brand_mark_n(v: b.x + b.w), " V", brand_mark_n(v: b.y + b.h), " H", brand_mark_n(v: b.x), " Z"], "")
+  } else {
+    join([
+      "M", brand_mark_n(v: b.x + b.r), ",", brand_mark_n(v: b.y),
+      " H", brand_mark_n(v: b.x + b.w - b.r),
+      " ", brand_mark_arc(r: b.r, x: b.x + b.w, y: b.y + b.r),
+      " V", brand_mark_n(v: b.y + b.h - b.r),
+      " ", brand_mark_arc(r: b.r, x: b.x + b.w - b.r, y: b.y + b.h),
+      " H", brand_mark_n(v: b.x + b.r),
+      " ", brand_mark_arc(r: b.r, x: b.x, y: b.y + b.h - b.r),
+      " V", brand_mark_n(v: b.y + b.r),
+      " ", brand_mark_arc(r: b.r, x: b.x + b.r, y: b.y),
+      " Z",
+    ], "")
+  }
+}
+
+fn brand_mark_disc_path(c: BrandMarkDisc) -> String {
+  join(["M", brand_mark_n(v: c.cx - c.r), ",", brand_mark_n(v: c.cy), " ", brand_mark_arc(r: c.r, x: c.cx + c.r, y: c.cy), " ", brand_mark_arc(r: c.r, x: c.cx - c.r, y: c.cy), " Z"], "")
+}
+
+fn brand_mark_shape_path(shape: BrandMarkShape) -> String {
+  match shape {
+    RoundedBox { box } => brand_mark_box_path(b: box)
+    Disc { disc } => brand_mark_disc_path(c: disc)
+  }
+}
+
+fn brand_mark_features_path(mark: BrandMark) -> String {
+  join([brand_mark_shape_path(shape: mark.left_eye), brand_mark_shape_path(shape: mark.right_eye), brand_mark_box_path(b: mark.mouth)], " ")
+}
+
+// The shell with the features as its holes, for an evenodd fill.
+fn brand_mark_stencil_path(mark: BrandMark) -> String {
+  join([brand_mark_box_path(b: mark.shell), brand_mark_features_path(mark: mark)], " ")
+}
+
+fn brand_mark_antenna_path(antenna: BrandMarkAntenna) -> String {
+  join([brand_mark_box_path(b: antenna.stem), brand_mark_disc_path(c: antenna.tip)], " ")
+}
+
+fn brand_mark_fill(d: String, paint: String) -> Fragment {
+  Element { tag: "path", attributes: [attr(name: "fill", value: paint), attr(name: "d", value: d)], children: [] }
+}
+
+// The mark's drawing in the frame, its body paint currentColor so its host decides the paint.
+fn brand_mark_figure(mark: BrandMark, treatment: BrandMarkTreatment) -> List<Fragment> {
+  let underpaint = match treatment {
+    Stencil => []
+    UnderpaintedStencil { underpaint } => [brand_mark_fill(d: brand_mark_box_path(b: mark.shell), paint: underpaint)]
+  }
+  let stencil = Element { tag: "path", attributes: [
+    attr(name: "fill-rule", value: "evenodd"),
+    attr(name: "fill", value: "currentColor"),
+    attr(name: "d", value: brand_mark_stencil_path(mark: mark)),
+  ], children: [] }
+  let antenna = match mark.antenna {
+    Absent => []
+    Present { value } => [brand_mark_fill(d: brand_mark_antenna_path(antenna: value), paint: "currentColor")]
+  }
+  concat(concat(underpaint, [stencil]), antenna)
+}
+
+fn brand_mark_view_box() -> String {
+  join(["0 0 ", brand_mark_n(v: brand_mark_frame), " ", brand_mark_n(v: brand_mark_frame)], "")
+}
+
+fn brand_mark_svg(kind: BrandMarkKind, class_name: String, label: String) -> Fragment {
+  Element {
+    tag: "svg",
+    attributes: [
+      attr(name: "class", value: class_name),
+      attr(name: "viewBox", value: brand_mark_view_box()),
+      attr(name: "role", value: "img"),
+      attr(name: "aria-label", value: label),
+    ],
+    children: brand_mark_figure(mark: brand_mark(kind: kind), treatment: Stencil),
+  }
+}

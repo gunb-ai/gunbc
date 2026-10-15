@@ -332,7 +332,7 @@ fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
   match o {
     HostFixedOverheadMeasured { bytes: b, provenance: _ } => b
     HostFixedOverheadAllowance { bytes: b, reason: _ } => b
-    HostFixedOverheadUnmeasured => byte_size(0)
+    HostFixedOverheadUnmeasured { reason: _ } => byte_size(0)
   }
 }
 
@@ -345,9 +345,9 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
   match o {
     HostFixedOverheadMeasured { bytes: b, provenance: _ } => HostOverheadResolved { bytes: b }
     HostFixedOverheadAllowance { bytes: b, reason: _ } => HostOverheadResolved { bytes: b }
-    HostFixedOverheadUnmeasured =>
+    HostFixedOverheadUnmeasured { reason: why } =>
       HostOverheadUnresolved {
-        reason: concat("host fixed overhead is unmeasured and carries no operator allowance, so the share of RAM this host spends on residents the budget does not model is unknown: refuse to derive a runner width rather than charge zero (which would silently hand the host its whole RAM) or borrow another host's number. Classify it in gunbc.host.host_memory_observation gunbc_ci_host_fixed_overhead_for. Host: ", host)
+        reason: concat("host fixed overhead is unmeasured and carries no operator allowance, so the share of RAM this host spends on residents the budget does not model is unknown: refuse to derive a runner width rather than charge zero (which would silently hand the host its whole RAM) or borrow another host's number. Classify it in gunbc.host.host_memory_observation gunbc_ci_host_fixed_overhead_for. Host: ", concat(host, concat("; ", why as String)))
       }
   }
 }
@@ -520,9 +520,9 @@ fn host_usable_ram_or_refusal(host: HostIdentity, r: HostUsableRam) -> HostUsabl
   match r {
     HostUsableRamMeasured { bytes: b, provenance: _ } => HostUsableRamResolved { bytes: b }
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => HostUsableRamResolved { bytes: b }
-    HostUsableRamUnmeasured =>
+    HostUsableRamUnmeasured { reason: why } =>
       HostUsableRamUnresolved {
-        reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.host.host_memory_observation gunbc_ci_host_usable_ram_for. Host: ", host)
+        reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.host.host_memory_observation gunbc_ci_host_usable_ram_for. Host: ", concat(host, concat("; ", why as String)))
       }
   }
 }
