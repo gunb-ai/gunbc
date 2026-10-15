@@ -1,13 +1,14 @@
 module gunbc.serving.rented_ninfer_source
 
 import std.types { String, NonEmptyStr, Bool, List }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.content_hash { Sha256Digest }
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault, r2_object_url }
-import extdeps.ninfer.ninfer_serve { NinferEngineRelease, ninfer_serve_81c8ce09_sm120_release }
+import extdeps.ninfer.ninfer_serve { NinferSourceRevision, ninfer_qwen35_planner_revision }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { NinferModelRow, qwen3_8_27b_nvfp4_row }
 import gunbc.cloudflare.r2_origin { fleet_cloudflare_account_id, OriginCredentialStanding, OriginCredentialMintEntryUnbuilt }
 
@@ -50,6 +51,48 @@ fn rented_models_source(key: NonEmptyStr) -> RentedArtifactSource {
     },
     read_credential: rented_models_read_credential,
   }
+}
+
+// THE ENGINE RELEASE A RENTED CARD INSTALLS: ninfer-serve built by this fleet at the pinned upstream source
+// revision (extdeps.ninfer.ninfer_serve NinferSourceRevision, the upstream fact) for one GPU architecture and
+// shipped as a tarball the card extracts. The build and the installed-file figures are this repository's
+// receipts, read read-only from one live card (Vast RTX PRO 5000 Blackwell) on 2026-10-15 around 04:00Z, so they
+// live in the observing layer and not in the upstream module (DESIGN 3, external upstream decomposition).
+type NinferBuildTarget
+  = NinferSm120
+
+type NinferInstalledFile {
+  relative_path: NonEmptyStr
+  bytes: ByteSize
+  sha256: Sha256Digest
+}
+
+type NinferEngineRelease {
+  release: NonEmptyStr
+  source: NinferSourceRevision
+  build_target: NinferBuildTarget
+  binary: NinferInstalledFile
+  rev_file: NinferInstalledFile
+  standing: CitedFigureStanding
+}
+
+data ninfer_serve_81c8ce09_sm120_release: NinferEngineRelease = NinferEngineRelease {
+  release: "ninfer-serve-81c8ce09-sm120" as NonEmptyStr,
+  source: ninfer_qwen35_planner_revision,
+  build_target: NinferSm120 {},
+  binary: NinferInstalledFile {
+    relative_path: "ninfer/ninfer-serve" as NonEmptyStr,
+    bytes: byte_size(count: 238462696),
+    sha256: Sha256Digest { hex: "4d6b4b5ce8e4f667ffc77a7362817e713ded23946ea996529429202e9c46261b" },
+  },
+  rev_file: NinferInstalledFile {
+    relative_path: "ninfer/rev" as NonEmptyStr,
+    bytes: byte_size(count: 41),
+    sha256: Sha256Digest { hex: "e9ae34b6ca7a2496dfb45d54d2f4bf8517424a872fa2610dee3108ebdb9940dd" },
+  },
+  standing: TranscribedUncited {
+    read_obligation: "Installed-file figures were read read-only from one live card on 2026-10-15 around 04:00Z (paths relative to its /root/serve). Re-derive them by hashing the extracted tarball once the shipped tarball's own digest is read (gunbc.serving.rented_ninfer_source)." as NonEmptyStr
+  },
 }
 
 // THE SHIPPED TARBALL IS THIS REPOSITORY'S TO OBSERVE, so its missing digest is a coverage obligation here and

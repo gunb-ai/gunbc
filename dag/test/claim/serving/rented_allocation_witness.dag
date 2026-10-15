@@ -10,7 +10,8 @@ import gunbc.principal_projection { PrincipalRef }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward, RemoteForward }
-import extdeps.ninfer.ninfer_serve { NinferServeLaunch, ninfer_serve_81c8ce09_sm120_release }
+import extdeps.ninfer.ninfer_serve { NinferServeLaunch }
+import gunbc.serving.rented_ninfer_source { ninfer_serve_81c8ce09_sm120_release }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
 import gunbc.serving.rented_replica { RentedGpuDevice }

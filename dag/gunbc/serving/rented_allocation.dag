@@ -11,7 +11,8 @@ import product.supplier.vast_ai { VastAiAskReceipt }
 import std.measure { MoneyPerHour }
 import extdeps.network.endpoint { SocketAddress, render_network_host }
 import extdeps.ssh.openssh_port_forwarding { PortForwardSpec, LocalForward }
-import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferEngineRelease, ninfer_serve_program }
+import extdeps.ninfer.ninfer_serve { NinferServeLaunch, ninfer_serve_program }
+import gunbc.serving.rented_ninfer_source { NinferEngineRelease }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { NinferModelRow }
 import gunbc.serving.rented_replica { RentedGpuDevice, RentedReplicaIdentity }
 import gunbc.serving.rented_host_access { RentedHostAccessDeclaration }
@@ -89,7 +90,7 @@ type RentedEndCondition
   | RentedEndsBy { at: EpochMs }
 
 // THE ENGINE THE CARD IS MEANT TO RUN: ninfer-serve at a pinned release (extdeps.ninfer.ninfer_serve
-// ninfer_serve_81c8ce09_sm120_release: source revision, build target, object, installed-file pins) with its launch flags and listen
+// rented_ninfer_source ninfer_serve_81c8ce09_sm120_release: source revision, build target, object, installed-file pins) with its launch flags and listen
 // port. One arm because one engine is consumed; vLLM (gunbc.serving.rented_replica rented_replica_launch)
 // joins as an arm when an allocation that runs it is enrolled. The probe, not this field, decides the wire
 // behaviour a turn sees (gunbc.harness.harness_reasoning_wire HarnessServingUnit).

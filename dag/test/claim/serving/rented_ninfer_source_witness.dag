@@ -4,11 +4,10 @@ import std.types { String, Bool }
 import std.measure { byte_size, byte_size_count }
 import std.content_hash { Sha256Digest }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.ninfer.ninfer_serve { ninfer_serve_81c8ce09_sm120_release }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.cloudflare.r2_origin { OriginCredentialMintEntryUnbuilt }
 import gunbc.serving.rented_ninfer_source {
-  rented_engine_source, rented_ninfer_81c8ce09_sm120_engine_artifact, RentedTarballUnobserved, rented_weights_source, rented_qwen3_8_27b_nvfp4_weights_placement, rented_weights_pin_agreement, rented_artifact_url,
+  ninfer_serve_81c8ce09_sm120_release, rented_engine_source, rented_ninfer_81c8ce09_sm120_engine_artifact, RentedTarballUnobserved, rented_weights_source, rented_qwen3_8_27b_nvfp4_weights_placement, rented_weights_pin_agreement, rented_artifact_url,
   RentedWeightsPinAgrees, RentedWeightsDigestDiffers, RentedWeightsBytesDiffer,
 }
 
