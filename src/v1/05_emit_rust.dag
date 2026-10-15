@@ -17745,7 +17745,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   let cmd_line = if argv |> count > 0 {
     match argv |> first {
       Present { value: first_arg } => concat(let_kw, " = std::process::Command::new(",
-        emit_shell_argv_element(arg: first_arg, optional_params: optional_params, source_indices: source_indices), ")")
+        emit_shell_argv_element(arg: first_arg, optional_params: optional_params, registry: registry, scope: argv_scope, depth: depth, shared_types: shared_types, source_indices: source_indices), ")")
       Absent => concat(let_kw, " = std::process::Command::new(\"",
         emit_ident(name: op_name, target: Rust), "\")")
     }
@@ -17758,7 +17758,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
       if shell_argv_element_is_word_list(arg: arg, scope: argv_scope, source_indices: source_indices) {
         concat("    .args(", emit_shell_argv_word_list_element(arg: arg, registry: registry, scope: argv_scope, depth: depth, shared_types: shared_types, source_indices: source_indices), ".iter())")
       } else if shell_argv_element_is_string_word(arg: arg, scope: argv_scope, source_indices: source_indices) {
-        concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params, source_indices: source_indices), ")")
+        concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params, registry: registry, scope: argv_scope, depth: depth, shared_types: shared_types, source_indices: source_indices), ")")
       } else {
         concat("    .arg(", emit_error_expr(message: concat("argv element is not String or List<String> at ", arg.span.file, ":", to_string(arg.span.start)), target: Rust), ")")
       }
@@ -17879,7 +17879,7 @@ fn emit_shell_argv_word_list_element(arg: Node, registry: Map<String, ItemInfo>,
   }
 }
 
-fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match arg.expr_data {
     ExprLiteral { value: LitStr { value: s } } =>
       concat("\"", escape_string_literal_body(s: s), "\"")
@@ -17925,7 +17925,8 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
         emit_rust_dag_string_to_host_via_seam(dag_expr: var_name)
       }
     }
-    _ => emit_simple_expr(expr: arg, target: Rust, source_indices: source_indices)
+    _ =>
+      emit_typed_expr(texpr: arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: empty_emit_graph_info(), fuel: 1024)
   }
 }
 

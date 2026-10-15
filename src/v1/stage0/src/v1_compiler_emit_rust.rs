@@ -40527,6 +40527,10 @@ pub fn emit_shell_call(
                         emit_shell_argv_element(
                             first_arg.clone(),
                             optional_params.clone(),
+                            registry.clone(),
+                            argv_scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
                             source_indices.clone(),
                         ),
                     ),
@@ -40590,6 +40594,10 @@ pub fn emit_shell_call(
                                     emit_shell_argv_element(
                                         arg.clone(),
                                         optional_params.clone(),
+                                        registry.clone(),
+                                        argv_scope.clone(),
+                                        depth.clone(),
+                                        shared_types.clone(),
                                         source_indices.clone(),
                                     ),
                                 ),
@@ -40909,6 +40917,10 @@ pub fn emit_shell_argv_word_list_element(
 pub fn emit_shell_argv_element(
     arg: Rc<Node>,
     optional_params: Rc<HashMap<String, bool>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*arg.expr_data.clone()).clone() {
@@ -41028,10 +41040,14 @@ pub fn emit_shell_argv_element(
                 emit_rust_dag_string_to_host_via_seam(var_name.clone())
             }
         }
-        _ => crate::v1_compiler_emit::emit_simple_expr(
+        _ => emit_typed_expr(
             arg.clone(),
-            RenderTarget::Rust,
-            source_indices.clone(),
+            registry,
+            scope,
+            depth,
+            shared_types,
+            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+            1024,
         ),
     }
 }
