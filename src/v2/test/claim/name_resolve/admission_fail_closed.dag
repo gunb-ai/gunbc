@@ -1,46 +1,14 @@
 module v2.test.claim.name_resolve.admission_fail_closed
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.name_resolve {
-  ResolutionContext,
-  Admission,
-  AdmissionAccepted,
-  AdmissionRejected,
-  AdmissionState,
-  Import,
-  ImportVisible,
-  ResolutionSubject,
-  admit_import_entry,
-  resolution_context,
-  resolve_in_context,
-  resolve_with_admission,
-  resolve_with_admission_policy,
-  subject_module_root_for_name,
-  module_root_find,
-  validate_module_roots
-}
+import v2.compiler.name_resolve { ResolutionContext, Admission, AdmissionAccepted, AdmissionRejected, AdmissionState, Import, ImportVisible, ResolutionSubject, admit_import_entry, admit_imported_modules, resolution_context, resolve_in_context, resolve_with_admission, resolve_with_admission_policy, subject_module_root_for_name, module_root_find, validate_module_roots }
 import v2.std.declaration_marker { test_marker_channel_empty }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_imported_modules, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.std.cross_tree.resolution { source_root_index_empty }
-import v2.extdeps.languages.dag {
-  dag_grammar_atom,
-  dag_language_model_surface_empty_prelude,
-  dag_named_edge,
-  dag_surface_edge,
-}
-import std.algebra { Cons, Empty, FreeMonoid, fold_list }
-import v2.std.collection { empty_map }
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted,
-  Textual,
-  diagnostics_eq,
-  non_empty_diagnostics_eq
-}
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_named_edge, dag_surface_edge }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, empty_map }
+import v2.std.namespace_alias { CapturedImportTarget }
+import v2.std.diagnostic { Accepted, ByteRange, None, Outcome, Rejected, bind_outcome, outcome_accepted, Textual, diagnostics_eq, non_empty_diagnostics_eq }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme, fold_list_node }
 import v2.std.resolution_policy { ImportScoped }
@@ -125,7 +93,21 @@ fn fc_with_roots(
 }
 
 fn fc_admitted(n: Node) -> Outcome<NormalizedTree> {
-  admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: n, diagnostics: None)
+  admit_normalized_tree(import_bindings: no_import_bindings(), imported_modules: no_imported_modules(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: n, diagnostics: None)
+}
+
+fn fc_located_import(target: QualifiedName) -> CapturedImportTarget {
+  CapturedImportTarget {
+    target: target,
+    at: Textual {
+      file: ^fc_import_file,
+      extent: ByteRange { start: 14, end: 42 }
+    }
+  }
+}
+
+fn fc_admitted_importing(n: Node, modules: FreeMonoid<CapturedImportTarget>) -> Outcome<NormalizedTree> {
+  admit_normalized_tree(import_bindings: no_import_bindings(), imported_modules: modules, type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: n, diagnostics: None)
 }
 
 fn fc_duplicate_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
@@ -653,6 +635,75 @@ test fn keyed_validation_malformed_precedes_duplicate() -> Bool {
     match validate_module_roots(roots: roots) {
       Accepted { value: _, diagnostics: _ } => false
       Rejected { diagnostics: actual } => actual.head.reason == ^resolve_reason_malformed_imported_root
+    }
+  })
+}
+
+// AN IMPORT IS A DEPENDENCY EVEN WHEN NOTHING FROM IT IS USED. NamespaceOnlyY used to check only
+// captured alias rows, so a missing module with an empty (or unused) import block was Accepted.
+fn fc_unused_missing_import_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(
+    o: fc_admitted_importing(
+      n: fc_module_root(seg: ^fc_subject_seg),
+      modules: Cons { head: fc_located_import(target: fc_qn(seg: ^fc_missing_seg)), tail: Empty }
+    ),
+    f: fn(a) { outcome_accepted(value: Cons { head: a, tail: Empty }) }
+  )
+}
+
+fn fc_unused_existing_import_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(
+    o: fc_admitted_importing(
+      n: fc_module_root(seg: ^fc_subject_seg),
+      modules: Cons { head: fc_located_import(target: fc_qn(seg: ^fc_found_seg)), tail: Empty }
+    ),
+    f: fn(subject) {
+      bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_found_seg)), f: fn(found) {
+        outcome_accepted(value: Cons { head: subject, tail: Cons { head: found, tail: Empty } })
+      })
+    }
+  )
+}
+
+test fn unused_missing_import_refuses_under_namespace_only() -> Bool {
+  fc_with_roots(o: fc_unused_missing_import_roots(), f: fn(roots) {
+    match resolve_with_admission(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: roots,
+      admission: Admission {
+        subject: ResolutionSubject { name: fc_qn(seg: ^fc_subject_seg) },
+        imports: Empty
+      }
+    ) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } =>
+        (d.head.reason == ^resolve_module_not_found)
+          && (match d.head.at {
+            Textual { file: file, extent: extent } =>
+              (symbol_lexeme(sym: file) == symbol_lexeme(sym: ^fc_import_file))
+                && (match extent {
+                  ByteRange { start: start, end: end } =>
+                    (start == 14) && (end == 42)
+                  _ => false
+                })
+            _ => false
+          })
+    }
+  })
+}
+
+test fn unused_existing_import_accepts_under_namespace_only() -> Bool {
+  fc_with_roots(o: fc_unused_existing_import_roots(), f: fn(roots) {
+    match admit_imported_modules(
+      roots: roots,
+      modules: Cons { head: fc_located_import(target: fc_qn(seg: ^fc_found_seg)), tail: Empty },
+      state: fc_initial_admission_state(),
+      subject_qn: fc_qn(seg: ^fc_subject_seg),
+      index: source_root_index_empty(),
+      active_roots: Empty
+    ) {
+      AdmissionAccepted { bindings: _, origins: _ } => true
+      AdmissionRejected { diagnostics: _ } => false
     }
   })
 }
