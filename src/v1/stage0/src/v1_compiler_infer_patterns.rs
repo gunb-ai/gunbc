@@ -1005,13 +1005,7 @@ pub fn is_uninhabited_sum(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
             Some(indexed) => {
                 (resolved.occurrence_identity.clone() == indexed.occurrence_identity.clone())
             }
-            std::option::Option::None => {
-                ((crate::v1_std_core::authored_name_at(
-                    env.source_indices.clone(),
-                    resolved.clone(),
-                ) == never_type_declaration().decl_name.clone())
-                    && env_binds_never_declaration(env.clone()))
-            }
+            std::option::Option::None => false,
         }
     }
 }

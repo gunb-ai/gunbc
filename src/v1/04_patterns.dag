@@ -553,9 +553,9 @@ fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
 }
 
 // An uninhabited SUM: a coproduct with zero arms, or the std.error_primitives Never
-// declaration keyed by DeclarationRef (never_type_declaration). Authored spelling of
-// the leaf is a prefilter only; identity (indexed occurrence, or the home module's
-// DeclarationRef) decides.
+// declaration keyed by DeclarationRef (never_type_declaration) via indexed occurrence.
+// When that index is absent the sum is not uninhabited: an empty match refuses. There is
+// no authored-name fallback (operator 2026-10-15: never an identity->spelling fallback).
 fn env_binds_never_declaration(env: TypeEnv) -> Bool {
   if env.module_path == (never_type_declaration.module_path as String) {
     true
@@ -580,9 +580,7 @@ fn is_uninhabited_sum(resolved: Node, env: TypeEnv) -> Bool {
     match symbol_index_lookup(index: env.symbol_index, qualified_name: never_type_qualified_path()) {
       Present { value: indexed } =>
         resolved.occurrence_identity == indexed.occurrence_identity
-      Absent =>
-        authored_name_at(source_indices: env.source_indices, node: resolved) == (never_type_declaration.decl_name as String)
-          && env_binds_never_declaration(env: env)
+      Absent => false
     }
   }
 }
