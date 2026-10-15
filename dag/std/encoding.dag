@@ -3,7 +3,7 @@ module std.encoding
 import std.algebra { BoundedLattice, FreeMonoid, Empty, list_snoc_item }
 import std.coercion { unicode_scalar_fold }
 import std.types { Bytes, Char }
-import std.error_primitives { absurd, never }
+import std.error_primitives { pure_dag_seam_unreachable_string }
 import std.integer { UInt8Result, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints, qualified_octet_members }
 import std.machine_word { Word, Width8, Width32, WordResult, WordReady, WordRefused, WordValueOutOfRange, OctetsResult, OctetsReady, OctetsRefused, word_of_int, word_from_octets, word_to_octets, word_shift_left, word_shift_right, word_and, word_or }
 import extdeps.toolchain.architecture_profile { BigEndian }
@@ -127,7 +127,7 @@ data encoding_bounded_lattice: BoundedLattice<Encoding> = {
 }
 
 fn utf8_decode_bytes(payload: Bytes) -> String {
-  absurd(never())
+  pure_dag_seam_unreachable_string()
 }
 
 type Base64Variant = Standard | UrlSafe
@@ -375,7 +375,7 @@ fn base64_encode_optional(octets: QualifiedOctets, variant: Base64Variant) -> St
 // Returning "" instead would be a fabricated plausible output: "" is the legitimate encoding of the
 // empty input, so it would stand where a failure happened and be indistinguishable from success.
 fn base64_encode_packing_invariant_diverges() -> String {
-  absurd(never())
+  pure_dag_seam_unreachable_string()
 }
 
 // TOTAL, AND THIS TIME THE SIGNATURE IS WHAT MAKES IT SO.

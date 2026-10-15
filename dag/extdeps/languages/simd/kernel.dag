@@ -4,7 +4,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import std.types { NonEmptyStr, Int, List, Float }
-import std.error_primitives { absurd, never }
+import std.error_primitives { pure_dag_seam_unreachable, pure_dag_seam_unreachable_float }
 import std.numerical_contract {
   FmaContractionPolicy,
   FmaContractionRefused,
@@ -91,7 +91,7 @@ fn contiguous_loop_elementwise_kernel(
   b: List<Int>,
   c: List<Int>
 ) -> List<Int> {
-  [absurd(never())]
+  [pure_dag_seam_unreachable()]
 }
 
 fn contiguous_loop_elementwise_float_kernel(
@@ -101,7 +101,7 @@ fn contiguous_loop_elementwise_float_kernel(
   b: List<Float>,
   c: List<Float>
 ) -> List<Float> {
-  [absurd(never())]
+  [pure_dag_seam_unreachable_float()]
 }
 
 data simd_kernel_int_execution_host_realization_marker: Disposition = Scaffold {

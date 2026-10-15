@@ -1,7 +1,7 @@
 module gunbc.auth.approval_device_wire
 
 import std.types { NonEmptyStr, String, Timestamp, Int, List }
-import std.error_primitives { absurd, never }
+import std.error_primitives { pure_dag_seam_unreachable_string }
 import std.measure { Second, second }
 import extdeps.crypto.signature {
   VerifyingKey, SignatureBytes, SignatureSuite, EcdsaP256Sha256, PublicKeyEncoding, Sec1Uncompressed, SignatureEncoding, P1363FixedWidth,
@@ -946,7 +946,7 @@ fn path_segment(s: NonEmptyStr) -> NonEmptyStr {
   match base64_octets(values: bytes_octets(b: utf8_encode_bytes(s: s as String))) {
     QualifiedOctetsReady { value: qualified } =>
       join([path_segment_prefix, base64_encode(octets: qualified, variant: UrlSafe)], "") as NonEmptyStr
-    QualifiedOctetsRefused { observed: _ } => absurd(never())
+    QualifiedOctetsRefused { observed: _ } => pure_dag_seam_unreachable_string()
   }
 }
 

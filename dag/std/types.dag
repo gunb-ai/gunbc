@@ -106,9 +106,10 @@ type Bool = True | False
 
 type Unit
 
-// THE UNINHABITED TYPE, never() and absurd live in std.error_primitives so std.algebra can
-// name them without importing this module (cycle: types → algebra). Citation identity:
-// std.primitive_projection never_type_declaration (a DeclarationRef, not a restated path).
+// THE UNINHABITED TYPE Never and the eliminator absurd live in std.error_primitives so
+// std.algebra can name them without importing this module (cycle: types → algebra). Citation
+// identity: std.primitive_projection never_type_declaration (a DeclarationRef, not a restated
+// path). Never has no producer.
 
 type Json
 type Bytes

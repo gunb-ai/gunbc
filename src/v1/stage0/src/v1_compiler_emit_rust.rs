@@ -664,7 +664,10 @@ pub fn rust_shared_wrap_ctor(inner_expr: String) -> String {
     if (((v1_rt::starts_with(inner_expr.clone(), "panic!(".to_string())
         || v1_rt::starts_with(inner_expr.clone(), "compile_error!(".to_string()))
         || v1_rt::starts_with(inner_expr.clone(), "unreachable!(".to_string()))
-        || v1_rt::starts_with(inner_expr.clone(), "v1_rt::never(".to_string()))
+        || v1_rt::starts_with(
+            inner_expr.clone(),
+            "v1_rt::pure_dag_seam_unreachable(".to_string(),
+        ))
     {
         inner_expr.clone()
     } else {
@@ -13660,9 +13663,6 @@ pub fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> bo
 pub fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
     let here = crate::std_decl_ref::decl_ref(module_path.clone(), name.clone());
     if crate::std_decl_ref::declaration_ref_eq(
-        here.clone(),
-        crate::std_primitive_projection::never_producer_declaration(),
-    ) || crate::std_decl_ref::declaration_ref_eq(
         here,
         crate::std_primitive_projection::never_eliminator_declaration(),
     ) {

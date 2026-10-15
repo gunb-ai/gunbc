@@ -87,14 +87,13 @@ data primitive_symbol_intern_lexeme: PrimitiveIdentity = primitive_identity_slug
 data primitive_data_init_decl_facts_live: PrimitiveIdentity = primitive_identity_slug(name: "data_init_decl_facts_live")
 data primitive_bytes_octets: PrimitiveIdentity = primitive_identity_slug(name: "bytes_octets")
 data primitive_utf8_encode_bytes: PrimitiveIdentity = primitive_identity_slug(name: "utf8_encode_bytes")
-data primitive_never: PrimitiveIdentity = primitive_identity_slug(name: "never")
+data primitive_pure_dag_seam_unreachable: PrimitiveIdentity = primitive_identity_slug(name: "pure_dag_seam_unreachable")
 data primitive_to_string: PrimitiveIdentity = primitive_identity_slug(name: "to_string")
 
-// THE DECLARATION IDENTITY of std.error_primitives Never / never / absurd. Emit, v1
-// exhaustiveness and v2 match coproduct-read consume these refs; they do not restate the
-// module or name as string helpers.
+// THE DECLARATION IDENTITY of std.error_primitives Never / absurd. Emit, v1 exhaustiveness and
+// v2 match coproduct-read consume these refs; they do not restate the module or name as string
+// helpers. Never has no producer.
 data never_type_declaration: DeclarationRef = decl_ref(module_path: "std.error_primitives", decl_name: "Never")
-data never_producer_declaration: DeclarationRef = decl_ref(module_path: "std.error_primitives", decl_name: "never")
 data never_eliminator_declaration: DeclarationRef = decl_ref(module_path: "std.error_primitives", decl_name: "absurd")
 
 fn never_type_qualified_path() -> String {
@@ -140,7 +139,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_data_init_decl_facts_live, module_path: "v2.std.data_index", decl_name: "data_init_decl_facts_live", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_bytes_octets, module_path: "std.bytes", decl_name: "bytes_octets", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_utf8_encode_bytes, module_path: "std.bytes", decl_name: "utf8_encode_bytes", fidelity: HostRealizedSeam),
-    primitive_projection_row(primitive: primitive_never, module_path: "std.error_primitives", decl_name: "never", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_pure_dag_seam_unreachable, module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_string_contains, module_path: "std.algebra", decl_name: "string_contains", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_length, module_path: "std.algebra", decl_name: "length", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_map_insert, module_path: "std.algebra", decl_name: "map_insert", fidelity: ModeledProjection),

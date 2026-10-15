@@ -114,7 +114,10 @@ pub fn canonical_exact_decimal(mut __tco_loop_d: ExactDecimal) -> ExactDecimal {
         #[allow(unused_mut)]
         let mut d = __tco_loop_d;
         if (d.fraction_digits.clone() < 0) {
-            v1_rt::never()
+            break ExactDecimal {
+                units: v1_rt::pure_dag_seam_unreachable(),
+                fraction_digits: 0,
+            };
         } else {
             if (d.fraction_digits.clone() == 0) {
                 break ExactDecimal {

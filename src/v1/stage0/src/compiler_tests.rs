@@ -6398,22 +6398,4 @@ mod compiler_tests {
             .join();
         result.expect("profile_reconcile_per_module panicked");
     }
-
-    #[test]
-    fn never_host_realization_panics_by_declaration_identity() {
-        let caught = std::panic::catch_unwind(|| {
-            let _n: crate::std_error_primitives::Never = crate::std_error_primitives::never();
-        });
-        assert!(caught.is_err(), "never() must diverge");
-        let payload = caught.unwrap_err();
-        let msg = payload
-            .downcast_ref::<String>()
-            .cloned()
-            .or_else(|| payload.downcast_ref::<&str>().map(|s| (*s).to_string()))
-            .unwrap_or_default();
-        assert!(
-            msg.contains("never(): std.error_primitives never"),
-            "named panic, got {msg:?}"
-        );
-    }
 }

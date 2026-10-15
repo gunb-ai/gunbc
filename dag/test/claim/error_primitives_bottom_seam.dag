@@ -1,20 +1,18 @@
 module test.claim.error_primitives_bottom_seam
 
 import std.types { Bool, Int, String }
-import std.error_primitives { Never, absurd, never }
+import std.error_primitives { pure_dag_seam_unreachable_string }
 import std.algebra { string_contains, trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The producer never() and eliminator absurd live in std.error_primitives. The guarded arm is not taken.
-// Evaluating never() is a named runtime divergence, not a proved uninhabited arm.
-fn bottom_seam_resolves_from_the_leaf(selector: Bool) -> Bool {
-  if selector { true } else { absurd(never()) }
+fn bottom_seam_resolves_from_the_leaf(selector: Bool) -> String {
+  if selector { "ok" } else { pure_dag_seam_unreachable_string() }
 }
 
 test fn bottom_seam_projections_resolve_from_error_primitives() -> Bool {
-  bottom_seam_resolves_from_the_leaf(selector: true)
+  bottom_seam_resolves_from_the_leaf(selector: true) == "ok"
 }
 
 test fn trim_still_routes_to_the_host_realization() -> Bool {
