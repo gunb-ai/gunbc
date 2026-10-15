@@ -12,6 +12,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   shape_fleet_ssh_exec, shape_fleet_ssh_password_exec_trusting,
 }
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target, fleet_automation_principal_login }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -94,3 +95,50 @@ test fn an_enrolled_fleet_host_resolves_at_port_22_through_the_real_producer() -
   }
 }
 
+// THE RECORDED PORT-22 RENDERS, pinned as bytes rather than recomputed. Recorded on srv1 by
+// test.claim.fleet.fleet_ssh_shaper_recorder fleet_ssh_shaper_renders_record at the S2(b1) head, before
+// SshTarget had an address (branch session/deep-bear-539-s2b2-recorder f63b2485400, 7865 bytes, sha256
+// e0559df35460c9f7dd71c757edd4686836998888dbc4386fffda34f52161f0fa): per enrolled host the receipt wire,
+// then the key and password argv one word per line, over the hermetic witness context and the words
+// [hostname].
+data w_recorded_port_22_renders: String = "host=srv1 wire=srv1\nkey=-F\n  | none\n  | -o\n  | StrictHostKeyChecking=yes\n  | -o\n  | UserKnownHostsFile=target/fleet-ssh-attempt-typed-remote-file-write-witness-known-hosts-71e9a89ef6b33f32\n  | -o\n  | GlobalKnownHostsFile=/dev/null\n  | -o\n  | KnownHostsCommand=none\n  | -o\n  | VerifyHostKeyDNS=no\n  | -o\n  | UpdateHostKeys=no\n  | -o\n  | IdentityFile=/tmp/gunbc-trfw-witness-key\n  | -o\n  | IdentitiesOnly=yes\n  | -o\n  | IdentityAgent=none\n  | -o\n  | PreferredAuthentications=publickey\n  | -o\n  | PasswordAuthentication=no\n  | -o\n  | KbdInteractiveAuthentication=no\n  | -o\n  | User=gunbc-automation\n  | -o\n  | BatchMode=yes\n  | -o\n  | ConnectTimeout=10\n  | -o\n  | ServerAliveInterval=15\n  | -o\n  | ServerAliveCountMax=4\n  | srv1\n  | --\n  | hostname\npw=-F\n  | none\n  | -o\n  | StrictHostKeyChecking=yes\n  | -o\n  | UserKnownHostsFile=target/fleet-ssh-attempt-typed-remote-file-write-witness-known-hosts-71e9a89ef6b33f32\n  | -o\n  | GlobalKnownHostsFile=/dev/null\n  | -o\n  | KnownHostsCommand=none\n  | -o\n  | VerifyHostKeyDNS=no\n  | -o\n  | UpdateHostKeys=no\n  | -o\n  | PreferredAuthentications=password,keyboard-interactive\n  | -o\n  | User=gunbc-automation\n  | -o\n  | BatchMode=no\n  | -o\n  | ConnectTimeout=10\n  | -o\n  | ServerAliveInterval=15\n  | -o\n  | ServerAliveCountMax=4\n  | srv1\n  | --\n  | hostname\nhost=srv2 wire=srv2\nkey=-F\n  | none\n  | -o\n  | StrictHostKeyChecking=yes\n  | -o\n  | UserKnownHostsFile=target/fleet-ssh-attempt-typed-remote-file-write-witness-known-hosts-71e9a89ef6b33f32\n  | -o\n  | GlobalKnownHostsFile=/dev/null\n  | -o\n  | KnownHostsCommand=none\n  | -o\n  | VerifyHostKeyDNS=no\n  | -o\n  | UpdateHostKeys=no\n  | -o\n  | IdentityFile=/tmp/gunbc-trfw-witness-key\n  | -o\n  | IdentitiesOnly=yes\n  | -o\n  | IdentityAgent=none\n  | -o\n  | PreferredAuthentications=publickey\n  | -o\n  | PasswordAuthentication=no\n  | -o\n  | KbdInteractiveAuthentication=no\n  | -o\n  | User=gunbc-automation\n  | -o\n  | BatchMode=yes\n  | -o\n  | ConnectTimeout=10\n  | -o\n  | ServerAliveInterval=15\n  | -o\n  | ServerAliveCountMax=4\n  | srv2\n  | --\n  | hostname\npw=-F\n  | none\n  | -o\n  | StrictHostKeyChecking=yes\n  | -o\n  | UserKnownHostsFile=target/fleet-ssh-attempt-typed-remote-file-write-witness-known-hosts-71e9a89ef6b33f32\n  | -o\n  | GlobalKnownHostsFile=/dev/null\n  | -o\n  | KnownHostsCommand=none\n  | -o\n  | VerifyHostKeyDNS=no\n  | -o\n  | UpdateHostKeys=no\n  | -o\n  | PreferredAuthentications=password,keyboard-interactive\n  | -o\n  | User=gunbc-automation\n  | -o\n  | BatchMode=no\n  | -o\n  | ConnectTimeout=10\n  | -o\n  | ServerAliveInterval=15\n  | -o\n  | ServerAliveCountMax=4\n  | srv2\n  | --\n  | hostname\nhost=srv3 wire=srv3\nkey=-F\n  | none\n  | -o\n  | StrictHostKeyChecking=yes\n  | -o\n  | UserKnownHostsFile=target/fleet-ssh-attempt-typed-remote-file-write-witness-known-hosts-71e9a89ef6b33f32\n  | -o\n  | GlobalKnownHostsFile=/dev/null\n  | -o\n  | KnownHostsCommand=none\n  | -o\n  | VerifyHostKeyDNS=no\n  | -o\n  | UpdateHostKeys=no\n  | -o\n  | IdentityFile=/tmp/gunbc-trfw-witness-key\n  | -o\n  | IdentitiesOnly=yes\n  | -o\n  | IdentityAgent=none\n  | -o\n  | PreferredAuthentications=publickey\n  | -o\n  | PasswordAuthentication=no\n  | -o\n  | KbdInteractiveAuthentication=no\n  | -o\n  | User=gunbc-automation\n  | -o\n  | BatchMode=yes\n  | -o\n  | ConnectTimeout=10\n  | -o\n  | ServerAliveInterval=15\n  | -o\n  | ServerAliveCountMax=4\n  | srv3\n  | --\n  | hostname\npw=-F\n  | none\n  | -o\n  | StrictHostKeyChecking=yes\n  | -o\n  | UserKnownHostsFile=target/fleet-ssh-attempt-typed-remote-file-write-witness-known-hosts-71e9a89ef6b33f32\n  | -o\n  | GlobalKnownHostsFile=/dev/null\n  | -o\n  | KnownHostsCommand=none\n  | -o\n  | VerifyHostKeyDNS=no\n  | -o\n  | UpdateHostKeys=no\n  | -o\n  | PreferredAuthentications=password,keyboard-interactive\n  | -o\n  | User=gunbc-automation\n  | -o\n  | BatchMode=no\n  | -o\n  | ConnectTimeout=10\n  | -o\n  | ServerAliveInterval=15\n  | -o\n  | ServerAliveCountMax=4\n  | srv3\n  | --\n  | hostname\nhost=srv4 wire=srv4\nkey=-F\n  | none\n  | -o\n  | StrictHostKeyChecking=yes\n  | -o\n  | UserKnownHostsFile=target/fleet-ssh-attempt-typed-remote-file-write-witness-known-hosts-71e9a89ef6b33f32\n  | -o\n  | GlobalKnownHostsFile=/dev/null\n  | -o\n  | KnownHostsCommand=none\n  | -o\n  | VerifyHostKeyDNS=no\n  | -o\n  | UpdateHostKeys=no\n  | -o\n  | IdentityFile=/tmp/gunbc-trfw-witness-key\n  | -o\n  | IdentitiesOnly=yes\n  | -o\n  | IdentityAgent=none\n  | -o\n  | PreferredAuthentications=publickey\n  | -o\n  | PasswordAuthentication=no\n  | -o\n  | KbdInteractiveAuthentication=no\n  | -o\n  | User=gunbc-automation\n  | -o\n  | BatchMode=yes\n  | -o\n  | ConnectTimeout=10\n  | -o\n  | ServerAliveInterval=15\n  | -o\n  | ServerAliveCountMax=4\n  | srv4\n  | --\n  | hostname\npw=-F\n  | none\n  | -o\n  | StrictHostKeyChecking=yes\n  | -o\n  | UserKnownHostsFile=target/fleet-ssh-attempt-typed-remote-file-write-witness-known-hosts-71e9a89ef6b33f32\n  | -o\n  | GlobalKnownHostsFile=/dev/null\n  | -o\n  | KnownHostsCommand=none\n  | -o\n  | VerifyHostKeyDNS=no\n  | -o\n  | UpdateHostKeys=no\n  | -o\n  | PreferredAuthentications=password,keyboard-interactive\n  | -o\n  | User=gunbc-automation\n  | -o\n  | BatchMode=no\n  | -o\n  | ConnectTimeout=10\n  | -o\n  | ServerAliveInterval=15\n  | -o\n  | ServerAliveCountMax=4\n  | srv4\n  | --\n  | hostname\nhost=host-183527 wire=178.104.134.135\nkey=-F\n  | none\n  | -o\n  | StrictHostKeyChecking=yes\n  | -o\n  | UserKnownHostsFile=target/fleet-ssh-attempt-typed-remote-file-write-witness-known-hosts-71e9a89ef6b33f32\n  | -o\n  | GlobalKnownHostsFile=/dev/null\n  | -o\n  | KnownHostsCommand=none\n  | -o\n  | VerifyHostKeyDNS=no\n  | -o\n  | UpdateHostKeys=no\n  | -o\n  | IdentityFile=/tmp/gunbc-trfw-witness-key\n  | -o\n  | IdentitiesOnly=yes\n  | -o\n  | IdentityAgent=none\n  | -o\n  | PreferredAuthentications=publickey\n  | -o\n  | PasswordAuthentication=no\n  | -o\n  | KbdInteractiveAuthentication=no\n  | -o\n  | User=gunbc-automation\n  | -o\n  | BatchMode=yes\n  | -o\n  | ConnectTimeout=10\n  | -o\n  | ServerAliveInterval=15\n  | -o\n  | ServerAliveCountMax=4\n  | 178.104.134.135\n  | --\n  | hostname\npw=-F\n  | none\n  | -o\n  | StrictHostKeyChecking=yes\n  | -o\n  | UserKnownHostsFile=target/fleet-ssh-attempt-typed-remote-file-write-witness-known-hosts-71e9a89ef6b33f32\n  | -o\n  | GlobalKnownHostsFile=/dev/null\n  | -o\n  | KnownHostsCommand=none\n  | -o\n  | VerifyHostKeyDNS=no\n  | -o\n  | UpdateHostKeys=no\n  | -o\n  | PreferredAuthentications=password,keyboard-interactive\n  | -o\n  | User=gunbc-automation\n  | -o\n  | BatchMode=no\n  | -o\n  | ConnectTimeout=10\n  | -o\n  | ServerAliveInterval=15\n  | -o\n  | ServerAliveCountMax=4\n  | 178.104.134.135\n  | --\n  | hostname\nhost=host-3dde7f wire=62.238.115.145\nkey=-F\n  | none\n  | -o\n  | StrictHostKeyChecking=yes\n  | -o\n  | UserKnownHostsFile=target/fleet-ssh-attempt-typed-remote-file-write-witness-known-hosts-71e9a89ef6b33f32\n  | -o\n  | GlobalKnownHostsFile=/dev/null\n  | -o\n  | KnownHostsCommand=none\n  | -o\n  | VerifyHostKeyDNS=no\n  | -o\n  | UpdateHostKeys=no\n  | -o\n  | IdentityFile=/tmp/gunbc-trfw-witness-key\n  | -o\n  | IdentitiesOnly=yes\n  | -o\n  | IdentityAgent=none\n  | -o\n  | PreferredAuthentications=publickey\n  | -o\n  | PasswordAuthentication=no\n  | -o\n  | KbdInteractiveAuthentication=no\n  | -o\n  | User=gunbc-automation\n  | -o\n  | BatchMode=yes\n  | -o\n  | ConnectTimeout=10\n  | -o\n  | ServerAliveInterval=15\n  | -o\n  | ServerAliveCountMax=4\n  | 62.238.115.145\n  | --\n  | hostname\npw=-F\n  | none\n  | -o\n  | StrictHostKeyChecking=yes\n  | -o\n  | UserKnownHostsFile=target/fleet-ssh-attempt-typed-remote-file-write-witness-known-hosts-71e9a89ef6b33f32\n  | -o\n  | GlobalKnownHostsFile=/dev/null\n  | -o\n  | KnownHostsCommand=none\n  | -o\n  | VerifyHostKeyDNS=no\n  | -o\n  | UpdateHostKeys=no\n  | -o\n  | PreferredAuthentications=password,keyboard-interactive\n  | -o\n  | User=gunbc-automation\n  | -o\n  | BatchMode=no\n  | -o\n  | ConnectTimeout=10\n  | -o\n  | ServerAliveInterval=15\n  | -o\n  | ServerAliveCountMax=4\n  | 62.238.115.145\n  | --\n  | hostname\n"
+
+// The same layout re-derived through the new route: each host's endpoint text crosses at
+// fleet_ssh_target_at_standard_port, the wire is ssh_target_wire, and both shapers render the argv. A
+// host whose text refused prints a refusal line the recording does not contain.
+fn w_renders_now() -> String {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => "NO-CONTEXT"
+    Present { value: ctx } =>
+      match portable_remote_words(raws: ["hostname"]) {
+        Absent => "NO-WORDS"
+        Present { value: words } =>
+          join(map(fleet_reach_probe_targets, h =>
+            match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: h), principal: fleet_automation_principal_login) {
+              SshTargetRefused { endpoint: e, refusal: _ } => join(["host=", h, " REFUSED ", e, "\n"], "")
+              SshTargetResolved { target: t } =>
+                join([
+                  "host=", h, " wire=", ssh_target_wire(target: t) as String, "\n",
+                  "key=", join(shape_fleet_ssh_exec(context: ctx, target: t, words: words), "\n  | "), "\n",
+                  "pw=", join(shape_fleet_ssh_password_exec_trusting(trust: ctx.trust, target: t, words: words), "\n  | "), "\n",
+                ], "")
+            }), "")
+      }
+  }
+}
+
+// POSITIVE CONTROL: for EVERY enrolled fleet host at port 22, both shapers' argv and the receipt wire
+// are byte-identical to what they were before the target carried a port.
+test fn every_enrolled_host_renders_byte_identically_at_port_22() -> Bool {
+  w_renders_now() == w_recorded_port_22_renders
+}
+
+// The two arms the pin covers are distinct for every host, so the control above discriminates the key
+// arm from the password arm rather than pinning one argv twice.
+test fn the_key_and_password_argv_differ_for_every_enrolled_host() -> Bool {
+  all(fleet_reach_probe_targets, h =>
+    match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: h), principal: fleet_automation_principal_login) {
+      SshTargetResolved { target: t } => w_key_argv(target: t) != "" && w_key_argv(target: t) != w_password_argv(target: t)
+      SshTargetRefused { endpoint: _, refusal: _ } => false
+    })
+}
