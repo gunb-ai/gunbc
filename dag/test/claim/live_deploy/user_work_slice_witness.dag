@@ -285,7 +285,7 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_service_unit_suffix, "\"")))
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds last_cgroup_unit_with_dot_suffix`")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds system_service_unit_from_cgroup`")
-    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes` unit names")
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds recognized_system_slice`")
     && string_contains(s: seed, pattern: concat("\"", concat(repository_convergence_slice_unit_name as String, "\"")))
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds recognized_system_slice`")
     && string_contains(s: seed, pattern: concat("\"", concat(gunbc_oomd_sessions_slice as String, "\"")))
@@ -585,7 +585,7 @@ test fn sessions_slice_with_an_unbounded_local_memory_max_refuses() -> Bool {
   }
 }
 
-test fn a_user_manager_sessions_slice_path_still_wraps() -> Bool {
+test fn a_user_manager_sessions_slice_path_with_unreadable_local_memory_max_refuses() -> Bool {
   let cg = join([
     "0::",
     user_work_scope_user_slice_cgroup_needle,
