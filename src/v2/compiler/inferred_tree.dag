@@ -1,10 +1,10 @@
 module v2.compiler.inferred_tree
 
-import std.types { List }
+import std.types { List, Map }
 import v2.std.cardinality { TerminationProof }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
-import std.algebra { list_snoc_item, PartialFunction }
+import std.algebra { list_snoc_item, PartialFunction, empty_map, map_insert, map_lookup }
 import std.optional { Absent, Optional, Present }
 import v2.std.constraints { CanonicalGrounding }
 import v2.std.node { Node }
@@ -50,11 +50,14 @@ type NodeGrounding
 // Absent is the ordinary case: only a node that denotes a declaration carries one, and a node that
 // denotes nothing is not thereby defective.
 //
-// TYPE_INSTANCES IS THE INSTANTIATION INFER SOLVED FOR THIS CALL, kept so eval consumes it rather than
-// re-solving (A0-1): the same TypeVariableInstance list infer_type_instantiated substituted into the
-// result type, binder by name. A node that is not a generic application carries the EMPTY list --
-// never a missing read; eval binds each kinded binder of the callee from it and refuses a binder it
-// does not hold or whose instance is not a literal.
+// TYPE_INSTANCES IS THE INSTANTIATION INFER SOLVED FOR THIS CALL: the same TypeVariableInstance
+// list infer_type_instantiated substituted into the result type, binder by name. A node that is not
+// a generic application carries the EMPTY list, never a missing read. What exists today is the
+// recording, verified by A0-1a's kti claims (kinded_type_param_instances). Eval does not read it yet:
+// that consumption is the declared next cut (held on session/fierce-newt-112-a0-eval-held, owner
+// sunny-crab-777, trigger: eval runs record constructors, acceptance
+// kpe_kinded_parameter_value_is_the_applied_literal), where eval would bind each kinded binder from
+// it and refuse a binder it does not hold or whose instance is not a literal.
 type InferredFacts {
   grounding: NodeGrounding
   descent: Witness<TerminationProof>

@@ -12,7 +12,7 @@ import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx
 import gunbc.roadmap.roadmap_spawner { doc_all_edges }
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation, HarnessThroughput, ThroughputUnobserved }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
@@ -42,7 +42,7 @@ import gunbc.auth.profile_projection { PrincipalProfile, ProfileSourceGoogleOidc
 import gunbc.auth.session { AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken, SessionProfile }
 import gunbc.roadmap.roadmap_inline_assignment { inline_assignment_context_body }
 import extdeps.uri { Uri, Https }
-import std.types { Email }
+import std.types { Email, Map }
 import gunbc.v1.v1_deletion_plan { v1_exit_finish_lines }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap.roadmap_model {

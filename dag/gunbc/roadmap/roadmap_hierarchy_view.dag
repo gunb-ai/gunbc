@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_hierarchy_view
 
-import std.types { String, Int, Bool, List }
-import v2.std.collection { Map }
+import std.types { String, Int, Bool, List, Map }
+
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapEdge, RoadmapNodeId, roadmap_parent_ids }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships_of }
 import gunbc.roadmap.roadmap_lineage {

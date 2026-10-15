@@ -1,16 +1,16 @@
 module v2.extdeps.languages.swift.rows
 
-import std.types { String, List, Bool, Int, Char }
+import std.types { String, List, Bool, Int, Char, Map }
 import std.unicode.scalar { from_code_point }
 import std.error_primitives { Ok, Err }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Optional, Present, Absent }
-import std.algebra { list_append, length }
+import std.algebra { list_append, length, empty_map, map_insert }
 import extdeps.numeric.base16 { int_to_upper_hex }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.node { Conj, Edge, Node, Authored, Positional, Symbol, TypeNode, Atom }
-import v2.std.collection { Map, empty_map, map_insert }
+
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.witness { Holds, Violates }
 import v2.std.grammar {
