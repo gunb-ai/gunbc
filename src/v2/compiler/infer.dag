@@ -97,7 +97,7 @@ import std.optional {
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment }
 import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_named_child, arrow_constant_member_codomain }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
-import v2.std.symbol_index { MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
+import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
 import v2.std.node { symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
@@ -1561,24 +1561,21 @@ fn infer_declaration_reference_facts_indexed(
   path: QualifiedName,
   descent_proof: TerminationProof
 ) -> Outcome<InferredFacts> {
-      match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
+      match infer_resolved_lookup(resolved: resolved, path: path) {
         Absent =>
-          match symbol_index_declaring_path_of(index: resolved.resolved_declarations, target: path) {
+          match symbol_index_declaring_path_of(index: resolved.symbol_index, target: path) {
             MentionDeclaringContested { claimants: claimants } =>
               infer_declaration_identity_contested_rejected(at: n, claimants: claimants)
-            MentionDeclaringUnavailable =>
-              bind_outcome_accepted(
-                od: infer_closure_miss_cause(resolved: resolved, path: path),
-                inner: inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
-              )
             MentionDeclaringUnique { declaring: _ } =>
+              outcome_rejected(infer_declaration_body_unavailable_diagnostic(at: n))
+            MentionDeclaringUnavailable =>
               bind_outcome_accepted(
                 od: infer_closure_miss_cause(resolved: resolved, path: path),
                 inner: inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
               )
           }
         Present { value: declared } =>
-          match symbol_index_declared_payload_at(index: resolved.resolved_declarations, qualified_path: path) {
+          match infer_resolved_payload(resolved: resolved, path: path) {
             Present { value: VariantArmPayload } =>
               infer_variant_arm_value_reference_facts(
                 n: n,
@@ -1620,6 +1617,7 @@ type InferVariantArmReferenceValue
   | VariantArmReferenceValueNotDerived
   | VariantArmReferenceValueIdentityUnavailable
   | VariantArmReferenceValueIdentityContested { claimants: FreeMonoid<QualifiedName> }
+  | VariantArmReferenceValueBodyUnavailable
 
 fn infer_open_type_param_atom(name: Symbol) -> Node {
   Node {
@@ -1629,9 +1627,9 @@ fn infer_open_type_param_atom(name: Symbol) -> Node {
   }
 }
 
-fn infer_coproduct_type_applied_open(index: SymbolIndex, coproduct: QualifiedName) -> Node {
+fn infer_coproduct_type_applied_open(bindings: SymbolIndex, coproduct: QualifiedName) -> Node {
   let head = declaration_reference_node(qn: coproduct, occurrence_id: OccurrenceSynthetic)
-  let params = symbol_index_declared_type_params_at(index: index, qualified_path: coproduct)
+  let params = symbol_index_declared_type_params_at(index: bindings, qualified_path: coproduct)
   match params {
     Empty => head
     Cons { head: _, tail: _ } =>
@@ -1648,17 +1646,17 @@ fn infer_coproduct_type_applied_open(index: SymbolIndex, coproduct: QualifiedNam
   }
 }
 
-fn infer_variant_arm_reference_value(
-  index: SymbolIndex,
+fn infer_variant_arm_reference_value_joined(
+  bindings: SymbolIndex,
   arm_path: QualifiedName,
   declared: Node
 ) -> InferVariantArmReferenceValue {
-  match symbol_index_declaring_path_of(index: index, target: arm_path) {
+  match symbol_index_declaring_path_of(index: bindings, target: arm_path) {
     MentionDeclaringUnavailable => VariantArmReferenceValueIdentityUnavailable
     MentionDeclaringContested { claimants: claimants } =>
       VariantArmReferenceValueIdentityContested { claimants: claimants }
     MentionDeclaringUnique { declaring: _ } =>
-      match infer_coproduct_path_of_variant_arm(index: index, arm_path: arm_path) {
+      match infer_coproduct_path_of_variant_arm_joined(bindings: bindings, arm_path: arm_path) {
         Absent => VariantArmReferenceValueIdentityUnavailable
         Present { value: coproduct } =>
           if infer_empty_product_shape(node: declared) {
@@ -1677,20 +1675,21 @@ fn infer_variant_arm_reference_value_optional(
   match declaration_reference_path_optional(node: node) {
     Absent => optional_absent()
     Present { value: path } =>
-      match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
+      match infer_resolved_lookup(resolved: resolved, path: path) {
         Absent =>
-          match symbol_index_declaring_path_of(index: resolved.resolved_declarations, target: path) {
+          match symbol_index_declaring_path_of(index: resolved.symbol_index, target: path) {
             MentionDeclaringContested { claimants: claimants } =>
               optional_present(value: VariantArmReferenceValueIdentityContested { claimants: claimants })
+            MentionDeclaringUnique { declaring: _ } =>
+              optional_present(value: VariantArmReferenceValueBodyUnavailable)
             MentionDeclaringUnavailable => optional_absent()
-            MentionDeclaringUnique { declaring: _ } => optional_absent()
           }
         Present { value: declared } =>
-          match symbol_index_declared_payload_at(index: resolved.resolved_declarations, qualified_path: path) {
+          match infer_resolved_payload(resolved: resolved, path: path) {
             Present { value: VariantArmPayload } =>
               optional_present(
-                value: infer_variant_arm_reference_value(
-                  index: resolved.resolved_declarations,
+                value: infer_variant_arm_reference_value_joined(
+                  bindings: resolved.symbol_index,
                   arm_path: path,
                   declared: declared
                 )
@@ -1709,8 +1708,8 @@ fn infer_variant_arm_value_reference_facts(
   declared: Node,
   descent_proof: TerminationProof
 ) -> Outcome<InferredFacts> {
-  match infer_variant_arm_reference_value(
-    index: resolved.resolved_declarations,
+  match infer_variant_arm_reference_value_joined(
+    bindings: resolved.symbol_index,
     arm_path: path,
     declared: declared
   ) {
@@ -1718,6 +1717,8 @@ fn infer_variant_arm_value_reference_facts(
       outcome_rejected(infer_declaration_identity_unavailable_diagnostic(at: n))
     VariantArmReferenceValueIdentityContested { claimants: claimants } =>
       infer_declaration_identity_contested_rejected(at: n, claimants: claimants)
+    VariantArmReferenceValueBodyUnavailable =>
+      outcome_rejected(infer_declaration_body_unavailable_diagnostic(at: n))
     VariantArmReferenceValueNotDerived =>
       inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
     VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
@@ -1725,7 +1726,7 @@ fn infer_variant_arm_value_reference_facts(
         o: infer_facts_denoting(
           o: inferred_facts_from_derived_type(
             node: n,
-            derived_type: infer_coproduct_type_applied_open(index: resolved.resolved_declarations, coproduct: coproduct),
+            derived_type: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct),
             descent: Holds { value: descent_proof }
           ),
           declaration: declared
@@ -2005,7 +2006,8 @@ fn infer_arrow_declared_return_type(arrow: Node) -> Optional<Node> {
 fn infer_application_result_type(
   arrow: Node,
   instances: List<TypeVariableInstance>,
-  declarations: SymbolIndex
+  declarations: SymbolIndex,
+  bindings: SymbolIndex
 ) -> Optional<Node> {
   match infer_arrow_declared_return_type(arrow: arrow) {
     Present { value: kernel } => Present { value: kernel }
@@ -2016,7 +2018,7 @@ fn infer_application_result_type(
           match ret.kind {
             TypeNode { connective: _ } =>
               let declared = infer_type_instantiated(
-                t: infer_type_alias_normalized(t: ret, declarations: declarations),
+                t: infer_type_alias_normalized_at(t: ret, bodies: declarations, bindings: bindings),
                 instances: instances
               )
               if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_param_names(n: arrow)) {
@@ -2158,13 +2160,15 @@ fn infer_branch_operand_resolved_type_with_entries(
           match verdict {
             VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
               Holds {
-                value: infer_coproduct_type_applied_open(index: resolved.resolved_declarations, coproduct: coproduct)
+                value: infer_coproduct_type_applied_open(bindings: resolved.symbol_index, coproduct: coproduct)
               }
             VariantArmReferenceValueNotDerived => inferred_facts_resolved_type(facts: facts)
             VariantArmReferenceValueIdentityUnavailable =>
               Violates { diagnostic: infer_declaration_identity_unavailable_diagnostic(at: node) }
             VariantArmReferenceValueIdentityContested { claimants: _ } =>
               Violates { diagnostic: infer_declaration_identity_contested_fatal(at: node) }
+            VariantArmReferenceValueBodyUnavailable =>
+              Violates { diagnostic: infer_declaration_body_unavailable_diagnostic(at: node) }
           }
         Absent =>
           match resolved_tree_lexical_binding(tree: resolved, reference: node) {
@@ -2956,7 +2960,7 @@ fn infer_type_head_and_args(t: Node) -> InferTypeHeadArgs {
 }
 
 fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -> InferMatchCoproductRead {
-  let head_args = infer_type_head_and_args(t: infer_type_alias_normalized(t: scrutinee_type, declarations: resolved.resolved_declarations))
+  let head_args = infer_type_head_and_args(t: infer_type_alias_normalized_at(t: scrutinee_type, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index))
   match declaration_reference_path_optional(node: head_args.head) {
     Absent => CoproductNotDeclared
     Present { value: path } =>
@@ -3279,8 +3283,8 @@ fn infer_coproduct_arm_body_types(
             InferArmBodyTypes {
               derived: acc.derived,
               mismatch: acc.mismatch || !infer_type_equal_ignoring_provenance(
-                a: infer_type_alias_normalized(t: held, declarations: resolved.resolved_declarations),
-                b: infer_type_alias_normalized(t: t, declarations: resolved.resolved_declarations)
+                a: infer_type_alias_normalized_at(t: held, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index),
+                b: infer_type_alias_normalized_at(t: t, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index)
               ),
               underived: acc.underived
             }
@@ -3702,7 +3706,7 @@ fn infer_unify_transform_operand_types(
 }
 
 fn infer_operand_literal_elaborates_at(literal_node: Node, expected: Node, resolved: ResolvedTree) -> Bool {
-  match infer_literal_elaborates_at(literal_node: literal_node, expected: expected, declarations: resolved.resolved_declarations) {
+  match infer_literal_elaborates_at(literal_node: literal_node, expected: expected, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
     InferLiteralElaboratesTo { destination_type: _ } => true
     InferLiteralNotElaborated => false
     InferLiteralElaborationRefused { cause: _ } => false
@@ -4021,6 +4025,7 @@ fn infer_judge_declared_position(
   application: Node,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex,
+  bindings: SymbolIndex,
   formal: InhabitanceFormal,
   produced_at: Node,
   type_params: List<Symbol>,
@@ -4036,7 +4041,7 @@ fn infer_judge_declared_position(
         Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
       }
     Absent =>
-  match infer_literal_elaborates_at(literal_node: produced_at, expected: infer_declared_type_denotation(declared: formal.declared), declarations: declarations) {
+  match infer_literal_elaborates_at(literal_node: produced_at, expected: infer_declared_type_denotation(declared: formal.declared), declarations: declarations, bindings: bindings) {
     InferLiteralElaboratesTo { destination_type: _ } => Accepted { value: instances, diagnostics: None }
     InferLiteralElaborationRefused { cause: cause } =>
       outcome_rejected(Diagnostic { reason: cause, at: node_locus(node: produced_at), correction: Unavailable { reason: CorrectionNotModeled } })
@@ -4061,18 +4066,25 @@ fn infer_judge_declared_position(
             Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
           }
         Holds { value: produced } =>
-          let declared_n = infer_type_alias_normalized(t: formal.declared, declarations: declarations)
+          match infer_node_mention_contested(t: formal.declared, bindings: bindings) {
+            Present { value: claimants } => infer_declaration_identity_contested_rejected(at: application, claimants: claimants)
+            Absent =>
+          match infer_node_mention_contested(t: produced, bindings: bindings) {
+            Present { value: claimants } => infer_declaration_identity_contested_rejected(at: produced_at, claimants: claimants)
+            Absent =>
+          let declared_n = infer_type_alias_normalized_at(t: formal.declared, bodies: declarations, bindings: bindings)
           let closed = infer_close_produced_at_declared(
             declared: declared_n,
             produced: produced,
             instances: instances,
-            declarations: declarations
+            declarations: declarations,
+            bindings: bindings
           )
           let judged = match closed {
             Empty => produced
             Cons { head: _, tail: _ } => infer_type_instantiated(t: produced, instances: closed)
           }
-          let obligation = infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: declared_n, produced: judged, application: application, type_variables: type_params, declarations: declarations)
+          let obligation = infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: declared_n, produced: judged, application: application, type_variables: type_params, declarations: declarations, bindings: bindings)
           match declared_type_inhabitance(obligation: obligation) {
             Inhabits { homomorphism: _ } => Accepted { value: closed, diagnostics: None }
             InhabitanceUndecidable { reason: reason } =>
@@ -4091,6 +4103,8 @@ fn infer_judge_declared_position(
                 )
               )
           }
+          }
+          }
       }
   }
   }
@@ -4102,6 +4116,7 @@ fn infer_judge_declared_position_closing(
   application: Node,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex,
+  bindings: SymbolIndex,
   formal: InhabitanceFormal,
   produced_at: Node,
   type_params: List<Symbol>,
@@ -4112,6 +4127,7 @@ fn infer_judge_declared_position_closing(
     application: application,
     entries: entries,
     declarations: declarations,
+    bindings: bindings,
     formal: formal,
     produced_at: produced_at,
     type_params: type_params,
@@ -4231,6 +4247,28 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
 // refinement or brand does not unfold (infer_alias_is_refined); a generic, opaque or plain
 // declaration is not an alias. Resolution refuses an alias cycle (ExpectedHead), so the unfolding
 // terminates.
+fn infer_indexes_lookup(bindings: SymbolIndex, bodies: SymbolIndex, path: QualifiedName) -> Optional<Node> {
+  match symbol_index_declaring_path_of(index: bindings, target: path) {
+    MentionDeclaringUnique { declaring: declaring } =>
+      symbol_index_lookup(index: bodies, qualified_path: declaring)
+    MentionDeclaringUnavailable => optional_absent()
+    MentionDeclaringContested { claimants: _ } => optional_absent()
+  }
+}
+
+fn infer_resolved_lookup(resolved: ResolvedTree, path: QualifiedName) -> Optional<Node> {
+  infer_indexes_lookup(bindings: resolved.symbol_index, bodies: resolved.resolved_declarations, path: path)
+}
+
+fn infer_resolved_payload(resolved: ResolvedTree, path: QualifiedName) -> Optional<DeclaredPayloadKind> {
+  match symbol_index_declaring_path_of(index: resolved.symbol_index, target: path) {
+    MentionDeclaringUnique { declaring: declaring } =>
+      symbol_index_declared_payload_at(index: resolved.symbol_index, qualified_path: declaring)
+    MentionDeclaringUnavailable => optional_absent()
+    MentionDeclaringContested { claimants: _ } => optional_absent()
+  }
+}
+
 fn infer_type_decl_identity_node(declared: Node, identity: QualifiedName) -> Node {
   match qualified_name_last_segment(qn: identity) {
     Absent => declared
@@ -4242,12 +4280,12 @@ fn infer_type_decl_identity_node(declared: Node, identity: QualifiedName) -> Nod
   }
 }
 
-fn infer_type_alias_stored_at(declarations: SymbolIndex, path: QualifiedName) -> Optional<Node> {
-  match symbol_index_declaring_path_of(index: declarations, target: path) {
+fn infer_type_alias_stored_at(bindings: SymbolIndex, bodies: SymbolIndex, path: QualifiedName) -> Optional<Node> {
+  match symbol_index_declaring_path_of(index: bindings, target: path) {
     MentionDeclaringUnavailable => optional_absent()
     MentionDeclaringContested { claimants: _ } => optional_absent()
-    MentionDeclaringUnique { declaring: identity } =>
-      symbol_index_lookup(index: declarations, qualified_path: identity)
+    MentionDeclaringUnique { declaring: _ } =>
+      infer_indexes_lookup(bindings: bindings, bodies: bodies, path: path)
   }
 }
 
@@ -4268,16 +4306,28 @@ fn infer_type_alias_rhs(declared: Node, aliased: Node, args: List<Node>) -> Opti
   }
 }
 
-fn infer_type_alias_unfolded(t: Node, declarations: SymbolIndex) -> Optional<Node> {
+fn infer_node_mention_contested(t: Node, bindings: SymbolIndex) -> Optional<FreeMonoid<QualifiedName>> {
+  match declaration_reference_path_optional(node: infer_type_head_and_args(t: t).head) {
+    Absent => optional_absent()
+    Present { value: path } =>
+      match symbol_index_declaring_path_of(index: bindings, target: path) {
+        MentionDeclaringContested { claimants: claimants } => optional_present(value: claimants)
+        MentionDeclaringUnique { declaring: _ } => optional_absent()
+        MentionDeclaringUnavailable => optional_absent()
+      }
+  }
+}
+
+fn infer_type_alias_unfolded_at(t: Node, bodies: SymbolIndex, bindings: SymbolIndex) -> Optional<Node> {
   let ha = infer_type_head_and_args(t: t)
   match declaration_reference_path_optional(node: ha.head) {
     Absent => optional_absent()
     Present { value: path } =>
-      match symbol_index_declaring_path_of(index: declarations, target: path) {
+      match symbol_index_declaring_path_of(index: bindings, target: path) {
         MentionDeclaringUnavailable => optional_absent()
         MentionDeclaringContested { claimants: _ } => optional_absent()
         MentionDeclaringUnique { declaring: identity } =>
-          match infer_type_alias_stored_at(declarations: declarations, path: path) {
+          match infer_type_alias_stored_at(bindings: bindings, bodies: bodies, path: path) {
             Absent => optional_absent()
             Present { value: stored } =>
               let declared = infer_type_decl_identity_node(declared: stored, identity: identity)
@@ -4302,19 +4352,19 @@ fn infer_type_alias_unfolded(t: Node, declarations: SymbolIndex) -> Optional<Nod
 // (infer_kernel_value_type_optional): checked before each alias unfolding and inside every Instantiation argument,
 // so `type Alias = v2.std.integer.Int` stops at the kernel atom exactly as a direct reference does, and the generic
 // formal match and the declared-type obligation read ONE normalized type, not two.
-fn infer_type_alias_normalized(t: Node, declarations: SymbolIndex) -> Node {
+fn infer_type_alias_normalized_at(t: Node, bodies: SymbolIndex, bindings: SymbolIndex) -> Node {
   match infer_kernel_value_type_optional(t: t) {
     Present { value: k } => k
     Absent =>
-      match infer_type_alias_unfolded(t: t, declarations: declarations) {
-        Present { value: unfolded } => infer_type_alias_normalized(t: unfolded, declarations: declarations)
+      match infer_type_alias_unfolded_at(t: t, bodies: bodies, bindings: bindings) {
+        Present { value: unfolded } => infer_type_alias_normalized_at(t: unfolded, bodies: bodies, bindings: bindings)
         Absent =>
           match t.kind {
             TypeNode { connective: Instantiation } =>
               Node {
                 kind: t.kind,
                 children: fold(t.children, init: Empty, f: fn(acc, e) {
-                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized(t: e.target, declarations: declarations) })
+                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized_at(t: e.target, bodies: bodies, bindings: bindings) })
                 }),
                 occurrence_id: t.occurrence_id
               }
@@ -4332,12 +4382,12 @@ fn infer_type_alias_normalized(t: Node, declarations: SymbolIndex) -> Node {
 // inhabit a declared `List<Int>`. A mismatch is refused only when neither the argument nor its declared
 // carrier matches. Routing a mismatch to the judge with T still unbound would not decide it: a formal that
 // mentions a type variable is UndecidableGenericFormal there, which re-admits `g(1)` at `List<T>`.
-fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_params: List<Symbol>, instances: List<TypeVariableInstance>, declarations: SymbolIndex) -> InferFormalMatch {
+fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_params: List<Symbol>, instances: List<TypeVariableInstance>, declarations: SymbolIndex, bindings: SymbolIndex) -> InferFormalMatch {
   match infer_match_generic_formal(formal: formal, produced: produced, type_params: type_params, instances: instances, declarations: declarations) {
     InferFormalMatched { instances: matched } => InferFormalMatched { instances: matched }
     InferFormalShapeMismatch =>
       match refinement_declared_carrier(index: declarations, source_type: produced) {
-        Present { value: carrier } => infer_match_generic_formal(formal: formal, produced: infer_type_alias_normalized(t: carrier, declarations: declarations), type_params: type_params, instances: instances, declarations: declarations)
+        Present { value: carrier } => infer_match_generic_formal(formal: formal, produced: infer_type_alias_normalized_at(t: carrier, bodies: declarations, bindings: bindings), type_params: type_params, instances: instances, declarations: declarations)
         Absent => InferFormalShapeMismatch
       }
   }
@@ -4374,7 +4424,7 @@ fn infer_kernel_value_type_optional(t: Node) -> Optional<Node> {
 }
 
 // THE ONE PRODUCER OF A DeclaredTypeObligation in infer: every obligation -- a call argument, a declared return, a
-// fold member or carrier, a generic formal -- is built here, so the ONE alias rule (infer_type_alias_normalized)
+// fold member or carrier, a generic formal -- is built here, so the ONE alias rule (infer_type_alias_normalized_at)
 // reaches every judgment: the declared type, the produced type and the produced type's refinement carrier are
 // all presented with transparent aliases unfolded. The carrier is READ from the produced type as written (a
 // refinement is never unfolded, so its declaration is still the one found), then normalized like the rest.
@@ -4385,15 +4435,16 @@ fn infer_declared_type_obligation(
   produced: Node,
   application: Node,
   type_variables: List<Symbol>,
-  declarations: SymbolIndex
+  declarations: SymbolIndex,
+  bindings: SymbolIndex
 ) -> DeclaredTypeObligation {
   DeclaredTypeObligation {
     position: position,
     parameter_identity: parameter_identity,
-    declared: infer_type_alias_normalized(t: declared, declarations: declarations),
-    produced: infer_type_alias_normalized(t: produced, declarations: declarations),
+    declared: infer_type_alias_normalized_at(t: declared, bodies: declarations, bindings: bindings),
+    produced: infer_type_alias_normalized_at(t: produced, bodies: declarations, bindings: bindings),
     produced_declared_carrier: match refinement_declared_carrier(index: declarations, source_type: produced) {
-      Present { value: c } => Present { value: infer_type_alias_normalized(t: c, declarations: declarations) }
+      Present { value: c } => Present { value: infer_type_alias_normalized_at(t: c, bodies: declarations, bindings: bindings) }
       Absent => Absent
     },
     application: application,
@@ -4489,19 +4540,19 @@ fn infer_literal_elaboration_refusal_reason(cause: LiteralElaborationRefusal) ->
   }
 }
 
-fn infer_literal_elaborates_at(literal_node: Node, expected: Node, declarations: SymbolIndex) -> InferLiteralElaboration {
+fn infer_literal_elaborates_at(literal_node: Node, expected: Node, declarations: SymbolIndex, bindings: SymbolIndex) -> InferLiteralElaboration {
   match dag_canonical_literal_from_node(node: literal_node) {
     Rejected { diagnostics: _ } =>
       match infer_negated_int_literal_value(node: literal_node) {
         Absent => InferLiteralNotElaborated
-        Present { value: v } => infer_int_literal_value_at(value: v, expected: expected, declarations: declarations)
+        Present { value: v } => infer_int_literal_value_at(value: v, expected: expected, declarations: declarations, bindings: bindings)
       }
     Accepted { value: literal, diagnostics: _ } =>
       match literal {
-        DagCanonicalIntLiteral { magnitude: m } => infer_int_literal_value_at(value: m, expected: expected, declarations: declarations)
+        DagCanonicalIntLiteral { magnitude: m } => infer_int_literal_value_at(value: m, expected: expected, declarations: declarations, bindings: bindings)
         DagCanonicalBoolLiteral { value: _ } => InferLiteralNotElaborated
         DagCanonicalSymbolLiteral { symbol: _ } => InferLiteralNotElaborated
-        DagCanonicalStringLiteral { value: _ } => infer_string_literal_at(expected: expected, declarations: declarations)
+        DagCanonicalStringLiteral { value: _ } => infer_string_literal_at(expected: expected, declarations: declarations, bindings: bindings)
       }
   }
 }
@@ -4512,8 +4563,8 @@ fn infer_literal_elaborates_at(literal_node: Node, expected: Node, declarations:
 // refinement, is not unfolded (infer_alias_is_refined). A head with no single element, or a (head, element)
 // no row names -- FreeMonoid over Int, or over a Char declared elsewhere -- is not elaborated, and the
 // relation then refuses host text there.
-fn infer_string_literal_at(expected: Node, declarations: SymbolIndex) -> InferLiteralElaboration {
-  let wanted = infer_type_alias_normalized(t: expected, declarations: declarations)
+fn infer_string_literal_at(expected: Node, declarations: SymbolIndex, bindings: SymbolIndex) -> InferLiteralElaboration {
+  let wanted = infer_type_alias_normalized_at(t: expected, bodies: declarations, bindings: bindings)
   match infer_type_declaration_ref(t: wanted) {
     Absent => InferLiteralNotElaborated
     Present { value: destination } =>
@@ -4536,8 +4587,8 @@ fn infer_string_literal_at(expected: Node, declarations: SymbolIndex) -> InferLi
 
 // An integer value at an expected type: the grounding row first (the carrier IS the kernel value, its range decides),
 // else the homomorphism table (a structural destination). The two never both answer, by the partition law.
-fn infer_int_literal_value_at(value: Int, expected: Node, declarations: SymbolIndex) -> InferLiteralElaboration {
-  let wanted = infer_type_alias_normalized(t: expected, declarations: declarations)
+fn infer_int_literal_value_at(value: Int, expected: Node, declarations: SymbolIndex, bindings: SymbolIndex) -> InferLiteralElaboration {
+  let wanted = infer_type_alias_normalized_at(t: expected, bodies: declarations, bindings: bindings)
   match infer_type_declaration_ref(t: wanted) {
     Absent => InferLiteralNotElaborated
     Present { value: destination } =>
@@ -4614,10 +4665,11 @@ fn infer_close_produced_at_declared(
   declared: Node,
   produced: Node,
   instances: List<TypeVariableInstance>,
-  declarations: SymbolIndex
+  declarations: SymbolIndex,
+  bindings: SymbolIndex
 ) -> List<TypeVariableInstance> {
-  let declared_n = infer_type_alias_normalized(t: declared, declarations: declarations)
-  let produced_n = infer_type_alias_normalized(t: produced, declarations: declarations)
+  let declared_n = infer_type_alias_normalized_at(t: declared, bodies: declarations, bindings: bindings)
+  let produced_n = infer_type_alias_normalized_at(t: produced, bodies: declarations, bindings: bindings)
   let open_params = infer_produced_open_type_params(produced: produced_n, declarations: declarations)
   match open_params {
     Empty => instances
@@ -4627,7 +4679,8 @@ fn infer_close_produced_at_declared(
         produced: declared_n,
         type_params: open_params,
         instances: instances,
-        declarations: declarations
+        declarations: declarations,
+        bindings: bindings
       ) {
         InferFormalShapeMismatch => instances
         InferFormalMatched { instances: matched } => matched
@@ -4671,6 +4724,7 @@ fn infer_judge_generic_formal(
   application: Node,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex,
+  bindings: SymbolIndex,
   formal: InhabitanceFormal,
   arg: Node,
   type_params: List<Symbol>,
@@ -4691,11 +4745,11 @@ fn infer_judge_generic_formal(
         Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
       }
     Present { value: produced } =>
-      match infer_match_generic_formal_or_carrier(formal: infer_type_alias_normalized(t: formal.declared, declarations: declarations), produced: infer_type_alias_normalized(t: produced, declarations: declarations), type_params: type_params, instances: instances, declarations: declarations) {
+      match infer_match_generic_formal_or_carrier(formal: infer_type_alias_normalized_at(t: formal.declared, bodies: declarations, bindings: bindings), produced: infer_type_alias_normalized_at(t: produced, bodies: declarations, bindings: bindings), type_params: type_params, instances: instances, declarations: declarations, bindings: bindings) {
         InferFormalShapeMismatch =>
           outcome_rejected(
             application_argument_does_not_inhabit_diagnostic(
-              obligation: infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: infer_type_instantiated(t: formal.declared, instances: instances)), produced: produced, application: application, type_variables: type_params, declarations: declarations),
+              obligation: infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: infer_type_instantiated(t: formal.declared, instances: instances)), produced: produced, application: application, type_variables: type_params, declarations: declarations, bindings: bindings),
               find_witness_reason: ^find_witness_reason_no_candidate
             )
           )
@@ -4705,6 +4759,7 @@ fn infer_judge_generic_formal(
             application: application,
             entries: entries,
             declarations: declarations,
+            bindings: bindings,
             formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: infer_type_instantiated(t: formal.declared, instances: matched) },
             produced_at: arg,
             type_params: type_params,
@@ -4729,6 +4784,7 @@ fn infer_judge_application_argument_instantiating(
   application: Node,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex,
+  bindings: SymbolIndex,
   formal: InhabitanceFormal,
   arg: Node,
   type_params: List<Symbol>,
@@ -4737,9 +4793,9 @@ fn infer_judge_application_argument_instantiating(
   match inhabitance_formal_declaration(declared: formal.declared, type_params: type_params) {
     DeclaredType { declared: declared } =>
       if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_params) {
-        infer_judge_generic_formal(position: position, application: application, entries: entries, declarations: declarations, formal: formal, arg: arg, type_params: type_params, instances: instances)
+        infer_judge_generic_formal(position: position, application: application, entries: entries, declarations: declarations, bindings: bindings, formal: formal, arg: arg, type_params: type_params, instances: instances)
       } else {
-        match infer_judge_declared_position(position: position, application: application, entries: entries, declarations: declarations, formal: formal, produced_at: arg, type_params: type_params, instances: instances) {
+        match infer_judge_declared_position(position: position, application: application, entries: entries, declarations: declarations, bindings: bindings, formal: formal, produced_at: arg, type_params: type_params, instances: instances) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: closed, diagnostics: d } => Accepted { value: closed, diagnostics: d }
         }
@@ -4752,6 +4808,7 @@ fn infer_judge_application_argument_instantiating(
             application: application,
             entries: entries,
             declarations: declarations,
+            bindings: bindings,
             formal: InhabitanceFormal { parameter_identity: formal.parameter_identity, declared: instance },
             produced_at: arg,
             type_params: type_params,
@@ -4793,7 +4850,8 @@ fn infer_judge_application_argument_instantiating(
 fn infer_application_argument_inhabitance(
   node: Node,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex
+  declarations: SymbolIndex,
+  bindings: SymbolIndex
 ) -> Outcome<List<TypeVariableInstance>> {
   match infer_application_formals(node: node, entries: entries) {
     FormalsUnresolved =>
@@ -4811,18 +4869,19 @@ fn infer_application_argument_inhabitance(
       match infer_application_formal_args(node: node, formals: formals, entries: entries) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: pairs, diagnostics: _ } =>
-          let judged = infer_entries_with_callback_signatures(application: node, pairs: pairs, entries: entries, declarations: declarations)
+          let judged = infer_entries_with_callback_signatures(application: node, pairs: pairs, entries: entries, declarations: declarations, bindings: bindings)
           match infer_judge_formal_args(
             position: position_direct_call_argument(),
             site: JudgedAtApplication { application: node },
             entries: judged,
             declarations: declarations,
+            bindings: bindings,
             pairs: infer_pairs_callbacks_last(pairs: pairs),
             type_params: infer_application_type_params(node: node, entries: entries)
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: instances, diagnostics: d } =>
-              match infer_application_structure_bounds(node: node, entries: judged, declarations: declarations, instances: instances) {
+              match infer_application_structure_bounds(node: node, entries: judged, declarations: declarations, bindings: bindings, instances: instances) {
                 Present { value: refusal } => outcome_rejected(refusal)
                 Absent => Accepted { value: instances, diagnostics: d }
               }
@@ -4844,6 +4903,7 @@ fn infer_application_structure_bounds(
   node: Node,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex,
+  bindings: SymbolIndex,
   instances: List<TypeVariableInstance>
 ) -> Optional<Diagnostic> {
   match infer_application_callee_arrow_with_facts(node: node, entries: entries) {
@@ -4854,7 +4914,7 @@ fn infer_application_structure_bounds(
           Present { value: _ } => acc
           Absent =>
             if edge_is_type_params(e: e) {
-              infer_binder_set_structure_bounds(node: node, binders: e.target, declarations: declarations, instances: instances)
+              infer_binder_set_structure_bounds(node: node, binders: e.target, declarations: declarations, bindings: bindings, instances: instances)
             } else {
               acc
             }
@@ -4863,7 +4923,7 @@ fn infer_application_structure_bounds(
   }
 }
 
-fn infer_binder_set_structure_bounds(node: Node, binders: Node, declarations: SymbolIndex, instances: List<TypeVariableInstance>) -> Optional<Diagnostic> {
+fn infer_binder_set_structure_bounds(node: Node, binders: Node, declarations: SymbolIndex, bindings: SymbolIndex, instances: List<TypeVariableInstance>) -> Optional<Diagnostic> {
   fold(binders.children, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
@@ -4875,9 +4935,9 @@ fn infer_binder_set_structure_bounds(node: Node, binders: Node, declarations: Sy
                 match type_variable_instance_lookup(instances: instances, binder: name) {
                   Absent => optional_absent()
                   Present { value: instance } =>
-                    match infer_instance_structure_inhabitance_in(rows: dag_algebra_inhabitance_decls(), instance: instance, structure: structure, declarations: declarations) {
+                    match infer_instance_structure_inhabitance_in(rows: dag_algebra_inhabitance_decls(), instance: instance, structure: structure, declarations: declarations, bindings: bindings) {
                       StructureInhabited { generator: derived } =>
-                        infer_bound_generator_agreement(node: node, structure: structure, derived: derived, declarations: declarations, instances: instances)
+                        infer_bound_generator_agreement(node: node, structure: structure, derived: derived, declarations: declarations, bindings: bindings, instances: instances)
                       StructureNotInhabited =>
                         optional_present(value: Diagnostic {
                           reason: ^infer_reason_type_argument_does_not_inhabit_bound,
@@ -4933,7 +4993,7 @@ fn infer_bound_structure_fields(structure: Node) -> List<Symbol> {
 // (DESIGN section 5). DECLARED FRONTIER: the derived E as the element of the call's RESULT type (first : M -> Optional<E>) is
 // not consumed here -- that is result typing for a callee's declared codomain (gunbc.recurring_failure_mode
 // call_result_of_a_declared_return_type_unjudged_in_v2_infer), which the collection 'first' row lands on.
-fn infer_bound_generator_agreement(node: Node, structure: Node, derived: Optional<Node>, declarations: SymbolIndex, instances: List<TypeVariableInstance>) -> Optional<Diagnostic> {
+fn infer_bound_generator_agreement(node: Node, structure: Node, derived: Optional<Node>, declarations: SymbolIndex, bindings: SymbolIndex, instances: List<TypeVariableInstance>) -> Optional<Diagnostic> {
   match free_monoid_structure_generator_declaration(inhabitance: structure) {
     GeneratorNotDeclared => optional_absent()
     GeneratorMalformed { cause: c } =>
@@ -4955,8 +5015,8 @@ fn infer_bound_generator_agreement(node: Node, structure: Node, derived: Optiona
             Absent => optional_absent()
             Present { value: fixed } =>
               if infer_type_equal_ignoring_provenance(
-                a: infer_type_alias_normalized(t: fixed, declarations: declarations),
-                b: infer_type_alias_normalized(t: generator, declarations: declarations)
+                a: infer_type_alias_normalized_at(t: fixed, bodies: declarations, bindings: bindings),
+                b: infer_type_alias_normalized_at(t: generator, bodies: declarations, bindings: bindings)
               ) {
                 optional_absent()
               } else {
@@ -4983,15 +5043,15 @@ type InferStructureInhabitance
   | StructureNotInhabited
   | StructureRowMalformed { cause: Symbol }
 
-fn infer_instance_structure_inhabitance_in(rows: List<AlgebraInhabitanceDecl>, instance: Node, structure: Node, declarations: SymbolIndex) -> InferStructureInhabitance {
+fn infer_instance_structure_inhabitance_in(rows: List<AlgebraInhabitanceDecl>, instance: Node, structure: Node, declarations: SymbolIndex, bindings: SymbolIndex) -> InferStructureInhabitance {
   let fields = infer_bound_structure_fields(structure: structure)
-  let wanted = infer_type_alias_normalized(t: instance, declarations: declarations)
+  let wanted = infer_type_alias_normalized_at(t: instance, bodies: declarations, bindings: bindings)
   fold(rows, init: StructureNotInhabited, f: fn(acc, row) {
     match acc {
       StructureInhabited { generator: _ } => acc
       StructureRowMalformed { cause: _ } => acc
       StructureNotInhabited =>
-        match infer_row_inhabitant_matched_optional(row_inhabitant: row.inhabitant, wanted: wanted, declarations: declarations) {
+        match infer_row_inhabitant_matched_optional(row_inhabitant: row.inhabitant, wanted: wanted, declarations: declarations, bindings: bindings) {
           Absent => acc
           Present { value: matched } =>
             match infer_row_declares_fields(row: row, fields: fields) {
@@ -5025,12 +5085,12 @@ fn infer_row_declares_fields(row: AlgebraInhabitanceDecl, fields: List<Symbol>) 
   })
 }
 
-fn infer_row_inhabitant_matched_optional(row_inhabitant: Node, wanted: Node, declarations: SymbolIndex) -> Optional<List<TypeVariableInstance>> {
+fn infer_row_inhabitant_matched_optional(row_inhabitant: Node, wanted: Node, declarations: SymbolIndex, bindings: SymbolIndex) -> Optional<List<TypeVariableInstance>> {
   match infer_match_generic_formal(formal: row_inhabitant, produced: wanted, type_params: dag_algebra_inhabitance_row_type_params(), instances: Empty, declarations: declarations) {
     InferFormalShapeMismatch => optional_absent()
     InferFormalMatched { instances: matched } =>
       if infer_type_equal_ignoring_provenance(
-        a: infer_type_alias_normalized(t: infer_type_instantiated(t: row_inhabitant, instances: matched), declarations: declarations),
+        a: infer_type_alias_normalized_at(t: infer_type_instantiated(t: row_inhabitant, instances: matched), bodies: declarations, bindings: bindings),
         b: wanted
       ) {
         optional_present(value: matched)
@@ -5063,6 +5123,7 @@ fn infer_judge_formal_args(
   site: InferJudgedSite,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex,
+  bindings: SymbolIndex,
   pairs: List<InhabitanceFormalArg>,
   type_params: List<Symbol>
 ) -> Outcome<List<TypeVariableInstance>> {
@@ -5078,6 +5139,7 @@ fn infer_judge_formal_args(
             application: infer_judged_site_node(site: site, actual: pair.arg),
             entries: entries,
             declarations: declarations,
+            bindings: bindings,
             formal: pair.formal,
             arg: pair.arg,
             type_params: type_params,
@@ -5733,7 +5795,7 @@ fn infer_gather_application_row_on_arguments(
   kinds: List<RosterKindIndex>,
   resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
-  match infer_application_argument_inhabitance(node: node, entries: entries, declarations: resolved.resolved_declarations) {
+  match infer_application_argument_inhabitance(node: node, entries: entries, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -5831,6 +5893,7 @@ fn infer_bind_annotation_check(node: Node, entries: List<InferredFactsEntry>, re
             application: annotation,
             entries: entries,
             declarations: resolved.resolved_declarations,
+            bindings: resolved.symbol_index,
             formal: InhabitanceFormal { parameter_identity: ^let_annotation, declared: annotation },
             produced_at: bound,
             type_params: [],
@@ -5913,7 +5976,7 @@ fn infer_transform_derived_optional(
   } else if infer_transform_is_cast(node: node) {
     infer_transform_cast_optional(node: node, entries: entries, resolved: resolved)
   } else if arguments_decided {
-    infer_transform_application_optional(node: node, entries: entries, instances: instances, declarations: resolved.resolved_declarations)
+    infer_transform_application_optional(node: node, entries: entries, instances: instances, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index)
   } else {
     optional_absent()
   }
@@ -5930,6 +5993,7 @@ fn infer_transform_application_optional(
   entries: List<InferredFactsEntry>,
   instances: List<TypeVariableInstance>,
   declarations: SymbolIndex,
+  bindings: SymbolIndex
 ) -> Optional<Outcome<InferredFacts>> {
   match infer_application_callee_arrow_with_facts(node: node, entries: entries) {
     Absent => optional_absent()
@@ -5943,7 +6007,7 @@ fn infer_transform_application_optional(
           if !inferred_facts_grounding_derived(facts: arrow_facts) {
             optional_absent()
           } else {
-            match infer_application_result_type(arrow: arrow, instances: instances, declarations: declarations) {
+            match infer_application_result_type(arrow: arrow, instances: instances, declarations: declarations, bindings: bindings) {
               Absent => optional_absent()
               Present { value: return_type } =>
                 optional_present(
@@ -6843,10 +6907,11 @@ type InferConstructRead
   | ConstructIsVariantArm { construct: InferVariantArmConstruct }
   | ConstructVariantArmIdentityUnavailable
   | ConstructVariantArmIdentityContested { claimants: FreeMonoid<QualifiedName> }
+  | ConstructVariantArmBodyUnavailable
   | ConstructNotARecord
 
 fn infer_record_formals(resolved: ResolvedTree, path: QualifiedName, authored: Node) -> InferRecordFormals {
-  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
+  match infer_resolved_lookup(resolved: resolved, path: path) {
     Present { value: declaration } => RecordFormalsResolved { payload: declaration }
     Absent => RecordFormalsAuthored { payload: authored }
   }
@@ -6869,7 +6934,17 @@ fn infer_coproduct_path_of_variant_arm(
   index: SymbolIndex,
   arm_path: QualifiedName
 ) -> Optional<QualifiedName> {
-  match symbol_index_declaring_path_of(index: index, target: arm_path) {
+  infer_coproduct_path_of_variant_arm_joined(bindings: index, arm_path: arm_path)
+}
+
+// THE COPRODUCT PATH IS THE DECLARING IDENTITY'S PARENT, not a body lookup. Type parameters
+// for an applied-open type live on symbol_index at that path. A missing Disj node is
+// infer_reason_declaration_body_unavailable at the site that needs the body, not absence of the coproduct.
+fn infer_coproduct_path_of_variant_arm_joined(
+  bindings: SymbolIndex,
+  arm_path: QualifiedName
+) -> Optional<QualifiedName> {
+  match symbol_index_declaring_path_of(index: bindings, target: arm_path) {
     MentionDeclaringUnavailable => optional_absent()
     MentionDeclaringContested { claimants: _ } => optional_absent()
     MentionDeclaringUnique { declaring: declaring } =>
@@ -6877,13 +6952,10 @@ fn infer_coproduct_path_of_variant_arm(
         Empty => optional_absent()
         Cons { head: _, tail: _ } =>
           let coproduct = qualified_name_init(qn: declaring)
-          if symbol_index_is_module_root_at(index: index, qualified_path: coproduct) {
+          if symbol_index_is_module_root_at(index: bindings, qualified_path: coproduct) {
             optional_absent()
           } else {
-            match symbol_index_lookup(index: index, qualified_path: coproduct) {
-              Absent => optional_absent()
-              Present { value: _ } => optional_present(value: coproduct)
-            }
+            optional_present(value: coproduct)
           }
       }
   }
@@ -6932,16 +7004,24 @@ fn infer_declaration_identity_contested_rejected<T>(at: Node, claimants: FreeMon
   Rejected { diagnostics: infer_declaration_identity_contested_diagnostics(at: at, claimants: claimants) }
 }
 
+fn infer_declaration_body_unavailable_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_reason_declaration_body_unavailable,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
 fn infer_variant_arm_construct(
   reference: Node,
   resolved: ResolvedTree,
   declared_path: QualifiedName
 ) -> InferConstructRead {
-  match infer_coproduct_path_of_variant_arm(index: resolved.resolved_declarations, arm_path: declared_path) {
+  match infer_coproduct_path_of_variant_arm_joined(bindings: resolved.symbol_index, arm_path: declared_path) {
     Absent => ConstructVariantArmIdentityUnavailable
     Present { value: coproduct } =>
-      match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: declared_path) {
-        Absent => ConstructVariantArmIdentityUnavailable
+      match infer_resolved_lookup(resolved: resolved, path: declared_path) {
+        Absent => ConstructVariantArmBodyUnavailable
         Present { value: resolved_decl } =>
           ConstructIsVariantArm {
             construct: InferVariantArmConstruct {
@@ -6950,7 +7030,7 @@ fn infer_variant_arm_construct(
               variant_path: coproduct,
               formals: infer_record_formals(resolved: resolved, path: declared_path, authored: resolved_decl),
               type_params: symbol_index_declared_type_params_at(
-                index: resolved.resolved_declarations,
+                index: resolved.symbol_index,
                 qualified_path: coproduct
               )
             }
@@ -6975,13 +7055,13 @@ fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConst
       match declaration_reference_path_optional(node: reference) {
         Absent => ConstructNotARecord
         Present { value: path } =>
-          match symbol_index_declared_payload_at(index: resolved.resolved_declarations, qualified_path: path) {
+          match infer_resolved_payload(resolved: resolved, path: path) {
             Absent => ConstructNotARecord
             Present { value: kind } =>
               match kind {
                 VariantArmPayload =>
                   match symbol_index_declaring_path_of(
-                    index: resolved.resolved_declarations,
+                    index: resolved.symbol_index,
                     target: path
                   ) {
                     MentionDeclaringUnavailable => ConstructVariantArmIdentityUnavailable
@@ -6995,7 +7075,7 @@ fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConst
                       )
                   }
                 RecordTypePayload =>
-                  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
+                  match infer_resolved_lookup(resolved: resolved, path: path) {
                     Absent => ConstructNotARecord
                     Present { value: resolved_decl } =>
                       ConstructIsRecord {
@@ -7003,10 +7083,12 @@ fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConst
                           record: reference,
                           path: path,
                           formals: infer_record_formals(resolved: resolved, path: path, authored: resolved_decl),
-                          type_params: symbol_index_declared_type_params_at(
-                            index: resolved.resolved_declarations,
-                            qualified_path: path
-                          )
+                          type_params: match symbol_index_declaring_path_of(index: resolved.symbol_index, target: path) {
+                            MentionDeclaringUnique { declaring: declaring } =>
+                              symbol_index_declared_type_params_at(index: resolved.symbol_index, qualified_path: declaring)
+                            MentionDeclaringUnavailable => Empty
+                            MentionDeclaringContested { claimants: _ } => Empty
+                          }
                         }
                       }
                   }
@@ -7316,6 +7398,7 @@ fn infer_record_construct_facts(
   construct: InferRecordConstruct,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex,
+  bindings: SymbolIndex,
   partials: List<Node>,
 ) -> Outcome<InferConstructedFacts> {
   infer_construct_facts_on_entries(
@@ -7326,6 +7409,7 @@ fn infer_record_construct_facts(
     type_params: construct.type_params,
     entries: entries,
     declarations: declarations,
+    bindings: bindings,
     partials: partials
   )
 }
@@ -7338,6 +7422,7 @@ fn infer_variant_construct_facts(
   construct: InferVariantArmConstruct,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex,
+  bindings: SymbolIndex,
   partials: List<Node>,
 ) -> Outcome<InferConstructedFacts> {
   infer_construct_facts_on_entries(
@@ -7348,6 +7433,7 @@ fn infer_variant_construct_facts(
     type_params: construct.type_params,
     entries: entries,
     declarations: declarations,
+    bindings: bindings,
     partials: partials
   )
 }
@@ -7360,6 +7446,7 @@ fn infer_construct_facts_on_entries(
   type_params: List<Symbol>,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex,
+  bindings: SymbolIndex,
   partials: List<Node>,
 ) -> Outcome<InferConstructedFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -7392,6 +7479,7 @@ fn infer_construct_facts_on_entries(
                     site: JudgedAtEachActual,
                     entries: entries,
                     declarations: declarations,
+                    bindings: bindings,
                     pairs: pairs,
                     type_params: type_params
                   ) {
@@ -7495,12 +7583,13 @@ fn infer_gather_record_construct_row_on_entries(
   construct: InferRecordConstruct,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex,
+  bindings: SymbolIndex,
   pending: Diagnostics,
   partials: List<Node>,
 ) -> InferGatherFoldAcc {
   infer_gather_constructed_facts_row(
     node: node,
-    formed: infer_record_construct_facts(node: node, construct: construct, entries: entries, declarations: declarations, partials: partials),
+    formed: infer_record_construct_facts(node: node, construct: construct, entries: entries, declarations: declarations, bindings: bindings, partials: partials),
     pending: pending
   )
 }
@@ -7510,12 +7599,13 @@ fn infer_gather_variant_construct_row_on_entries(
   construct: InferVariantArmConstruct,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex,
+  bindings: SymbolIndex,
   pending: Diagnostics,
   partials: List<Node>,
 ) -> InferGatherFoldAcc {
   infer_gather_constructed_facts_row(
     node: node,
-    formed: infer_variant_construct_facts(node: node, construct: construct, entries: entries, declarations: declarations, partials: partials),
+    formed: infer_variant_construct_facts(node: node, construct: construct, entries: entries, declarations: declarations, bindings: bindings, partials: partials),
     pending: pending
   )
 }
@@ -7548,7 +7638,7 @@ fn infer_gather_settled_row(
       if infer_is_let_bind(bind: acc.node) {
         infer_gather_let_result_row(node: acc.node, entries: merged_entries, pending: merged_pending, partials: partials, kinds: kinds, resolved: resolved)
       } else {
-      match infer_declared_position_check(node: acc.node, entries: merged_entries, declarations: resolved.resolved_declarations) {
+      match infer_declared_position_check(node: acc.node, entries: merged_entries, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
         Rejected { diagnostics: r } =>
           infer_gather_fold_acc_failed(
             node: acc.node,
@@ -7576,12 +7666,12 @@ fn infer_gather_settled_row(
 // THE DECLARED POSITIONS A SETTLED NODE OWES: a binder node's default is judged at the binder's declared
 // type (infer_binder_default_check), and an Arrow's body at its declared return
 // (infer_arrow_declared_return_check). Any other node owes nothing here.
-fn infer_declared_position_check(node: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Outcome<List<InferredFactsEntry>> {
+fn infer_declared_position_check(node: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex, bindings: SymbolIndex) -> Outcome<List<InferredFactsEntry>> {
   match binder_node_parts(n: node) {
-    Present { value: parts } => infer_binder_default_check(parts: parts, entries: entries, declarations: declarations)
+    Present { value: parts } => infer_binder_default_check(parts: parts, entries: entries, declarations: declarations, bindings: bindings)
     Absent =>
       bind_outcome(o: infer_generic_default_refusal(node: node), f: fn(_) {
-        infer_arrow_declared_return_check(node: node, entries: entries, declarations: declarations)
+        infer_arrow_declared_return_check(node: node, entries: entries, declarations: declarations, bindings: bindings)
       })
   }
 }
@@ -7667,7 +7757,7 @@ fn infer_binder_default_generic_unmodeled_diagnostic(default: Node) -> Diagnosti
 // default owes nothing. The default is judged with no type variables in scope, so a default whose
 // type mentions the declaring Arrow's own type parameter does not inhabit an unrelated type by
 // accident: it is refused, located at the default, not assumed.
-fn infer_binder_default_check(parts: BinderParts, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Outcome<List<InferredFactsEntry>> {
+fn infer_binder_default_check(parts: BinderParts, entries: List<InferredFactsEntry>, declarations: SymbolIndex, bindings: SymbolIndex) -> Outcome<List<InferredFactsEntry>> {
   match parts.default {
     Absent => outcome_accepted(entries)
     Present { value: default } =>
@@ -7676,6 +7766,7 @@ fn infer_binder_default_check(parts: BinderParts, entries: List<InferredFactsEnt
         application: default,
         entries: entries,
         declarations: declarations,
+        bindings: bindings,
         formal: InhabitanceFormal { parameter_identity: ^binder_default, declared: parts.type_node },
         produced_at: default,
         type_params: [],
@@ -7693,7 +7784,7 @@ fn infer_binder_default_check(parts: BinderParts, entries: List<InferredFactsEnt
 // UndecidableGenericFormal, counted. An Arrow with no body is a signature (a fn type, a census-grade
 // declaration) and owes nothing here; one with two bodies, or a body but no declared return, is a
 // malformed Arrow and refuses.
-fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Outcome<List<InferredFactsEntry>> {
+fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex, bindings: SymbolIndex) -> Outcome<List<InferredFactsEntry>> {
   match node.kind {
     TypeNode { connective: Arrow } =>
       match arrow_body_target_lookup(children: node.children) {
@@ -7707,6 +7798,7 @@ fn infer_arrow_declared_return_check(node: Node, entries: List<InferredFactsEntr
                 application: body,
                 entries: entries,
                 declarations: declarations,
+                bindings: bindings,
                 formal: InhabitanceFormal { parameter_identity: ^declared_return, declared: declared },
                 produced_at: body,
                 type_params: type_param_names(n: node),
@@ -7748,6 +7840,7 @@ fn infer_gather_settled_unannotated_row(
               construct: construct,
               entries: merged_entries,
               declarations: resolved.resolved_declarations,
+              bindings: resolved.symbol_index,
               pending: merged_pending,
               partials: partials
             )
@@ -7757,6 +7850,7 @@ fn infer_gather_settled_unannotated_row(
               construct: construct,
               entries: merged_entries,
               declarations: resolved.resolved_declarations,
+              bindings: resolved.symbol_index,
               pending: merged_pending,
               partials: partials
             )
@@ -7774,6 +7868,16 @@ fn infer_gather_settled_unannotated_row(
             infer_gather_fold_acc_failed(
               node: acc.node,
               pending: infer_declaration_identity_contested_diagnostics(at: acc.node, claimants: claimants),
+              await_branch_row: acc.await_branch_row,
+              await_match_row: acc.await_match_row,
+              await_loop_row: acc.await_loop_row,
+              await_transform_row: acc.await_transform_row,
+              children_remaining: acc.children_remaining
+            )
+          ConstructVariantArmBodyUnavailable =>
+            infer_gather_fold_acc_failed(
+              node: acc.node,
+              pending: diagnostics_singleton(d: infer_declaration_body_unavailable_diagnostic(at: acc.node)),
               await_branch_row: acc.await_branch_row,
               await_match_row: acc.await_match_row,
               await_loop_row: acc.await_loop_row,
@@ -7907,7 +8011,7 @@ fn infer_fold_member_frame(loop_node: Node, frame: InferFrame, acc: InferGatherF
           match inferred_facts_resolved_type(facts: facts) {
             Violates { diagnostic: _ } => infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_member_domain_type_not_derived, at: domain)
             Holds { value: domain_type } =>
-              match fold_collection_member_type(domain_type: infer_type_alias_normalized(t: domain_type, declarations: resolved.resolved_declarations)) {
+              match fold_collection_member_type(domain_type: infer_type_alias_normalized_at(t: domain_type, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index)) {
                 Absent => infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_member_domain_not_a_collection, at: domain)
                 Present { value: member } =>
                   match fold_step_member_formal(step: step) {
@@ -7943,7 +8047,7 @@ fn infer_fold_member_formal_frame(frame: InferFrame, formal: FoldMemberFormal, m
 }
 
 fn infer_fold_member_judged_frame(frame: InferFrame, formal: FoldMemberFormal, member: Node, step: Node, resolved: ResolvedTree) -> InferFrame {
-  let obligation = infer_declared_type_obligation(position: PositionDirectCallArgument, parameter_identity: formal.formal.name, declared: infer_declared_type_denotation(declared: formal.formal.type_node), produced: member, application: formal.formal.type_node, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations)
+  let obligation = infer_declared_type_obligation(position: PositionDirectCallArgument, parameter_identity: formal.formal.name, declared: infer_declared_type_denotation(declared: formal.formal.type_node), produced: member, application: formal.formal.type_node, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations, bindings: resolved.symbol_index)
   match declared_type_inhabitance(obligation: obligation) {
     Inhabits { homomorphism: _ } => InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain }
     InhabitanceUndecidable { reason: _ } =>
@@ -8038,7 +8142,7 @@ type InferCallbackExpectation {
   type_params: List<Symbol>
 }
 
-fn infer_callback_expectation(application: Node, callback: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Optional<InferCallbackExpectation> {
+fn infer_callback_expectation(application: Node, callback: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex, bindings: SymbolIndex) -> Optional<InferCallbackExpectation> {
   match infer_application_formals(node: application, entries: entries) {
     FormalsUnresolved => optional_absent()
     FormalsOrderRefused { reason: _ } => optional_absent()
@@ -8050,9 +8154,9 @@ fn infer_callback_expectation(application: Node, callback: Node, entries: List<I
             Absent => optional_absent()
             Present { value: pair } =>
               let type_params = infer_application_type_params(node: application, entries: entries)
-              let instances = infer_settled_actual_instances(pairs: pairs, entries: entries, type_params: type_params, declarations: declarations)
+              let instances = infer_settled_actual_instances(pairs: pairs, entries: entries, type_params: type_params, declarations: declarations, bindings: bindings)
               optional_present(value: InferCallbackExpectation {
-                expected: infer_type_alias_normalized(t: infer_type_instantiated(t: pair.formal.declared, instances: instances), declarations: declarations),
+                expected: infer_type_alias_normalized_at(t: infer_type_instantiated(t: pair.formal.declared, instances: instances), bodies: declarations, bindings: bindings),
                 type_params: type_params
               })
           }
@@ -8061,7 +8165,7 @@ fn infer_callback_expectation(application: Node, callback: Node, entries: List<I
 }
 
 fn infer_callback_argument_frame(application: Node, frame: InferFrame, acc: InferGatherFoldAcc, callback: Node, resolved: ResolvedTree) -> InferFrame {
-  match infer_callback_expectation(application: application, callback: callback, entries: acc.entries, declarations: resolved.resolved_declarations) {
+  match infer_callback_expectation(application: application, callback: callback, entries: acc.entries, declarations: resolved.resolved_declarations, bindings: resolved.symbol_index) {
     Absent => frame
     Present { value: e } => infer_callback_formal_frame(frame: frame, expected: e.expected, callback: callback, type_params: e.type_params)
   }
@@ -8079,7 +8183,7 @@ fn infer_callback_formal_arg(pairs: List<InhabitanceFormalArg>, callback: Node) 
 // The application's instances as far as its settled actuals fix them. A callback actual is not settled
 // yet and contributes nothing; an actual whose type is not derived, or does not match its formal's shape,
 // contributes nothing here -- the row judging it afterwards reports that, typed and located.
-fn infer_settled_actual_instances(pairs: List<InhabitanceFormalArg>, entries: List<InferredFactsEntry>, type_params: List<Symbol>, declarations: SymbolIndex) -> List<TypeVariableInstance> {
+fn infer_settled_actual_instances(pairs: List<InhabitanceFormalArg>, entries: List<InferredFactsEntry>, type_params: List<Symbol>, declarations: SymbolIndex, bindings: SymbolIndex) -> List<TypeVariableInstance> {
   fold(pairs, init: infer_no_type_variable_instances(), f: fn(instances, pair) {
     if infer_node_is_function_literal(n: pair.arg) {
       instances
@@ -8091,11 +8195,12 @@ fn infer_settled_actual_instances(pairs: List<InhabitanceFormalArg>, entries: Li
             Violates { diagnostic: _ } => instances
             Holds { value: produced } =>
               match infer_match_generic_formal_or_carrier(
-                formal: infer_type_alias_normalized(t: pair.formal.declared, declarations: declarations),
-                produced: infer_type_alias_normalized(t: produced, declarations: declarations),
+                formal: infer_type_alias_normalized_at(t: pair.formal.declared, bodies: declarations, bindings: bindings),
+                produced: infer_type_alias_normalized_at(t: produced, bodies: declarations, bindings: bindings),
                 type_params: type_params,
                 instances: instances,
-                declarations: declarations
+                declarations: declarations,
+                bindings: bindings
               ) {
                 InferFormalMatched { instances: matched } => matched
                 InferFormalShapeMismatch => instances
@@ -8180,8 +8285,8 @@ type InferCallbackSignatureWalk {
   domain_types: Optional<List<Node>>
 }
 
-fn infer_callback_signature(application: Node, callback: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> Optional<Node> {
-  match infer_callback_expectation(application: application, callback: callback, entries: entries, declarations: declarations) {
+fn infer_callback_signature(application: Node, callback: Node, entries: List<InferredFactsEntry>, declarations: SymbolIndex, bindings: SymbolIndex) -> Optional<Node> {
+  match infer_callback_expectation(application: application, callback: callback, entries: entries, declarations: declarations, bindings: bindings) {
     Absent => optional_absent()
     Present { value: e } =>
       match arrow_declared_parameter_order(arrow: callback) {
@@ -8324,10 +8429,10 @@ fn infer_pairs_callbacks_last(pairs: List<InhabitanceFormalArg>) -> List<Inhabit
 // assembles is seen at that signature (infer_callback_signature), ahead of the frontier entry its own
 // formation left, so lookup's first match is the callback's type at this position. Local to the
 // judgment: the row's facts are not rewritten.
-fn infer_entries_with_callback_signatures(application: Node, pairs: List<InhabitanceFormalArg>, entries: List<InferredFactsEntry>, declarations: SymbolIndex) -> List<InferredFactsEntry> {
+fn infer_entries_with_callback_signatures(application: Node, pairs: List<InhabitanceFormalArg>, entries: List<InferredFactsEntry>, declarations: SymbolIndex, bindings: SymbolIndex) -> List<InferredFactsEntry> {
   fold(pairs, init: entries, f: fn(acc, pair) {
     if infer_node_is_function_literal(n: pair.arg) {
-      match infer_callback_signature(application: application, callback: pair.arg, entries: entries, declarations: declarations) {
+      match infer_callback_signature(application: application, callback: pair.arg, entries: entries, declarations: declarations, bindings: bindings) {
         Absent => acc
         Present { value: callable } =>
           match inferred_facts_from_derived_type(node: pair.arg, derived_type: callable, descent: infer_descent_witness_for_node(n: pair.arg)) {
@@ -8693,7 +8798,7 @@ fn infer_fold_bind_check(node: Node, entries: List<InferredFactsEntry>, resolved
 }
 
 fn infer_fold_judge(declared: Node, produced: Node, at: Node, step: Node, resolved: ResolvedTree) -> Outcome<Bool> {
-  let obligation = infer_declared_type_obligation(position: position_declared_return(), parameter_identity: ^fold_carrier, declared: infer_declared_type_denotation(declared: declared), produced: produced, application: at, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations)
+  let obligation = infer_declared_type_obligation(position: position_declared_return(), parameter_identity: ^fold_carrier, declared: infer_declared_type_denotation(declared: declared), produced: produced, application: at, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations, bindings: resolved.symbol_index)
   match declared_type_inhabitance(obligation: obligation) {
     Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
     InhabitanceUndecidable { reason: reason } => infer_inhabitance_undecidable_accepted(application: at, reason: reason)
@@ -9647,22 +9752,38 @@ fn infer_sole_constructor_node_diags(
           NonEmptyDiagnostics { head: head, tail: tail } =>
             infer_admission_diags_of(Cons { head: head, tail: tail })
         }
+      ConstructVariantArmBodyUnavailable =>
+        infer_admission_diags_of([
+          infer_declaration_body_unavailable_diagnostic(at: node)
+        ])
       ConstructNotARecord =>
         match construct_tag_path_optional(n: node) {
           Absent => None
           Present { value: path } =>
-            match infer_coproduct_path_of_variant_arm(index: tree.resolved_declarations, arm_path: path) {
-              Present { value: coproduct } =>
-                infer_sole_constructor_path_diags(
-                  at: node,
-                  type_path: coproduct,
-                  constructing_module: constructing_module,
-                  tree: tree
-                )
-              Absent =>
+            match symbol_index_declaring_path_of(index: tree.symbol_index, target: path) {
+              MentionDeclaringContested { claimants: claimants } =>
+                match infer_declaration_identity_contested_diagnostics(at: node, claimants: claimants) {
+                  NonEmptyDiagnostics { head: head, tail: tail } =>
+                    infer_admission_diags_of(Cons { head: head, tail: tail })
+                }
+              MentionDeclaringUnavailable =>
                 infer_admission_diags_of([
                   infer_declaration_identity_unavailable_diagnostic(at: node)
                 ])
+              MentionDeclaringUnique { declaring: _ } =>
+                match infer_coproduct_path_of_variant_arm_joined(bindings: tree.symbol_index, arm_path: path) {
+                  Present { value: coproduct } =>
+                    infer_sole_constructor_path_diags(
+                      at: node,
+                      type_path: coproduct,
+                      constructing_module: constructing_module,
+                      tree: tree
+                    )
+                  Absent =>
+                    infer_admission_diags_of([
+                      infer_declaration_identity_unavailable_diagnostic(at: node)
+                    ])
+                }
             }
         }
     }
@@ -9701,7 +9822,7 @@ fn infer_sole_constructor_path_diags(
   constructing_module: Optional<Symbol>,
   tree: ResolvedTree
 ) -> Diagnostics {
-  match symbol_index_declaring_path_of(index: tree.resolved_declarations, target: type_path) {
+  match symbol_index_declaring_path_of(index: tree.symbol_index, target: type_path) {
     MentionDeclaringUnavailable =>
       infer_admission_diags_of([
         infer_declaration_identity_unavailable_diagnostic(at: at)
@@ -9712,40 +9833,40 @@ fn infer_sole_constructor_path_diags(
           infer_admission_diags_of(Cons { head: head, tail: tail })
       }
     MentionDeclaringUnique { declaring: declaring_path } =>
-  match qualified_name_last_segment(qn: declaring_path) {
-    Absent =>
-      infer_admission_diags_of([
-        Diagnostic {
-          reason: ^infer_reason_sole_constructor_ownership_unreadable,
-          at: node_locus(node: at),
-          correction: Unavailable { reason: UserInputBoundary }
-        }
-      ])
-    Present { value: name } =>
-      let module = qualified_name_init(qn: declaring_path)
-      match type_declaration_modifier_row_at(
-        channel: tree.type_declaration_modifiers,
-        module: module,
-        name: name
-      ) {
-        TypeDeclModifierRowAbsent => None
-        TypeDeclModifierModuleUncovered =>
+      match qualified_name_last_segment(qn: declaring_path) {
+        Absent =>
           infer_admission_diags_of([
             Diagnostic {
-              reason: ^infer_reason_sole_constructor_modifiers_unreadable,
+              reason: ^infer_reason_sole_constructor_ownership_unreadable,
               at: node_locus(node: at),
               correction: Unavailable { reason: UserInputBoundary }
             }
           ])
-        TypeDeclModifierRowPresent { modifiers: modifiers } =>
-          infer_sole_constructor_owner_diags(
-            at: at,
-            declaring_module: module,
-            modifiers: modifiers,
-            constructing_module: constructing_module
-          )
+        Present { value: name } =>
+          let module = qualified_name_init(qn: declaring_path)
+          match type_declaration_modifier_row_at(
+            channel: tree.type_declaration_modifiers,
+            module: module,
+            name: name
+          ) {
+            TypeDeclModifierRowAbsent => None
+            TypeDeclModifierModuleUncovered =>
+              infer_admission_diags_of([
+                Diagnostic {
+                  reason: ^infer_reason_sole_constructor_modifiers_unreadable,
+                  at: node_locus(node: at),
+                  correction: Unavailable { reason: UserInputBoundary }
+                }
+              ])
+            TypeDeclModifierRowPresent { modifiers: modifiers } =>
+              infer_sole_constructor_owner_diags(
+                at: at,
+                declaring_module: module,
+                modifiers: modifiers,
+                constructing_module: constructing_module
+              )
+          }
       }
-  }
   }
 }
 
