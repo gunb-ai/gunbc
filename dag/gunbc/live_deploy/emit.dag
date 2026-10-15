@@ -154,7 +154,11 @@ import gunbc.owned_directory {
   owned_directory_path, owned_directory_member, owned_directory_install_plan_of, owned_directory_install_argv,
 }
 import gunbc.ensure { EnsurePlanAvailable, EnsurePlanUnavailable }
-import gunbc.roadmap.roadmap_dashboard_instance { dashboard_dispatch_worktree_member, dashboard_attempt_state_member }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  dashboard_dispatch_worktree_member, dashboard_attempt_state_member,
+  dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown,
+}
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_sudoers_body, attempt_system_unit_sudoers_path,
 }
@@ -1050,10 +1054,18 @@ data publication_spool_request_mode: FileMode = FileMode {
 data publication_spool_answer_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
 fn attempt_system_unit_grant_steps(spec: DeploymentSpec, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
-  let final_path = attempt_system_unit_sudoers_path
-  let temp_path = join([attempt_system_unit_sudoers_path, ".new"], "")
-  let stage = "gunbc-attempt-system-unit.sudoers"
-  let readback = "gunbc-attempt-system-unit.readback"
+  match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+    DashboardInstanceIdUnknown { instance_id: _ } => []
+    DashboardInstanceForId { instance: instance } =>
+      attempt_system_unit_grant_steps_for_instance(spec: spec, principal: principal, instance: instance)
+  }
+}
+
+fn attempt_system_unit_grant_steps_for_instance(spec: DeploymentSpec, principal: GroundedPosixPrincipal, instance: HostDashboardInstance) -> List<PipelineStep> {
+  let final_path = attempt_system_unit_sudoers_path(instance: instance)
+  let temp_path = join([final_path, ".new"], "")
+  let stage = join(["gunbc-attempt-system-unit-", instance.instance_id as String, ".sudoers"], "")
+  let readback = join(["gunbc-attempt-system-unit-", instance.instance_id as String, ".readback"], "")
   concat(
     [
       deploy_raw(command: install_d_owned_command(
@@ -1062,7 +1074,7 @@ fn attempt_system_unit_grant_steps(spec: DeploymentSpec, principal: GroundedPosi
       )),
     ],
     [
-      deploy_raw(command: deploy_stage_write_command(stage_name: stage, content: attempt_system_unit_sudoers_body())),
+      deploy_raw(command: deploy_stage_write_command(stage_name: stage, content: attempt_system_unit_sudoers_body(instance: instance))),
       deploy_raw(command: deploy_stage_visudo_check_command(stage_name: stage)),
       deploy_raw(command: deploy_stage_install_owned_command(
         stage_name: stage,

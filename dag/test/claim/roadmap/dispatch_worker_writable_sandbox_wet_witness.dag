@@ -21,6 +21,11 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_state_path_for_instance,
   dispatch_attempt_worker_log_path_for_instance,
 }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
+  attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
+}
+import gunbc.host.host_layout { attempt_exit_inbox_dir }
 import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 import std.optional { Present }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -276,4 +281,119 @@ test fn writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_a
     && launcher_wrote(instance: inst, unit_key: "log", path: log_probe)
     && launcher_wrote(instance: inst, unit_key: "objects", path: objects)
     && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe, objects]).exit_code == 0
+}
+
+fn launcher_function_inner_argv(instance: HostDashboardInstance, function: String, extra_args: List<String>) -> List<String> {
+  concat(
+    [
+      instance.serve_binary as String,
+      "run",
+      "--source-root", join([instance.repo_root as String, "/dag"], ""),
+      "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
+      "--entry", join([instance.repo_root as String, "/dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag"], ""),
+      "--function", function,
+    ],
+    extra_args,
+  )
+}
+
+fn launcher_run_function(instance: HostDashboardInstance, unit_key: String, function: String, extra_args: List<String>, exit_hook: NonEmptyStr) -> SandboxTouch {
+  let inner = launcher_function_inner_argv(instance: instance, function: function, extra_args: extra_args)
+  match inner.first() {
+    Absent => SandboxTouchUnrunnable
+    Present { value: _ } => {
+      let facts = AttemptSystemUnitStartFacts {
+        node_id: wet_probe_node as String,
+        attempt_key: join([wet_probe_key, "-", unit_key], ""),
+        user: instance.directory_owner.user as NonEmptyStr,
+        working_directory: instance.repo_root as String,
+        attempt_worktree: probe_attempt_worktree(instance: instance),
+        stdout_path: join([probe_worker_dir(instance: instance), "/launcher-stdout.log"], ""),
+        stderr_path: join([probe_worker_dir(instance: instance), "/launcher-stderr.log"], ""),
+        granted: kibibyte(count: 65536),
+        exit_hook: exit_hook,
+        inner_argv: inner,
+      }
+      if !attempt_system_unit_write_pending(
+        instance_root: instance.instance_root as String,
+        body: attempt_system_unit_encode_start_wait(facts: facts),
+      ) {
+        SandboxTouchUnrunnable
+      } else {
+        let cmd = attempt_system_unit_launch_host_argv(instance: instance)
+        SandboxTouchRan {
+          exit_code: shell.Exec.RunArgv(program: cmd.program, arguments: cmd.args).exit_code,
+        }
+      }
+    }
+  }
+}
+
+fn sandbox_sudo_true_cli() -> ProcessExit {
+  if shell.Exec.RunArgv(program: "sudo", arguments: ["-n", "true"]).exit_code == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "sudo -n true refused")
+  }
+}
+
+fn sandbox_sudo_touch_cli(path: String) -> ProcessExit {
+  if shell.Exec.RunArgv(program: "sudo", arguments: ["-n", "touch", "--", path]).exit_code == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "sudo -n touch refused")
+  }
+}
+
+// RED on d9eebf21f81: no NoNewPrivileges, so sudo -n true inside the launched unit succeeds.
+test fn sudo_through_the_launcher_is_refused() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  let bin_probe = join([path_parent_directory(path: inst.serve_binary as String), "/.sudo-write-probe"], "")
+  prepare_probe_attempt(instance: inst)
+    && match launcher_run_function(instance: inst, unit_key: "sudo-true", function: "sandbox_sudo_true_cli", extra_args: [], exit_hook: "true" as NonEmptyStr) {
+      SandboxTouchUnrunnable => false
+      SandboxTouchRan { exit_code } => exit_code != 0
+    }
+    && match launcher_run_function(
+      instance: inst,
+      unit_key: "sudo-touch",
+      function: "sandbox_sudo_touch_cli",
+      extra_args: match admit_named_argument(name: "path", value: bin_probe) {
+        NamedArgumentNameEmpty => []
+        NamedArgumentNameHoldsSeparator { name: _ } => []
+        NamedArgumentAdmitted { argument: arg } => ["--arg", join([arg.name, "=", arg.value], "")]
+      },
+      exit_hook: "true" as NonEmptyStr,
+    ) {
+      SandboxTouchUnrunnable => false
+      SandboxTouchRan { exit_code } => exit_code != 0
+    }
+    && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", bin_probe]).exit_code == 0
+}
+
+// RED on d9eebf21f81 / live 0883d53874b: worker ExecStopPost left ${INVOCATION_ID} in the inbox name.
+test fn the_launcher_exit_record_expands_stop_variables() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  let node = wet_probe_node as String
+  let key = join([wet_probe_key, "-exitrec"], "")
+  match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: node, attempt_key: key, role: AttemptWorkerRole) {
+    AttemptExitHookRefused { reason: _ } => false
+    AttemptExitHookRendered { exec_line } => {
+      let inbox = attempt_exit_inbox_dir(instance_root: inst.instance_root as String)
+      prepare_probe_attempt(instance: inst)
+        && shell.Exec.RunArgv(program: "install", arguments: ["-d", "--", inbox]).exit_code == 0
+        && match launcher_run_function(instance: inst, unit_key: "exitrec", function: "sandbox_sudo_true_cli", extra_args: [], exit_hook: exec_line) {
+          SandboxTouchUnrunnable => false
+          SandboxTouchRan { exit_code: _ } =>
+            match attempt_exit_record_observe(instance_root: inst.instance_root as String, node_id: node, attempt_key: key, role: AttemptWorkerRole) {
+              AttemptExitRecordNone => false
+              AttemptExitRecordUnreadable { reason: _ } => false
+              AttemptExitRecordFound { record: rec } =>
+                !string_contains(s: rec.entry_name, pattern: "${")
+                  && string_length(s: rec.invocation_id) > 0
+                  && !string_contains(s: rec.invocation_id, pattern: "${")
+            }
+        }
+    }
+  }
 }

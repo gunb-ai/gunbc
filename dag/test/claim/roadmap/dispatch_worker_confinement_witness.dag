@@ -3,6 +3,7 @@ module test.claim.roadmap.dispatch_worker_confinement_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_worker_unit_properties,
+  dispatch_worker_exec_stop_post_for_systemd_run,
   dispatch_worker_writable_path_list,
   dispatch_worker_writable_paths,
   dispatch_worker_path_is_writable,
@@ -30,6 +31,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_dispatch_attempt_state_root,
 }
 import gunbc.host.host_layout { attempt_exit_spool_root }
+import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole }
 
 // MEMBERSHIP OF THE RENDERED PROPERTIES, not kernel enforcement. On srv1 the user manager drops
 // ProtectSystem/ProtectHome/ReadWritePaths when kernel.apparmor_restrict_unprivileged_userns=1
@@ -52,6 +54,9 @@ test fn the_worker_unit_confines_writes_to_the_instance_root() -> Bool {
   has_property(props: props, needle: "ProtectSystem=strict")
     && has_property(props: props, needle: "ProtectHome=read-only")
     && has_property(props: props, needle: "PrivateTmp=yes")
+    && has_property(props: props, needle: "NoNewPrivileges=yes")
+    && has_property(props: props, needle: "RestrictSUIDSGID=yes")
+    && has_property(props: props, needle: "CapabilityBoundingSet=")
     && has_property(props: props, needle: join(["ReadWritePaths=", expected], ""))
     && has_property(props: props, needle: "/.git/objects")
     && any(dispatch_worker_writable_path_list(instance: inst, attempt_worktree: "/wt", scratch_directory: "/wt"), p => p == "/wt")
@@ -176,4 +181,31 @@ test fn the_reviewer_unit_writes_only_its_review_directory_and_runs_from_the_rep
     && !has_property(props: props, needle: "RemainAfterExit")
     && has_property(props: supervisor, needle: "RemainAfterExit=yes")
     && !has_property(props: supervisor, needle: "ExecStopPost")
+}
+
+// RED on d9eebf21f81: the confinement fold set neither NoNewPrivileges nor an empty
+// CapabilityBoundingSet, so User=briansrls could sudo -n past ReadWritePaths.
+test fn the_worker_unit_cannot_sudo_past_the_write_boundary() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "true" as NonEmptyStr)
+  has_property(props: props, needle: "NoNewPrivileges=yes")
+    && has_property(props: props, needle: "RestrictSUIDSGID=yes")
+    && has_property(props: props, needle: "CapabilityBoundingSet=")
+}
+
+// RED on d9eebf21f81: ExecStopPost carried ${INVOCATION_ID} unescaped, and the live worker inbox
+// record kept those literal names. systemd-run -p expands $ once; $$ survives into the unit.
+test fn the_worker_exec_stop_post_escapes_dollars_for_systemd_run() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: "n", attempt_key: "k", role: AttemptWorkerRole) {
+    AttemptExitHookRefused { reason: _ } => false
+    AttemptExitHookRendered { exec_line } => {
+      let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: exec_line)
+      let escaped = dispatch_worker_exec_stop_post_for_systemd_run(hook: exec_line) as String
+      string_contains(s: exec_line as String, pattern: "${INVOCATION_ID}")
+        && !string_contains(s: exec_line as String, pattern: "$${INVOCATION_ID}")
+        && string_contains(s: escaped, pattern: "$${INVOCATION_ID}")
+        && has_property(props: props, needle: "$${INVOCATION_ID}")
+    }
+  }
 }

@@ -156,6 +156,9 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     ProtectSystemProperty => SettableDirective
     ProtectHomeProperty => SettableDirective
     PrivateTmpProperty => SettableDirective
+    NoNewPrivilegesProperty => SettableDirective
+    RestrictSUIDSGIDProperty => SettableDirective
+    CapabilityBoundingSetProperty => SettableDirective
     ReadWritePathsProperty => SettableDirective
     RemainAfterExitProperty => SettableDirective
     RuntimeMaxSecProperty => SettableDirective
@@ -205,7 +208,8 @@ data systemd_unit_property_members: List<SystemdUnitProperty> = [
   User, WorkingDirectoryProperty, RuntimeDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic, NeedDaemonReload,
   IdProperty, KillModeProperty, ExitTypeProperty,
   StandardOutputProperty, StandardErrorProperty, ProtectSystemProperty, ProtectHomeProperty,
-  PrivateTmpProperty, ReadWritePathsProperty, RemainAfterExitProperty, RuntimeMaxSecProperty, CollectModeProperty,
+  PrivateTmpProperty, NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, CapabilityBoundingSetProperty,
+  ReadWritePathsProperty, RemainAfterExitProperty, RuntimeMaxSecProperty, CollectModeProperty,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
   InvocationIDProperty, FragmentPathProperty, JobProperty,
 ]

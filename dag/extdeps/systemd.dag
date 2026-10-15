@@ -95,6 +95,9 @@ type SystemdUnitProperty
   | ProtectSystemProperty
   | ProtectHomeProperty
   | PrivateTmpProperty
+  | NoNewPrivilegesProperty
+  | RestrictSUIDSGIDProperty
+  | CapabilityBoundingSetProperty
   | ReadWritePathsProperty
   | RemainAfterExitProperty
   | RuntimeMaxSecProperty
@@ -174,6 +177,9 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     ProtectSystemProperty => "ProtectSystem" as NonEmptyStr
     ProtectHomeProperty => "ProtectHome" as NonEmptyStr
     PrivateTmpProperty => "PrivateTmp" as NonEmptyStr
+    NoNewPrivilegesProperty => "NoNewPrivileges" as NonEmptyStr
+    RestrictSUIDSGIDProperty => "RestrictSUIDSGID" as NonEmptyStr
+    CapabilityBoundingSetProperty => "CapabilityBoundingSet" as NonEmptyStr
     ReadWritePathsProperty => "ReadWritePaths" as NonEmptyStr
     RemainAfterExitProperty => "RemainAfterExit" as NonEmptyStr
     RuntimeMaxSecProperty => "RuntimeMaxSec" as NonEmptyStr

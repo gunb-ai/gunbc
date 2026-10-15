@@ -80,6 +80,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
   srv1_live_dashboard_instance,
 }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_sudoers_path }
 import extdeps.version.semver { semver_version_parse }
 import extdeps.tailscale.serve {
   tailscale_serve_route_member_path,
@@ -154,6 +155,7 @@ import gunbc.live_deploy.emit {
   leftover_systemd_timer_retire_steps,
   leftover_systemd_timer_retire_dissolution,
   live_deploy_publication_path_unit_file,
+  attempt_system_unit_grant_steps,
 }
 import gunbc.live_deploy.release_locus {
   approval_broker_tree_receipt_path_for,
@@ -856,6 +858,17 @@ data twin_on_one_host_witness_note: String = "THE CLAIM THAT WAS UNWRITABLE BEFO
 
 fn srv1_twin_spec() -> DeploymentSpec {
   selected_deployment_spec(row: srv1_lab_desired_deployment())
+}
+
+// RED on d9eebf21f81: grant_steps wrote /etc/sudoers.d/gunbc-attempt-system-unit with both
+// instance lines. Lab apply must name only the lab file.
+test fn the_lab_deploy_installs_only_the_lab_attempt_unit_sudoers_file() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  let text = pipeline_steps_text(steps: attempt_system_unit_grant_steps(spec: srv1_twin_spec(), principal: fleet_posix_ci_runner_principal()))
+  string_contains(s: text, pattern: attempt_system_unit_sudoers_path(instance: lab))
+    && !string_contains(s: text, pattern: attempt_system_unit_sudoers_path(instance: live))
+    && !string_contains(s: text, pattern: live.instance_root as String)
 }
 
 fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {

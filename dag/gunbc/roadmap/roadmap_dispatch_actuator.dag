@@ -56,6 +56,7 @@ import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus,
   MemoryMax, WorkingDirectoryProperty, StandardOutputProperty, StandardErrorProperty,
   ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty,
+  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, CapabilityBoundingSetProperty,
   RemainAfterExitProperty, ExecStopPostProperty,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
@@ -2938,6 +2939,17 @@ fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyS
 // a terminal multiplexer. ExecStopPost is the attempt's exit record (gunbc.roadmap.roadmap_attempt_exit_spool
 // attempt_exit_hook): one create-only mkdir whose name carries the manager's stop-time facts, written
 // at the moment the worker's process ends -- the event the capture obligation is invoked on.
+// NoNewPrivileges + RestrictSUIDSGID + an empty CapabilityBoundingSet keep a worker whose User=
+// is passwordless-root (srv1 directory_owner) from sudoing past ReadWritePaths (bright-moth-475,
+// issuecomment-6176868889). systemd-run -p expands $ once when it takes the assignment, so the
+// hook's ${INVOCATION_ID} and stop variables are spelled $$ or the inbox record keeps the
+// literal names (live lab 0883d53874b).
+data dispatch_worker_capability_bounding_set: NonEmptyStr = "" as NonEmptyStr
+
+fn dispatch_worker_exec_stop_post_for_systemd_run(hook: NonEmptyStr) -> NonEmptyStr {
+  replace(hook as String, "$", "$$") as NonEmptyStr
+}
+
 fn dispatch_worker_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
@@ -2977,8 +2989,11 @@ fn dispatch_worker_unit_stream_properties(
       SystemdRunProperty { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
       SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
       SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
+      SystemdRunProperty { property: NoNewPrivilegesProperty, value: "yes" as NonEmptyStr },
+      SystemdRunProperty { property: RestrictSUIDSGIDProperty, value: "yes" as NonEmptyStr },
+      SystemdRunProperty { property: CapabilityBoundingSetProperty, value: dispatch_worker_capability_bounding_set },
       SystemdRunProperty { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)) as NonEmptyStr },
-      SystemdRunProperty { property: ExecStopPostProperty, value: exit_hook },
+      SystemdRunProperty { property: ExecStopPostProperty, value: dispatch_worker_exec_stop_post_for_systemd_run(hook: exit_hook) },
     ],
   )
 }
