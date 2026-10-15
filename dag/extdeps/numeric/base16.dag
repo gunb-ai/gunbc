@@ -81,6 +81,16 @@ fn int_to_upper_hex(n: Int) -> String {
   else { int_to_upper_hex_inner(n: n, acc: "") }
 }
 
+fn int_to_lower_hex_inner(n: Int, acc: String) -> String {
+  if n == 0 { acc }
+  else { int_to_lower_hex_inner(n: n / 16, acc: concat(hex_digit_char_lower(d: n % 16), acc)) }
+}
+
+fn int_to_lower_hex(n: Int) -> String {
+  if n == 0 { "0" }
+  else { int_to_lower_hex_inner(n: n, acc: "") }
+}
+
 // OCTETS <-> LOWERCASE HEX, the RFC 4648 §3 codec over whole byte strings. Decoding accepts ONLY
 // the lowercase alphabet this module emits, so every octet string has exactly one hex spelling here:
 // a decoder admitting "AB" beside "ab" would give one value two representations, which is the
