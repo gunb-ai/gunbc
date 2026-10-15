@@ -355,10 +355,6 @@ fn tailscale_serve_mount_eq(a: TailscaleServeMount, b: TailscaleServeMount) -> B
   }
 }
 
-fn tailscale_serve_route_key_eq(a: TailscaleServeRouteKey, b: TailscaleServeRouteKey) -> Bool {
-  a.https_port == b.https_port && tailscale_serve_mount_eq(a: a.mount, b: b.mount)
-}
-
 fn tailscale_serve_route_key_label(key: TailscaleServeRouteKey) -> NonEmptyStr {
   join(
     [

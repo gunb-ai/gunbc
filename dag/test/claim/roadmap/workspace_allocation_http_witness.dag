@@ -14,7 +14,7 @@ import std.types { String, Bool, NonEmptyStr, Int }
 import extdeps.ietf.http_semantics { POST }
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
 import gunbc.roadmap.workspace_allocation_http { workspace_http_reason }
-import extdeps.tailscale.serve { tailscale_serve_route_key_eq, TailscaleServeEndpoint }
+import extdeps.tailscale.serve { TailscaleServeEndpoint }
 import gunbc.auth.request_authentication {
   AccessPathTailnetUnobserved, TailnetRouteGap, RequestIngress, IngressUnattested, IngressAttestedPeer,
   TailnetIngressUnattested, TailnetIngressNotTheProxy, TailnetReadbackNotDemanded, TailnetReadbackCommandFailed, TailnetReadbackNotSpawned,
@@ -185,7 +185,7 @@ test fn seam_fresh_matching_route_mints_the_tailnet_path_and_passes_admission() 
   let path = seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
   let minted = match path {
     AccessPathTailnetProxy { transport_observation: _, route_readback: rb } => match rb {
-      TailnetRouteReadbackObserved { acl_revision: _, serve_route: r } => tailscale_serve_route_key_eq(a: r, b: TailscaleServeRouteKey { https_port: 443, mount: ServeRootMount })
+      TailnetRouteReadbackObserved { acl_revision: _, serve_route: r } => r == TailscaleServeRouteKey { https_port: 443, mount: ServeRootMount }
       TailnetRouteReadbackUnobserved { reason: _ } => false
     }
     AccessPathTailnetUnobserved { gap: _ } => false
@@ -257,7 +257,7 @@ test fn seam_production_instance_mints_the_tailnet_path_only_through_its_door() 
     && not_retargeted == AccessPathTailnetUnobserved { gap: TailnetRouteProxiesElsewhere { targets: ["http://127.0.0.1:8080"] } }
     && match through_door {
       AccessPathTailnetProxy { transport_observation: _, route_readback: rb } => match rb {
-        TailnetRouteReadbackObserved { acl_revision: _, serve_route: r } => tailscale_serve_route_key_eq(a: r, b: TailscaleServeRouteKey { https_port: 443, mount: ServeRootMount })
+        TailnetRouteReadbackObserved { acl_revision: _, serve_route: r } => r == TailscaleServeRouteKey { https_port: 443, mount: ServeRootMount }
         TailnetRouteReadbackUnobserved { reason: _ } => false
       }
       AccessPathTailnetUnobserved { gap: _ } => false
