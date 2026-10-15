@@ -272,7 +272,7 @@ fn v2_native_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-census" } }
 }
 
-// THE SCOPED CENSUS (gunbc.plans.census_scoped_run): the same report, over one subject's closure as
+// THE SCOPED CENSUS: the same report, over one subject's closure as
 // v2.compiler.module_acquisition acquires it around its blocks, rather than over the whole tree.
 // `gunbc test //gunbc/instruments:v2-native-census-scoped`. The SUBJECT IS THIS ROW'S OWN FACT, bound
 // here and never a CLI option: the first subject is the native test target (native-seven); a later

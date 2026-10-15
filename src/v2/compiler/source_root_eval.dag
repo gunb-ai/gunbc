@@ -6383,7 +6383,7 @@ fn census_block_obligation_rows(blocks: List<CensusBlock>) -> List<CensusObligat
   })
 }
 
-// THE REVISION IS THE CONTENT THAT WAS READ (gunbc.plans.census_scoped_run section 6): one structural
+// THE REVISION IS THE CONTENT THAT WAS READ: one structural
 // digest over the member digests in read order, so two runs over identical bytes are one revision
 // whatever commit either claimed. The claimed commit stays the host record's revision_claimed field;
 // it is not a fact this walk observed. (Not gunbc.guarantee_measurement MeasurementRevision: that

@@ -29,7 +29,7 @@ import v2.compiler.source_authority { DagTree, ReferenceCrossTreeDenied, V2Tree 
 // exist; behind is reachable only through broken; outside is imported by nothing. The compiler's door
 // refuses this closure at its first refusal; the census door must acquire around both blocks, name
 // them, and never report behind or outside -- behind is UNKNOWN, not absent, and only the Blocked arm
-// can say so (gunbc.plans.census_scoped_run).
+// can say so.
 
 fn planted_bindings() -> List<SourceRootBinding> {
   [
