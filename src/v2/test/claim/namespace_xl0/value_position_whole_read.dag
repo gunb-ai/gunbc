@@ -44,11 +44,11 @@ import v2.std.compilers.body_lowering {
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.node_query { binder_node_parts, field_projection_optional, node_positional_child_targets }
 import v2.std.type_binder { type_param_names }
-import v2.std.collection { list_at_optional }
+
 import v2.extdeps.languages.dag { dag_language_model }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, fold_list, length }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, fold_list, length, list_at_optional }
 import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

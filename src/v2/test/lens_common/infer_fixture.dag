@@ -8,7 +8,7 @@ import v2.compiler.resolve { empty_module_outcome_index, module_outcome_index, C
 import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree, infer_facts_lookup_miss_diagnostic }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection { Map, empty_map }
+import std.types { Map }
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
@@ -27,7 +27,7 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, Occurrenc
 import v2.std.node { Authored, ComputationNode, Conj, Edge, Positional, Transform }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, optional_present }
-import std.algebra { Cons, list_append, list_map }
+import std.algebra { Cons, list_append, list_map, empty_map }
 
 // A HAND-BUILT TREE SUPPLIED AT INFER'S INTERFACE (DESIGN section 3: a witness supplies its input
 // rather than executing the layers beneath it). infer takes resolve's output, which carries the index

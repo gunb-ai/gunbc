@@ -1,6 +1,6 @@
 module v2.compiler.name_resolve
 
-import std.types { List, String }
+import std.types { List, Map, String }
 import v2.std.language_model { LanguageModel }
 import v2.std.member_declaration_kind { MemberKindChannel, no_member_declaration_kinds }
 
@@ -64,14 +64,14 @@ import v2.compiler.namespace_graft {
   namespace_graft_module_body_root
 }
 import v2.compiler.parse { parse_tree_projection_edge }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, PointwisePower, empty_map, map_contains_key, map_lookup, map_insert }
 import std.graph {
   CallGraph,
   GraphEdge,
   graph_strongly_connected_components
 }
-import v2.std.collection { Absent, Map, Present, PointwisePower, empty_map, map_contains_key, map_get_checked, map_lookup, map_insert, optional_absent, optional_present }
-import std.optional { Optional }
+import v2.std.witness { map_get_checked }
+import std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -340,7 +340,7 @@ fn admit_export_symbol(
       AdmissionRejected { diagnostics: d }
     AdmissionAccepted { bindings: b, origins: os } =>
 
-      match v2.std.collection.map_get_checked(os, sym) {
+      match map_get_checked(os, sym) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: _ } =>
             AdmissionRejected {

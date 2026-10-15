@@ -22,7 +22,7 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 
 // THE BROKER'S TAILNET EXPOSURE IS A DEPLOYMENT MEMBER WHOSE PRESENCE IS THE ROUTING ROW. The
 // enrolment 404 (2026-09-30) was a cutover that declared its front-door argv and had no deploy
