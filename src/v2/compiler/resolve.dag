@@ -4046,21 +4046,29 @@ fn resolve_instantiation_argument_kinds(ctx: ResolveContext, head: Node) -> Opti
               match type_param_order(binders: binders) {
                 TypeParamOrderMalformed => optional_absent()
                 TypeParamOrderDeclared { labels: labels } =>
-                  optional_present(value: fold(labels, init: Empty, f: fn(acc, l) {
-                    list_snoc_item(xs: acc, item: match type_binder_target_of(binders: binders, name: l) {
-                      Absent => optional_absent()
-                      Present { value: b } =>
-                        match type_param_kind_optional(binder: b) {
-                          Absent => optional_absent()
-                          Present { value: kind } =>
-                            match resolve_kind_variant_paths_optional(ctx: ctx, declaration: path, kind: kind) {
-                              Present { value: _ } => optional_present(value: kind)
-                              Absent => optional_absent()
-                            }
-                        }
-                    })
-                  }))
+                  optional_present(value: resolve_instantiation_admitted_kinds(ctx: ctx, path: path, binders: binders, labels: labels))
               }
+          }
+      }
+  }
+}
+
+// One entry per declared binder, in authored order: the kind the binder admits, or Absent.
+fn resolve_instantiation_admitted_kinds(ctx: ResolveContext, path: QualifiedName, binders: Node, labels: List<Symbol>) -> List<Optional<Node>> {
+  let seed: List<Optional<Node>> = Empty
+  fold(labels, init: seed, f: fn(acc, l) { list_snoc_item(xs: acc, item: resolve_instantiation_admitted_kind(ctx: ctx, path: path, binders: binders, label: l)) })
+}
+
+fn resolve_instantiation_admitted_kind(ctx: ResolveContext, path: QualifiedName, binders: Node, label: Symbol) -> Optional<Node> {
+  match type_binder_target_of(binders: binders, name: label) {
+    Absent => optional_absent()
+    Present { value: b } =>
+      match type_param_kind_optional(binder: b) {
+        Absent => optional_absent()
+        Present { value: kind } =>
+          match resolve_kind_variant_paths_optional(ctx: ctx, declaration: path, kind: kind) {
+            Present { value: _ } => optional_present(value: kind)
+            Absent => optional_absent()
           }
       }
   }
