@@ -1,30 +1,4 @@
 module gunbc.machine_intake.megarac_boot_diagnostic_bundle
-import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import gunbc.host.smpro_platform_capability { SmproReading }
-import gunbc.host.boot_attempt {
-  AttemptIdentityReading,
-  AttemptIdentityReading,
-  AttemptIdentityReading,
-  BootOverrideConsumption,
-  BootRunRecord,
-  ConsoleReading,
-  EndMedia,
-  HandoffCallResult,
-  HandoffMedia,
-  MediaAttachRecord,
-  MediaLossAfterHandoff,
-  MediaLossPhase,
-  PowerAfterAttempt,
-  StaleMediumPowerOff,
-  attempt_identity_text,
-  boot_override_consumption,
-  checkpoint_relations,
-  console,
-  console_text,
-  override_consumption_text,
-  run_record_text
-}
-
 
 import extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of }
 import gunbc.host.host_boot_attempt_admission {
@@ -199,7 +173,7 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 // before/after reading is gunbc.machine_intake.sel_stimulus_listener; the per-slot and
 // per-socket inventory is extdeps.bmc.redfish_memory_inventory; the firmware's pre-OS statement
 // is gunbc.machine_intake.pre_os_bringup_verdict firmware_console_report. This module is the
-// observation model of ONE attempt (MtCollins1BootDiagnosticBundle), and mtcollins1_boot_bundle_text
+// observation model of ONE attempt (BootDiagnosticBundle), and mtcollins1_boot_bundle_text
 // renders it. It does not decode anything those authorities do not.
 //
 // THE BUNDLE NEVER DECIDES THE VERDICT (brief, and DESIGN section 5's separation of observation
@@ -413,12 +387,27 @@ type InventoryReading {
 // length of the String read from it: a String's length counts Unicode scalar values, and calling
 // those bytes would under-count multi-byte console output. The size is taken before the content is
 // read, so a capture over the bound is reported without being loaded.
+type ConsoleReading
+  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, firmware_error_lines: Int, capture_digest: Sha256FileDigest, dram: AmpereDramConsoleObservation, checkpoints: AmpereCheckpointConsoleObservation, checkpoint_relations: List<AmpereCheckpointRelation>, milestones: ConsoleMilestoneObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison, loader: GrubConsoleReport, linux: LinuxBootConsoleObservation, modules: KernelModuleDecompressionObservation, nvparam: NvParamConsoleObservation, span_readings: List<SpanConsoleReading> }
+  | ConsoleExceedsBound { path: NonEmptyStr, size: ByteSize, bound: ByteSize }
+  | ConsoleNotRetained { path: NonEmptyStr }
+  | ConsoleUnread { path: NonEmptyStr, detail: String }
+  | ConsoleNotConfigured
 
 data mtcollins1_boot_console_bound: ByteSize = byte_size(count: 16777216)
 
 // WHICH ATTEMPT THIS BUNDLE BELONGS TO. The attempt is named by the Actions run id; a run whose id
 // could not be read carries that as a typed reading with the variable's own detail, never a blank.
+type AttemptIdentityReading
+  = AttemptRunId { run_id: NonEmptyStr }
+  | AttemptIdentityUnavailable { variable: NonEmptyStr, detail: String }
 
+fn attempt_identity_text(a: AttemptIdentityReading) -> String {
+  match a {
+    AttemptRunId { run_id: r } => r as String
+    AttemptIdentityUnavailable { variable: v, detail: d } => concat("UNAVAILABLE: ", v as String, " could not be read: ", d)
+  }
+}
 
 data mtcollins1_boot_diagnostics_path: String = "artifacts/mtcollins1-boot-diagnostics.txt"
 
@@ -459,7 +448,20 @@ type BootParam5Reading
   | BootParam5Unread { cause: BmcReadCause }
   | BootParam5NotTaken { reason: NonEmptyStr }
 
+type MegaRacOverride
+  = OverrideConsumedByCensusBoot
+  | OverrideNoLongerPendingAfterAttempt
+  | OverridePendingBeforeAttempt
+  | OverrideStillPendingAfterAttempt
+  | OverrideNotHandedOff { reason: NonEmptyStr }
+  | OverrideConsumptionUnread { reason: NonEmptyStr }
 
+type MegaRacPowerAfter
+  = PoweredOffAfterCensusEnd
+  | PoweredOffWithoutCensusEnd
+  | PoweredOnAfterAttempt
+  | PowerAfterUnobserved { observation: ChassisPowerObservation }
+  | PowerAfterNotTaken { reason: NonEmptyStr }
 
 // ─── THE MEDIA ATTACH, AS THIS ATTEMPT'S RECORD ─────────────────────────────────────────────────
 //
@@ -469,13 +471,36 @@ type BootParam5Reading
 // looks — reaches the actuation, the attempt and this bundle as a value, including the refusal and
 // timeout arms, never as a bare exit. The power reading the detach admission was taken from is kept
 // beside it.
+type MegaRacMediaAttach
+  = MediaAttachNotAttempted { reason: NonEmptyStr }
+  | MediaAttachAttempted {
+      attempt: String,
+      medium_image_name: NonEmptyStr,
+      medium_image_sha256: NonEmptyStr,
+      power: ChassisPowerObservation,
+      stale_power_off: MegaRacStalePowerOff,
+      result: MegaRacAttachResult
+    }
 
 // THE POWER-OFF TAKEN SO A STALE CENSUS MEDIUM CAN BE REPLACED, as its own record (run 36683309058:
 // a re-run after a repin found the previous boot's image presented and the host on, and the detach
 // admission correctly refused). `power` above is then the FRESH reading taken after this power-off,
 // the one the admission was given; the reading before it is `before` here. Not needed carries why,
 // so an attempt that did not power off says which fact made it unnecessary.
+type MegaRacStalePowerOff
+  = StalePowerOffNotNeeded { reason: NonEmptyStr }
+  | StalePowerOffObserved { stale_image: String, before: ChassisPowerObservation }
+  | StalePowerOffCommandRefused { stale_image: String, before: ChassisPowerObservation }
+  | StalePowerOffNotObserved { stale_image: String, before: ChassisPowerObservation, last: ChassisPowerObservation }
 
+fn stale_power_off_text(record: MegaRacStalePowerOff) -> String {
+  match record {
+    StalePowerOffNotNeeded { reason: r } => concat("no power-off: ", r as String)
+    StalePowerOffObserved { stale_image: i, before: b } => join(["powered off (was ", chassis_observation_text(observation: b) as String, ") to replace stale '", i, "', observed off"], "")
+    StalePowerOffCommandRefused { stale_image: i, before: _ } => join(["chassis power off for stale '", i, "' was refused by ipmitool"], "")
+    StalePowerOffNotObserved { stale_image: i, before: _, last: l } => join(["chassis power off for stale '", i, "' was sent but never observed off; last read ", chassis_observation_text(observation: l) as String], "")
+  }
+}
 
 fn cd_reading_text(r: CdErrorReading) -> String {
   match r {
@@ -627,6 +652,25 @@ fn session_release_text(standing: SessionRelease) -> String {
   }
 }
 
+fn media_attach_text(record: MegaRacMediaAttach) -> String {
+  match record {
+    MediaAttachNotAttempted { reason: r } => concat("not attempted: ", r as String)
+    MediaAttachAttempted { attempt: a, medium_image_name: n, medium_image_sha256: h, power: p, stale_power_off: off, result: res } =>
+      join([
+        "attempt ", a, " medium '", n as String, "' sha256 ", h as String,
+        "; ", stale_power_off_text(record: off),
+        "; power before the session: ", chassis_observation_text(observation: p) as String,
+        "; session ", session_release_text(standing: res.session_release), "; ",
+        match res.outcome {
+          MegaRacPresentationReady { route: r, evidence: e } => concat("READY via ", concat(attach_route_text(route: r), concat(": ", presentation_evidence_text(e: e))))
+          other => match media_attach_outcome_reason(outcome: other) {
+            Present { value: why } => concat("WITHHELD: ", why)
+            Absent => "WITHHELD"
+          }
+        },
+      ], "")
+  }
+}
 
 // WHAT OUR HARNESS DID THAT A READER OF THIS ATTEMPT MUST KNOW, as typed values carrying the record
 // they were decided from. These are facts about the observation, not about the machine: the
@@ -634,16 +678,16 @@ fn session_release_text(standing: SessionRelease) -> String {
 // the *_harness function beside its record and rendered once, by harness_finding_text.
 type HarnessFinding
   = EveryBmcReadFailed { failed: List<BmcChannelRead> }
-  | MediaAttachNotReady { record: MediaAttachRecord }
-  | MediaAttachSessionHeld { record: MediaAttachRecord }
-  | HandoffWithheldAtRecheck { handoff: HandoffMedia }
-  | HandoffUnconfirmed { handoff: HandoffMedia }
+  | MediaAttachNotReady { record: MegaRacMediaAttach }
+  | MediaAttachSessionHeld { record: MegaRacMediaAttach }
+  | HandoffWithheldAtRecheck { handoff: MegaRacHandoff }
+  | HandoffUnconfirmed { handoff: MegaRacHandoff }
   | PresentationAfterHandoff { look: MegaRacAttachResult }
-  | OverrideNotConsumed { consumption: BootOverrideConsumption }
+  | OverrideNotConsumed { consumption: MegaRacOverride }
   | HostPoweredOffWithoutCensusEnd
   | CredentialMayRemain
 
-fn media_attach_harness(record: MediaAttachRecord) -> List<HarnessFinding> {
+fn media_attach_harness(record: MegaRacMediaAttach) -> List<HarnessFinding> {
   match record {
     MediaAttachNotAttempted { reason: _ } => []
     MediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
@@ -667,7 +711,14 @@ fn media_attach_harness(record: MediaAttachRecord) -> List<HarnessFinding> {
 // 5332343434). gunbc.machine_intake.oob_boot_handoff returns success only after a chassis read-back
 // observed the power transition, so success is a confirmed handoff; any other return is a handoff
 // that was attempted and did not confirm, kept with its reason.
+type MegaRacHandoffCallResult
+  = HandoffConfirmed
+  | HandoffAttemptedUnconfirmed { reason: String }
 
+type MegaRacHandoff
+  = HandoffMediaNotReached { reason: NonEmptyStr }
+  | HandoffMediaWithheldAtRecheck { before: MegaRacAttachResult }
+  | HandoffMediaAttempted { before: MegaRacAttachResult, handoff: MegaRacHandoffCallResult, after: MegaRacAttachResult }
 
 fn observation_text(r: MegaRacAttachResult) -> String {
   match r.outcome {
@@ -684,6 +735,13 @@ fn observation_text(r: MegaRacAttachResult) -> String {
   }
 }
 
+fn handoff_media_text(h: MegaRacHandoff) -> String {
+  match h {
+    HandoffMediaNotReached { reason: r } => concat("not reached: ", r as String)
+    HandoffMediaWithheldAtRecheck { before: b } => concat("WITHHELD at the pre-handoff recheck: ", observation_text(r: b))
+    HandoffMediaAttempted { before: b, handoff: hc, after: a } => join(["before handoff: ", observation_text(r: b), " | handoff: ", match hc { HandoffConfirmed => "confirmed by chassis read-back"  HandoffAttemptedUnconfirmed { reason: r } => concat("ATTEMPTED, NOT CONFIRMED: ", r) }, " | after handoff: ", observation_text(r: a)], "")
+  }
+}
 
 fn recheck_text(v: PresentationStillServed) -> String {
   match v {
@@ -697,7 +755,7 @@ fn recheck_text(v: PresentationStillServed) -> String {
 // AFFIRMED LOSS AND AN UNOBSERVED LOOK ARE DIFFERENT EVIDENCE (side-chat review 5331738657). Both
 // withhold before the handoff, but the bundle says which it was: "LOST" only when a look was taken
 // and showed the medium not served; a failed look is indeterminate and is reported as such.
-fn handoff_media_harness(h: HandoffMedia) -> List<HarnessFinding> {
+fn handoff_media_harness(h: MegaRacHandoff) -> List<HarnessFinding> {
   match h {
     HandoffMediaNotReached { reason: _ } => []
     HandoffMediaWithheldAtRecheck { before: _ } => [HandoffWithheldAtRecheck { handoff: h }]
@@ -719,16 +777,25 @@ fn handoff_media_harness(h: HandoffMedia) -> List<HarnessFinding> {
 // evidence of what the host did; neither they nor this look independently verify that the full
 // image was delivered, and a persisting nonzero code does not by itself prove an active fault or a
 // historical-only one.
+type MegaRacEndMedia
+  = EndMediaNotTaken { reason: NonEmptyStr }
+  | EndMediaObserved { look: MegaRacAttachResult }
 
 // PURE: the end look is owed exactly when the media attach was attempted -- a session was opened
 // against the controller, so any stop, start or presentation it reached is this attempt's to observe.
-fn end_media_is_owed(media: MediaAttachRecord) -> Bool {
+fn end_media_is_owed(media: MegaRacMediaAttach) -> Bool {
   match media {
     MediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: _ } => true
     MediaAttachNotAttempted { reason: _ } => false
   }
 }
 
+fn end_media_text(e: MegaRacEndMedia) -> String {
+  match e {
+    EndMediaNotTaken { reason: r } => concat("not taken: ", r as String)
+    EndMediaObserved { look: l } => observation_text(r: l)
+  }
+}
 
 // A PRESENTATION AFFIRMED LOST AFTER THE HANDOFF IS A CAUSE, NOT ONLY A FINDING (gunbc#12533
 // finding 4). The after-handoff and end-of-attempt looks are taken for this attempt's own subject,
@@ -739,16 +806,22 @@ fn end_media_is_owed(media: MediaAttachRecord) -> Bool {
 // leaving them to the bundle. Only an affirmed loss attributes: an unobserved or unestablished look
 // says nothing about the medium and is never promoted to a cause. The earliest affirming look is
 // named, because the phase is what the operator acts on.
+type MegaRacMediaLossPhase
+  = MediaLostAtAfterHandoff
+  | MediaLostAtEndOfAttempt
 
-fn media_loss_phase_text(p: MediaLossPhase) -> String {
+fn media_loss_phase_text(p: MegaRacMediaLossPhase) -> String {
   match p {
     MediaLostAtAfterHandoff => "after-handoff"
     MediaLostAtEndOfAttempt => "end-of-attempt"
   }
 }
 
+type MegaRacMediaLossAfterHandoff
+  = MediaLossAffirmed { phase: MegaRacMediaLossPhase, reason: NonEmptyStr }
+  | MediaLossNotAffirmed
 
-fn media_loss_of_look(look: MegaRacAttachResult, phase: MediaLossPhase) -> MediaLossAfterHandoff {
+fn media_loss_of_look(look: MegaRacAttachResult, phase: MegaRacMediaLossPhase) -> MegaRacMediaLossAfterHandoff {
   match presentation_still_served(result: look) {
     PresentationNoLongerReady { reason: why } => MediaLossAffirmed { phase: phase, reason: why }
     _ => MediaLossNotAffirmed
@@ -758,7 +831,7 @@ fn media_loss_of_look(look: MegaRacAttachResult, phase: MediaLossPhase) -> Media
 // PURE, over the two looks only a CONFIRMED handoff makes causal: a handoff that was withheld or
 // never reached made no boot write, and one attempted but unconfirmed already carries its own cause
 // (the handoff's), so neither is re-attributed to the medium.
-fn media_loss_after_handoff(handoff: HandoffMedia, end: EndMedia) -> MediaLossAfterHandoff {
+fn media_loss_after_handoff(handoff: MegaRacHandoff, end: MegaRacEndMedia) -> MegaRacMediaLossAfterHandoff {
   match handoff {
     HandoffMediaAttempted { before: _, handoff: HandoffConfirmed, after: a } =>
       match media_loss_of_look(look: a, phase: MediaLostAtAfterHandoff) {
@@ -778,7 +851,7 @@ fn media_loss_after_handoff(handoff: HandoffMedia, end: EndMedia) -> MediaLossAf
 // THE ATTEMPT'S TERMINAL CAUSE. A success stands -- the host reported its census, so whatever the
 // controller did afterwards did not stop it (the finding still records the loss) -- and a failure is
 // re-attributed to the loss, keeping the downstream symptom beside it rather than discarding it.
-fn outcome_attributing_media_loss(outcome: ProcessExit, loss: MediaLossAfterHandoff) -> ProcessExit {
+fn outcome_attributing_media_loss(outcome: ProcessExit, loss: MegaRacMediaLossAfterHandoff) -> ProcessExit {
   match outcome {
     ExitSuccess => ExitSuccess
     ExitFailure { code: c, reason: r } =>
@@ -790,7 +863,35 @@ fn outcome_attributing_media_loss(outcome: ProcessExit, loss: MediaLossAfterHand
   }
 }
 
+type MegaRacRunRecord {
+  census_ended: Bool
+  end_media: MegaRacEndMedia
+  handoff_media: MegaRacHandoff
+  media: MegaRacMediaAttach
+  smpro_power_on: SmproReading
+  smpro_census: SmproReading
+  override_before: BootParam5Reading
+  override_after: BootParam5Reading
+  override: MegaRacOverride
+  power_after: MegaRacPowerAfter
+  timing: BootPhaseTiming
+}
 
+fn run_record_not_taken(reason: NonEmptyStr) -> MegaRacRunRecord {
+  MegaRacRunRecord {
+    census_ended: false,
+    end_media: EndMediaNotTaken { reason: reason },
+    handoff_media: HandoffMediaNotReached { reason: reason },
+    media: MediaAttachNotAttempted { reason: reason },
+    smpro_power_on: SmproNotTaken { reason: reason },
+    smpro_census: SmproNotTaken { reason: reason },
+    override_before: BootParam5NotTaken { reason: reason },
+    override_after: BootParam5NotTaken { reason: reason },
+    override: OverrideNotHandedOff { reason: reason },
+    power_after: PowerAfterNotTaken { reason: reason },
+    timing: boot_phase_timing_not_taken(reason: reason),
+  }
+}
 
 // PENDING MEANS THIS ATTEMPT'S OVERRIDE, READ THROUGH THE HANDOFF'S OWN VERDICT. The same
 // boot_readback_verdict that confirmed the set decides "still pending" here, so the two can never
@@ -821,9 +922,44 @@ fn boot_param5_unread_reason(r: BootParam5Reading, which: String) -> NonEmptyStr
 // that only a boot through the override's device produces: the census END marker, which only the
 // census image on the attached virtual CD prints, for this machine and this run. Without it the
 // verdict records what was observed and says consumption is not established.
+fn boot_override_consumption(before: BootParam5Reading, after: BootParam5Reading, selection: IpmiBootSelection, booted_through_override_device: Bool) -> MegaRacOverride {
+  match before {
+    BootParam5Read { readback: b, at: _ } =>
+      if boot_override_pending(readback: b, selection: selection) {
+        OverridePendingBeforeAttempt
+      } else {
+        match after {
+          BootParam5Read { readback: a, at: _ } =>
+            if boot_override_pending(readback: a, selection: selection) {
+              OverrideStillPendingAfterAttempt
+            } else if booted_through_override_device {
+              OverrideConsumedByCensusBoot
+            } else {
+              OverrideNoLongerPendingAfterAttempt
+            }
+          other => match boot_param5_unread_reason(r: other, which: "after the attempt") {
+            Present { value: why } => OverrideConsumptionUnread { reason: why }
+            Absent => OverrideConsumptionUnread { reason: "boot parameter 5 after the attempt was not read" }
+          }
+        }
+      }
+    other => match boot_param5_unread_reason(r: other, which: "before the attempt") {
+      Present { value: why } => OverrideConsumptionUnread { reason: why }
+      Absent => OverrideConsumptionUnread { reason: "boot parameter 5 before the attempt was not read" }
+    }
+  }
+}
 
+fn power_after_attempt(observation: ChassisPowerObservation, census_ended: Bool) -> MegaRacPowerAfter {
+  match observation {
+    ChassisPowerRead { power_on: on } =>
+      if on { PoweredOnAfterAttempt } else if census_ended { PoweredOffAfterCensusEnd } else { PoweredOffWithoutCensusEnd }
+    ChassisStatusUndecodable { cause: _ } => PowerAfterUnobserved { observation: observation }
+    ChassisUnreadable => PowerAfterUnobserved { observation: observation }
+  }
+}
 
-fn override_harness(c: BootOverrideConsumption) -> List<HarnessFinding> {
+fn override_harness(c: MegaRacOverride) -> List<HarnessFinding> {
   match c {
     OverrideStillPendingAfterAttempt => [OverrideNotConsumed { consumption: c }]
     OverridePendingBeforeAttempt => [OverrideNotConsumed { consumption: c }]
@@ -834,7 +970,7 @@ fn override_harness(c: BootOverrideConsumption) -> List<HarnessFinding> {
   }
 }
 
-fn power_after_harness(p: PowerAfterAttempt) -> List<HarnessFinding> {
+fn power_after_harness(p: MegaRacPowerAfter) -> List<HarnessFinding> {
   match p {
     PoweredOffWithoutCensusEnd => [HostPoweredOffWithoutCensusEnd]
     PoweredOffAfterCensusEnd => []
@@ -844,7 +980,26 @@ fn power_after_harness(p: PowerAfterAttempt) -> List<HarnessFinding> {
   }
 }
 
+fn override_consumption_text(c: MegaRacOverride) -> String {
+  match c {
+    OverrideConsumedByCensusBoot => "consumed by this attempt: cleared after a census END marker, which only a boot of the override's device prints"
+    OverrideNoLongerPendingAfterAttempt => "no longer pending after the attempt, but no boot through the override's device was observed, so consumption by this attempt is not established"
+    OverridePendingBeforeAttempt => "ALREADY PENDING before this attempt set it; consumption not attributable"
+    OverrideStillPendingAfterAttempt => "STILL PENDING after the attempt; not consumed"
+    OverrideNotHandedOff { reason: r } => concat("not handed off: ", r as String)
+    OverrideConsumptionUnread { reason: r } => concat("undetermined: ", r as String)
+  }
+}
 
+fn power_after_text(p: MegaRacPowerAfter) -> String {
+  match p {
+    PoweredOffAfterCensusEnd => "off after the census END marker (expected: the census image ends with poweroff -f)"
+    PoweredOffWithoutCensusEnd => "OFF without the census END marker"
+    PoweredOnAfterAttempt => "on"
+    PowerAfterUnobserved { observation: o } => concat("unobserved: ", chassis_observation_text(observation: o) as String)
+    PowerAfterNotTaken { reason: r } => concat("not taken: ", r as String)
+  }
+}
 
 fn boot_param5_text(label: String, r: BootParam5Reading) -> String {
   match r {
@@ -854,12 +1009,29 @@ fn boot_param5_text(label: String, r: BootParam5Reading) -> String {
   }
 }
 
+fn run_record_text(r: MegaRacRunRecord) -> String {
+  join([
+    concat("media=", media_attach_text(record: r.media)),
+    concat("handoff_media=", handoff_media_text(h: r.handoff_media)),
+    concat("end_media=", end_media_text(e: r.end_media)),
+    concat("override=", override_consumption_text(c: r.override)),
+    concat("power_after=", power_after_text(p: r.power_after)),
+    "-- phase timing (gunbc.host.managed_host_boot_phase_timing) --",
+    boot_phase_timing_text(t: r.timing),
+    boot_param5_text(label: "before", r: r.override_before),
+    boot_param5_text(label: "after", r: r.override_after),
+    "-- smpro pass at power on --",
+    smpro_text(s: r.smpro_power_on),
+    "-- smpro pass while the census ran --",
+    smpro_text(s: r.smpro_census),
+  ], "\n")
+}
 
 // `screen` is the attempt's KVM screen: the held observer's establishment, its journal of boundary
 // and lifecycle events, every still with its instant and sha256 (or why it is not hash-bound), the
 // gaps between stills, and the separately timestamped teardown. Evidence only: no finding and no
 // verdict reads it (gunbc.machine_intake.megarac_kvm_still).
-type MtCollins1BootDiagnosticBundle {
+type BootDiagnosticBundle {
   attempt: AttemptIdentityReading
   outcome: String
   sel_before: SelSnapshotReading
@@ -869,7 +1041,7 @@ type MtCollins1BootDiagnosticBundle {
   smpro: SmproReading
   inventory: InventoryReading
   console: ConsoleReading
-  run: BootRunRecord
+  run: MegaRacRunRecord
   screen: KvmObserverRecord
   configuration: AttemptConfigurationReceipt
 }
@@ -1181,7 +1353,7 @@ fn smpro_channel(s: SmproReading) -> BmcChannelRead {
   } }
 }
 
-fn bmc_channel_reads(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcChannelRead> {
+fn bmc_channel_reads(bundle: BootDiagnosticBundle) -> List<BmcChannelRead> {
   [
     sel_channel(channel: "ipmi sel before", s: bundle.sel_before),
     sel_channel(channel: "ipmi sel after", s: bundle.sel_after),
@@ -1214,7 +1386,7 @@ fn channel_cause(r: BmcChannelRead) -> BmcReadCause? {
 // EVERY BMC READ THAT WAS ATTEMPTED FAILED, AND NONE ANSWERED: the failed channels, in read order.
 // Empty when any channel answered, and empty when nothing was attempted (an attempt that refused
 // before reading the credential says so in every section separately).
-fn bmc_all_reads_failed(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcChannelRead> {
+fn bmc_all_reads_failed(bundle: BootDiagnosticBundle) -> List<BmcChannelRead> {
   let reads = bmc_channel_reads(bundle: bundle)
   let empty: List<BmcChannelRead> = []
   if any(reads, r => channel_answered(r: r)) { empty } else {
@@ -1232,7 +1404,7 @@ fn smpro_pass(label: NonEmptyStr, s: SmproReading) -> List<SmproPassEvidence> {
   }
 }
 
-fn handoff_standing(h: HandoffMedia) -> PowerOnHandoff {
+fn handoff_standing(h: MegaRacHandoff) -> PowerOnHandoff {
   match h {
     HandoffMediaAttempted { before: _, handoff: hc, after: _ } => match hc {
       HandoffConfirmed => HandoffPoweredOn
@@ -1329,7 +1501,7 @@ fn sensor_coverage(s: SensorReading) -> CarrierStanding {
   }
 }
 
-fn chassis_coverage(p: PowerAfterAttempt) -> CarrierStanding {
+fn chassis_coverage(p: MegaRacPowerAfter) -> CarrierStanding {
   match p {
     PowerAfterUnobserved { observation: _ } => CarrierRefused { cause: "the post-attempt chassis read did not answer" }
     PowerAfterNotTaken { reason: r } => CarrierNotTaken { reason: r }
@@ -1354,18 +1526,18 @@ fn inventory_coverage(i: InventoryReading) -> CarrierStanding {
   }
 }
 
-fn media_coverage(m: MediaAttachRecord) -> CarrierStanding {
+fn media_coverage(m: MegaRacMediaAttach) -> CarrierStanding {
   match m {
     MediaAttachNotAttempted { reason: r } => CarrierNotTaken { reason: r }
     MediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: _ } => CarrierRead
   }
 }
 
-fn census_coverage(run: BootRunRecord) -> CarrierStanding {
+fn census_coverage(run: MegaRacRunRecord) -> CarrierStanding {
   if run.census_ended { CarrierRead } else { CarrierPartial { detail: "no census END marker was observed; the watch's own termination is the run's exit" } }
 }
 
-fn mtcollins1_boot_coverage(bundle: MtCollins1BootDiagnosticBundle) -> List<CarrierCoverage> {
+fn mtcollins1_boot_coverage(bundle: BootDiagnosticBundle) -> List<CarrierCoverage> {
   let delta = sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)
   [
     CarrierCoverage { carrier: SolConsole, standing: console_coverage(c: bundle.console) },
@@ -1381,7 +1553,7 @@ fn mtcollins1_boot_coverage(bundle: MtCollins1BootDiagnosticBundle) -> List<Carr
   ]
 }
 
-fn mtcollins1_boot_evidence(bundle: MtCollins1BootDiagnosticBundle) -> PowerOnEvidence {
+fn mtcollins1_boot_evidence(bundle: BootDiagnosticBundle) -> PowerOnEvidence {
   let delta = sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)
   let receipt = bundle.configuration
   PowerOnEvidence {
@@ -1399,12 +1571,12 @@ fn mtcollins1_boot_evidence(bundle: MtCollins1BootDiagnosticBundle) -> PowerOnEv
 
 // WHAT THE BUNDLE FOUND: the power-on account (the host and our coverage of it) and, beside it, what
 // our harness did. The two are composed here because the harness records are this module's.
-type MtCollins1BootFindings {
+type MegaRacBootFindings {
   account: PowerOnAccount
   harness: List<HarnessFinding>
 }
 
-fn mtcollins1_boot_harness(bundle: MtCollins1BootDiagnosticBundle) -> List<HarnessFinding> {
+fn mtcollins1_boot_harness(bundle: BootDiagnosticBundle) -> List<HarnessFinding> {
   let failed = bmc_all_reads_failed(bundle: bundle)
   concat(if count(failed) == 0 { [] } else { [EveryBmcReadFailed { failed: failed }] },
     concat(media_attach_harness(record: bundle.run.media),
@@ -1414,8 +1586,8 @@ fn mtcollins1_boot_harness(bundle: MtCollins1BootDiagnosticBundle) -> List<Harne
       if bundle.inventory.credential_removed { [] } else { [CredentialMayRemain] })))))
 }
 
-fn mtcollins1_boot_findings(bundle: MtCollins1BootDiagnosticBundle) -> MtCollins1BootFindings {
-  MtCollins1BootFindings { account: mtcollins1_power_on_account(e: mtcollins1_boot_evidence(bundle: bundle)), harness: mtcollins1_boot_harness(bundle: bundle) }
+fn mtcollins1_boot_findings(bundle: BootDiagnosticBundle) -> MegaRacBootFindings {
+  MegaRacBootFindings { account: mtcollins1_power_on_account(e: mtcollins1_boot_evidence(bundle: bundle)), harness: mtcollins1_boot_harness(bundle: bundle) }
 }
 
 fn harness_finding_text(f: HarnessFinding) -> String {
@@ -1466,7 +1638,7 @@ fn harness_finding_text(f: HarnessFinding) -> String {
 // THE ONE-LINE CONSEQUENCE ON THE RUN'S OUTCOME: the account's notes (its ending, every stated error,
 // degradation and anomaly) and every harness finding are appended to a refusal reason, and a success
 // stays a success. This is the whole of the bundle's reach into the verdict.
-fn mtcollins1_boot_outcome_with_findings(outcome: ProcessExit, findings: MtCollins1BootFindings) -> ProcessExit {
+fn mtcollins1_boot_outcome_with_findings(outcome: ProcessExit, findings: MegaRacBootFindings) -> ProcessExit {
   match outcome {
     ExitSuccess => ExitSuccess
     ExitFailure { code: c, reason: r } =>
@@ -1551,9 +1723,41 @@ fn processor_members_text(m: MembersReading<RedfishProcessorMember>) -> String {
   }
 }
 
+fn bracketed_int(label: String, n: Int?) -> String {
+  match n { Present { value: k } => concat(" [", label, " ", to_string(k), "]") Absent => "" }
+}
 
+fn firmware_report_text(report: FirmwareConsoleReport) -> String {
+  match report {
+    NoTerminalStated => "firmware stated no terminal"
+    UndecodedErrorCodesOnly { err_lines: n } => concat("firmware printed ", to_string(n), " undecoded ERR code line(s)")
+    FirmwareErrorStatementUnrecognized { statement: s } => concat("firmware printed an unrecognised statement: ", s as String)
+    TrainingRefusedByFirmware { statement: s, locus: l } =>
+      concat("firmware refused memory training: ", s as String, bracketed_int(label: "socket", n: l.socket), bracketed_int(label: "memory controller", n: l.memory_controller))
+  }
+}
 
+fn grub_report_text(report: GrubConsoleReport) -> String {
+  match report {
+    GrubNothingStated => "GRUB: nothing printed"
+    GrubBannerOnly => "GRUB: banner printed, no error"
+    GrubStillTrying { errors: es } => concat("GRUB: still trying after ", join(map(es, e => grub_error_text(error: e)), "; "))
+    GrubBootFailed { errors: es } => concat("GRUB: boot FAILED: ", join(map(es, e => grub_error_text(error: e)), "; "))
+  }
+}
 
+fn console_text(c: ConsoleReading) -> String {
+  match c {
+    ConsoleRetained { path: p, size: b, lines: n, firmware: f, firmware_error_lines: e, capture_digest: _, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: cmp, loader: g, linux: l, modules: m, nvparam: nv, span_readings: _ } =>
+      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "; ", to_string(e), " firmware error line(s)\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()), "\n-- checkpoints --\n", ampere_checkpoint_console_text(o: cp), "\n", if count(rs) == 0 { "no checkpoint relation" } else { join(map(rs, r => ampere_checkpoint_relation_text(r: r)), "\n") }, "\n-- milestones --\n", if count(ms.sightings) == 0 { "none" } else { join(map(ms.sightings, x => console_milestone_sighting_text(s: x)), "\n") }, "\n", ampere_socket_console_text(o: o), ampere_socket_reference_comparison_text(c: cmp), "\n-- loader and linux --\n", grub_report_text(report: g), "\n", linux_boot_console_text(o: l), "\n", kernel_module_decompression_text(o: m), "\n", ampere_nvparam_console_text(o: nv))
+    ConsoleExceedsBound { path: p, size: b, bound: bound } =>
+      concat("capture ", p as String, " is ", to_string(byte_size_count(b: b)), " bytes (stat), OVER the ", to_string(byte_size_count(b: bound)), "-byte bound; the collector does not truncate, so the artifact carries it whole")
+    ConsoleNotRetained { path: p } =>
+      concat("capture ", p as String, " is NOT under ", mtcollins1_boot_retained_artifact_prefix, " and is not uploaded with this artifact")
+    ConsoleUnread { path: p, detail: d } => concat("capture ", p as String, " UNREAD: ", d)
+    ConsoleNotConfigured => "NOT CONFIGURED: the SOL capture path was unset for this attempt"
+  }
+}
 
 fn sensors_text(s: SensorReading) -> String {
   match s {
@@ -1563,7 +1767,7 @@ fn sensors_text(s: SensorReading) -> String {
   }
 }
 
-fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String {
+fn mtcollins1_boot_bundle_text(bundle: BootDiagnosticBundle) -> String {
   let findings = mtcollins1_boot_findings(bundle: bundle)
   join([
     "mtcollins1 boot diagnostics",
@@ -2201,6 +2405,9 @@ fn mtcollins1_boot_inventory(username: NonEmptyStr, password: String) -> Invento
   }
 }
 
+fn console_path_retained(path: String) -> Bool {
+  starts_with(s: path, prefix: mtcollins1_boot_retained_artifact_prefix) || string_contains(s: path, pattern: concat("/", mtcollins1_boot_retained_artifact_prefix))
+}
 
 // THE STAT SIZE CROSSES Int TO Nat THROUGH std.checked_arithmetic, NOT THROUGH A CAST. `n as Nat`
 // typechecked here and refused only when it EVALUATED ("cannot cast Int to Nat"), so on run
@@ -2210,6 +2417,16 @@ fn mtcollins1_boot_inventory(username: NonEmptyStr, password: String) -> Invento
 // sibling repair is gunbc.runner.runner_microvm_cell_readiness_store decode_attempt). The crossing is
 // std.checked_arithmetic checked_int_to_nat, the one Int->Nat authority since #12166: a negative
 // size is absent, never clamped and never its absolute value.
+fn console_size_of_stat(size_text: String) -> ByteSize? {
+  match parse_int(s: trim(size_text)) {
+    Absent => none
+    Present { value: n } =>
+      match checked_int_to_nat(n: n) {
+        Absent => none
+        Present { value: count } => Present { value: byte_size(count: count) }
+      }
+  }
+}
 
 // THE TWO-SOCKET REFERENCE BOOT every capture is compared against: the census run of 2026-09-10,
 // which reported 2 sockets and 160 CPUs and printed both the firmware summary and the Ampere CPER
@@ -2218,6 +2435,12 @@ fn mtcollins1_boot_inventory(username: NonEmptyStr, password: String) -> Invento
 // gunbc.machine_intake.ampere_socket_console_observation ampere_socket_console_differences). It is
 // read from the checkout the run executes in, so a reference that cannot be read is an UNREAD line
 // in the bundle, never an empty comparison.
+type ReferenceCaptureRead {
+  text: String
+  ok: Bool
+  error: String
+  digest: Sha256FileDigest
+}
 
 // THE REFERENCE'S SCOPE, for the opaque checkpoint relation (ruling R2): a continuation the reference
 // shows is evidence only under the firmware and population it was taken with. Both are this
@@ -2227,9 +2450,75 @@ data mtcollins1_census_reference_firmware_scope: NonEmptyStr = "the vendor firmw
 
 data mtcollins1_census_reference_configuration_scope: NonEmptyStr = "two sockets, sixteen DIMMs (the 2026-09-10/11 census population)"
 
+fn checkpoint_relations(checkpoints: AmpereCheckpointConsoleObservation, capture: Sha256FileDigest, reference: ReferenceCaptureRead) -> List<AmpereCheckpointRelation> {
+  flat_map(checkpoints.spans, span => match if reference.ok {
+      ampere_checkpoint_relation(span: span, capture: capture, reference: AmpereCheckpointReference {
+        path: mtcollins1_census_sol_artifact_path, digest: reference.digest,
+        firmware_scope: mtcollins1_census_reference_firmware_scope, configuration_scope: mtcollins1_census_reference_configuration_scope,
+        observation: ampere_checkpoint_console_observation(lines: host_capture_lines(capture: HostCaptureLiveStream { text: reference.text })),
+      })
+    } else {
+      ampere_checkpoint_relation_unread(span: span, capture: capture, path: mtcollins1_census_sol_artifact_path, digest: reference.digest,
+        firmware_scope: mtcollins1_census_reference_firmware_scope, configuration_scope: mtcollins1_census_reference_configuration_scope, detail: reference.error)
+    } { Absent => [] Present { value: r } => [r] })
+}
 
 // THE PURE DECISION over the capture's stat size and, when within the bound, its content.
+fn mtcollins1_boot_console_reading(path: String, size: ByteSize, capture: String, read_ok: Bool, read_error: String, capture_digest: Sha256FileDigest, reference: ReferenceCaptureRead) -> ConsoleReading {
+  if path == "" {
+    ConsoleNotConfigured
+  } else if !console_path_retained(path: path) {
+    ConsoleNotRetained { path: path as NonEmptyStr }
+  } else if (byte_size_count(b: size) as Int) > (byte_size_count(b: mtcollins1_boot_console_bound) as Int) {
+    ConsoleExceedsBound { path: path as NonEmptyStr, size: size, bound: mtcollins1_boot_console_bound }
+  } else if !read_ok {
+    ConsoleUnread { path: path as NonEmptyStr, detail: read_error }
+  } else {
+    let lines = host_capture_lines(capture: HostCaptureLiveStream { text: capture })
+    let sockets = ampere_socket_console_observation(lines: lines)
+    let checkpoints = ampere_checkpoint_console_observation(lines: lines)
+    ConsoleRetained {
+      path: path as NonEmptyStr, size: size, lines: count(lines), firmware: firmware_console_report(lines: lines),
+      firmware_error_lines: count(filter(lines, l => is_firmware_error_line(line: l) || is_firmware_err_code_line(line: l))),
+      capture_digest: capture_digest,
+      dram: ampere_dram_console_observation(lines: lines),
+      checkpoints: checkpoints,
+      checkpoint_relations: checkpoint_relations(checkpoints: checkpoints, capture: capture_digest, reference: reference),
+      milestones: mtcollins1_console_milestones(lines: lines),
+      sockets: sockets,
+      against_reference: ampere_socket_reference_comparison(reference_path: mtcollins1_census_sol_artifact_path, reference_text: reference.text, read_ok: reference.ok, read_error: reference.error, subject: sockets),
+      loader: grub_console_report(lines: lines),
+      linux: linux_boot_console_observation(lines: lines),
+      modules: kernel_module_decompression_observation(lines: lines),
+      nvparam: ampere_nvparam_console_observation(lines: lines),
+      span_readings: span_console_readings(lines: lines),
+    }
+  }
+}
 
+fn mtcollins1_boot_console(path: String) -> ConsoleReading {
+  if path == "" {
+    ConsoleNotConfigured
+  } else if !console_path_retained(path: path) {
+    ConsoleNotRetained { path: path as NonEmptyStr }
+  } else {
+    let st = coreutils.Stat.PathSize(path: path as NonEmptyStr)
+    match if st.success { console_size_of_stat(size_text: st.size_text) } else { none } {
+      Absent => ConsoleUnread { path: path as NonEmptyStr, detail: concat("stat -c %s could not size the capture: ", trim(st.size_text)) }
+      Present { value: size } =>
+        if (byte_size_count(b: size) as Int) > (byte_size_count(b: mtcollins1_boot_console_bound) as Int) {
+          ConsoleExceedsBound { path: path as NonEmptyStr, size: size, bound: mtcollins1_boot_console_bound }
+        } else {
+          let r = Filesystem.Read(path: path)
+          let reference = Filesystem.Read(path: mtcollins1_census_sol_artifact_path as String)
+          mtcollins1_boot_console_reading(path: path, size: size, capture: r.content, read_ok: r.success, read_error: r.error,
+            capture_digest: sha256sum_file_digest_via_shell(path: path as NonEmptyStr),
+            reference: ReferenceCaptureRead { text: reference.content, ok: reference.success, error: reference.error,
+              digest: sha256sum_file_digest_via_shell(path: mtcollins1_census_sol_artifact_path) })
+        }
+    }
+  }
+}
 
 // THE BUNDLE IS WRITTEN, AND WHETHER IT WAS IS ITSELF A LINE IN THE RECEIPT. A failed write on a
 // refused attempt is also appended to the refusal reason. On an accepted attempt the receipt line
@@ -2243,12 +2532,12 @@ fn bundle_write_receipt_line(w: BundleWrite) -> String {
   }
 }
 
-fn mtcollins1_boot_write_bundle(bundle: MtCollins1BootDiagnosticBundle) -> BundleWrite {
+fn mtcollins1_boot_write_bundle(bundle: BootDiagnosticBundle) -> BundleWrite {
   let written = Filesystem.Write(path: mtcollins1_boot_diagnostics_path, content: mtcollins1_boot_bundle_text(bundle: bundle))
   if written.success { BundleWritten } else { BundleWriteFailed { error: written.error } }
 }
 
-fn mtcollins1_boot_outcome_after_bundle(outcome: ProcessExit, bundle: MtCollins1BootDiagnosticBundle, write: BundleWrite) -> ProcessExit {
+fn mtcollins1_boot_outcome_after_bundle(outcome: ProcessExit, bundle: BootDiagnosticBundle, write: BundleWrite) -> ProcessExit {
   let with_findings = mtcollins1_boot_outcome_with_findings(outcome: outcome, findings: mtcollins1_boot_findings(bundle: bundle))
   match write {
     BundleWritten => with_findings
