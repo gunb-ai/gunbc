@@ -8,6 +8,7 @@ import std.occurrence_binding {
   OccurrenceBound,
   OccurrenceUnbound,
   OccurrenceAmbiguous,
+  OccurrenceExcludedByCategory,
 }
 import std.occurrence_identity {
   OccurrenceId,
@@ -2535,6 +2536,8 @@ fn resolve_reference_via_structural_candidates(
     OccurrenceReferenceBindingDecided { result: result } =>
       match result {
         OccurrenceUnbound { occurrence: _ } =>
+          ReferenceBindingProjectionUnbound { occurrence: reference.occurrence }
+        OccurrenceExcludedByCategory { occurrence: _, excluded: _ } =>
           ReferenceBindingProjectionUnbound { occurrence: reference.occurrence }
         OccurrenceAmbiguous { occurrence: _, candidates: _ } =>
           ReferenceBindingProjectionAmbiguous { occurrence: reference.occurrence }

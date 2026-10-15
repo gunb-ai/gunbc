@@ -1,13 +1,15 @@
 module std.occurrence_binding_resolve
 
 import std.optional { Present, Absent }
-import std.algebra { FreeMonoid, Empty }
-import std.types { String, List, Int }
+import std.algebra { FreeMonoid, Empty, Cons }
+import std.types { String, List, Int, Map }
 import std.occurrence_binding {
   ContainmentPath,
   BindingOccurrence,
   BindingCandidate,
+  CategoryExcludedBinding,
   OccurrenceBindingResult,
+  OccurrenceExcludedByCategory,
   occurrence_binding_from_candidates,
 }
 import std.occurrence_identity {
@@ -166,6 +168,7 @@ fn binding_candidate_from_declaration(
 
 type OccurrenceCandidatePopulationBuild {
   candidates: FreeMonoid<BindingCandidate<OccurrenceId>>
+  excluded: FreeMonoid<CategoryExcludedBinding<OccurrenceId>>
   seen_candidate_ids: Map<Int, OccurrenceId>
   refusal: OccurrenceTransportRefusal?
 }
@@ -179,6 +182,7 @@ fn binding_candidates_from_supplied_declarations(
     supplied_candidates,
     init: OccurrenceCandidatePopulationBuild {
       candidates: Empty,
+      excluded: Empty,
       seen_candidate_ids: empty_map(),
       refusal: none,
     },
@@ -193,6 +197,7 @@ fn binding_candidates_from_supplied_declarations(
             Absent =>
               OccurrenceCandidatePopulationBuild {
                 candidates: build.candidates,
+                excluded: build.excluded,
                 seen_candidate_ids: build.seen_candidate_ids,
                 refusal: Present {
                   value: UnknownOccurrenceIdentity {
@@ -208,6 +213,7 @@ fn binding_candidates_from_supplied_declarations(
                 Present { value: _ } =>
                   OccurrenceCandidatePopulationBuild {
                     candidates: build.candidates,
+                    excluded: build.excluded,
                     seen_candidate_ids: build.seen_candidate_ids,
                     refusal: Present {
                       value: DuplicateSuppliedCandidateIdentity {
@@ -229,6 +235,7 @@ fn binding_candidates_from_supplied_declarations(
                         Present { value: observed_reference } =>
                           OccurrenceCandidatePopulationBuild {
                             candidates: build.candidates,
+                            excluded: build.excluded,
                             seen_candidate_ids: build.seen_candidate_ids,
                             refusal: Present {
                               value: WrongOccurrenceRole {
@@ -242,6 +249,7 @@ fn binding_candidates_from_supplied_declarations(
                         Absent =>
                           OccurrenceCandidatePopulationBuild {
                             candidates: build.candidates,
+                            excluded: build.excluded,
                             seen_candidate_ids: build.seen_candidate_ids,
                             refusal: Present {
                               value: MissingAuthoredOccurrenceIdentity {
@@ -268,6 +276,7 @@ fn binding_candidates_from_supplied_declarations(
                                 declaration: declaration,
                               )],
                             ),
+                            excluded: build.excluded,
                             seen_candidate_ids: seen_candidate_ids,
                             refusal: none,
                           }
@@ -277,6 +286,17 @@ fn binding_candidates_from_supplied_declarations(
                         } =>
                           OccurrenceCandidatePopulationBuild {
                             candidates: build.candidates,
+                            excluded: concat(
+                              build.excluded,
+                              [
+                                CategoryExcludedBinding {
+                                  candidate: binding_candidate_from_declaration(
+                                    declaration: declaration,
+                                  ),
+                                  category: declaration.category,
+                                },
+                              ],
+                            ),
                             seen_candidate_ids: seen_candidate_ids,
                             refusal: none,
                           }
@@ -295,6 +315,36 @@ type OccurrenceReferenceBindingOutcome
   | OccurrenceReferenceBindingTransportRefused {
       refusal: OccurrenceTransportRefusal,
     }
+
+// ONE VERDICT after category eligibility: a truly empty supplied set is Unbound; a nonempty
+// supplied set whose every member was category-inadmissible is OccurrenceExcludedByCategory,
+// carrying those candidates and their categories. Resolve reads the reason from this result.
+fn occurrence_binding_from_eligibility(
+  occurrence: BindingOccurrence<OccurrenceId>,
+  candidates: FreeMonoid<BindingCandidate<OccurrenceId>>,
+  excluded: FreeMonoid<CategoryExcludedBinding<OccurrenceId>>
+) -> OccurrenceBindingResult<OccurrenceId> {
+  match candidates {
+    Empty =>
+      match excluded {
+        Empty =>
+          occurrence_binding_from_candidates(
+            occurrence: occurrence,
+            candidates: candidates,
+          )
+        Cons { head: _, tail: _ } =>
+          OccurrenceExcludedByCategory {
+            occurrence: occurrence,
+            excluded: excluded,
+          }
+      }
+    Cons { head: _, tail: _ } =>
+      occurrence_binding_from_candidates(
+        occurrence: occurrence,
+        candidates: candidates,
+      )
+  }
+}
 
 fn reference_occurrence_by_id(
   validated: ValidatedOccurrenceTransport,
@@ -355,11 +405,12 @@ fn resolve_reference_occurrence_binding_validated(
               }
             Absent =>
               OccurrenceReferenceBindingDecided {
-                result: occurrence_binding_from_candidates(
+                result: occurrence_binding_from_eligibility(
                   occurrence: binding_occurrence_from_reference(
                     reference: reference,
                   ),
                   candidates: build.candidates,
+                  excluded: build.excluded,
                 ),
               }
           }

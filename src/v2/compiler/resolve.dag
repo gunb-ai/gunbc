@@ -8,7 +8,8 @@ import v2.compiler.lexical_scope { ArrowAuthoredSlot, ArrowBodyOrNamedSlot, Arro
 import v2.std.declaration_marker { ReachesNoTestCode, ReachesTestMarkedDeclaration, TestCodeIndex, test_code_index_add_module, test_code_index_empty, test_code_reach }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.occurrence_identity { LexicalValueOccurrence, OccurrenceCategory, TypeOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
+import std.occurrence_identity { ConstructorOccurrence, LexicalValueOccurrence, OccurrenceCategory, TypeOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
+import std.occurrence_binding_resolve { OccurrenceCategoryBindingAdmissible, OccurrenceCategoryBindingInadmissible, occurrence_category_binding_verdict }
 import v2.extdeps.languages.dag { dag_kernel_string_type_spelling, dag_string_literal_value_optional, dag_kernel_type_binding_optional, dag_kernel_type_declaration_binding_optional, dag_kernel_type_foreign_declaration, ForeignDeclarationBinds, ForeignDeclarationRefuses, dag_node_is_float_literal_atom, dag_node_is_int_literal_atom, dag_symbol_literal_name_optional, dag_string_literal_value_symbol_optional, dag_node_is_module_root_conj, dag_resolve_preserve_module_metadata_subtree, dag_surface_module_header_metadata_edge, dag_surface_operator_canonicalization_lookup, namespace_graft_spine_body_optional, qualified_name_from_module_node }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.anonymous_binder { is_anonymous_param_label }
@@ -18,15 +19,15 @@ import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_id
 import v2.std.optional_layers { occupancy_declaration_spelling, wrap_type_node_occupancy_at }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.compilers.target_model { target_model_canonical_operation_wire_node }
-import v2.std.diagnostic { Correction, CorrectionNotModeled, Diagnostic, Diagnostics, NonEmptyDiagnostics, declaration_locus, node_locus, Outcome, UserInputBoundary, Unavailable, Accepted, None, Some, diagnostics_merge, diagnostics_fatal_reason, diagnostics_singleton, bind_outcome, rejected_with_pending, ExternalContractUnknown, Rejected, outcome_with_diagnostics }
+import v2.std.diagnostic { Correction, CorrectionNotModeled, Diagnostic, Diagnostics, NonEmptyDiagnostics, declaration_locus, node_locus, Outcome, UserInputBoundary, Unavailable, Suggested, Accepted, None, Some, diagnostics_merge, diagnostics_fatal_reason, diagnostics_singleton, bind_outcome, rejected_with_pending, ExternalContractUnknown, Rejected, outcome_with_diagnostics }
 import v2.compiler.primitive_authority { primitive_authority_path, primitive_authority_row_names_head }
 import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, collection_concat_shape_declaration_path, collection_roster_primitive_call_row_optional, fold_family_realization }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string, qualified_name_snoc, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node, qualified_name_spine_segment_nodes, lexical_reference_node }
 import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY, default_name_resolution_policy }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
-import v2.std.symbol_index { symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of }
+import v2.std.symbol_index { symbol_index_entry_at, KindLookupAmbiguous, KindLookupExcludedByCategory, KindLookupHit, KindLookupUnbound, LexicalAmbiguous, LexicalBindingCandidate, LexicalEligibility, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligibility, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of }
 import v2.std.node { BinderTypeEdge, core_edge, Occupancy, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge }
-import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names }
+import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, TypeParamOrderDeclared, TypeParamOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_binder_target_of, type_param_kind_optional, type_param_order, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names }
 import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, node_positional_child_targets, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.map_introduction { MapIntroductionEntryNodes, MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, MapLiteralEntriesMalformed, MapLiteralEntriesNone, MapLiteralEntriesPresent, map_literal_entries, lower_map_introduction, map_introduction_duplicate_key, map_introduction_expected_head_is_map }
@@ -519,7 +520,16 @@ type ResolveContext {
   // std.occurrence_binding_resolve occurrence_category_binding_verdict to the collected
   // population before symbol_index_lexical_selection.
   reference_category: OccurrenceCategory
+  // A type-application ARGUMENT names the parameter it is judged against, so an
+  // ExcludedByCategory verdict becomes resolve_reason_type_argument_category_mismatch
+  // naming that parameter. Other positions keep unbound for an excluded-only set
+  // (#13832 type-vs-variant at an annotation head).
+  type_argument: TypeArgumentStanding
 }
+
+type TypeArgumentStanding
+  = NotATypeArgument
+  | TypeArgumentOf { parameter: Symbol }
 
 // WHERE THE WALK STANDS IN THE CONTAINMENT TREE, IN THE PATH v2.compiler.symbol_index_fill KEYS
 // DECLARATIONS BY. It is not `position`, which is a LOOKUP position and counts every named edge; the
@@ -898,7 +908,8 @@ fn resolve_ctx_init(
     lm: lm,
     under_module_root: false,
     declaring: resolve_declaring_root(namespace: namespace),
-    reference_category: LexicalValueOccurrence
+    reference_category: LexicalValueOccurrence,
+    type_argument: NotATypeArgument
   }
 }
 
@@ -912,7 +923,8 @@ fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
     declaring: ctx.declaring,
-    reference_category: ctx.reference_category
+    reference_category: ctx.reference_category,
+    type_argument: ctx.type_argument
   }
 }
 
@@ -926,7 +938,8 @@ fn resolve_ctx_with_type_scope(ctx: ResolveContext, type_scope: Scope) -> Resolv
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
     declaring: ctx.declaring,
-    reference_category: ctx.reference_category
+    reference_category: ctx.reference_category,
+    type_argument: ctx.type_argument
   }
 }
 
@@ -940,14 +953,33 @@ fn resolve_ctx_with_reference_category(ctx: ResolveContext, category: Occurrence
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
     declaring: ctx.declaring,
-    reference_category: category
+    reference_category: category,
+    type_argument: ctx.type_argument
+  }
+}
+
+fn resolve_ctx_with_type_argument(ctx: ResolveContext, standing: TypeArgumentStanding) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    type_scope: ctx.type_scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root,
+    declaring: ctx.declaring,
+    reference_category: ctx.reference_category,
+    type_argument: standing
   }
 }
 
 fn resolve_ctx_type_role(ctx: ResolveContext, scope: Scope) -> ResolveContext {
-  resolve_ctx_with_reference_category(
-    ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope),
-    category: TypeOccurrence
+  resolve_ctx_with_type_argument(
+    ctx: resolve_ctx_with_reference_category(
+      ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope),
+      category: TypeOccurrence
+    ),
+    standing: NotATypeArgument
   )
 }
 
@@ -997,7 +1029,8 @@ fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveCon
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
     declaring: ctx.declaring,
-    reference_category: ctx.reference_category
+    reference_category: ctx.reference_category,
+    type_argument: ctx.type_argument
   }
 }
 
@@ -1011,7 +1044,8 @@ fn resolve_ctx_leaving_containment(ctx: ResolveContext) -> ResolveContext {
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
     declaring: NotDeclaring,
-    reference_category: ctx.reference_category
+    reference_category: ctx.reference_category,
+    type_argument: ctx.type_argument
   }
 }
 
@@ -1037,7 +1071,8 @@ fn resolve_ctx_with_declaring(ctx: ResolveContext, declaring: DeclaringPosition)
     lm: ctx.lm,
     under_module_root: ctx.under_module_root,
     declaring: declaring,
-    reference_category: ctx.reference_category
+    reference_category: ctx.reference_category,
+    type_argument: ctx.type_argument
   }
 }
 
@@ -1100,7 +1135,8 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
     lm: ctx.lm,
     under_module_root: under_module_root,
     declaring: ctx.declaring,
-    reference_category: ctx.reference_category
+    reference_category: ctx.reference_category,
+    type_argument: ctx.type_argument
   }
 }
 
@@ -1429,6 +1465,7 @@ type SymbolIndexAtomLookup
   = SymbolIndexAtomHit { path: QualifiedName }
   | SymbolIndexAtomAmbiguous { class: AmbiguousLookupClass }
   | SymbolIndexAtomUnbound
+  | SymbolIndexAtomExcludedByCategory
 
 // NOTHING FOLLOWS AN EXHAUSTED CHAIN, which is what the LexicalUnbound arm below now says by
 // answering SymbolIndexAtomUnbound. That arm used to ask the corpus-wide bare-name index under
@@ -1458,10 +1495,32 @@ fn lookup_symbol_index_atom_identity(
     name: name,
     required: ctx.reference_category
   ) {
-    LexicalHit { node: _, path: path } => SymbolIndexAtomHit { path: path }
-    LexicalAmbiguous { candidates: candidates } =>
+    KindLookupHit { node: _, path: path } => SymbolIndexAtomHit { path: path }
+    KindLookupAmbiguous { candidates: candidates } =>
       SymbolIndexAtomAmbiguous { class: AmbiguousOnLexicalChain { candidates: candidates } }
-    LexicalUnbound => SymbolIndexAtomUnbound
+    KindLookupUnbound => SymbolIndexAtomUnbound
+    KindLookupExcludedByCategory { excluded: _ } => SymbolIndexAtomExcludedByCategory
+  }
+}
+
+fn type_argument_category_mismatch_diagnostic(n: Node, parameter: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_type_argument_category_mismatch,
+    at: node_locus(node: n),
+    correction: Suggested { node: canonical_atom(identity: parameter, occurrence_id: n.occurrence_id) }
+  }
+}
+
+fn resolve_from_excluded_by_category(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
+  match ctx.type_argument {
+    TypeArgumentOf { parameter: parameter } =>
+      Rejected {
+        diagnostics: rejected_with_pending(
+          pending: pending,
+          rejected: diagnostics_singleton(d: type_argument_category_mismatch_diagnostic(n: n, parameter: parameter))
+        )
+      }
+    NotATypeArgument => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
   }
 }
 
@@ -1793,13 +1852,25 @@ fn resolve_declared_path_reading(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match symbol_index_lexical_eligible(
+  match symbol_index_lexical_eligibility(
     index: ctx.namespace.symbol_index,
     required: ctx.reference_category,
     candidates: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path)
   ) {
-    Empty => resolve_reference_path_miss(ctx: ctx, n: n, path: path, pending: pending)
-    Cons { head: candidate, tail: rest } =>
+    LexicalEligibility { eligible: Empty, excluded: Empty } =>
+      resolve_reference_path_miss(ctx: ctx, n: n, path: path, pending: pending)
+    LexicalEligibility { eligible: Empty, excluded: Cons { head: _, tail: _ } } =>
+      match ctx.type_argument {
+        TypeArgumentOf { parameter: parameter } =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: pending,
+              rejected: diagnostics_singleton(d: type_argument_category_mismatch_diagnostic(n: n, parameter: parameter))
+            )
+          }
+        NotATypeArgument => resolve_reference_path_miss(ctx: ctx, n: n, path: path, pending: pending)
+      }
+    LexicalEligibility { eligible: Cons { head: candidate, tail: rest }, excluded: _ } =>
       resolve_declared_path_candidates(ctx: ctx, n: n, candidate: candidate, rest: rest, pending: pending)
   }
 }
@@ -2324,9 +2395,19 @@ fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending
             )
           }
       }
+    SymbolIndexAtomExcludedByCategory =>
+      resolve_from_excluded_by_category(ctx: ctx, n: n, identity: identity, pending: pending)
     SymbolIndexAtomUnbound =>
       match resolve_kernel_type_atom_optional(n: n, identity: identity) {
-        Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
+        Present { value: kernel } =>
+          match occurrence_category_binding_verdict(
+            reference: ctx.reference_category,
+            declaration: TypeOccurrence
+          ) {
+            OccurrenceCategoryBindingAdmissible => Accepted { value: kernel, diagnostics: pending }
+            OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } =>
+              resolve_from_excluded_by_category(ctx: ctx, n: n, identity: identity, pending: pending)
+          }
         Absent =>
           match collection_roster_primitive_call_row_optional(head: identity) {
             Present { value: r } =>
@@ -3160,7 +3241,7 @@ fn resolve_expected_rename_chain(ctx: ResolveContext, path: QualifiedName, visit
           name: head,
           required: TypeOccurrence
         ) {
-          LexicalHit { node: _, path: renamed } =>
+          KindLookupHit { node: _, path: renamed } =>
             resolve_expected_rename_chain(ctx: ctx, path: renamed, visited: list_snoc_item(xs: visited, item: path))
           _ => ExpectedHeadAbsent
         }
@@ -3190,7 +3271,7 @@ fn resolve_expected_head_path_as_written(ctx: ResolveContext, x: ResolveExpectat
               name: id,
               required: TypeOccurrence
             ) {
-              LexicalHit { node: _, path: path } => optional_present(value: path)
+              KindLookupHit { node: _, path: path } => optional_present(value: path)
               _ => optional_absent()
             }
           }
@@ -3332,7 +3413,7 @@ fn resolve_map_key_type_is_string_literal_type(ctx: ResolveContext, position: Qu
         name: id,
         required: TypeOccurrence
       ) {
-        LexicalUnbound =>
+        KindLookupUnbound =>
           dag_kernel_string_type_spelling(sym: id) && match dag_kernel_type_binding_optional(sym: id) {
             Present { value: _ } => true
             Absent => false
@@ -3898,13 +3979,212 @@ fn resolve_node_walk_entered(
       }
       }
     TypeNode { connective: Instantiation } =>
-      resolve_type_application(ctx: ctx, walked: resolve_children_homogeneous_scope(ctx: ctx, n: n))
+      resolve_instantiation_walk(ctx: ctx, n: n)
     TypeNode { connective: Occupancy } =>
       resolve_occupancy(ctx: ctx, walked: resolve_children_homogeneous_scope(ctx: ctx, n: n))
     TypeNode { connective: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
     ComputationNode { behavior: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
+  }
+}
+
+// ARITY BEFORE ANY ARGUMENT WALK. The head is resolved first (TypeOccurrence). When it names a
+// declaration whose binders are indexed, argument count is judged against those binders before
+// any argument is walked. Each argument then walks with the category the parameter's KIND admits
+// (a coproduct kind admits ConstructorOccurrence; an unkinded parameter admits TypeOccurrence).
+type InstantiationArgGuide
+  = InstantiationArgsAsTypes
+  | InstantiationArgsByBinder {
+      declaration: QualifiedName
+      binders: Node
+      labels: List<Symbol>
+    }
+
+type InstantiationChildWalk {
+  walk: ChildWalk
+  next_arg: Int
+  head_resolved: Bool
+}
+
+fn resolve_type_argument_category(ctx: ResolveContext, declaration: QualifiedName, binder: Node) -> OccurrenceCategory {
+  match type_param_kind_optional(binder: binder) {
+    Absent => TypeOccurrence
+    Present { value: kind } =>
+      match resolve_kind_variant_paths_optional(ctx: ctx, declaration: declaration, kind: kind) {
+        Present { value: _ } => ConstructorOccurrence
+        Absent => TypeOccurrence
+      }
+  }
+}
+
+fn resolve_type_argument_walk_ctx(
+  ctx: ResolveContext,
+  guide: InstantiationArgGuide,
+  arg_i: Int
+) -> ResolveContext {
+  match guide {
+    InstantiationArgsAsTypes => resolve_ctx_type_role(ctx: ctx, scope: ctx.type_scope)
+    InstantiationArgsByBinder { declaration: declaration, binders: binders, labels: labels } =>
+      match list_at_optional(xs: labels, index: arg_i) {
+        Absent => resolve_ctx_type_role(ctx: ctx, scope: ctx.type_scope)
+        Present { value: name } =>
+          match type_binder_target_of(binders: binders, name: name) {
+            Absent => resolve_ctx_type_role(ctx: ctx, scope: ctx.type_scope)
+            Present { value: binder } =>
+              resolve_ctx_with_type_argument(
+                ctx: resolve_ctx_with_reference_category(
+                  ctx: resolve_ctx_type_role(ctx: ctx, scope: ctx.type_scope),
+                  category: resolve_type_argument_category(ctx: ctx, declaration: declaration, binder: binder)
+                ),
+                standing: TypeArgumentOf { parameter: name }
+              )
+          }
+      }
+  }
+}
+
+fn resolve_instantiation_children(
+  ctx: ResolveContext,
+  n: Node,
+  head_resolved: Node,
+  head_diagnostics: Diagnostics,
+  head_lexical: List<LexicalBindingEntry>,
+  guide: InstantiationArgGuide
+) -> ResolveNodeWalk {
+  let stepped = fold(n.children, init: InstantiationChildWalk {
+      walk: child_walk_init(),
+      next_arg: 0,
+      head_resolved: false
+    }, f: fn(acc, e) {
+      match e.label {
+        Positional =>
+          if acc.head_resolved {
+            InstantiationChildWalk {
+              walk: child_walk_step(
+                w: acc.walk,
+                e: e,
+                r: resolve_child_edge(
+                  ctx: resolve_type_argument_walk_ctx(ctx: ctx, guide: guide, arg_i: acc.next_arg),
+                  e: e
+                )
+              ),
+              next_arg: acc.next_arg + 1,
+              head_resolved: true
+            }
+          } else {
+            InstantiationChildWalk {
+              walk: child_walk_step(
+                w: acc.walk,
+                e: e,
+                r: ResolveWalkAccepted {
+                  value: head_resolved,
+                  diagnostics: head_diagnostics,
+                  lexical: head_lexical
+                }
+              ),
+              next_arg: 0,
+              head_resolved: true
+            }
+          }
+        Authored { name: _ } =>
+          InstantiationChildWalk {
+            walk: child_walk_step(
+              w: acc.walk,
+              e: e,
+              r: resolve_child_edge(ctx: resolve_ctx_type_role(ctx: ctx, scope: ctx.type_scope), e: e)
+            ),
+            next_arg: acc.next_arg,
+            head_resolved: acc.head_resolved
+          }
+        StructuralLabel { label: _ } =>
+          InstantiationChildWalk {
+            walk: child_walk_step(
+              w: acc.walk,
+              e: e,
+              r: resolve_child_edge(ctx: resolve_ctx_type_role(ctx: ctx, scope: ctx.type_scope), e: e)
+            ),
+            next_arg: acc.next_arg,
+            head_resolved: acc.head_resolved
+          }
+      }
+    })
+  child_walk_node(n: n, w: stepped.walk)
+}
+
+fn resolve_instantiation_walk(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  match positional_edges(children: n.children) {
+    Empty =>
+      resolve_type_application(ctx: ctx, walked: resolve_children_homogeneous_scope(ctx: ctx, n: n))
+    Cons { head: head_e, tail: arg_es } =>
+      match resolve_child_edge(ctx: resolve_ctx_type_role(ctx: ctx, scope: ctx.type_scope), e: head_e) {
+        ResolveWalkRefused { first: f, rest: r, observation: o } =>
+          ResolveWalkRefused { first: f, rest: r, observation: o }
+        ResolveWalkAccepted { value: head_resolved, diagnostics: hd, lexical: hl } =>
+          match declaration_reference_path_optional(node: head_resolved) {
+            Absent =>
+              resolve_type_application(
+                ctx: ctx,
+                walked: resolve_instantiation_children(
+                  ctx: ctx,
+                  n: n,
+                  head_resolved: head_resolved,
+                  head_diagnostics: hd,
+                  head_lexical: hl,
+                  guide: InstantiationArgsAsTypes
+                )
+              )
+            Present { value: path } =>
+              match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+                Absent =>
+                  resolve_type_application(
+                    ctx: ctx,
+                    walked: resolve_instantiation_children(
+                      ctx: ctx,
+                      n: n,
+                      head_resolved: head_resolved,
+                      head_diagnostics: hd,
+                      head_lexical: hl,
+                      guide: InstantiationArgsAsTypes
+                    )
+                  )
+                Present { value: _ } =>
+                  let binders = resolve_declared_binders_or_none(ctx: ctx, path: path, at: n)
+                  match type_param_order(binders: binders) {
+                    TypeParamOrderMalformed =>
+                      resolve_walk_refused_one(
+                        chain: diagnostics_singleton(
+                          d: resolve_type_application_diagnostic(reason: ^resolve_reason_type_parameter_order_malformed, at: n)
+                        )
+                      )
+                    TypeParamOrderDeclared { labels: labels } =>
+                      if length(xs: labels) != length(xs: arg_es) {
+                        resolve_walk_refused_one(
+                          chain: diagnostics_singleton(
+                            d: resolve_type_application_diagnostic(reason: ^resolve_reason_type_application_arity_mismatch, at: n)
+                          )
+                        )
+                      } else {
+                        resolve_type_application(
+                          ctx: ctx,
+                          walked: resolve_instantiation_children(
+                            ctx: ctx,
+                            n: n,
+                            head_resolved: head_resolved,
+                            head_diagnostics: hd,
+                            head_lexical: hl,
+                            guide: InstantiationArgsByBinder {
+                              declaration: path,
+                              binders: binders,
+                              labels: labels
+                            }
+                          )
+                        )
+                      }
+                  }
+              }
+          }
+      }
   }
 }
 
@@ -4060,7 +4340,7 @@ fn resolve_kind_variant_paths_optional(ctx: ResolveContext, declaration: Qualifi
         name: kind_name,
         required: TypeOccurrence
       ) {
-        LexicalHit { node: kind_decl, path: kind_binding } =>
+        KindLookupHit { node: kind_decl, path: kind_binding } =>
           match symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: kind_binding) {
             MentionDeclaringUnavailable => optional_absent()
             MentionDeclaringContested { claimants: _ } => optional_absent()
@@ -4078,8 +4358,9 @@ fn resolve_kind_variant_paths_optional(ctx: ResolveContext, declaration: Qualifi
                 ComputationNode { behavior: _ } => optional_absent()
               }
           }
-        LexicalAmbiguous { candidates: _ } => optional_absent()
-        LexicalUnbound => optional_absent()
+        KindLookupAmbiguous { candidates: _ } => optional_absent()
+        KindLookupUnbound => optional_absent()
+        KindLookupExcludedByCategory { excluded: _ } => optional_absent()
       }
   }
 }
@@ -4181,6 +4462,7 @@ fn realized_head_lookup(ctx: ResolveContext, identity: Symbol) -> Outcome<Realiz
             SymbolIndexAtomHit { path: path } => Accepted { value: RealizedHeadBound { path: path }, diagnostics: pending }
             SymbolIndexAtomAmbiguous { class: class } => Accepted { value: RealizedHeadAmbiguous { class: class }, diagnostics: pending }
             SymbolIndexAtomUnbound => Accepted { value: RealizedHeadUnbound, diagnostics: pending }
+            SymbolIndexAtomExcludedByCategory => Accepted { value: RealizedHeadUnbound, diagnostics: pending }
           }
       }
   }

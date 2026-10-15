@@ -71,6 +71,7 @@ fn tak_kind_literal() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_pr
 fn tak_kind_foreign_variant() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type UsesForeign = Width<Foreign>\n")) }
 fn tak_kind_kernel_type() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type UsesInt = Width<Int>\n")) }
 fn tak_unkinded() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type UsesPlain = Plain<Foreign>\n")) }
+fn tak_unkinded_type() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type UsesPlainType = Plain<Other>\n")) }
 fn tak_arity_over() -> Outcome<ResolvedTree> { tak_assemble(src: concat(tak_prelude(), "type TooMany = Plain<Foreign, Alien>\n")) }
 // Parameter names that sort OPPOSITE to their authored order, each with its own kind: a binder Conj is
 // canonicalized by label, so pairing through its stored edges would judge Zk against AKind.
@@ -106,7 +107,7 @@ test fn tak_kinded_parameter_refuses_a_variant_of_another_coproduct() -> Bool {
 }
 
 test fn tak_kinded_parameter_refuses_a_kernel_type() -> Bool {
-  tak_refuses_with(o: tak_kind_kernel_type(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
+  tak_refuses_with(o: tak_kind_kernel_type(), reason: ^resolve_reason_type_argument_category_mismatch)
 }
 
 test fn tak_arguments_pair_with_parameters_in_authored_order() -> Bool {
@@ -118,7 +119,11 @@ test fn tak_arguments_swapped_against_authored_order_refuse() -> Bool {
 }
 
 test fn tak_unkinded_parameter_is_unchanged() -> Bool {
-  tak_accepts(o: tak_unkinded())
+  tak_refuses_with(o: tak_unkinded(), reason: ^resolve_reason_type_argument_category_mismatch)
+}
+
+test fn tak_unkinded_parameter_accepts_a_type() -> Bool {
+  tak_accepts(o: tak_unkinded_type())
 }
 
 test fn tak_application_with_more_arguments_than_binders_refuses() -> Bool {

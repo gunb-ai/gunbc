@@ -38,6 +38,22 @@ type LexicalLookup
   | LexicalAmbiguous { candidates: FreeMonoid<LexicalBindingCandidate> }
   | LexicalUnbound
 
+type LexicalCategoryExclusion {
+  candidate: LexicalBindingCandidate
+  category: OccurrenceCategory
+}
+
+type LexicalEligibility {
+  eligible: FreeMonoid<LexicalBindingCandidate>
+  excluded: FreeMonoid<LexicalCategoryExclusion>
+}
+
+type LexicalKindLookup
+  = KindLookupHit { node: Node, path: QualifiedName }
+  | KindLookupAmbiguous { candidates: FreeMonoid<LexicalBindingCandidate> }
+  | KindLookupUnbound
+  | KindLookupExcludedByCategory { excluded: FreeMonoid<LexicalCategoryExclusion> }
+
 // A BINDING POSITION IS NOT THE SAME FACT AS A DECLARING POSITION, AND THE THIRD FIELD IS WHERE
 // THEY COME APART. `entries` answers "what declaration lives at this qualified path" -- one
 // declaration, because a path names a place in the containment tree. A BINDING position is where a
@@ -805,28 +821,65 @@ fn symbol_index_candidate_category(index: SymbolIndex, candidate: LexicalBinding
   }
 }
 
-// Inadmissible kind is excluded, then none/one/many. An excluded-only set is Unbound, not a
-// distinct wrong-kind refusal (std.occurrence_binding_resolve Inadmissible arm, refusal: none;
-// occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds). WrongOccurrenceRole
-// is the wrong *role* (declaration vs reference), not the wrong occurrence category.
+// Eligibility partition: admissible remainder versus excluded candidates with their
+// declaration categories. An excluded-only set is KindLookupExcludedByCategory (the same
+// OccurrenceExcludedByCategory std.occurrence_binding_resolve mints); a truly empty
+// collected set stays Unbound. WrongOccurrenceRole is the wrong *role* (declaration vs
+// reference), not the wrong occurrence category.
+fn symbol_index_lexical_eligibility(
+  index: SymbolIndex,
+  required: OccurrenceCategory,
+  candidates: FreeMonoid<LexicalBindingCandidate>
+) -> LexicalEligibility {
+  fold_list(
+    xs: candidates,
+    empty: LexicalEligibility { eligible: Empty, excluded: Empty },
+    cons: fn(acc, candidate) {
+      let category = symbol_index_candidate_category(index: index, candidate: candidate)
+      match occurrence_category_binding_verdict(
+        reference: required,
+        declaration: category
+      ) {
+        OccurrenceCategoryBindingAdmissible =>
+          LexicalEligibility {
+            eligible: list_snoc_item(xs: acc.eligible, item: candidate),
+            excluded: acc.excluded
+          }
+        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } =>
+          LexicalEligibility {
+            eligible: acc.eligible,
+            excluded: list_snoc_item(
+              xs: acc.excluded,
+              item: LexicalCategoryExclusion { candidate: candidate, category: category }
+            )
+          }
+      }
+    }
+  )
+}
+
 fn symbol_index_lexical_eligible(
   index: SymbolIndex,
   required: OccurrenceCategory,
   candidates: FreeMonoid<LexicalBindingCandidate>
 ) -> FreeMonoid<LexicalBindingCandidate> {
-  fold_list(
-    xs: candidates,
-    empty: Empty,
-    cons: fn(acc, candidate) {
-      match occurrence_category_binding_verdict(
-        reference: required,
-        declaration: symbol_index_candidate_category(index: index, candidate: candidate)
-      ) {
-        OccurrenceCategoryBindingAdmissible => list_snoc_item(xs: acc, item: candidate)
-        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } => acc
+  symbol_index_lexical_eligibility(index: index, required: required, candidates: candidates).eligible
+}
+
+fn symbol_index_lexical_selection_from_eligibility(eligibility: LexicalEligibility) -> LexicalKindLookup {
+  match eligibility.eligible {
+    Cons { head: _, tail: _ } =>
+      match symbol_index_lexical_selection(candidates: eligibility.eligible) {
+        LexicalHit { node: node, path: path } => KindLookupHit { node: node, path: path }
+        LexicalAmbiguous { candidates: candidates } => KindLookupAmbiguous { candidates: candidates }
+        LexicalUnbound => KindLookupUnbound
       }
-    }
-  )
+    Empty =>
+      match eligibility.excluded {
+        Empty => KindLookupUnbound
+        Cons { head: _, tail: _ } => KindLookupExcludedByCategory { excluded: eligibility.excluded }
+      }
+  }
 }
 
 // CONSTRUCT TAGS NAME DECLARED PAYLOADS, not an OccurrenceCategory. RecordTypePayload stays
@@ -856,9 +909,9 @@ fn symbol_index_lexical_lookup_for(
   position: QualifiedName,
   name: Symbol,
   required: OccurrenceCategory
-) -> LexicalLookup {
-  symbol_index_lexical_selection(
-    candidates: symbol_index_lexical_eligible(
+) -> LexicalKindLookup {
+  symbol_index_lexical_selection_from_eligibility(
+    eligibility: symbol_index_lexical_eligibility(
       index: index,
       required: required,
       candidates: symbol_index_lexical_collect(

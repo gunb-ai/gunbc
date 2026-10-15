@@ -5,6 +5,7 @@ import std.occurrence_binding {
   OccurrenceBound,
   OccurrenceUnbound,
   OccurrenceAmbiguous,
+  OccurrenceExcludedByCategory,
 }
 import std.occurrence_binding_resolve {
   OccurrenceReferenceBindingOutcome,
@@ -113,6 +114,7 @@ fn assess_reference_binding_observation(
                 refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
               }
             OccurrenceReferenceBindingDecided { result: OccurrenceUnbound { occurrence: _ } } => refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
+            OccurrenceReferenceBindingDecided { result: OccurrenceExcludedByCategory { occurrence: _, excluded: _ } } => refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
             OccurrenceReferenceBindingDecided { result: OccurrenceAmbiguous { occurrence: _, candidates: _ } } => refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
             OccurrenceReferenceBindingTransportRefused { refusal: _ } => refused(capability: SameFileEarlierNeighbourVisible, failure: SameFileNeighbourMissing)
           }
@@ -139,6 +141,7 @@ fn assess_reference_binding_observation(
                 refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
               }
             OccurrenceReferenceBindingDecided { result: OccurrenceUnbound { occurrence: _ } } => refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
+            OccurrenceReferenceBindingDecided { result: OccurrenceExcludedByCategory { occurrence: _, excluded: _ } } => refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
             OccurrenceReferenceBindingDecided { result: OccurrenceAmbiguous { occurrence: _, candidates: _ } } => refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
             OccurrenceReferenceBindingTransportRefused { refusal: _ } => refused(capability: SiblingDecisionBranchExcluded, failure: SiblingBranchLeaked)
           }
@@ -156,6 +159,7 @@ fn assess_reference_binding_observation(
             } => established(capability: LaterDeclarationExcluded)
             OccurrenceReferenceBindingDecided { result: OccurrenceBound { binding: _ } } => refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
             OccurrenceReferenceBindingDecided { result: OccurrenceAmbiguous { occurrence: _, candidates: _ } } => refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
+            OccurrenceReferenceBindingDecided { result: OccurrenceExcludedByCategory { occurrence: _, excluded: _ } } => established(capability: LaterDeclarationExcluded)
             OccurrenceReferenceBindingTransportRefused { refusal: _ } => refused(capability: LaterDeclarationExcluded, failure: LaterDeclarationLeaked)
           }
       }
@@ -187,6 +191,7 @@ fn assess_reference_binding_observation(
               }
             OccurrenceReferenceBindingDecided { result: OccurrenceBound { binding: _ } } => refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
             OccurrenceReferenceBindingDecided { result: OccurrenceUnbound { occurrence: _ } } => refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
+            OccurrenceReferenceBindingDecided { result: OccurrenceExcludedByCategory { occurrence: _, excluded: _ } } => refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
             OccurrenceReferenceBindingTransportRefused { refusal: _ } => refused(capability: DistinctSameSpelledDeclarationsPreserved, failure: DistinctDeclarationCollapsed)
           }
       }

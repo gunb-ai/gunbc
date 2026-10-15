@@ -4,6 +4,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.algebra { FreeMonoid, Empty, Cons }
 import std.types { String }
+import std.occurrence_identity { OccurrenceCategory }
 
 // STAGED ADOPTION: v1 and v2 execute over distinct Node algebras, so their shared
 // occurrence-binding semantics must land here before either concrete Node instantiation. The next
@@ -48,12 +49,25 @@ type AmbiguousBindingCandidates<N> {
   rest: FreeMonoid<BindingCandidate<N>>
 }
 
+// A supplied candidate that eligibility excluded, with the category the declaration actually has.
+// Carried on OccurrenceExcludedByCategory so resolve reads the reason from that one verdict
+// (no second walk of a refusal path). occurrence_binding_from_candidates never mints this arm:
+// it folds only the admissible remainder.
+type CategoryExcludedBinding<N> {
+  candidate: BindingCandidate<N>
+  category: OccurrenceCategory
+}
+
 type OccurrenceBindingResult<N>
   = OccurrenceBound { binding: OccurrenceBinding<N> }
   | OccurrenceUnbound { occurrence: BindingOccurrence<N> }
   | OccurrenceAmbiguous {
       occurrence: BindingOccurrence<N>
       candidates: AmbiguousBindingCandidates<N>
+    }
+  | OccurrenceExcludedByCategory {
+      occurrence: BindingOccurrence<N>
+      excluded: FreeMonoid<CategoryExcludedBinding<N>>
     }
 
 type OccurrenceBindingFoldState<N>

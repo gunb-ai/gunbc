@@ -229,9 +229,9 @@ test fn value_role_optional_binds_the_variant_beside_the_type() -> Bool {
 }
 
 // WRONG KIND. Only the variant is imported; Optional<Unit> in type position is unbound. The
-// kernel excludes an inadmissible declaration then runs none/one/many
-// (occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds →
-// OccurrenceUnbound). WrongOccurrenceRole is a different cause (declaration vs reference role).
+// kernel answers OccurrenceExcludedByCategory (inadmissible candidates carried); this is not a
+// type-argument position, so resolve reads unbound from that one verdict (#13832).
+// WrongOccurrenceRole is a different cause (declaration vs reference role).
 test fn a_variant_optional_in_type_position_is_unbound() -> Bool {
   match kab_verdicts() {
     Absent => false

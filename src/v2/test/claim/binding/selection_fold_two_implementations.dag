@@ -129,6 +129,7 @@ fn binding_std_class(names: List<Symbol>) -> BindingSelectionClass {
     OccurrenceUnbound { occurrence: _ } => SelectionUnbound
     OccurrenceBound { binding: _ } => SelectionBound
     OccurrenceAmbiguous { occurrence: _, candidates: _ } => SelectionAmbiguous
+    OccurrenceExcludedByCategory { occurrence: _, excluded: _ } => SelectionUnbound
   }
 }
 
