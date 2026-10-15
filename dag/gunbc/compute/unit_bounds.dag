@@ -158,6 +158,9 @@ type UserWorkScopeStanding
   | UserWorkSliceAbsent
   | UserWorkSliceUncapped
   | CallerEnvelopeUnreadable
+  | ExemptBoundedContainer { bytes: ByteSize }
+  | BoundedContainerUncapped
+  | BoundedContainerUnreadable
 
 type UserWorkScopeStandingEffect
   = WrapIntoUserWorkSlice
@@ -245,6 +248,59 @@ fn system_unit_standing_from_cgroup(text: String) -> UserWorkScopeStanding? {
   }
 }
 
+type RootCgroupMemoryRead
+  = RootMemoryCapped { bytes: ByteSize }
+  | RootMemoryUnbounded
+  | RootMemoryUnreadable
+
+fn cgroup_text_is_root(text: String) -> Bool {
+  let t = trim(s: text)
+  t == "0::/" || t == "0::"
+}
+
+fn bounded_container_standing(root_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding {
+  match root_memory {
+    RootMemoryCapped { bytes } =>
+      if byte_size_count(b: bytes) == 0 {
+        BoundedContainerUncapped
+      } else {
+        ExemptBoundedContainer { bytes: bytes }
+      }
+    RootMemoryUnbounded => BoundedContainerUncapped
+    RootMemoryUnreadable => BoundedContainerUnreadable
+  }
+}
+
+fn user_work_scope_standing_with_root_memory(
+  unit_test: Bool,
+  github_actions: Bool,
+  cgroup: UserWorkScopeCgroupRead,
+  user_manager_reachable: Bool,
+  xdg_runtime_dir: Bool,
+  root_memory: RootCgroupMemoryRead,
+) -> UserWorkScopeStanding {
+  let s = user_work_scope_standing(
+    unit_test: unit_test,
+    github_actions: github_actions,
+    cgroup: cgroup,
+    user_manager_reachable: user_manager_reachable,
+    xdg_runtime_dir: xdg_runtime_dir,
+  )
+  match s {
+    UserSessionAbsent =>
+      match cgroup {
+        CgroupText { text } =>
+          if cgroup_text_is_root(text: text) {
+            bounded_container_standing(root_memory: root_memory)
+          } else {
+            UserSessionAbsent
+          }
+        CgroupReadFailed => UserSessionAbsent
+      }
+    other => other
+  }
+}
+
 fn user_work_scope_standing(
   unit_test: Bool,
   github_actions: Bool,
@@ -300,6 +356,10 @@ fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
     UserWorkSliceAbsent => "UserWorkSliceAbsent"
     UserWorkSliceUncapped => "UserWorkSliceUncapped"
     CallerEnvelopeUnreadable => "CallerEnvelopeUnreadable"
+    ExemptBoundedContainer { bytes } =>
+      join(["ExemptBoundedContainer:", to_string(value: byte_size_count(b: bytes))], "")
+    BoundedContainerUncapped => "BoundedContainerUncapped"
+    BoundedContainerUnreadable => "BoundedContainerUnreadable"
   }
 }
 
@@ -320,6 +380,10 @@ fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeSta
     UserWorkSliceAbsent => RefuseUserWorkScope { standing: UserWorkSliceAbsent }
     UserWorkSliceUncapped => RefuseUserWorkScope { standing: UserWorkSliceUncapped }
     CallerEnvelopeUnreadable => RefuseUserWorkScope { standing: CallerEnvelopeUnreadable }
+    ExemptBoundedContainer { bytes } =>
+      SkipUserWorkScope { standing: ExemptBoundedContainer { bytes: bytes } }
+    BoundedContainerUncapped => RefuseUserWorkScope { standing: BoundedContainerUncapped }
+    BoundedContainerUnreadable => RefuseUserWorkScope { standing: BoundedContainerUnreadable }
   }
 }
 

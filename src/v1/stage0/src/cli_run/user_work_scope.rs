@@ -51,6 +51,9 @@ enum UserWorkScopeStanding {
     UserWorkSliceAbsent,
     UserWorkSliceUncapped,
     CallerEnvelopeUnreadable,
+    ExemptBoundedContainer { bytes: u64 },
+    BoundedContainerUncapped,
+    BoundedContainerUnreadable,
 }
 
 pub fn reexec_into_user_work_slice_if_owed() {
@@ -72,7 +75,9 @@ pub fn reexec_into_user_work_slice_if_owed() {
         | UserWorkScopeStanding::UncappedSystemSlice { .. }
         | UserWorkScopeStanding::UserWorkSliceAbsent
         | UserWorkScopeStanding::UserWorkSliceUncapped
-        | UserWorkScopeStanding::CallerEnvelopeUnreadable => {
+        | UserWorkScopeStanding::CallerEnvelopeUnreadable
+        | UserWorkScopeStanding::BoundedContainerUncapped
+        | UserWorkScopeStanding::BoundedContainerUnreadable => {
             eprintln!(
                 "error: cannot wrap into {USER_WORK_SLICE} ({})",
                 standing_wire(&standing)
@@ -109,6 +114,13 @@ fn standing_wire(s: &UserWorkScopeStanding) -> String {
         UserWorkScopeStanding::UserWorkSliceAbsent => "UserWorkSliceAbsent".to_string(),
         UserWorkScopeStanding::UserWorkSliceUncapped => "UserWorkSliceUncapped".to_string(),
         UserWorkScopeStanding::CallerEnvelopeUnreadable => "CallerEnvelopeUnreadable".to_string(),
+        UserWorkScopeStanding::ExemptBoundedContainer { bytes } => {
+            format!("ExemptBoundedContainer:{bytes}")
+        }
+        UserWorkScopeStanding::BoundedContainerUncapped => "BoundedContainerUncapped".to_string(),
+        UserWorkScopeStanding::BoundedContainerUnreadable => {
+            "BoundedContainerUnreadable".to_string()
+        }
     }
 }
 
@@ -361,9 +373,21 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
         .unwrap_or(false);
     if probe_ok {
         UserWorkScopeStanding::UserManagerOwed
-    } else if std::env::var_os(USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV).is_some() {
-        UserWorkScopeStanding::UserManagerProbeFailed
     } else {
-        UserWorkScopeStanding::UserSessionAbsent
+        let is_root = matches!(cgroup_v2_rel_path(&cg).as_deref(), Some("/") | Some(""));
+        if is_root {
+            // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_with_root_memory`
+            match read_cgroup_memory_file("/", "memory.max") {
+                Some(MemoryBound::Capped(n)) if n > 0 => {
+                    UserWorkScopeStanding::ExemptBoundedContainer { bytes: n }
+                }
+                Some(_) => UserWorkScopeStanding::BoundedContainerUncapped,
+                None => UserWorkScopeStanding::BoundedContainerUnreadable,
+            }
+        } else if std::env::var_os(USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV).is_some() {
+            UserWorkScopeStanding::UserManagerProbeFailed
+        } else {
+            UserWorkScopeStanding::UserSessionAbsent
+        }
     }
 }

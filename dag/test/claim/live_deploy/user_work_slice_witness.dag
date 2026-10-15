@@ -30,7 +30,8 @@ import gunbc.compute.unit_bounds {
   compute_grant_unit_properties, gunbc_user_work_scope_command,
   gunbc_user_work_wait_command, gunbc_user_work_transient_command,
   user_work_scope_wrap_prefix_argv,
-  user_work_scope_standing, user_work_scope_standing_effect, user_work_scope_standing_wire,
+  user_work_scope_standing, user_work_scope_standing_with_root_memory,
+  user_work_scope_standing_effect, user_work_scope_standing_wire,
   user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
   user_work_scope_user_slice_cgroup_needle, user_work_scope_service_unit_suffix,
   user_work_scope_slice_unit_suffix, user_work_scope_scope_unit_suffix,
@@ -45,6 +46,8 @@ import gunbc.compute.unit_bounds {
   CgroupText, CgroupReadFailed,
   SystemServiceNamed, NotSystemService,
   AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, ExemptSystemUnit, UncappedSystemSlice,
+  ExemptBoundedContainer, BoundedContainerUncapped, BoundedContainerUnreadable,
+  RootMemoryCapped, RootMemoryUnbounded, RootMemoryUnreadable,
   UserSessionAbsent,
   UserManagerOwed, CgroupUnreadable, UserManagerProbeFailed,
   WrapIntoUserWorkSlice, SkipUserWorkScope, RefuseUserWorkScope,
@@ -294,6 +297,10 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "UserWorkSliceAbsent")
     && string_contains(s: seed, pattern: "UserWorkSliceUncapped")
     && string_contains(s: seed, pattern: "CallerEnvelopeUnreadable")
+    && string_contains(s: seed, pattern: "ExemptBoundedContainer")
+    && string_contains(s: seed, pattern: "BoundedContainerUncapped")
+    && string_contains(s: seed, pattern: "BoundedContainerUnreadable")
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_with_root_memory`")
 }
 
 test fn a_system_slice_named_service_cgroup_refuses_uncapped() -> Bool {
@@ -391,6 +398,63 @@ test fn a_session_container_cgroup_under_sessions_slice_is_exempt() -> Bool {
             }
         _ => false
       }
+  }
+}
+
+test fn a_root_cgroup_with_finite_memory_max_skips_wrap() -> Bool {
+  let bytes = byte_size(25769803776)
+  match user_work_scope_standing_with_root_memory(
+    unit_test: false,
+    github_actions: false,
+    cgroup: CgroupText { text: "0::/" },
+    user_manager_reachable: false,
+    xdg_runtime_dir: false,
+    root_memory: RootMemoryCapped { bytes: bytes },
+  ) {
+    ExemptBoundedContainer { bytes: b } =>
+      byte_size_count(b: b) == 25769803776
+        && match user_work_scope_standing_effect(s: ExemptBoundedContainer { bytes: b }) {
+          SkipUserWorkScope { standing: ExemptBoundedContainer { bytes: sb } } =>
+            byte_size_count(b: sb) == 25769803776
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn a_root_cgroup_with_unbounded_memory_max_refuses() -> Bool {
+  match user_work_scope_standing_with_root_memory(
+    unit_test: false,
+    github_actions: false,
+    cgroup: CgroupText { text: "0::/" },
+    user_manager_reachable: false,
+    xdg_runtime_dir: false,
+    root_memory: RootMemoryUnbounded,
+  ) {
+    BoundedContainerUncapped =>
+      match user_work_scope_standing_effect(s: BoundedContainerUncapped) {
+        RefuseUserWorkScope { standing: BoundedContainerUncapped } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn a_root_cgroup_with_unreadable_memory_max_refuses() -> Bool {
+  match user_work_scope_standing_with_root_memory(
+    unit_test: false,
+    github_actions: false,
+    cgroup: CgroupText { text: "0::/" },
+    user_manager_reachable: false,
+    xdg_runtime_dir: false,
+    root_memory: RootMemoryUnreadable,
+  ) {
+    BoundedContainerUnreadable =>
+      match user_work_scope_standing_effect(s: BoundedContainerUnreadable) {
+        RefuseUserWorkScope { standing: BoundedContainerUnreadable } => true
+        _ => false
+      }
+    _ => false
   }
 }
 
