@@ -3,6 +3,7 @@ module test.claim.runner.runner_revision_job_toolchain_witness
 import std.types { Bool, String }
 import std.optional { Present, Absent }
 import extdeps.exec.command { argv_words }
+import extdeps.os.ubuntu_ports_archive { UbuntuArchiveBinaryPackage }
 import gunbc.runner.revision_job_toolchain_pins { ToolchainPinnedDeb, ToolchainAlternativeChoice, toolchain_pinned_debs, toolchain_closure_roots }
 import gunbc.runner.runner_revision_job_toolchain {
   toolchain_closure_completeness, ToolchainClosed, ToolchainOpen, ToolchainRelationUnreadable,
@@ -13,7 +14,7 @@ import gunbc.runner.runner_revision_job_toolchain {
 // control (the committed closure is complete); each red is a one-field edit of a supplied row.
 
 fn row(package: String, version: String, depends: String) -> ToolchainPinnedDeb {
-  ToolchainPinnedDeb { package: package, version: version, architecture: "arm64", sha256: "00", filename: "f", depends: depends, pre_depends: "", alternatives: [] }
+  ToolchainPinnedDeb { deb: UbuntuArchiveBinaryPackage { package: package, version: version, architecture: "arm64", filename: "f", sha256: "00" }, depends: depends, pre_depends: "", alternatives: [] }
 }
 
 test fn the_committed_closure_is_complete() -> Bool {
@@ -44,9 +45,9 @@ test fn a_missing_dependency_an_unmet_version_and_a_missing_root_each_refuse() -
 }
 
 test fn an_alternative_is_held_to_the_branch_the_closure_recorded() -> Bool {
-  let chosen = ToolchainPinnedDeb { package: "a", version: "1", architecture: "arm64", sha256: "00", filename: "f", depends: "x | y", pre_depends: "",
+  let chosen = ToolchainPinnedDeb { deb: UbuntuArchiveBinaryPackage { package: "a", version: "1", architecture: "arm64", filename: "f", sha256: "00" }, depends: "x | y", pre_depends: "",
     alternatives: [ToolchainAlternativeChoice { relation: "x | y", chosen: "y" }] }
-  let unrecorded = ToolchainPinnedDeb { package: "a", version: "1", architecture: "arm64", sha256: "00", filename: "f", depends: "x | y", pre_depends: "", alternatives: [] }
+  let unrecorded = ToolchainPinnedDeb { deb: UbuntuArchiveBinaryPackage { package: "a", version: "1", architecture: "arm64", filename: "f", sha256: "00" }, depends: "x | y", pre_depends: "", alternatives: [] }
   let held = match toolchain_closure_completeness(rows: [chosen, row(package: "y", version: "1", depends: "")], roots: ["a"]) { ToolchainClosed => true  _ => false }
   let other_branch = match toolchain_closure_completeness(rows: [chosen, row(package: "x", version: "1", depends: "")], roots: ["a"]) { ToolchainOpen { unsatisfied: _ } => true  _ => false }
   let no_record = match toolchain_closure_completeness(rows: [unrecorded, row(package: "x", version: "1", depends: "")], roots: ["a"]) { ToolchainOpen { unsatisfied: _ } => true  _ => false }
@@ -78,6 +79,6 @@ test fn the_effects_link_cc_and_cpp_keep_nsswitch_and_run_the_closures_own_ldcon
 
 test fn every_pinned_field_reaches_the_row_digest_preimage() -> Bool {
   let a = row(package: "a", version: "1", depends: "")
-  let b = ToolchainPinnedDeb { package: "a", version: "1", architecture: "arm64", sha256: "00", filename: "f", depends: "", pre_depends: "c", alternatives: [] }
+  let b = ToolchainPinnedDeb { deb: UbuntuArchiveBinaryPackage { package: "a", version: "1", architecture: "arm64", filename: "f", sha256: "00" }, depends: "", pre_depends: "c", alternatives: [] }
   toolchain_rows_canonical(rows: [a]) != toolchain_rows_canonical(rows: [b])
 }

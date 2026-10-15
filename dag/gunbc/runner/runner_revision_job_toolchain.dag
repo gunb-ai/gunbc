@@ -15,11 +15,12 @@ import extdeps.tools.gnu_coreutils { ln_symbolic_force_command, cp_preserve_if_a
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell, sha256sum_stdin_digest_via_shell }
 import extdeps.gnupg.gpgv { gpgv_verify_cleartext_command, gpgv_valid_primary_fingerprints }
 import extdeps.glibc.ldconfig { ldconfig_root_command }
+import extdeps.os.ubuntu_ports_archive { ubuntu_ports_archive_root, ubuntu_ports_package_url }
 import extdeps.debian.version { DebianAlternative, parse_debian_relationships, constraint_satisfied }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
 import gunbc.runner.revision_job_toolchain_pins {
   ToolchainPinnedDeb, toolchain_pinned_debs, toolchain_closure_roots, toolchain_archive_signing_key_fingerprint,
-  toolchain_archive_base_url, toolchain_archive_suite, toolchain_inrelease_sha256, toolchain_packages_index_path,
+  toolchain_archive_suite, toolchain_inrelease_sha256, toolchain_packages_index_path,
   toolchain_packages_index_sha256,
 }
 
@@ -50,7 +51,7 @@ import gunbc.runner.revision_job_toolchain_pins {
 
 fn toolchain_row_canonical(r: ToolchainPinnedDeb) -> String {
   join([
-    r.package as String, r.version as String, r.architecture as String, r.sha256 as String, r.filename as String,
+    r.deb.package as String, r.deb.version as String, r.deb.architecture as String, r.deb.sha256 as String, r.deb.filename as String,
     r.depends, r.pre_depends, join(map(r.alternatives, a => concat(concat(a.relation, "=>"), a.chosen)), ";"),
   ], "\t")
 }
@@ -87,9 +88,9 @@ type ToolchainCompleteness
   | ToolchainRelationUnreadable { package: String, field: String }
 
 fn alternative_satisfied(rows: List<ToolchainPinnedDeb>, alt: DebianAlternative) -> Bool {
-  count(filter(rows, r => r.package as String == alt.package && match alt.constraint {
+  count(filter(rows, r => r.deb.package as String == alt.package && match alt.constraint {
     Absent => true
-    Present { value: c } => constraint_satisfied(constraint: c, candidate: r.version as String)
+    Present { value: c } => constraint_satisfied(constraint: c, candidate: r.deb.version as String)
   })) > 0
 }
 
@@ -107,13 +108,13 @@ fn row_unsatisfied(rows: List<ToolchainPinnedDeb>, r: ToolchainPinnedDeb, field:
   match parse_debian_relationships(field: field) {
     Absent => none
     Present { value: relations } => Present { value: map(filter(relations, rel => !relation_satisfied(rows: rows, owner: r, relation: rel)),
-      rel => concat(concat(r.package as String, " needs "), join(map(rel, a => a.package), " | "))) }
+      rel => concat(concat(r.deb.package as String, " needs "), join(map(rel, a => a.package), " | "))) }
   }
 }
 
 fn toolchain_closure_completeness(rows: List<ToolchainPinnedDeb>, roots: List<NonEmptyStr>) -> ToolchainCompleteness {
-  let missing_roots = map(filter(roots, root => count(filter(rows, r => r.package as String == root as String)) == 0), root => concat("root ", root as String))
-  let duplicated = map(filter(rows, r => count(filter(rows, o => o.package as String == r.package as String)) > 1), r => concat("duplicate row ", r.package as String))
+  let missing_roots = map(filter(roots, root => count(filter(rows, r => r.deb.package as String == root as String)) == 0), root => concat("root ", root as String))
+  let duplicated = map(filter(rows, r => count(filter(rows, o => o.deb.package as String == r.deb.package as String)) > 1), r => concat("duplicate row ", r.deb.package as String))
   let walked = fold(rows, init: Present { value: missing_roots + duplicated }, f: (acc, r) => match acc {
     Absent => none
     Present { value: open } => match row_unsatisfied(rows: rows, r: r, field: r.depends) {
@@ -126,9 +127,9 @@ fn toolchain_closure_completeness(rows: List<ToolchainPinnedDeb>, roots: List<No
   })
   match walked {
     Absent => match filter(rows, r => match parse_debian_relationships(field: r.depends) { Absent => true  Present { value: _ } => false }).first() {
-      Present { value: r } => ToolchainRelationUnreadable { package: r.package as String, field: "Depends" }
+      Present { value: r } => ToolchainRelationUnreadable { package: r.deb.package as String, field: "Depends" }
       Absent => match filter(rows, r => match parse_debian_relationships(field: r.pre_depends) { Absent => true  Present { value: _ } => false }).first() {
-        Present { value: r } => ToolchainRelationUnreadable { package: r.package as String, field: "Pre-Depends" }
+        Present { value: r } => ToolchainRelationUnreadable { package: r.deb.package as String, field: "Pre-Depends" }
         Absent => ToolchainRelationUnreadable { package: "", field: "" }
       }
     }
@@ -162,13 +163,13 @@ fn field_or_empty(stanza: String, name: String) -> String {
 // agree; otherwise one entry per disagreeing field.
 fn stanza_disagreements(r: ToolchainPinnedDeb, stanza: String, source: String) -> List<String> {
   let pairs = [
-    { field: "Package", pinned: r.package as String },
-    { field: "Version", pinned: r.version as String },
-    { field: "Architecture", pinned: r.architecture as String },
+    { field: "Package", pinned: r.deb.package as String },
+    { field: "Version", pinned: r.deb.version as String },
+    { field: "Architecture", pinned: r.deb.architecture as String },
     { field: "Depends", pinned: r.depends },
     { field: "Pre-Depends", pinned: r.pre_depends },
   ]
-  map(filter(pairs, p => field_or_empty(stanza: stanza, name: p.field) != p.pinned), p => join([r.package as String, " ", p.field, ": pinned '", p.pinned, "' ", source, " '", field_or_empty(stanza: stanza, name: p.field), "'"], ""))
+  map(filter(pairs, p => field_or_empty(stanza: stanza, name: p.field) != p.pinned), p => join([r.deb.package as String, " ", p.field, ": pinned '", p.pinned, "' ", source, " '", field_or_empty(stanza: stanza, name: p.field), "'"], ""))
 }
 
 fn control_disagreements(r: ToolchainPinnedDeb, control: String) -> List<String> {
@@ -177,11 +178,11 @@ fn control_disagreements(r: ToolchainPinnedDeb, control: String) -> List<String>
 
 fn index_disagreements(r: ToolchainPinnedDeb, stanza: String) -> List<String> {
   let index_pairs = [
-    { field: "SHA256", pinned: r.sha256 as String },
-    { field: "Filename", pinned: r.filename as String },
+    { field: "SHA256", pinned: r.deb.sha256 as String },
+    { field: "Filename", pinned: r.deb.filename as String },
   ]
   stanza_disagreements(r: r, stanza: stanza, source: "index")
-    + map(filter(index_pairs, p => field_or_empty(stanza: stanza, name: p.field) != p.pinned), p => join([r.package as String, " ", p.field, ": pinned '", p.pinned, "' index '", field_or_empty(stanza: stanza, name: p.field), "'"], ""))
+    + map(filter(index_pairs, p => field_or_empty(stanza: stanza, name: p.field) != p.pinned), p => join([r.deb.package as String, " ", p.field, ": pinned '", p.pinned, "' index '", field_or_empty(stanza: stanza, name: p.field), "'"], ""))
 }
 
 // ── the chain (the instrument's half) ───────────────────────────────────────────────────────────
@@ -208,7 +209,7 @@ fn signed_text_lists_index(verified: String) -> Bool {
 // `dir` must be fresh. xz refuses a leftover; gpgv overwrites its output, which is why that output is
 // read only after this run's VALIDSIG.
 fn verify_toolchain_index(dir: String, keyring: String) -> ToolchainIndexChain {
-  let base = join([toolchain_archive_base_url as String, "/dists/", toolchain_archive_suite as String], "")
+  let base = join([ubuntu_ports_archive_root, "dists/", toolchain_archive_suite as String], "")
   let inrelease = concat(dir, "/InRelease")
   let verified_path = concat(dir, "/InRelease.verified")
   let packages_xz = concat(dir, "/Packages.xz")
@@ -254,11 +255,11 @@ fn prove_toolchain_rows(store: String, dir: String, keyring: String) -> Toolchai
     ToolchainIndexRefused { step: s, detail: d } => ToolchainRowsRefused { reasons: [join([s as String, ": ", d], "")] }
     ToolchainIndexVerified { packages: p } => {
       let stanzas = filter(Filesystem.Read(path: p).content.split(delimiter: "\n\n"), st => trim(s: st) != "")
-      let pinned_names = map(toolchain_pinned_debs, r => r.package as String)
+      let pinned_names = map(toolchain_pinned_debs, r => r.deb.package as String)
       let relevant = filter(stanzas, st => count(filter(pinned_names, n => field_or_empty(stanza: st, name: "Package") == n)) > 0)
       let row_reasons = flat_map(toolchain_pinned_debs, r => {
-        let mine = filter(relevant, st => field_or_empty(stanza: st, name: "Package") == r.package as String)
-        if count(mine) != 1 { [join([r.package as String, ": ", count(mine) as String, " stanzas in the index, expected exactly one"], "")] }
+        let mine = filter(relevant, st => field_or_empty(stanza: st, name: "Package") == r.deb.package as String)
+        if count(mine) != 1 { [join([r.deb.package as String, ": ", count(mine) as String, " stanzas in the index, expected exactly one"], "")] }
         else { match mine.first() { Present { value: st } => index_disagreements(r: r, stanza: st)  Absent => [] } }
       })
       let closure_reasons = match toolchain_closure_completeness(rows: toolchain_pinned_debs, roots: toolchain_closure_roots) {
@@ -297,19 +298,19 @@ type ToolchainClosurePreparation
   | ToolchainClosureRefused { reasons: List<String> }
 
 fn deb_path(debs_dir: String, r: ToolchainPinnedDeb) -> String {
-  join([debs_dir, "/", r.package as String, "_", r.sha256 as String, ".deb"], "")
+  join([debs_dir, "/", r.deb.package as String, "_", r.deb.sha256 as String, ".deb"], "")
 }
 
 fn deb_reasons(debs_dir: String, r: ToolchainPinnedDeb) -> List<String> {
   let path = deb_path(debs_dir: debs_dir, r: r)
-  let fetched = file_matches(path: path, expected: r.sha256)
-    || process_outcome_admitted(outcome: run_shell_command_capture(command: curl_download_command(url: join([toolchain_archive_base_url as String, "/", r.filename as String], ""), destination: path), transport: LocalExec))
-  if !fetched { [concat("fetch failed: ", r.filename as String)] }
-  else if !file_matches(path: path, expected: r.sha256) { [concat("SHA-256 does not match its row: ", r.filename as String)] }
+  let fetched = file_matches(path: path, expected: r.deb.sha256)
+    || process_outcome_admitted(outcome: run_shell_command_capture(command: curl_download_command(url: ubuntu_ports_package_url(p: r.deb), destination: path), transport: LocalExec))
+  if !fetched { [concat("fetch failed: ", r.deb.filename as String)] }
+  else if !file_matches(path: path, expected: r.deb.sha256) { [concat("SHA-256 does not match its row: ", r.deb.filename as String)] }
   else { match run_shell_command_capture(command: dpkg_deb_control_fields_command(archive: path, fields: ["Package", "Version", "Architecture", "Depends", "Pre-Depends"]), transport: LocalExec) {
     ProcessOutputPresent { text: control } => control_disagreements(r: r, control: control)
-    ProcessOutputAbsent => [concat("no control fields: ", r.filename as String)]
-    ProcessRefused { exit_code: _, stderr: e } => [join(["dpkg-deb -f refused ", r.filename as String, ": ", e], "")]
+    ProcessOutputAbsent => [concat("no control fields: ", r.deb.filename as String)]
+    ProcessRefused { exit_code: _, stderr: e } => [join(["dpkg-deb -f refused ", r.deb.filename as String, ": ", e], "")]
   } }
 }
 
@@ -324,12 +325,12 @@ fn prepare_toolchain_closure(store: String, debs_dir: String) -> ToolchainClosur
         ToolchainClosureRefused { reasons: [concat("mkdir ", debs_dir)] }
       } else {
         let reasons = flat_map(toolchain_pinned_debs, r => deb_reasons(debs_dir: debs_dir, r: r))
-        match filter(toolchain_pinned_debs, r => r.package as String == "libc6").first() {
+        match filter(toolchain_pinned_debs, r => r.deb.package as String == "libc6").first() {
           Absent => ToolchainClosureRefused { reasons: reasons + ["the closure has no libc6 row"] }
           Present { value: libc } =>
             if count(reasons) > 0 { ToolchainClosureRefused { reasons: reasons } }
             else { ToolchainClosurePrepared { closure: RevisionJobToolchainClosure {
-              rows_digest: h, debs: map(toolchain_pinned_debs, r => deb_path(debs_dir: debs_dir, r: r)), libc6_version: libc.version,
+              rows_digest: h, debs: map(toolchain_pinned_debs, r => deb_path(debs_dir: debs_dir, r: r)), libc6_version: libc.deb.version,
             } } }
         }
       }
