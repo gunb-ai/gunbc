@@ -22,6 +22,10 @@ test fn applied_box_int_vs_bool_is_refused() -> Bool {
   blocking_count(source: "module locate.boxne\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") >= 1
 }
 
+test fn list_int_vs_list_string_is_refused() -> Bool {
+  blocking_count(source: "module locate.listne\nimport std.types { List }\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: List<Int>, y: List<String>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") >= 1
+}
+
 test fn list_int_equals_freemonoid_int() -> Bool {
   blocking_count(source: "module locate.listalias\nimport std.types { List }\nimport std.algebra { FreeMonoid }\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: List<Int>, y: FreeMonoid<Int>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") == 0
 }

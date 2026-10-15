@@ -3022,7 +3022,25 @@ pub fn node_type_equals_core(
                                 let right_applied = ((right.connective.clone()
                                     == Connective::NoConnective)
                                     && ((right.children.clone().len() as i64) > 0));
-                                if (left_applied.clone() && right_applied.clone()) {
+                                if (left_applied.clone()
+                                    && right_applied.clone()
+                                    && !node_is_element_collection(
+                                        left.clone(),
+                                        source_indices.clone(),
+                                    )
+                                    && !node_is_element_collection(
+                                        right.clone(),
+                                        source_indices.clone(),
+                                    )
+                                    && !node_is_keyed_collection(
+                                        left.clone(),
+                                        source_indices.clone(),
+                                    )
+                                    && !node_is_keyed_collection(
+                                        right.clone(),
+                                        source_indices.clone(),
+                                    ))
+                                {
                                     if !type_heads_agree(
                                         left.clone(),
                                         right.clone(),
@@ -3055,8 +3073,8 @@ pub fn node_type_equals_core(
                                                 .cloned()
                                             {
                                                 Some(right_child) => node_type_equals(
-                                                    pair.1.clone(),
-                                                    right_child.clone(),
+                                                    child_type_node(pair.1.clone()),
+                                                    child_type_node(right_child.clone()),
                                                     source_indices.clone(),
                                                     text.clone(),
                                                 ),
