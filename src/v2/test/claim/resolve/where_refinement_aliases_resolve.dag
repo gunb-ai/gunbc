@@ -37,30 +37,30 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // std.types Char = Int where unicode_scalar, which refused as ambiguous between the fn and the clause.
 // wra_duplicate: the fn declared AND imported -- a genuinely shared binding, which must still refuse.
 
-data wra_home_source: String = "module v2.wra_home\n\nfn wra_scalar(code_point: Int) -> Bool { code_point >= 0 }\n"
+data wra_home_source: String = "module v2.wra_home\n\nfn wra_scalar(code_point: Int) -> Bool { code_point >= 0 }\n\nfn wra_other(code_point: Int) -> Bool { code_point >= 1 }\n"
 
-data wra_two_aliases_source: String = "module v2.wra_two_aliases\n\nimport std.types { brand }\n\ntype WraA = Int where brand(\"N\")\ntype WraB = Int where brand(\"M\")\n\nfn wra_f(x: Int) -> Int { x }\n"
+data wra_two_aliases_source: String = "module v2.wra_two_aliases\n\nimport v2.wra_home { wra_scalar, wra_other }\n\ntype WraA = Int where wra_scalar\n\ntype WraB = Int where wra_other\n\nfn wra_f(x: WraA) -> WraA { x }\n"
 
-data wra_char_like_source: String = "module v2.wra_char_like\n\nimport v2.wra_home { wra_scalar }\nimport std.types { brand }\n\ntype WraChar = Int where wra_scalar, brand(\"WraChar\")\n\nfn wra_use(c: WraChar) -> Int { c }\n"
+data wra_char_like_source: String = "module v2.wra_char_like\n\nimport v2.wra_home { wra_scalar }\n\ntype WraChar = Int where wra_scalar\n\nfn wra_use(c: WraChar) -> WraChar { c }\n"
 
 data wra_duplicate_source: String = "module v2.wra_duplicate\n\nimport v2.wra_home { wra_scalar }\n\nfn wra_scalar(code_point: Int) -> Bool { code_point >= 1 }\n\nfn wra_dup_use(x: Int) -> Bool { wra_scalar(code_point: x) }\n"
 
-fn wra_read(source: String, name: String) -> DagSourceReadWitness {
+fn wra_read(source: String, name: String, id: Symbol) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: ^wra_artifact, file_path: name },
-    compilation_unit: ^wra_cu,
+    artifact: Artifact { kind: SourceFile, id: id, file_path: name },
+    compilation_unit: id,
     source_root: DagTree
   }
 }
 
 data wra_ingest: SourceRootIngest = Cons {
-  head: wra_read(source: wra_home_source, name: "src/v2/wra_home.dag"),
+  head: wra_read(source: wra_home_source, name: "src/v2/wra_home.dag", id: ^wra_home),
   tail: Cons {
-    head: wra_read(source: wra_two_aliases_source, name: "src/v2/wra_two_aliases.dag"),
+    head: wra_read(source: wra_two_aliases_source, name: "src/v2/wra_two_aliases.dag", id: ^wra_two_aliases),
     tail: Cons {
-      head: wra_read(source: wra_char_like_source, name: "src/v2/wra_char_like.dag"),
-      tail: Cons { head: wra_read(source: wra_duplicate_source, name: "src/v2/wra_duplicate.dag"), tail: Empty }
+      head: wra_read(source: wra_char_like_source, name: "src/v2/wra_char_like.dag", id: ^wra_char_like),
+      tail: Cons { head: wra_read(source: wra_duplicate_source, name: "src/v2/wra_duplicate.dag", id: ^wra_duplicate), tail: Empty }
     }
   }
 }
