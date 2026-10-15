@@ -244,3 +244,8 @@ test fn kpz_unkinded_call_grounded() -> Bool { kpz_call_grounded(src: kpz_unkind
 test fn kpz_alias_kinded_infer_clean() -> Bool { kpz_infer_clean(src: kpw_src()) }
 test fn kpz_alias_kinded_call_grounded() -> Bool { kpz_call_grounded(src: kpw_src(), name: ^width_of) }
 test fn kpz_take_call_grounded() -> Bool { kpz_call_grounded(src: concat(kpy_pre(), "fn take(x: Box<8>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  take(x: mk8())\n}\n"), name: ^take) }
+
+test fn kpq2_bare_type_param_call_grounded() -> Bool { kpz_call_grounded(src: "module p\n\nfn id<t>(x: t) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  id(x: 3)\n}\n", name: ^id) }
+test fn kpq2_list_of_param_call_grounded() -> Bool { kpz_call_grounded(src: "module p\n\nfn f<t>(x: List<t>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  f(x: [1])\n}\n", name: ^f) }
+test fn kpq2_record_kinded_call_grounded() -> Bool { kpz_call_grounded(src: concat(kpe_prelude(), "fn constant<bits: Resolution>(x: Box<bits>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  constant(x: mk8())\n}\n"), name: ^constant) }
+test fn kpq2_record_unkinded_call_grounded() -> Bool { kpz_call_grounded(src: "module p\n\ntype Box<n> {\n  v: Int\n}\n\nfn mk() -> Box<Int> {\n  Box { v: 0 }\n}\n\nfn constant<n>(x: Box<n>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  constant(x: mk())\n}\n", name: ^constant) }
