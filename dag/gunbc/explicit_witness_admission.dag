@@ -173,7 +173,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
     reason: "Receipt for gunbc.recurring_failure_mode one_type_variable_bound_to_two_distinct_coproducts. The assertion RUNS and returns false: same_arm<T>(a: T, b: T) called with P1 (coproduct Pa) and Q1 (coproduct Pb) is ACCEPTED by infer and answers false, where the compiler floor (DESIGN section 4b, values inhabit declared types) owes a typecheck refusal. Measured on both the v1 route and the v2 route, remote runner, main b69fc48027. Owner: the infer lane stern-bat-401 dispatched; the constructor-tag carrier item (node adhoc-b2d312a6-1ee) is gated on it through its RED (iii).",
-    dissolution: unbound_dissolution(description: "infer refuses a call that binds ONE type variable to two distinct coproduct declarations (and an == over ConstructorTag<T> against ConstructorTag<U>): this witness then greens or turns into a typed refusal at the call, and this row deletes into a permanent regression control in that change")
+    dissolution: unbound_dissolution(description: "infer refuses a call that binds ONE type variable to two distinct coproduct declarations: this witness then greens or turns into a typed refusal at the call, and this row deletes into a permanent regression control in that change")
   ),
   known_red_probe(
     entry: "src/v2/test/claim/manual/constructor_tag_route_probe_red.dag",
@@ -181,7 +181,7 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
     reason: "Receipt for gunbc.recurring_failure_mode one_type_variable_bound_to_two_distinct_coproducts. The assertion RUNS and returns false: same_arm<T>(a: T, b: T) called with P1 (coproduct Pa) and Q1 (coproduct Pb) is ACCEPTED by infer and answers false, where the compiler floor (DESIGN section 4b, values inhabit declared types) owes a typecheck refusal. Measured on both the v1 route and the v2 route, remote runner, main b69fc48027. Owner: the infer lane stern-bat-401 dispatched; the constructor-tag carrier item (node adhoc-b2d312a6-1ee) is gated on it through its RED (iii).",
-    dissolution: unbound_dissolution(description: "infer refuses a call that binds ONE type variable to two distinct coproduct declarations (and an == over ConstructorTag<T> against ConstructorTag<U>): this witness then greens or turns into a typed refusal at the call, and this row deletes into a permanent regression control in that change")
+    dissolution: unbound_dissolution(description: "infer refuses a call that binds ONE type variable to two distinct coproduct declarations: this witness then greens or turns into a typed refusal at the call, and this row deletes into a permanent regression control in that change")
   ),
   known_red_probe(
     entry: "src/v2/test/claim/body_lowering/map_literal.dag",
