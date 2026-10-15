@@ -134,10 +134,10 @@ fn census_regression_with_scratch(r: CensusRegression, scratch: ScratchOutcome) 
   }
 }
 
-fn census_regression_on(host: CommandHost, pinned_image: CensusImage) -> CensusRegression {
+fn census_regression_on(host: CommandHost, pinned_image: CensusImage, expected: NonEmptyStr) -> CensusRegression {
   match pinned_image {
     CensusImageRefused { reason: r } => RegressionNotApplicable { reason: concat("the pinned census derivation does not render: ", r) }
-    CensusImageDerived { input: pinned } => census_srv2_regression(host: host, pinned: pinned, expected: mtcollins1_census_hermetic_pinned_rebuild_digest)
+    CensusImageDerived { input: pinned } => census_srv2_regression(host: host, pinned: pinned, expected: expected)
   }
 }
 
@@ -255,7 +255,7 @@ fn mtcollins1_census_image_publish_wet() -> ProcessExit {
       CensusPublishStoppedAtRegression { regression: RegressionNotApplicable { reason: concat("no fleet SSH context: ", c) } }
     FleetSshContextReady { context: context, receipt: _ } => {
       let host = FleetSshCommandHost { target: bmc_boot_image_export.target, context: context }
-      census_publish_attempt_of(regression: census_regression_on(host: host, pinned_image: mtcollins1_census_pinned_image), publish: _ => census_image_publication_on(host: host, image: mtcollins1_census_image))
+      census_publish_attempt_of(regression: census_regression_on(host: host, pinned_image: mtcollins1_census_pinned_image, expected: mtcollins1_census_hermetic_pinned_rebuild_digest), publish: _ => census_image_publication_on(host: host, image: mtcollins1_census_image))
     }
   }
   let rendered = render_census_publish_attempt(a: attempt)
