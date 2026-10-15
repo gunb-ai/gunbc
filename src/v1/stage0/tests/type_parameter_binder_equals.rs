@@ -57,3 +57,26 @@ fn inference_variable_compares_by_id_not_leaf_name() {
         "distinct inference-variable ids must not be equal"
     );
 }
+
+fn unnamed_leaf(name: &str) -> Rc<v1_compiler::v1_std_core::Node> {
+    let mut n = (*type_variable_node("unused".to_string())).clone();
+    n.name = name.to_string();
+    n.inferred = None;
+    Rc::new(n)
+}
+
+#[test]
+fn unmarked_leaf_named_like_the_variable_is_that_variable() {
+    let si = empty_si();
+    let t = text();
+    let tv = type_variable_node("T".to_string());
+    let leaf = unnamed_leaf("T");
+    assert!(
+        node_type_equals(tv.clone(), leaf, si.clone(), t.clone()),
+        "TypeVariable T vs unmarked leaf T is the same variable"
+    );
+    assert!(
+        !node_type_equals(tv, unnamed_leaf("K"), si, t),
+        "TypeVariable T vs unmarked leaf K is not"
+    );
+}

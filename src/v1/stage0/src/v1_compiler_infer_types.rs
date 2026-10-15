@@ -90,6 +90,25 @@ pub fn type_variable_id(n: Rc<Node>) -> String {
     }
 }
 
+pub fn type_variable_leaf_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if (n.children.clone().len() as i64) == 0
+        && n.connective.clone() == Connective::NoConnective
+        && (n.params.clone().len() as i64) == 0
+    {
+        let authored = crate::v1_std_core::authored_name_at(source_indices, n.clone());
+        if authored != "" {
+            authored
+        } else {
+            n.name.clone()
+        }
+    } else {
+        "".to_string()
+    }
+}
+
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -2869,12 +2888,18 @@ pub fn node_type_equals(
     if left_binder.is_some() || right_binder.is_some() {
         return false;
     }
-    if left_tv && right_tv {
+    if left_tv || right_tv {
         let lid = type_variable_id(left.clone());
         let rid = type_variable_id(right.clone());
-        return lid != "" && lid == rid;
-    }
-    if left_tv || right_tv {
+        if lid != "" && rid != "" {
+            return lid == rid;
+        }
+        if lid != "" && !right_tv {
+            return type_variable_leaf_name(right.clone(), source_indices.clone()) == lid;
+        }
+        if rid != "" && !left_tv {
+            return type_variable_leaf_name(left.clone(), source_indices.clone()) == rid;
+        }
         return false;
     }
     if left_opt && right_is_unit_eq {
