@@ -1,6 +1,6 @@
 module extdeps.bmc.megarac_fan_policy
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.measure { Percent, RevolutionsPerMinute, percent_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -81,7 +81,7 @@ type MegaRacFanModeSurface
 
 data megarac_fan_mode_surface: MegaRacFanModeSurface = MegaRacFanModeSurfaceBound {
   transport: MegaRacSpxRest,
-  contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). Executed read-only 2026-10-14 ~21:50Z: POST /api/session, GET these two, DELETE /api/session. READ: GET /api/fan_control/get_manager_status {manager_disabled:0|1} and GET /api/fan_control/get_fan_info [{id,fan_number,fan_speed,fan_pwm}] (UI labels speed as PWM percentage). WRITE manager: POST /api/fan_control/set_manager_status {manager_disabled:r}; UI confirms both directions. WRITE PWM: POST /api/fan_control/set_fan_speed JSON {fan_pwm_all: r} with r a STRING from select#fan_all_speed (20..100 step 5); no per-fan write; only while manager_disabled is 1. Instance values of executed reads live in gunbc.machine_intake.megarac_fan_mode_observation.",
+  contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). Executed read-only 2026-10-14 ~21:50Z: POST /api/session, GET these two, DELETE /api/session. READ: GET /api/fan_control/get_manager_status manager_disabled 0 or 1, and GET /api/fan_control/get_fan_info rows id, fan_number, fan_speed, fan_pwm (UI labels speed as PWM percentage). WRITE manager: POST /api/fan_control/set_manager_status manager_disabled r; UI confirms both directions. WRITE PWM: POST /api/fan_control/set_fan_speed JSON fan_pwm_all r with r a STRING from select#fan_all_speed (20..100 step 5); no per-fan write; only while manager_disabled is 1. Instance values of executed reads live in gunbc.machine_intake.megarac_fan_mode_observation.",
 }
 
 // A REST FAN_INFO ROW IS NOT A ROTOR. get_fan_info still lists a slot at pwm 0 after the
@@ -97,9 +97,9 @@ type MegaRacManagerDisabledWire
   | MegaRacManagerDisabledRefused { wire: Int }
 
 fn megarac_manager_disabled_of_wire(manager_disabled: Int) -> MegaRacManagerDisabledWire {
-  if manager_disabled == 0 {
+  if (manager_disabled == 0) {
     MegaRacManagerDisabledAdmitted { standing: CoolingManagerAutomatic }
-  } else if manager_disabled == 1 {
+  } else if (manager_disabled == 1) {
     MegaRacManagerDisabledAdmitted { standing: CoolingManagerDisabledManual }
   } else {
     MegaRacManagerDisabledRefused { wire: manager_disabled }
@@ -125,7 +125,7 @@ type MegaRacFanSlotStanding
 fn megarac_fan_slot_standing(pwm: Percent, sdr: MegaRacSdrFanPresence) -> MegaRacFanSlotStanding {
   match sdr {
     MegaRacSdrFanPresenceAbsent =>
-      if percent_count(p: pwm) == 0 {
+      if (percent_count(p: pwm) == 0) {
         MegaRacFanSlotPhysicallyAbsent
       } else {
         MegaRacFanSlotJoinUnexplained { pwm: pwm, sdr: sdr }
@@ -140,7 +140,7 @@ data megarac_fan_pwm_all_admitted_wires: List<Int> = [20, 25, 30, 35, 40, 45, 50
 fn megarac_int_in(xs: List<Int>, n: Int) -> Bool {
   match xs.first() {
     Absent => false
-    Present { value: h } => if h == n { true } else { megarac_int_in(xs: xs.skip(n: 1), n: n) }
+    Present { value: h } => if (h == n) { true } else { megarac_int_in(xs: xs.skip(n: 1), n: n) }
   }
 }
 
@@ -150,7 +150,7 @@ type MegaRacFanPwmAll
 
 fn megarac_fan_pwm_all_of(duty: Percent) -> MegaRacFanPwmAll {
   let n = percent_count(p: duty) as Int
-  if megarac_int_in(xs: megarac_fan_pwm_all_admitted_wires, n: n) {
+  if (megarac_int_in(xs: megarac_fan_pwm_all_admitted_wires, n: n)) {
     MegaRacFanPwmAllAdmitted { wire: to_string(n) as NonEmptyStr }
   } else {
     MegaRacFanPwmAllRefused { duty: duty }
