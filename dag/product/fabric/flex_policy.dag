@@ -18,6 +18,8 @@ import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply {
   EqualCostOfferTieBreak, PlacementAffinityKey, GrantDuration, ExactGrantDuration,
   seconds_per_hour, SupplierOffer, QuotedPerHour,
+  Fungible, TrustDomainMismatch, CapabilitiesNotOffered, IsolationNotProvided,
+  ShapeAxesNotCovered, offer_fungibility_for, QuoteExceedsMaximumBuyOrder,
 }
 import product.fabric.execution { ReservationRef }
 import product.fabric.budget {
@@ -303,7 +305,40 @@ fn offer_quoted_at(offer: SupplierOffer<NonEmptyStr>, rate: MoneyPerHour) -> Sup
   }
 }
 
+// Fungibility is screened here against the attempt's requirements, as price_candidate does for
+// select_supply: price_over_horizon prices only, so without this screen a thin machine would price
+// as an on-demand reference and set the ceiling for a shape it cannot serve.
 fn flex_price_offer(
+  offer: SupplierOffer<NonEmptyStr>,
+  inputs: DispatchInputs<NonEmptyStr>,
+  policy: FlexPolicy,
+  attempt: FlexBidAttempt<NonEmptyStr>,
+  budget_currency: CurrencyCode,
+  maximum_buy_order: MoneyAmountMicro,
+) -> FlexPricedHorizon {
+  let fungibility = offer_fungibility_for(requirements: attempt.requirements, offer: offer)
+  match fungibility {
+    TrustDomainMismatch { required: _, offered: _ } =>
+      FlexHorizonRefused { candidacy: OfferNotFungible { offer: offer.id, fungibility: fungibility } }
+    CapabilitiesNotOffered { required: _, offered: _ } =>
+      FlexHorizonRefused { candidacy: OfferNotFungible { offer: offer.id, fungibility: fungibility } }
+    IsolationNotProvided { missing: _ } =>
+      FlexHorizonRefused { candidacy: OfferNotFungible { offer: offer.id, fungibility: fungibility } }
+    ShapeAxesNotCovered { unmet: _ } =>
+      FlexHorizonRefused { candidacy: OfferNotFungible { offer: offer.id, fungibility: fungibility } }
+    Fungible =>
+      flex_price_fungible_offer(
+        offer: offer,
+        inputs: inputs,
+        policy: policy,
+        attempt: attempt,
+        budget_currency: budget_currency,
+        maximum_buy_order: maximum_buy_order,
+      )
+  }
+}
+
+fn flex_price_fungible_offer(
   offer: SupplierOffer<NonEmptyStr>,
   inputs: DispatchInputs<NonEmptyStr>,
   policy: FlexPolicy,
@@ -348,8 +383,8 @@ fn flex_on_demand_reference_cost(
       match flex_availability_standing(a: c.dispatch.availability) {
         FlexAvailabilityUnobserved => FlexHorizonUnobserved
         FlexAvailabilityRevocable => FlexHorizonUnobserved
-        FlexAvailabilityOnDemand =>
-          flex_price_offer(
+        FlexAvailabilityOnDemand => {
+          let priced = flex_price_offer(
             offer: c.offer,
             inputs: c.dispatch,
             policy: policy,
@@ -357,6 +392,31 @@ fn flex_on_demand_reference_cost(
             budget_currency: budget_currency,
             maximum_buy_order: maximum_buy_order,
           )
+          // The reference is a reading of what on-demand costs, not a purchase the fleet cap
+          // must afford: a quote above the cap bounds nothing about the bid. Re-read it with the
+          // exceeding quote as its own bound so start and operating cash still screen as
+          // liability and price through OfferLiabilityOverBuyOrder.
+          match priced {
+            FlexHorizonRefused { candidacy: refused } =>
+              match refused {
+                OfferUnaffordable { offer: _, affordability: shortfall } =>
+                  match shortfall {
+                    QuoteExceedsMaximumBuyOrder { quoted: own_total, maximum: _ } =>
+                      flex_price_offer(
+                        offer: c.offer,
+                        inputs: c.dispatch,
+                        policy: policy,
+                        attempt: attempt,
+                        budget_currency: budget_currency,
+                        maximum_buy_order: own_total,
+                      )
+                    _ => priced
+                  }
+                _ => priced
+              }
+            _ => priced
+          }
+        }
       }
   }
 }

@@ -12,11 +12,11 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data forged_mint_instances_source: String = "module probe_flex_mint_instances\nimport product.fabric.flex_vast_shadow { flex_mint_complete_instances }\nfn forged() {\n  flex_mint_complete_instances(rows: [], total: 0)\n}\n"
+data forged_mint_instances_source: String = "module probe_flex_mint_instances\nimport product.fabric.flex_vast_shadow { flex_mint_complete_instances, FlexInstancesStanding }\nfn forged() -> FlexInstancesStanding {\n  flex_mint_complete_instances(rows: [], total: 0)\n}\n"
 
-data forged_mint_charges_source: String = "module probe_flex_mint_charges\nimport product.fabric.flex_vast_shadow { flex_mint_complete_charges }\nfn forged() {\n  flex_mint_complete_charges(rows: [], total: 0)\n}\n"
+data forged_mint_charges_source: String = "module probe_flex_mint_charges\nimport product.fabric.flex_vast_shadow { flex_mint_complete_charges, FlexChargesStanding }\nfn forged() -> FlexChargesStanding {\n  flex_mint_complete_charges(rows: [], total: 0)\n}\n"
 
-data forged_release_admit_source: String = "module probe_flex_release_admit\nimport std.nat { Zero }\nimport product.fabric.flex_market { flex_release_admit, FlexCapUnreadable }\nfn forged() {\n  flex_release_admit(running_count: Zero, cap: FlexCapUnreadable, no_room: false, replacement_serving: false)\n}\n"
+data forged_release_admit_source: String = "module probe_flex_release_admit\nimport std.nat { Zero }\nimport product.fabric.flex_market { flex_release_admit, FlexCapUnreadable, FlexReleaseAdmit }\nfn forged() -> FlexReleaseAdmit {\n  flex_release_admit(running_count: Zero, cap: FlexCapUnreadable, no_room: false, replacement_serving: false)\n}\n"
 
 fn blocking_of_class(source: String, class: String) -> Int {
   match compile_dag_diagnostic_census(source) {

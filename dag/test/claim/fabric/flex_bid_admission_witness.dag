@@ -503,7 +503,7 @@ test fn a_rediscovered_machine_is_not_penalized_relative_to_a_fresh_equivalent()
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
       min_bid: one_twenty_wire(),
-      quote: usd_hour(amount: money_amount_micro(count: 1320000)),
+      quote: usd_hour(amount: money_amount_micro(count: 1200000)),
       key: "offer-a-again",
       reservation: "res-a-again",
       revocation: RevocationAccepted,
@@ -518,7 +518,7 @@ test fn a_rediscovered_machine_is_not_penalized_relative_to_a_fresh_equivalent()
     attempt: t_attempt(
       machine: t_machine(id: "machine-b"),
       min_bid: one_twenty_wire(),
-      quote: usd_hour(amount: money_amount_micro(count: 1320000)),
+      quote: usd_hour(amount: money_amount_micro(count: 1200000)),
       key: "offer-b",
       reservation: "res-b",
       revocation: RevocationAccepted,
@@ -533,7 +533,7 @@ test fn a_rediscovered_machine_is_not_penalized_relative_to_a_fresh_equivalent()
         && (refusal_label(o: rediscovered) == "admitted")
         && (refusal_label(o: fresh) == "admitted")
         && (admitted_bid(o: rediscovered) == admitted_bid(o: fresh))
-        && (admitted_bid(o: rediscovered) == 1320000)
+        && (admitted_bid(o: rediscovered) == 1200000)
         && (admitted_bid(o: rediscovered) <= 5000000)
   }
 }
@@ -977,8 +977,8 @@ test fn rediscovery_never_lifts_the_on_demand_relative_ceiling() -> Bool {
     account: t_account(ceiling: money_amount_micro(count: 10000000)),
     attempt: t_attempt(
       machine: t_machine(id: "machine-a"),
-      min_bid: ExactDecimal { units: 19, fraction_digits: 1 },
-      quote: usd_hour(amount: money_amount_micro(count: 2090000)),
+      min_bid: ExactDecimal { units: 21, fraction_digits: 1 },
+      quote: usd_hour(amount: money_amount_micro(count: 2100000)),
       key: "offer-rediscover-od",
       reservation: "res-rediscover-od",
       revocation: RevocationAccepted,
