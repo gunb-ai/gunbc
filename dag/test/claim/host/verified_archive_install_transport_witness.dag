@@ -23,6 +23,7 @@ import gunbc.host.verified_archive_install {
 }
 import test.claim.host.verified_archive_install_local_shell_recorder {
   local_shell_legs_record_text, argv_list_record, argv_record_line,
+  s3a_local_shell_legs_recorded_at_6f242e4c520,
 }
 import gunbc.runner.runner_qemu_toolchain { qemu_toolchain_staged_archive }
 import extdeps.virtualization.qemu { qemu_8_2_2_ubuntu_noble_arm64 }
@@ -177,12 +178,8 @@ test fn a_matching_observed_sha256sum_line_is_matches_through_the_transport_fold
   }
 }
 
-test fn local_shell_legs_record_covers_the_three_callers() -> Bool {
-  let t = local_shell_legs_record_text()
-  string_contains(s: t, pattern: "qemu-fetch")
-    && string_contains(s: t, pattern: "browser-node-fetch")
-    && string_contains(s: t, pattern: "firecracker-fetch")
-    && string_contains(s: t, pattern: "qemu-publish")
+test fn local_shell_legs_are_byte_identical_to_the_recorded_base() -> Bool {
+  local_shell_legs_record_text() == s3a_local_shell_legs_recorded_at_6f242e4c520
 }
 
 test fn qemu_fetch_and_install_argv_match_the_main_standing_oracle() -> Bool {
