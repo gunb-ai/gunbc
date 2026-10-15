@@ -112,21 +112,12 @@ fn demanded_module_names(path: &str, content: &str, known: &HashSet<String>) -> 
         for import in &refs.imports {
             names.insert(import.clone());
         }
-        let chains = refs
-            .chains
-            .iter()
-            .chain(refs.positions.method_chains.iter());
-        for chain in chains {
-            if let Some(name) = longest_layout_module_prefix(chain) {
-                names.insert(name);
-            }
-        }
-        for name in refs
-            .bare
-            .iter()
-            .chain(refs.authored_types.iter())
-            .chain(refs.positions.undotted.iter())
-        {
+        // Value/method chains are not module names: treating `x.foo.bar` as a layout
+        // prefix pulled compiler/std modules the import graph never named, and that
+        // set is what typecheck still pays ~9 GiB for on mtcollins1_boot_run.
+        // Authored types and dotted free names are the remaining qualified demands
+        // (e.g. `std.optional.Optional` without a matching import line).
+        for name in refs.bare.iter().chain(refs.authored_types.iter()) {
             if name.contains('.') {
                 let segs: Vec<String> = name.split('.').map(str::to_string).collect();
                 if let Some(found) = longest_layout_module_prefix(&segs) {
