@@ -2,13 +2,11 @@ module v2.compiler.target_serialize
 
 import std.types { Bool, List }
 import std.occurrence_identity {
-  OccurrenceId,
   OccurrenceSynthetic
 }
 import v2.compiler.inferred_tree {
   InferredFacts,
-  InferredTree,
-  authored_occurrence_id
+  InferredTree
 }
 import v2.compiler.infer { infer_nullary_zero_param_coproduct_arm_use }
 import v2.extdeps.languages.dag {
@@ -86,8 +84,6 @@ import v2.std.node {
   UnsupportedArrowBody,
   classify_arrow_body_form,
   declaration_reference_body_marked,
-  fold_node,
-  NodeFold,
   node_subtree_count,
   Arrow,
   Occupancy,
@@ -849,46 +845,8 @@ fn nullary_coproduct_arm_binding_spelling(body: Node) -> Optional<Symbol> {
   }
 }
 
-fn optional_node_first_present(left: Optional<Node>, right: Optional<Node>) -> Optional<Node> {
-  match left {
-    Present { value: found } => Present { value: found }
-    Absent => right
-  }
-}
-
-fn inferred_tree_node_at_occurrence(tree: InferredTree, want: OccurrenceId) -> Optional<Node> {
-  fold_node(
-    n: tree.root,
-    algebra: NodeFold {
-      init: fn(node) {
-        match authored_occurrence_id(n: node) {
-          Absent => optional_absent()
-          Present { value: id } =>
-            if id.value == want.value {
-              optional_present(value: node)
-            } else {
-              optional_absent()
-            }
-        }
-      },
-      step: fn(acc, e, child_r) { optional_node_first_present(left: acc, right: child_r) }
-    }
-  )
-}
-
 fn inferred_facts_for_projected_node(tree: InferredTree, node: Node) -> Optional<InferredFacts> {
-  match tree.facts.lookup(node) {
-    Present { value: facts } => Present { value: facts }
-    Absent =>
-      match authored_occurrence_id(n: node) {
-        Absent => Absent
-        Present { value: id } =>
-          match inferred_tree_node_at_occurrence(tree: tree, want: id) {
-            Absent => Absent
-            Present { value: keyed } => tree.facts.lookup(keyed)
-          }
-      }
-  }
+  tree.facts.lookup(node)
 }
 
 fn project_nullary_arm_binding(node: Node) -> Outcome<TargetValueExpression> {
