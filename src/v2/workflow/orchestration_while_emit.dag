@@ -16,7 +16,7 @@ import v2.std.orchestration {
   While
 }
 import std.path_intent { And, DirnameAscent, Not, PathEntryKind, PathIntent, PathJoin, PathLiteral, PathNonempty, PathNotEq, PathRef }
-import v2.std.collection { Absent }
+import std.optional { Absent }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.filesystem.types { RegularFile, Directory, Missing }

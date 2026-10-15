@@ -18,7 +18,7 @@ import extdeps.github.rulesets {
   MergeQueueConfigured,
   BypassActorRosterObservation,
 }
-import v2.std.collection { Present }
+import std.optional { Present }
 import gunbc.repo.repo_ruleset {
   RulesetObservation,
   RulesetObserved,

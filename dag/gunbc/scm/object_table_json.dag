@@ -110,6 +110,7 @@ import std.types {
   Int,
   List,
   list_length,
+  Map
 }
 import gunbc.scm.object_store {
   ObjectId,
@@ -241,12 +242,7 @@ import v2.std.node {
   core_edge_labels,
   production_edge_label,
 }
-import v2.std.collection {
-  Map,
-  empty_map,
-  map_insert,
-  map_lookup,
-}
+import std.algebra { empty_map, map_insert, map_lookup }
 
 // THREE REFUSAL TYPES, BECAUSE THERE ARE THREE SUBJECTS AND ONE OF THEM IS SHARED.
 //

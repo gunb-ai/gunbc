@@ -2,9 +2,9 @@ module extdeps.tools.hostname
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { List, Bool, Int, NonEmptyStr, Unit }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list }
-import v2.std.collection { Map, empty_map, map_insert }
+import std.types { List, Bool, Int, NonEmptyStr, Unit, Map }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, empty_map, map_insert }
+
 import v2.std.compilers.cli_surface {
   CliArgumentSyntax,
   CliSurface,

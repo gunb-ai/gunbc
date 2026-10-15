@@ -1,8 +1,8 @@
 module gunbc.roadmap.roadmap_authority
 
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
-import std.types { FilePath, NonEmptyStr, Set }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.types { FilePath, NonEmptyStr, Set, Map }
+import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap.roadmap_model {
   RoadmapNode,
@@ -3344,6 +3344,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "demand-engine", contribution: "D13 derives dependencies from bodies and binds them at the composition root, which native admission needs."),
     ),
     roadmap_node(
+      identity: "rn_2M09BHBNRRG1JYGHA1004HW462",
+      id: "native-test-verdict-realization",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: fields(
+          headline: "Native test verdicts are realized by v2-emitted Rust and materialized per test",
+          boundary: "A native test's verdict is the demand_engine_program D15 judgment, run as realize composed with materialize: the v2 emitter produces a Cargo test target for the test closure, cargo test executes it, and each test's result is bound and stored under its semantic evaluation identity. Emitted Rust is the only admitted handler; C and Swift refuse typed. The interpreter and the seed are absent from the accepted route.",
+          displaced_cost: "Native tests are executed by an interpreter whose primitive table holds coercion and Int add and which rejects every match arm and loop step, so no v2 test reaches its verdict natively, and the second-generation generator cut has no consumer pulling it.",
+          first_slice: "The feasibility receipt: the v2-native CLI emits the native-seven test closure or names its first refusal; then the product shape, cargo test over the population, the verdict-adaptation gap, a second-process hit, C and Swift typed-unavailable, and the seed and interpreter absent. The receipt's first refusal is that the emit path infers each member without the closure's resolved declarations, so no imported type is derivable, and that emission is module-grained; D15(d) therefore rules declaration-grain emission over what the tests reach. After it, the identity and handler interface (semantic versus realization identity, the closed handler coproduct, per-test bindings in a module manifest) with discriminating claims.",
+          red_control: "A verdict produced by the interpreter or by a seed-emitted product, a C or Swift request that does not refuse typed, two handlers' results under one semantic evaluation identity disagreeing without a conflict, a declaration whose emitted text or verdict changes with which other declarations share its crate, or a product served under a key narrower than its packaged declaration set without admitted composition independence, keeps this red.",
+          out_of_scope: "Growing the interpreter; the whole-universe native frontier lane; reuse of products other than the build artifact and result bundle named in D15.",
+          handback: "Every native-seven member reaches its expected verdict through the v2-emitted Cargo route, with its per-test binding served from the store on a second run."
+        )),
+      parent: in_project(project: "demand-engine", contribution: "Realizes and materializes the first production evaluation judgment -- native test verdicts -- and is the consumer that pulls the second-generation generator cut."),
+    ),
+    roadmap_node(
       identity: "rn_KQ7EP7P290B24W2FHFW9Y4K1F4",
       id: "floor-memory",
       owner: "ci-control",
@@ -4770,6 +4786,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-interpreter-quarantine", parent: "native-production-admission"),
     edge(child: "native-seven", parent: "literal-elaboration"),
     edge(child: "native-seven", parent: "shared-check-lets-and-matches"),
+    edge(child: "native-seven", parent: "native-test-verdict-realization"),
     edge(child: "native-seven", parent: "declaration-provider-outcomes"),
     edge(child: "cross-module-declarations", parent: "declaration-identity-switchover"),
     edge(child: "declaration-identity-switchover", parent: "namespace-binding-kernel"),

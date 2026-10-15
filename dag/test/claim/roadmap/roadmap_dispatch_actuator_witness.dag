@@ -8,9 +8,9 @@ import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx
 import std.optional { Present }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.exec.command { argv_words }
-import v2.std.collection { List }
+
 import std.algebra { fold_list }
-import std.types { GitRef }
+import std.types { GitRef, List }
 import std.types { NonEmptyStr, GitRef, FilePath, path_segment_is_safe }
 import std.measure { byte_size_count }
 import std.disposition { Scaffold, Terminal }

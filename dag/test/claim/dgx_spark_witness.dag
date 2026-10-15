@@ -59,7 +59,7 @@ import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.dgx_procurement {
-  dgx_spark_procurement_intent, DgxSparkDisposedUnit, DgxSparkAssetSold, dgx_spark_disposed_units, dgx_spark_router_bindings, dgx_spark_reserved_identities, observed_dgx_spark_router_reservations, DgxSparkRouterBinding, SlotAssigned, SlotUnassigned, router_binding_identity, OperatorAllocation, dgx_spark_arrival_standing, AllOrderedUnitsAccounted, OrderedUnitsOutstanding, admit_dgx_spark_deployment, DgxSparkAdmissionOutcome, DgxSparkDeploymentAdmitted, DgxSparkDeploymentRefused, DgxSparkAdmissionRefusalReason, DeploymentAdmissionNoEvidence, DeploymentAdmissionAmbiguousEvidence, DeploymentAdmissionSubjectMismatch, DeploymentAdmissionEndpointBindingMismatch, DeploymentAdmissionExecutionEvidenceDisagrees, admit_dgx_spark_pair, admit_dgx_spark_pair_deployments, DgxSparkPairAdmitted, DgxSparkPairRefused, PairUnitNotAdmitted, PairSubjectsNotDistinct, PairHardwareIdentityUnobserved, PairHardwareIdentityNotDistinct, PairHardwareIdentityIncomparable, DeploymentAdmissionWrongTool, DeploymentAdmissionObservationNotOk, DeploymentAdmissionIdentityNotReserved, DeploymentAdmissionRouterBindingMismatch, DeploymentAdmissionRouterBindingPending, converge_dgx_spark_procurement, dgx_spark_procurement_convergence, DgxSparkProcurementConverged, DgxSparkProcurementPending, DgxSparkUnitDeployed, DgxSparkUnitPending,
+  dgx_spark_procurement_intent, DgxSparkDisposedUnit, DgxSparkAssetSold, dgx_spark_disposed_units, dgx_spark_router_bindings, dgx_spark_reserved_identities, observed_dgx_spark_router_reservations, DgxSparkRouterBinding, SlotAssigned, SlotUnassigned, router_binding_identity, OperatorAllocation, dgx_spark_arrival_standing, AllOrderedUnitsAccounted, OrderedUnitsOutstanding, admit_dgx_spark_deployment, DgxSparkAdmissionOutcome, DgxSparkDeploymentAdmitted, DgxSparkDeploymentRefused, DgxSparkAdmissionRefusalReason, DeploymentAdmissionNoEvidence, DeploymentAdmissionAmbiguousEvidence, DeploymentAdmissionSubjectMismatch, DeploymentAdmissionEndpointBindingMismatch, DeploymentAdmissionExecutionEvidenceDisagrees, admit_dgx_spark_pair, admit_dgx_spark_pair_deployments, DgxSparkPairAdmitted, DgxSparkPairRefused, PairUnitNotAdmitted, PairUnitCountWrong, PairRosterEmpty, PairSubjectsNotDistinct, PairHardwareIdentityUnobserved, PairHardwareIdentityNotDistinct, PairHardwareIdentityIncomparable, DeploymentAdmissionWrongTool, DeploymentAdmissionObservationNotOk, DeploymentAdmissionIdentityNotReserved, DeploymentAdmissionRouterBindingMismatch, DeploymentAdmissionRouterBindingPending, converge_dgx_spark_procurement, dgx_spark_procurement_convergence, DgxSparkProcurementConverged, DgxSparkProcurementPending, DgxSparkProcurementRosterEmpty, DgxSparkUnitDeployed, DgxSparkUnitPending,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -103,6 +103,8 @@ test fn w_tool_names_match_the_cited_page() -> Bool {
 
 
 data all_spark_identities: List<HostIdentity> = []
+
+data fixture_reserved_spark_identities: List<HostIdentity> = [operator_host_srv9, operator_host_srv10]
 
 test fn w_procurement_intent_reserves_the_bound_identities() -> Bool {
   dgx_spark_procurement_intent.unit_count == 8
@@ -228,6 +230,7 @@ test fn w_admission_with_real_evidence_succeeds() -> Bool {
     catalog: nvidia_dgx_spark_4tb_catalog,
     selection: ObservationUnique { observation: srv9_good_observation() },
     router_binding: synthetic_bound_binding_for(identity_host: "srv9", last_octet: 222),
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkDeploymentAdmitted { deployment: d } =>
       d.identity == operator_host_srv9 && d.observation.subject == operator_host_srv9
@@ -241,6 +244,7 @@ test fn w_red_admission_without_evidence_refuses() -> Bool {
     catalog: nvidia_dgx_spark_4tb_catalog,
     selection: ObservationMissing { subject: operator_host_srv9 },
     router_binding: synthetic_bound_binding_for(identity_host: "srv9", last_octet: 222),
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkDeploymentRefused { reason: DeploymentAdmissionNoEvidence { requested_identity: i } } =>
       i == operator_host_srv9
@@ -275,6 +279,7 @@ test fn w_red_admission_with_wrong_tool_evidence_refuses() -> Bool {
     catalog: nvidia_dgx_spark_4tb_catalog,
     selection: ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv9", last_octet: 222),
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkDeploymentRefused { reason: DeploymentAdmissionWrongTool { observed_tool: t } } => t == "spark_updatectl.py"
     DgxSparkDeploymentRefused { reason: _ } => false
@@ -289,6 +294,7 @@ test fn w_red_admission_with_mismatched_dispatch_subject_refuses() -> Bool {
     catalog: nvidia_dgx_spark_4tb_catalog,
     selection: ObservationUnique { observation: srv9_good_observation() },
     router_binding: synthetic_bound_binding_for(identity_host: "srv10", last_octet: 223),
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkDeploymentRefused {
       reason: DeploymentAdmissionSubjectMismatch { dispatched_subject: s, requested_identity: i }
@@ -308,6 +314,7 @@ test fn w_admission_when_envelope_host_disagrees_records_diagnostic_evidence() -
     catalog: nvidia_dgx_spark_4tb_catalog,
     selection: ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv10", last_octet: 223),
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkDeploymentAdmitted { deployment: d } =>
       d.identity == operator_host_srv10
@@ -349,6 +356,7 @@ test fn w_red_admission_with_failed_observation_refuses() -> Bool {
     catalog: nvidia_dgx_spark_4tb_catalog,
     selection: ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv9", last_octet: 222),
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkDeploymentRefused {
       reason: DeploymentAdmissionObservationNotOk { observed_status: StatusError, observed_rc: rc }
@@ -366,6 +374,7 @@ test fn w_red_admission_of_unreserved_identity_refuses() -> Bool {
     catalog: nvidia_dgx_spark_4tb_catalog,
     selection: ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv3", last_octet: 221),
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkDeploymentRefused {
       reason: DeploymentAdmissionIdentityNotReserved { requested_identity: i }
@@ -382,6 +391,7 @@ test fn w_red_admission_with_pending_router_binding_refuses() -> Bool {
     catalog: nvidia_dgx_spark_4tb_catalog,
     selection: ObservationUnique { observation: srv9_good_observation() },
     router_binding: SlotUnassigned { identity: operator_host_srv9 },
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkDeploymentRefused {
       reason: DeploymentAdmissionRouterBindingPending { requested_identity: i }
@@ -398,6 +408,7 @@ test fn w_red_admission_with_mismatched_router_binding_refuses() -> Bool {
     catalog: nvidia_dgx_spark_4tb_catalog,
     selection: ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv9", last_octet: 222),
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkDeploymentRefused {
       reason: DeploymentAdmissionRouterBindingMismatch { binding_identity: b, requested_identity: i }
@@ -415,6 +426,7 @@ test fn w_red_admission_from_unreserved_endpoint_refuses() -> Bool {
     catalog: nvidia_dgx_spark_4tb_catalog,
     selection: ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv9", last_octet: 222),
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkDeploymentRefused {
       reason: DeploymentAdmissionEndpointBindingMismatch { requested_identity: i }
@@ -471,6 +483,7 @@ test fn w_red_admission_on_ambiguous_evidence_refuses() -> Bool {
       observations: two_conflicting_srv9_observations(),
     ),
     router_binding: synthetic_bound_binding_for(identity_host: "srv9", last_octet: 222),
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkDeploymentRefused {
       reason: DeploymentAdmissionAmbiguousEvidence { requested_identity: i, candidate_count: n }
@@ -516,22 +529,14 @@ test fn w_red_selection_ignores_envelope_host() -> Bool {
   }
 }
 
-// Live convergence: the real roster against the real (empty) observation population is Pending with one typed row per unit, and the cause is the absence of evidence -- not an untyped "not ready" and not a silently empty result a consumer could read as converged.
-test fn w_live_procurement_convergence_is_pending_for_both_units() -> Bool {
+// Live convergence: every procured unit is sold. RosterEmpty is the typed arm for that
+// population; Converged is unwritable here (head-plus-tail) so "all deployed" cannot mean "nothing asked".
+test fn w_live_procurement_roster_is_empty_because_every_unit_was_sold() -> Bool {
   match dgx_spark_procurement_convergence() {
-    DgxSparkProcurementPending { pending: p } =>
-      count(p) == count(dgx_spark_router_bindings)
-        && fold(
-          p,
-          init: true,
-          f: (acc, d) =>
-            acc && match d {
-              DgxSparkUnitPending { identity: _, reason: DeploymentAdmissionNoEvidence { requested_identity: _ } } => true
-              DgxSparkUnitPending { identity: _, reason: _ } => false
-              DgxSparkUnitDeployed { deployment: _ } => false
-            }
-        )
-    DgxSparkProcurementConverged { deployments: _ } => false
+    DgxSparkProcurementRosterEmpty { disposed: d } =>
+      count(d) == 8 && count(dgx_spark_router_bindings) == 0 && d == dgx_spark_disposed_units
+    DgxSparkProcurementPending { pending: _ } => false
+    DgxSparkProcurementConverged { first: _, more: _ } => false
   }
 }
 
@@ -545,11 +550,13 @@ test fn w_procurement_converges_when_both_units_are_bound_and_observed() -> Bool
       srv9_good_observation(),
       synthetic_observation(subject_host: "srv10", envelope_host: "srv10", last_octet: 223, attempt_label: "attempt-srv10"),
     ],
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
-    DgxSparkProcurementConverged { deployments: ds } =>
-      count(ds) == 2
-        && map(ds, d => d.identity) == [operator_host_srv9, operator_host_srv10]
+    DgxSparkProcurementConverged { first: a, more: rest } =>
+      a.identity == operator_host_srv9
+        && map(rest, d => d.identity) == [operator_host_srv10]
     DgxSparkProcurementPending { pending: _ } => false
+    DgxSparkProcurementRosterEmpty { disposed: _ } => false
   }
 }
 
@@ -564,6 +571,7 @@ test fn w_red_partial_arrival_does_not_converge() -> Bool {
       srv9_good_observation(),
       synthetic_observation(subject_host: "srv10", envelope_host: "srv10", last_octet: 223, attempt_label: "attempt-srv10"),
     ],
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkProcurementPending { pending: p } =>
       count(p) == 1
@@ -580,7 +588,8 @@ test fn w_red_partial_arrival_does_not_converge() -> Bool {
               DgxSparkUnitDeployed { deployment: _ } => false
             }
         )
-    DgxSparkProcurementConverged { deployments: _ } => false
+    DgxSparkProcurementConverged { first: _, more: _ } => false
+    DgxSparkProcurementRosterEmpty { disposed: _ } => false
   }
 }
 
@@ -601,6 +610,7 @@ test fn w_red_admission_when_execution_receipt_disagrees_with_reported_rc_refuse
     catalog: nvidia_dgx_spark_4tb_catalog,
     selection: ObservationUnique { observation: o },
     router_binding: synthetic_bound_binding_for(identity_host: "srv9", last_octet: 222),
+    reserved_identities: fixture_reserved_spark_identities,
   ) {
     DgxSparkDeploymentRefused {
       reason: DeploymentAdmissionExecutionEvidenceDisagrees { receipt: rec, reported_rc: r }
@@ -646,6 +656,7 @@ fn deployment_with_hardware(
       )
     },
     router_binding: synthetic_bound_binding_for(identity_host: subject_host, last_octet: last_octet),
+    reserved_identities: fixture_reserved_spark_identities,
   )
 }
 
@@ -786,12 +797,10 @@ test fn w_hardware_identity_comparison_is_three_valued() -> Bool {
     }
 }
 
-// The live pair read: convergence is Pending on missing evidence, so no pair exists, and the refusal carries the UNIT's own typed cause out rather than flattening it to a generic "not converged".
-test fn w_live_pair_admission_refuses_with_the_units_own_cause() -> Bool {
+// The live pair read: empty sold roster is PairRosterEmpty, not a unit's NoEvidence cause.
+test fn w_live_pair_admission_refuses_because_the_roster_is_empty() -> Bool {
   match admit_dgx_spark_pair(convergence: dgx_spark_procurement_convergence()) {
-    DgxSparkPairRefused {
-      reason: PairUnitNotAdmitted { identity: i, reason: DeploymentAdmissionNoEvidence { requested_identity: _ } }
-    } => i == operator_host_srv9
+    DgxSparkPairRefused { reason: PairRosterEmpty { disposed_count: n } } => n == 8
     DgxSparkPairRefused { reason: _ } => false
     DgxSparkPairAdmitted { first: _, second: _ } => false
   }
