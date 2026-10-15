@@ -4066,6 +4066,12 @@ fn infer_judge_declared_position(
             Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
           }
         Holds { value: produced } =>
+          match infer_node_mention_contested(t: formal.declared, bindings: bindings) {
+            Present { value: claimants } => infer_declaration_identity_contested_rejected(at: application, claimants: claimants)
+            Absent =>
+          match infer_node_mention_contested(t: produced, bindings: bindings) {
+            Present { value: claimants } => infer_declaration_identity_contested_rejected(at: produced_at, claimants: claimants)
+            Absent =>
           let declared_n = infer_type_alias_normalized_at(t: formal.declared, bodies: declarations, bindings: bindings)
           let closed = infer_close_produced_at_declared(
             declared: declared_n,
@@ -4096,6 +4102,8 @@ fn infer_judge_declared_position(
                   find_witness_reason: fw_reason
                 )
               )
+          }
+          }
           }
       }
   }
@@ -4295,6 +4303,18 @@ fn infer_type_alias_rhs(declared: Node, aliased: Node, args: List<Node>) -> Opti
           optional_present(value: infer_type_instantiated(t: aliased, instances: zip_map(a: params, b: args, f: fn(p, a) { TypeVariableInstance { binder: p, instance: a } })))
       }
     }
+  }
+}
+
+fn infer_node_mention_contested(t: Node, bindings: SymbolIndex) -> Optional<FreeMonoid<QualifiedName>> {
+  match declaration_reference_path_optional(node: infer_type_head_and_args(t: t).head) {
+    Absent => optional_absent()
+    Present { value: path } =>
+      match symbol_index_declaring_path_of(index: bindings, target: path) {
+        MentionDeclaringContested { claimants: claimants } => optional_present(value: claimants)
+        MentionDeclaringUnique { declaring: _ } => optional_absent()
+        MentionDeclaringUnavailable => optional_absent()
+      }
   }
 }
 
