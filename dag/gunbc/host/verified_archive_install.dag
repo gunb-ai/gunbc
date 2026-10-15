@@ -19,9 +19,9 @@ import gunbc.package_delivery {
   PackageArchiveDigestMatched, PackageArchiveDigestMismatch, PackageArchiveDigestObservationFailed,
 }
 import gunbc.command_runner { run_shell_commands, run_shell_command_capture, process_outcome_admitted, LocalExec }
-import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell }
 import gunbc.host.host_effect_realize {
-  run_argv_over_host_effect_transport, run_typed_argv_transport, typed_argv_outcome_to_transport,
+  run_argv_over_host_effect_transport,
   run_argv_transport_succeeded, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused,
 }
 import std.roster_frontier { FrontierRow, PathSubject }
@@ -59,12 +59,7 @@ fn archive_sha256_verify_command(archive: NonEmptyStr) -> ArgvCommand {
 }
 
 fn run_archive_argv(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
-  match transport {
-    FleetSsh { target: _, context: _ } =>
-      typed_argv_outcome_to_transport(typed: run_typed_argv_transport(argv: argv_words(command: command), transport: transport))
-    _ =>
-      run_argv_over_host_effect_transport(command: command, transport: transport)
-  }
+  run_argv_over_host_effect_transport(command: command, transport: transport)
 }
 
 fn host_effect_commands_exit(commands: List<ArgvCommand>, transport: HostEffectTransport) -> ProcessExit {

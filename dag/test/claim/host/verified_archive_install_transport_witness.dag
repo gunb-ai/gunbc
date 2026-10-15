@@ -10,6 +10,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import gunbc.host.host_effect_realize {
   RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved,
+  run_argv_over_host_effect_transport,
 }
 import gunbc.host.verified_archive_install {
   ArchiveSha256, ArchiveNpmIntegrity,
@@ -202,6 +203,18 @@ test fn firecracker_fetch_and_install_programs_match_the_main_host_ready_oracle(
   let install = firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s")
   map(fetch, c => c.program.invocation as String) == ["/usr/bin/mkdir", "/usr/bin/mkdir", "curl"]
     && map(install, c => c.program.invocation as String) == ["tar", "cp"]
+}
+
+test fn fleet_ssh_argv_goes_through_the_host_effect_dispatcher() -> Bool {
+  match fleet_ssh_transport() {
+    Absent => false
+    Present { value: t } =>
+      match run_argv_over_host_effect_transport(command: mkdir_parents_command(path: "/tmp/verified-archive-install-dispatcher"), transport: t) {
+        RunArgvTransportRefused { reason: r } =>
+          !string_contains(s: r, pattern: "run_argv_over_host_effect_transport refuses the FleetSsh")
+        RunArgvTransportObserved { observed: _ } => true
+      }
+  }
 }
 
 test fn a_non_portable_fetch_word_refuses_over_fleet_ssh_before_any_local_leg() -> Bool {
