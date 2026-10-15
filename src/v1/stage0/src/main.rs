@@ -1419,13 +1419,18 @@ fn report_pre_entry_phases(
     for line in take_lines() {
         eprintln!("{line}");
     }
-    // POPULATIONS beside the times, so a reader can tell whether a row moved because its input
-    // grew or because its work per input changed: the indexed pool (every module under every
-    // --source-root) against the files of the entry's resolved closure.
+    // POPULATIONS beside the times: `pool_modules` is the whole-tree indexed pool
+    // (or `refused` when that index was never built — demand-acquired `gunbc run`
+    // does not walk it). `demand_acquired_modules` is the layout-closure set.
+    // `closure_files` is the resolved graph's source-index size.
     let pool_modules = cli_run::pre_entry_phase::pool_module_count(source_roots)
         .map_or("refused".to_string(), |n| n.to_string());
+    let demand = cli_run::pre_entry_phase::demand_acquired_modules()
+        .map_or("refused".to_string(), |n| n.to_string());
     let closure = closure_files.map_or("refused".to_string(), |n| n.to_string());
-    eprintln!("[pre-entry] population pool_modules={pool_modules} closure_files={closure}");
+    eprintln!(
+        "[pre-entry] population pool_modules={pool_modules} closure_files={closure} demand_acquired_modules={demand}"
+    );
     // CPU beside wall: a phase whose wall exceeds the process's CPU is waiting, not computing.
     let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
     // SAFETY: getrusage writes a full rusage into the pointer on success, which is checked.

@@ -86,45 +86,43 @@ pub fn take_lines() -> Vec<String> {
 }
 
 thread_local! {
+    static DEMAND_PATH: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static DEMAND_ACQUIRED_MODULES: std::cell::Cell<Option<usize>> =
         const { std::cell::Cell::new(None) };
 }
 
-/// Record the demand-acquired set size for `gunbc run` so the population line is
-/// the closure, not `refused` from a missing whole-tree shared index.
+/// Mark that this thread's resolve is the demand-acquired `gunbc run` path, so
+/// pool tokenize is `scale=closure`. Does not invent a pool size.
 pub(crate) fn mark_demand_acquired_path() {
-    DEMAND_ACQUIRED_MODULES.with(|c| {
-        if c.get().is_none() {
-            c.set(Some(0));
-        }
-    });
+    DEMAND_PATH.with(|c| c.set(true));
 }
 
 pub(crate) fn record_demand_acquired_modules(n: usize) {
+    DEMAND_PATH.with(|c| c.set(true));
     DEMAND_ACQUIRED_MODULES.with(|c| c.set(Some(n)));
+}
+
+/// How many files the demand path acquired, or `None` when this thread did not.
+pub fn demand_acquired_modules() -> Option<usize> {
+    DEMAND_ACQUIRED_MODULES.with(|c| c.get())
 }
 
 /// `tree` when the indexed pool is every file under `--source-root`; `closure` when
 /// `gunbc run` already replaced that pool with the demand-acquired set.
 pub fn index_scale() -> PhaseScale {
-    DEMAND_ACQUIRED_MODULES.with(|c| {
-        if c.get().is_some() {
-            PhaseScale::Closure
-        } else {
-            PhaseScale::Tree
-        }
-    })
+    if DEMAND_PATH.with(|c| c.get()) {
+        PhaseScale::Closure
+    } else {
+        PhaseScale::Tree
+    }
 }
 
 /// The indexed pool's module count for `source_roots` (the population the `tree` rows scale
 /// with), or `None` when no index exists for them. Reads ONLY the index a resolve already
 /// memoized: it never builds one, so a resolve that refused on pool discovery is reported as
 /// such rather than re-walked -- or, through the panicking `process_shared_index`, turned from a
-/// typed refusal into a panic. A demand-acquired `gunbc run` records its set here instead.
+/// typed refusal into a panic. It does not substitute the demand-acquired set.
 pub fn pool_module_count(source_roots: &[String]) -> Option<usize> {
-    if let Some(n) = DEMAND_ACQUIRED_MODULES.with(|c| c.get()) {
-        return Some(n);
-    }
     super::memoized_process_shared_index(source_roots).map(|index| index.source_files.len())
 }
 
@@ -147,6 +145,7 @@ mod tests {
             Duration::from_millis(5),
         );
         let lines = take_lines();
+        DEMAND_PATH.with(|c| c.set(false));
         DEMAND_ACQUIRED_MODULES.with(|c| c.set(None));
         assert!(
             lines
@@ -154,5 +153,15 @@ mod tests {
                 .any(|l| l.contains("phase=pool_source_tokenize") && l.contains("scale=closure")),
             "{lines:?}"
         );
+    }
+
+    #[test]
+    fn pool_module_count_does_not_publish_the_demand_set_as_the_pool() {
+        mark_demand_acquired_path();
+        record_demand_acquired_modules(58);
+        assert_eq!(demand_acquired_modules(), Some(58));
+        assert_eq!(pool_module_count(&["dag".to_string()]), None);
+        DEMAND_PATH.with(|c| c.set(false));
+        DEMAND_ACQUIRED_MODULES.with(|c| c.set(None));
     }
 }

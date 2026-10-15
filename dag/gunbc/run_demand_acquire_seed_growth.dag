@@ -38,7 +38,9 @@ data run_demand_acquire_seed_growth_justification: SeedGrowthJustification = See
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "new_multi_entry_index_acquired", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.pre_entry_phase", decl_name: "mark_demand_acquired_path", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.pre_entry_phase", decl_name: "record_demand_acquired_modules", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.pre_entry_phase", decl_name: "index_scale", field: WholeDeclaration }
+    DeclarationRef { module_path: "v1_compiler.cli_run.pre_entry_phase", decl_name: "demand_acquired_modules", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.pre_entry_phase", decl_name: "index_scale", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.pre_entry_phase.tests", decl_name: "pool_module_count_does_not_publish_the_demand_set_as_the_pool", field: WholeDeclaration }
   ],
   reason: "WHY RUST RATHER THAN .dag: wet `gunbc run` is still the v1 interpreter. It cannot call v2.compiler.source_authority module_file or v2.compiler.module_acquisition acquire_closure_of, and it cannot execute gunbc.source_layout layout_tree_directory as a fold. The seed therefore locates module a.b.c at <root(a)>/b/c.dag, BFS-acquires import lines plus dotted authored types, mints the two derived ledger rosters in memory, and hands resolve an index whose source_files are that set. gunbc compile still walks the tree (parse-as-check). layout_tree_directory_literals_match_policy_source is a declared seed copy of the policy file's two tree prefixes and the v2-elision row, not a second layout authority; v2.test.claim.source_layout_lookup already inhabits module_file. WHY ADMITTED AGAINST THE v1 FREEZE: gunbc.v1.v1_maintenance_standing v1_seed_standing admits by PURPOSE — collapsing the whole-tree tokenize on the wet verb the self-host workflows actually run.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
