@@ -1,10 +1,11 @@
 module gunbc.instruments.fabric_ci_calibration_actuator
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.shell.exec
+import extdeps.filesystem.filesystem_io { FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.compilers.cli_surface {
   ProcessArgvExpansion,
@@ -24,7 +25,9 @@ import gunbc.instruments.fabric_ci_evidence {
   FabricCiCalibrationDeleteProjectionArmRed,
   FabricCiCalibrationFinalAssertion,
   fabric_ci_calibration_steps,
-  fabric_ci_evidence_wire_prefix,
+  FabricCiEvidenceDecoded,
+  FabricCiEvidenceUndecodable,
+  decode_fabric_ci_evidence_wire,
 }
 
 // THE CALIBRATION ACTUATOR. It realizes the ordered FabricCiCalibrationStep rows of
@@ -93,10 +96,24 @@ fn fabric_ci_coordinate_is_name(coordinate: String) -> Bool {
   count(coordinate) > 0 && count(filter(chars(coordinate), cp => !((cp >= 97 && cp <= 122) || (cp >= 48 && cp <= 57) || cp == 45))) == 0
 }
 
-fn fabric_ci_wire_is_framed(wire: String) -> Bool {
-  starts_with(s: wire, prefix: fabric_ci_evidence_wire_prefix as String)
-    && count(wire) > count(fabric_ci_evidence_wire_prefix as String)
-    && count(filter(chars(substring(s: wire, start: count(fabric_ci_evidence_wire_prefix as String), end: count(wire))), cp => !((cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 70)))) == 0
+// What the value root holds at <name>: observed through shell.Find.FilesAndSymlinksWithMode, whose
+// rows are `%y\t%m\t%P\t%l\t%s` (type f | l | ..., relative path). Refuses on an unobservable root.
+fn fabric_ci_value_file_state(context: FabricCiCalibrationContext, name: String) -> String {
+  let listed = shell.Find.FilesAndSymlinksWithMode(root: context.value_root as FilePath)
+  if listed.success == false {
+    concat("unobservable: ", listed.stderr)
+  } else {
+    let rows = filter(split(s: listed.stdout, delimiter: "\n"), line => line.contains(join(["\t", name, "\t"], "")))
+    match rows.first() {
+      Absent => "absent"
+      Present { value: row } => if starts_with(s: row, prefix: "f\t") { "regular" } else if starts_with(s: row, prefix: "l\t") { "symlink" } else { "other" }
+    }
+  }
+}
+
+// A value file is acceptable only as a regular file; a symlink (or anything else) is a refusal.
+fn fabric_ci_value_file_refusal(state: String, wanted: String, value_path: String) -> String? {
+  if state == wanted { none } else { Present { value: join(["value file ", value_path, " is ", state, ", wanted ", wanted], "") } }
 }
 
 type FabricCiTransportCapture
@@ -110,17 +127,42 @@ fn fabric_ci_capture_transport(context: FabricCiCalibrationContext, producer: St
     FabricCiTransportRefused { reason: concat("coordinate is not a value-file name: ", coordinate) }
   } else {
     let value_path = join([context.value_root, "/", coordinate, ".wire"], "")
-    let cleared = Filesystem.Delete(path: value_path)
-    let produced = fabric_ci_calibration_child(context: context, function: producer, arguments: ["--arg", concat("path=", value_path)])
-    if produced.exit_code != 0 {
-      FabricCiTransportRefused { reason: join(["producer ", producer, " exited ", to_string(produced.exit_code), ": ", produced.diagnostics], "") }
-    } else {
-      let read = Filesystem.Read(path: value_path)
-      if !read.success {
-        FabricCiTransportRefused { reason: join(["no value file ", value_path, ": ", read.error], "") }
-      } else if !fabric_ci_wire_is_framed(wire: read.content) {
-        FabricCiTransportRefused { reason: concat("value file is not an FCIE0X wire: ", value_path) }
-      } else { FabricCiTransportCaptured { wire: read.content } }
+    let name = concat(coordinate, ".wire")
+    let cleared = match Filesystem.Delete(path: value_path) {
+      FilesystemDeleted { path: _ } => none
+      FilesystemDeleteTargetAbsent { path: _ } => none
+      FilesystemDeleteRefused { path: _, kind: _, error: e } => Present { value: concat("stale value file not removed: ", e) }
+      FilesystemDeleteKindUnrecognized { path: _, observed: _, error: e } => Present { value: concat("stale value file not removed: ", e) }
+    }
+    let before = fabric_ci_value_file_refusal(state: fabric_ci_value_file_state(context: context, name: name), wanted: "absent", value_path: value_path)
+    match cleared {
+      Present { value: r } => FabricCiTransportRefused { reason: r }
+      Absent => match before {
+        Present { value: r } => FabricCiTransportRefused { reason: r }
+        Absent => fabric_ci_capture_produced(context: context, producer: producer, name: name, value_path: value_path)
+      }
+    }
+  }
+}
+
+fn fabric_ci_capture_produced(context: FabricCiCalibrationContext, producer: String, name: String, value_path: String) -> FabricCiTransportCapture {
+  let produced = fabric_ci_calibration_child(context: context, function: producer, arguments: ["--arg", concat("path=", value_path)])
+  if produced.exit_code != 0 {
+    FabricCiTransportRefused { reason: join(["producer ", producer, " exited ", to_string(produced.exit_code), ": ", produced.diagnostics], "") }
+  } else {
+    match fabric_ci_value_file_refusal(state: fabric_ci_value_file_state(context: context, name: name), wanted: "regular", value_path: value_path) {
+      Present { value: r } => FabricCiTransportRefused { reason: r }
+      Absent => {
+        let read = Filesystem.Read(path: value_path)
+        if !read.success {
+          FabricCiTransportRefused { reason: join(["no value file ", value_path, ": ", read.error], "") }
+        } else {
+          match decode_fabric_ci_evidence_wire(wire: read.content) {
+            FabricCiEvidenceUndecodable { cause: _ } => FabricCiTransportRefused { reason: concat("value file is not a decodable FCIE0X wire: ", value_path) }
+            FabricCiEvidenceDecoded { value: _ } => FabricCiTransportCaptured { wire: read.content }
+          }
+        }
+      }
     }
   }
 }
@@ -226,6 +268,25 @@ fn fabric_ci_calibration_step(context: FabricCiCalibrationContext, step: FabricC
 }
 
 // Stops at the first step that does not hold; the line does not continue past a refusal.
+// The symlink control: plant a symlink at <coord>.wire through a typed `ln` child; the observer the
+// capture relies on must classify it, and the regular-file requirement must refuse it.
+fn fabric_ci_symlink_control(context: FabricCiCalibrationContext) -> ProcessExit {
+  let name = "symlink-control.wire"
+  let link = join([context.value_root, "/", name], "")
+  let planted = shell.Exec.RunArgv(program: "ln", arguments: fabric_ci_calibration_argv(words: ["-s", "/nonexistent-symlink-target", link]))
+  let state = fabric_ci_value_file_state(context: context, name: name)
+  let refusal = fabric_ci_value_file_refusal(state: state, wanted: "regular", value_path: link)
+  let removed = Filesystem.Delete(path: link)
+  if planted.exit_code != 0 {
+    exit_failure(reason: concat("FCI-EVIDENCE-0 symlink control could not plant: ", planted.stderr))
+  } else {
+    match refusal {
+      Absent => exit_failure(reason: concat("FCI-EVIDENCE-0 a symlink value file was accepted as regular, state: ", state))
+      Present { value: _ } => ExitSuccess
+    }
+  }
+}
+
 fn fabric_ci_calibration_run_steps(context: FabricCiCalibrationContext, steps: List<FabricCiCalibrationStep>) -> ProcessExit {
   match steps.first() {
     Absent => ExitSuccess
@@ -234,6 +295,13 @@ fn fabric_ci_calibration_run_steps(context: FabricCiCalibrationContext, steps: L
         ExitSuccess => fabric_ci_calibration_run_steps(context: context, steps: steps.skip(n: 1))
         ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
       }
+  }
+}
+
+fn fabric_ci_calibration_run_all(context: FabricCiCalibrationContext) -> ProcessExit {
+  match fabric_ci_symlink_control(context: context) {
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    ExitSuccess => fabric_ci_calibration_run_steps(context: context, steps: fabric_ci_calibration_steps())
   }
 }
 
@@ -247,10 +315,7 @@ fn fabric_ci_calibration_run() -> ProcessExit {
           match fabric_ci_env_required(name: "FABRIC_CI_VALUE_ROOT") {
             Absent => exit_failure(reason: "CalibrationRefused: FABRIC_CI_VALUE_ROOT unset")
             Present { value: value_root } =>
-              fabric_ci_calibration_run_steps(
-                context: FabricCiCalibrationContext { gunbc_bin: gunbc_bin as NonEmptyStr, source_root: source_root, value_root: value_root },
-                steps: fabric_ci_calibration_steps(),
-              )
+              fabric_ci_calibration_run_all(FabricCiCalibrationContext { gunbc_bin: gunbc_bin as NonEmptyStr, source_root: source_root, value_root: value_root })
           }
       }
   }
