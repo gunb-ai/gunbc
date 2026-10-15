@@ -111,6 +111,7 @@ import v2.std.node {
   fold_node_topdown,
   well_formed,
   symbol_intern_lexeme,
+  symbol_lexeme,
 }
 import v2.std.passing_candidate_fold {
   ManyPassingCandidates,
@@ -1220,13 +1221,7 @@ fn closure_symbols_published(xs: FreeMonoid<Symbol>, published: Map<Symbol, Node
 }
 
 fn closure_qn_vertex(qn: QualifiedName) -> String {
-  fold_list(xs: qn, empty: "", cons: fn(acc, sym) {
-    if acc == "" {
-      symbol_lexeme(sym: sym)
-    } else {
-      concat(acc, ".", symbol_lexeme(sym: sym))
-    }
-  })
+  symbol_lexeme(sym: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: qn)))
 }
 
 fn closure_decl_name_list(rows: List<DeclPhase1Row>) -> List<String> {
