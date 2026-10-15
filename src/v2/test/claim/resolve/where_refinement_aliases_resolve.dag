@@ -98,7 +98,7 @@ fn wra_refused_ambiguous(o: Optional<NativeCensusModuleOutcome>) -> Bool {
     Present { value: NativeCensusModuleResolved } => false
     Present { value: NativeCensusModuleFileRefused } => false
     Present { value: NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } } =>
-      diagnostics_fatal_reason(d: d) == ^resolve_reason_ambiguous_symbol
+      diagnostics_fatal_reason(d: d) == ^resolve_reason_ambiguous_symbol || diagnostics_fatal_reason(d: d) == ^resolve_ambiguous_competing_declaration
   }
 }
 
