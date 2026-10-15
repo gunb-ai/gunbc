@@ -15,7 +15,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import extdeps.shell
 import extdeps.rust.cargo { cargo_environment_variable_name, CargoHomeEnv }
-import extdeps.cache.sccache { sccache_installed_binary_path }
+import extdeps.cache.sccache { sccache_installed_binary_path, sccache_server_default_tcp_port }
+import extdeps.tools.id { id_binary_path }
+import extdeps.iproute2.ss { ss_binary_path }
 import extdeps.rust.rustup { rustup_home_env_name }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
@@ -383,22 +385,23 @@ fn observe_sccache_stats_debug() -> String {
 }
 
 fn observe_sccache_host_probe() -> String {
-  let id_out = observe_argv(program: "/usr/bin/id", args: [])
+  let tcp_sport = join(["sport = :", to_string(value: sccache_server_default_tcp_port)], "")
+  let id_out = observe_argv(program: id_binary_path as String, args: [])
   let host_out = observe_argv(program: "/usr/bin/hostname", args: [])
   let ps_out = observe_argv(program: "/usr/bin/ps", args: ["-eo", "user,uid,pid,args"])
-  let ss_out = observe_argv(program: "/usr/bin/ss", args: ["-ltnp", "sport = :4226"])
+  let ss_out = observe_argv(program: ss_binary_path as String, args: ["-ltnp", tcp_sport])
   let mgr_env = observe_argv(program: "/usr/bin/systemctl", args: ["--user", "show-environment"])
   let sock_stat = observe_argv(
     program: "/usr/bin/stat",
     args: ["-c", "%U %u %a %n", "/var/lib/ctrl/sccache-ci/server.sock"],
   )
-  let ss_unix = observe_argv(program: "/usr/bin/ss", args: ["-xlp"])
+  let ss_unix = observe_argv(program: ss_binary_path as String, args: ["-xlp"])
   join([
     "=== id ===\n", id_out, "\n",
     "=== hostname ===\n", host_out, "\n",
-    "=== ps /usr/local/bin/sccache (user,uid,pid,args) ===\n",
-    lines_with_needle(text: ps_out, needle: "/usr/local/bin/sccache"), "\n",
-    "=== ss -ltnp sport = :4226 ===\n", ss_out, "\n",
+    "=== ps ", sccache_installed_binary_path, " (user,uid,pid,args) ===\n",
+    lines_with_needle(text: ps_out, needle: sccache_installed_binary_path), "\n",
+    "=== ss -ltnp ", tcp_sport, " ===\n", ss_out, "\n",
     "=== systemctl --user show-environment SCCACHE/RUSTC_WRAPPER ===\n",
     lines_with_needle(text: mgr_env, needle: "SCCACHE"), "\n",
     lines_with_needle(text: mgr_env, needle: "RUSTC_WRAPPER"), "\n",
