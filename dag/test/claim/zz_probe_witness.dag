@@ -1,4 +1,4 @@
-module test.claim.map_key_derive_requirement_witness
+module test.claim.zz_probe_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
