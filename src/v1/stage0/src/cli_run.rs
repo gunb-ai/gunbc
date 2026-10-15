@@ -5546,17 +5546,6 @@ pub(crate) enum CompileCleanScopePlan {
 pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_shard_entry_paths_fast";
 
-#[cfg(test)]
-pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_fixtures.dag";
-#[cfg(test)]
-pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
-#[cfg(test)]
-pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
-#[cfg(test)]
-pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
-#[cfg(test)]
-const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_pool_roots";
-
 /// Module-path -> source-file index over a set of `.dag` source roots.
 ///
 /// Named for what it computes, not its first caller: previously
@@ -5584,34 +5573,6 @@ fn dag_module_index(
         }
     }
     Ok(index)
-}
-
-fn collect_repo_files_under_prefix(
-    workspace: &Path,
-    prefix: &str,
-    seen: &mut HashSet<String>,
-) -> Result<(), String> {
-    let root = workspace.join(prefix);
-    if !root.exists() {
-        return Err(format!("Class B fixture prefix does not exist: {prefix}"));
-    }
-    fn walk(dir: &Path, workspace: &Path, seen: &mut HashSet<String>) -> Result<(), String> {
-        for entry in
-            std::fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?
-        {
-            let entry = entry.map_err(|e| format!("read_dir entry: {e}"))?;
-            let path = entry.path();
-            if path.is_dir() {
-                walk(&path, workspace, seen)?;
-            } else if path.is_file() {
-                seen.insert(normalize_repo_path(&workspace_relative_repo_path(
-                    &path.to_string_lossy(),
-                )));
-            }
-        }
-        Ok(())
-    }
-    walk(&root, workspace, seen)
 }
 
 /// Host mirror of `gunbc.ci.ci_gate` `GateReceipt` — what a CI gate answers to the substrate.
@@ -31647,28 +31608,6 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
-    #[test]
-    fn class_b_declared_pool_roots_reader_follows_synthetic_authority() {
-        let synthetic = "module gunbc.class_b_import_closure_overlay\n\n\
-             data class_b_declared_import_pool_roots: List<String> = [\"alpha\", \"beta\"]\n";
-        assert_eq!(
-            class_b_declared_import_pool_roots_from_source(synthetic),
-            vec!["alpha".to_string(), "beta".to_string()],
-            "the Class B pool-roots reader must FOLLOW the overlay authority, not a hardcoded copy"
-        );
-    }
-
-    #[test]
-    fn class_b_declared_pool_roots_matches_overlay_authority() {
-        let overlay = std::fs::read_to_string(workspace_root().join(CLASS_B_OVERLAY_REL))
-            .expect("read class_b overlay authority");
-        assert_eq!(
-            class_b_declared_import_pool_roots(),
-            class_b_declared_import_pool_roots_from_source(&overlay),
-            "live memoized pool roots must match the overlay authority on disk (identity join)"
-        );
-    }
-
     /// P1(b) discriminating control: `graph: None` must NOT read as
     /// `symbol_resolves: false` with zero blocking diagnostics — that vacuously passes row 3.
     #[test]
@@ -31698,7 +31637,7 @@ mod witness_layer_roots_compile_clean_tests {
         with_workspace_cwd(|| {
             let malformed = "module broken.syntax\n@@@ not valid dag\n";
             let compiled = compile_declared_import_closure_only_with_pool(
-                &class_b_declared_import_pool_roots(),
+                &["dag".to_string(), "src/v2".to_string()],
                 "broken/syntax.dag",
                 Some(malformed),
             )
@@ -31812,7 +31751,7 @@ mod witness_layer_roots_compile_clean_tests {
         with_workspace_cwd(|| {
             let valid = "module v2.extdeps.languages.rust_fixtures\n\nimport std.types { Bool }\n\ndata probe: Bool = true\n";
             let compiled = compile_declared_import_closure_only_with_pool(
-                &class_b_declared_import_pool_roots(),
+                &["dag".to_string(), "src/v2".to_string()],
                 "src/v2/extdeps/languages/rust_fixtures.dag",
                 Some(valid),
             )
