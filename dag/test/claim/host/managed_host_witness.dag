@@ -24,6 +24,9 @@ import gunbc.machine_intake.ampere_smpro_observation {
   SmproTarget, SiteFromOperatorBrief, smpro_site_admit,
   SmproPassSubjectBound, SmproPassSiteRefused, SmproPassEndpointMismatch,
 }
+import extdeps.toolchain.types { X86_64 }
+import gunbc.host.bmc_control_binding { bmc_control_binding, BmcControlBound }
+import gunbc.host.smpro_platform_capability { smpro_capability, SmproCapabilityAbsent }
 import gunbc.host.host_reset_subject_roster {
   OrdinaryResetRosterHost,
   ResetRosterHostUnderDeclaredDrop,
@@ -149,6 +152,28 @@ test fn w_the_real_row_mints_its_smpro_subject_through_its_binding() -> Bool {
     ManagedHostAccessUnobserved { endpoint: _ } => false
     ManagedHostNotSecured { cause: _ } => false
     ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+  }) && count(managed_hosts()) == 1
+}
+
+// RED2: AN X86 MACHINE WITH NO SMpro CAPABILITY IS A VALID CONTROLLED MACHINE. The control route and
+// the SMpro capability are two independent facts. A machine whose platform architecture is x86
+// (non-Ampere) does not carry SMpro -- its capability standing is ABSENT with the platform named --
+// but its BMC control route still binds from its access observation and secure standing. The two
+// facts stand independently; one does not refuse the other.
+test fn w_an_x86_machine_with_no_smpro_is_a_valid_controlled_machine() -> Bool {
+  managed_hosts() |> all(h => {
+    // The x86 platform does not carry SMpro: absent, named, not refused.
+    let smpro_absent = match smpro_capability(architecture: X86_64, reading: none) {
+      SmproCapability { standing: SmproCapabilityAbsent { platform: _ }, reading: _ } => true
+      SmproCapability { standing: SmproCapabilityPresent, reading: _ } => false
+    }
+    // The control route for the same machine still binds from its access + secure standings:
+    // BmcControlBound, not refused. The control route never reads the SMpro fact.
+    let control_bound = match bmc_control_binding(observed: h.access, secured: h.secure) {
+      BmcControlBound { binding: _ } => true
+      _ => false
+    }
+    smpro_absent && control_bound
   }) && count(managed_hosts()) == 1
 }
 
