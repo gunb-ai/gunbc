@@ -16,8 +16,8 @@ type UnlistedImportUseEnforcement
 // blocking (terminal promotion when namespace-only resolution deletes the import grammar —
 // DISSOLVES WHEN UnlistedImportUse promoted to an error per
 // namespace_import_closure_behavioral_transport.dag:15). CONSUMER TRUTH, corrected where this
-// annotation previously overstated it: the floor receipt path
-// (install_or_consume_floor_compile_clean_gate_receipt via floor_compile_clean_emit_ok_via_index)
+// annotation previously overstated it: the live compile-clean resolve check
+// (`witness_layer_roots_compile_clean_check`)
 // reads this row through compile_clean_unlisted_import_use_blocks; the standalone CLI (gunbc
 // compile) does NOT — gunbc#8286 cut its policy read because the read mechanism was a full
 // interpreter run over this module's closure to answer one Bool, and its classify_diagnostic
