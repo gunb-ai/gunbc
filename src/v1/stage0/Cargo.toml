@@ -195,3 +195,7 @@ path = "src/bin/codex_app_server_stdio_session.rs"
 [[bin]]
 name = "namespace_structural_root_exposure_generated_witness"
 path = "src/bin/namespace_structural_root_exposure_generated_witness.rs"
+
+[[bin]]
+name = "zz_shape_dump"
+path = "src/bin/zz_shape_dump.rs"
