@@ -34,8 +34,9 @@ import gunbc.auth.authorization_pattern_selection {
 }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
-  systemd_run_transient_retained_unit_command, systemd_run_transient_wait_unit_command,
+  systemd_run_command_of, systemd_run_property_options_short,
   systemd_run_command_argument_words, systemd_run_option_words_refused_cause_detail,
+  RunUnit, Wait, Quiet, Collect, EndOfOptions,
 }
 import extdeps.systemd.systemctl
 import extdeps.sudo.elevation { sudo_elevate }
@@ -159,11 +160,34 @@ fn attempt_system_unit_properties(instance: HostDashboardInstance, plan: Dispatc
   )
 }
 
+// REVIEWER AND OBLIGATION UNITS SPELL PROPERTIES AS `-p NAME=VALUE` (two argv words). systemd-run
+// specifier-escapes `$` inside a single `--property=NAME=VALUE` word, so ExecStopPost stored
+// `$${INVOCATION_ID}` and mkdir created a directory whose name still contained `${` (lab,
+// 2026-10-14, bright-moth-475; same class as 2026-10-13). The launcher rebuilds this property from
+// plan.exit_hook; it must use the two-word form so the manager still expands the stop variables.
 fn attempt_system_unit_systemd_run_command(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, user: NonEmptyStr) -> SystemdRunCommandReading {
-  systemd_run_transient_retained_unit_command(
+  attempt_system_unit_systemd_run_command_of(
     unit: plan.unit,
     properties: attempt_system_unit_properties(instance: instance, plan: plan, granted: granted, user: user),
     command_argv: plan.inner_argv,
+    wait: false,
+  )
+}
+
+fn attempt_system_unit_systemd_run_command_of(
+  unit: NonEmptyStr,
+  properties: List<SystemdRunProperty>,
+  command_argv: List<String>,
+  wait: Bool,
+) -> SystemdRunCommandReading {
+  let head = if wait {
+    [RunUnit { unit: unit }, Wait, Quiet, Collect]
+  } else {
+    [RunUnit { unit: unit }]
+  }
+  systemd_run_command_of(
+    options: concat(head, concat(systemd_run_property_options_short(properties: properties), [EndOfOptions])),
+    command_argv: command_argv,
   )
 }
 
@@ -373,20 +397,14 @@ fn attempt_system_unit_run_ready(command: ArgvCommand) -> ProcessExit {
 
 fn attempt_system_unit_run_admitted_start(instance: HostDashboardInstance, facts: AttemptSystemUnitStartFacts, unit: NonEmptyStr, wait: Bool) -> ProcessExit {
   let plan = attempt_system_unit_plan_from_facts(facts: facts, unit: unit)
-  if wait {
-    match systemd_run_transient_wait_unit_command(
-      unit: plan.unit,
-      properties: attempt_system_unit_properties(instance: instance, plan: plan, granted: facts.granted, user: facts.user),
-      command_argv: plan.inner_argv,
-    ) {
-      SystemdRunCommandRefused { cause: why } => exit_failure(reason: systemd_run_option_words_refused_cause_detail(cause: why))
-      SystemdRunCommandReady { command: command } => attempt_system_unit_run_ready(command: command)
-    }
-  } else {
-    match attempt_system_unit_systemd_run_command(instance: instance, plan: plan, granted: facts.granted, user: facts.user) {
-      SystemdRunCommandRefused { cause: why } => exit_failure(reason: systemd_run_option_words_refused_cause_detail(cause: why))
-      SystemdRunCommandReady { command: command } => attempt_system_unit_run_ready(command: command)
-    }
+  match attempt_system_unit_systemd_run_command_of(
+    unit: plan.unit,
+    properties: attempt_system_unit_properties(instance: instance, plan: plan, granted: facts.granted, user: facts.user),
+    command_argv: plan.inner_argv,
+    wait: wait,
+  ) {
+    SystemdRunCommandRefused { cause: why } => exit_failure(reason: systemd_run_option_words_refused_cause_detail(cause: why))
+    SystemdRunCommandReady { command: command } => attempt_system_unit_run_ready(command: command)
   }
 }
 

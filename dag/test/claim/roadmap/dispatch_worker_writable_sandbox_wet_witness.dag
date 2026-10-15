@@ -5,7 +5,9 @@ import std.measure { kibibyte }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.filesystem { path_parent_directory }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed,
+}
 import extdeps.shell
 import extdeps.systemd.systemd_run {
   systemd_run_user_wait_command,
@@ -32,6 +34,13 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartFacts, attempt_system_unit_encode_start_wait,
   attempt_system_unit_write_pending, attempt_system_unit_launch_host_argv,
 }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
+  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
+  AttemptProcessExitedWith,
+}
+import gunbc.host.host_layout { attempt_exit_inbox_dir }
+import extdeps.systemd.service_exec { ServiceResultSuccess }
 import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -265,7 +274,7 @@ test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Boo
     )
 }
 
-fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner: List<String>) -> SandboxTouch {
+fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner: List<String>, exit_hook: NonEmptyStr) -> SandboxTouch {
   match inner.first() {
     Absent => SandboxTouchUnrunnable
     Present { value: _ } => {
@@ -278,7 +287,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
         stdout_path: join([probe_worker_dir(instance: instance), "/launcher-stdout.log"], ""),
         stderr_path: join([probe_worker_dir(instance: instance), "/launcher-stderr.log"], ""),
         granted: kibibyte(count: 65536),
-        exit_hook: "true" as NonEmptyStr,
+        exit_hook: exit_hook,
         inner_argv: inner,
       }
       if !attempt_system_unit_write_pending(
@@ -297,7 +306,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
 }
 
 fn launcher_sandbox_touch(instance: HostDashboardInstance, unit_key: String, path: String) -> SandboxTouch {
-  launcher_inner_start(instance: instance, unit_key: unit_key, inner: launcher_touch_inner_argv(instance: instance, path: path))
+  launcher_inner_start(instance: instance, unit_key: unit_key, inner: launcher_touch_inner_argv(instance: instance, path: path), exit_hook: "true" as NonEmptyStr)
 }
 
 fn launcher_sudo_n_true(instance: HostDashboardInstance) -> SandboxTouch {
@@ -305,6 +314,7 @@ fn launcher_sudo_n_true(instance: HostDashboardInstance) -> SandboxTouch {
     instance: instance,
     unit_key: "sudo-n-true",
     inner: launcher_gunbc_run_inner_argv(instance: instance, function: "sudo_n_true_cli", extra_args: []),
+    exit_hook: "true" as NonEmptyStr,
   )
 }
 
@@ -321,6 +331,7 @@ fn launcher_sudo_n_touch(instance: HostDashboardInstance, path: String) -> Sandb
           function: "sudo_n_touch_cli",
           extra_args: ["--arg", join([arg.name, "=", arg.value], "")],
         ),
+        exit_hook: "true" as NonEmptyStr,
       )
   }
 }
@@ -358,4 +369,73 @@ test fn writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_a
     && launcher_wrote(instance: inst, unit_key: "log", path: log_probe)
     && launcher_wrote(instance: inst, unit_key: "objects", path: objects)
     && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe, objects]).exit_code == 0
+}
+
+fn exit_success_cli() -> ProcessExit {
+  ExitSuccess
+}
+
+fn launcher_exit_record_names(instance: HostDashboardInstance) -> List<String> {
+  let inbox = attempt_exit_inbox_dir(instance_root: instance.instance_root as String)
+  let listing = Filesystem.List(path: inbox)
+  let observed = filesystem_listing_observation(
+    directory: inbox,
+    success: listing.success,
+    entries: listing.entries,
+    error: listing.error,
+  )
+  match observed {
+    FilesystemDirectoryListed(listed) =>
+      filter(
+        filesystem_listing_entry_names(listing: listed),
+        n => string_contains(s: n, pattern: join([wet_probe_node as String, "+", wet_probe_key, "-exitrec", "+worker+"], "")),
+      )
+    _ => []
+  }
+}
+
+fn launcher_exit_record_is_expanded(name: String) -> Bool {
+  let unexpanded = join(["$", "{"], "")
+  !string_contains(s: name, pattern: unexpanded)
+    && match attempt_exit_entry_decode(entry_name: name) {
+      AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+      AttemptExitEntryDecoded { record } =>
+        string_length(s: record.invocation_id) == 32
+          && !string_contains(s: record.invocation_id, pattern: unexpanded)
+          && match record.result {
+            ServiceResultSuccess =>
+              match record.end {
+                AttemptProcessExitedWith { status } => status == 0
+                _ => false
+              }
+            _ => false
+          }
+    }
+}
+
+test fn a_launched_unit_exit_record_names_the_expanded_invocation_and_result() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  match attempt_exit_hook(
+    instance_root: inst.instance_root as String,
+    node_id: wet_probe_node as String,
+    attempt_key: join([wet_probe_key, "-exitrec"], ""),
+    role: AttemptWorkerRole,
+  ) {
+    AttemptExitHookRefused { reason: _ } => false
+    AttemptExitHookRendered { exec_line } =>
+      prepare_probe_attempt(instance: inst)
+        && match launcher_inner_start(
+          instance: inst,
+          unit_key: "exitrec",
+          inner: launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []),
+          exit_hook: exec_line,
+        ) {
+          SandboxTouchUnrunnable => false
+          SandboxTouchRan { exit_code: _ } =>
+            match launcher_exit_record_names(instance: inst).first() {
+              Absent => false
+              Present { value: name } => launcher_exit_record_is_expanded(name: name)
+            }
+        }
+  }
 }
