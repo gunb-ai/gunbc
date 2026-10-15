@@ -1,0 +1,47 @@
+module test.claim.live_deploy.user_work_slice_parent_commit_witness
+
+import std.types { Bool, String, GitRef, FilePath }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.git
+import std.algebra { string_contains }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data seed_user_work_scope_path: String = "src/v1/stage0/src/cli_run/user_work_scope.rs"
+data wrap_envelope_parent_commit: GitRef = "b6ea4672333ce4ef9b4d39bcfe0fd99e96f46827" as GitRef
+data modeled_cap_exempt_parent_commit: GitRef = "2c5a4e018c7a82010ad47ee2b7ba3fd002320a96" as GitRef
+
+fn seed_at_commit(commit: GitRef) -> String {
+  let shown = git.Core.Show(ref: commit, path: seed_user_work_scope_path as FilePath)
+  if shown.success {
+    shown.content
+  } else {
+    ""
+  }
+}
+
+// RED against b6ea4672: wrap argv is Slice= and MemorySwapMax= only (no MemoryMax=).
+test fn wrap_widens_at_parent_commit_b6ea4672() -> Bool {
+  let parent = seed_at_commit(commit: wrap_envelope_parent_commit)
+  parent != ""
+    && string_contains(s: parent, pattern: "--property=Slice=")
+    && string_contains(s: parent, pattern: "--property=MemorySwapMax=")
+    && !string_contains(s: parent, pattern: "--property=MemoryMax=")
+}
+
+// RED against b6ea4672: UserManagerOwed wraps without a slice-install gate.
+test fn absent_or_uncapped_slice_wraps_at_parent_commit_b6ea4672() -> Bool {
+  let parent = seed_at_commit(commit: wrap_envelope_parent_commit)
+  parent != ""
+    && string_contains(s: parent, pattern: "UserWorkScopeStanding::UserManagerOwed => wrap_now()")
+    && !string_contains(s: parent, pattern: "UserWorkSliceAbsent")
+    && !string_contains(s: parent, pattern: "UserWorkSliceUncapped")
+}
+
+// RED against 2c5a4e01: wide Exempt, no UncappedSystemSlice / modeled-capped list.
+test fn wide_exempt_at_parent_commit_2c5a4e01() -> Bool {
+  let parent = seed_at_commit(commit: modeled_cap_exempt_parent_commit)
+  parent != ""
+    && string_contains(s: parent, pattern: "ExemptSystemUnit { unit }")
+    && !string_contains(s: parent, pattern: "UncappedSystemSlice")
+    && !string_contains(s: parent, pattern: "MODELED_CAPPED_SYSTEM_SLICES")
+}
