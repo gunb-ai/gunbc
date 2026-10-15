@@ -1,5 +1,6 @@
 module std.graph
 
+import std.optional { Present, Absent }
 import std.termination {
   ProofEdge,
   DescentEvidence, Strict, NonIncreasing, DescentUnknown,

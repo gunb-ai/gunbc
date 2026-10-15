@@ -10,12 +10,11 @@ import v2.std.node {
   TypeNode, ComputationNode, Atom, Conj, Disj, Arrow, Occupancy, Instantiation,
   Transform, Value, Branch, Loop, Bind, Match
 }
-import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view, type_param_names }
+import v2.std.type_binder { GenericTypeDecl, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, RefinementDeclaration, TypeAlias, refinement_declaration_of_node, type_decl_view, type_param_names }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
 import std.optional { Optional, Present, Absent }
 import v2.std.grammar { node_atom_identity_optional }
 
-import v2.compiler.infer { RefinementDeclaration, refinement_declaration_of_node }
 import v2.compiler.symbol_index_fill { symbol_index_binder_type_or_target }
 import v2.compiler.inferred_tree { InferredTree, authored_occurrence_id }
 import v2.compiler.infer { infer_branch_operand_resolved_type_in_tree, infer_transform_is_cast }

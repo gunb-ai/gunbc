@@ -8,18 +8,20 @@ pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_compile::compile_to_resolved;
 pub use crate::v1_compiler_compile::SourceFile;
-pub use crate::v1_compiler_emit_rust::maybe_mark_shared_type;
-pub use crate::v1_compiler_emit_rust::merged_module_source_indices;
+pub use crate::v1_compiler_emit_rust::{maybe_mark_shared_type, merged_module_source_indices};
 pub use crate::v1_compiler_infer::build_emit_graph_info;
 use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{
     TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared,
 };
 pub use crate::v1_compiler_infer_emit_info::{type_decl_identities_of_leaf, type_summary_at_key};
-pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeSummaryLookup};
+pub use crate::v1_compiler_infer_emit_info::{
+    EmitGraphInfo, TypeDeclIndex, TypeSummary, TypeSummaryLookup,
+};
 pub use crate::v1_compiler_infer_items::ResolvedGraph;
 pub use crate::v1_compiler_languages::sharing_for_target;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::NewlineIndex;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -120,8 +122,8 @@ pub fn declaration_would_share(
     summary: Rc<TypeSummary>,
     recursive_type_set: Rc<BTreeSet<String>>,
     needs_sharing: bool,
-    type_decl_items: Rc<crate::v1_compiler_infer_emit_info::TypeDeclIndex>,
-    source_indices: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     v1_rt::set_contains(
         &crate::v1_compiler_emit_rust::maybe_mark_shared_type(
@@ -140,7 +142,7 @@ pub fn would_share_of_identity(
     info: Rc<EmitGraphInfo>,
     identity: String,
     needs_sharing: bool,
-    source_indices: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*crate::v1_compiler_infer_emit_info::type_summary_at_key(
         info.type_summaries.clone(),
@@ -166,7 +168,7 @@ pub fn collision_row_of_leaf(
     info: Rc<EmitGraphInfo>,
     leaf: String,
     needs_sharing: bool,
-    source_indices: Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<LeafCollisionRow>> {
     {
         let declarers = Rc::new({
@@ -222,7 +224,8 @@ pub fn collisions_of_graph(graph: Rc<ResolvedGraph>) -> Rc<Vec<Rc<LeafCollisionR
             graph.modules.clone(),
             graph.item_registry.clone(),
         );
-        let source_indices = merged_module_source_indices(graph.modules.clone());
+        let source_indices =
+            crate::v1_compiler_emit_rust::merged_module_source_indices(graph.modules.clone());
         let needs_sharing = crate::v1_compiler_languages::sharing_for_target(RenderTarget::Rust)
             .needs_sharing
             .clone();

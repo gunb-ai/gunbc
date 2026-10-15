@@ -3255,20 +3255,25 @@ pub fn v1_generic_param_cloned_by_returned_closure(
     ret: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (((ret.params.clone().len() as i64) > 0) && {
-        let mut __found = false;
-        for vp in value_params.iter().cloned() {
-            if v1_arrow_type_expr_mentions_param(
-                param_name.clone(),
-                crate::v1_std_core::param_node_type_expr(vp.clone()),
-                source_indices.clone(),
-            ) {
-                __found = true;
-                break;
+    (((ret.params.clone().len() as i64) > 0)
+        && ({
+            let mut __found = false;
+            for vp in value_params.iter().cloned() {
+                if v1_arrow_type_expr_mentions_param(
+                    param_name.clone(),
+                    crate::v1_std_core::param_node_type_expr(vp.clone()),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
             }
-        }
-        __found
-    })
+            __found
+        } || v1_arrow_type_expr_mentions_param(
+            param_name.clone(),
+            ret.clone(),
+            source_indices.clone(),
+        )))
 }
 
 pub fn v1_arrow_type_expr_mentions_param(
@@ -4440,6 +4445,211 @@ pub fn v1_item_wf_propagated_clone_bounded_param_names(
         }
         __result
     })
+}
+
+pub fn v1_type_expr_all_names(
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let node = v1_wf_child_type_node(type_expr.clone(), source_indices.clone());
+        v1_rt::concat(
+            Rc::new(vec![crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                node.clone(),
+            )]),
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in node.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*v1_type_expr_all_names(c.clone(), source_indices.clone()))
+                            .iter()
+                            .cloned(),
+                    );
+                }
+                __result
+            }),
+        )
+    })
+}
+
+pub fn v1_map_key_nested_names_in_type_expr(
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let own = match (*v1_type_expr_keyed_map_verdict(type_expr.clone(), source_indices.clone()))
+            .clone()
+        {
+            KeyedMapVerdict::KeyedMap => match type_expr.children.clone().first().cloned() {
+                Some(key_child) => {
+                    v1_type_expr_all_names(key_child.clone(), source_indices.clone())
+                }
+                std::option::Option::None => Rc::new(vec![]),
+            },
+            KeyedMapVerdict::NotKeyedMap => Rc::new(vec![]),
+            KeyedMapVerdict::KeyedMapUndecidable { name: _, .. } => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            own.clone(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for ch in type_expr.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*v1_map_key_nested_names_in_type_expr(
+                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        )
+    })
+}
+
+pub fn v1_map_key_bound_seed_for_item(
+    round: Rc<CloneBoundRound>,
+    type_name: String,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CloneBoundRound> {
+    {
+        let names = Rc::new({
+            let mut __result = Vec::new();
+            for te in v1_item_field_type_exprs(item.clone(), source_indices.clone())
+                .iter()
+                .cloned()
+            {
+                __result.extend(
+                    (*v1_map_key_nested_names_in_type_expr(te.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        item.params.clone().iter().cloned().fold(
+            round.clone(),
+            |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
+                let param_name =
+                    crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone());
+                if {
+                    let mut __found = false;
+                    for n in names.iter().cloned() {
+                        if (n.clone() == param_name.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    v1_clone_bound_round_add(acc.clone(), type_name.clone(), param_name.clone())
+                } else {
+                    acc.clone()
+                }
+            },
+        )
+    }
+}
+
+pub fn v1_map_key_bounded_type_params(
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
+    {
+        let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
+        let seeded = generic_type_names.iter().cloned().fold(
+            Rc::new(CloneBoundRound {
+                bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                added: 0,
+            }),
+            |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
+                &type_decl_items.by_identity.clone(),
+                type_name.clone(),
+            ) {
+                Some(item) => v1_map_key_bound_seed_for_item(
+                    acc.clone(),
+                    type_name.clone(),
+                    item.clone(),
+                    source_indices.clone(),
+                ),
+                std::option::Option::None => acc.clone(),
+            },
+        );
+        v1_clone_bound_fixpoint_loop(
+            generic_type_names.clone(),
+            type_decl_items.clone(),
+            seeded.bounds.clone(),
+            v1_rt::int_add((generic_type_names.clone().len() as i64), 1),
+            source_indices.clone(),
+        )
+    }
+}
+
+pub fn v1_item_map_key_bounded_param_names(
+    item_identity: String,
+    generic_param_names: Rc<Vec<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+) -> Rc<Vec<String>> {
+    v1_item_clone_bounded_param_names(
+        item_identity.clone(),
+        generic_param_names.clone(),
+        bounds.clone(),
+    )
+}
+
+pub fn v1_emit_type_params_with_map_key_bounds(
+    params: Rc<Vec<Rc<Node>>>,
+    clone_param_names: Rc<Vec<String>>,
+    key_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    v1_emit_type_params_with_bounds(
+        params.clone(),
+        params.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, p: Rc<Node>| {
+                let n =
+                    crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone());
+                let c = if {
+                    let mut __found = false;
+                    for x in clone_param_names.iter().cloned() {
+                        if (x.clone() == n.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    Rc::new(vec!["Clone".to_string()])
+                } else {
+                    Rc::new(vec![])
+                };
+                let k = if {
+                    let mut __found = false;
+                    for x in key_param_names.iter().cloned() {
+                        if (x.clone() == n.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    Rc::new(vec![
+                        "std::cmp::Eq".to_string(),
+                        "std::hash::Hash".to_string(),
+                    ])
+                } else {
+                    Rc::new(vec![])
+                };
+                v1_rt::rc_map_insert(m, n.clone(), v1_rt::concat(c.clone(), k.clone()))
+            },
+        ),
+        source_indices.clone(),
+    )
 }
 
 pub fn v1_emit_type_params_with_clone_bounds(

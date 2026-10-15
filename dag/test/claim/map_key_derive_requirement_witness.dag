@@ -171,3 +171,46 @@ test fn generic_caller_reaching_the_map_only_through_a_callee_earns_it() -> Bool
 test fn generic_outside_every_key_position_stays_unbounded() -> Bool {
   w_generic_outside_every_key_position_stays_unbounded()
 }
+
+// TYPE DECLARATIONS earn the same bound (PR C item 2): a struct generic reaching a map key through a
+// FIELD owes Eq + Hash on its own header (the derives copy header bounds onto each impl), a carrier
+// naming such a struct propagates it, and a fn whose signature names the carrier owes it at the same
+// argument position. The negative control keeps a generic outside every key position bare.
+fn w_struct_generic_reaching_a_key_through_a_field_earns_eq_and_hash() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.struct_header\nimport v2.std.collection { Map }\ntype Wrapper<K> {\n  subject: K\n}\ntype Index<K, V> {\n  slots: Map<Wrapper<K>, V>\n}\n",
+    "src/map_key_witness_struct_header.rs",
+    ["pub struct Index<K: Clone + std::cmp::Eq + std::hash::Hash, V"],
+    ["pub struct Index<K, V", "pub struct Index<K: Clone, V"]
+  )
+}
+
+fn w_struct_naming_a_key_bounded_carrier_and_its_fn_signature_propagate_the_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.struct_propagates\nimport v2.std.collection { Map }\ntype Wrapper<K> {\n  subject: K\n}\ntype Index<K, V> {\n  slots: Map<Wrapper<K>, V>\n}\ntype Holder<A, B> {\n  inner: Index<A, B>\n}\nfn size_of<P, Q>(h: Holder<P, Q>) -> Int {\n  0\n}\n",
+    "src/map_key_witness_struct_propagates.rs",
+    ["pub struct Holder<A: Clone + std::cmp::Eq + std::hash::Hash, B", "pub fn size_of<P: Clone + std::cmp::Eq + std::hash::Hash, Q"],
+    ["pub struct Holder<A, B", "pub fn size_of<P, Q"]
+  )
+}
+
+fn w_struct_generic_outside_every_key_position_stays_unbounded() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.struct_unkeyed\nimport v2.std.collection { Map }\ntype Tagged<K> {\n  subject: K\n}\ntype Plain<K, V> {\n  tag: Tagged<K>\n  slots: Map<String, V>\n}\n",
+    "src/map_key_witness_struct_unkeyed.rs",
+    ["pub struct Plain<"],
+    ["std::hash::Hash"]
+  )
+}
+
+test fn struct_generic_reaching_a_key_through_a_field_earns_eq_and_hash() -> Bool {
+  w_struct_generic_reaching_a_key_through_a_field_earns_eq_and_hash()
+}
+
+test fn struct_naming_a_key_bounded_carrier_and_its_fn_signature_propagate_the_bound() -> Bool {
+  w_struct_naming_a_key_bounded_carrier_and_its_fn_signature_propagate_the_bound()
+}
+
+test fn struct_generic_outside_every_key_position_stays_unbounded() -> Bool {
+  w_struct_generic_outside_every_key_position_stays_unbounded()
+}
