@@ -49,6 +49,7 @@ import extdeps.external_authority {
   CitedToAuthority,
   TranscribedUncited,
   ObservedByReceipt,
+  observed_receipt_ref,
 }
 import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 import product.host_identity { host_identity_eq }
@@ -155,7 +156,7 @@ test fn inhabitance_recipe_names_the_probes_the_brief_named() -> Bool {
     && any(cmds, c => c == srv1_apparmor_sysctl_probe())
     && (srv1_apparmor_sysctl_probe() as String).contains(apparmor_restrict_unprivileged_userns_sysctl_name as String)
     && any(cmds, c => (c as String) == "sudo -n -l")
-    && any(cmds, c => (c as String) == "kill -V")
+    && any(cmds, c => (c as String) == "/usr/bin/kill -V")
     && any(cmds, c => (c as String) == "timeout --version")
     && any(cmds, c => (c as String) == "git --version")
     && any(cmds, c => (c as String) == "jq --version")
@@ -175,6 +176,19 @@ test fn upstream_sandbox_procps_and_apparmor_figures_are_cited_to_authority() ->
   standing_is_cited_to_authority(s: user_manager_sandbox_standing())
     && standing_is_cited_to_authority(s: apparmor_userns_restriction_standing())
     && standing_is_cited_to_authority(s: procps_kill_standing())
+}
+
+test fn srv1_software_is_observed_by_the_inhabitance_receipt() -> Bool {
+  match srv1_software_surface().tailscale.value.standing {
+    ObservedByReceipt { observed: o } =>
+      (observed_receipt_ref(observed: o).decl_name as String) == "srv1_software_inhabitance_receipt_text"
+        && srv1_software_surface().tailscale.value.version_label == Present { value: "1.102.2" }
+        && srv1_software_surface().jq.value.version_label == Present { value: "jq-1.7" }
+        && srv1_software_surface().kernel_release.value.kernel_release_label == Present { value: "6.8.0-138-generic" }
+        && srv1_software_surface().os_release.value.pretty_name == Present { value: "Ubuntu 24.04.4 LTS" }
+    CitedToAuthority { authority: _ } => false
+    TranscribedUncited { read_obligation: _ } => false
+  }
 }
 
 test fn unobserved_apparmor_is_not_a_default_enforcement() -> Bool {

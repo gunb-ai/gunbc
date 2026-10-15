@@ -237,7 +237,7 @@ fn deployment_step_teardown_disposition(step: DeploymentStep) -> TeardownDisposi
 // rather than a constant in the emitter. The tailscale Serve CLI CHANGED in client 1.52, so `serve
 // <flags> off` is available on some hosts and not others, and the previous code answered the
 // question with a data row asserting it for every host at every time.\n\nsrv1 was measured at
-// 1.98.3 and its row says so, with the measurement carried as the observed string rather than as a
+// 1.102.2 (inhabitance receipt 2026-10-15) and its row says so, with the measurement carried as the observed string rather than as a
 // Bool — a verdict that has forgotten what it was computed from cannot be re-checked when the host
 // is upgraded. srv2 and srv3 are ScopedRemovalUnobserved, which is NOT a claim that they lack the
 // capability: it is the statement that nobody looked. Collapsing that to either pole is the
