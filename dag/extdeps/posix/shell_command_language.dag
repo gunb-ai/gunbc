@@ -225,11 +225,32 @@ fn admit_posix_redirect_pathname(path: String) -> PosixRedirectPathAdmission {
   }
 }
 
-// XCU 2.7.2 Redirecting Output (`[n]>word`) then 2.7.5 Duplicating (`[n]>&word`). Order is the
-// contract: stdout to the file first, then stderr onto stdout. Spacing matches the existing
-// bash_fold golden `'true' >/dev/null 2>&1` (no space after `>`). The path is a word, so it is
-// posix_single_quote-wrapped rather than left bare.
+// XCU 2.7.2 Redirecting Output: `>|word` shall ignore noclobber. This corpus cannot read a remote
+// login shell's `set -C`, and gunbc.remote_shell_command openssh_login_shell_interpretation does
+// not pin shell options, so the truncate render is `>|` rather than `>` — total regardless of
+// noclobber. 2.7.3 is `>>word` (append). 2.7.5 is `[n]>&word` (`2>&1` duplicates stderr onto
+// stdout's already-redirected description). The path is a word, so it is posix_single_quote-wrapped.
 
-fn posix_stdout_to_file_stderr_dup_suffix(path: NonEmptyStr) -> String {
-  concat(" >", concat(posix_single_quote(spelling: path as String), " 2>&1"))
+fn posix_redirect_stdout_clobber_word(path: NonEmptyStr) -> String {
+  concat(" >|", posix_single_quote(spelling: path as String))
+}
+
+fn posix_redirect_stdout_append_word(path: NonEmptyStr) -> String {
+  concat(" >>", posix_single_quote(spelling: path as String))
+}
+
+fn posix_redirect_stderr_clobber_word(path: NonEmptyStr) -> String {
+  concat(" 2>|", posix_single_quote(spelling: path as String))
+}
+
+fn posix_redirect_stderr_append_word(path: NonEmptyStr) -> String {
+  concat(" 2>>", posix_single_quote(spelling: path as String))
+}
+
+fn posix_redirect_stderr_dup_stdout() -> String {
+  " 2>&1"
+}
+
+fn posix_stdout_and_stderr_to_one_file_truncate_suffix(path: NonEmptyStr) -> String {
+  concat(posix_redirect_stdout_clobber_word(path: path), posix_redirect_stderr_dup_stdout())
 }

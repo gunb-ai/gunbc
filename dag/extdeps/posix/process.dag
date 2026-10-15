@@ -85,13 +85,31 @@ type ProcessReapOutcome
   | ReapRefused { cause: NonEmptyStr }
 
 // STDIO DESTINATIONS BESIDE AN ARGV, not inside it. ArgvCommand is execve (program + arguments).
-// Where both standard streams go to one file — the detached-serve case — is this carrier; LocalExec
-// realizes it as spawn file actions (StartDetached already names stdout_file and stderr_file);
-// OpenSSH realizes it as XCU 2.7 text over the login shell (gunbc.remote_shell_command).
+// LocalExec realizes these as spawn file actions; OpenSSH realizes them as XCU 2.7 text over the
+// login shell (gunbc.remote_shell_command). TWO OPENS OF ONE PATH ARE NOT DUP: ToOneFile is one
+// open file description with stderr duplicated onto stdout (`2>&1`), one offset, interleaved.
+// ToSeparateFiles is two descriptions; writing both to the same pathname still overwrites under
+// O_TRUNC. Never render the second as the first.
+//
+// Open mode is stated, not implied: Truncate is XCU 2.7.2 `>|` (overrides noclobber; run.sh's `>`
+// intent without depending on the login shell's `set -C`). Append is XCU 2.7.3 `>>`.
+//
+// StartDetached still takes stdout_file and stderr_file as two NonEmptyStr params (two opens).
+data start_detached_adopts_posix_process_stdio: String = "frontier: StartDetached adopts PosixProcessStdio when a spawn consumer needs OneFile-versus-separate at that boundary; this change names the type and does not migrate the operation"
+
+type PosixFileOpenMode
+  = PosixFileTruncate
+  | PosixFileAppend
 
 type PosixProcessStdio
   = PosixProcessStdioUnchanged
-  | PosixProcessStdoutAndStderrToFile { path: String }
+  | PosixProcessStdoutAndStderrToOneFile { path: String, mode: PosixFileOpenMode }
+  | PosixProcessStdoutAndStderrToSeparateFiles {
+      stdout_path: String,
+      stderr_path: String,
+      stdout_mode: PosixFileOpenMode,
+      stderr_mode: PosixFileOpenMode,
+    }
 
 service posix.Process {
   operation StartDetached {
