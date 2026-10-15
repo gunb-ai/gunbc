@@ -2289,12 +2289,25 @@ pub fn node_type_shape(
                     let is_product = (n.connective.clone() == Connective::Conj);
                     let is_coproduct = (n.connective.clone() == Connective::Disj);
                     if is_product.clone() {
+                        let fields = node_type_shape_argument_list(
+                            n.children.clone(),
+                            source_indices.clone(),
+                        );
                         if (n.ident_span.clone() == std::option::Option::None) {
-                            "Product(<anon>)".to_string()
+                            v1_rt::concat(
+                                v1_rt::concat("Product(<anon><".to_string(), fields),
+                                ">)".to_string(),
+                            )
                         } else {
                             v1_rt::concat(
-                                v1_rt::concat("Product(".to_string(), n_name.clone()),
-                                ")".to_string(),
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat("Product(".to_string(), n_name.clone()),
+                                        "<".to_string(),
+                                    ),
+                                    fields,
+                                ),
+                                ">)".to_string(),
                             )
                         }
                     } else {
@@ -2329,7 +2342,7 @@ pub fn node_type_shape(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
                                                         "Container(".to_string(),
-                                                        n_name.clone(),
+                                                        type_head_carrier(n_name.clone()),
                                                     ),
                                                     ",".to_string(),
                                                 ),
@@ -2357,7 +2370,16 @@ pub fn node_type_shape(
                                         }
                                     } else {
                                         if is_map.clone() {
-                                            "Map(...)".to_string()
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "Map(".to_string(),
+                                                    node_type_shape_argument_list(
+                                                        n.children.clone(),
+                                                        source_indices.clone(),
+                                                    ),
+                                                ),
+                                                ")".to_string(),
+                                            )
                                         } else {
                                             if ((n.children.clone().len() as i64) > 0) {
                                                 v1_rt::concat(
@@ -2834,12 +2856,66 @@ pub fn callable_signatures_agree(
     }
 }
 
+fn type_head_carrier(name: String) -> String {
+    let last = crate::v1_std_core::qualified_last_segment(name.clone());
+    match crate::std_types::container_template_algebra(last.clone()) {
+        Some(algebra) => algebra,
+        None => last,
+    }
+}
+
+fn type_heads_agree(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    left_name: String,
+    right_name: String,
+) -> bool {
+    let left_mapped = crate::std_types::container_template_algebra(
+        crate::v1_std_core::qualified_last_segment(left_name.clone()),
+    )
+    .is_some();
+    let right_mapped = crate::std_types::container_template_algebra(
+        crate::v1_std_core::qualified_last_segment(right_name.clone()),
+    )
+    .is_some();
+    if left_mapped || right_mapped {
+        type_head_carrier(left_name) == type_head_carrier(right_name)
+    } else {
+        match (left.declaration.clone(), right.declaration.clone()) {
+            (Some(ld), Some(rd)) => {
+                ld.module_path.clone() == rd.module_path.clone()
+                    && ld.decl_name.clone() == rd.decl_name.clone()
+            }
+            _ => crate::v1_std_core::type_name_compatible(left_name, right_name),
+        }
+    }
+}
+
+fn peel_alias_rhs_once(n: Rc<Node>, text: Rc<TextJudgment>) -> Rc<Node> {
+    match text.as_ref() {
+        TextJudgment::TextJudgedIn { env } => {
+            let name =
+                crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
+            match crate::v1_compiler_infer_env::lookup_binding_by_name(env.clone(), name) {
+                Some(binding) => match binding.alias_rhs.clone() {
+                    Some(rhs) if n.children.is_empty() => rhs,
+                    _ => n,
+                },
+                None => n,
+            }
+        }
+        TextJudgment::TextNotAsked { .. } => n,
+    }
+}
+
 pub fn node_type_equals_core(
     left: Rc<Node>,
     right: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     text: Rc<TextJudgment>,
 ) -> bool {
+    let left = peel_alias_rhs_once(left, text.clone());
+    let right = peel_alias_rhs_once(right, text.clone());
     if text_crossing_in_judgment(left.clone(), right.clone(), text.clone()) {
         false
     } else {
@@ -2941,20 +3017,12 @@ pub fn node_type_equals_core(
                                     == Connective::NoConnective)
                                     && ((right.children.clone().len() as i64) > 0));
                                 if (left_applied.clone() && right_applied.clone()) {
-                                    let heads_agree = match (
-                                        left.declaration.clone(),
-                                        right.declaration.clone(),
+                                    if !type_heads_agree(
+                                        left.clone(),
+                                        right.clone(),
+                                        left_name.clone(),
+                                        right_name.clone(),
                                     ) {
-                                        (Some(ld), Some(rd)) => {
-                                            ld.module_path.clone() == rd.module_path.clone()
-                                                && ld.decl_name.clone() == rd.decl_name.clone()
-                                        }
-                                        _ => crate::v1_std_core::type_name_compatible(
-                                            left_name.clone(),
-                                            right_name.clone(),
-                                        ),
-                                    };
-                                    if !heads_agree {
                                         false
                                     } else if ((left.children.clone().len() as i64)
                                         != (right.children.clone().len() as i64))
@@ -3005,7 +3073,12 @@ pub fn node_type_equals_core(
                                         source_indices.clone(),
                                     );
                                     if (left_is_container.clone() && right_is_container.clone()) {
-                                        if (left_name.clone() != right_name.clone()) {
+                                        if !type_heads_agree(
+                                            left.clone(),
+                                            right.clone(),
+                                            left_name.clone(),
+                                            right_name.clone(),
+                                        ) {
                                             false
                                         } else {
                                             match left.children.clone().first().cloned() {

@@ -42,6 +42,15 @@ fn applied_box_int_vs_bool_is_refused() {
 }
 
 #[test]
+fn list_int_equals_freemonoid_int() {
+    let result = compile_dag(
+        "module locate.listalias\nimport std.types { List }\nimport std.algebra { FreeMonoid }\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: List<Int>, y: FreeMonoid<Int>) -> Bool { same_arm(a: x, b: y) }\n",
+    );
+    let msgs = blocking_of(&result);
+    assert!(!has_rebind(&msgs), "List<Int> is FreeMonoid<Int>: {msgs:?}");
+}
+
+#[test]
 fn two_decls_same_leaf_applied_compare_unequal() {
     let result = compile_multi(&[
         ("p/boxmod.dag", "module p.boxmod\ntype Box<T>\n"),
