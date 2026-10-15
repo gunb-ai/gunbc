@@ -22,6 +22,7 @@ import gunbc.compute.work_provider_local {
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
   NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire,
 }
+import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_request { work_default_build }
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
@@ -285,8 +286,11 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
                     identity_hex: identity,
                     argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency),
                     env: concat(
-                      concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
-                      hermetic_toolchain_unit_setenv(homes: toolchain_homes),
+                      concat(
+                        concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
+                        hermetic_toolchain_unit_setenv(homes: toolchain_homes),
+                      ),
+                      [SystemdSetenvBinding { name: "SCCACHE_LOG", value: "debug" as NonEmptyStr }],
                     ),
                     launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
                     granted: compute_run_unit_cold_unit_grant(),
@@ -319,6 +323,8 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
                           ComputeExecFailed { exit_code, stdout, stderr } =>
                             join(["exec=failed exit=", to_string(value: exit_code), "\n", stdout, stderr], "")
                         },
+                        "\n",
+                        observe_sccache_host_probe(),
                       ], "")
                       if invoked && exec_ok {
                         CliWirePrintable { bytes: bytes, exit: ExitSuccess }
@@ -361,28 +367,39 @@ fn lines_with_needle(text: String, needle: String) -> String {
   join(filter(split(s: text, delimiter: "\n"), l => length(xs: split(s: l, delimiter: needle)) > 1), "\n")
 }
 
-fn compute_run_unit_sccache_probe_exit() -> CliWireResponse {
+fn observe_sccache_stats_debug() -> String {
+  match compute_exec(
+    program: env_absolute_program().invocation as String,
+    workdir: ".",
+    args: env_prefixed_args(
+      bindings: [EnvSet { name: "SCCACHE_LOG", value: "debug" }],
+      command_argv: [sccache_installed_binary_path, "--show-stats"],
+    ),
+  ) {
+    ComputeExecOk { stdout, stderr } => join([stdout, "\n", stderr], "")
+    ComputeExecFailed { exit_code, stdout, stderr } =>
+      join(["exit=", to_string(value: exit_code), "\n", stdout, "\n", stderr], "")
+  }
+}
+
+fn observe_sccache_host_probe() -> String {
   let id_out = observe_argv(program: "/usr/bin/id", args: [])
   let host_out = observe_argv(program: "/usr/bin/hostname", args: [])
-  let ps_out = observe_argv(program: "/usr/bin/ps", args: ["-eo", "user,pid,args"])
-  let ss_out = observe_argv(program: "/usr/bin/ss", args: ["-ltnp"])
-  let stats_out = observe_argv(program: sccache_installed_binary_path, args: ["--show-stats"])
-  let tcp4 = Filesystem.Read(path: "/proc/net/tcp")
-  let tcp6 = Filesystem.Read(path: "/proc/net/tcp6")
+  let ps_out = observe_argv(program: "/usr/bin/ps", args: ["-eo", "user,uid,pid,args"])
+  let ss_out = observe_argv(program: "/usr/bin/ss", args: ["-ltnp", "sport = :4226"])
+  join([
+    "=== id ===\n", id_out, "\n",
+    "=== hostname ===\n", host_out, "\n",
+    "=== ps /usr/local/bin/sccache (user,uid,pid,args) ===\n",
+    lines_with_needle(text: ps_out, needle: "/usr/local/bin/sccache"), "\n",
+    "=== ss -ltnp sport = :4226 ===\n", ss_out, "\n",
+    "=== SCCACHE_LOG=debug sccache --show-stats ===\n", observe_sccache_stats_debug(), "\n",
+  ], "")
+}
+
+fn compute_run_unit_sccache_probe_exit() -> CliWireResponse {
   CliWirePrintable {
-    bytes: join([
-      "compute-run-unit-sccache-probe\n",
-      "=== id ===\n", id_out, "\n",
-      "=== hostname ===\n", host_out, "\n",
-      "=== ps sccache ===\n", lines_with_needle(text: ps_out, needle: "sccache"), "\n",
-      "=== ss 4226 ===\n", lines_with_needle(text: ss_out, needle: "4226"), "\n",
-      "=== ss sccache ===\n", lines_with_needle(text: ss_out, needle: "sccache"), "\n",
-      "=== sccache --show-stats ===\n", stats_out, "\n",
-      "=== /proc/net/tcp 107A (4226) ===\n",
-      if tcp4.success { lines_with_needle(text: tcp4.content, needle: "107A") } else { "unreadable" }, "\n",
-      "=== /proc/net/tcp6 107A (4226) ===\n",
-      if tcp6.success { lines_with_needle(text: tcp6.content, needle: "107A") } else { "unreadable" }, "\n",
-    ], ""),
+    bytes: join(["compute-run-unit-sccache-probe\n", observe_sccache_host_probe()], ""),
     exit: ExitSuccess,
   }
 }
