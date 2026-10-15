@@ -107,13 +107,13 @@ fn parse_network_host(raw: String) -> NetworkHostParse {
   }
 }
 
-// CONSUMED BY S2(b), a declared frontier (DESIGN §3c): the fleet ssh carriers SshTarget and
-// KnownHostKeyRow take `address: SocketAddress`, built by gunbc.fleet.fleet_reach_endpoint
-// fleet_probe_network_host. The row dissolves when that declaration appears.
+// CONSUMED BY S2(b), a declared frontier (DESIGN §3c): the fleet's endpoint text crosses into a
+// typed address once, at gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_target_at_standard_port. The
+// row dissolves when that declaration appears.
 data endpoint_host_text_parse_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.network.endpoint", decl_name: "parse_network_host"),
-    reason: "host text the fleet reads (operator input, a provider API field) is parsed here once and refused on a typed arm; its consumer is fleet_probe_network_host for sources that are genuinely text",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_network_host")),
+    reason: "host text the fleet reads (operator input, a provider API field) is parsed here once and refused on a typed arm; its consumer is fleet_ssh_target_at_standard_port, over the fleet endpoint text gunbc.fleet.fleet_reach_endpoint fleet_probe_endpoint_for returns",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "fleet_ssh_target_at_standard_port")),
   )
 ]
