@@ -68,9 +68,8 @@ import v2.extdeps.languages.dag {
   dag_binding_denotation
 }
 import v2.compiler.parse { parse_tree_projection_edge }
-import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.primitive_authority { primitive_authority_row_is_contract_declaration }
-import v2.std.type_binder { edge_is_type_params, type_param_kind_optional, OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view, type_decl_identity_atom_optional, type_param_names }
+import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, NotATypeDecl, PlainTypeDecl, type_decl_view, type_decl_identity_atom_optional, type_param_names, kinded_type_param_names }
 import v2.extdeps.languages.dag_surface_item_standing {
   DagSurfaceNoIndexMembers,
   DagSurfaceNonTypeDeclaration,
@@ -407,21 +406,8 @@ fn symbol_index_fill_kinded_type_params(index: SymbolIndex, path: QualifiedName,
   match dag_binding_denotation(sym: ^dag_binding_type_int) {
     Absent => index
     Present { value: int_type } =>
-      fold(arrow.children, init: index, f: fn(acc, e) {
-        if edge_is_type_params(e: e) {
-          fold(e.target.children, init: acc, f: fn(inner, b) {
-            match node_atom_identity_optional(node: b.target) {
-              Present { value: name } =>
-                match type_param_kind_optional(binder: b.target) {
-                  Present { value: _ } => symbol_index_insert(index: inner, qualified_path: qualified_name_snoc(qn: path, segment: name), resolved: int_type)
-                  Absent => inner
-                }
-              Absent => inner
-            }
-          })
-        } else {
-          acc
-        }
+      fold(kinded_type_param_names(n: arrow), init: index, f: fn(acc, name) {
+        symbol_index_insert(index: acc, qualified_path: qualified_name_snoc(qn: path, segment: name), resolved: int_type)
       })
   }
 }

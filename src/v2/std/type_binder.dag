@@ -381,6 +381,31 @@ fn type_param_kind_optional(binder: Node) -> Optional<Node> {
   })
 }
 
+// THE KINDED TYPE PARAMETERS A NODE DECLARES, in declaration order: the binders whose Atom carries a
+// BinderTypeEdge (type_param_kind_optional). The ONE producer of "binder n is kinded", so the value
+// key v2.compiler.resolve mints and the entry v2.compiler.symbol_index_fill indexes cannot disagree.
+fn kinded_type_param_names(n: Node) -> List<Symbol> {
+  let carried = fold(n.children, init: Empty, f: fn(acc, e) {
+    if edge_is_type_params(e: e) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+  })
+  if count(carried) == 1 {
+    fold(carried, init: Empty, f: fn(acc, t) {
+      fold(binder_conj_names(conj: t), init: Empty, f: fn(names, name) {
+        match type_binder_target_of(binders: t, name: name) {
+          Present { value: b } =>
+            match type_param_kind_optional(binder: b) {
+              Present { value: _ } => list_snoc_item(xs: names, item: name)
+              Absent => names
+            }
+          Absent => names
+        }
+      })
+    })
+  } else {
+    Empty
+  }
+}
+
 // WHAT A BINDER'S ANNOTATION BOUNDS IT BY, READ FROM THE MARKER THE BINDER WAS BUILT WITH -- never guessed
 // from the annotation's shape. A BinderTypeEdge (type_param_kind_optional) carries a KIND -- a type
 // expression whose inhabitants are the parameter's admissible arguments, judged at resolve by
