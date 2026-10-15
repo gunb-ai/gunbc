@@ -424,8 +424,12 @@ fn namespaced_root_standing(
 ) -> UserWorkScopeStanding {
     // SEED MIRROR of `gunbc.compute.unit_bounds namespaced_root_standing`
     match root_memory {
-        RootMemoryRead::Capped(n) => UserWorkScopeStanding::ExemptBoundedContainer { bytes: n },
-        RootMemoryRead::Unbounded => UserWorkScopeStanding::BoundedContainerUncapped,
+        RootMemoryRead::Capped(n) if n > 0 => {
+            UserWorkScopeStanding::ExemptBoundedContainer { bytes: n }
+        }
+        RootMemoryRead::Capped(_) | RootMemoryRead::Unbounded => {
+            UserWorkScopeStanding::BoundedContainerUncapped
+        }
         RootMemoryRead::Unreadable => match buildbuddy_run_id {
             Some(id) if !id.is_empty() => UserWorkScopeStanding::ExternallyBoundedExecutor {
                 run_id: id.to_string(),
@@ -648,6 +652,21 @@ mod standing_fixture_tests {
             false,
             false,
             RootMemoryRead::Unbounded,
+            RootMemoryRead::Unreadable,
+            Some("measured-rbe-run"),
+        );
+        assert_eq!(got, "BoundedContainerUncapped");
+    }
+
+    #[test]
+    fn namespaced_root_zero_memory_max_refuses_even_with_a_buildbuddy_run_id() {
+        let got = wire(
+            false,
+            Some("0::/"),
+            false,
+            false,
+            false,
+            RootMemoryRead::Capped(0),
             RootMemoryRead::Unreadable,
             Some("measured-rbe-run"),
         );

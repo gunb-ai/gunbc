@@ -716,6 +716,8 @@ test fn a_buildbuddy_namespaced_root_without_memory_max_is_externally_bounded() 
   }
 }
 
+// Control: BuildBuddy id plus an observed memory.max of "max" refuses; the env must
+// not skip an Uncapped standing (review 80587).
 test fn an_unbounded_root_memory_max_refuses_even_with_a_buildbuddy_run_id() -> Bool {
   match user_work_scope_standing_with_root_memory(
     unit_test: false,
@@ -725,6 +727,27 @@ test fn an_unbounded_root_memory_max_refuses_even_with_a_buildbuddy_run_id() -> 
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryUnbounded,
+    slice_memory: RootMemoryUnreadable,
+    buildbuddy_run_id: BuildBuddyRunIdPresent { id: "measured-rbe-run" },
+  ) {
+    BoundedContainerUncapped =>
+      match user_work_scope_standing_effect(s: BoundedContainerUncapped) {
+        RefuseUserWorkScope { standing: BoundedContainerUncapped } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn a_zero_root_memory_max_refuses_even_with_a_buildbuddy_run_id() -> Bool {
+  match user_work_scope_standing_with_root_memory(
+    unit_test: false,
+    github_actions: true,
+    cgroup: CgroupText { text: "0::/" },
+    systemd_manager_present: false,
+    user_manager_reachable: false,
+    xdg_runtime_dir: false,
+    root_memory: RootMemoryCapped { bytes: byte_size(0) },
     slice_memory: RootMemoryUnreadable,
     buildbuddy_run_id: BuildBuddyRunIdPresent { id: "measured-rbe-run" },
   ) {
