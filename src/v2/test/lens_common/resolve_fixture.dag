@@ -142,6 +142,7 @@ fn claim_lowered_tree(m: ClaimLoweredModule) -> Outcome<NormalizedTree> {
     root: claim_lowered_allocated(root: claim_lowered_root(m: m)),
     test_markers: test_marker_channel_empty(),
     import_bindings: m.imports,
+    imported_modules: Empty,
     type_declaration_kinds: list_map(xs: m.records, f: fn(r) { DeclaredRecord { name: r } }),
     type_declaration_modifiers: Empty,
     diagnostics: None
