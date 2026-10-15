@@ -202,13 +202,15 @@ type CensusMemberReadings {
 // The pure join over pins and six readings, composed as the producer composes it.
 fn census_member_readback_from_readings(
   medium: BootMedium,
+  image_stem: NonEmptyStr,
+  volume_id: NonEmptyStr,
   stock_iso: IsoReading,
   census_iso: IsoReading,
   stock_grub: MemberReading, census_grub: MemberReading,
   stock_kernel: MemberReading, census_kernel: MemberReading,
   stock_initrd: MemberReading, census_initrd: MemberReading,
 ) -> CensusMemberReadback {
-  match census_pin_gate(medium: medium, stock_iso: stock_iso, census_iso: census_iso) {
+  match census_pin_gate(medium: medium, image_stem: image_stem, volume_id: volume_id, stock_iso: stock_iso, census_iso: census_iso) {
     PinsRefused { readback: r } => r
     PinsAdmitted { stock_iso: s, census_iso: c } =>
       census_member_verdict(stock_iso: s, census_iso: c, readings: CensusMemberReadings {
