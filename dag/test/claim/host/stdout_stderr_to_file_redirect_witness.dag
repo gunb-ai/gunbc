@@ -16,12 +16,14 @@ import extdeps.posix.shell_command_language {
   PosixRedirectPathAdmitted,
   PosixRedirectPathRefused,
   RedirectPathContainsNul,
-  RedirectPathContainsNewline,
   RedirectPathEmpty,
 }
 import gunbc.remote_shell_command {
   RemoteExecCommandBuilt,
   RemoteExecCommandRefused,
+  RedirectNewlineInRemoteCommandString,
+  SimpleCommandArgvRefused,
+  RemoteExecInterpretationUnknown,
   remote_exec_command_rendered,
   remote_exec_command_string,
   PosixShellInterpreted,
@@ -67,20 +69,23 @@ test fn embedded_nul_path_refuses_typed() -> Bool {
     PosixRedirectPathAdmitted { path: _ } => false
     PosixRedirectPathRefused { cause: c } => match c {
       RedirectPathContainsNul => true
-      RedirectPathContainsNewline => false
       RedirectPathEmpty => false
     }
   }
 }
 
 test fn embedded_newline_path_refuses_typed() -> Bool {
-  match admit_posix_redirect_pathname(path: "/root/serve/\nlog") {
-    PosixRedirectPathAdmitted { path: _ } => false
-    PosixRedirectPathRefused { cause: c } => match c {
-      RedirectPathContainsNewline => true
-      RedirectPathContainsNul => false
-      RedirectPathEmpty => false
-    }
+  match one_file_truncate(path: "/root/serve/\nlog") {
+    Absent => false
+    Present { value: stdio } =>
+      match host_effect_argv_stdio_remote_command(command: true_command(), stdio: stdio) {
+        RemoteExecCommandBuilt { command: _ } => false
+        RemoteExecCommandRefused { cause: c } => match c {
+          RedirectNewlineInRemoteCommandString => true
+          SimpleCommandArgvRefused { cause: _ } => false
+          RemoteExecInterpretationUnknown => false
+        }
+      }
   }
 }
 

@@ -1,10 +1,11 @@
 module gunbc.remote_shell_command
 
 import std.types { String, List, NonEmptyStr, Bool, Int }
-import std.algebra { list_map }
+import std.algebra { list_map, for_all }
 import extdeps.posix.shell_command_language {
   posix_single_quote,
   emit_posix_redirection,
+  posix_redirection_carries_newline,
   PosixRedirection,
   PosixRedirectStdoutClobber,
   PosixRedirectStdoutAppend,
@@ -148,6 +149,7 @@ type RemoteExecCommand sole_constructor {
 type RemoteExecCommandRefusalCause
   = SimpleCommandArgvRefused { cause: SimpleCommandRefusalCause }
   | RemoteExecInterpretationUnknown
+  | RedirectNewlineInRemoteCommandString
 
 type RemoteExecCommandOutcome
   = RemoteExecCommandBuilt { command: RemoteExecCommand }
@@ -166,6 +168,16 @@ fn remote_exec_command_rendered(command: RemoteExecCommand) -> NonEmptyStr { com
 // for a caller to hand to the physical exec channel — a composition of two targets (outer local
 // ssh/sshpass argv, inner serialized shell program), never a concatenation of one into the other.
 
+fn remote_exec_from_simple_command(cmd: ShellSimpleCommand) -> RemoteExecCommandOutcome {
+  if for_all(xs: cmd.redirections, predicate: fn(r) { !posix_redirection_carries_newline(redir: r) }) {
+    RemoteExecCommandBuilt {
+      command: RemoteExecCommand { rendered: emit_remote_shell(command: cmd) }
+    }
+  } else {
+    RemoteExecCommandRefused { cause: RedirectNewlineInRemoteCommandString }
+  }
+}
+
 fn remote_exec_command_string(
   argv: List<NonEmptyStr>,
   interpretation: RemoteExecCommandInterpretation
@@ -175,10 +187,7 @@ fn remote_exec_command_string(
     PosixShellInterpreted =>
       match simple_command(argv: argv) {
         SimpleCommandRefused { cause: c } => RemoteExecCommandRefused { cause: SimpleCommandArgvRefused { cause: c } }
-        SimpleCommandBuilt { command: cmd } =>
-          RemoteExecCommandBuilt {
-            command: RemoteExecCommand { rendered: emit_remote_shell(command: cmd) }
-          }
+        SimpleCommandBuilt { command: cmd } => remote_exec_from_simple_command(cmd: cmd)
       }
   }
 }
@@ -226,14 +235,10 @@ fn remote_exec_command_string_with_stdio(
       match simple_command(argv: argv) {
         SimpleCommandRefused { cause: c } => RemoteExecCommandRefused { cause: SimpleCommandArgvRefused { cause: c } }
         SimpleCommandBuilt { command: cmd } =>
-          RemoteExecCommandBuilt {
-            command: RemoteExecCommand {
-              rendered: emit_remote_shell(command: ShellSimpleCommand {
-                words: cmd.words,
-                redirections: posix_stdio_redirections(stdio: stdio),
-              })
-            }
-          }
+          remote_exec_from_simple_command(cmd: ShellSimpleCommand {
+            words: cmd.words,
+            redirections: posix_stdio_redirections(stdio: stdio),
+          })
       }
   }
 }

@@ -197,17 +197,14 @@ fn admit_posix_shell_name(spelling: String) -> PosixShellNameAdmission {
 }
 
 // IEEE 1003.1-2017 XCU 2.7 (Redirection): a redirection `word` names a pathname. Admission is the
-// pathname wall, not a second quoting rule. posix_single_quote (2.2.2) is total on every admitted
-// word; what cannot inhabit a pathname, or cannot inhabit one RFC 4254 command string without
-// becoming a second command, refuses here rather than being encoded.
-//
-// Empty: not a pathname. NUL: XBD Pathname / execve. Newline: representable inside single quotes,
-// but a newline in the ssh command STRING is line discipline / a second command; fail-closed.
+// pathname wall (XBD Pathname / execve), not a transport. Empty: not a pathname. NUL: cannot inhabit
+// a pathname. Newline is a legal pathname and a legal quoted XCU word; RFC 4254 command-string line
+// discipline refuses at RemoteExecCommand construction (gunbc.remote_shell_command), not here
+// (DESIGN §3 interface vs transport; §4d do not over-generalize a prohibition).
 
 type PosixRedirectPathRefusal
   = RedirectPathEmpty
   | RedirectPathContainsNul
-  | RedirectPathContainsNewline
 
 type PosixRedirectPathname sole_constructor {
   spelling: NonEmptyStr
@@ -226,8 +223,6 @@ fn admit_posix_redirect_pathname(path: String) -> PosixRedirectPathAdmission {
     PosixRedirectPathRefused { cause: RedirectPathEmpty }
   } else if string_contains(s: path, pattern: "\u{0}") {
     PosixRedirectPathRefused { cause: RedirectPathContainsNul }
-  } else if string_contains(s: path, pattern: "\n") {
-    PosixRedirectPathRefused { cause: RedirectPathContainsNewline }
   } else {
     PosixRedirectPathAdmitted { path: PosixRedirectPathname { spelling: path as NonEmptyStr } }
   }
@@ -255,5 +250,19 @@ fn emit_posix_redirection(redir: PosixRedirection) -> String {
     PosixRedirectStderrAppend { word: w } =>
       concat(" 2>>", posix_single_quote(spelling: posix_redirect_pathname_spelling(path: w) as String))
     PosixRedirectStderrDupStdout => " 2>&1"
+  }
+}
+
+fn posix_redirection_carries_newline(redir: PosixRedirection) -> Bool {
+  match redir {
+    PosixRedirectStdoutClobber { word: w } =>
+      string_contains(s: posix_redirect_pathname_spelling(path: w) as String, pattern: "\n")
+    PosixRedirectStdoutAppend { word: w } =>
+      string_contains(s: posix_redirect_pathname_spelling(path: w) as String, pattern: "\n")
+    PosixRedirectStderrClobber { word: w } =>
+      string_contains(s: posix_redirect_pathname_spelling(path: w) as String, pattern: "\n")
+    PosixRedirectStderrAppend { word: w } =>
+      string_contains(s: posix_redirect_pathname_spelling(path: w) as String, pattern: "\n")
+    PosixRedirectStderrDupStdout => false
   }
 }

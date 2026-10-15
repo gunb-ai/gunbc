@@ -96,6 +96,8 @@ type ProcessReapOutcome
 //
 // Open mode is stated, not implied: Truncate is XCU 2.7.2 `>|` (overrides noclobber; run.sh's `>`
 // intent without depending on the login shell's `set -C`). Append is XCU 2.7.3 `>>`.
+// Paths are PosixRedirectPathname: empty and NUL refuse at the pathname wall. Newline is admitted
+// here (a legal pathname for LocalExec); the OpenSSH render refuses it when minting RemoteExecCommand.
 //
 type PosixFileOpenMode
   = PosixFileTruncate
