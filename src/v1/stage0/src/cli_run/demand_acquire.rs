@@ -331,7 +331,7 @@ mod tests {
         );
     }
 
-    fn diag_msgs(g: &v1_compiler_compile::ResolvedGraph) -> Vec<String> {
+    fn diag_msgs(g: &crate::v1_compiler_compile::ResolvedGraph) -> Vec<String> {
         let mut v: Vec<String> = g
             .diagnostics
             .iter()
@@ -363,17 +363,16 @@ mod tests {
         for rel in entries {
             let entry = root.join(rel).to_string_lossy().into_owned();
             let demand = super::resolve_entry_graph_demand_acquired(&roots, &entry);
-            let tree = super::resolve_entry_graph(&roots, &entry);
+            let tree = crate::cli_run::resolve_entry_graph(&roots, &entry);
             let ok = match (&demand, &tree) {
                 (Ok((gd, _)), Ok((gt, _))) => diag_msgs(gd) == diag_msgs(gt),
                 (Err(a), Err(b)) => a == b,
                 _ => false,
             };
             eprintln!(
-                "eq {rel} demand={} tree={} match={ok}",
+                "eq {rel} demand_ok={} tree_ok={} match={ok}",
                 demand.is_ok(),
-                tree.is_ok(),
-                ok
+                tree.is_ok()
             );
             if !ok {
                 failed.push(format!(
