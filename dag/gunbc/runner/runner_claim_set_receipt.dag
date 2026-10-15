@@ -15,7 +15,7 @@ import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
 import gunbc.host.host_effect { LocalShell }
 import gunbc.systemctl_show_read { SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_read }
-import gunbc.durable_cas_file_store { cas_name_is_digits }
+import std.decimal { decimal_digits_only }
 import product.fabric.identity { FabricIdentity, WorkKey, OfferKey, ExecutionAttemptKey, ReceiptKey }
 import product.fabric.execution { Receipt, ExecutionReceipt, LeaseIdentity }
 import product.fabric.sanitation { CellReadiness }
@@ -63,7 +63,7 @@ type ClaimSetReceiptOutcome
 // THE RUNTIME, FROM TWO MONOTONIC MICROSECOND STAMPS. Both must be present, decimal and nonzero
 // (systemd answers 0 for an event that has not happened), and the exit must follow the start.
 fn unit_runtime_from_stamps(start_us: String, exit_us: String) -> UnitRuntimeReading {
-  if !cas_name_is_digits(s: start_us) || !cas_name_is_digits(s: exit_us) {
+  if start_us == "" || exit_us == "" || !decimal_digits_only(s: start_us) || !decimal_digits_only(s: exit_us) {
     UnitRuntimeUnread { detail: join(["unit timestamps are not decimal: start=", start_us, " exit=", exit_us], "") }
   } else { match parse_int(s: start_us) {
     Absent => UnitRuntimeUnread { detail: "start timestamp did not parse" }

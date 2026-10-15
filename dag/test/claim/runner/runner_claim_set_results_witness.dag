@@ -15,7 +15,7 @@ import gunbc.fabric.fabric_witness_run {
 import gunbc.runner.runner_claim_set_results {
   ClaimSetResult, ClaimSetResultsDecode, ClaimSetResultsDecoded, ClaimSetResultsRefused,
   ResultsDriveSizeMismatch, ResultsDriveUnobserved, ResultsDriveUnwritten, ResultsMagicMismatch, ResultsTruncated,
-  ResultsDigestMismatch, ResultsTrailingBytes, ResultsRecordMalformed, ResultsExitMalformed,
+  ResultsDigestMismatch, ResultsTrailingBytes, ResultsRecordMalformed,
   ResultsCountMissing, ResultsCountMalformed, ResultsDigestMissing, ClaimSetResultsUndecodable,
   ClaimSetResultsAdmission, ClaimSetResultsAdmitted, ClaimSetResultsNotDecoded, ClaimSetResultsClaimMismatch,
   ClaimSetResultsCountMismatch, ClaimSetResultsForAnotherTree,
@@ -73,7 +73,6 @@ fn cause(d: ClaimSetResultsDecode) -> String {
       ResultsCountMissing => "count-missing"
       ResultsCountMalformed { line: _ } => "count-malformed"
       ResultsRecordMalformed { index: _, line: _ } => "record"
-      ResultsExitMalformed { index: _, exit: _ } => "exit"
       ResultsTruncated { declared: _, present: _ } => "truncated"
       ResultsDigestMissing => "digest-missing"
       ResultsDigestMismatch { stated: _, recomputed: _ } => "digest-mismatch"
