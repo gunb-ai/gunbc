@@ -2,7 +2,7 @@ module gunbc.compute.unit_bounds
 
 import std.types { String, List, NonEmptyStr, Bool, Int }
 import std.algebra { trim }
-import gunbc.durable_cas_file_store { cas_name_is_digits }
+import std.decimal { decimal_digits_only }
 import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count, ByteSize, byte_size }
@@ -156,7 +156,7 @@ type CgroupBound
 // The wire reading stays text ("max" is a reading); a finite one crosses into ByteSize here.
 fn cgroup_reading_bound(r: CgroupLimitReading) -> ByteSize? {
   if trim(s: r.memory_swap_max) != "0" { none }
-  else if !cas_name_is_digits(s: trim(s: r.memory_max)) { none }
+  else if trim(s: r.memory_max) == "" || !decimal_digits_only(s: trim(s: r.memory_max)) { none }
   else { match parse_int(s: trim(s: r.memory_max)) {
     Absent => none
     Present { value: n } => match checked_int_to_nat(n: n) {

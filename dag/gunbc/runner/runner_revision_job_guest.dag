@@ -125,11 +125,7 @@ fn exec_word_is_literal(word: String) -> Bool {
 }
 
 fn revision_job_exec_line(command: ArgvCommand) -> RevisionJobExecLine {
-  let words = argv_words(command: command)
-  match filter(words, w => !(exec_word_is_literal(word: w) || exec_word_is_env_reference(word: w))).first() {
-    Present { value: w } => RevisionJobExecWordRefused { word: w }
-    Absent => RevisionJobExecLineRendered { line: join(words, " ") as NonEmptyStr }
-  }
+  revision_job_exec_words_line(words: argv_words(command: command))
 }
 
 fn revision_job_entry_exec_words() -> List<String> {
@@ -146,7 +142,19 @@ type RevisionJobGuestUnit
   = RevisionJobGuestUnitRendered { unit: SystemdUnitFile }
   | RevisionJobGuestUnitRefused { word: String }
 
+// THE ENTRY WORDS ARE CHECKED BY THE SAME WALL AS THE STEPS: ExecStart is a command line too, so a
+// word systemd would reinterpret refuses the unit whatever line it sits on.
+fn revision_job_exec_words_line(words: List<String>) -> RevisionJobExecLine {
+  match filter(words, w => !(exec_word_is_literal(word: w) || exec_word_is_env_reference(word: w))).first() {
+    Present { value: w } => RevisionJobExecWordRefused { word: w }
+    Absent => RevisionJobExecLineRendered { line: join(words, " ") as NonEmptyStr }
+  }
+}
+
 fn revision_job_guest_unit() -> RevisionJobGuestUnit {
+  match revision_job_exec_words_line(words: revision_job_entry_exec_words()) {
+  RevisionJobExecWordRefused { word: w } => RevisionJobGuestUnitRefused { word: w }
+  RevisionJobExecLineRendered { line: entry_line } => {
   let rendered = map(revision_job_pre_steps(), c => revision_job_exec_line(command: c))
   match filter(rendered, r => match r { RevisionJobExecWordRefused { word: _ } => true  RevisionJobExecLineRendered { line: _ } => false }).first() {
     Present { value: RevisionJobExecWordRefused { word: w } } => RevisionJobGuestUnitRefused { word: w }
@@ -170,8 +178,10 @@ fn revision_job_guest_unit() -> RevisionJobGuestUnit {
       ] + flat_map(rendered, r => match r {
         RevisionJobExecLineRendered { line: l } => [ExecStartPre { command: l }]
         RevisionJobExecWordRefused { word: _ } => []
-      }) + [ExecStart { command: join(revision_job_entry_exec_words(), " ") as NonEmptyStr }],
+      }) + [ExecStart { command: entry_line }],
       install: Installable { directives: [WantedBy { target: runner_guest_agent_target }] },
     } }
+  }
+}
   }
 }
