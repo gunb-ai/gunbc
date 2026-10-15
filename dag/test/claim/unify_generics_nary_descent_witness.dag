@@ -1,0 +1,31 @@
+module test.claim.unify_generics_nary_descent_witness
+
+import gunbc.compile_census_probe { total_blocking_count_for, blocking_subject_count_for }
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// v1.compiler.infer unify_generics descended only through one-child constructors, so a generic under
+// a two-child constructor (`List<Row<K, V>>`) was never bound -- by inference or by the emitter's
+// map-key bound forwarding, which reads this unifier. The descent is now lockstep where heads agree
+// and arities match. These three rows keep the change honest in both directions: a mismatch binds
+// nothing and must still be REFUSED by the argument type check (it is not a silent pass), a
+// well-typed call stays clean, and the binding is now live (a wrong declared return is refused).
+data well_typed_source: String = "module probe_nary_ok\nimport std.types { Bool, String, Int }\ntype Row<K, V> {\n  key: K\n  value: V\n}\nfn keys_of<K, V>(rows: List<Row<K, V>>) -> List<K> { [] }\nfn probe(rows: List<Row<Int, String>>) -> List<Int> { keys_of(rows: rows) }\n"
+
+test fn a_two_parameter_constructor_argument_binds_cleanly() -> Bool {
+  total_blocking_count_for(source: well_typed_source) == 0
+}
+
+data mismatched_head_source: String = "module probe_nary_head\nimport std.types { Bool, String, Int }\ntype Foo<K, V> {\n  key: K\n  value: V\n}\ntype Bar<K, V> {\n  key: K\n  value: V\n}\nfn take<K, V>(rows: List<Foo<K, V>>) -> Int { 0 }\nfn probe(rows: List<Bar<Int, String>>) -> Int { take(rows: rows) }\n"
+
+test fn a_different_head_at_a_two_parameter_position_is_still_refused() -> Bool {
+  total_blocking_count_for(source: mismatched_head_source) >= 1
+}
+
+data wrong_return_source: String = "module probe_nary_ret\nimport std.types { Bool, String, Int }\ntype Row<K, V> {\n  key: K\n  value: V\n}\nfn keys_of<K, V>(rows: List<Row<K, V>>) -> List<K> { [] }\nfn probe(rows: List<Row<Int, String>>) -> List<String> { keys_of(rows: rows) }\n"
+
+test fn a_generic_bound_through_a_two_parameter_constructor_is_checked_against_the_return() -> Bool {
+  total_blocking_count_for(source: wrong_return_source) >= 1
+}

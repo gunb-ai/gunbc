@@ -14175,7 +14175,30 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
         }
       Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
     }
+  } else if (formal.children |> count) >= 2
+    && (formal.children |> count) == (actual.children |> count)
+    && type_node_label(n: formal, source_indices: source_indices) == type_node_label(n: actual, source_indices: source_indices) {
+    unify_generic_children(formals: formal.children, actuals: actual.children, generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
   } else { UnifyGenericsAcc { subst: acc, diagnostics: [] } }
+}
+
+// N-ARY DESCENT, LOCKSTEP, ONLY WHERE THE HEADS AGREE AND THE ARITIES MATCH. The arity-one arm above
+// stopped at the first two-child constructor, so a generic under one (`List<Row<SubjectKey<K>, V>>`)
+// was never bound: neither the inferred instantiation nor the emitter's bound forwarding (which reads
+// this unifier, the single authority) could see K. A head or arity mismatch binds nothing and is not
+// a pass: the argument type check refuses the call on its own path.
+fn unify_generic_children(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>, text: TextJudgment, module_name: String) -> UnifyGenericsAcc {
+  match formals |> first {
+    Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
+    Present { value: f } =>
+      match actuals |> first {
+        Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
+        Present { value: a } =>
+          let here = unify_generics(formal: f, actual: a, generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
+          let rest = unify_generic_children(formals: formals |> skip(1), actuals: actuals |> skip(1), generic_names: generic_names, source_indices: source_indices, acc: here.subst, text: text, module_name: module_name)
+          UnifyGenericsAcc { subst: rest.subst, diagnostics: concat(here.diagnostics, rest.diagnostics) }
+      }
+  }
 }
 
 // A callable denotes its parameters in params and its return in inferred (make_callable_type), so
