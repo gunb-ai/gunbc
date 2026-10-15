@@ -14161,11 +14161,12 @@ fn unify_generic_children(formals: List<Node>, actuals: List<Node>, generic_name
 // every other child, and a bare type variable in particular, is read as it is: unwrapping a
 // variable would replace the authored generic with whatever its resolution resolves to.
 fn unify_container_element(ch: Node) -> Node {
+  let read = match ch.inferred {
+    Present { value: Resolved { node: element } } => element
+    _ => ch
+  }
   if (ch.children |> count) == 0 && ch.connective == NoConnective {
-    match ch.inferred {
-      Present { value: Resolved { node: element } } => element
-      _ => ch
-    }
+    read
   } else {
     ch
   }
