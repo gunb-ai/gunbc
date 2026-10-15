@@ -172,6 +172,7 @@ import gunbc.runner.runner_slot_retirement {
   retirement_observation_from_readings,
   cgroup_occupancy_from_reads,
   srv4_transition_interruption_authorization,
+  srv1_transition_interruption_authorization,
   CgroupAbsent,
 }
 import gunbc.host.host_operation_exec { HostOperationObserved }
@@ -2381,9 +2382,9 @@ test fn deploy_branch_policy_admits_any_observed_branch_when_unconstrained() -> 
 // premise, by name, rather than on the planner. An unresolved width names slot 0, which is never a
 // retiree, so that arm reds too rather than passing.
 fn witness_srv4_surplus_slot(offset: Int) -> RunnerSlotIdentity {
-  match gunbc_runner_committed_width(host: operator_host_srv4) {
-    RunnerWidthDerived { slots: w } => RunnerSlotIdentity { host: operator_host_srv4, slot_index: w + 1 + offset }
-    RunnerWidthUnresolved { cause: _ } => RunnerSlotIdentity { host: operator_host_srv4, slot_index: 0 }
+  match gunbc_runner_committed_width(host: operator_host_srv1) {
+    RunnerWidthDerived { slots: w } => RunnerSlotIdentity { host: operator_host_srv1, slot_index: w + 1 + offset }
+    RunnerWidthUnresolved { cause: _ } => RunnerSlotIdentity { host: operator_host_srv1, slot_index: 0 }
   }
 }
 
@@ -2392,7 +2393,7 @@ fn witness_srv4_surplus_unit(offset: Int) -> NonEmptyStr {
 }
 
 fn witness_srv4_surplus_is_a_required_retiree() -> Bool {
-  match required_retirees_for_host(host: operator_host_srv4) {
+  match required_retirees_for_host(host: operator_host_srv1) {
     RetireesKnown { units: us } => any(us, u => (u as String) == (witness_srv4_surplus_unit(offset: 0) as String))
     RetireesUnresolved { host: _, cause: _ } => false
   }
@@ -2404,7 +2405,7 @@ fn witness_no_retirement_evidence() -> SlotRetirementEvidence {
 
 fn witness_srv4_evidence(standings: List<RunnerRetirementStanding>) -> SlotRetirementEvidence {
   SlotRetirementEvidencePresent {
-    authorization: srv4_transition_interruption_authorization,
+    authorization: srv1_transition_interruption_authorization,
     standings: standings,
   }
 }
@@ -2452,7 +2453,7 @@ fn removes_retired_tree(lines: List<String>) -> Bool {
 
 fn witness_srv4_apply(standings: List<RunnerRetirementStanding>) -> List<String> {
   slot_apply_lines(
-    host: "srv4" as NonEmptyStr,
+    host: "srv1" as NonEmptyStr,
     observed_slots: witness_srv4_surplus(),
     retirement_evidence: witness_srv4_evidence(standings: standings),
   )

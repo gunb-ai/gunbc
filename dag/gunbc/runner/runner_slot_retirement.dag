@@ -330,20 +330,21 @@ data srv4_transition_interruption_authorization: InterruptionAuthorization = Int
   operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
 }
 
-// srv1'S SURPLUS IS THE 50-SLOT REMAINDER, NOT THE NINE-SLOT 21-TO-12 DELTA ALONE.
+// srv1'S INTERRUPTION SCOPE COVERS THE WIDTH-7 RETIREES AND THE HISTORICAL 50-SLOT TREES.
 //
-// The operator work item names srv1-22..50 as the unregistered/inactive/disabled trees to retire.
-// The declared prior width for that host is 50, so the obligation is 13..50: 22..50 plus the
-// 21-to-12 retirees. Permission is authored here, independently of that obligation, as coverage
-// over exactly those identities. It does not name srv1-01..12 -- the committed remaining
-// population -- and membership already refuses to act on an active or enabled tree.
+// Committed at 7 is 01..06 plus shakedown 13. Prior 12 is 01..11 plus 13. The obligation is
+// 07..11. Permission still names the inactive 14..50 remainder and skips 13 (a committed
+// fabric member). It does not name 01..06.
 fn srv1_transition_interruption_scope() -> List<NonEmptyStr> {
-  desired_unit_names_range(host: operator_host_srv1, slot: 13, limit: 50) |> map(u => u as NonEmptyStr)
+  concat(
+    desired_unit_names_range(host: operator_host_srv1, slot: 7, limit: 12),
+    desired_unit_names_range(host: operator_host_srv1, slot: 14, limit: 50),
+  ) |> map(u => u as NonEmptyStr)
 }
 
 data srv1_transition_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
   scope: srv1_transition_interruption_scope(),
-  operator_reason: "operator decision 2026-09-17, scoped to srv1 surplus internal CI slots 13-50 (historical 50-slot remainder 22-50 and the 21-to-12 width-transition retirees 13-21): these may be interrupted for the 26/25 GiB transition; the decision does not name srv1-01..12, sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
+  operator_reason: "operator decision 2026-10-15, scoped to srv1 surplus CI slots 07-12 and 14-50 (width-12-to-7 retirees 07-11 plus historical remainder): these may be interrupted; the decision does not name srv1-01..06 or the shakedown member srv1-13, sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
 }
 
 type HostInterruptionAuthorizationStanding
@@ -502,8 +503,9 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 // statement that GitHub has let the identity go.
 // A SLOT CAN LEAVE THE GITHUB POPULATION WITHOUT THE WIDTH MOVING, AND UNTIL NOW NOTHING SAID SO.
 //
-// required_retirees_for_host derives its set from a WIDTH TRANSITION: prior width down to committed
-// width, so srv4's 13..21 and srv1's 13..50. That covers a slot the host stops having. It does not
+// required_retirees_for_host derives its set from a WIDTH TRANSITION: prior committed identities
+// minus target committed identities, so srv1's 07..11 at width 7 (prior 12) and srv4 empty at
+// width 21 (prior 21). That covers a slot the host stops having. It does not
 // cover a slot the host still has whose PURPOSE changed -- and gunbc.runner.runner_slot_allocation
 // reassigns exactly that: a committed index stops serving GitHub Actions and becomes a fabric
 // execution cell. The index is inside the width, so the width transition produces no retiree for it,
