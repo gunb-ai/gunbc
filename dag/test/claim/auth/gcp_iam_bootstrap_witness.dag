@@ -42,9 +42,9 @@ import extdeps.cloud.gcp.iam {
 }
 
 import gunbc.auth.gcp_iam_converge { PolicyUnreadable, PolicyObserved, PolicyResourceAbsent }
-import gunbc.auth.heal_publisher_provision { DedicatedFederation, dedicated_federation_pool_display_name_refusals }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, dedicated_federation_input_refusals }
 import gunbc.auth.branch_dispatch_federation { hetzner_cloud_control_federation }
-import extdeps.cloud.gcp.iam_admin { workload_identity_pool_display_name_admitted }
+import extdeps.cloud.gcp.iam_admin { workload_identity_pool_display_name_admitted, workload_identity_pool_provider_id_admitted }
 
 test fn bootstrap_role_drift_never_authorizes_adoption() -> Bool {
   all(iam_bootstrap_roles, role => {
@@ -331,16 +331,16 @@ fn with_pool_display_name(f: DedicatedFederation, name: NonEmptyStr) -> Dedicate
 
 // The identities stage folds iam_bootstrap_identity_population, and the plan and the apply refuse over
 // the same rows before any token, so this reads the population that creates.
-test fn every_pool_the_bootstrap_creates_fits_the_display_name_cap() -> Bool {
+test fn every_federation_the_bootstrap_creates_fits_the_upstream_input_caps() -> Bool {
   let federations = iam_bootstrap_identity_federations()
   count(federations) > 0
-    && count(dedicated_federation_pool_display_name_refusals(federations: federations)) == 0
+    && count(dedicated_federation_input_refusals(federations: federations)) == 0
 }
 
 // The 2026-10-14 specimen: 37 characters, refused live at the identities stage after services ran.
 test fn an_over_long_pool_display_name_refuses_naming_its_federation() -> Bool {
   let f = hetzner_cloud_control_federation()
-  let refused = dedicated_federation_pool_display_name_refusals(federations: [
+  let refused = dedicated_federation_input_refusals(federations: [
     with_pool_display_name(f: f, name: "Fleet converge (approved branch runs)" as NonEmptyStr),
     with_pool_display_name(f: f, name: "Fleet converge (approved branch)" as NonEmptyStr),
   ])
@@ -348,6 +348,30 @@ test fn an_over_long_pool_display_name_refuses_naming_its_federation() -> Bool {
     && all(refused, r => r == "hetzner cloud control (approved branch runs): pool display name \"Fleet converge (approved branch runs)\" is 37 characters; CreateWorkloadIdentityPool admits at most 32")
     && workload_identity_pool_display_name_admitted(name: "Fleet converge (approved branch)" as NonEmptyStr)
     && !workload_identity_pool_display_name_admitted(name: "Fleet converge (approved branchs)" as NonEmptyStr)
+}
+
+fn with_provider_id(f: DedicatedFederation, id: NonEmptyStr) -> DedicatedFederation {
+  DedicatedFederation { label: f.label, pool_id: f.pool_id, pool_display_name: f.pool_display_name, provider_id: id,
+    attribute_mapping: f.attribute_mapping, attribute_condition: f.attribute_condition, impersonation: f.impersonation,
+    service_account: f.service_account, service_account_id: f.service_account_id, service_account_display_name: f.service_account_display_name,
+    service_account_member: f.service_account_member, secret_grants: f.secret_grants }
+}
+
+// The 2026-10-15 specimen: 35 characters, refused live by gcp iam converge's provider create.
+test fn an_over_long_provider_id_refuses_naming_its_federation() -> Bool {
+  let f = with_pool_display_name(f: hetzner_cloud_control_federation(), name: "Fleet converge (branch runs)" as NonEmptyStr)
+  let refused = dedicated_federation_input_refusals(federations: [
+    with_provider_id(f: f, id: "github-fleet-converge-dispatch-oidc" as NonEmptyStr),
+    with_provider_id(f: f, id: "abcdefghijklmnopqrstuvwxyz012345" as NonEmptyStr),
+  ])
+  count(refused) == 1
+    && all(refused, r => r == "hetzner cloud control (approved branch runs): provider id \"github-fleet-converge-dispatch-oidc\" is 35 characters; CreateWorkloadIdentityPoolProvider admits 4 to 32 characters of [a-z0-9-]")
+    && workload_identity_pool_provider_id_admitted(id: "abcdefghijklmnopqrstuvwxyz012345" as NonEmptyStr)
+    && !workload_identity_pool_provider_id_admitted(id: "abcdefghijklmnopqrstuvwxyz0123456" as NonEmptyStr)
+    && workload_identity_pool_provider_id_admitted(id: "ab-1" as NonEmptyStr)
+    && !workload_identity_pool_provider_id_admitted(id: "abc" as NonEmptyStr)
+    && !workload_identity_pool_provider_id_admitted(id: "Github-oidc" as NonEmptyStr)
+    && !workload_identity_pool_provider_id_admitted(id: "github_oidc" as NonEmptyStr)
 }
 
 // The capabilities stage binds a role on every one of these, so the identities stage creates each

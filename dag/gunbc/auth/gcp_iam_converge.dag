@@ -24,7 +24,7 @@ import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_c
 import gunbc.auth.heal_publisher_provision {
   DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified,
   heal_publisher_dedicated_federation, private_heal_publisher_dedicated_federation, impersonation_cells, observe_and_classify,
-  rest_refusal_text, outcome_is_not_found, StandingPoolImpersonation }
+  rest_refusal_text, outcome_is_not_found, StandingPoolImpersonation, dedicated_federation_input_refusals }
 import gunbc.fleet.printer_federation_provision { printer_dedicated_federation }
 import gunbc.namecheap.federation_provision { namecheap_dedicated_federation }
 import gunbc.native_product_federation { native_product_federations }
@@ -878,14 +878,24 @@ fn read_secret_policy(g: SecretAccessGrant, token: Secret) -> PolicyReading
   }
 }
 
+// A target whose declared inputs the upstream would refuse is refused before it is observed, so
+// consent is never requested for a create that cannot succeed and the rest of the estate still plans.
+fn federation_input_refused_plan(f: DedicatedFederation) -> GcpIamPlan? {
+  let refusals = dedicated_federation_input_refusals(federations: [f])
+  if count(refusals) == 0 { Absent } else { Present { value: GcpIamRefused { target: f.label, reasons: refusals } } }
+}
+
 fn observe_and_plan(f: DedicatedFederation, token: Secret) -> GcpIamPlan
 {
-  plan_dedicated_federation(
-    f: f,
-    classification: observe_and_classify(f: f, token: token),
-    account_policy: read_account_policy(f: f, token: token),
-    secret_policies: map(f.secret_grants, g => GrantPolicyReading { grant: g, reading: read_secret_policy(g: g, token: token) }),
-  )
+  match federation_input_refused_plan(f: f) {
+    Present { value: refused } => refused
+    Absent => plan_dedicated_federation(
+      f: f,
+      classification: observe_and_classify(f: f, token: token),
+      account_policy: read_account_policy(f: f, token: token),
+      secret_policies: map(f.secret_grants, g => GrantPolicyReading { grant: g, reading: read_secret_policy(g: g, token: token) }),
+    )
+  }
 }
 
 fn read_named_secret_policy(secret: NonEmptyStr, token: Secret) -> SecretPolicyReading
