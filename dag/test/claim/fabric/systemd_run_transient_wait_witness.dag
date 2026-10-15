@@ -1,12 +1,12 @@
 module test.claim.fabric.systemd_run_transient_wait_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import extdeps.systemd { WorkingDirectoryProperty, MemoryMax, CapabilityBoundingSetProperty, systemd_unit_property_wire }
+import extdeps.systemd { WorkingDirectoryProperty, MemoryMax, systemd_unit_property_wire }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet,
   systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused,
-  CapabilityBoundingSetValueUnexpressible, UnitSettingValueMultiline,
+  UnitSettingValueMultiline,
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   SystemdRunOptionWordsProjected, SystemdRunOptionWordsRefused,
   SystemdSetenvBinding,
@@ -80,18 +80,12 @@ test fn a_property_value_the_wire_cannot_carry_is_refused() -> Bool {
   }
 }
 
-// DISCRIMINATING: a non-empty CapabilityBoundingSet value is refused, not rewritten to the empty
-// set. The empty set is EmptyCapabilityBoundingSet; the wire spelling is never the dispatch key.
-test fn a_nonempty_capability_bounding_set_is_not_silently_replaced() -> Bool {
-  match systemd_run_property_assignment(property: NamedUnitSetting { property: CapabilityBoundingSetProperty, value: "CAP_NET_RAW" as NonEmptyStr }) {
-    SystemdRunPropertyAssignmentRefused { cause: CapabilityBoundingSetValueUnexpressible { value: v } } =>
-      (v as String) == "CAP_NET_RAW"
-        && match systemd_run_property_assignment(property: EmptyCapabilityBoundingSet) {
-          SystemdRunPropertyAssignmentReady { assignment: a } => a == "CapabilityBoundingSet="
-          SystemdRunPropertyAssignmentRefused { cause: _ } => false
-        }
+// The empty set renders as the directive with no names. That a non-empty set has no constructor is
+// established at the compiler: test.claim.fabric.systemd_run_capability_bounding_set_construction_witness.
+test fn the_empty_capability_bounding_set_renders_with_no_names() -> Bool {
+  match systemd_run_property_assignment(property: EmptyCapabilityBoundingSet) {
+    SystemdRunPropertyAssignmentReady { assignment: a } => a == "CapabilityBoundingSet="
     SystemdRunPropertyAssignmentRefused { cause: _ } => false
-    SystemdRunPropertyAssignmentReady { assignment: _ } => false
   }
 }
 

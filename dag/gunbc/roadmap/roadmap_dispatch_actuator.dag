@@ -57,7 +57,7 @@ import extdeps.systemd {
   MemoryMax, WorkingDirectoryProperty, StandardOutputProperty, StandardErrorProperty,
   ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty,
   RemainAfterExitProperty, ExecStopPostProperty,
-  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, CapabilityBoundingSetProperty,
+  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitHook, AttemptExitHookRendered, AttemptExitHookRefused, attempt_exit_hook,

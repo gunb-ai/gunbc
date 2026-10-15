@@ -6,23 +6,25 @@ import std.types { NonEmptyStr, List, Bool, Int, Unit, String }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
 import std.algebra { trim }
+import std.optional { Present, Absent }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd {
-  SystemdUnitProperty, systemd_unit_property_wire, systemd_unit_property_is_capability_bounding_set,
-  CapabilityBoundingSetProperty,
+  SystemdUnitProperty, systemd_unit_property_wire,
 }
 // The manager's version line has ONE spelling for the whole systemd upstream, so the major is read
 // with the existing parser rather than a second one (DESIGN section 3: no fork of one concept).
 import extdeps.systemd.systemctl { systemd_major_version }
 import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
 
-// EmptyCapabilityBoundingSet is the empty capability-set carrier (systemd.exec(5)
-// CapabilityBoundingSet= with no names). A non-empty set is not a value this realization can
-// express: it refuses rather than dropping names on the floor.
+// EmptyCapabilityBoundingSet is the empty capability-set carrier: systemd.exec(5)
+// CapabilityBoundingSet= with no names drops every capability. It is its own arm, not a
+// SystemdUnitProperty under NamedUnitSetting: SystemdUnitProperty is the show surface
+// (gunbc.systemd_property_directive_overlap), and a capability set is not a free-text value, so a
+// non-empty or misspelled set has no constructor here rather than a refusal at run time.
 type SystemdRunProperty
   = NamedUnitSetting { property: SystemdUnitProperty, value: NonEmptyStr }
   | EmptyCapabilityBoundingSet
@@ -117,7 +119,6 @@ type SystemdRunOptionWordsRefusedCause
   | SetenvNameContainsEquals
   | SetenvNameMultiline
   | SetenvValueMultiline
-  | CapabilityBoundingSetValueUnexpressible { value: NonEmptyStr }
 
 type SystemdRunPropertyAssignmentReading
   = SystemdRunPropertyAssignmentReady { assignment: String }
@@ -154,7 +155,6 @@ fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRef
     SetenvNameContainsEquals => "--setenv= takes NAME=VALUE, so the NAME side carries no = of its own"
     SetenvNameMultiline => "--setenv= takes NAME=VALUE, so the NAME side is one line"
     SetenvValueMultiline => "--setenv= takes NAME=VALUE, so the VALUE side is one line"
-    CapabilityBoundingSetValueUnexpressible { value: _ } => "CapabilityBoundingSet is the empty set on this realization; a non-empty value is not a dropped set and is not projected"
   }
 }
 
@@ -163,21 +163,18 @@ fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRef
 // session placement record). Recording the typed property where text was declared is what made every
 // harness spawn fail after the typed options landed (srv1 lab, 2026-10-11).
 fn systemd_run_named_setting_assignment(property: SystemdUnitProperty, value: NonEmptyStr) -> SystemdRunPropertyAssignmentReading {
-  if systemd_unit_property_is_capability_bounding_set(property: property) {
-    SystemdRunPropertyAssignmentRefused { cause: CapabilityBoundingSetValueUnexpressible { value: value } }
-  } else {
-    SystemdRunPropertyAssignmentReady {
-      assignment: concat(systemd_unit_property_wire(property: property) as String, concat("=", value as String)),
-    }
+  SystemdRunPropertyAssignmentReady {
+    assignment: concat(systemd_unit_property_wire(property: property) as String, concat("=", value as String)),
   }
 }
+
+// systemd.exec(5) spells the empty bounding set as the directive with no names.
+data systemd_run_empty_capability_bounding_set_assignment: String = "CapabilityBoundingSet="
 
 fn systemd_run_property_assignment(property: SystemdRunProperty) -> SystemdRunPropertyAssignmentReading {
   match property {
     EmptyCapabilityBoundingSet =>
-      SystemdRunPropertyAssignmentReady {
-        assignment: concat(systemd_unit_property_wire(property: CapabilityBoundingSetProperty) as String, "="),
-      }
+      SystemdRunPropertyAssignmentReady { assignment: systemd_run_empty_capability_bounding_set_assignment }
     NamedUnitSetting { property: p, value: v } => systemd_run_named_setting_assignment(property: p, value: v)
   }
 }
@@ -195,17 +192,12 @@ fn systemd_run_property_assignments(properties: List<SystemdRunProperty>) -> Sys
     })
 }
 
-fn systemd_run_property_setting_value(property: SystemdRunProperty) -> String {
+// A setting value is one line. Only a named setting carries free text; the empty bounding set carries none.
+fn systemd_run_property_multiline_refusal(property: SystemdRunProperty) -> SystemdRunOptionWordsRefusedCause? {
   match property {
-    EmptyCapabilityBoundingSet => ""
-    NamedUnitSetting { property: _, value: v } => v as String
-  }
-}
-
-fn systemd_run_property_unit_property(property: SystemdRunProperty) -> SystemdUnitProperty {
-  match property {
-    EmptyCapabilityBoundingSet => CapabilityBoundingSetProperty
-    NamedUnitSetting { property: p, value: _ } => p
+    EmptyCapabilityBoundingSet => none
+    NamedUnitSetting { property: p, value: v } =>
+      if systemd_run_option_word_has_newline(s: v as String) { Present { value: UnitSettingValueMultiline { property: p } } } else { none }
   }
 }
 
@@ -235,24 +227,24 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
         RunUserManager => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--user"]) }
         RunScope => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--scope"]) }
         PropertyShort { property: p } =>
-          if systemd_run_option_word_has_newline(s: systemd_run_property_setting_value(property: p)) {
-            systemd_run_option_word_refused(cause: UnitSettingValueMultiline { property: systemd_run_property_unit_property(property: p) })
-          } else {
-            match systemd_run_property_assignment(property: p) {
-              SystemdRunPropertyAssignmentRefused { cause: c } => systemd_run_option_word_refused(cause: c)
-              SystemdRunPropertyAssignmentReady { assignment: a } =>
-                SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["-p", a]) }
-            }
+          match systemd_run_property_multiline_refusal(property: p) {
+            Present { value: c } => systemd_run_option_word_refused(cause: c)
+            Absent =>
+              match systemd_run_property_assignment(property: p) {
+                SystemdRunPropertyAssignmentRefused { cause: c } => systemd_run_option_word_refused(cause: c)
+                SystemdRunPropertyAssignmentReady { assignment: a } =>
+                  SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["-p", a]) }
+              }
           }
         PropertyLong { property: p } =>
-          if systemd_run_option_word_has_newline(s: systemd_run_property_setting_value(property: p)) {
-            systemd_run_option_word_refused(cause: UnitSettingValueMultiline { property: systemd_run_property_unit_property(property: p) })
-          } else {
-            match systemd_run_property_assignment(property: p) {
-              SystemdRunPropertyAssignmentRefused { cause: c } => systemd_run_option_word_refused(cause: c)
-              SystemdRunPropertyAssignmentReady { assignment: a } =>
-                SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--property=", a)]) }
-            }
+          match systemd_run_property_multiline_refusal(property: p) {
+            Present { value: c } => systemd_run_option_word_refused(cause: c)
+            Absent =>
+              match systemd_run_property_assignment(property: p) {
+                SystemdRunPropertyAssignmentRefused { cause: c } => systemd_run_option_word_refused(cause: c)
+                SystemdRunPropertyAssignmentReady { assignment: a } =>
+                  SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--property=", a)]) }
+              }
           }
         SetEnv { binding: b } =>
           if string_contains(s: b.name as String, pattern: "=") {
