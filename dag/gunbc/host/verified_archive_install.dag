@@ -18,6 +18,7 @@ import gunbc.package_delivery {
   admit_observed_archive_digest, observe_package_archive_at_path,
   PackageArchiveDigestMatched, PackageArchiveDigestMismatch, PackageArchiveDigestObservationFailed,
 }
+import gunbc.command_runner { run_shell_commands, run_shell_command_capture, process_outcome_admitted, LocalExec }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh }
 import gunbc.host.host_effect_realize {
   run_argv_over_host_effect_transport, run_typed_argv_transport, typed_argv_outcome_to_transport,
@@ -66,7 +67,7 @@ fn run_archive_argv(command: ArgvCommand, transport: HostEffectTransport) -> Run
   }
 }
 
-fn run_archive_commands(commands: List<ArgvCommand>, transport: HostEffectTransport) -> ProcessExit {
+fn host_effect_commands_exit(commands: List<ArgvCommand>, transport: HostEffectTransport) -> ProcessExit {
   fold(
     commands,
     init: ExitSuccess,
@@ -80,6 +81,13 @@ fn run_archive_commands(commands: List<ArgvCommand>, transport: HostEffectTransp
         }
     },
   )
+}
+
+fn run_archive_commands(commands: List<ArgvCommand>, transport: HostEffectTransport) -> ProcessExit {
+  match transport {
+    LocalShell => run_shell_commands(commands: commands, transport: LocalExec)
+    _ => host_effect_commands_exit(commands: commands, transport: transport)
+  }
 }
 
 fn verify_archive_sha256_over_transport(
@@ -303,7 +311,12 @@ fn publish_staged_tree_command(staging: String, root: String) -> ArgvCommand {
 }
 
 fn publish_staged_tree_wet(staging: String, root: String, transport: HostEffectTransport) -> Bool {
-  run_argv_transport_succeeded(outcome: run_archive_argv(command: publish_staged_tree_command(staging: staging, root: root), transport: transport))
+  match transport {
+    LocalShell =>
+      process_outcome_admitted(outcome: run_shell_command_capture(command: publish_staged_tree_command(staging: staging, root: root), transport: LocalExec))
+    _ =>
+      run_argv_transport_succeeded(outcome: run_archive_argv(command: publish_staged_tree_command(staging: staging, root: root), transport: transport))
+  }
 }
 
 fn argv_record_line(command: ArgvCommand) -> String {
