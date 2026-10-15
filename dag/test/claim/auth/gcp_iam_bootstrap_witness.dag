@@ -339,7 +339,7 @@ test fn every_federation_the_bootstrap_creates_fits_the_upstream_input_caps() ->
 
 // The 2026-10-14 specimen: 37 characters, refused live at the identities stage after services ran.
 test fn an_over_long_pool_display_name_refuses_naming_its_federation() -> Bool {
-  let f = hetzner_cloud_control_federation()
+  let f = with_provider_id(f: hetzner_cloud_control_federation(), id: "gh-fixture-provider-oidc" as NonEmptyStr)
   let refused = dedicated_federation_input_refusals(federations: [
     with_pool_display_name(f: f, name: "Fleet converge (approved branch runs)" as NonEmptyStr),
     with_pool_display_name(f: f, name: "Fleet converge (approved branch)" as NonEmptyStr),
