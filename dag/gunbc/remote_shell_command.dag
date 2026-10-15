@@ -138,10 +138,11 @@ fn emit_remote_shell(command: ShellSimpleCommand) -> NonEmptyStr {
   ) as NonEmptyStr
 }
 
-// THE ONE CARRIER FOR AN RFC 4254 COMMAND STRING. Only this module may construct one: the admitted
-// routes are remote_exec_command_string and its stdout/stderr-to-file sibling below. A recipient
-// at the transport boundary unwraps via remote_exec_command_rendered to obtain the NonEmptyStr for
-// the physical exec channel — a construction gate, not a validation check.
+// THE ONE CARRIER FOR AN RFC 4254 COMMAND STRING. Only this module may construct one. The admitted
+// mint is remote_exec_command_string_with_stdio; remote_exec_command_string is that mint with
+// PosixProcessStdioUnchanged. A recipient at the transport boundary unwraps via
+// remote_exec_command_rendered to obtain the NonEmptyStr for the physical exec channel — a
+// construction gate, not a validation check.
 type RemoteExecCommand sole_constructor {
   rendered: NonEmptyStr
 }
@@ -182,14 +183,11 @@ fn remote_exec_command_string(
   argv: List<NonEmptyStr>,
   interpretation: RemoteExecCommandInterpretation
 ) -> RemoteExecCommandOutcome {
-  match interpretation {
-    Unknown => RemoteExecCommandRefused { cause: RemoteExecInterpretationUnknown }
-    PosixShellInterpreted =>
-      match simple_command(argv: argv) {
-        SimpleCommandRefused { cause: c } => RemoteExecCommandRefused { cause: SimpleCommandArgvRefused { cause: c } }
-        SimpleCommandBuilt { command: cmd } => remote_exec_from_simple_command(cmd: cmd)
-      }
-  }
+  remote_exec_command_string_with_stdio(
+    argv: argv,
+    stdio: PosixProcessStdioUnchanged,
+    interpretation: interpretation,
+  )
 }
 
 fn posix_stdout_redirection(path: PosixRedirectPathname, mode: PosixFileOpenMode) -> PosixRedirection {
