@@ -97,7 +97,7 @@ import std.optional {
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment }
 import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_named_child, arrow_constant_member_codomain }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
-import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
+import v2.std.symbol_index { MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
 import v2.std.node { symbol_lexeme, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, AdmitCallersEdge, Ambiguous, DeclarationReferenceKind, Found, MarkedReference, NodeFoldTopDown, NotMarkedReference, Symbol, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_named_edge_is_metadata, arrow_signature_order_edge, core_edge_target_lookup, edge_is_core, edge_label_of, fold_node_topdown, match_arm_pattern_edge, bind_key_edge, MatchArmBodyEdge, MatchArmPatternEdge, node_subtree_nodes, resolved_reference_body_kind, symbol_eq, symbol_intern_lexeme }
@@ -160,6 +160,7 @@ import v2.std.diagnostic {
   NonEmptyDiagnostics,
   Suggested,
   UserInputBoundary,
+  declaration_locus,
   node_locus,
   Outcome,
   Suggested,
@@ -1562,10 +1563,20 @@ fn infer_declaration_reference_facts_indexed(
 ) -> Outcome<InferredFacts> {
       match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
         Absent =>
-          bind_outcome_accepted(
-            od: infer_closure_miss_cause(resolved: resolved, path: path),
-            inner: inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
-          )
+          match symbol_index_declaring_path_of(index: resolved.resolved_declarations, target: path) {
+            MentionDeclaringContested { claimants: claimants } =>
+              infer_declaration_identity_contested_rejected(at: n, claimants: claimants)
+            MentionDeclaringUnavailable =>
+              bind_outcome_accepted(
+                od: infer_closure_miss_cause(resolved: resolved, path: path),
+                inner: inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+              )
+            MentionDeclaringUnique { declaring: _ } =>
+              bind_outcome_accepted(
+                od: infer_closure_miss_cause(resolved: resolved, path: path),
+                inner: inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+              )
+          }
         Present { value: declared } =>
           match symbol_index_declared_payload_at(index: resolved.resolved_declarations, qualified_path: path) {
             Present { value: VariantArmPayload } =>
@@ -1608,6 +1619,7 @@ type InferVariantArmReferenceValue
   = VariantArmReferenceValueCoproduct { coproduct: QualifiedName }
   | VariantArmReferenceValueNotDerived
   | VariantArmReferenceValueIdentityUnavailable
+  | VariantArmReferenceValueIdentityContested { claimants: FreeMonoid<QualifiedName> }
 
 fn infer_open_type_param_atom(name: Symbol) -> Node {
   Node {
@@ -1641,13 +1653,19 @@ fn infer_variant_arm_reference_value(
   arm_path: QualifiedName,
   declared: Node
 ) -> InferVariantArmReferenceValue {
-  match infer_coproduct_path_of_variant_arm(index: index, arm_path: arm_path) {
-    Absent => VariantArmReferenceValueIdentityUnavailable
-    Present { value: coproduct } =>
-      if infer_empty_product_shape(node: declared) {
-        VariantArmReferenceValueCoproduct { coproduct: coproduct }
-      } else {
-        VariantArmReferenceValueNotDerived
+  match symbol_index_declaring_path_of(index: index, target: arm_path) {
+    MentionDeclaringUnavailable => VariantArmReferenceValueIdentityUnavailable
+    MentionDeclaringContested { claimants: claimants } =>
+      VariantArmReferenceValueIdentityContested { claimants: claimants }
+    MentionDeclaringUnique { declaring: _ } =>
+      match infer_coproduct_path_of_variant_arm(index: index, arm_path: arm_path) {
+        Absent => VariantArmReferenceValueIdentityUnavailable
+        Present { value: coproduct } =>
+          if infer_empty_product_shape(node: declared) {
+            VariantArmReferenceValueCoproduct { coproduct: coproduct }
+          } else {
+            VariantArmReferenceValueNotDerived
+          }
       }
   }
 }
@@ -1660,7 +1678,13 @@ fn infer_variant_arm_reference_value_optional(
     Absent => optional_absent()
     Present { value: path } =>
       match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
-        Absent => optional_absent()
+        Absent =>
+          match symbol_index_declaring_path_of(index: resolved.resolved_declarations, target: path) {
+            MentionDeclaringContested { claimants: claimants } =>
+              optional_present(value: VariantArmReferenceValueIdentityContested { claimants: claimants })
+            MentionDeclaringUnavailable => optional_absent()
+            MentionDeclaringUnique { declaring: _ } => optional_absent()
+          }
         Present { value: declared } =>
           match symbol_index_declared_payload_at(index: resolved.resolved_declarations, qualified_path: path) {
             Present { value: VariantArmPayload } =>
@@ -1692,6 +1716,8 @@ fn infer_variant_arm_value_reference_facts(
   ) {
     VariantArmReferenceValueIdentityUnavailable =>
       outcome_rejected(infer_declaration_identity_unavailable_diagnostic(at: n))
+    VariantArmReferenceValueIdentityContested { claimants: claimants } =>
+      infer_declaration_identity_contested_rejected(at: n, claimants: claimants)
     VariantArmReferenceValueNotDerived =>
       inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
     VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
@@ -2137,6 +2163,8 @@ fn infer_branch_operand_resolved_type_with_entries(
             VariantArmReferenceValueNotDerived => inferred_facts_resolved_type(facts: facts)
             VariantArmReferenceValueIdentityUnavailable =>
               Violates { diagnostic: infer_declaration_identity_unavailable_diagnostic(at: node) }
+            VariantArmReferenceValueIdentityContested { claimants: _ } =>
+              Violates { diagnostic: infer_declaration_identity_contested_fatal(at: node) }
           }
         Absent =>
           match resolved_tree_lexical_binding(tree: resolved, reference: node) {
@@ -4215,10 +4243,14 @@ fn infer_type_decl_identity_node(declared: Node, identity: QualifiedName) -> Nod
 }
 
 fn infer_type_alias_stored_at(declarations: SymbolIndex, path: QualifiedName) -> Optional<Node> {
-  let identity = symbol_index_declaring_path_of(index: declarations, target: path)
-  match symbol_index_lookup(index: declarations, qualified_path: identity) {
-    Present { value: stored } => optional_present(value: stored)
-    Absent => symbol_index_lookup(index: declarations, qualified_path: path)
+  match symbol_index_declaring_path_of(index: declarations, target: path) {
+    MentionDeclaringUnavailable => optional_absent()
+    MentionDeclaringContested { claimants: _ } => optional_absent()
+    MentionDeclaringUnique { declaring: identity } =>
+      match symbol_index_lookup(index: declarations, qualified_path: identity) {
+        Present { value: stored } => optional_present(value: stored)
+        Absent => symbol_index_lookup(index: declarations, qualified_path: path)
+      }
   }
 }
 
@@ -4244,17 +4276,21 @@ fn infer_type_alias_unfolded(t: Node, declarations: SymbolIndex) -> Optional<Nod
   match declaration_reference_path_optional(node: ha.head) {
     Absent => optional_absent()
     Present { value: path } =>
-      let identity = symbol_index_declaring_path_of(index: declarations, target: path)
-      match infer_type_alias_stored_at(declarations: declarations, path: path) {
-        Absent => optional_absent()
-        Present { value: stored } =>
-          let declared = infer_type_decl_identity_node(declared: stored, identity: identity)
-          match type_decl_view(target: declared) {
-            TypeAlias { binders: _, aliased: aliased } => infer_type_alias_rhs(declared: declared, aliased: aliased, args: ha.args)
-            GenericTypeDecl { binders: _, member: _ } => optional_absent()
-            OpaqueTypeDecl { binders: _ } => optional_absent()
-            NotATypeDecl => optional_absent()
-            PlainTypeDecl { member: _ } => optional_absent()
+      match symbol_index_declaring_path_of(index: declarations, target: path) {
+        MentionDeclaringUnavailable => optional_absent()
+        MentionDeclaringContested { claimants: _ } => optional_absent()
+        MentionDeclaringUnique { declaring: identity } =>
+          match infer_type_alias_stored_at(declarations: declarations, path: path) {
+            Absent => optional_absent()
+            Present { value: stored } =>
+              let declared = infer_type_decl_identity_node(declared: stored, identity: identity)
+              match type_decl_view(target: declared) {
+                TypeAlias { binders: _, aliased: aliased } => infer_type_alias_rhs(declared: declared, aliased: aliased, args: ha.args)
+                GenericTypeDecl { binders: _, member: _ } => optional_absent()
+                OpaqueTypeDecl { binders: _ } => optional_absent()
+                NotATypeDecl => optional_absent()
+                PlainTypeDecl { member: _ } => optional_absent()
+              }
           }
       }
   }
@@ -6809,6 +6845,7 @@ type InferConstructRead
   = ConstructIsRecord { construct: InferRecordConstruct }
   | ConstructIsVariantArm { construct: InferVariantArmConstruct }
   | ConstructVariantArmIdentityUnavailable
+  | ConstructVariantArmIdentityContested { claimants: FreeMonoid<QualifiedName> }
   | ConstructNotARecord
 
 fn infer_record_formals(resolved: ResolvedTree, path: QualifiedName, authored: Node) -> InferRecordFormals {
@@ -6835,18 +6872,22 @@ fn infer_coproduct_path_of_variant_arm(
   index: SymbolIndex,
   arm_path: QualifiedName
 ) -> Optional<QualifiedName> {
-  let declaring = symbol_index_declaring_path_of(index: index, target: arm_path)
-  match qualified_name_init(qn: declaring) {
-    Empty => optional_absent()
-    Cons { head: _, tail: _ } =>
-      let coproduct = qualified_name_init(qn: declaring)
-      if symbol_index_is_module_root_at(index: index, qualified_path: coproduct) {
-        optional_absent()
-      } else {
-        match symbol_index_lookup(index: index, qualified_path: coproduct) {
-          Absent => optional_absent()
-          Present { value: _ } => optional_present(value: coproduct)
-        }
+  match symbol_index_declaring_path_of(index: index, target: arm_path) {
+    MentionDeclaringUnavailable => optional_absent()
+    MentionDeclaringContested { claimants: _ } => optional_absent()
+    MentionDeclaringUnique { declaring: declaring } =>
+      match qualified_name_init(qn: declaring) {
+        Empty => optional_absent()
+        Cons { head: _, tail: _ } =>
+          let coproduct = qualified_name_init(qn: declaring)
+          if symbol_index_is_module_root_at(index: index, qualified_path: coproduct) {
+            optional_absent()
+          } else {
+            match symbol_index_lookup(index: index, qualified_path: coproduct) {
+              Absent => optional_absent()
+              Present { value: _ } => optional_present(value: coproduct)
+            }
+          }
       }
   }
 }
@@ -6857,6 +6898,41 @@ fn infer_declaration_identity_unavailable_diagnostic(at: Node) -> Diagnostic {
     at: node_locus(node: at),
     correction: Unavailable { reason: UserInputBoundary }
   }
+}
+
+fn infer_declaration_identity_contested_fatal(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_reason_declaration_identity_contested,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn infer_declaration_identity_competing_diagnostic(claimant: QualifiedName) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_reason_declaration_identity_competing,
+    at: declaration_locus(declaration: claimant),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn infer_declaration_identity_contested_diagnostics(at: Node, claimants: FreeMonoid<QualifiedName>) -> NonEmptyDiagnostics {
+  let fatal = infer_declaration_identity_contested_fatal(at: at)
+  match claimants {
+    Empty => NonEmptyDiagnostics { head: fatal, tail: Empty }
+    Cons { head: first, tail: rest } =>
+      NonEmptyDiagnostics {
+        head: infer_declaration_identity_competing_diagnostic(claimant: first),
+        tail: list_snoc_item(
+          xs: list_map(xs: rest, f: fn(c) { infer_declaration_identity_competing_diagnostic(claimant: c) }),
+          item: fatal
+        )
+      }
+  }
+}
+
+fn infer_declaration_identity_contested_rejected<T>(at: Node, claimants: FreeMonoid<QualifiedName>) -> Outcome<T> {
+  Rejected { diagnostics: infer_declaration_identity_contested_diagnostics(at: at, claimants: claimants) }
 }
 
 fn infer_variant_arm_construct(
@@ -6907,14 +6983,20 @@ fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConst
             Present { value: kind } =>
               match kind {
                 VariantArmPayload =>
-                  infer_variant_arm_construct(
-                    reference: reference,
-                    resolved: resolved,
-                    declared_path: symbol_index_declaring_path_of(
-                      index: resolved.resolved_declarations,
-                      target: path
-                    )
-                  )
+                  match symbol_index_declaring_path_of(
+                    index: resolved.resolved_declarations,
+                    target: path
+                  ) {
+                    MentionDeclaringUnavailable => ConstructVariantArmIdentityUnavailable
+                    MentionDeclaringContested { claimants: claimants } =>
+                      ConstructVariantArmIdentityContested { claimants: claimants }
+                    MentionDeclaringUnique { declaring: declaring } =>
+                      infer_variant_arm_construct(
+                        reference: reference,
+                        resolved: resolved,
+                        declared_path: declaring
+                      )
+                  }
                 RecordTypePayload =>
                   match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
                     Absent => ConstructNotARecord
@@ -7685,6 +7767,16 @@ fn infer_gather_settled_unannotated_row(
             infer_gather_fold_acc_failed(
               node: acc.node,
               pending: diagnostics_singleton(d: infer_declaration_identity_unavailable_diagnostic(at: acc.node)),
+              await_branch_row: acc.await_branch_row,
+              await_match_row: acc.await_match_row,
+              await_loop_row: acc.await_loop_row,
+              await_transform_row: acc.await_transform_row,
+              children_remaining: acc.children_remaining
+            )
+          ConstructVariantArmIdentityContested { claimants: claimants } =>
+            infer_gather_fold_acc_failed(
+              node: acc.node,
+              pending: infer_declaration_identity_contested_diagnostics(at: acc.node, claimants: claimants),
               await_branch_row: acc.await_branch_row,
               await_match_row: acc.await_match_row,
               await_loop_row: acc.await_loop_row,
@@ -9553,6 +9645,11 @@ fn infer_sole_constructor_node_diags(
         infer_admission_diags_of([
           infer_declaration_identity_unavailable_diagnostic(at: node)
         ])
+      ConstructVariantArmIdentityContested { claimants: claimants } =>
+        match infer_declaration_identity_contested_diagnostics(at: node, claimants: claimants) {
+          NonEmptyDiagnostics { head: head, tail: tail } =>
+            infer_admission_diags_of(Cons { head: head, tail: tail })
+        }
       ConstructNotARecord =>
         match construct_tag_path_optional(n: node) {
           Absent => None
@@ -9607,7 +9704,17 @@ fn infer_sole_constructor_path_diags(
   constructing_module: Optional<Symbol>,
   tree: ResolvedTree
 ) -> Diagnostics {
-  let declaring_path = symbol_index_declaring_path_of(index: tree.resolved_declarations, target: type_path)
+  match symbol_index_declaring_path_of(index: tree.resolved_declarations, target: type_path) {
+    MentionDeclaringUnavailable =>
+      infer_admission_diags_of([
+        infer_declaration_identity_unavailable_diagnostic(at: at)
+      ])
+    MentionDeclaringContested { claimants: claimants } =>
+      match infer_declaration_identity_contested_diagnostics(at: at, claimants: claimants) {
+        NonEmptyDiagnostics { head: head, tail: tail } =>
+          infer_admission_diags_of(Cons { head: head, tail: tail })
+      }
+    MentionDeclaringUnique { declaring: declaring_path } =>
   match qualified_name_last_segment(qn: declaring_path) {
     Absent =>
       infer_admission_diags_of([
@@ -9641,6 +9748,7 @@ fn infer_sole_constructor_path_diags(
             constructing_module: constructing_module
           )
       }
+  }
   }
 }
 
