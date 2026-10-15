@@ -1,8 +1,6 @@
 module extdeps.ssh.known_hosts
 
-import std.types { String, NonEmptyStr, Port, List }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { bound_dissolution }
+import std.types { String, NonEmptyStr, Port }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.uri { Uri, Https }
@@ -40,14 +38,3 @@ fn known_hosts_host_field(address: SocketAddress) -> NonEmptyStr {
     join(["[", host, "]:", to_string(address.port)], "") as NonEmptyStr
   }
 }
-
-// CONSUMED BY S2(b), a declared frontier (DESIGN §3c): KnownHostKeyRow takes `address: SocketAddress`
-// and every reader of a row's host field goes through gunbc.fleet.fleet_host_key_enrollment
-// known_host_row_field. The row dissolves when that declaration appears.
-data known_hosts_host_field_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.ssh.known_hosts", decl_name: "known_hosts_host_field"),
-    reason: "gunbc.fleet.fleet_host_key_enrollment known_hosts_line renders its host field through this once KnownHostKeyRow carries a SocketAddress",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "known_host_row_field")),
-  )
-]
