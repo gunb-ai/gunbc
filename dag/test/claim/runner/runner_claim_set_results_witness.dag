@@ -15,7 +15,7 @@ import gunbc.fabric.fabric_witness_run {
 import gunbc.runner.runner_claim_set_results {
   ClaimSetResult, ClaimSetResultsDecode, ClaimSetResultsDecoded, ClaimSetResultsRefused,
   ResultsDriveSizeMismatch, ResultsDriveUnobserved, ResultsDriveUnwritten, ResultsMagicMismatch, ResultsTruncated,
-  ResultsDigestMismatch, ResultsTrailingBytes, ResultsRecordMalformed,
+  ResultsDigestMismatch, ResultsTrailingBytes, ResultsRecordMalformed, ResultsExitNotAStanding,
   ResultsCountMissing, ResultsCountMalformed, ResultsDigestMissing, ClaimSetResultsUndecodable,
   ClaimSetResultsAdmission, ClaimSetResultsAdmitted, ClaimSetResultsNotDecoded, ClaimSetResultsClaimMismatch,
   ClaimSetResultsCountMismatch, ClaimSetResultsForAnotherTree,
@@ -73,6 +73,7 @@ fn cause(d: ClaimSetResultsDecode) -> String {
       ResultsCountMissing => "count-missing"
       ResultsCountMalformed { line: _ } => "count-malformed"
       ResultsRecordMalformed { index: _, line: _ } => "record"
+      ResultsExitNotAStanding { index: _, exit: _ } => "exit-not-a-standing"
       ResultsTruncated { declared: _, present: _ } => "truncated"
       ResultsDigestMissing => "digest-missing"
       ResultsDigestMismatch { stated: _, recomputed: _ } => "digest-mismatch"
@@ -117,6 +118,7 @@ test fn every_framing_fault_refuses_by_name() -> Bool {
     && cause(d: drive(text: concat(tampered, padding))) == "digest-mismatch"
     && cause(d: drive(text: concat(concat(frame, padding), "x"))) == "trailing"
     && cause(d: drive(text: concat(frame.replace("v2-native-cli 1 ", "v2-native-cli one "), padding))) == "record"
+    && cause(d: drive(text: concat(claim_set_results_frame(results: [result(label: self_host_label(), exit: 0, tree: tree_hex), result(label: v2_native_cli_label(), exit: 99, tree: tree_hex)]), padding))) == "exit-not-a-standing"
 }
 
 test fn results_for_another_tree_or_out_of_order_claims_are_not_admitted() -> Bool {
