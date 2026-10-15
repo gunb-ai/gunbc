@@ -35,7 +35,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // wra_two_aliases: two refined aliases and a fn in one module -- the row's fixture, which refused.
 // wra_char_like: `Int where wra_scalar` beside a module declaring the fn `wra_scalar`, the shape of
 // std.types Char = Int where unicode_scalar, which refused as ambiguous between the fn and the clause.
-// wra_duplicate: the fn declared AND imported -- a genuinely shared binding, which must still refuse.
+// wra_duplicate: the same name imported from two homes -- a genuinely shared binding (the ncr double shape), which must still refuse. A declared-and-imported pair is NOT this: a declaration shadows its import.
 
 data wra_home_source: String = "module v2.wra_home\n\nfn wra_scalar(code_point: Int) -> Bool { code_point >= 0 }\n\nfn wra_other(code_point: Int) -> Bool { code_point >= 1 }\n"
 
@@ -43,7 +43,9 @@ data wra_two_aliases_source: String = "module v2.wra_two_aliases\n\nimport v2.wr
 
 data wra_char_like_source: String = "module v2.wra_char_like\n\nimport v2.wra_home { wra_scalar }\n\ntype WraChar = Int where wra_scalar\n\nfn wra_use(c: WraChar) -> WraChar { c }\n"
 
-data wra_duplicate_source: String = "module v2.wra_duplicate\n\nimport v2.wra_home { wra_scalar }\n\nfn wra_scalar(code_point: Int) -> Bool { code_point >= 1 }\n\nfn wra_dup_use(x: Int) -> Bool { wra_scalar(code_point: x) }\n"
+data wra_home_b_source: String = "module v2.wra_home_b\n\nfn wra_scalar(code_point: Int) -> Bool { code_point >= 2 }\n"
+
+data wra_duplicate_source: String = "module v2.wra_duplicate\n\nimport v2.wra_home { wra_scalar }\nimport v2.wra_home_b { wra_scalar }\n\nfn wra_dup_use(x: Int) -> Bool { wra_scalar(code_point: x) }\n"
 
 fn wra_read(source: String, name: String, id: Symbol) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -57,11 +59,14 @@ fn wra_read(source: String, name: String, id: Symbol) -> DagSourceReadWitness {
 data wra_ingest: SourceRootIngest = Cons {
   head: wra_read(source: wra_home_source, name: "src/v2/wra_home.dag", id: ^wra_home),
   tail: Cons {
+    head: wra_read(source: wra_home_b_source, name: "src/v2/wra_home_b.dag", id: ^wra_home_b),
+    tail: Cons {
     head: wra_read(source: wra_two_aliases_source, name: "src/v2/wra_two_aliases.dag", id: ^wra_two_aliases),
     tail: Cons {
       head: wra_read(source: wra_char_like_source, name: "src/v2/wra_char_like.dag", id: ^wra_char_like),
       tail: Cons { head: wra_read(source: wra_duplicate_source, name: "src/v2/wra_duplicate.dag", id: ^wra_duplicate), tail: Empty }
     }
+  }
   }
 }
 
@@ -98,7 +103,7 @@ fn wra_refused_ambiguous(o: Optional<NativeCensusModuleOutcome>) -> Bool {
     Present { value: NativeCensusModuleResolved } => false
     Present { value: NativeCensusModuleFileRefused } => false
     Present { value: NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } } =>
-      diagnostics_fatal_reason(d: d) == ^resolve_reason_ambiguous_symbol || diagnostics_fatal_reason(d: d) == ^resolve_ambiguous_competing_declaration
+      diagnostics_fatal_reason(d: d) == ^resolve_reason_ambiguous_symbol
   }
 }
 
