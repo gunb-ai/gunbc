@@ -209,7 +209,6 @@ mod required_regen_host;
 #[path = "behavioral_receipt_host.rs"]
 pub mod behavioral_receipt_host;
 pub mod cgroup_memory;
-pub mod floor_memory_supervisor;
 pub mod user_work_scope;
 
 #[path = "target_invocation_host.rs"]
@@ -35198,16 +35197,6 @@ impl PreparedSubject {
             self.subject_digest, self.modules_resolved, self.modules_excluded
         )
     }
-}
-
-/// Read the active sources once and fold them into the subject. Refuses an empty corpus rather
-/// than returning an empty one: zero modules and a quiet corpus are different states, and only the
-/// refusal distinguishes them for every consumer downstream.
-pub fn assemble_prepared_subject(
-    source_roots: &[String],
-    exclude_substrings: &[String],
-) -> Result<PreparedSubject, String> {
-    assemble_prepared_subject_closure(source_roots, exclude_substrings, None)
 }
 
 /// THE GATE PREPARES ITS OWN IMPORT CLOSURE, NOT THE CORPUS. Strict preparation was 27 of the
