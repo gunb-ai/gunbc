@@ -112,12 +112,35 @@ type HostBudgetResolution
     }
   | HostBudgetDeclaredUnverified { requested_bytes: ByteSize, reason: NonEmptyStr }
   | HostBudgetUnreadable { reason: NonEmptyStr }
+  | HostBudgetExternallyBounded { run_id: NonEmptyStr }
 
 fn host_budget_resolution_bytes(r: HostBudgetResolution) -> ByteSize? {
   match r {
     HostBudgetResolved { effective_bytes: b, requested_bytes: _, observation: _ } => Present { value: b }
     HostBudgetDeclaredUnverified { requested_bytes: requested, reason: _ } => Present { value: requested }
     HostBudgetUnreadable { reason: _ } => none
+    HostBudgetExternallyBounded { run_id: _ } => none
+  }
+}
+
+// An unreadable local budget under an executor that already carries the bound (BuildBuddy
+// BUILDBUDDY_RUN_ID; same standing as UserWorkScopeStanding ExternallyBoundedExecutor) is not
+// HostBudgetUnreadable: the bound is the executor identity, never a fabricated byte count.
+fn host_budget_with_external_executor(
+  resolution: HostBudgetResolution,
+  executor_run_id: NonEmptyStr?
+) -> HostBudgetResolution {
+  match resolution {
+    HostBudgetUnreadable { reason: r } =>
+      match executor_run_id {
+        Present { value: id } => HostBudgetExternallyBounded { run_id: id }
+        Absent => HostBudgetUnreadable { reason: r }
+      }
+    HostBudgetResolved { effective_bytes: e, requested_bytes: q, observation: o } =>
+      HostBudgetResolved { effective_bytes: e, requested_bytes: q, observation: o }
+    HostBudgetDeclaredUnverified { requested_bytes: b, reason: r } =>
+      HostBudgetDeclaredUnverified { requested_bytes: b, reason: r }
+    HostBudgetExternallyBounded { run_id: id } => HostBudgetExternallyBounded { run_id: id }
   }
 }
 

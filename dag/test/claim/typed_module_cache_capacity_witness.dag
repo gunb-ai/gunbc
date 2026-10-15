@@ -1,12 +1,13 @@
 module test.claim.typed_module_cache_capacity_witness
 
 import std.logic { Bool }
-import std.types { String, Int }
+import std.types { String, Int, NonEmptyStr }
 import std.measure { byte_size }
 import gunbc.host.host_budget_source {
   HostBudgetResolution,
   HostBudgetResolved,
   HostBudgetUnreadable,
+  HostBudgetExternallyBounded,
   BudgetSourceCgroupMemoryMax,
   host_budget_resolved_observation,
 }
@@ -109,5 +110,14 @@ test fn a_zero_override_on_an_unreadable_budget_still_refuses() -> Bool {
   match typed_module_cache_entry_cap_with_override(override_entries: 0, r: unreadable_budget()) {
     CapEntries { entries: _ } => false
     CapEntryRefused { reason: _ } => true
+  }
+}
+
+test fn an_externally_bounded_executor_uses_the_floor_not_the_ceiling() -> Bool {
+  match typed_module_cache_entry_cap(
+    r: HostBudgetExternallyBounded { run_id: "bb77f2ae-888b-4f04-9bef-6dab045b1548" as NonEmptyStr }
+  ) {
+    CapEntries { entries: n } => n == typed_module_cache_entries_floor
+    CapEntryRefused { reason: _ } => false
   }
 }

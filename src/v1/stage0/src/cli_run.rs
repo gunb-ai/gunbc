@@ -11459,7 +11459,7 @@ pub struct MultiEntryIndex {
     /// feedback loop, not a bound. `OnceCell` gives lazy single-sample semantics
     /// so index construction stays free of the governor read for callers that
     /// never touch the typed cache.
-    typed_module_cache_cap: std::cell::OnceCell<usize>,
+    typed_module_cache_cap: std::cell::OnceCell<Result<usize, String>>,
     /// Source-content hashes by file path, recorded in the parse loop (where the
     /// `SourceFile.content` is in hand) — the source-hash key term for
     /// `typed_module_content_key`. A reconcile of a module whose file never passed
@@ -11988,8 +11988,8 @@ const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
 /// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_ceiling`.
 const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4000;
 
-fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
-    let cap = typed_module_cache_cap(index);
+fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) -> Result<(), String> {
+    let cap = typed_module_cache_cap(index)?;
     let mut cache = index.typed_module_cache.borrow_mut();
     let mut evicted = 0u64;
     while cache.len() > cap {
@@ -12011,6 +12011,7 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
             "[floor-drain] typed_cache_eviction: evicted={evicted} cap={cap} total_evictions={total}"
         );
     }
+    Ok(())
 }
 
 /// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
@@ -12113,7 +12114,7 @@ fn index_insert_typed(
         .typed_module_cache
         .borrow_mut()
         .insert(typed_key, result.clone());
-    enforce_typed_cache_entry_cap(index);
+    enforce_typed_cache_entry_cap(index)?;
     Ok(result)
 }
 

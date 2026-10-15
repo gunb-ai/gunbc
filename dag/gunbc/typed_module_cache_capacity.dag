@@ -11,6 +11,7 @@ import gunbc.host.host_budget_source {
   HostBudgetResolved,
   HostBudgetDeclaredUnverified,
   HostBudgetUnreadable,
+  HostBudgetExternallyBounded,
 }
 
 // WHY THIS MODULE EXISTS. extdeps.realization.reconcile_in_process declares the
@@ -67,6 +68,8 @@ fn typed_module_cache_entry_cap(r: HostBudgetResolution) -> TypedModuleCacheCap 
     HostBudgetDeclaredUnverified { requested_bytes: requested, reason: _ } =>
       CapEntries { entries: clamp_to_declared_band(raw: raw_entry_cap(budget: requested)) }
     HostBudgetUnreadable { reason: why } => CapEntryRefused { reason: why }
+    HostBudgetExternallyBounded { run_id: _ } =>
+      CapEntries { entries: typed_module_cache_entries_floor }
   }
 }
 
