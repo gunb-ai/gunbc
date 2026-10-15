@@ -5,6 +5,11 @@ import std.optional { Present, Absent }
 import std.measure { kibibyte, kibibyte_count, second_count }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
+import extdeps.systemd {
+  systemd_service_unit_name,
+  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
+  SystemdUnitNameOverlong,
+}
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
@@ -59,7 +64,10 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_sudoers_line, attempt_system_unit_launcher_busy_exit,
   attempt_system_unit_launcher_flock_wait, attempt_system_unit_harness_start_from_launcher_exit,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
+  dispatch_attempt_unit_stem,
+}
 import gunbc.host.host_layout { attempt_unit_spool_drain_lock_path }
 import extdeps.tools.util_linux_flock { flock_absolute_path }
 import extdeps.sudo.elevation { sudo_non_interactive_flag }
@@ -77,70 +85,100 @@ import gunbc.auth.privileged_effect_census {
   privileged_effect_census, site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
 }
 
+fn claim_start_facts(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  user: NonEmptyStr,
+  inner_argv: List<String>,
+  exit_hook: NonEmptyStr,
+) -> AttemptSystemUnitStartFacts? {
+  match systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id: node_id, attempt_key: attempt_key)) {
+    SystemdUnitNameStemEmpty => none
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => none
+    SystemdUnitNameOverlong { length: _ } => none
+    SystemdUnitNameAdmitted { name } => Present {
+      value: AttemptSystemUnitStartFacts {
+        unit: name,
+        node_id: node_id,
+        attempt_key: attempt_key,
+        user: user,
+        working_directory: instance.repo_root as String,
+        attempt_worktree: "/tmp/wt",
+        stdout_path: "/tmp/out",
+        stderr_path: "/tmp/err",
+        granted: kibibyte(count: 1),
+        exit_hook: exit_hook,
+        inner_argv: inner_argv,
+      },
+    }
+  }
+}
+
 test fn a_start_with_the_instance_binary_and_user_is_admitted() -> Bool {
   let inst = srv1_live_dashboard_instance()
+  match claim_start_facts(
+    instance: inst,
+    node_id: "n",
+    attempt_key: "k",
+    user: inst.directory_owner.user as NonEmptyStr,
+    inner_argv: [inst.serve_binary as String, "run"],
+    exit_hook: "true" as NonEmptyStr,
+  ) {
+    Absent => false
+    Present { value: facts } =>
   match attempt_system_unit_start_admitted(
     instance: inst,
-    facts: AttemptSystemUnitStartFacts {
-      node_id: "n",
-      attempt_key: "k",
-      user: inst.directory_owner.user as NonEmptyStr,
-      working_directory: inst.repo_root as String,
-      attempt_worktree: "/tmp/wt",
-      stdout_path: "/tmp/out",
-      stderr_path: "/tmp/err",
-      granted: kibibyte(count: 1),
-      exit_hook: "true" as NonEmptyStr,
-      inner_argv: [inst.serve_binary as String, "run"],
-    },
+    facts: facts,
   ) {
     AttemptSystemUnitAdmitted { unit: u, facts: _ } =>
       (u as String) == "gunbc-attempt-n-k.service"
     AttemptSystemUnitRefused { reason: _ } => false
   }
+  }
 }
 
 test fn a_start_with_another_program_is_refused() -> Bool {
   let inst = srv1_live_dashboard_instance()
+  match claim_start_facts(
+    instance: inst,
+    node_id: "n",
+    attempt_key: "k",
+    user: inst.directory_owner.user as NonEmptyStr,
+    inner_argv: ["/bin/touch", "/tmp/x"],
+    exit_hook: "true" as NonEmptyStr,
+  ) {
+    Absent => false
+    Present { value: facts } =>
   match attempt_system_unit_start_admitted(
     instance: inst,
-    facts: AttemptSystemUnitStartFacts {
-      node_id: "n",
-      attempt_key: "k",
-      user: inst.directory_owner.user as NonEmptyStr,
-      working_directory: inst.repo_root as String,
-      attempt_worktree: "/tmp/wt",
-      stdout_path: "/tmp/out",
-      stderr_path: "/tmp/err",
-      granted: kibibyte(count: 1),
-      exit_hook: "true" as NonEmptyStr,
-      inner_argv: ["/bin/touch", "/tmp/x"],
-    },
+    facts: facts,
   ) {
     AttemptSystemUnitRefused { reason: why } => string_contains(s: why, pattern: "gunbc binary")
     AttemptSystemUnitAdmitted { unit: _, facts: _ } => false
+  }
   }
 }
 
 test fn a_start_with_another_user_is_refused() -> Bool {
   let inst = srv1_live_dashboard_instance()
+  match claim_start_facts(
+    instance: inst,
+    node_id: "n",
+    attempt_key: "k",
+    user: "root" as NonEmptyStr,
+    inner_argv: [inst.serve_binary as String],
+    exit_hook: "true" as NonEmptyStr,
+  ) {
+    Absent => false
+    Present { value: facts } =>
   match attempt_system_unit_start_admitted(
     instance: inst,
-    facts: AttemptSystemUnitStartFacts {
-      node_id: "n",
-      attempt_key: "k",
-      user: "root" as NonEmptyStr,
-      working_directory: inst.repo_root as String,
-      attempt_worktree: "/tmp/wt",
-      stdout_path: "/tmp/out",
-      stderr_path: "/tmp/err",
-      granted: kibibyte(count: 1),
-      exit_hook: "true" as NonEmptyStr,
-      inner_argv: [inst.serve_binary as String],
-    },
+    facts: facts,
   ) {
     AttemptSystemUnitRefused { reason: why } => string_contains(s: why, pattern: "service user")
     AttemptSystemUnitAdmitted { unit: _, facts: _ } => false
+  }
   }
 }
 
@@ -373,25 +411,18 @@ test fn a_path_safe_node_id_with_at_is_underivable_as_a_systemd_unit() -> Bool {
   request_is_underivable(node_id: "x@y", attempt_key: "k1")
 }
 
-test fn a_start_whose_node_id_systemd_disallows_is_refused_at_construction() -> Bool {
+test fn a_start_whose_node_id_systemd_disallows_cannot_inhabit_start_facts() -> Bool {
   let inst = srv1_live_dashboard_instance()
-  match attempt_system_unit_start_admitted(
+  match claim_start_facts(
     instance: inst,
-    facts: AttemptSystemUnitStartFacts {
-      node_id: "a b",
-      attempt_key: "k",
-      user: inst.directory_owner.user as NonEmptyStr,
-      working_directory: inst.repo_root as String,
-      attempt_worktree: "/tmp/wt",
-      stdout_path: "/tmp/out",
-      stderr_path: "/tmp/err",
-      granted: kibibyte(count: 1),
-      exit_hook: "true" as NonEmptyStr,
-      inner_argv: [inst.serve_binary as String, "run"],
-    },
+    node_id: "a b",
+    attempt_key: "k",
+    user: inst.directory_owner.user as NonEmptyStr,
+    inner_argv: [inst.serve_binary as String, "run"],
+    exit_hook: "true" as NonEmptyStr,
   ) {
-    AttemptSystemUnitRefused { reason: why } => string_contains(s: why, pattern: "disallow")
-    AttemptSystemUnitAdmitted { unit: _, facts: _ } => false
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -513,18 +544,16 @@ test fn an_empty_argv_line_is_malformed() -> Bool {
 }
 
 fn launcher_execstoppost_argv_keeps_single_dollar(instance: HostDashboardInstance, exec_line: NonEmptyStr) -> Bool {
-  let facts = AttemptSystemUnitStartFacts {
+  match claim_start_facts(
+    instance: instance,
     node_id: "n",
     attempt_key: "k",
     user: instance.directory_owner.user as NonEmptyStr,
-    working_directory: instance.repo_root as String,
-    attempt_worktree: "/tmp/wt",
-    stdout_path: "/tmp/out",
-    stderr_path: "/tmp/err",
-    granted: kibibyte(count: 1),
-    exit_hook: exec_line,
     inner_argv: [instance.serve_binary as String],
-  }
+    exit_hook: exec_line,
+  ) {
+    Absent => false
+    Present { value: facts } =>
   match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
     AttemptSystemUnitRefused { reason: _ } => false
     AttemptSystemUnitAdmitted { unit: unit, facts: admitted } =>
@@ -538,6 +567,7 @@ fn launcher_execstoppost_argv_keeps_single_dollar(instance: HostDashboardInstanc
         SystemdRunCommandReady { command } =>
           launcher_execstoppost_words_are_short_and_single_dollar(words: argv_words(command: command))
       }
+  }
   }
 }
 

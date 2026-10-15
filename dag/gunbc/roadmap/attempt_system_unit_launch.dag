@@ -64,7 +64,7 @@ import extdeps.tools.util_linux_flock { flock_exclusive_wait_words }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
 import extdeps.systemd {
   User,
-  systemd_service_unit_name, systemd_unit_name_wire,
+  SystemdUnitName, systemd_service_unit_name, systemd_unit_name_wire,
   SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
   SystemdUnitNameOverlong,
 }
@@ -182,6 +182,7 @@ fn attempt_system_unit_request_body_path(dir: String) -> String {
 }
 
 type AttemptSystemUnitStartFacts {
+  unit: SystemdUnitName
   node_id: String
   attempt_key: String
   user: NonEmptyStr
@@ -227,7 +228,7 @@ fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, 
         AttemptSystemUnitStartUnderivable {
           reason: "attempt unit name exceeds systemd's 255-character limit",
         }
-      SystemdUnitNameAdmitted { name: _ } => {
+      SystemdUnitNameAdmitted { name } => {
     let node = request.node_id as RoadmapNodeId
     let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
     let log = dispatch_attempt_worker_log_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
@@ -236,6 +237,7 @@ fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, 
       AttemptExitHookRendered { exec_line } =>
         AttemptSystemUnitStartDerived {
           facts: AttemptSystemUnitStartFacts {
+            unit: name,
             node_id: request.node_id,
             attempt_key: request.attempt_key,
             user: instance.directory_owner.user as NonEmptyStr,
@@ -268,30 +270,17 @@ type AttemptSystemUnitAdmission
   | AttemptSystemUnitRefused { reason: String }
 
 fn attempt_system_unit_start_admitted(instance: HostDashboardInstance, facts: AttemptSystemUnitStartFacts) -> AttemptSystemUnitAdmission {
-  match systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id: facts.node_id, attempt_key: facts.attempt_key)) {
-    SystemdUnitNameStemEmpty =>
-      AttemptSystemUnitRefused { reason: "attempt unit name stem is empty" }
-    SystemdUnitNameDisallowedCharacter { stem: _, character: ch } =>
-      AttemptSystemUnitRefused {
-        reason: join(["attempt unit name has a character systemd disallows: ", ch], ""),
-      }
-    SystemdUnitNameOverlong { length: _ } =>
-      AttemptSystemUnitRefused { reason: "attempt unit name exceeds systemd's 255-character limit" }
-    SystemdUnitNameAdmitted { name } => {
-      let unit = systemd_unit_name_wire(name: name)
-      if (facts.user as String) != (instance.directory_owner.user as String) {
-        AttemptSystemUnitRefused { reason: "User= is not the instance service user" }
-      } else {
-        match facts.inner_argv.first() {
-          Absent => AttemptSystemUnitRefused { reason: "ExecStart argv is empty" }
-          Present { value: program } =>
-            if program != (instance.serve_binary as String) {
-              AttemptSystemUnitRefused { reason: "ExecStart program is not the instance gunbc binary" }
-            } else {
-              AttemptSystemUnitAdmitted { unit: unit, facts: facts }
-            }
+  if (facts.user as String) != (instance.directory_owner.user as String) {
+    AttemptSystemUnitRefused { reason: "User= is not the instance service user" }
+  } else {
+    match facts.inner_argv.first() {
+      Absent => AttemptSystemUnitRefused { reason: "ExecStart argv is empty" }
+      Present { value: program } =>
+        if program != (instance.serve_binary as String) {
+          AttemptSystemUnitRefused { reason: "ExecStart program is not the instance gunbc binary" }
+        } else {
+          AttemptSystemUnitAdmitted { unit: systemd_unit_name_wire(name: facts.unit), facts: facts }
         }
-      }
     }
   }
 }
