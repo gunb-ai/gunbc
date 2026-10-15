@@ -2567,7 +2567,7 @@ fn native_module_resolve_verdict(
             context: step.context,
             import_attribution: attribution
           }
-        ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: lexical } =>
+        ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: bindings } =>
           match step.context.resolution {
             Accepted { value: shared, diagnostics: d } =>
               let closure = closure_declarations_demand(shared: shared)
@@ -2580,7 +2580,7 @@ fn native_module_resolve_verdict(
                     module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index,
                     member_kinds: no_member_declaration_kinds(),
                     type_declaration_modifiers: shared.type_declaration_modifiers,
-                    lexical: lexical
+                    bindings: bindings
                   )
                 },
                 context: native_test_context_with_resolution(
