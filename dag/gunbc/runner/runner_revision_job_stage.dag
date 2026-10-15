@@ -133,6 +133,8 @@ fn stage_revision_job(
   let admitted_tree_hex = git_object_id_wire_hex(oid: admitted_tree)
   match stage_output(step: "mkdir", command: mkdir_parents_command(path: staging_dir)) {
   StageStepRefused { refusal: r } => RevisionJobStageRefused { refusal: r }
+  StageStepOk { output: _ } => match stage_output(step: "mkdir-cache", command: mkdir_parents_command(path: cache_repo)) {
+  StageStepRefused { refusal: r } => RevisionJobStageRefused { refusal: r }
   StageStepOk { output: _ } => match stage_output(step: "git-init-cache", command: git_init_quiet_command(repository_dir: cache_repo)) {
   StageStepRefused { refusal: r } => RevisionJobStageRefused { refusal: r }
   StageStepOk { output: _ } => match stage_output(step: "git-fetch-exact-commit", command: git_fetch_shallow_revision_command(repository_dir: cache_repo, remote: repository_url, revision: commit_hex as String)) {
@@ -147,7 +149,7 @@ fn stage_revision_job(
   GitCommitTreeVerified { subject: revision } =>
     stage_verified_revision(cache_repo: cache_repo, vendor_cache: vendor_cache, staging_dir: staging_dir, revision: revision,
       image_toolchain: image_toolchain, claims: claims, results_device: results_device, results_bytes: results_bytes)
-  } } } } } }
+  } } } } } } }
 }
 
 fn stage_verified_revision(
