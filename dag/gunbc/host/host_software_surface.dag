@@ -1,0 +1,539 @@
+module gunbc.host.host_software_surface
+
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
+import std.optional { Absent, Present }
+import std.os.types {
+  OperatingSystemSurface,
+  OsPackageManager,
+  Linux,
+  Posix,
+  PosixProcess,
+  NobleNumbat2404Lts,
+  UbuntuDistribution,
+}
+import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
+import std.os { operating_system_surface_ubuntu }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.host.host_resource {
+  HostResource,
+  HostResourceIdentity,
+  ResourceOccurrenceId,
+  resource_occurrence_allocator_initial,
+  alloc_resource_occurrence,
+}
+import extdeps.external_authority {
+  CitedFigureStanding,
+  TranscribedUncited,
+  CitedToAuthority,
+  ObservedByReceipt,
+}
+import extdeps.linux.apparmor_userns {
+  apparmor_restrict_unprivileged_userns_sysctl_name,
+  apparmor_unprivileged_userns_restricted,
+  apparmor_userns_restriction_standing,
+}
+import extdeps.systemd.user_manager_sandbox {
+  user_manager_enforces_protect_home_under_userns_sysctl,
+  user_manager_sandbox_standing,
+}
+import extdeps.procps.kill { procps_ng_4_0_4_label, procps_kill_standing, procps_ng_kill_term_pgid_argv }
+import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
+import gunbc.fleet.fleet_posix_accounts {
+  GroundedPosixPrincipal,
+  fleet_posix_operator_principal,
+  fleet_posix_operator_sudo_grants,
+}
+import extdeps.version.semver { semver_version_parse }
+import extdeps.tailscale.serve {
+  TailscaleServeCapability,
+  ScopedRemovalUnobserved,
+  tailscale_scoped_removal_capability,
+}
+
+// PER-HOST SOFTWARE, KEYED BY THE SAME HostIdentity ComputeHost already carries (DESIGN 3: do not
+// mint a second host authority). ComputeHost remains the host row; this module is its software
+// side, which fleet_intent_os_surface left empty fleet-wide. Each fact is a HostResource so
+// standing is CitedFigureStanding — not a parallel vocabulary. Upstream behaviour lives in
+// extdeps; the host row says which version or setting THIS host has.
+
+type OsReleaseRole = | OsRelease
+type KernelReleaseRole = | KernelRelease
+type SysctlRole = | Sysctl
+type ToolVersionRole = | ToolVersion
+type SudoPolicyRole = | SudoPolicy
+type CgroupDelegationRole = | CgroupDelegation
+type ToolchainPathsRole = | ToolchainPaths
+
+type HostOsReleaseFact {
+  version_id: NonEmptyStr?
+  pretty_name: NonEmptyStr?
+  distro: UbuntuDistribution?
+  standing: CitedFigureStanding
+}
+
+type HostKernelReleaseFact {
+  kernel_release_label: NonEmptyStr?
+  standing: CitedFigureStanding
+}
+
+type HostSysctlFact {
+  name: NonEmptyStr
+  value: Int?
+  standing: CitedFigureStanding
+}
+
+type HostToolKind
+  = ProcpsNgTool
+  | GnuCoreutilsTool
+  | GitTool
+  | JqTool
+  | SystemdTool
+  | TailscaleTool
+
+type HostToolVersionFact {
+  kind: HostToolKind
+  version_label: NonEmptyStr?
+  standing: CitedFigureStanding
+}
+
+type HostSudoPolicyFact {
+  principal: GroundedPosixPrincipal
+  observed_listing: NonEmptyStr?
+  standing: CitedFigureStanding
+}
+
+type HostCgroupDelegationFact {
+  user_manager_controllers: NonEmptyStr?
+  standing: CitedFigureStanding
+}
+
+type HostToolchainPathFact {
+  git: FilePath?
+  jq: FilePath?
+  timeout: FilePath?
+  systemd_run: FilePath?
+  standing: CitedFigureStanding
+}
+
+type HostSoftwareSurface {
+  host: HostIdentity
+  os_release: HostResource<OsReleaseRole, HostOsReleaseFact>
+  kernel_release: HostResource<KernelReleaseRole, HostKernelReleaseFact>
+  apparmor_userns: HostResource<SysctlRole, HostSysctlFact>
+  procps: HostResource<ToolVersionRole, HostToolVersionFact>
+  coreutils: HostResource<ToolVersionRole, HostToolVersionFact>
+  git: HostResource<ToolVersionRole, HostToolVersionFact>
+  jq: HostResource<ToolVersionRole, HostToolVersionFact>
+  systemd: HostResource<ToolVersionRole, HostToolVersionFact>
+  tailscale: HostResource<ToolVersionRole, HostToolVersionFact>
+  sudo_policy: HostResource<SudoPolicyRole, HostSudoPolicyFact>
+  user_cgroup_delegation: HostResource<CgroupDelegationRole, HostCgroupDelegationFact>
+  toolchain_paths: HostResource<ToolchainPathsRole, HostToolchainPathFact>
+}
+
+fn unobserved_standing(probe: NonEmptyStr) -> CitedFigureStanding {
+  TranscribedUncited { read_obligation: probe }
+}
+
+data srv1_os_release_probe: NonEmptyStr = "cat /etc/os-release"
+data srv1_kernel_release_probe: NonEmptyStr = "uname -r"
+data srv1_apparmor_sysctl_probe: NonEmptyStr = "sysctl -n kernel.apparmor_restrict_unprivileged_userns"
+data srv1_sudo_list_probe: NonEmptyStr = "sudo -n -l"
+data srv1_procps_probe: NonEmptyStr = "kill -V"
+data srv1_timeout_probe: NonEmptyStr = "timeout --version"
+data srv1_git_probe: NonEmptyStr = "git --version"
+data srv1_jq_probe: NonEmptyStr = "jq --version"
+data srv1_systemd_probe: NonEmptyStr = "systemctl --version"
+data srv1_cgroup_delegation_probe: NonEmptyStr = "cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers"
+data srv1_tailscale_probe: NonEmptyStr = "tailscale version"
+data srv1_toolchain_which_probe: NonEmptyStr = "command -v git; command -v jq; command -v timeout; command -v systemd-run"
+
+fn srv1_software_inhabitance_probe_commands() -> List<NonEmptyStr> {
+  [
+    srv1_os_release_probe,
+    srv1_kernel_release_probe,
+    srv1_apparmor_sysctl_probe,
+    srv1_sudo_list_probe,
+    srv1_procps_probe,
+    srv1_timeout_probe,
+    srv1_git_probe,
+    srv1_jq_probe,
+    srv1_systemd_probe,
+    srv1_cgroup_delegation_probe,
+    srv1_tailscale_probe,
+  ]
+}
+
+fn occurrence_ids_for_host() -> List<ResourceOccurrenceId> {
+  let a0 = resource_occurrence_allocator_initial()
+  let m0 = alloc_resource_occurrence(alloc: a0)
+  let m1 = alloc_resource_occurrence(alloc: m0.alloc)
+  let m2 = alloc_resource_occurrence(alloc: m1.alloc)
+  let m3 = alloc_resource_occurrence(alloc: m2.alloc)
+  let m4 = alloc_resource_occurrence(alloc: m3.alloc)
+  let m5 = alloc_resource_occurrence(alloc: m4.alloc)
+  let m6 = alloc_resource_occurrence(alloc: m5.alloc)
+  let m7 = alloc_resource_occurrence(alloc: m6.alloc)
+  let m8 = alloc_resource_occurrence(alloc: m7.alloc)
+  let m9 = alloc_resource_occurrence(alloc: m8.alloc)
+  let m10 = alloc_resource_occurrence(alloc: m9.alloc)
+  let m11 = alloc_resource_occurrence(alloc: m10.alloc)
+  [m0.id, m1.id, m2.id, m3.id, m4.id, m5.id, m6.id, m7.id, m8.id, m9.id, m10.id, m11.id]
+}
+
+fn occurrence_at(ids: List<ResourceOccurrenceId>, index: Int) -> ResourceOccurrenceId {
+  match ids[index] {
+    Present { value: id } => id
+    Absent => alloc_resource_occurrence(alloc: resource_occurrence_allocator_initial()).id
+  }
+}
+
+fn software_surface(
+  host: HostIdentity,
+  os: HostOsReleaseFact,
+  kernel: HostKernelReleaseFact,
+  apparmor: HostSysctlFact,
+  procps: HostToolVersionFact,
+  coreutils: HostToolVersionFact,
+  git: HostToolVersionFact,
+  jq: HostToolVersionFact,
+  systemd: HostToolVersionFact,
+  tailscale: HostToolVersionFact,
+  sudo_policy: HostSudoPolicyFact,
+  cgroup: HostCgroupDelegationFact,
+  toolchain: HostToolchainPathFact,
+) -> HostSoftwareSurface {
+  let ids = occurrence_ids_for_host()
+  HostSoftwareSurface {
+    host: host,
+    os_release: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 0) },
+      role: OsRelease,
+      value: os,
+    },
+    kernel_release: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 1) },
+      role: KernelRelease,
+      value: kernel,
+    },
+    apparmor_userns: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 2) },
+      role: Sysctl,
+      value: apparmor,
+    },
+    procps: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 3) },
+      role: ToolVersion,
+      value: procps,
+    },
+    coreutils: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 4) },
+      role: ToolVersion,
+      value: coreutils,
+    },
+    git: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 5) },
+      role: ToolVersion,
+      value: git,
+    },
+    jq: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 6) },
+      role: ToolVersion,
+      value: jq,
+    },
+    systemd: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 7) },
+      role: ToolVersion,
+      value: systemd,
+    },
+    tailscale: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 8) },
+      role: ToolVersion,
+      value: tailscale,
+    },
+    sudo_policy: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 9) },
+      role: SudoPolicy,
+      value: sudo_policy,
+    },
+    user_cgroup_delegation: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 10) },
+      role: CgroupDelegation,
+      value: cgroup,
+    },
+    toolchain_paths: HostResource {
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 11) },
+      role: ToolchainPaths,
+      value: toolchain,
+    },
+  }
+}
+
+fn blank_os() -> HostOsReleaseFact {
+  HostOsReleaseFact {
+    version_id: none,
+    pretty_name: none,
+    distro: none,
+    standing: unobserved_standing(probe: srv1_os_release_probe),
+  }
+}
+
+fn blank_kernel() -> HostKernelReleaseFact {
+  HostKernelReleaseFact {
+    kernel_release_label: none,
+    standing: unobserved_standing(probe: srv1_kernel_release_probe),
+  }
+}
+
+fn blank_apparmor() -> HostSysctlFact {
+  HostSysctlFact {
+    name: apparmor_restrict_unprivileged_userns_sysctl_name,
+    value: none,
+    standing: unobserved_standing(probe: srv1_apparmor_sysctl_probe),
+  }
+}
+
+fn blank_tool(kind: HostToolKind, probe: NonEmptyStr) -> HostToolVersionFact {
+  HostToolVersionFact {
+    kind: kind,
+    version_label: none,
+    standing: unobserved_standing(probe: probe),
+  }
+}
+
+fn blank_sudo() -> HostSudoPolicyFact {
+  HostSudoPolicyFact {
+    principal: fleet_posix_operator_principal(),
+    observed_listing: none,
+    standing: unobserved_standing(probe: srv1_sudo_list_probe),
+  }
+}
+
+fn blank_cgroup() -> HostCgroupDelegationFact {
+  HostCgroupDelegationFact {
+    user_manager_controllers: none,
+    standing: unobserved_standing(probe: srv1_cgroup_delegation_probe),
+  }
+}
+
+fn blank_toolchain() -> HostToolchainPathFact {
+  HostToolchainPathFact {
+    git: none,
+    jq: none,
+    timeout: none,
+    systemd_run: none,
+    standing: unobserved_standing(probe: srv1_toolchain_which_probe),
+  }
+}
+
+fn unobserved_software_surface(host: HostIdentity) -> HostSoftwareSurface {
+  software_surface(
+    host: host,
+    os: blank_os(),
+    kernel: blank_kernel(),
+    apparmor: blank_apparmor(),
+    procps: blank_tool(kind: ProcpsNgTool, probe: srv1_procps_probe),
+    coreutils: blank_tool(kind: GnuCoreutilsTool, probe: srv1_timeout_probe),
+    git: blank_tool(kind: GitTool, probe: srv1_git_probe),
+    jq: blank_tool(kind: JqTool, probe: srv1_jq_probe),
+    systemd: blank_tool(kind: SystemdTool, probe: srv1_systemd_probe),
+    tailscale: blank_tool(kind: TailscaleTool, probe: srv1_tailscale_probe),
+    sudo_policy: blank_sudo(),
+    cgroup: blank_cgroup(),
+    toolchain: blank_toolchain(),
+  )
+}
+
+// srv1 values named by the operator on 2026-10-15 from the 2026-10-14 work (PRs #13942 / #13984).
+// Standing is TranscribedUncited naming the inhabitance probe — not ObservedByReceipt until that
+// recipe runs on srv1. Kernel release, git, jq, systemd, and cgroup controllers are typed
+// unobserved: those strings were not named, and inventing them would be DESIGN 4d over-assertion.
+fn srv1_software_surface() -> HostSoftwareSurface {
+  software_surface(
+    host: operator_host_srv1,
+    os: HostOsReleaseFact {
+      version_id: Present { value: "24.04" },
+      pretty_name: Present { value: "Ubuntu 24.04" },
+      distro: Present { value: NobleNumbat2404Lts },
+      standing: unobserved_standing(probe: srv1_os_release_probe),
+    },
+    kernel: blank_kernel(),
+    apparmor: HostSysctlFact {
+      name: apparmor_restrict_unprivileged_userns_sysctl_name,
+      value: Present { value: apparmor_unprivileged_userns_restricted },
+      standing: unobserved_standing(probe: srv1_apparmor_sysctl_probe),
+    },
+    procps: HostToolVersionFact {
+      kind: ProcpsNgTool,
+      version_label: Present { value: procps_ng_4_0_4_label },
+      standing: unobserved_standing(probe: srv1_procps_probe),
+    },
+    coreutils: HostToolVersionFact {
+      kind: GnuCoreutilsTool,
+      version_label: Present { value: "GNU coreutils" },
+      standing: unobserved_standing(probe: srv1_timeout_probe),
+    },
+    git: blank_tool(kind: GitTool, probe: srv1_git_probe),
+    jq: blank_tool(kind: JqTool, probe: srv1_jq_probe),
+    systemd: blank_tool(kind: SystemdTool, probe: srv1_systemd_probe),
+    tailscale: HostToolVersionFact {
+      kind: TailscaleTool,
+      version_label: Present { value: "1.98.3" },
+      standing: unobserved_standing(probe: srv1_tailscale_probe),
+    },
+    sudo_policy: HostSudoPolicyFact {
+      principal: fleet_posix_operator_principal(),
+      observed_listing: Present { value: "briansrls: (ALL) NOPASSWD: ALL" },
+      standing: unobserved_standing(probe: srv1_sudo_list_probe),
+    },
+    cgroup: blank_cgroup(),
+    toolchain: HostToolchainPathFact {
+      git: Present { value: "/usr/bin/git" as FilePath },
+      jq: Present { value: "/usr/bin/jq" as FilePath },
+      timeout: Present { value: "/usr/bin/timeout" as FilePath },
+      systemd_run: Present { value: "/usr/bin/systemd-run" as FilePath },
+      standing: unobserved_standing(probe: srv1_toolchain_which_probe),
+    },
+  )
+}
+
+fn host_software_surface_for_identity(identity: HostIdentity) -> HostSoftwareSurface {
+  if host_identity_eq(a: identity, b: operator_host_srv1) {
+    srv1_software_surface()
+  } else if host_identity_eq(a: identity, b: operator_host_srv2) {
+    unobserved_software_surface(host: identity)
+  } else if host_identity_eq(a: identity, b: operator_host_srv3) {
+    unobserved_software_surface(host: identity)
+  } else if host_identity_eq(a: identity, b: operator_host_srv4) {
+    unobserved_software_surface(host: identity)
+  } else {
+    unobserved_software_surface(host: identity)
+  }
+}
+
+fn host_operating_system_surface(surface: HostSoftwareSurface) -> OperatingSystemSurface {
+  match surface.os_release.value.distro {
+    Absent => OperatingSystemSurface {
+      kernel: Linux,
+      distro_or_product: none,
+      version: none,
+      filesystem_semantics: Posix,
+      process_semantics: PosixProcess,
+    }
+    Present { value: distro } => operating_system_surface_ubuntu(row: ubuntu_distribution_catalog_row(distro: distro))
+  }
+}
+
+type HostPackageManagerReading
+  = HostPackageManagerKnown { manager: OsPackageManager }
+  | HostPackageManagerUnobserved { obligation: NonEmptyStr }
+
+fn cited_figure_obligation(standing: CitedFigureStanding) -> NonEmptyStr? {
+  match standing {
+    TranscribedUncited { read_obligation: o } => Present { value: o }
+    CitedToAuthority { authority: _ } => none
+    ObservedByReceipt { observed: _ } => none
+  }
+}
+
+fn host_os_package_manager(surface: HostSoftwareSurface) -> HostPackageManagerReading {
+  match surface.os_release.value.distro {
+    Absent => HostPackageManagerUnobserved {
+      obligation: match cited_figure_obligation(standing: surface.os_release.value.standing) {
+        Present { value: o } => o
+        Absent => srv1_os_release_probe
+      }
+    }
+    Present { value: distro } =>
+      HostPackageManagerKnown { manager: ubuntu_distribution_catalog_row(distro: distro).package_manager }
+  }
+}
+
+type UserManagerSandboxEnforcement
+  = UserManagerEnforcesSandbox
+  | UserManagerDoesNotEnforceSandbox
+  | UserManagerSandboxUnobserved { obligation: NonEmptyStr }
+  | UserManagerSandboxSysctlUnreadable { value: Int }
+
+fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManagerSandboxEnforcement {
+  match surface.apparmor_userns.value.value {
+    Absent => UserManagerSandboxUnobserved {
+      obligation: match cited_figure_obligation(standing: surface.apparmor_userns.value.standing) {
+        Present { value: o } => o
+        Absent => srv1_apparmor_sysctl_probe
+      }
+    }
+    Present { value: n } =>
+      match user_manager_enforces_protect_home_under_userns_sysctl(sysctl_value: n) {
+        Absent => UserManagerSandboxSysctlUnreadable { value: n }
+        Present { value: enforces } =>
+          if enforces {
+            UserManagerEnforcesSandbox
+          } else {
+            UserManagerDoesNotEnforceSandbox
+          }
+      }
+  }
+}
+
+fn host_tailscale_client(surface: HostSoftwareSurface) -> TailscaleServeCapability {
+  match surface.tailscale.value.version_label {
+    Absent => ScopedRemovalUnobserved {
+      reason: match cited_figure_obligation(standing: surface.tailscale.value.standing) {
+        Present { value: o } => o as String
+        Absent => srv1_tailscale_probe as String
+      }
+    }
+    Present { value: label } =>
+      match semver_version_parse(cps: chars(s: label as String)) {
+        Absent => ScopedRemovalUnobserved {
+          reason: "the observed tailscale version label failed to parse"
+        }
+        Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
+      }
+  }
+}
+
+fn host_procps_kill_term_pgid_argv(surface: HostSoftwareSurface, pgid: Int) -> List<String>? {
+  match surface.procps.value.version_label {
+    Absent => none
+    Present { value: _ } => Present { value: procps_ng_kill_term_pgid_argv(pgid: pgid) }
+  }
+}
+
+fn host_coreutils_timeout_expired_exit_code(surface: HostSoftwareSurface) -> Int? {
+  match surface.coreutils.value.version_label {
+    Absent => none
+    Present { value: _ } => Present { value: coreutils_timeout_expired_exit_code }
+  }
+}
+
+// JOIN, NOT RESTATEMENT. The declared operator PosixSudoGrant roster stays hostnamectl-only
+// (operator hold). The live listing `(ALL) NOPASSWD: ALL` is an observation of the dashboard
+// service principal on this host; it is not copied into the grant roster.
+fn host_sudo_observed_all_is_not_the_declared_roster(surface: HostSoftwareSurface) -> Bool {
+  match surface.sudo_policy.value.observed_listing {
+    Absent => false
+    Present { value: listing } =>
+      (listing as String).contains("(ALL) NOPASSWD: ALL")
+        && fleet_posix_operator_sudo_grants().length() == 1
+        && surface.sudo_policy.value.principal.posix.name as String == "briansrls"
+  }
+}
+
+fn apparmor_sysctl_name_from_upstream() -> NonEmptyStr {
+  apparmor_restrict_unprivileged_userns_sysctl_name
+}
+
+fn user_manager_sandbox_is_cited() -> CitedFigureStanding {
+  user_manager_sandbox_standing()
+}
+
+fn apparmor_restriction_is_cited() -> CitedFigureStanding {
+  apparmor_userns_restriction_standing()
+}
+
+fn procps_kill_is_cited() -> CitedFigureStanding {
+  procps_kill_standing()
+}

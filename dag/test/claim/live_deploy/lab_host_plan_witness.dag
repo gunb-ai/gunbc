@@ -1,0 +1,156 @@
+module test.claim.live_deploy.lab_host_plan_witness
+
+import std.types { Bool, String, FilePath }
+import std.optional { Absent, Present }
+import std.os.types { Apt }
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
+import gunbc.host.host_software_surface {
+  srv1_software_surface,
+  software_surface,
+  unobserved_software_surface,
+  blank_kernel,
+  blank_tool,
+  blank_cgroup,
+  HostSysctlFact,
+  GitTool,
+  JqTool,
+  SystemdTool,
+  host_os_package_manager,
+  HostPackageManagerKnown,
+  HostPackageManagerUnobserved,
+}
+import gunbc.live_deploy.lab_host_plan {
+  lab_deploy_plan_from_software,
+  lab_deploy_plan_for_compute_host,
+  srv1_lab_deploy_plan,
+  LabPlanReady,
+  LabPlanRefused,
+  LabOsUnobserved,
+  LabSandboxUnobserved,
+  LabSandboxSysctlUnreadable,
+  LabToolchainUnobserved,
+  plan_claims_user_manager_protect_home,
+  plan_selects_system_manager_launcher,
+  plan_package_manager,
+  plan_git_path,
+  declared_srv1_toolchain_git,
+  package_manager_is_apt,
+}
+import gunbc.live_deploy.spec { deployment_srv1_target }
+import gunbc.live_deploy.desired { srv1_lab_desired_deployment }
+import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn srv1_as_data_yields_apt_and_the_declared_git_path() -> Bool {
+  let plan = srv1_lab_deploy_plan()
+  match plan_package_manager(plan: plan) {
+    Absent => false
+    Present { value: m } =>
+      package_manager_is_apt(m: m)
+        && match plan_git_path(plan: plan) {
+          Present { value: p } => p == declared_srv1_toolchain_git()
+          Absent => false
+        }
+        && deployment_srv1_target().os_package_manager == m
+        && srv1_lab_desired_deployment().target.host.identity == srv1_host.identity
+  }
+}
+
+test fn srv1_plan_selects_system_manager_and_never_claims_user_manager_protect_home() -> Bool {
+  let plan = lab_deploy_plan_for_compute_host(host: srv1_host)
+  plan_selects_system_manager_launcher(plan: plan)
+    && !plan_claims_user_manager_protect_home(plan: plan)
+}
+
+test fn a_host_whose_user_manager_does_not_enforce_never_yields_protect_home_confinement() -> Bool {
+  !plan_claims_user_manager_protect_home(plan: lab_deploy_plan_from_software(surface: srv1_software_surface()))
+}
+
+test fn a_host_that_enforces_may_claim_user_manager_protect_home() -> Bool {
+  let surface = software_surface(
+    host: srv1_software_surface().host,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: HostSysctlFact {
+      name: apparmor_restrict_unprivileged_userns_sysctl_name,
+      value: Present { value: 0 },
+      standing: srv1_software_surface().apparmor_userns.value.standing,
+    },
+    procps: srv1_software_surface().procps.value,
+    coreutils: srv1_software_surface().coreutils.value,
+    git: blank_tool(kind: GitTool, probe: "git --version"),
+    jq: blank_tool(kind: JqTool, probe: "jq --version"),
+    systemd: blank_tool(kind: SystemdTool, probe: "systemctl --version"),
+    tailscale: srv1_software_surface().tailscale.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  plan_claims_user_manager_protect_home(plan: lab_deploy_plan_from_software(surface: surface))
+}
+
+test fn unobserved_os_refuses_and_does_not_keep_srv1_apt() -> Bool {
+  match lab_deploy_plan_from_software(surface: unobserved_software_surface(host: operator_host_srv2)) {
+    LabPlanRefused { cause: c } =>
+      match c {
+        LabOsUnobserved { obligation: _ } =>
+          match host_os_package_manager(surface: srv1_software_surface()) {
+            HostPackageManagerKnown { manager: m } => package_manager_is_apt(m: m)
+            HostPackageManagerUnobserved { obligation: _ } => false
+          }
+        LabSandboxUnobserved { obligation: _ } => false
+        LabToolchainUnobserved { obligation: _ } => false
+        LabSandboxSysctlUnreadable { value: _ } => false
+      }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
+  }
+}
+
+test fn unobserved_apparmor_with_known_os_refuses_sandbox_rather_than_defaulting() -> Bool {
+  let surface = software_surface(
+    host: operator_host_srv2,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: srv1_software_surface().apparmor_userns.value,
+    procps: srv1_software_surface().procps.value,
+    coreutils: srv1_software_surface().coreutils.value,
+    git: blank_tool(kind: GitTool, probe: "git --version"),
+    jq: blank_tool(kind: JqTool, probe: "jq --version"),
+    systemd: blank_tool(kind: SystemdTool, probe: "systemctl --version"),
+    tailscale: srv1_software_surface().tailscale.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  let cleared = software_surface(
+    host: operator_host_srv2,
+    os: surface.os_release.value,
+    kernel: blank_kernel(),
+    apparmor: HostSysctlFact {
+      name: apparmor_restrict_unprivileged_userns_sysctl_name,
+      value: none,
+      standing: unobserved_software_surface(host: operator_host_srv2).apparmor_userns.value.standing,
+    },
+    procps: surface.procps.value,
+    coreutils: surface.coreutils.value,
+    git: blank_tool(kind: GitTool, probe: "git --version"),
+    jq: blank_tool(kind: JqTool, probe: "jq --version"),
+    systemd: blank_tool(kind: SystemdTool, probe: "systemctl --version"),
+    tailscale: surface.tailscale.value,
+    sudo_policy: surface.sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match lab_deploy_plan_from_software(surface: cleared) {
+    LabPlanRefused { cause: c } =>
+      match c {
+        LabSandboxUnobserved { obligation: _ } => true
+        LabOsUnobserved { obligation: _ } => false
+        LabToolchainUnobserved { obligation: _ } => false
+        LabSandboxSysctlUnreadable { value: _ } => false
+      }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
+  }
+}

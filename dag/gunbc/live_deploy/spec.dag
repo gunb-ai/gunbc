@@ -12,9 +12,7 @@ import extdeps.package_managers.apt {
   package_tailscale,
   package_tmux,
 }
-import extdeps.version.semver { SemVerVersion, semver_version_parse }
 import extdeps.tailscale.serve {
-  tailscale_scoped_removal_capability,
   tailscale_serve_unix_target,
   tailscale_serve_unix_target_path,
   TailscaleServeEndpoint,
@@ -28,6 +26,13 @@ import extdeps.tailscale.serve {
   tailscale_serve_route_member_path,
 }
 import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
+import gunbc.host.host_software_surface {
+  srv1_software_surface,
+  host_os_package_manager,
+  host_tailscale_client,
+  HostPackageManagerKnown,
+  HostPackageManagerUnobserved,
+}
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
 import gunbc.fleet.fleet_intent_network {
   srv1_tailscale_endpoint,
@@ -1038,6 +1043,13 @@ fn ubuntu_noble_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
+fn srv1_host_os_package_manager() -> OsPackageManager {
+  match host_os_package_manager(surface: srv1_software_surface()) {
+    HostPackageManagerKnown { manager: m } => m
+    HostPackageManagerUnobserved { obligation: _ } => ubuntu_noble_os_package_manager()
+  }
+}
+
 type DeploymentSpec {
   target: DeploymentHostTarget
   steps: List<DeploymentStep>
@@ -1360,27 +1372,20 @@ fn deployment_owned_steps_retract_order(spec: DeploymentSpec) -> List<Deployment
 }
 
 fn deployment_srv1_target() -> DeploymentHostTarget {
+  let surface = srv1_software_surface()
   DeploymentHostTarget {
     host: srv1_host,
     ssh_host: operator_host_srv1 as NonEmptyStr,
     tailscale_endpoint: srv1_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
-    os_package_manager: ubuntu_noble_os_package_manager(),
-    tailscale_client: srv1_observed_tailscale_client(),
+    os_package_manager: srv1_host_os_package_manager(),
+    tailscale_client: host_tailscale_client(surface: surface),
     host_directories: deployment_srv1_host_directories(),
   }
 }
 
-// THE OBSERVED VERSION IS THE PARSE RESULT, never a hand-built record: SemVerVersion fields
-// are confined code-point runs, so the label arrives through the parser and an unadmitted
-// label is carried as a refusal, not a fabricated version (review 77150).
-data srv1_tailscale_client_observed_version: SemVerVersion? = semver_version_parse(cps: chars(s: "1.98.3" as String))
-
 fn srv1_observed_tailscale_client() -> TailscaleServeCapability {
-  match srv1_tailscale_client_observed_version {
-    Absent => ScopedRemovalUnobserved { reason: "the observed client version label failed to parse — a defect in the observed-version row, not an observation gap" }
-    Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
-  }
+  host_tailscale_client(surface: srv1_software_surface())
 }
 
 fn deployment_service_config(

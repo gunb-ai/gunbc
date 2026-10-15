@@ -1,0 +1,156 @@
+module test.claim.host.host_software_surface_witness
+
+import std.types { Bool, Int, String }
+import std.optional { Absent, Present }
+import std.os.types { Apt, Winget, HomebrewDeFacto }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet.fleet_intent { srv1_host, srv2_host }
+import gunbc.host.host_software_surface {
+  srv1_software_surface,
+  host_software_surface_for_identity,
+  unobserved_software_surface,
+  software_surface,
+  blank_kernel,
+  blank_tool,
+  blank_cgroup,
+  HostSysctlFact,
+  GitTool,
+  JqTool,
+  SystemdTool,
+  host_operating_system_surface,
+  host_os_package_manager,
+  HostPackageManagerKnown,
+  HostPackageManagerUnobserved,
+  user_manager_sandbox_enforcement,
+  UserManagerDoesNotEnforceSandbox,
+  UserManagerEnforcesSandbox,
+  UserManagerSandboxUnobserved,
+  UserManagerSandboxSysctlUnreadable,
+  host_sudo_observed_all_is_not_the_declared_roster,
+  host_procps_kill_term_pgid_argv,
+  host_coreutils_timeout_expired_exit_code,
+  srv1_software_inhabitance_probe_commands,
+  srv1_os_release_probe,
+  apparmor_sysctl_name_from_upstream,
+}
+import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name, apparmor_unprivileged_userns_restricted }
+import extdeps.procps.kill { procps_ng_kill_term_pgid_argv, procps_ng_kill_term_pgid_without_end_of_options_argv }
+import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
+import product.host_identity { host_identity_eq }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn srv1_software_is_keyed_by_compute_host_identity() -> Bool {
+  host_identity_eq(a: srv1_software_surface().host, b: srv1_host.identity)
+    && host_identity_eq(a: host_software_surface_for_identity(identity: srv1_host.identity).host, b: operator_host_srv1)
+}
+
+test fn srv2_software_is_typed_unobserved() -> Bool {
+  match host_os_package_manager(surface: host_software_surface_for_identity(identity: srv2_host.identity)) {
+    HostPackageManagerUnobserved { obligation: _ } => true
+    HostPackageManagerKnown { manager: _ } => false
+  }
+}
+
+test fn srv1_os_joins_the_ubuntu_catalog_to_apt() -> Bool {
+  match host_os_package_manager(surface: srv1_software_surface()) {
+    HostPackageManagerKnown { manager: m } =>
+      match m {
+        Apt => (match host_operating_system_surface(surface: srv1_software_surface()).distro_or_product {
+          Present { value: d } => (d as String) == "Ubuntu"
+          Absent => false
+        })
+        Winget => false
+        HomebrewDeFacto => false
+      }
+    HostPackageManagerUnobserved { obligation: _ } => false
+  }
+}
+
+test fn srv1_user_manager_does_not_enforce_sandbox_because_of_the_sysctl() -> Bool {
+  match user_manager_sandbox_enforcement(surface: srv1_software_surface()) {
+    UserManagerDoesNotEnforceSandbox =>
+      srv1_software_surface().apparmor_userns.value.value == Present { value: apparmor_unprivileged_userns_restricted }
+        && apparmor_sysctl_name_from_upstream() == apparmor_restrict_unprivileged_userns_sysctl_name
+    UserManagerEnforcesSandbox => false
+    UserManagerSandboxUnobserved { obligation: _ } => false
+    UserManagerSandboxSysctlUnreadable { value: _ } => false
+  }
+}
+
+test fn a_sysctl_zero_host_is_the_enforcing_variant() -> Bool {
+  let surface = software_surface(
+    host: operator_host_srv1,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: HostSysctlFact {
+      name: apparmor_restrict_unprivileged_userns_sysctl_name,
+      value: Present { value: 0 },
+      standing: srv1_software_surface().apparmor_userns.value.standing,
+    },
+    procps: srv1_software_surface().procps.value,
+    coreutils: srv1_software_surface().coreutils.value,
+    git: blank_tool(kind: GitTool, probe: "git --version"),
+    jq: blank_tool(kind: JqTool, probe: "jq --version"),
+    systemd: blank_tool(kind: SystemdTool, probe: "systemctl --version"),
+    tailscale: srv1_software_surface().tailscale.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match user_manager_sandbox_enforcement(surface: surface) {
+    UserManagerEnforcesSandbox => true
+    UserManagerDoesNotEnforceSandbox => false
+    UserManagerSandboxUnobserved { obligation: _ } => false
+    UserManagerSandboxSysctlUnreadable { value: _ } => false
+  }
+}
+
+test fn sudo_all_is_observed_and_not_copied_into_the_declared_grants() -> Bool {
+  host_sudo_observed_all_is_not_the_declared_roster(surface: srv1_software_surface())
+}
+
+test fn srv1_procps_kill_uses_end_of_options() -> Bool {
+  match host_procps_kill_term_pgid_argv(surface: srv1_software_surface(), pgid: 1234) {
+    Absent => false
+    Present { value: argv } =>
+      argv == procps_ng_kill_term_pgid_argv(pgid: 1234)
+        && argv != procps_ng_kill_term_pgid_without_end_of_options_argv(pgid: 1234)
+  }
+}
+
+test fn unobserved_procps_does_not_keep_srv1s_kill_form() -> Bool {
+  let surface = unobserved_software_surface(host: operator_host_srv2)
+  match host_procps_kill_term_pgid_argv(surface: surface, pgid: 1234) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn srv1_timeout_expired_is_coreutils_124() -> Bool {
+  host_coreutils_timeout_expired_exit_code(surface: srv1_software_surface()) == Present { value: coreutils_timeout_expired_exit_code }
+    && coreutils_timeout_expired_exit_code == 124
+}
+
+test fn inhabitance_recipe_names_the_probes_the_brief_named() -> Bool {
+  let cmds = srv1_software_inhabitance_probe_commands()
+  cmds.length() == 11
+    && cmds[0] == Present { value: srv1_os_release_probe }
+    && any(cmds, c => (c as String) == "uname -r")
+    && any(cmds, c => (c as String) == "sysctl -n kernel.apparmor_restrict_unprivileged_userns")
+    && any(cmds, c => (c as String) == "sudo -n -l")
+    && any(cmds, c => (c as String) == "kill -V")
+    && any(cmds, c => (c as String) == "timeout --version")
+    && any(cmds, c => (c as String) == "git --version")
+    && any(cmds, c => (c as String) == "jq --version")
+    && any(cmds, c => (c as String) == "systemctl --version")
+}
+
+test fn unobserved_apparmor_is_not_a_default_enforcement() -> Bool {
+  match user_manager_sandbox_enforcement(surface: unobserved_software_surface(host: operator_host_srv2)) {
+    UserManagerSandboxUnobserved { obligation: _ } => true
+    UserManagerEnforcesSandbox => false
+    UserManagerDoesNotEnforceSandbox => false
+    UserManagerSandboxSysctlUnreadable { value: _ } => false
+  }
+}
