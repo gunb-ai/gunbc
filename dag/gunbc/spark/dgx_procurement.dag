@@ -379,9 +379,12 @@ type DgxSparkUnitDisposition
   = DgxSparkUnitDeployed { deployment: DgxSparkDeployment }
   | DgxSparkUnitPending { identity: HostIdentity, reason: DgxSparkAdmissionRefusalReason }
 
+// Converged is head-plus-tail so "every rostered unit is deployed" cannot share a constructor with
+// "nothing was asked". An empty live roster is RosterEmpty: every procured unit was sold, not deployed.
 type DgxSparkProcurementConvergence
-  = DgxSparkProcurementConverged { deployments: List<DgxSparkDeployment> }
+  = DgxSparkProcurementConverged { first: DgxSparkDeployment, more: List<DgxSparkDeployment> }
   | DgxSparkProcurementPending { pending: List<DgxSparkUnitDisposition> }
+  | DgxSparkProcurementRosterEmpty { disposed: List<DgxSparkDisposedUnit> }
 
 // Two arms, not three: a unit is deployed or it is pending with a typed, located cause. There is deliberately no `Unknown` arm -- every reason a unit is not deployed is one of the closed DgxSparkAdmissionRefusalReason causes, so "we could not tell" cannot masquerade as a verdict (§5 state-space conflation). This is a diff-shaped read but NOT an instance of the gunbc.membership_reconcile spine: that spine reconciles a desired member set against an OBSERVED member set of the same type with teardown as the Removed arm, and here the two sides are different types (a reserved identity vs an admitted deployment) and there is no teardown -- you cannot retract a machine that was never present. Instantiating the spine would mean inventing an M that fits neither side, so the genericity would buy nothing and cost a fake member type.
 fn dgx_spark_unit_disposition(
@@ -420,18 +423,25 @@ fn converge_dgx_spark_procurement(
       DgxSparkUnitPending { identity: _, reason: _ } => []
     }
   )
-  if count(pending) > 0 {
-    DgxSparkProcurementPending { pending: pending }
+  if count(bindings) == 0 {
+    DgxSparkProcurementRosterEmpty { disposed: dgx_spark_disposed_units }
   } else {
-    DgxSparkProcurementConverged { deployments: deployments }
+    if count(pending) > 0 {
+      DgxSparkProcurementPending { pending: pending }
+    } else {
+      match deployments {
+        Cons { head: first, tail: more } =>
+          DgxSparkProcurementConverged { first: first, more: more }
+        Empty =>
+          DgxSparkProcurementRosterEmpty { disposed: dgx_spark_disposed_units }
+      }
+    }
   }
 }
 
-// The LIVE read: the real binding roster (empty: every procured unit is sold) against the real
-// (empty) collector-observation population. Vacuous Converged-with-zero-deployments is the honest
-// outcome of an empty roster, not Pending-for-missing-evidence of identities that are no longer
-// reserved. Fixture admission walls supply a reserved set at the boundary rather than resurrecting
-// sold hosts onto this roster.
+// The LIVE read: the real binding roster against the real (empty) collector-observation population.
+// Every procured unit is sold, so this is RosterEmpty, not Converged and not Pending-for-missing-evidence.
+// Fixture admission walls supply a reserved set at the boundary rather than resurrecting sold hosts.
 fn dgx_spark_procurement_convergence() -> DgxSparkProcurementConvergence {
   converge_dgx_spark_procurement(
     bindings: dgx_spark_router_bindings,
@@ -459,6 +469,7 @@ fn dgx_spark_procurement_convergence() -> DgxSparkProcurementConvergence {
 type DgxSparkPairRefusalReason
   = PairUnitNotAdmitted { identity: HostIdentity, reason: DgxSparkAdmissionRefusalReason }
   | PairUnitCountWrong { admitted_count: Int }
+  | PairRosterEmpty { disposed_count: Int }
   | PairSubjectsNotDistinct { identity: HostIdentity }
   | PairHardwareIdentityUnobserved { identity: HostIdentity }
   | PairHardwareIdentityNotDistinct { first: HostIdentity, second: HostIdentity }
@@ -506,23 +517,6 @@ fn admit_dgx_spark_pair_deployments(
   }
 }
 
-// An explicit accumulator for pairing a converged list: "no unit seen yet", "one unit held", and
-// "a verdict reached". Named rather than smuggled into the refusal type, so the fold cannot express
-// a half-state that reads as a refusal reason nobody meant.
-type DgxSparkPairFold
-  = PairFoldEmpty
-  | PairFoldFirst { first: DgxSparkDeployment }
-  | PairFoldOutcome { outcome: DgxSparkPairAdmissionOutcome }
-
-fn dgx_spark_pair_fold_step(acc: DgxSparkPairFold, next: DgxSparkDeployment) -> DgxSparkPairFold {
-  match acc {
-    PairFoldEmpty => PairFoldFirst { first: next }
-    PairFoldFirst { first: held } =>
-      PairFoldOutcome { outcome: admit_dgx_spark_pair_deployments(first: held, second: next) }
-    PairFoldOutcome { outcome: o } => PairFoldOutcome { outcome: o }
-  }
-}
-
 // The pair read over a convergence result. A convergence that is still Pending cannot yield a pair
 // at all, and the first pending unit's own typed cause is carried out rather than replaced by a
 // generic "not converged" -- the reason a pair cannot be admitted is the reason its unit could not
@@ -548,17 +542,18 @@ fn first_pending_pair_refusal(pending: List<DgxSparkUnitDisposition>) -> DgxSpar
 fn admit_dgx_spark_pair(convergence: DgxSparkProcurementConvergence) -> DgxSparkPairAdmissionOutcome {
   match convergence {
     DgxSparkProcurementPending { pending: p } => first_pending_pair_refusal(pending: p)
-    DgxSparkProcurementConverged { deployments: ds } =>
-      if count(ds) != 2 {
-        DgxSparkPairRefused { reason: PairUnitCountWrong { admitted_count: count(ds) } }
-      } else {
-        match fold(ds, init: PairFoldEmpty, f: (acc, d) => dgx_spark_pair_fold_step(acc: acc, next: d)) {
-          PairFoldOutcome { outcome: o } => o
-          PairFoldFirst { first: _ } =>
-            DgxSparkPairRefused { reason: PairUnitCountWrong { admitted_count: 1 } }
-          PairFoldEmpty =>
-            DgxSparkPairRefused { reason: PairUnitCountWrong { admitted_count: 0 } }
-        }
+    DgxSparkProcurementRosterEmpty { disposed: d } =>
+      DgxSparkPairRefused { reason: PairRosterEmpty { disposed_count: count(d) } }
+    DgxSparkProcurementConverged { first: first, more: more } =>
+      match more {
+        Empty =>
+          DgxSparkPairRefused { reason: PairUnitCountWrong { admitted_count: 1 } }
+        Cons { head: second, tail: rest } =>
+          if count(rest) != 0 {
+            DgxSparkPairRefused { reason: PairUnitCountWrong { admitted_count: count(rest) + 2 } }
+          } else {
+            admit_dgx_spark_pair_deployments(first: first, second: second)
+          }
       }
   }
 }

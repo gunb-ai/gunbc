@@ -59,7 +59,7 @@ import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.dgx_procurement {
-  dgx_spark_procurement_intent, DgxSparkDisposedUnit, DgxSparkAssetSold, dgx_spark_disposed_units, dgx_spark_router_bindings, dgx_spark_reserved_identities, observed_dgx_spark_router_reservations, DgxSparkRouterBinding, SlotAssigned, SlotUnassigned, router_binding_identity, OperatorAllocation, dgx_spark_arrival_standing, AllOrderedUnitsAccounted, OrderedUnitsOutstanding, admit_dgx_spark_deployment, DgxSparkAdmissionOutcome, DgxSparkDeploymentAdmitted, DgxSparkDeploymentRefused, DgxSparkAdmissionRefusalReason, DeploymentAdmissionNoEvidence, DeploymentAdmissionAmbiguousEvidence, DeploymentAdmissionSubjectMismatch, DeploymentAdmissionEndpointBindingMismatch, DeploymentAdmissionExecutionEvidenceDisagrees, admit_dgx_spark_pair, admit_dgx_spark_pair_deployments, DgxSparkPairAdmitted, DgxSparkPairRefused, PairUnitNotAdmitted, PairUnitCountWrong, PairSubjectsNotDistinct, PairHardwareIdentityUnobserved, PairHardwareIdentityNotDistinct, PairHardwareIdentityIncomparable, DeploymentAdmissionWrongTool, DeploymentAdmissionObservationNotOk, DeploymentAdmissionIdentityNotReserved, DeploymentAdmissionRouterBindingMismatch, DeploymentAdmissionRouterBindingPending, converge_dgx_spark_procurement, dgx_spark_procurement_convergence, DgxSparkProcurementConverged, DgxSparkProcurementPending, DgxSparkUnitDeployed, DgxSparkUnitPending,
+  dgx_spark_procurement_intent, DgxSparkDisposedUnit, DgxSparkAssetSold, dgx_spark_disposed_units, dgx_spark_router_bindings, dgx_spark_reserved_identities, observed_dgx_spark_router_reservations, DgxSparkRouterBinding, SlotAssigned, SlotUnassigned, router_binding_identity, OperatorAllocation, dgx_spark_arrival_standing, AllOrderedUnitsAccounted, OrderedUnitsOutstanding, admit_dgx_spark_deployment, DgxSparkAdmissionOutcome, DgxSparkDeploymentAdmitted, DgxSparkDeploymentRefused, DgxSparkAdmissionRefusalReason, DeploymentAdmissionNoEvidence, DeploymentAdmissionAmbiguousEvidence, DeploymentAdmissionSubjectMismatch, DeploymentAdmissionEndpointBindingMismatch, DeploymentAdmissionExecutionEvidenceDisagrees, admit_dgx_spark_pair, admit_dgx_spark_pair_deployments, DgxSparkPairAdmitted, DgxSparkPairRefused, PairUnitNotAdmitted, PairUnitCountWrong, PairRosterEmpty, PairSubjectsNotDistinct, PairHardwareIdentityUnobserved, PairHardwareIdentityNotDistinct, PairHardwareIdentityIncomparable, DeploymentAdmissionWrongTool, DeploymentAdmissionObservationNotOk, DeploymentAdmissionIdentityNotReserved, DeploymentAdmissionRouterBindingMismatch, DeploymentAdmissionRouterBindingPending, converge_dgx_spark_procurement, dgx_spark_procurement_convergence, DgxSparkProcurementConverged, DgxSparkProcurementPending, DgxSparkProcurementRosterEmpty, DgxSparkUnitDeployed, DgxSparkUnitPending,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -529,14 +529,14 @@ test fn w_red_selection_ignores_envelope_host() -> Bool {
   }
 }
 
-// Live convergence: every procured unit is sold, so the router roster is empty. Vacuous
-// Converged-with-zero-deployments is the honest live answer — Pending-for-missing-evidence would
-// invent units that are no longer reserved.
-test fn w_live_procurement_convergence_is_pending_for_both_units() -> Bool {
+// Live convergence: every procured unit is sold. RosterEmpty is the typed arm for that
+// population; Converged is unwritable here (head-plus-tail) so "all deployed" cannot mean "nothing asked".
+test fn w_live_procurement_roster_is_empty_because_every_unit_was_sold() -> Bool {
   match dgx_spark_procurement_convergence() {
-    DgxSparkProcurementConverged { deployments: ds } =>
-      count(ds) == 0 && count(dgx_spark_router_bindings) == 0
+    DgxSparkProcurementRosterEmpty { disposed: d } =>
+      count(d) == 8 && count(dgx_spark_router_bindings) == 0 && d == dgx_spark_disposed_units
     DgxSparkProcurementPending { pending: _ } => false
+    DgxSparkProcurementConverged { first: _, more: _ } => false
   }
 }
 
@@ -552,10 +552,11 @@ test fn w_procurement_converges_when_both_units_are_bound_and_observed() -> Bool
     ],
     reserved_identities: fixture_reserved_spark_identities,
   ) {
-    DgxSparkProcurementConverged { deployments: ds } =>
-      count(ds) == 2
-        && map(ds, d => d.identity) == [operator_host_srv9, operator_host_srv10]
+    DgxSparkProcurementConverged { first: a, more: rest } =>
+      a.identity == operator_host_srv9
+        && map(rest, d => d.identity) == [operator_host_srv10]
     DgxSparkProcurementPending { pending: _ } => false
+    DgxSparkProcurementRosterEmpty { disposed: _ } => false
   }
 }
 
@@ -587,7 +588,8 @@ test fn w_red_partial_arrival_does_not_converge() -> Bool {
               DgxSparkUnitDeployed { deployment: _ } => false
             }
         )
-    DgxSparkProcurementConverged { deployments: _ } => false
+    DgxSparkProcurementConverged { first: _, more: _ } => false
+    DgxSparkProcurementRosterEmpty { disposed: _ } => false
   }
 }
 
@@ -795,11 +797,10 @@ test fn w_hardware_identity_comparison_is_three_valued() -> Bool {
     }
 }
 
-// The live pair read: empty roster converges with zero deployments, so the pair refuses with
-// PairUnitCountWrong rather than a unit's NoEvidence cause for a sold identity.
-test fn w_live_pair_admission_refuses_with_the_units_own_cause() -> Bool {
+// The live pair read: empty sold roster is PairRosterEmpty, not a unit's NoEvidence cause.
+test fn w_live_pair_admission_refuses_because_the_roster_is_empty() -> Bool {
   match admit_dgx_spark_pair(convergence: dgx_spark_procurement_convergence()) {
-    DgxSparkPairRefused { reason: PairUnitCountWrong { admitted_count: n } } => n == 0
+    DgxSparkPairRefused { reason: PairRosterEmpty { disposed_count: n } } => n == 8
     DgxSparkPairRefused { reason: _ } => false
     DgxSparkPairAdmitted { first: _, second: _ } => false
   }
