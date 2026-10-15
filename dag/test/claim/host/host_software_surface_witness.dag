@@ -27,13 +27,13 @@ import gunbc.host.host_software_surface {
   host_procps_kill_term_pgid_argv,
   host_coreutils_timeout_expired_exit_code,
   srv1_software_inhabitance_probe_commands,
+  srv1_user_manager_protect_home_wrote_into_home_receipt,
 }
 import extdeps.linux.apparmor_userns {
   apparmor_restrict_unprivileged_userns_sysctl_name,
   apparmor_unprivileged_userns_restricted,
   apparmor_userns_restriction_standing,
 }
-import extdeps.systemd.user_manager_sandbox { systemd_exec_protect_home_standing }
 import extdeps.git { git_program }
 import extdeps.tools.jq { jq_program }
 import extdeps.tailscale.serve { tailscale_program }
@@ -88,9 +88,10 @@ test fn srv1_os_joins_the_ubuntu_catalog_to_apt() -> Bool {
 
 test fn srv1_user_manager_does_not_enforce_sandbox_because_of_the_sysctl() -> Bool {
   match user_manager_sandbox_enforcement(surface: srv1_software_surface()) {
-    UserManagerDoesNotEnforceSandbox =>
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: receipt } =>
       srv1_software_surface().apparmor_userns.value.value == Present { value: apparmor_unprivileged_userns_restricted }
         && srv1_software_surface().apparmor_userns.value.name == apparmor_restrict_unprivileged_userns_sysctl_name
+        && (receipt as String) == (srv1_user_manager_protect_home_wrote_into_home_receipt as String)
     UserManagerEnforcesSandbox => false
     UserManagerSandboxUnobserved { obligation: _ } => false
     UserManagerSandboxSysctlUnreadable { value: _ } => false
@@ -114,7 +115,7 @@ test fn a_sysctl_zero_host_is_the_enforcing_variant() -> Bool {
   )
   match user_manager_sandbox_enforcement(surface: surface) {
     UserManagerEnforcesSandbox => true
-    UserManagerDoesNotEnforceSandbox => false
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
     UserManagerSandboxUnobserved { obligation: _ } => false
     UserManagerSandboxSysctlUnreadable { value: _ } => false
   }
@@ -172,8 +173,7 @@ fn standing_is_cited_to_authority(s: CitedFigureStanding) -> Bool {
 }
 
 test fn upstream_sandbox_procps_and_apparmor_figures_are_cited_to_authority() -> Bool {
-  standing_is_cited_to_authority(s: systemd_exec_protect_home_standing())
-    && standing_is_cited_to_authority(s: apparmor_userns_restriction_standing())
+  standing_is_cited_to_authority(s: apparmor_userns_restriction_standing())
     && standing_is_cited_to_authority(s: procps_kill_standing())
 }
 
@@ -215,7 +215,7 @@ test fn unobserved_apparmor_is_not_a_default_enforcement() -> Bool {
   match user_manager_sandbox_enforcement(surface: unobserved_software_surface(host: operator_host_srv2)) {
     UserManagerSandboxUnobserved { obligation: _ } => true
     UserManagerEnforcesSandbox => false
-    UserManagerDoesNotEnforceSandbox => false
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
     UserManagerSandboxSysctlUnreadable { value: _ } => false
   }
 }

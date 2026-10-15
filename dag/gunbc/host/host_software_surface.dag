@@ -430,7 +430,7 @@ fn host_os_package_manager(surface: HostSoftwareSurface) -> HostPackageManagerRe
 
 type UserManagerSandboxEnforcement
   = UserManagerEnforcesSandbox
-  | UserManagerDoesNotEnforceSandbox
+  | UserManagerDoesNotEnforceSandbox { wrote_into_home: NonEmptyStr }
   | UserManagerSandboxUnobserved { obligation: NonEmptyStr }
   | UserManagerSandboxSysctlUnreadable { value: Int }
 
@@ -472,7 +472,9 @@ fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManager
     }
     Present { value: n } =>
       if n == apparmor_unprivileged_userns_restricted {
-        UserManagerDoesNotEnforceSandbox
+        UserManagerDoesNotEnforceSandbox {
+          wrote_into_home: srv1_user_manager_protect_home_wrote_into_home_receipt
+        }
       } else if n == 0 {
         UserManagerEnforcesSandbox
       } else {

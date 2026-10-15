@@ -37,8 +37,6 @@ fn procps_kill_standing() -> CitedFigureStanding {
 
 fn kill_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/kill")
 
-data procps_ng_4_0_4_label: NonEmptyStr = "4.0.4"
-
 fn procps_ng_kill_negative_pgid_requires_end_of_options() -> Bool {
   true
 }

@@ -20,6 +20,7 @@ import gunbc.host.host_software_surface {
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_intent { ComputeHost }
 import extdeps.tailscale.serve { TailscaleServeCapability }
+import extdeps.systemd { ProtectHomeProperty, systemd_unit_property_wire }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_linux_toolchain }
 
 // FIRST CONSUMER of the per-host software surface (DESIGN 3c). The srv1 lab deploy plan is computed
@@ -76,7 +77,7 @@ fn select_worker_sandbox(surface: HostSoftwareSurface) -> WorkerSandboxSelection
       WorkerSandboxRefused { cause: WorkerSandboxUnobserved { obligation: o } }
     UserManagerSandboxSysctlUnreadable { value: n } =>
       WorkerSandboxRefused { cause: WorkerSandboxSysctlUnreadable { value: n } }
-    UserManagerDoesNotEnforceSandbox => WorkerSandboxSelected {
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => WorkerSandboxSelected {
       realization: SystemManagerLauncherRealization,
       claim: ClaimsSystemManagerConfinement,
     }
@@ -152,7 +153,8 @@ fn plan_claims_user_manager_protect_home(plan: LabDeployPlan) -> Bool {
           match c {
             ClaimsUserManagerProtectHomeConfinement =>
               match r {
-                UserManagerProtectHomeRealization => true
+                UserManagerProtectHomeRealization =>
+                  (systemd_unit_property_wire(property: ProtectHomeProperty) as String) == "ProtectHome"
                 SystemManagerLauncherRealization => true
               }
             ClaimsSystemManagerConfinement => false
