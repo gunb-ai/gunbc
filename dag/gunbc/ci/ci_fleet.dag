@@ -139,10 +139,12 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 // committed_width_of over that reading and gunbc.runner.runner_slot_desired, never a hand-kept number.
 //
 // NOT IN fleet_owned_compute_offer_catalog, and that is a declared frontier, not an omission.
-// Enrolment waits on the one-socket census boot's meminfo receipt (usable RAM and fixed overhead
-// from that same reader). Until then gunbc_ci_host_usable_ram_for answers HostUsableRamUnmeasured
-// and placement refuses UsableRamUnavailable. The offer is still a consumer of the CPU axis:
-// compute_host_cpu_admitted_width reads its processors.
+// Usable RAM and fixed overhead now come from host_usable_ram_from_capture /
+// host_fixed_overhead_from_capture over the committed census capture (fleet-converge
+// 38789347052, PR 14117). Slot count is gunbc.runner.runner_slot_allocation committed_width_of
+// over that reading and gunbc.runner.runner_slot_desired. The offer is still a consumer of
+// the CPU axis: compute_host_cpu_admitted_width reads its processors. Catalog enrolment
+// remains a separate frontier.
 data mtcollins1_socket0_cpu_part_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "read the Ampere model number and advertised per-thread frequency off socket 0 on a one-socket census boot (lscpu Model name / dmidecode type 4); until that read, binding altra_q8030_catalog (and its Hertz) is a bet matching the measured 80 threads, not a deduced part identity",
 }

@@ -11,21 +11,26 @@ import gunbc.ci.ci_fleet {
 import extdeps.external_authority { cited_figure_read_obligation }
 import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.machine_intake.host_capture_envelope { BoundHostCaptureEnvelope, HostCaptureBoundSection, KernelBootId }
+import gunbc.machine_intake.host_capture_envelope {
+  BoundHostCaptureEnvelope, HostCaptureBoundSection, KernelBootId,
+  host_capture_bind_transcript, HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.machine_intake.mtcollins1_socket1_investigation_observation { MtCollins1Socket1InvestigationBoot, mtcollins1_socket1_investigation_boots }
 import gunbc.host.host_memory_observation {
   HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
   CensusMeminfoUnread, CensusMeminfoSectionAbsent, CensusMeminfoSectionPending, CensusMeminfoSectionMalformed,
   CensusMeminfoExitNonzero, CensusMeminfoUnparsed, host_usable_ram_from_capture, HostFixedOverhead,
   HostFixedOverheadMeasured, HostFixedOverheadUnmeasured, host_fixed_overhead_from_capture,
-  gunbc_ci_host_usable_ram_for,
+  gunbc_ci_host_usable_ram_for, gunbc_ci_host_fixed_overhead_for,
+  mtcollins1_census_boot_capture_path,
 }
 import gunbc.session_residency { SessionResidency, NoInteractiveSessions, HostsInteractiveSessions, host_session_residency }
 import gunbc.session_reservation_policy { HostSessionReservationOutcome, SessionReservationNotApplicable, host_session_reservation_outcome }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max_bytes }
 import gunbc.runner.runner_slot_allocation {
-  HostWidthFacts, host_width_facts, CpuWidthDerived, committed_width_of,
+  HostWidthFacts, host_width_facts, CpuWidthDerived,
   compute_host_cpu_admitted_width,
-  RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
 }
 import gunbc.ci.ci_runner_placement {
   HostRunnerDeploymentStanding, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
@@ -164,11 +169,55 @@ test fn mtcollins1_carries_no_sessions_and_owes_no_reservation() -> Bool {
     }
 }
 
-test fn mtcollins1_production_usable_ram_is_unmeasured_until_the_census_receipt() -> Bool {
+test fn mtcollins1_census_capture_file_is_the_committed_receipt() -> Bool {
+  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path)
+  read.success
+    && string_contains(s: mtcollins1_census_boot_capture_path, pattern: "38789347052")
+    && string_contains(s: read.content, pattern: "MemTotal:")
+}
+
+test fn mtcollins1_production_usable_ram_is_the_census_capture_reading() -> Bool {
+  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path)
+  let from_file = match host_capture_bind_transcript(capture: read.content, machine: "mtcollins1" as NonEmptyStr) {
+    HostCaptureBound { envelope: e } => host_usable_ram_from_capture(envelope: e)
+    HostCaptureOpen { envelope: e } => host_usable_ram_from_capture(envelope: e)
+    HostCaptureNotBegun => ObservationRefused { cause: CensusMeminfoSectionAbsent }
+    HostCaptureUnbound { reason: _ } => ObservationRefused { cause: CensusMeminfoSectionAbsent }
+  }
+  let production = gunbc_ci_host_usable_ram_for(host: operator_host_mtcollins1)
+  match from_file {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: r } =>
+      match r {
+        HostUsableRamMeasured { bytes: b, provenance: p } =>
+          match production {
+            HostUsableRamMeasured { bytes: pb, provenance: pp } =>
+              byte_size_count(b: b) == byte_size_count(b: pb)
+                && (p as String) == (pp as String)
+                && string_contains(s: p as String, pattern: "66141451-278b-4eb0-bc57-595563e1247b")
+                && string_contains(s: p as String, pattern: "census_meminfo_reading")
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+test fn mtcollins1_production_overhead_is_the_census_capture_reading() -> Bool {
+  match gunbc_ci_host_fixed_overhead_for(host: operator_host_mtcollins1) {
+    HostFixedOverheadMeasured { bytes: _, provenance: p } =>
+      string_contains(s: p as String, pattern: "66141451-278b-4eb0-bc57-595563e1247b")
+        && string_contains(s: p as String, pattern: "quiescent census boot")
+    _ => false
+  }
+}
+
+test fn mtcollins1_committed_width_derives_from_the_census_receipt_and_slot_row() -> Bool {
   match gunbc_ci_host_usable_ram_for(host: operator_host_mtcollins1) {
-    HostUsableRamUnmeasured => true
-    HostUsableRamMeasured { bytes: _, provenance: _ } => false
-    HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => false
+    HostUsableRamMeasured { bytes: u, provenance: _ } =>
+      compute_host_cpu_admitted_width(host: mtcollins1_offer.supply.physical) > 0
+        && (byte_size_count(b: u) as Int) < gunbc_runner_slot_memory_max_bytes
+    _ => false
   }
 }
 
