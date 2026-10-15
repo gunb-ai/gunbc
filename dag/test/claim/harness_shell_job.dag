@@ -1,33 +1,60 @@
 module test.claim.harness_shell_job
 
-import std.types { Bool, String, List, FilePath, NonEmptyStr, Int }
+import std.types { Bool, String, List, FilePath, NonEmptyStr, Int, Timestamp }
+import std.optional { Present }
+import std.measure {
+  Second, second, minute, minute_count, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend,
+}
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.languages.json.emit { json_object, json_kv, json_string }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int }
 import gunbc.harness.harness_wire { WireToolUseBlock }
 import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellJobState, JobRunning, JobFinished, JobExitedOutcome,
-  harness_hand_in_blocked_by_running_jobs, harness_kept_stdio_path, harness_stdio_move_note,
+  harness_hand_in_blocked_by_running_jobs,
+  StdioAtDestination, StdioKeptAtPending, harness_job_stdio_after_move, harness_job_stdio_path_of, harness_job_stdio_note,
   HarnessTerminateProcessGroup, harness_kill_signal_note,
+  harness_exit_is_harness_backstop, harness_command_table_exit_label,
+  harness_backstop_standing, JobBackstopHit, JobOwnExit, JobBackstopUndecided,
+  harness_elapsed_clock_resolution, ElapsedUnreadable, ElapsedWithinClockGrain,
 }
-import gunbc.harness.harness_shell_job_policy { WaitRequestedMinutes, WaitMalformedMinutes, WaitUseDefault, WaitPaceReset }
+import gunbc.harness.harness_shell_job_policy {
+  WaitRequestedMinutes, WaitMalformedMinutes, WaitNonPositiveMinutes, WaitUseDefault, WaitPaceReset,
+}
 import gunbc.harness.harness_tool {
   harness_wait_request_from_block, harness_kill_job, harness_tool_environment,
   harness_env_with_jobs, harness_outcome_text, harness_job_output_for_state,
-  harness_text_with_table, ToolRefused, ToolCompleted, ToolReport, ToolJob,
+  harness_text_with_table, harness_job_backstop_exit_outcome,
+  ToolRefused, ToolCompleted, ToolReport, ToolJob, OutputComplete,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn unknown_elapsed() -> Second? {
+  none
+}
 
 fn fixture_job(state: HarnessShellJobState) -> HarnessShellJob {
   HarnessShellJob {
     id: "42",
     pid: 42,
     command: "sleep 1",
-    stdout_file: "/tmp/job-42.out" as FilePath,
-    stderr_file: "/tmp/job-42.err" as FilePath,
-    stdio_note: "",
+    stdout: StdioAtDestination { path: "/tmp/job-42.out" as FilePath },
+    stderr: StdioAtDestination { path: "/tmp/job-42.err" as FilePath },
+    started_at: "1970-01-01T00:00:00Z" as Timestamp,
+    backstop: second(count: 20),
     state: state,
   }
+}
+
+fn fixture_finished(code: Int, elapsed: Second?) -> HarnessShellJob {
+  fixture_job(state: JobFinished {
+    outcome: JobExitedOutcome { code: code },
+    elapsed: elapsed,
+  })
+}
+
+fn fixture_own_exit(code: Int) -> HarnessShellJob {
+  fixture_finished(code: code, elapsed: Present { value: second(count: 0) })
 }
 
 test fn hand_in_refuses_while_a_job_is_running() -> Bool {
@@ -36,7 +63,7 @@ test fn hand_in_refuses_while_a_job_is_running() -> Bool {
     Present { value: text } => text.contains("wait or job_kill")
   }
     && (match harness_hand_in_blocked_by_running_jobs(
-      jobs: [fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 0 } })],
+      jobs: [fixture_own_exit(code: 0)],
     ) {
       Absent => true
       Present { value: _ } => false
@@ -51,7 +78,7 @@ test fn job_kill_refuses_a_finished_job_by_name() -> Bool {
   )
   let with_job = harness_env_with_jobs(
     environment: env,
-    jobs: [fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 0 } })],
+    jobs: [fixture_own_exit(code: 0)],
     wait_pace: WaitPaceReset,
   )
   let step = harness_kill_job(environment: with_job, id: "42")
@@ -72,7 +99,41 @@ test fn a_malformed_wait_minutes_member_keeps_the_parse_cause() -> Bool {
     WaitMalformedMinutes { cause } => cause.contains("string where a number")
     WaitUseDefault => false
     WaitRequestedMinutes { minutes: _ } => false
+    WaitNonPositiveMinutes { asked_wire: _ } => false
   }
+}
+
+test fn wait_minutes_from_the_wire_are_a_minute_carrier() -> Bool {
+  match harness_wait_request_from_block(block: WireToolUseBlock {
+    id: "u1",
+    name: "wait",
+    input: json_object([json_kv(key: "minutes", value: json_int(n: 5))]),
+  }) {
+    WaitRequestedMinutes { minutes } => minute_count(m: minutes) == 5
+    WaitUseDefault => false
+    WaitMalformedMinutes { cause: _ } => false
+    WaitNonPositiveMinutes { asked_wire: _ } => false
+  }
+    && (match harness_wait_request_from_block(block: WireToolUseBlock {
+      id: "u2",
+      name: "wait",
+      input: json_object([json_kv(key: "minutes", value: json_int(n: 0))]),
+    }) {
+      WaitNonPositiveMinutes { asked_wire } => asked_wire == 0
+      WaitUseDefault => false
+      WaitMalformedMinutes { cause: _ } => false
+      WaitRequestedMinutes { minutes: _ } => false
+    })
+    && (match harness_wait_request_from_block(block: WireToolUseBlock {
+      id: "u3",
+      name: "wait",
+      input: json_object([json_kv(key: "minutes", value: json_int(n: 0 - 3))]),
+    }) {
+      WaitNonPositiveMinutes { asked_wire } => asked_wire == 0 - 3
+      WaitUseDefault => false
+      WaitMalformedMinutes { cause: _ } => false
+      WaitRequestedMinutes { minutes: _ } => false
+    })
 }
 
 test fn an_unconfirmed_kill_carries_the_terminate_stderr() -> Bool {
@@ -88,7 +149,7 @@ test fn an_unconfirmed_kill_carries_the_terminate_stderr() -> Bool {
 }
 
 test fn job_output_of_a_finished_exit_3_job_does_not_say_exit_0() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 3 } })
+  let job = fixture_own_exit(code: 3)
   let outcome = harness_job_output_for_state(job: job, jobs: [job], text: "from-job")
   let text = harness_outcome_text(outcome: outcome)
   match outcome {
@@ -111,7 +172,7 @@ test fn job_output_of_a_running_job_is_not_an_exit() -> Bool {
 }
 
 test fn wait_result_over_a_job_that_exited_1_does_not_say_exit_0() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 1 } })
+  let job = fixture_own_exit(code: 1)
   let text = harness_outcome_text(outcome: harness_text_with_table(
     text: "a job finished before the wait elapsed",
     jobs: [job],
@@ -119,15 +180,118 @@ test fn wait_result_over_a_job_that_exited_1_does_not_say_exit_0() -> Bool {
   text.contains("exit 1") && !text.contains("[exit 0]") && !text.contains("[exit 1]")
 }
 
+test fn a_124_at_the_backstop_is_duration_exceeded_and_a_124_inside_it_is_not() -> Bool {
+  let job = fixture_finished(code: 124, elapsed: Present { value: second(count: 20) })
+  harness_exit_is_harness_backstop(code: 124, elapsed: second(count: 20), backstop: second(count: 20))
+    && !harness_exit_is_harness_backstop(code: 124, elapsed: second(count: 1), backstop: second(count: 20))
+    && !harness_exit_is_harness_backstop(code: 0, elapsed: second(count: 20), backstop: second(count: 20))
+    && harness_command_table_exit_label(job: job, code: 124, standing: JobBackstopHit).contains("duration exceeded")
+    && !harness_command_table_exit_label(job: job, code: 124, standing: JobBackstopHit).contains("exit 124")
+    && harness_command_table_exit_label(job: job, code: 124, standing: JobOwnExit).contains("exit 124")
+}
+
+test fn a_124_whose_elapsed_time_is_unknown_refuses_rather_than_guessing() -> Bool {
+  let standing = harness_backstop_standing(
+    code: 124,
+    elapsed: unknown_elapsed(),
+    backstop: second(count: 20),
+  )
+  let job = fixture_finished(code: 124, elapsed: Present { value: second(count: 20) })
+  let outcome = harness_job_backstop_exit_outcome(
+    job: job,
+    code: 124,
+    standing: standing,
+    completed: ToolCompleted { text: "from-job", exit_code: 124, standing: OutputComplete },
+  )
+  let text = harness_outcome_text(outcome: outcome)
+  match standing {
+    JobBackstopUndecided { cause } =>
+      match cause {
+        ElapsedUnreadable => true
+        ElapsedWithinClockGrain => false
+      }
+    JobBackstopHit => false
+    JobOwnExit => false
+  }
+    && match outcome {
+      ToolRefused { disposition: _ } =>
+        text.contains("could not be read") && text.contains("backstop cannot be decided")
+          && !text.contains("[exit 124]") && !text.contains("exceeded the shell-job backstop")
+      ToolCompleted { text: _, exit_code: _, standing: _ } => false
+      ToolReport { text: _, standing: _ } => false
+      ToolJob { id: _, text: _ } => false
+    }
+    && harness_command_table_exit_label(
+      job: job,
+      code: 124,
+      standing: JobBackstopUndecided { cause: ElapsedUnreadable },
+    ).contains("backstop undecided")
+    && match harness_backstop_standing(
+      code: 0,
+      elapsed: unknown_elapsed(),
+      backstop: second(count: 20),
+    ) {
+      JobOwnExit => true
+      JobBackstopHit => false
+      JobBackstopUndecided { cause: _ } => false
+    }
+}
+
+test fn a_124_one_clock_second_shy_of_the_backstop_is_not_the_commands_own_exit() -> Bool {
+  let backstop = second(count: 20)
+  match measure_sub(a: backstop, b: harness_elapsed_clock_resolution) {
+    MeasureSubtrahendExceedsMinuend => false
+    MeasureDifference { value: shy } =>
+      match harness_backstop_standing(
+        code: 124,
+        elapsed: Present { value: shy },
+        backstop: backstop,
+      ) {
+        JobBackstopUndecided { cause } =>
+          match cause {
+            ElapsedWithinClockGrain => true
+            ElapsedUnreadable => false
+          }
+        JobOwnExit => false
+        JobBackstopHit => false
+      }
+        && match measure_sub(a: shy, b: harness_elapsed_clock_resolution) {
+          MeasureSubtrahendExceedsMinuend => false
+          MeasureDifference { value: below } =>
+            match harness_backstop_standing(
+              code: 124,
+              elapsed: Present { value: below },
+              backstop: backstop,
+            ) {
+              JobOwnExit => true
+              JobBackstopHit => false
+              JobBackstopUndecided { cause: _ } => false
+            }
+        }
+  }
+}
+
+// A FAILED RENAME IS A TYPED LOCATION, AND THE READER FOLLOWS IT (review 80277): the kept stream's path is the
+// pending one, the moved stream's is its destination, and the note is rendered from those values.
 test fn a_failed_stdio_rename_keeps_the_mktemp_path_and_says_so() -> Bool {
   let pending = "/tmp/pending-out" as FilePath
   let dest = "/tmp/job-9.out" as FilePath
-  harness_kept_stdio_path(pending: pending, dest: dest, moved: true) == dest
-    && harness_kept_stdio_path(pending: pending, dest: dest, moved: false) == pending
-    && harness_stdio_move_note(
-      moved_out: false,
-      moved_err: true,
-      pending_out: pending,
-      pending_err: "/tmp/pending-err" as FilePath,
-    ).contains("mktemp paths")
+  let kept = harness_job_stdio_after_move(pending: pending, dest: dest, moved: false)
+  let moved = harness_job_stdio_after_move(pending: "/tmp/pending-err" as FilePath, dest: "/tmp/job-9.err" as FilePath, moved: true)
+  let job = HarnessShellJob {
+    id: "9",
+    pid: 9,
+    command: "true",
+    stdout: kept,
+    stderr: moved,
+    started_at: "1970-01-01T00:00:00Z" as Timestamp,
+    backstop: second(count: 20),
+    state: JobRunning,
+  }
+  harness_job_stdio_path_of(stdio: kept) == pending
+    && harness_job_stdio_path_of(stdio: moved) == ("/tmp/job-9.err" as FilePath)
+    && (match kept { StdioKeptAtPending { path: _, intended: i } => i == dest  StdioAtDestination { path: _ } => false })
+    && harness_job_stdio_note(job: job).contains("stdout kept at /tmp/pending-out")
+    && !harness_job_stdio_note(job: job).contains("stderr")
+    && harness_job_stdio_note(job: fixture_job(state: JobRunning)) == ""
 }

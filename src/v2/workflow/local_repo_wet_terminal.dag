@@ -2527,6 +2527,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "job_output_after_the_backstop_is_duration_exceeded" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "job_output_after_the_backstop_is_duration_exceeded",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "a_command_exit_124_inside_the_backstop_is_not_duration_exceeded" },
+      entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
+      function: "a_command_exit_124_inside_the_backstop_is_not_duration_exceeded",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.harness_shell_job_wet_witness", function: "job_kill_keeps_the_job_running_unless_reap_confirms_death" },
       entry: "dag/test/claim/harness_shell_job_wet_witness.dag",
       function: "job_kill_keeps_the_job_running_unless_reap_confirms_death",

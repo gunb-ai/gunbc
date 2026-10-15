@@ -1,6 +1,7 @@
 module gunbc.harness.harness_shell_job
 
-import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr, Timestamp }
+import std.algebra { trim }
 import extdeps.posix.process
 import extdeps.posix.signal
 import extdeps.tools.sleep
@@ -8,6 +9,7 @@ import extdeps.filesystem.filesystem_io
 import extdeps.exec.command { ArgvCommand, argv_command, env_prefixed_command_in }
 import extdeps.exec.program { uncataloged_program }
 import extdeps.shell
+import extdeps.clock { Clock }
 import std.measure { Second, second, measure_le, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, schedule_seconds,
@@ -31,16 +33,115 @@ type HarnessShellJobOutcome
 
 type HarnessShellJobState
   = JobRunning
-  | JobFinished { outcome: HarnessShellJobOutcome }
+  | JobFinished { outcome: HarnessShellJobOutcome, elapsed: Second? }
 
 type HarnessShellJob {
   id: String
   pid: Int
   command: String
-  stdout_file: FilePath
-  stderr_file: FilePath
-  stdio_note: String
+  stdout: HarnessJobStdio
+  stderr: HarnessJobStdio
+  started_at: Timestamp
+  backstop: Second
   state: HarnessShellJobState
+}
+
+// GNU timeout exits 124 when it kills the child. A command may also exit 124 itself, so 124 is
+// DurationExceeded only when elapsed time from started_at has reached this job's backstop.
+// Elapsed unknown is not "not the backstop": it is a third standing, because guessing either
+// DurationExceeded or ToolCompleted would fabricate the missing clock read. Whole-unix-second
+// subtraction has the same hole one grain below the backstop: a real timeout kill can read as
+// backstop minus that grain.
+data harness_gnu_timeout_killed_exit: Int = 124
+
+// Clock.Now is `date -u +%Y-%m-%dT%H:%M:%SZ`; TimestampToUnixSecs is `date +%s`. Both truncate
+// to a POSIX second, so elapsed is quantized to this grain — not a policy slack, the clock's
+// resolution cited from those transports in extdeps.clock.
+data harness_elapsed_clock_resolution: Second = second(count: 1)
+
+type HarnessBackstopUndecidedCause
+  = ElapsedUnreadable
+  | ElapsedWithinClockGrain
+
+type HarnessJobBackstopStanding
+  = JobBackstopHit
+  | JobOwnExit
+  | JobBackstopUndecided { cause: HarnessBackstopUndecidedCause }
+
+fn harness_exit_is_harness_backstop(code: Int, elapsed: Second, backstop: Second) -> Bool {
+  code == harness_gnu_timeout_killed_exit && measure_le(a: backstop, b: elapsed)
+}
+
+fn harness_elapsed_in_backstop_clock_grain(elapsed: Second, backstop: Second) -> Bool {
+  match measure_sub(a: backstop, b: harness_elapsed_clock_resolution) {
+    MeasureSubtrahendExceedsMinuend => false
+    MeasureDifference { value: floor } =>
+      measure_le(a: floor, b: elapsed) && !measure_le(a: backstop, b: elapsed)
+  }
+}
+
+fn harness_elapsed_from_started_at(started_at: Timestamp) -> Second? {
+  let now = Clock.Now()
+  let start = Clock.TimestampToUnixSecs(timestamp: started_at)
+  let end = Clock.TimestampToUnixSecs(timestamp: now.timestamp)
+  match parse_int(s: trim(s: start.unix_secs)) {
+    Absent => none
+    Present { value: t0 } =>
+      match parse_int(s: trim(s: end.unix_secs)) {
+        Absent => none
+        Present { value: t1 } =>
+          if t1 < t0 {
+            none
+          } else {
+            Present { value: second(count: t1 - t0) }
+          }
+      }
+  }
+}
+
+fn harness_finish_job(job: HarnessShellJob, outcome: HarnessShellJobOutcome) -> HarnessShellJob {
+  harness_job_with_state(
+    job: job,
+    state: JobFinished {
+      outcome: outcome,
+      elapsed: harness_elapsed_from_started_at(started_at: job.started_at),
+    },
+  )
+}
+
+fn harness_job_recorded_elapsed(job: HarnessShellJob) -> Second? {
+  match job.state {
+    JobRunning => none
+    JobFinished { outcome: _, elapsed } => elapsed
+  }
+}
+
+fn harness_backstop_standing(code: Int, elapsed: Second?, backstop: Second) -> HarnessJobBackstopStanding {
+  match elapsed {
+    Absent =>
+      if code == harness_gnu_timeout_killed_exit {
+        JobBackstopUndecided { cause: ElapsedUnreadable }
+      } else {
+        JobOwnExit
+      }
+    Present { value: observed } =>
+      if harness_exit_is_harness_backstop(code: code, elapsed: observed, backstop: backstop) {
+        JobBackstopHit
+      } else if code == harness_gnu_timeout_killed_exit
+        && harness_elapsed_in_backstop_clock_grain(elapsed: observed, backstop: backstop) {
+        JobBackstopUndecided { cause: ElapsedWithinClockGrain }
+      } else {
+        JobOwnExit
+      }
+  }
+}
+
+fn harness_job_backstop_standing(job: HarnessShellJob, code: Int) -> HarnessJobBackstopStanding {
+  harness_backstop_standing(
+    code: code,
+    elapsed: harness_job_recorded_elapsed(job: job),
+    backstop: job.backstop,
+  )
 }
 
 type HarnessShellJobObservation
@@ -54,31 +155,26 @@ fn harness_job_with_state(job: HarnessShellJob, state: HarnessShellJobState) -> 
     id: job.id,
     pid: job.pid,
     command: job.command,
-    stdout_file: job.stdout_file,
-    stderr_file: job.stderr_file,
-    stdio_note: job.stdio_note,
+    stdout: job.stdout,
+    stderr: job.stderr,
+    started_at: job.started_at,
+    backstop: job.backstop,
     state: state,
   }
 }
 
 fn harness_refresh_job(job: HarnessShellJob) -> HarnessShellJob {
   match job.state {
-    JobFinished { outcome: _ } => job
+    JobFinished { outcome: _, elapsed: _ } => job
     JobRunning =>
       match posix.Process.Reap(pid: job.pid).reaped {
         StillRunning => job
         Exited { code } =>
-          harness_job_with_state(job: job, state: JobFinished { outcome: JobExitedOutcome { code: code } })
+          harness_finish_job(job: job, outcome: JobExitedOutcome { code: code })
         Signaled { signal } =>
-          harness_job_with_state(
-            job: job,
-            state: JobFinished { outcome: JobSignaledOutcome { signal: signal } },
-          )
+          harness_finish_job(job: job, outcome: JobSignaledOutcome { signal: signal })
         ReapRefused { cause } =>
-          harness_job_with_state(
-            job: job,
-            state: JobFinished { outcome: JobReapRefusedOutcome { cause: cause } },
-          )
+          harness_finish_job(job: job, outcome: JobReapRefusedOutcome { cause: cause })
       }
   }
 }
@@ -90,14 +186,14 @@ fn harness_refresh_jobs(jobs: List<HarnessShellJob>) -> List<HarnessShellJob> {
 fn harness_job_is_running(job: HarnessShellJob) -> Bool {
   match job.state {
     JobRunning => true
-    JobFinished { outcome: _ } => false
+    JobFinished { outcome: _, elapsed: _ } => false
   }
 }
 
 fn harness_observe_standing(job: HarnessShellJob) -> HarnessShellJobObservation {
   match job.state {
     JobRunning => JobStillRunning { job: job }
-    JobFinished { outcome } =>
+    JobFinished { outcome, elapsed: _ } =>
       match outcome {
         JobExitedOutcome { code } => JobExited { job: job, code: code }
         JobSignaledOutcome { signal } => JobSignaled { job: job, signal: signal }
@@ -110,12 +206,34 @@ fn harness_observe_job(job: HarnessShellJob) -> HarnessShellJobObservation {
   harness_observe_standing(job: harness_refresh_job(job: job))
 }
 
+fn harness_command_table_exit_label(
+  job: HarnessShellJob,
+  code: Int,
+  standing: HarnessJobBackstopStanding,
+) -> String {
+  match standing {
+    JobBackstopHit =>
+      join(["  ", job.id, "  duration exceeded  $ ", job.command], "")
+    JobOwnExit =>
+      join(["  ", job.id, "  exit ", to_string(value: code), "  $ ", job.command], "")
+    JobBackstopUndecided { cause: _ } =>
+      join([
+        "  ", job.id, "  exit ", to_string(value: code),
+        ", backstop undecided  $ ", job.command,
+      ], "")
+  }
+}
+
 fn harness_command_table_line(obs: HarnessShellJobObservation) -> String {
   match obs {
     JobStillRunning { job } =>
       join(["  ", job.id, "  running  $ ", job.command], "")
     JobExited { job, code } =>
-      join(["  ", job.id, "  exit ", to_string(value: code), "  $ ", job.command], "")
+      harness_command_table_exit_label(
+        job: job,
+        code: code,
+        standing: harness_job_backstop_standing(job: job, code: code),
+      )
     JobSignaled { job, signal } =>
       join(["  ", job.id, "  signaled ", to_string(value: signal), "  $ ", job.command], "")
     JobReapRefused { job, cause } =>
@@ -142,39 +260,58 @@ type HarnessJobText
   | JobTextUnreadable { path: String, cause: String }
 
 fn harness_read_job_text(job: HarnessShellJob) -> HarnessJobText {
-  let out = Filesystem.Read(path: job.stdout_file as String)
-  let err = Filesystem.Read(path: job.stderr_file as String)
+  let out_path = harness_job_stdio_path_of(stdio: job.stdout)
+  let err_path = harness_job_stdio_path_of(stdio: job.stderr)
+  let out = Filesystem.Read(path: out_path as String)
+  let err = Filesystem.Read(path: err_path as String)
   if !out.success {
-    JobTextUnreadable { path: job.stdout_file as String, cause: out.error }
+    JobTextUnreadable { path: out_path as String, cause: out.error }
   } else if !err.success {
-    JobTextUnreadable { path: job.stderr_file as String, cause: err.error }
+    JobTextUnreadable { path: err_path as String, cause: err.error }
   } else {
     JobTextRead { text: join([out.content, err.content], "") }
   }
 }
 
-fn harness_kept_stdio_path(pending: FilePath, dest: FilePath, moved: Bool) -> FilePath {
-  if moved {
-    dest
-  } else {
-    pending
+// WHERE ONE STREAM'S BYTES ACTUALLY ARE. The stream is opened at a mktemp path (the fd the job writes
+// through) and renamed to its pid-keyed destination after spawn. A rename that fails leaves the bytes at the
+// pending path, so the location is this value, read by the reader, and never the intended destination.
+type HarnessJobStdio
+  = StdioAtDestination { path: FilePath }
+  | StdioKeptAtPending { path: FilePath, intended: FilePath }
+
+fn harness_job_stdio_path_of(stdio: HarnessJobStdio) -> FilePath {
+  match stdio {
+    StdioAtDestination { path } => path
+    StdioKeptAtPending { path, intended: _ } => path
   }
 }
 
-fn harness_stdio_move_note(
-  moved_out: Bool,
-  moved_err: Bool,
-  pending_out: FilePath,
-  pending_err: FilePath,
-) -> String {
-  if moved_out && moved_err {
+fn harness_job_stdio_after_move(pending: FilePath, dest: FilePath, moved: Bool) -> HarnessJobStdio {
+  if moved {
+    StdioAtDestination { path: dest }
+  } else {
+    StdioKeptAtPending { path: pending, intended: dest }
+  }
+}
+
+// The tool text renders the degradation from the typed location: nothing when both streams reached their
+// destinations, one line naming each kept stream otherwise.
+fn harness_job_stdio_kept_line(stream: String, stdio: HarnessJobStdio) -> String {
+  match stdio {
+    StdioAtDestination { path: _ } => ""
+    StdioKeptAtPending { path, intended } =>
+      join([" (", stream, " kept at ", path as String, ", not ", intended as String, ")"], "")
+  }
+}
+
+fn harness_job_stdio_note(job: HarnessShellJob) -> String {
+  let out = harness_job_stdio_kept_line(stream: "stdout", stdio: job.stdout)
+  let err = harness_job_stdio_kept_line(stream: "stderr", stdio: job.stderr)
+  if out == "" && err == "" {
     ""
   } else {
-    join([
-      "job output kept at the mktemp paths that hold the live fds",
-      if !moved_out { join([" (stdout: ", pending_out as String, ")"], "") } else { "" },
-      if !moved_err { join([" (stderr: ", pending_err as String, ")"], "") } else { "" },
-    ], "")
+    join(["job output kept at the mktemp paths that hold the live fds", out, err], "")
   }
 }
 
@@ -257,13 +394,13 @@ fn harness_job_stdio_path(output_dir: FilePath, pid: Int, suffix: String) -> Fil
 
 fn harness_backstopped_shell_command(
   timeout_program: FilePath,
-  backstop_seconds: Int,
+  backstop: Second,
   command: String,
 ) -> ArgvCommand
 {
   argv_command(
     program: uncataloged_program(invocation: timeout_program as NonEmptyStr),
-    arguments: [to_string(value: backstop_seconds), "/bin/sh", "-c", command],
+    arguments: [to_string(value: schedule_seconds(s: backstop)), "/bin/sh", "-c", command],
   )
 }
 
@@ -288,7 +425,7 @@ fn harness_start_shell_job(
   } else {
     let inner = harness_backstopped_shell_command(
       timeout_program: timeout_program,
-      backstop_seconds: schedule_seconds(s: schedule.backstop),
+      backstop: schedule.backstop,
       command: command,
     )
     let wrapped = env_prefixed_command_in(
@@ -296,6 +433,10 @@ fn harness_start_shell_job(
       bindings: [],
       command: inner,
     )
+    // Stamp before StartDetached: GNU timeout starts its clock at or after that instant, so
+    // elapsed from this stamp is an upper bound on timeout's own count. Stamping after spawn
+    // and the stdio moves biased elapsed low.
+    let started_at = Clock.Now().timestamp
     let spawn = posix.Process.StartDetached(
       program: wrapped.program.invocation,
       arguments: wrapped.arguments,
@@ -314,22 +455,10 @@ fn harness_start_shell_job(
             id: to_string(value: pid),
             pid: pid,
             command: command,
-            stdout_file: harness_kept_stdio_path(
-              pending: pending_out.path,
-              dest: dest_out,
-              moved: moved_out.success,
-            ),
-            stderr_file: harness_kept_stdio_path(
-              pending: pending_err.path,
-              dest: dest_err,
-              moved: moved_err.success,
-            ),
-            stdio_note: harness_stdio_move_note(
-              moved_out: moved_out.success,
-              moved_err: moved_err.success,
-              pending_out: pending_out.path,
-              pending_err: pending_err.path,
-            ),
+            stdout: harness_job_stdio_after_move(pending: pending_out.path, dest: dest_out, moved: moved_out.success),
+            stderr: harness_job_stdio_after_move(pending: pending_err.path, dest: dest_err, moved: moved_err.success),
+            started_at: started_at,
+            backstop: schedule.backstop,
             state: JobRunning,
           },
         }
@@ -365,17 +494,11 @@ fn harness_kill_running_job(job: HarnessShellJob) -> HarnessJobKill {
   match harness_await_pid(pid: job.pid, remaining: second(count: 5)) {
     Exited { code } =>
       JobKillConfirmed {
-        job: harness_job_with_state(
-          job: job,
-          state: JobFinished { outcome: JobExitedOutcome { code: code } },
-        ),
+        job: harness_finish_job(job: job, outcome: JobExitedOutcome { code: code }),
       }
     Signaled { signal } =>
       JobKillConfirmed {
-        job: harness_job_with_state(
-          job: job,
-          state: JobFinished { outcome: JobSignaledOutcome { signal: signal } },
-        ),
+        job: harness_finish_job(job: job, outcome: JobSignaledOutcome { signal: signal }),
       }
     StillRunning =>
       JobKillUnconfirmed {

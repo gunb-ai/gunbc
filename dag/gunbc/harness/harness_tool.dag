@@ -1,7 +1,8 @@
 module gunbc.harness.harness_tool
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
-import std.measure { CharacterCount, character_count, character_count_value, Second, second, second_count }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { CharacterCount, character_count, character_count_value, Second, second, second_count, minute }
 import extdeps.languages.json.emit {
   JsonValue, JsonString, JsonObject, JsonArray,
   json_kv, json_string, json_array, json_object,
@@ -20,20 +21,25 @@ import gunbc.harness.harness_tool_kind {
 }
 import gunbc.harness.harness_shell_job_policy {
   ShellJobSchedule, HarnessWaitPace, WaitPaceReset, WaitPaceAfterWait,
-  HarnessWaitRequest, WaitUseDefault, WaitRequestedMinutes, WaitMalformedMinutes, WaitAdmitted, WaitRefusedNotADuration,
+  HarnessWaitRequest, WaitUseDefault, WaitRequestedMinutes, WaitMalformedMinutes,
+  WaitNonPositiveMinutes, WaitAdmitted, WaitRefusedNotADuration,
   harness_shell_job_schedule, harness_admit_wait, schedule_seconds,
   harness_pace_after_window_change, harness_pace_after_expired_wait,
 }
 import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellSpawn, ShellSpawned, ShellSpawnFailed,
   JobRunning, JobFinished, JobExitedOutcome, JobSignaledOutcome,
-  JobReapRefusedOutcome, harness_job_with_state,
+  JobReapRefusedOutcome,
   harness_start_shell_job, harness_await_pid, harness_command_table, harness_read_job_text,
+  harness_finish_job, harness_job_stdio_note,
   JobTextRead, JobTextUnreadable,
   harness_replace_job, harness_find_job, harness_wait_until_any,
   WaitLoopFinished, WaitLoopExpired, WaitLoopNoRunningJob, harness_kill_running_job,
   JobKillConfirmed, JobKillUnconfirmed,
   harness_refresh_job, harness_job_is_running, harness_hand_in_blocked_by_running_jobs,
+  harness_job_backstop_standing, HarnessJobBackstopStanding,
+  JobBackstopHit, JobOwnExit, JobBackstopUndecided,
+  ElapsedUnreadable, ElapsedWithinClockGrain,
 }
 
 // THE HARNESS TOOL SURFACE, and the rule every disposition below is one instance of:
@@ -187,11 +193,6 @@ fn harness_tool_environment(
   }
 }
 
-// GNU timeout exits 124 when it kills its child, which is what makes "the harness stopped this" a
-// DECIDABLE fact rather than a guess from a nonzero exit. Cited to coreutils' documented behaviour
-// and executed against /opt/homebrew/bin/gtimeout 9.11 on 2026-09-02, which returned exactly 124.
-data harness_timeout_kill_exit_code: Int = 124
-
 // THE TOOL RESULT CARRIES A DECLARED CAP, AND STDOUT IS THE CHANNEL THAT NEEDED ONE. extdeps.gunbc
 // WitnessBin.Run declares stderr_capture: BoundedTail{16384} and reports stderr_truncated with its
 // byte counts -- and declares NOTHING for stdout, which is the channel that actually returns bulk
@@ -272,15 +273,46 @@ fn harness_wait_note(seconds: Second, clamped: Bool, raised_to_minimum: Bool, ca
   join([clamped_note, raised_note, backstop_note], "")
 }
 
+fn harness_job_backstop_exit_outcome(
+  job: HarnessShellJob,
+  code: Int,
+  standing: HarnessJobBackstopStanding,
+  completed: HarnessToolOutcome,
+) -> HarnessToolOutcome {
+  match standing {
+    JobBackstopHit =>
+      ToolRefused {
+        disposition: DurationExceeded { limit_seconds: schedule_seconds(s: job.backstop) },
+      }
+    JobOwnExit => completed
+    JobBackstopUndecided { cause } =>
+      ToolRefused {
+        disposition: ToolEffectRefused {
+          detail: join([
+            "job ", job.id, " exited ", to_string(value: code),
+            ", ",
+            match cause {
+              ElapsedUnreadable =>
+                "but elapsed time from started_at could not be read, so the harness backstop cannot be decided"
+              ElapsedWithinClockGrain =>
+                "but elapsed time is within the clock's one-second grain of the backstop, so the harness backstop cannot be decided"
+            },
+          ], ""),
+        },
+      }
+  }
+}
+
 fn harness_job_output_for_state(
   job: HarnessShellJob,
   jobs: List<HarnessShellJob>,
   text: String,
 ) -> HarnessToolOutcome {
-  let with_note = if job.stdio_note == "" {
+  let note = harness_job_stdio_note(job: job)
+  let with_note = if note == "" {
     text
   } else {
-    join([text, "\n", job.stdio_note], "")
+    join([text, "\n", note], "")
   }
   let bounded = harness_bounded_tool_text(
     text: join([with_note, "\n", harness_command_table(jobs: jobs)], ""),
@@ -288,14 +320,19 @@ fn harness_job_output_for_state(
   match job.state {
     JobRunning =>
       ToolJob { id: job.id, text: bounded.text }
-    JobFinished { outcome } =>
+    JobFinished { outcome, elapsed: _ } =>
       match outcome {
         JobExitedOutcome { code } =>
-          ToolCompleted {
-            text: bounded.text,
-            exit_code: code,
-            standing: bounded.standing,
-          }
+          harness_job_backstop_exit_outcome(
+            job: job,
+            code: code,
+            standing: harness_job_backstop_standing(job: job, code: code),
+            completed: ToolCompleted {
+              text: bounded.text,
+              exit_code: code,
+              standing: bounded.standing,
+            },
+          )
         JobSignaledOutcome { signal } =>
           ToolRefused {
             disposition: ToolEffectRefused {
@@ -373,7 +410,7 @@ fn harness_run_command_scheduled(
                 " (still running after the inline hold of ",
                 to_string(value: schedule_seconds(s: schedule.inline_hold)),
                 "s; not killed). Wait with wait; read with job_output; stop with job_kill.",
-                if job.stdio_note == "" { "" } else { join(["\n", job.stdio_note], "") },
+                if harness_job_stdio_note(job: job) == "" { "" } else { join(["\n", harness_job_stdio_note(job: job)], "") },
                 "\n",
                 harness_command_table(jobs: jobs),
               ], ""),
@@ -381,32 +418,16 @@ fn harness_run_command_scheduled(
           }
         }
         Exited { code } =>
-          if code == harness_timeout_kill_exit_code {
-            HarnessToolStep {
-              environment: harness_env_with_jobs(
-                environment: environment,
-                jobs: environment.jobs,
-                wait_pace: harness_pace_after_window_change(),
-              ),
-              outcome: ToolRefused {
-                disposition: DurationExceeded { limit_seconds: schedule_seconds(s: schedule.backstop) },
-              },
-            }
-          } else {
-            HarnessToolStep {
-              environment: harness_env_with_jobs(
-                environment: environment,
-                jobs: environment.jobs,
-                wait_pace: harness_pace_after_window_change(),
-              ),
-              outcome: harness_job_output_outcome(
-                job: harness_job_with_state(
-                  job: job,
-                  state: JobFinished { outcome: JobExitedOutcome { code: code } },
-                ),
-                jobs: environment.jobs,
-              ),
-            }
+          HarnessToolStep {
+            environment: harness_env_with_jobs(
+              environment: environment,
+              jobs: environment.jobs,
+              wait_pace: harness_pace_after_window_change(),
+            ),
+            outcome: harness_job_output_outcome(
+              job: harness_finish_job(job: job, outcome: JobExitedOutcome { code: code }),
+              jobs: environment.jobs,
+            ),
           }
         Signaled { signal } =>
           HarnessToolStep {
@@ -448,14 +469,14 @@ fn harness_wait_jobs_scheduled(
     pace: environment.wait_pace,
     request: request,
   ) {
-    WaitRefusedNotADuration { minutes, cause } =>
+    WaitRefusedNotADuration { asked_wire, cause } =>
       HarnessToolStep {
         environment: environment,
         outcome: ToolRefused {
           disposition: ToolEffectRefused {
             detail: join([
               "wait minutes must be a positive duration, got ",
-              to_string(value: minutes),
+              to_string(value: asked_wire),
               " (",
               cause,
               ")",
@@ -643,7 +664,16 @@ fn harness_wait_request_from_block(block: HarnessWireBlock) -> HarnessWaitReques
   match block {
     WireToolUseBlock { id: _, name: _, input: input } =>
       match json_field_int(obj: input, key: "minutes") {
-        FieldRead { value: n } => WaitRequestedMinutes { minutes: n }
+        FieldRead { value: n } =>
+          match checked_int_to_nat(n: n) {
+            Absent => WaitNonPositiveMinutes { asked_wire: n }
+            Present { value: count } =>
+              if count == 0 {
+                WaitNonPositiveMinutes { asked_wire: n }
+              } else {
+                WaitRequestedMinutes { minutes: minute(count: count) }
+              }
+          }
         FieldAbsent => WaitUseDefault
         FieldMalformed { cause } => WaitMalformedMinutes { cause: cause }
       }
