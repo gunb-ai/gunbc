@@ -1099,6 +1099,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.pre_swap_admission_merge_base_inhabitance_witness", function: "git_merge_base_in_a_temp_repo_emits_the_standing_admission_consumes" },
+      entry: "dag/test/claim/live_deploy/pre_swap_admission_merge_base_inhabitance_witness.dag",
+      function: "git_merge_base_in_a_temp_repo_emits_the_standing_admission_consumes",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.pre_swap_admission_serve_compile_inhabitance_witness", function: "the_checkouts_serve_entry_compiles_clean_through_the_gate_route" },
+      entry: "dag/test/claim/live_deploy/pre_swap_admission_serve_compile_inhabitance_witness.dag",
+      function: "the_checkouts_serve_entry_compiles_clean_through_the_gate_route",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.pre_swap_admission_serve_compile_inhabitance_witness", function: "a_staged_type_error_entry_is_blocked_by_real_execution" },
+      entry: "dag/test/claim/live_deploy/pre_swap_admission_serve_compile_inhabitance_witness.dag",
+      function: "a_staged_type_error_entry_is_blocked_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.pre_swap_admission_serve_compile_inhabitance_witness", function: "a_staged_clean_entry_is_admitted_by_real_execution" },
+      entry: "dag/test/claim/live_deploy/pre_swap_admission_serve_compile_inhabitance_witness.dag",
+      function: "a_staged_clean_entry_is_admitted_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.provenance_calibration_report_real_execution", function: "the_real_report_refuses_on_the_measured_matrix_by_real_execution" },
       entry: "dag/test/claim/provenance_calibration_report_real_execution.dag",
       function: "the_real_report_refuses_on_the_measured_matrix_by_real_execution",

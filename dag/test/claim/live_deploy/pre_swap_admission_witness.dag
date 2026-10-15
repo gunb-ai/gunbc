@@ -2,12 +2,6 @@ module test.claim.live_deploy.pre_swap_admission_witness
 
 import std.types { Bool, String, Int, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CensusObserved,
-  CensusNotRunnable,
-  CompileDiagnosticCensusRow,
-}
 import gunbc.live_deploy.desired {
   srv2_deploy_desired_deployment,
   production_admitted_branch,
@@ -17,27 +11,39 @@ import gunbc.live_deploy.pre_swap_admission {
   target_branch_admission,
   TargetBranchAdmitted,
   TargetBranchRefused,
-  serve_entry_compile_of,
+  serve_entry_compile_verdict_of,
   ServeEntryCompileAdmitted,
   ServeEntryCompileBlocked,
   ServeEntryCompileUnobserved,
-  observe_serve_entry_file_compile,
+  ServeEntryCompileVerdict,
+  observe_serve_entry_compile_clean,
   live_deploy_pre_swap_admission,
   PreSwapAdmission,
   TargetBranchAdmission,
   PreSwapAdmitted,
   PreSwapRefused,
+  checkout_branch_for_admission,
+  CheckoutNamedBranch,
+  DetachedHeadOnAdmittedBranch,
+  DetachedHeadNotOnAdmittedBranch,
+  pre_swap_from_checkout,
+}
+import extdeps.git.inspect {
+  MergeBaseReported,
+  NoCommonAncestor,
+  MergeBaseRefused,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn blocking_row() -> CompileDiagnosticCensusRow {
-  CompileDiagnosticCensusRow {
-    diagnostic_class: "DeclaredTypeInhabitanceMismatch" as NonEmptyStr,
-    subject_name: "f",
-    blocking: true,
-    count: 1,
-  }
+data a_compiler_error_line: String = "error[dag/x.dag:2:5]: declared type Int is not inhabited by String"
+
+fn a_blocked_compile() -> ServeEntryCompileVerdict {
+  serve_entry_compile_verdict_of(
+    exit_success: false,
+    exit_code: 1,
+    stderr: join(["warning: an advisory line", a_compiler_error_line, ""], "\n"),
+  )
 }
 
 fn pre_swap_reason(a: PreSwapAdmission) -> String {
@@ -105,9 +111,9 @@ test fn an_empty_observed_branch_never_admits() -> Bool {
   }
 }
 
-// RED: a blocking compile census refuses; the reason states nothing was mutated.
+// RED: a blocked serve-entry compile refuses; the reason states nothing was mutated.
 test fn a_blocking_compile_refuses_with_nothing_mutated() -> Bool {
-  let compile = serve_entry_compile_of(census: CensusObserved { rows: [blocking_row()] })
+  let compile = a_blocked_compile()
   match live_deploy_pre_swap_admission(
     admitted: production_admitted_branch,
     observed_branch: "main",
@@ -116,6 +122,22 @@ test fn a_blocking_compile_refuses_with_nothing_mutated() -> Bool {
     PreSwapAdmitted => false
     PreSwapRefused { reason } =>
       string_contains(s: reason, pattern: "ServeEntryCompileBlocked")
+        && string_contains(s: reason, pattern: "nothing was mutated")
+  }
+}
+
+// The refusal carries the compiler's own located error line, so the operator reads why without
+// running a second compile. RED on edb604a2822, whose reason carried only a count.
+test fn a_blocking_compile_refusal_names_what_blocked_it() -> Bool {
+  let compile = a_blocked_compile()
+  match live_deploy_pre_swap_admission(
+    admitted: production_admitted_branch,
+    observed_branch: "main",
+    compile: compile,
+  ) {
+    PreSwapAdmitted => false
+    PreSwapRefused { reason } =>
+      string_contains(s: reason, pattern: a_compiler_error_line)
         && string_contains(s: reason, pattern: "nothing was mutated")
   }
 }
@@ -136,26 +158,35 @@ test fn an_unobserved_compile_refuses() -> Bool {
   match live_deploy_pre_swap_admission(
     admitted: production_admitted_branch,
     observed_branch: "main",
-    compile: ServeEntryCompileUnobserved { detail: "census not runnable" },
+    compile: ServeEntryCompileUnobserved { detail: "the serve-entry compile exited 127 with no error line" },
   ) {
     PreSwapAdmitted => false
     PreSwapRefused { reason } => string_contains(s: reason, pattern: "ServeEntryCompileUnobserved")
   }
 }
 
-test fn a_not_runnable_census_is_unobserved_not_clean() -> Bool {
-  match serve_entry_compile_of(census: CensusNotRunnable { cause: "harness" as NonEmptyStr }) {
+test fn a_failed_compile_with_error_lines_is_blocked_with_them() -> Bool {
+  match a_blocked_compile() {
+    ServeEntryCompileBlocked { blocking, diagnostics } => blocking == 1 && diagnostics == [a_compiler_error_line]
     ServeEntryCompileAdmitted => false
-    ServeEntryCompileBlocked { blocking: _ } => false
-    ServeEntryCompileUnobserved { detail } => detail == "harness"
+    ServeEntryCompileUnobserved { detail: _ } => false
   }
 }
 
-test fn an_empty_observed_census_is_admitted() -> Bool {
-  match serve_entry_compile_of(census: CensusObserved { rows: [] }) {
+test fn a_zero_exit_is_admitted_whatever_it_printed() -> Bool {
+  match serve_entry_compile_verdict_of(exit_success: true, exit_code: 0, stderr: "warning: an advisory line\n") {
     ServeEntryCompileAdmitted => true
-    ServeEntryCompileBlocked { blocking: _ } => false
+    ServeEntryCompileBlocked { blocking: _, diagnostics: _ } => false
     ServeEntryCompileUnobserved { detail: _ } => false
+  }
+}
+
+// A compile that could not run (no binary, a spawn failure) is unobserved, never admitted.
+test fn a_nonzero_exit_without_an_error_line_is_unobserved_not_clean() -> Bool {
+  match serve_entry_compile_verdict_of(exit_success: false, exit_code: 127, stderr: "env: no such file or directory\n") {
+    ServeEntryCompileUnobserved { detail } => string_contains(s: detail, pattern: "127")
+    ServeEntryCompileAdmitted => false
+    ServeEntryCompileBlocked { blocking: _, diagnostics: _ } => false
   }
 }
 
@@ -165,39 +196,98 @@ test fn a_wrong_branch_refuses_before_the_compile_reason() -> Bool {
   let reason = pre_swap_reason(a: live_deploy_pre_swap_admission(
     admitted: production_admitted_branch,
     observed_branch: "session/x",
-    compile: ServeEntryCompileBlocked { blocking: 1 },
+    compile: ServeEntryCompileBlocked { blocking: 1, diagnostics: [a_compiler_error_line] },
   ))
   string_contains(s: reason, pattern: "DeployTargetBranchRefused")
     && !string_contains(s: reason, pattern: "ServeEntryCompileBlocked")
 }
 
-// Inhabitance of the census-to-verdict fold over a real compile of a supplied fixture: a
-// type error is blocked; a matching Int body is admitted. The production wet path hands the
-// same fold a census of the declared serve entry file.
-test fn a_type_error_fixture_is_a_blocked_verdict() -> Bool {
-  match serve_entry_compile_of(
-    census: compile_dag_diagnostic_census("module probe_serve_entry_red\nfn f() -> Int { \"x\" }\n"),
-  ) {
-    ServeEntryCompileBlocked { blocking } => blocking > 0
-    ServeEntryCompileAdmitted => false
-    ServeEntryCompileUnobserved { detail: _ } => false
-  }
-}
-
 test fn an_empty_serve_entry_path_is_unobserved() -> Bool {
-  match observe_serve_entry_file_compile(entry: "") {
+  match observe_serve_entry_compile_clean(repo_root: "/nonexistent", bin_path: "/nonexistent", roots: ["dag"], entry: "") {
     ServeEntryCompileUnobserved { detail } => string_contains(s: detail, pattern: "empty")
     ServeEntryCompileAdmitted => false
-    ServeEntryCompileBlocked { blocking: _ } => false
+    ServeEntryCompileBlocked { blocking: _, diagnostics: _ } => false
   }
 }
 
-test fn a_clean_int_fixture_is_an_admitted_verdict() -> Bool {
-  match serve_entry_compile_of(
-    census: compile_dag_diagnostic_census("module probe_serve_entry_green\nfn f() -> Int { 1 }\n"),
+// RED: detached HEAD not reachable from origin/main. GITHUB_REF_NAME is not an input of this
+// fold, so supplying the CI event name as "main" cannot admit (the hole review 80259 named).
+test fn a_detached_candidate_not_reachable_from_main_is_refused_for_production() -> Bool {
+  match pre_swap_from_checkout(
+    standing: checkout_branch_for_admission(
+      named: "HEAD",
+      admitted: production_admitted_branch,
+      head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      outcome: MergeBaseReported { base_hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+    ),
+    admitted: production_admitted_branch,
+    compile: ServeEntryCompileAdmitted,
   ) {
-    ServeEntryCompileAdmitted => true
-    ServeEntryCompileBlocked { blocking: _ } => false
-    ServeEntryCompileUnobserved { detail: _ } => false
+    PreSwapAdmitted => false
+    PreSwapRefused { reason } =>
+      string_contains(s: reason, pattern: "DetachedHeadNotOnAdmittedBranch")
+        && string_contains(s: reason, pattern: "refs/remotes/origin/main")
+  }
+}
+
+test fn a_detached_candidate_reachable_from_main_is_admitted() -> Bool {
+  let head = "cccccccccccccccccccccccccccccccccccccccc"
+  match pre_swap_from_checkout(
+    standing: checkout_branch_for_admission(
+      named: "HEAD",
+      admitted: production_admitted_branch,
+      head: head,
+      outcome: MergeBaseReported { base_hex: head },
+    ),
+    admitted: production_admitted_branch,
+    compile: ServeEntryCompileAdmitted,
+  ) {
+    PreSwapRefused { reason: _ } => false
+    PreSwapAdmitted => true
+  }
+}
+
+// Named checkout is still string equality; a refused merge-base does not rewrite the branch.
+test fn a_named_branch_checkout_ignores_merge_base_standing() -> Bool {
+  match checkout_branch_for_admission(
+    named: "main",
+    admitted: production_admitted_branch,
+    head: "dddddddddddddddddddddddddddddddddddddddd",
+    outcome: MergeBaseRefused { exit_code: 128, stderr: "not a git repository" },
+  ) {
+    CheckoutNamedBranch { branch } => branch == "main"
+    DetachedHeadOnAdmittedBranch { head: _, branch: _ } => false
+    DetachedHeadNotOnAdmittedBranch { head: _, branch: _, cause: _ } => false
+  }
+}
+
+test fn operator_local_admission_does_not_consult_github_ref_name() -> Bool {
+  let github_ref_name = "main"
+  match checkout_branch_for_admission(
+    named: "HEAD",
+    admitted: production_admitted_branch,
+    head: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    outcome: NoCommonAncestor,
+  ) {
+    DetachedHeadNotOnAdmittedBranch { cause } =>
+      string_contains(s: cause, pattern: "DetachedHeadNotOnAdmittedBranch")
+        && !string_contains(s: cause, pattern: "GITHUB_REF_NAME")
+        && github_ref_name == (production_admitted_branch as String)
+    CheckoutNamedBranch { branch: _ } => false
+    DetachedHeadOnAdmittedBranch { head: _, branch: _ } => false
+  }
+}
+
+test fn a_detached_merge_base_refusal_is_not_an_admission() -> Bool {
+  match checkout_branch_for_admission(
+    named: "HEAD",
+    admitted: production_admitted_branch,
+    head: "ffffffffffffffffffffffffffffffffffffffff",
+    outcome: MergeBaseRefused { exit_code: 128, stderr: "fatal: Not a valid object name" },
+  ) {
+    DetachedHeadNotOnAdmittedBranch { cause } =>
+      string_contains(s: cause, pattern: "exit 128")
+    CheckoutNamedBranch { branch: _ } => false
+    DetachedHeadOnAdmittedBranch { head: _, branch: _ } => false
   }
 }

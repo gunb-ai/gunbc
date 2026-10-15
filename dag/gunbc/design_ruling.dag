@@ -172,7 +172,7 @@ data production_is_main_only_lab_admits_integration: DesignRuling = DesignRuling
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "production_is_main_only_lab_admits_integration"),
   decided: "2026-10-13",
   section: "3",
-  provenance: "Operator plan 2026-10-13. Narrows the 2026-10-09 fleet-converge ruling that an empty --candidate-branch admits any nonempty checkout (gunbc.fleet.fleet_converge_plan_cli fleet_converge_deploy_branch_admits). Each DesiredDeployment row carries the one branch it admits (production and srv2: main; lab: lab-dev). bright-moth-475 is the session that produced the plan, not a second admitted branch. One decision, gunbc.live_deploy.pre_swap_admission target_branch_admission, is consulted by the CI and operator-local apply; the CLI does not re-answer it with a production literal.",
+  provenance: "Operator plan 2026-10-13. Narrows the 2026-10-09 fleet-converge ruling that an empty --candidate-branch admits any nonempty checkout (gunbc.fleet.fleet_converge_plan_cli fleet_converge_deploy_branch_admits). Each DesiredDeployment row carries the one branch it admits (production and srv2: main; lab: its integration branch, gunbc.roadmap.roadmap_dashboard_instance srv1_lab_publication_base_branch). bright-moth-475 is the session that produced the plan, not a second admitted branch. One decision, gunbc.live_deploy.pre_swap_admission target_branch_admission, is consulted by the CI and operator-local apply; the CLI does not re-answer it with a production literal.",
 }
 
 data native_first_complete_cuts: DesignRuling = DesignRuling {
@@ -226,10 +226,10 @@ fn design_rulings() -> List<DesignRuling> {
     optional_sugar_is_declaration_bound,
     nonemptiness_is_constructed_or_proved,
     native_first_complete_cuts,
-    production_is_main_only_lab_admits_integration,
     machine_mode_names_drop_the_unit,
     one_physical_machine_boot_transaction,
     physical_and_guest_control_remain_distinct,
+    production_is_main_only_lab_admits_integration,
   ]
 }
 

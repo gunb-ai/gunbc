@@ -31,8 +31,6 @@ import gunbc.host.host_layout {
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
   dispatch_base_branch,
-  srv1_lab_dashboard_instance,
-  srv1_live_dashboard_instance,
   prod_role_realization,
   fleet_admitted_revision_source,
   HostDashboardInstance,
