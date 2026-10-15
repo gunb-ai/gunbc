@@ -1,10 +1,8 @@
 module extdeps.ssh.client_options
 
 import std.types { NonEmptyStr, String, Bool, Int, List, Port }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { bound_dissolution }
 import std.measure { Second, second, second_count }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -463,15 +461,3 @@ fn serialize_ssh_config_file_flag(option: SshClientOption) -> List<String> {
     ControlPersist { value: _ } => serialize_ssh_client_option(option: option)
   }
 }
-
-// CONSUMED BY S2(b), a declared frontier (DESIGN §3c): SshTarget takes `address: SocketAddress` and
-// the fleet shapers emit RemotePort off port 22; the target is built at
-// gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_target_at_standard_port. The row dissolves when that
-// declaration appears.
-data ssh_remote_port_option_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.ssh.client_options", decl_name: "SshClientOption"),
-    reason: "the RemotePort arm is emitted by gunbc.fleet.fleet_known_hosts_anchor shape_fleet_ssh_exec from SshTarget.address.port once SshTarget carries a SocketAddress",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "fleet_ssh_target_at_standard_port")),
-  )
-]

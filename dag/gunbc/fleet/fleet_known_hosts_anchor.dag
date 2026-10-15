@@ -45,7 +45,13 @@ import extdeps.ssh.client_options {
   openssh_control_path_temporary_suffix_length,
   shape_openssh_control_command_argv,
   SshControlExit,
+  RemotePort,
 }
+import extdeps.network.endpoint {
+  SocketAddress, socket_address, render_network_host, parse_network_host,
+  NetworkHostParsed, NetworkHostRefused, NetworkHostParseRefusal, network_host_parse_refusal_wire,
+}
+import extdeps.ssh.known_hosts { known_hosts_host_field, openssh_standard_port }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, known_host_row_field, host_key_provenance_label }
 import gunbc.spark.fabric_reach { fabric_rail_known_host_rows }
 
@@ -593,9 +599,54 @@ fn fleet_ssh_execution_context_of(
 // WHO WE ARE TALKING TO, as a principal at an endpoint rather than a pre-joined string. The probe's
 // whole product is a claim about a (host, principal) pair, so fusing them into one "user@host" text
 // at the call site would put the thing being measured inside an unparseable leaf.
+//
+// THE ENDPOINT IS A SOCKET ADDRESS, so the port an sshd listens on travels with the host to every
+// leg. A rental behind a provider's port mapping is a different daemon from port 22 on the same
+// host, and a target that could only name the host would dial the wrong one.
 type SshTarget {
-  endpoint: NonEmptyStr
+  address: SocketAddress
   principal: NonEmptyStr
+}
+
+// THE TARGET AS ONE WORD, for receipts and refusals: the host field ssh looks the key up by, bare at
+// port 22 (byte-identical to the endpoint text a target carried before it had a port) and
+// [host]:port otherwise, so a receipt can never name a different sshd than the leg dialed.
+fn ssh_target_wire(target: SshTarget) -> NonEmptyStr {
+  known_hosts_host_field(address: target.address)
+}
+
+// The destination word and the port option a shaper emits. ssh is given the bare host as its
+// destination and the port as `-o Port=`, the option form, so the destination is never the
+// bracketed known_hosts spelling ssh does not accept there. At port 22 no option is emitted and the
+// argv is byte-identical to the argv before the target had a port.
+fn ssh_target_destination(target: SshTarget) -> String {
+  render_network_host(host: target.address.host) as String
+}
+
+fn ssh_target_port_options(target: SshTarget) -> List<SshClientOption> {
+  if target.address.port == openssh_standard_port { [] } else { [RemotePort { port: target.address.port }] }
+}
+
+// A FLEET HOST'S TARGET FROM ITS ENDPOINT TEXT, the one text crossing on the fleet path.
+// gunbc.fleet.fleet_reach_endpoint fleet_probe_endpoint_for returns a String (an address it rendered
+// or a host identity standing in for a name), and gunbc.endpoint_authority_replacement_cut retires
+// it for the fleet attachment authority. Until then its output is parsed here once, at sshd's
+// standard port, and text that is not a host refuses with the parse's typed cause -- before this
+// target had an address, such text became an argv word unexamined.
+type SshTargetResolution
+  = SshTargetResolved { target: SshTarget }
+  | SshTargetRefused { endpoint: String, refusal: NetworkHostParseRefusal }
+
+fn fleet_ssh_target_at_standard_port(endpoint: String, principal: NonEmptyStr) -> SshTargetResolution {
+  match parse_network_host(raw: endpoint) {
+    NetworkHostParsed { host: h } =>
+      SshTargetResolved { target: SshTarget { address: socket_address(host: h, port: openssh_standard_port), principal: principal } }
+    NetworkHostRefused { refusal: why } => SshTargetRefused { endpoint: endpoint, refusal: why }
+  }
+}
+
+fn ssh_target_refusal_text(endpoint: String, refusal: NetworkHostParseRefusal) -> String {
+  join(["fleet ssh target refused: endpoint `", endpoint, "` is not a host (", network_host_parse_refusal_wire(refusal: refusal), ")"], "")
 }
 
 // A REMOTE WORD THAT SURVIVES THE REMOTE SHELL. The transported command is one string which the
@@ -878,7 +929,7 @@ fn fleet_ssh_multiplex_binding_preimage(context: FleetSshExecutionContext, targe
     serialize_content_hash(hash: context.trust.anchor.registry_identity) as String,
     serialize_content_hash(hash: context.trust.anchor.materialized_content_identity) as String,
     serialize_content_hash(hash: fleet_ssh_credential_identity(binding: context.credential)) as String,
-    target.endpoint as String,
+    ssh_target_wire(target: target) as String,
     target.principal as String,
   ], "|")
 }
@@ -937,9 +988,9 @@ fn shape_fleet_ssh_password_exec_trusting(
   concat(
     concat(
       flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
-      serialize_ssh_client_options(options: derived),
+      serialize_ssh_client_options(options: concat(derived, ssh_target_port_options(target: target))),
     ),
-    concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
+    concat([ssh_target_destination(target: target), "--"], portable_remote_words_strings(words: words)),
   )
 }
 
@@ -976,9 +1027,9 @@ fn shape_fleet_ssh_exec(
   concat(
     concat(
       flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
-      serialize_ssh_client_options(options: derived),
+      serialize_ssh_client_options(options: concat(derived, ssh_target_port_options(target: target))),
     ),
-    concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
+    concat([ssh_target_destination(target: target), "--"], portable_remote_words_strings(words: words)),
   )
 }
 

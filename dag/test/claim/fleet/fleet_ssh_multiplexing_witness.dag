@@ -4,6 +4,9 @@ import std.types { Bool, String, NonEmptyStr, List, Int }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
+  SshTargetResolved,
+  SshTargetRefused,
+  fleet_ssh_target_at_standard_port,
   portable_remote_words,
   shape_fleet_ssh_exec,
   fleet_ssh_password_client_options,
@@ -35,36 +38,45 @@ fn context_at(attempt_raw: String, rental: Bool, content_salt: String, key_mater
   fleet_ssh_execution_context_at_witness_fixture(attempt_raw: attempt_raw, rental: rental, content_salt: content_salt, key_material: key_material)
 }
 
-fn target(endpoint: String, principal: String) -> SshTarget {
-  SshTarget { endpoint: endpoint as NonEmptyStr, principal: principal as NonEmptyStr }
+fn target(endpoint: String, principal: String) -> SshTarget? {
+  match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: principal as NonEmptyStr) {
+    SshTargetResolved { target: t } => Present { value: t }
+    SshTargetRefused { endpoint: _, refusal: _ } => none
+  }
 }
 
-fn path_of(context: FleetSshExecutionContext?, t: SshTarget) -> String {
+fn path_of(context: FleetSshExecutionContext?, t: SshTarget?) -> String {
   match context {
-    Present { value: c } => fleet_ssh_multiplex_control_path(context: c, target: t) as String
+    Present { value: c } => match t {
+      Present { value: tt } => fleet_ssh_multiplex_control_path(context: c, target: tt) as String
+      Absent => ""
+    }
     Absent => ""
   }
 }
 
-fn base_path(t: SshTarget) -> String {
+fn base_path(t: SshTarget?) -> String {
   path_of(context: context_at(attempt_raw: "mux-witness-a", rental: false, content_salt: "", key_material: base_key), t: t)
 }
 
-fn shaped_line(t: SshTarget) -> String {
+fn shaped_line(t0: SshTarget?) -> String {
   match context_at(attempt_raw: "mux-witness-a", rental: false, content_salt: "", key_material: base_key) {
     Absent => ""
-    Present { value: c } =>
+    Present { value: c } => match t0 {
+     Absent => ""
+     Present { value: t } =>
       match portable_remote_words(raws: ["id", "-un"]) {
         Absent => ""
         Present { value: w } => join(shape_fleet_ssh_exec(context: c, target: t, words: w), " ")
       }
+    }
   }
 }
 
 // The three options are ssh OPTIONS, before the endpoint: after it they would be remote words.
 test fn w_the_fleet_key_leg_multiplexes_over_one_master() -> Bool {
   let t = target(endpoint: "srv1", principal: "ubuntu")
-  let line = shaped_line(t: t)
+  let line = shaped_line(t0: t)
   let p = base_path(t: t)
   p != ""
     && contains(line, "-o ControlMaster=auto ")
