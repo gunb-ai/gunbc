@@ -374,3 +374,18 @@ test fn kpg_variant_argument_is_a_non_literal_instance() -> Bool {
 test fn kpg_instance_is_present_for_pointer() -> Bool {
   kpg_instance_of(src: kpg_src_pointer(), name: ^width_of, binder: ^bits) != Absent
 }
+fn kpt9_reason(src: String) -> Optional<Symbol> {
+  match cref_assemble(src: src) {
+    Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+    Accepted { value: _, diagnostics: _ } => Absent
+  }
+}
+fn kpt9_pre() -> String {
+  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Other\n  = Foreign\n  | Alien\n\ntype Width<bits: Resolution>\n\n"
+}
+test fn kpt9_conforms_accepts() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) == Absent }
+test fn kpt9_conforms_not_kind() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_type_argument_kind_not_inhabited } }
+test fn kpt9_conforms_not_arity() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_type_application_arity_mismatch } }
+test fn kpt9_conforms_not_unresolved() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_type_parameter_kind_unresolved } }
+test fn kpt9_literal_accepts() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesEight = Width<8>\n")) == Absent }
+test fn kpt9_prelude_alone_accepts() -> Bool { kpt9_reason(src: kpt9_pre()) == Absent }
