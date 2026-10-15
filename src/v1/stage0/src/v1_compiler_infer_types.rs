@@ -2934,6 +2934,67 @@ pub fn node_type_equals_core(
                                     right_name.clone(),
                                 )
                             } else {
+                                let left_applied = ((left.connective.clone()
+                                    == Connective::NoConnective)
+                                    && ((left.children.clone().len() as i64) > 0));
+                                let right_applied = ((right.connective.clone()
+                                    == Connective::NoConnective)
+                                    && ((right.children.clone().len() as i64) > 0));
+                                if (left_applied.clone() && right_applied.clone()) {
+                                    let heads_agree = match (
+                                        left.declaration.clone(),
+                                        right.declaration.clone(),
+                                    ) {
+                                        (Some(ld), Some(rd)) => {
+                                            ld.module_path.clone() == rd.module_path.clone()
+                                                && ld.decl_name.clone() == rd.decl_name.clone()
+                                        }
+                                        _ => crate::v1_std_core::type_name_compatible(
+                                            left_name.clone(),
+                                            right_name.clone(),
+                                        ),
+                                    };
+                                    if !heads_agree {
+                                        false
+                                    } else if ((left.children.clone().len() as i64)
+                                        != (right.children.clone().len() as i64))
+                                    {
+                                        false
+                                    } else {
+                                        let mut __all = true;
+                                        for pair in Rc::new(
+                                            left.children
+                                                .clone()
+                                                .iter()
+                                                .cloned()
+                                                .enumerate()
+                                                .map(|(i, v)| (i as i64, v))
+                                                .collect::<Vec<_>>(),
+                                        )
+                                        .iter()
+                                        .cloned()
+                                        {
+                                            if !(match right
+                                                .children
+                                                .clone()
+                                                .get((pair.0.clone()) as usize)
+                                                .cloned()
+                                            {
+                                                Some(right_child) => node_type_equals(
+                                                    pair.1.clone(),
+                                                    right_child.clone(),
+                                                    source_indices.clone(),
+                                                    text.clone(),
+                                                ),
+                                                std::option::Option::None => false,
+                                            }) {
+                                                __all = false;
+                                                break;
+                                            }
+                                        }
+                                        __all
+                                    }
+                                } else {
                                 {
                                     let left_is_container = node_is_element_collection(
                                         left.clone(),
@@ -3051,6 +3112,7 @@ pub fn node_type_equals_core(
                                             }
                                         }
                                     }
+                                }
                                 }
                             }
                         }
