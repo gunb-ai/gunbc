@@ -1,5 +1,5 @@
-// PROBE ONLY (sunny-crab-777 STEP 1). Does not import v2.compiler.compile.
-// One shared producer. Delete with the STEP 2 RED or keep as RED.
+// Enrolled RED/control for native emit of imported nullary coproduct arms.
+// One shared producer. Does not import v2.compiler.compile.
 
 module v2.test.claim.long.imported_decl_emit_probe
 
@@ -21,7 +21,6 @@ import v2.compiler.program_assembly {
 }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.compiler.resolve { ResolvedTree }
-import std.process { ExitFailure, ProcessExit }
 import v2.compiler.self_host.closure_emission {
   ClosureMemberEmission,
   ClosureMemberEmitted,
@@ -692,63 +691,4 @@ test fn painted_facts_has_stamp_holds() -> Bool {
 
 test fn imported_live_tree_disposition_data_row_emits_holds() -> Bool {
   probe_d_emit_reason() == "accepted"
-}
-
-fn probe_line(k: String, v: String) -> String {
-  concat(concat(k, "="), concat(v, "\n"))
-}
-
-fn probe_yes_no(eq: Bool) -> String {
-  if eq { "yes" } else { "no" }
-}
-
-fn probe_dump() -> String {
-  match probe_bundle() {
-    Absent => "PROBE_BUNDLE_ABSENT\n"
-    Present { value: b } =>
-      concat(
-        probe_line(k: "emit_refusal_located", v: b.emit_refusal_located),
-        concat(
-          probe_line(k: "emit_b_reason", v: b.emit_b_reason),
-          concat(
-            probe_line(k: "emit_infer_reason", v: b.emit_infer_reason),
-            concat(
-              probe_line(k: "native_b_reason", v: b.native_b_reason),
-              concat(
-                probe_line(k: "emit_color_body", v: b.emit_color_body),
-                concat(
-                  probe_line(k: "native_color_body", v: b.native_color_body),
-                  concat(
-                    probe_line(k: "color_bodies_equal", v: probe_yes_no(eq: b.emit_color_body == b.native_color_body)),
-                    concat(
-                      probe_line(k: "emit_red_body", v: b.emit_red_body),
-                      concat(
-                        probe_line(k: "native_red_body", v: b.native_red_body),
-                        concat(
-                          probe_line(k: "red_bodies_equal", v: probe_yes_no(eq: b.emit_red_body == b.native_red_body)),
-                          concat(
-                            probe_line(k: "emit_red_declaring", v: b.emit_red_declaring),
-                            concat(
-                              probe_line(k: "native_red_declaring", v: b.native_red_declaring),
-                              concat(
-                                probe_line(k: "emit_red_declaring_raw", v: b.emit_red_declaring_raw),
-                                probe_line(k: "native_red_declaring_raw", v: b.native_red_declaring_raw)
-                              )
-                            )
-                          )
-                        )
-                      )
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-  }
-}
-
-fn probe_dump_cli() -> ProcessExit {
-  ExitFailure { code: 1, reason: probe_dump() }
 }
