@@ -9106,6 +9106,50 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// A qualified call must bind to the imported module's declaration when the
+    /// enclosing fn shares the leaf name (gcp_iam_converge_run after #13925).
+    /// On current main this types the call as Named(run_attempt) — the function
+    /// node — instead of the imported fn's return type.
+    #[test]
+    fn host_reconcile_qualified_call_is_not_shadowed_by_local_fn() {
+        let fixture = Fixture::new(&[
+            (
+                "entry.dag",
+                "module gunbc.auth.consumer\n\
+                 import gunbc.auth.provider\n\
+                 fn run_attempt() -> Int { gunbc.auth.provider.run_attempt() }\n",
+            ),
+            (
+                "provider.dag",
+                "module gunbc.auth.provider\nfn run_attempt() -> Int { 7 }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let outcome =
+            resolve_entry_with_parse_cache(&index, &fixture.0.join("entry.dag").to_string_lossy());
+        let (graph, _) = outcome.expect("qualified provider must resolve");
+        let all_diags: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        let blocking: Vec<String> = graph
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        assert!(
+            blocking.is_empty(),
+            "qualified call must bind the imported fn, not the local leaf.\nblocking={blocking:?}\nall={all_diags:?}"
+        );
+        let joined = all_diags.join("\n");
+        assert!(
+            !joined.contains("Named(run_attempt)"),
+            "the call must not be typed as the local function node: {joined}"
+        );
+    }
+
     /// A module path with no provider in the pool must refuse. Restoring fill cannot invent
     /// one. `ghost.provider.one()` with no declared prefix is field access on unbound `ghost`
     /// (`longest_declared_module_prefix` only classifies a chain whose prefix is already in
