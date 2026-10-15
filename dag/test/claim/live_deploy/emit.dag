@@ -130,6 +130,8 @@ import extdeps.systemd.unit_file {
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison, deployment_directory_demands }
+import gunbc.live_deploy.spec { deployment_belt_credential_recovery_timer_unit_name }
+import gunbc.live_deploy.emit { live_deploy_belt_credential_recovery_timer_unit_file }
 import gunbc.live_deploy.emit {
   composed_artifact_upsert,
   deploy_retract_stage_cleanup_frame_script,
@@ -2276,15 +2278,26 @@ test fn leftover_timer_retire_removes_a_present_unit_and_is_noop_when_absent() -
     })
 }
 
+fn occurrence_count(s: String, pattern: String) -> Int {
+  count(split(s: s, sep: pattern)) - 1
+}
+
+// The workspace is event-driven (#13709): the apply installs no inactivity poller. The one
+// admitted exception is the belt credential-recovery backstop (#13952), which by construction
+// cannot be triggered by the belt it backstops. So every OnUnitInactiveSec= in the apply must be
+// that timer's own, and a second poller is red.
 test fn apply_retires_leftover_belt_and_publication_timers_and_installs_publication_path() -> Bool {
   let spec = deployment_spec_srv1()
   let live = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
+  let backstop = serialize_systemd_unit_file(file: live_deploy_belt_credential_recovery_timer_unit_file(spec: spec))
   let pub_path = systemd_unit_file_lines(file: live_deploy_publication_path_unit_file(spec: spec))
   !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons), s => string_contains(s: s.path as String, pattern: ".timer"))
     && string_contains(s: live, pattern: deployment_retired_belt_timer_unit_name(names: spec.names) as String)
     && string_contains(s: live, pattern: deployment_publication_timer_unit_name(names: spec.names) as String)
     && string_contains(s: live, pattern: deployment_publication_path_unit_name(names: spec.names) as String)
-    && !string_contains(s: live, pattern: "OnUnitInactiveSec=")
+    && string_contains(s: live, pattern: deployment_belt_credential_recovery_timer_unit_name(names: spec.names) as String)
+    && occurrence_count(s: backstop, pattern: "OnUnitInactiveSec=") == 1
+    && occurrence_count(s: live, pattern: "OnUnitInactiveSec=") == occurrence_count(s: backstop, pattern: "OnUnitInactiveSec=")
     && any(pub_path, l => string_contains(s: l, pattern: "DirectoryNotEmpty="))
     && any(pub_path, l => string_contains(s: l, pattern: "TriggerLimitIntervalSec="))
     && any(pub_path, l => string_contains(s: l, pattern: "TriggerLimitBurst="))
