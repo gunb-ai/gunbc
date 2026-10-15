@@ -22,20 +22,21 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_state_prepare_argv_for_instance,
   dispatch_attempt_state_path_for_instance,
   dispatch_attempt_worker_log_path_for_instance,
+  dispatch_worktree_path_for_instance,
 }
 import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 import std.optional { Present }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
+  srv1_lab_dashboard_instance,
   dashboard_instance_dispatch_worktree_root,
 }
 import gunbc.roadmap.attempt_system_unit_launch {
-  AttemptSystemUnitStartFacts, attempt_system_unit_encode_start_wait,
+  AttemptSystemUnitStartRequest, attempt_system_unit_encode_start_wait,
   attempt_system_unit_write_pending, attempt_system_unit_launch_host_argv,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
   AttemptProcessExitedWith,
 }
@@ -260,7 +261,7 @@ fn launcher_wrote(instance: HostDashboardInstance, unit_key: String, path: Strin
 }
 
 test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Bool {
-  let inst = srv1_live_dashboard_instance()
+  let inst = srv1_lab_dashboard_instance()
   prepare_probe_attempt(instance: inst)
     && launcher_write_refused(
       instance: inst,
@@ -274,25 +275,49 @@ test fn writes_through_the_launcher_to_bin_and_source_hooks_are_refused() -> Boo
     )
 }
 
-fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner: List<String>, exit_hook: NonEmptyStr) -> SandboxTouch {
+// THE LAUNCHER DERIVES THE WORKTREE, LOG DIRECTORY AND EXIT HOOK from the attempt identity (review
+// 80324), so each launcher cell is its own attempt (wetprobe-<unit_key>) and prepares that attempt's
+// state and worktree the way the belt does before it starts.
+fn launcher_probe_key(unit_key: String) -> String {
+  join([wet_probe_key, "-", unit_key], "")
+}
+
+fn launcher_probe_worktree(instance: HostDashboardInstance, unit_key: String) -> String {
+  dispatch_worktree_path_for_instance(instance: instance, node_id: wet_probe_node, attempt_key: launcher_probe_key(unit_key: unit_key))
+}
+
+fn launcher_probe_worker_dir(instance: HostDashboardInstance, unit_key: String) -> String {
+  path_parent_directory(path: dispatch_attempt_worker_log_path_for_instance(
+    instance: instance,
+    node_id: wet_probe_node,
+    attempt_key: launcher_probe_key(unit_key: unit_key),
+  ))
+}
+
+fn prepare_launcher_probe(instance: HostDashboardInstance, unit_key: String) -> Bool {
+  let prep = attempt_state_prepare_argv_for_instance(
+    instance: instance,
+    node_id: wet_probe_node,
+    attempt_key: launcher_probe_key(unit_key: unit_key),
+  )
+  shell.Exec.RunArgv(program: prep.program, arguments: prep.args).exit_code == 0
+    && shell.Exec.RunArgv(program: "install", arguments: ["-d", "--", launcher_probe_worktree(instance: instance, unit_key: unit_key)]).exit_code == 0
+}
+
+fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner: List<String>) -> SandboxTouch {
   match inner.first() {
     Absent => SandboxTouchUnrunnable
     Present { value: _ } => {
-      let facts = AttemptSystemUnitStartFacts {
+      let request = AttemptSystemUnitStartRequest {
         node_id: wet_probe_node as String,
-        attempt_key: join([wet_probe_key, "-", unit_key], ""),
-        user: instance.directory_owner.user as NonEmptyStr,
-        working_directory: instance.repo_root as String,
-        attempt_worktree: probe_attempt_worktree(instance: instance),
-        stdout_path: join([probe_worker_dir(instance: instance), "/launcher-stdout.log"], ""),
-        stderr_path: join([probe_worker_dir(instance: instance), "/launcher-stderr.log"], ""),
+        attempt_key: launcher_probe_key(unit_key: unit_key),
         granted: kibibyte(count: 65536),
-        exit_hook: exit_hook,
         inner_argv: inner,
       }
-      if !attempt_system_unit_write_pending(
+      if !prepare_launcher_probe(instance: instance, unit_key: unit_key)
+        || !attempt_system_unit_write_pending(
         instance_root: instance.instance_root as String,
-        body: attempt_system_unit_encode_start_wait(facts: facts),
+        body: attempt_system_unit_encode_start_wait(request: request),
       ) {
         SandboxTouchUnrunnable
       } else {
@@ -306,7 +331,7 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
 }
 
 fn launcher_sandbox_touch(instance: HostDashboardInstance, unit_key: String, path: String) -> SandboxTouch {
-  launcher_inner_start(instance: instance, unit_key: unit_key, inner: launcher_touch_inner_argv(instance: instance, path: path), exit_hook: "true" as NonEmptyStr)
+  launcher_inner_start(instance: instance, unit_key: unit_key, inner: launcher_touch_inner_argv(instance: instance, path: path))
 }
 
 fn launcher_sudo_n_true(instance: HostDashboardInstance) -> SandboxTouch {
@@ -314,7 +339,6 @@ fn launcher_sudo_n_true(instance: HostDashboardInstance) -> SandboxTouch {
     instance: instance,
     unit_key: "sudo-n-true",
     inner: launcher_gunbc_run_inner_argv(instance: instance, function: "sudo_n_true_cli", extra_args: []),
-    exit_hook: "true" as NonEmptyStr,
   )
 }
 
@@ -331,13 +355,12 @@ fn launcher_sudo_n_touch(instance: HostDashboardInstance, path: String) -> Sandb
           function: "sudo_n_touch_cli",
           extra_args: ["--arg", join([arg.name, "=", arg.value], "")],
         ),
-        exit_hook: "true" as NonEmptyStr,
       )
   }
 }
 
 test fn sudo_n_true_fails_inside_the_launched_unit() -> Bool {
-  let inst = srv1_live_dashboard_instance()
+  let inst = srv1_lab_dashboard_instance()
   prepare_probe_attempt(instance: inst)
     && match launcher_sudo_n_true(instance: inst) {
       SandboxTouchUnrunnable => false
@@ -346,7 +369,7 @@ test fn sudo_n_true_fails_inside_the_launched_unit() -> Bool {
 }
 
 test fn sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit() -> Bool {
-  let inst = srv1_live_dashboard_instance()
+  let inst = srv1_lab_dashboard_instance()
   prepare_probe_attempt(instance: inst)
     && match launcher_sudo_n_touch(
       instance: inst,
@@ -358,14 +381,11 @@ test fn sudo_n_touch_of_instance_bin_fails_inside_the_launched_unit() -> Bool {
 }
 
 test fn writes_through_the_launcher_to_the_worktree_worker_dir_and_git_objects_are_allowed() -> Bool {
-  let inst = srv1_live_dashboard_instance()
-  let wt = probe_attempt_worktree(instance: inst)
-  let scratch = probe_worker_dir(instance: inst)
+  let inst = srv1_lab_dashboard_instance()
   let objects = join([inst.repo_root as String, "/.git/objects/.gunbc-worker-write-probe"], "")
-  let probe = join([wt, "/.gunbc-launcher-write-probe"], "")
-  let log_probe = join([scratch, "/.gunbc-launcher-log-probe"], "")
-  prepare_probe_attempt(instance: inst)
-    && launcher_wrote(instance: inst, unit_key: "wt", path: probe)
+  let probe = join([launcher_probe_worktree(instance: inst, unit_key: "wt"), "/.gunbc-launcher-write-probe"], "")
+  let log_probe = join([launcher_probe_worker_dir(instance: inst, unit_key: "log"), "/.gunbc-launcher-log-probe"], "")
+  launcher_wrote(instance: inst, unit_key: "wt", path: probe)
     && launcher_wrote(instance: inst, unit_key: "log", path: log_probe)
     && launcher_wrote(instance: inst, unit_key: "objects", path: objects)
     && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe, objects]).exit_code == 0
@@ -414,28 +434,49 @@ fn launcher_exit_record_is_expanded(name: String) -> Bool {
 }
 
 test fn a_launched_unit_exit_record_names_the_expanded_invocation_and_result() -> Bool {
-  let inst = srv1_live_dashboard_instance()
-  match attempt_exit_hook(
-    instance_root: inst.instance_root as String,
-    node_id: wet_probe_node as String,
-    attempt_key: join([wet_probe_key, "-exitrec"], ""),
-    role: AttemptWorkerRole,
+  let inst = srv1_lab_dashboard_instance()
+  match launcher_inner_start(
+    instance: inst,
+    unit_key: "exitrec",
+    inner: launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []),
   ) {
-    AttemptExitHookRefused { reason: _ } => false
-    AttemptExitHookRendered { exec_line } =>
-      prepare_probe_attempt(instance: inst)
-        && match launcher_inner_start(
-          instance: inst,
-          unit_key: "exitrec",
-          inner: launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []),
-          exit_hook: exec_line,
-        ) {
-          SandboxTouchUnrunnable => false
-          SandboxTouchRan { exit_code: _ } =>
-            match launcher_exit_record_names(instance: inst).first() {
-              Absent => false
-              Present { value: name } => launcher_exit_record_is_expanded(name: name)
-            }
-        }
+    SandboxTouchUnrunnable => false
+    SandboxTouchRan { exit_code: _ } =>
+      match launcher_exit_record_names(instance: inst).first() {
+        Absent => false
+        Present { value: name } => launcher_exit_record_is_expanded(name: name)
+      }
   }
+}
+
+// THE ROOT-EXEC SHAPE IS REFUSED ON THE REAL PATH (review 80324). Before the launcher derived the exit
+// hook, a requester-written pending body could name `+/usr/bin/touch <marker>` as ExecStopPost, which
+// systemd runs with full privileges whatever User= says. This cell writes that earlier wide body
+// through the same pending file and runs the real launcher argv: the launcher must refuse the body, and
+// no root-created marker may appear.
+data launcher_root_hook_marker: String = "/tmp/gunbc-launcher-root-hook-probe"
+
+fn launcher_marker_absent() -> Bool {
+  shell.Exec.RunArgv(program: "test", arguments: ["!", "-e", launcher_root_hook_marker]).exit_code == 0
+}
+
+test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> Bool {
+  let inst = srv1_lab_dashboard_instance()
+  let wide = join([
+    "start-wait", wet_probe_node as String, launcher_probe_key(unit_key: "roothook"),
+    inst.directory_owner.user as String, inst.repo_root as String,
+    launcher_probe_worktree(instance: inst, unit_key: "roothook"), "/tmp/gunbc-roothook.out", "/tmp/gunbc-roothook.err",
+    "65536", join(["+/usr/bin/touch ", launcher_root_hook_marker], ""),
+    join(launcher_gunbc_run_inner_argv(instance: inst, function: "exit_success_cli", extra_args: []), "\u{1f}"),
+  ], "\n")
+  launcher_marker_absent()
+    && prepare_launcher_probe(instance: inst, unit_key: "roothook")
+    && attempt_system_unit_write_pending(instance_root: inst.instance_root as String, body: wide)
+    && launcher_run_refused(instance: inst)
+    && launcher_marker_absent()
+}
+
+fn launcher_run_refused(instance: HostDashboardInstance) -> Bool {
+  let cmd = attempt_system_unit_launch_host_argv(instance: instance)
+  shell.Exec.RunArgv(program: cmd.program, arguments: cmd.args).exit_code != 0
 }

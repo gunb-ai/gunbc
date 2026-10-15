@@ -26,7 +26,13 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_sudoers_path, attempt_system_unit_name_admitted,
   attempt_system_unit_systemd_run_command, attempt_system_unit_plan_from_facts,
   attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_dir,
+  AttemptSystemUnitStartRequest, attempt_system_unit_start_facts_for_request,
+  AttemptSystemUnitStartDerived, AttemptSystemUnitStartUnderivable,
+  attempt_system_unit_encode_start, attempt_system_unit_start_request_decode,
+  AttemptSystemUnitStartRequestDecoded, AttemptSystemUnitStartRequestMalformed,
 }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
   HumanOnlyStep, OperatorOwnSession, ManualStepRequired, NoAdmissiblePattern,
@@ -218,6 +224,78 @@ test fn the_lab_full_install_apply_installs_only_the_lab_launcher_grant() -> Boo
     own: srv1_lab_dashboard_instance(),
     other: srv1_live_dashboard_instance(),
   )
+}
+
+// THE REQUEST NAMES AN ATTEMPT; ROOT DERIVES EVERYTHING PRIVILEGED (review 80324). The requester writes
+// the pending file, so the claims below supply request values at that interface and read what the
+// launcher derives: the exit hook is attempt_exit_hook's render for the attempt, User= is the
+// instance's, and the writable worktree and log paths are the belt's own derivations.
+fn claim_request(node_id: String, attempt_key: String) -> AttemptSystemUnitStartRequest {
+  AttemptSystemUnitStartRequest {
+    node_id: node_id,
+    attempt_key: attempt_key,
+    granted: kibibyte(count: 1),
+    inner_argv: [srv1_lab_dashboard_instance().serve_binary as String, "run"],
+  }
+}
+
+test fn the_launcher_derives_the_exit_hook_user_and_paths_from_the_attempt_identity() -> Bool {
+  let inst = srv1_lab_dashboard_instance()
+  let node = "n1"
+  let key = "k1"
+  match attempt_system_unit_start_facts_for_request(instance: inst, request: claim_request(node_id: node, attempt_key: key)) {
+    AttemptSystemUnitStartUnderivable { reason: _ } => false
+    AttemptSystemUnitStartDerived { facts } =>
+      match attempt_exit_hook(instance_root: inst.instance_root as String, node_id: node, attempt_key: key, role: AttemptWorkerRole) {
+        AttemptExitHookRefused { reason: _ } => false
+        AttemptExitHookRendered { exec_line } =>
+          (facts.exit_hook as String) == (exec_line as String)
+            && !starts_with(s: facts.exit_hook as String, prefix: "+")
+            && (facts.user as String) == (inst.directory_owner.user as String)
+            && facts.attempt_worktree == dispatch_worktree_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
+            && facts.stdout_path == dispatch_attempt_worker_log_path_for_instance(instance: inst, node_id: node as RoadmapNodeId, attempt_key: key)
+            && facts.working_directory == (inst.repo_root as String)
+      }
+  }
+}
+
+fn request_is_underivable(node_id: String, attempt_key: String) -> Bool {
+  match attempt_system_unit_start_facts_for_request(instance: srv1_lab_dashboard_instance(), request: claim_request(node_id: node_id, attempt_key: attempt_key)) {
+    AttemptSystemUnitStartUnderivable { reason: _ } => true
+    AttemptSystemUnitStartDerived { facts: _ } => false
+  }
+}
+
+test fn an_attempt_identity_that_is_not_one_path_segment_is_underivable() -> Bool {
+  request_is_underivable(node_id: "../../opt", attempt_key: "k1")
+    && request_is_underivable(node_id: "n1", attempt_key: "a/b")
+    && request_is_underivable(node_id: "..", attempt_key: "k1")
+    && request_is_underivable(node_id: "n1", attempt_key: "")
+    && !request_is_underivable(node_id: "n1", attempt_key: "k1")
+}
+
+// The earlier wide body carried user, working directory, worktree, both log paths and the exit hook.
+// Its hook line here is the root-exec shape systemd honours (`+` runs ExecStopPost with full
+// privileges); the decoder reads no such field, so the body is malformed rather than partly admitted.
+test fn a_wide_request_body_naming_a_root_exit_hook_is_malformed() -> Bool {
+  let wide = split(s: join([
+    "start", "n1", "k1", "briansrls", "/", "/opt/gunbc", "/tmp/o", "/tmp/e", "1",
+    "+/bin/sh -c 'id > /tmp/rooted'", "/usr/bin/true",
+  ], "\n"), delimiter: "\n")
+  match attempt_system_unit_start_request_decode(lines: wide) {
+    AttemptSystemUnitStartRequestMalformed { reason: _ } => true
+    AttemptSystemUnitStartRequestDecoded { request: _ } => false
+  }
+}
+
+test fn a_narrow_request_body_round_trips() -> Bool {
+  let req = claim_request(node_id: "n1", attempt_key: "k1")
+  match attempt_system_unit_start_request_decode(lines: split(s: attempt_system_unit_encode_start(request: req), delimiter: "\n")) {
+    AttemptSystemUnitStartRequestMalformed { reason: _ } => false
+    AttemptSystemUnitStartRequestDecoded { request: got } =>
+      got.node_id == req.node_id && got.attempt_key == req.attempt_key
+        && got.inner_argv == req.inner_argv
+  }
 }
 
 fn launcher_execstoppost_argv_keeps_single_dollar(instance: HostDashboardInstance, exec_line: NonEmptyStr) -> Bool {

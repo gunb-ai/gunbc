@@ -2,15 +2,21 @@ module gunbc.roadmap.attempt_system_unit_launch
 
 // SYSTEM-MANAGER TRANSIENT ATTEMPT UNITS, via a narrow privileged launcher. srv1's user manager
 // drops ProtectSystem/ProtectHome/ReadWritePaths (apparmor_restrict_unprivileged_userns=1). PID 1
-// enforces them. The privileged effect is: start/stop/reset-failed ONE transient system unit named
+// enforces them. The privileged effect is: start ONE transient system unit named
 // gunbc-attempt-<node>-<key>.service, User= the instance service user, properties from the same
-// typed confinement fold, ExecStart the plan's inner argv. Which authorization pattern performs
+// typed confinement fold, ExecStart the request's argv on the instance binary. Which authorization pattern performs
 // that effect is gunbc.auth.authorization_pattern_selection, not a call-site choice.
 //
 // THE GRANT IS THE LAUNCHER ARGV. Belt does not sudo systemd-run with caller-chosen -p flags.
 // sudoers matches one exact `gunbc run` of attempt_system_unit_launch_cli with --arg instance_root
-// pinned. The CLI rebuilds systemd-run from the pending request and refuses any other unit name,
-// user, property set, or program. DESIGN §3 replacement: no --user dual path.
+// pinned. DESIGN §3 replacement: no --user dual path.
+//
+// THE REQUEST NAMES AN ATTEMPT; ROOT DERIVES EVERYTHING PRIVILEGED (review 80324). The pending file is
+// written by the requester, so it carries only the attempt's identity (node id, attempt key), the
+// memory grant and the worker argv. User=, the working directory, the writable worktree and log
+// paths and the ExecStopPost exit hook are derived here from the instance and that identity, with the
+// same functions the belt plans with. A request cannot name a `+`-prefixed exit hook (which systemd
+// runs with full privileges) or widen ReadWritePaths: those fields do not exist in it.
 //
 // ONE SUDOERS FILE PER INSTANCE, installed only by that instance's deploy
 // (`/etc/sudoers.d/gunbc-attempt-system-unit-<instance_id>`). A host-global file that named both
@@ -22,7 +28,7 @@ module gunbc.roadmap.attempt_system_unit_launch
 // world-writable, sha-addressed, sudoers pinned to that path. The requester can edit
 // instance.serve_binary and the checkout; those paths are not the grant.
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath, CommitSha }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, CommitSha, path_segment_is_safe }
 import std.optional { Present }
 import std.algebra { trim }
 import gunbc.live_deploy.release_locus {
@@ -61,7 +67,11 @@ import extdeps.exec.command { ArgvCommand }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchWorkerUnitPlan, dispatch_attempt_unit_name, dispatch_worker_unit_properties_for_plan,
   host_exec_argv, HostExecArgv,
+  dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
+  dispatch_pane_working_directory, GunbcHarnessProvider,
 }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole }
 import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 
 data attempt_system_unit_launch_entry: String = "dag/gunbc/roadmap/attempt_system_unit_launch.dag"
@@ -133,6 +143,59 @@ type AttemptSystemUnitStartFacts {
   inner_argv: List<String>
 }
 
+// WHAT CROSSES FROM THE REQUESTER. Everything else a start needs is derived by
+// attempt_system_unit_start_facts_for_request.
+type AttemptSystemUnitStartRequest {
+  node_id: String
+  attempt_key: String
+  granted: Kibibyte
+  inner_argv: List<String>
+}
+
+type AttemptSystemUnitStartDerivation
+  = AttemptSystemUnitStartDerived { facts: AttemptSystemUnitStartFacts }
+  | AttemptSystemUnitStartUnderivable { reason: String }
+
+// The node id and attempt key become path segments (worktree, attempt state, exit record) and the unit
+// name, so each must be one safe segment (std.types path_segment_is_safe) before anything is derived.
+// The worker is the harness provider's: its working directory is that provider's pane directory.
+fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, request: AttemptSystemUnitStartRequest) -> AttemptSystemUnitStartDerivation {
+  if !path_segment_is_safe(raw: request.node_id) || !path_segment_is_safe(raw: request.attempt_key) {
+    AttemptSystemUnitStartUnderivable { reason: "node id or attempt key is not one safe path segment" }
+  } else {
+    let node = request.node_id as RoadmapNodeId
+    let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
+    let log = dispatch_attempt_worker_log_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
+    match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: request.node_id, attempt_key: request.attempt_key, role: AttemptWorkerRole) {
+      AttemptExitHookRefused { reason } => AttemptSystemUnitStartUnderivable { reason: reason as String }
+      AttemptExitHookRendered { exec_line } =>
+        AttemptSystemUnitStartDerived {
+          facts: AttemptSystemUnitStartFacts {
+            node_id: request.node_id,
+            attempt_key: request.attempt_key,
+            user: instance.directory_owner.user as NonEmptyStr,
+            working_directory: dispatch_pane_working_directory(provider: GunbcHarnessProvider, instance: instance, worktree_path: worktree),
+            attempt_worktree: worktree,
+            stdout_path: log,
+            stderr_path: log,
+            granted: request.granted,
+            exit_hook: exec_line,
+            inner_argv: request.inner_argv,
+          },
+        }
+    }
+  }
+}
+
+fn attempt_system_unit_start_request_from_plan(plan: DispatchWorkerUnitPlan, granted: Kibibyte) -> AttemptSystemUnitStartRequest {
+  AttemptSystemUnitStartRequest {
+    node_id: plan.node_id,
+    attempt_key: plan.attempt_key,
+    granted: granted,
+    inner_argv: plan.inner_argv,
+  }
+}
+
 type AttemptSystemUnitAdmission
   = AttemptSystemUnitAdmitted { unit: NonEmptyStr, facts: AttemptSystemUnitStartFacts }
   | AttemptSystemUnitRefused { reason: String }
@@ -198,28 +261,71 @@ fn attempt_system_unit_systemd_run_command_of(
   )
 }
 
-fn attempt_system_unit_encode_start(facts: AttemptSystemUnitStartFacts) -> String {
-  attempt_system_unit_encode_start_tagged(tag: "start", facts: facts)
+fn attempt_system_unit_encode_start(request: AttemptSystemUnitStartRequest) -> String {
+  attempt_system_unit_encode_start_tagged(tag: "start", request: request)
 }
 
-fn attempt_system_unit_encode_start_wait(facts: AttemptSystemUnitStartFacts) -> String {
-  attempt_system_unit_encode_start_tagged(tag: "start-wait", facts: facts)
+fn attempt_system_unit_encode_start_wait(request: AttemptSystemUnitStartRequest) -> String {
+  attempt_system_unit_encode_start_tagged(tag: "start-wait", request: request)
 }
 
-fn attempt_system_unit_encode_start_tagged(tag: String, facts: AttemptSystemUnitStartFacts) -> String {
+fn attempt_system_unit_encode_start_tagged(tag: String, request: AttemptSystemUnitStartRequest) -> String {
   join([
     tag,
-    facts.node_id,
-    facts.attempt_key,
-    facts.user as String,
-    facts.working_directory,
-    facts.attempt_worktree,
-    facts.stdout_path,
-    facts.stderr_path,
-    to_string(value: kibibyte_count(k: facts.granted)),
-    facts.exit_hook as String,
-    join(facts.inner_argv, "\u{1f}"),
+    request.node_id,
+    request.attempt_key,
+    to_string(value: kibibyte_count(k: request.granted)),
+    join(request.inner_argv, "\u{1f}"),
   ], "\n")
+}
+
+type AttemptSystemUnitStartRequestDecode
+  = AttemptSystemUnitStartRequestDecoded { request: AttemptSystemUnitStartRequest }
+  | AttemptSystemUnitStartRequestMalformed { reason: String }
+
+// EXACTLY the request's fields, in order, after the verb line. A body with any further non-empty line
+// (the earlier wide format carried user, paths and an exit hook) is malformed, never partly read.
+fn attempt_system_unit_start_request_decode(lines: List<String>) -> AttemptSystemUnitStartRequestDecode {
+  match lines[5] {
+    Present { value: extra } =>
+      if extra != "" {
+        AttemptSystemUnitStartRequestMalformed { reason: "start request carries more than node id, attempt key, grant and argv" }
+      } else {
+        attempt_system_unit_start_request_fields(lines: lines)
+      }
+    Absent => attempt_system_unit_start_request_fields(lines: lines)
+  }
+}
+
+fn attempt_system_unit_start_request_fields(lines: List<String>) -> AttemptSystemUnitStartRequestDecode {
+  match lines[1] {
+    Absent => AttemptSystemUnitStartRequestMalformed { reason: "start request is truncated" }
+    Present { value: node_id } =>
+      match lines[2] {
+        Absent => AttemptSystemUnitStartRequestMalformed { reason: "start request is truncated" }
+        Present { value: attempt_key } =>
+          match lines[3] {
+            Absent => AttemptSystemUnitStartRequestMalformed { reason: "start request is truncated" }
+            Present { value: granted_text } =>
+              match parse_int(text: granted_text) {
+                Absent => AttemptSystemUnitStartRequestMalformed { reason: "start request granted kibibyte is not an integer" }
+                Present { value: granted_n } =>
+                  match lines[4] {
+                    Absent => AttemptSystemUnitStartRequestMalformed { reason: "start request is truncated" }
+                    Present { value: inner_joined } =>
+                      AttemptSystemUnitStartRequestDecoded {
+                        request: AttemptSystemUnitStartRequest {
+                          node_id: node_id,
+                          attempt_key: attempt_key,
+                          granted: kibibyte(count: granted_n),
+                          inner_argv: split(s: inner_joined, delimiter: "\u{1f}"),
+                        },
+                      }
+                  }
+              }
+          }
+      }
+  }
 }
 
 fn attempt_system_unit_launch_named_argument(instance_root: String) -> NamedArgumentAdmission {
@@ -289,21 +395,6 @@ fn attempt_system_unit_sudoers_body(instance: HostDashboardInstance, revision: R
   ], "\n")
 }
 
-fn attempt_system_unit_start_facts_from_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, node_id: String, attempt_key: String) -> AttemptSystemUnitStartFacts {
-  AttemptSystemUnitStartFacts {
-    node_id: node_id,
-    attempt_key: attempt_key,
-    user: instance.directory_owner.user as NonEmptyStr,
-    working_directory: plan.working_directory,
-    attempt_worktree: plan.attempt_worktree,
-    stdout_path: plan.stdout_path,
-    stderr_path: plan.stderr_path,
-    granted: granted,
-    exit_hook: plan.exit_hook,
-    inner_argv: plan.inner_argv,
-  }
-}
-
 fn attempt_system_unit_write_pending(instance_root: String, body: String) -> Bool {
   Filesystem.Write(path: attempt_system_unit_pending_path(instance_root: instance_root), content: body).success
 }
@@ -319,65 +410,16 @@ fn attempt_system_unit_instance_for_root(instance_root: String) -> HostDashboard
 }
 
 fn attempt_system_unit_cli_start(instance: HostDashboardInstance, lines: List<String>, wait: Bool) -> ProcessExit {
-  match lines[1] {
-    Absent => exit_failure(reason: "start request is truncated")
-    Present { value: node_id } =>
-      match lines[2] {
-        Absent => exit_failure(reason: "start request is truncated")
-        Present { value: attempt_key } =>
-          match lines[3] {
-            Absent => exit_failure(reason: "start request is truncated")
-            Present { value: user } =>
-              match lines[4] {
-                Absent => exit_failure(reason: "start request is truncated")
-                Present { value: working_directory } =>
-                  match lines[5] {
-                    Absent => exit_failure(reason: "start request is truncated")
-                    Present { value: attempt_worktree } =>
-                      match lines[6] {
-                        Absent => exit_failure(reason: "start request is truncated")
-                        Present { value: stdout_path } =>
-                          match lines[7] {
-                            Absent => exit_failure(reason: "start request is truncated")
-                            Present { value: stderr_path } =>
-                              match lines[8] {
-                                Absent => exit_failure(reason: "start request is truncated")
-                                Present { value: granted_text } =>
-                                  match parse_int(text: granted_text) {
-                                    Absent => exit_failure(reason: "start request granted kibibyte is not an integer")
-                                    Present { value: granted_n } =>
-                                      match lines[9] {
-                                        Absent => exit_failure(reason: "start request is truncated")
-                                        Present { value: exit_hook } =>
-                                          match lines[10] {
-                                            Absent => exit_failure(reason: "start request is truncated")
-                                            Present { value: inner_joined } => {
-                                              let facts = AttemptSystemUnitStartFacts {
-                                                node_id: node_id,
-                                                attempt_key: attempt_key,
-                                                user: user as NonEmptyStr,
-                                                working_directory: working_directory,
-                                                attempt_worktree: attempt_worktree,
-                                                stdout_path: stdout_path,
-                                                stderr_path: stderr_path,
-                                                granted: kibibyte(count: granted_n),
-                                                exit_hook: exit_hook as NonEmptyStr,
-                                                inner_argv: split(s: inner_joined, delimiter: "\u{1f}"),
-                                              }
-                                              match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
-                                                AttemptSystemUnitRefused { reason: why } => exit_failure(reason: why)
-                                                AttemptSystemUnitAdmitted { unit: unit, facts: _ } =>
-                                                  attempt_system_unit_run_admitted_start(instance: instance, facts: facts, unit: unit, wait: wait)
-                                              }
-                                            }
-                                          }
-                                      }
-                                  }
-                              }
-                          }
-                      }
-                  }
-              }
+  match attempt_system_unit_start_request_decode(lines: lines) {
+    AttemptSystemUnitStartRequestMalformed { reason: why } => exit_failure(reason: why)
+    AttemptSystemUnitStartRequestDecoded { request } =>
+      match attempt_system_unit_start_facts_for_request(instance: instance, request: request) {
+        AttemptSystemUnitStartUnderivable { reason: why } => exit_failure(reason: why)
+        AttemptSystemUnitStartDerived { facts } =>
+          match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
+            AttemptSystemUnitRefused { reason: why } => exit_failure(reason: why)
+            AttemptSystemUnitAdmitted { unit: unit, facts: admitted } =>
+              attempt_system_unit_run_admitted_start(instance: instance, facts: admitted, unit: unit, wait: wait)
           }
       }
   }

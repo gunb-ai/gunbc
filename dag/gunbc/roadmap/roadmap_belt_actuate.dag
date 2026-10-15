@@ -255,7 +255,7 @@ import gunbc.dispatch_selection { default_provider_selection_request, SizingProf
 import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
-  attempt_system_unit_start_facts_from_plan, attempt_system_unit_encode_start,
+  attempt_system_unit_start_request_from_plan, attempt_system_unit_encode_start,
   attempt_system_unit_write_pending, attempt_system_unit_launch_host_argv,
 }
 import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
@@ -1505,13 +1505,7 @@ fn belt_session_container_create(
                   if !attempt_system_unit_write_pending(
                     instance_root: instance.instance_root as String,
                     body: attempt_system_unit_encode_start(
-                      facts: attempt_system_unit_start_facts_from_plan(
-                        instance: instance,
-                        plan: plan,
-                        granted: launched.amount,
-                        node_id: plan.node_id,
-                        attempt_key: plan.attempt_key,
-                      ),
+                      request: attempt_system_unit_start_request_from_plan(plan: plan, granted: launched.amount),
                     ),
                   ) {
                     ExecStepFailed { step: "harness-unit-start", detail: "pending attempt-system-unit request could not be written" }
