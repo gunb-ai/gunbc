@@ -66,6 +66,7 @@ test fn a_vendor_pane_record_derives_result_from_status() -> Bool {
         (match record.result { ServiceResultSuccess => true _ => false })
           && (match record.end { AttemptProcessExitedWith { status } => status == 0 AttemptProcessSignaled { signal: _ } => false })
       AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+      AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
     }
   let nine_ok = attempt_exit_vendor_pane_result_word(status: 9) == "exit-code"
     && match attempt_exit_entry_decode(entry_name: killed_status) {
@@ -73,6 +74,7 @@ test fn a_vendor_pane_record_derives_result_from_status() -> Bool {
         (match record.result { ServiceResultExitCode => true _ => false })
           && (match record.end { AttemptProcessExitedWith { status } => status == 9 AttemptProcessSignaled { signal: _ } => false })
       AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+      AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
     }
   zero_ok && nine_ok
 }
@@ -86,6 +88,7 @@ test fn a_vendor_pane_signal_record_decodes_as_killed() -> Bool {
           (match record.result { ServiceResultSignal => true  _ => false })
             && (match record.end { AttemptProcessSignaled { signal } => linux_standard_signal_number(signal: signal) == 9  AttemptProcessExitedWith { status: _ } => false })
         AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+        AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
       }
   }
 }
@@ -96,12 +99,14 @@ test fn a_vendor_pane_exit_name_decodes_from_status() -> Bool {
       (match record.result { ServiceResultSuccess => true _ => false })
         && (match record.end { AttemptProcessExitedWith { status } => status == 0 AttemptProcessSignaled { signal: _ } => false })
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+    AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
   }
   let nine_ok = match attempt_exit_entry_decode(entry_name: "n+k+worker+vendorpane+exit-code+exited+9") {
     AttemptExitEntryDecoded { record } =>
       (match record.result { ServiceResultExitCode => true _ => false })
         && (match record.end { AttemptProcessExitedWith { status } => status == 9 AttemptProcessSignaled { signal: _ } => false })
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+    AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
   }
   zero_ok && nine_ok
 }
@@ -112,6 +117,7 @@ test fn a_vendor_pane_signal_name_decodes_as_killed() -> Bool {
       (match record.result { ServiceResultSignal => true  _ => false })
         && (match record.end { AttemptProcessSignaled { signal } => linux_standard_signal_number(signal: signal) == 9  AttemptProcessExitedWith { status: _ } => false })
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+    AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
   }
 }
 
@@ -195,6 +201,7 @@ test fn a_hand_in_entry_decodes_to_its_own_kind() -> Bool {
     AttemptHandInEntryDecoded { node_id, attempt_key, handin, entry_name: _ } => node_id == "n-1" && attempt_key == "k1" && handin == "h2"
     AttemptExitEntryDecoded { record: _ } => false
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+    AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
   }
   let empty = match attempt_exit_entry_decode(entry_name: "n-1+k1+handin+") {
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => true
