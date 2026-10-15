@@ -130,7 +130,8 @@ fn host_budget_resolution_bytes(r: HostBudgetResolution) -> ByteSize? {
 // An unreadable local budget under wrap standing ExternallyBoundedExecutor is not
 // HostBudgetUnreadable: that standing already lives in gunbc.compute.unit_bounds. This fold
 // consumes it; it does not re-read BUILDBUDDY_RUN_ID. The bound is the executor identity,
-// never a fabricated byte count.
+// never a fabricated byte count. Operator standing: sleek-owl-397 ruling 2026-10-15
+// (external boundary), the same row unit_bounds cites for ExternallyBoundedExecutor.
 fn host_budget_with_external_executor(
   resolution: HostBudgetResolution,
   standing: UserWorkScopeStanding

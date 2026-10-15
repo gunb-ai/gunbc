@@ -398,7 +398,7 @@ fn bound_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunnerQ
         HostBudgetResolved { effective_bytes: e, requested_bytes: _, observation: _ } =>
           join_axis(run: run.run, axis: BoundAxis, holds: byte_size_count(b: e) == want, selected: want as String, observed: byte_size_count(b: e) as String)
         HostBudgetExternallyBounded { run_id: id } =>
-          SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: user_work_scope_standing_wire(standing: ExternallyBoundedExecutor { run_id: id as String }) }
+          SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: user_work_scope_standing_wire(s: ExternallyBoundedExecutor { run_id: id as String }) }
       }
   }
 }

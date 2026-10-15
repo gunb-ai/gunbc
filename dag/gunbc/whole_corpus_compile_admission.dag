@@ -407,7 +407,7 @@ fn whole_corpus_compile_budget_against_peak(
     HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
     HostBudgetExternallyBounded { run_id: id } =>
       WholeCorpusCompileRefusedBudgetUnreadable {
-        reason: user_work_scope_standing_wire(standing: ExternallyBoundedExecutor { run_id: id as String }) as NonEmptyStr
+        reason: user_work_scope_standing_wire(s: ExternallyBoundedExecutor { run_id: id as String }) as NonEmptyStr
       }
     HostBudgetResolved {
       effective_bytes: b,
