@@ -31,7 +31,7 @@ import gunbc.session_reservation_policy { HostSessionReservationOutcome, Session
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max_bytes }
 import gunbc.runner.runner_slot_allocation {
   HostWidthFacts, host_width_facts, CpuWidthDerived,
-  compute_host_cpu_admitted_width, committed_width_of,
+  compute_host_cpu_admitted_width, committed_width_of, gunbc_runner_committed_width,
   RunnerWidthDerived, RunnerWidthUnresolved, WidthComputeOfferAbsent,
 }
 import gunbc.ci.ci_runner_placement {
@@ -206,11 +206,29 @@ test fn mtcollins1_production_usable_ram_is_the_census_capture_reading() -> Bool
 }
 
 test fn mtcollins1_production_overhead_is_the_census_capture_reading() -> Bool {
-  match gunbc_ci_host_fixed_overhead_for(host: operator_host_mtcollins1) {
-    HostFixedOverheadMeasured { bytes: _, provenance: p } =>
-      string_contains(s: p as String, pattern: "66141451-278b-4eb0-bc57-595563e1247b")
-        && string_contains(s: p as String, pattern: "quiescent census boot")
-    _ => false
+  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path)
+  let from_file = match host_capture_bind_transcript(capture: read.content, machine: "mtcollins1" as NonEmptyStr) {
+    HostCaptureBound { envelope: e } => host_fixed_overhead_from_capture(envelope: e)
+    HostCaptureOpen { envelope: _ } => ObservationRefused { cause: CensusMeminfoSectionPending }
+    HostCaptureNotBegun => ObservationRefused { cause: CensusMeminfoSectionAbsent }
+    HostCaptureUnbound { reason: _ } => ObservationRefused { cause: CensusMeminfoSectionAbsent }
+  }
+  let production = gunbc_ci_host_fixed_overhead_for(host: operator_host_mtcollins1)
+  match from_file {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: o } =>
+      match o {
+        HostFixedOverheadMeasured { bytes: b, provenance: p } =>
+          match production {
+            HostFixedOverheadMeasured { bytes: pb, provenance: pp } =>
+              byte_size_count(b: b) == byte_size_count(b: pb)
+                && (p as String) == (pp as String)
+                && string_contains(s: p as String, pattern: "66141451-278b-4eb0-bc57-595563e1247b")
+                && string_contains(s: p as String, pattern: "quiescent census boot")
+            _ => false
+          }
+        _ => false
+      }
   }
 }
 
@@ -238,8 +256,8 @@ test fn mtcollins1_RED_open_envelope_does_not_mint_measured_ram_or_overhead() ->
   }
 }
 
-test fn mtcollins1_production_committed_width_is_unresolved_because_the_offer_is_not_in_the_catalog() -> Bool {
-  match committed_width_of(f: host_width_facts(host: operator_host_mtcollins1)) {
+test fn mtcollins1_production_committed_width_is_unresolved_until_catalog_enrolment() -> Bool {
+  match gunbc_runner_committed_width(host: operator_host_mtcollins1) {
     RunnerWidthUnresolved { cause: c } =>
       match c {
         WidthComputeOfferAbsent { host: h } => (h as String) == (operator_host_mtcollins1 as String)
@@ -283,6 +301,14 @@ fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) ->
     served_deployment: real.served_deployment,
     disk: real.disk,
     carries_shakedown_slot: real.carries_shakedown_slot,
+  }
+}
+
+test fn mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_zero_slots() -> Bool {
+  let real = host_width_facts(host: operator_host_mtcollins1)
+  match committed_width_of(f: mtcollins1_supplied_facts(ram: real.usable_ram, overhead: real.fixed_overhead)) {
+    RunnerWidthDerived { slots: n } => n == 0
+    RunnerWidthUnresolved { cause: _ } => false
   }
 }
 
