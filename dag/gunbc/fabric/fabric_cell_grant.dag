@@ -1,17 +1,16 @@
 module gunbc.fabric.fabric_cell_grant
 
-import std.types { NonEmptyStr, String, Timestamp }
+import std.types { NonEmptyStr, String, Timestamp, List }
 import std.decl_ref { decl_ref }
 import std.measure { Measure }
 import std.nat { Nat }
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set {
-  CasGeneration, CasStoreFailure, CasSlotObservationRefused, CasUnreadableSlot,
+  CasGeneration, CasStoreFailure, CasSlotObservationRefused,
   CasSuccessorGeneration, CasSuccessorExhausted, cas_generation_count,
 }
 import std.durable_exclusive_hold {
-  DurableHoldOwnerRef, DurableHoldReleaseRef,
-  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+  DurableHoldOwnerRef,
   HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable,
 }
 import gunbc.workspace_slot_mutation {
@@ -24,18 +23,30 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquirePlanned, FileHoldAcquireNotEligible,
   file_hold_acquire_prepare, file_hold_acquire_commit,
   file_hold_acquire_plan_landing, file_hold_acquire_plan_for_owner,
-  observe_file_hold,
 }
-import product.fabric.identity { FabricIdentity, DemandKey }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey, ExecutionAttemptKey, GrantKey }
 import product.fabric.work { Work }
 import product.fabric.selection { SelectedOffer }
 import product.fabric.budget { MoneyAccount, MoneyReservationRequest }
 import product.fabric.execution {
   Attempt, ExecutionGrant, ReservationRef, LeaseKey, LeaseIdentity, FabricGrantEvidence,
 }
-import product.fabric.grant_issue { GrantIssue, GrantCommitted, GrantRefused, GrantIssueRefusal, issue_grant }
+import product.fabric.grant_issue { GrantIssue, GrantCommitted, GrantRefused, GrantIssueRefusal, issue_grant, derive_grant_key }
 import extdeps.accounting.encumbrance { EncumbranceLedger }
-import gunbc.fabric.fabric_control_plane { selected_cell_allocation_key }
+import gunbc.fabric.fabric_control_plane {
+  selected_cell_allocation_key, fabric_money_reservation_ref,
+  CellReservation, FabricCellCandidate, CellSelectionForDemand, CellSelectedForDemand, CellSelectionRefused,
+  broker_select_for_requirements,
+}
+import gunbc.fabric.fabric_executor_class { ExecutorSanction }
+import gunbc.floor.floor_demand { floor_execution_requirements }
+import gunbc.fabric.fabric_witness_run { floor_grant_duration }
+import product.fabric.demand { Demand }
+import product.fabric.supply { offer_quote_currency }
+import product.fabric.selection { selection_liability }
+import std.measure { Count, One, MoneyAmountMicro, MoneyPerSecond }
+import extdeps.currency.currency { Usd }
+import extdeps.accounting.budget { Appropriation }
 
 // FCI-2 OVER A CELL: SELECTION, RESERVATION AND COMMITMENT AS ONE DURABLE TRANSITION.
 //
@@ -70,9 +81,8 @@ import gunbc.fabric.fabric_control_plane { selected_cell_allocation_key }
 // - RELEASE AND SANITATION are FCI-4. A cell held by a grant key is not released by
 //   fabric_control_plane end_cell_hold, whose owner is the money reservation reference; the release
 //   path for a granted cell lands with FCI-4's receipt admission.
-// - The re-read below is the agreement half FCI-3's executor needs; the executor that calls it in
-//   a later process, before starting anything, is FCI-3 and is the named consumer
-//   (gunbc.runner.runner_attempt_launch reservation_authorization_grant_producer_frontier).
+// - The re-read is gunbc.fabric.fabric_required_build_cell judge_cell_holder, over cell_grant_owner_at
+//   below; the slot controller calls it in a later process before planning anything.
 
 type CellGrant<Q, S>
   = CellGranted { grant: ExecutionGrant<NonEmptyStr>, account: MoneyAccount, ledger: EncumbranceLedger<Q, S> }
@@ -192,30 +202,70 @@ fn grant_selected_cell_under_exclusion<Q, S>(
   }
 }
 
-// THE RE-READ: IS THIS GRANT THE CELL'S CURRENT HOLD? Only CellGrantLive authorizes. Every other
-// arm is a reason to start nothing, and they are separate because their remedies differ: a
-// released or superseded grant is over and is not retried; an absent slot means the grant was
-// never committed here at all (a grant authored outside this transition); an unreadable store says
-// nothing about the grant.
-type CellGrantStanding
-  = CellGrantLive
-  | CellGrantReleased { generation: CasGeneration, released_by: DurableHoldReleaseRef }
-  | CellGrantSuperseded { holder: DurableHoldOwnerRef, generation: CasGeneration }
-  | CellGrantNeverCommitted
-  | CellGrantUnreadable { generation: CasGeneration, detail: NonEmptyStr }
-  | CellGrantStoreUnobserved { cause: CasUnreadableSlot }
+// THE OWNER A GRANT-HELD CELL CARRIES, AS A FUNCTION OF COORDINATES A LATER PROCESS ALREADY HOLDS.
+// The hold owner is the grant key: a content digest over the Work, the attempt, the offer and the
+// lease (product.fabric.grant_issue derive_grant_key), whose lease is the slot at the generation it
+// was granted. So the executor, which does not receive the grant record, re-derives the owner at
+// the generation the slot reports and compares. This is the ONE derivation: grant issuance writes
+// it (cell_grant_owner over the issued grant, whose key derive_grant_key produced from the same
+// coordinates) and gunbc.fabric.fabric_required_build_cell judge_cell_holder reads it.
+fn cell_grant_owner_at(
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+  attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+  slot_key: NonEmptyStr,
+  generation: CasGeneration,
+) -> DurableHoldOwnerRef {
+  (derive_grant_key(work: work, attempt: attempt, offer: offer, lease: cell_grant_lease(slot_key: slot_key, generation: generation)) as String) as DurableHoldOwnerRef
+}
 
-fn cell_grant_standing(root: NonEmptyStr, grant: ExecutionGrant<NonEmptyStr>) -> CellGrantStanding {
-  match observe_file_hold(root: root, key: (grant.context.lease.lease_key as String) as NonEmptyStr) {
-    HoldSlotAbsent => CellGrantNeverCommitted
-    HoldSlotFree { generation: g, released_by: r } => CellGrantReleased { generation: g, released_by: r }
-    HoldSlotHeld { generation: g, owner: o } =>
-      if (o as String) == (cell_grant_owner(grant: grant) as String) && cas_generation_count(g: g) == grant.context.lease.generation {
-        CellGrantLive
-      } else {
-        CellGrantSuperseded { holder: o, generation: g }
-      }
-    HoldSlotUndecodable { generation: g, detail: d } => CellGrantUnreadable { generation: g, detail: d }
-    HoldObservationUnavailable { cause: c } => CellGrantStoreUnobserved { cause: c }
+// THE BROKER THAT ISSUES. fabric_control_plane broker_reserve_for_demand ranks, then reserves under
+// a hold owned by the money reservation reference and mints no grant. This is the same selection
+// (broker_select_for_requirements, one authority), followed by grant_selected_cell instead, so the
+// cell is held by the grant the ranking's winner was issued. The money request is the control
+// plane's (reserve_priced_cell): reference fabric_money_reservation_ref, generation 0 because this
+// is a mint, liability the selection's own. The resource ledger is the winning cell's threads: its
+// appropriation is the offer's thread count and the liability the Work's, so a Work larger than the
+// cell refuses as a resource reservation rather than being granted.
+type CellGrantDecision
+  = CellGrantDecided { outcome: CellGrant<Count, One> }
+  | CellGrantNotSelected { refusal: CellReservation }
+
+fn broker_grant_for_demand(
+  root: NonEmptyStr,
+  demand: Demand<NonEmptyStr>,
+  work: Work<NonEmptyStr>,
+  attempt: Attempt<NonEmptyStr>,
+  roster: List<FabricCellCandidate>,
+  sanctions: List<ExecutorSanction>,
+  account: MoneyAccount,
+  maximum_buy_order: MoneyAmountMicro,
+  delay_valuation: MoneyPerSecond,
+  evidence: FabricGrantEvidence,
+  issued_at: Timestamp,
+) -> CellGrantDecision {
+  match broker_select_for_requirements(demand: demand, requirements: floor_execution_requirements(),
+    duration: floor_grant_duration(), currency: Usd, roster: roster, sanctions: sanctions,
+    maximum_buy_order: maximum_buy_order, delay_valuation: delay_valuation) {
+    CellSelectionRefused { refusal: r } => CellGrantNotSelected { refusal: r }
+    CellSelectedForDemand { offer: offer, selected: selected, cost: cost } =>
+      CellGrantDecided { outcome: grant_selected_cell(
+        root: root,
+        work: work,
+        attempt: attempt,
+        selected: selected,
+        account: account,
+        money_request: MoneyReservationRequest {
+          reference: fabric_money_reservation_ref(demand: demand.id, offer: offer.id),
+          generation: 0,
+          maximum_liability: selection_liability(c: cost),
+          currency: offer_quote_currency(q: offer.quote),
+        },
+        ledger: EncumbranceLedger { appropriation: Appropriation { ceiling: offer.shape.hard.threads }, entries: [] },
+        resource_liability: work.requirements.shape.hard.threads,
+        demand: demand.id,
+        evidence: evidence,
+        issued_at: issued_at,
+      ) }
   }
 }

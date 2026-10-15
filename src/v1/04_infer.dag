@@ -235,9 +235,8 @@ import v1.compiler.infer_lookup {
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
-  lookup_in_scope, lookup_func_sig, func_env_declared_func_sig,
+  lookup_in_scope, lookup_func_sig, func_env_declared_func_sig, func_sig_from_global_bare,
   resolved_plain_call_target_for_outcome, resolved_declaration_call_target, census_declaration_identity,
-  func_sig_from_global_bare,
   global_bare_callable_node, constructor_declaration_for_admission,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
@@ -14032,6 +14031,18 @@ fn type_match_for_direct_call_target(type_env: TypeEnv, func_name: String, call_
 // one and absent from the other is a scope-construction defect rather than a case to absorb --
 // it REFUSES, and if that refusal ever fires it has found something real.
 fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTargetOutcome {
+  if contains(func_name, ".") {
+    match func_env_declared_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
+      FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
+      FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
+      FuncSigUnresolved =>
+        match func_sig_from_global_bare(type_env: scope.type_env, name: func_name) {
+          FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
+          FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
+          FuncSigUnresolved => CallableUnresolved { name: func_name }
+        }
+    }
+  } else {
   match map_get(scope.body_locals, func_name) {
     Present { value: _ } =>
       match map_get(scope.locals, func_name) {
@@ -14069,6 +14080,7 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
               }
           }
       }
+  }
   }
 }
 

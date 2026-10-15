@@ -1,4 +1,4 @@
-module gunbc.native_frontier_ratchet
+module v2.workflow.native_frontier_ratchet
 
 import std.types { List, Map }
 import v2.std.node { symbol_lexeme }
@@ -8,12 +8,14 @@ import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import extdeps.bazel.target_pattern { TargetPattern, target_pattern_within }
+import gunbc.native_route_universe { native_route_default_pattern }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,
-  NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval
+  NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
+  NativeRouteMemberRow, NativeRouteTestIdentity, native_route_identity_qualified
 }
-import gunbc.witness.v2_native_route {
-  NativeRouteReceipt, NativeRouteMemberRow, NativeRouteTestIdentity, native_route_identity_qualified,
+import v2.workflow.v2_native_route {
+  NativeRouteReceipt,
   NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
   NativeRouteAdmissionRefusalCause,
   JobNameMismatch, TestedTreeUnrecorded, PreparationSeedUnrecorded, EmittedClosureUnrecorded,
@@ -25,13 +27,13 @@ import gunbc.witness.v2_native_route {
   MalformedControlAcceptedByRoute, OldRouteControlNeverInstalled, EmittedBuildRustcUnrecorded,
   EmittedBuildCompilerUnbound, EmittedBuildWarningsNotDenied, EmittedBuildNotClean,
   native_route_admission_refusal_cause_name,
-  native_route_default_pattern, native_route_reference_for, native_route_disposition,
+  native_route_reference_for, native_route_disposition,
   NativeRouteExclusionCause, CompilerFrontierAttributed, NativeEntryResolutionLimit, NativeEvalBoundary, UnattributedRefusal,
   NativeRouteDivergenceCause, NativePassedExpectedRed, NativeFalseExpectedPass, NativeReturnedOtherVerdict, NativeReachedRouteGap
 }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
-import gunbc.native_route_progress_guard {
+import v2.workflow.native_route_progress_guard {
   NativeRouteAttainment, AttainRefused, AttainDiverged, AttainAgreed, AttainUnreached,
   NativeBaselineAttainment, BaselineRefused, BaselineDiverged, BaselineAgreed,
   NativeProgressBaselineRow, NativeProgressObservedReading, NativeProgressObservedRow,
@@ -46,18 +48,18 @@ import gunbc.native_route_progress_guard {
   native_attainment_rank, native_baseline_rank, native_divergence_cause_tag,
   native_progress_finding_text
 }
-import gunbc.native_frontier_debt {
+import v2.workflow.native_frontier_debt {
   NativeFrontierDebt, DebtRefused, DebtDiverged, NativeFrontierDebtRow,
   NativeFrontierRosterStanding, RosterUnminted, RosterMinted
 }
-import gunbc.native_frontier_roster { native_frontier_roster }
+import v2.workflow.native_frontier_roster { native_frontier_roster }
 import v2.workflow.compile_door_cause_ownership {
   CauseOwnership, CorrectnessFlipDeclaration, CauseCorrectnessFlip,
   known_frontier_causes, known_correctness_flips, cause_correctness_flip_lookup_over
 }
 
 // THE NATIVE V2 FRONTIER RATCHET: whether one complete native run over the whole native universe
-// kept, lost or advanced the debt `gunbc.native_frontier_roster` records.
+// kept, lost or advanced the debt `v2.workflow.native_frontier_roster` records.
 //
 // WHERE IT RUNS, AND WHY THERE. It is evaluated by the emitted-native compiler inside its own
 // `adjudicate` mode, beside `native_route_admission`, over the same receipt value. The per-identity
@@ -660,7 +662,7 @@ fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
       list_append(
         left: [join([
           int_to_decimal_string(value: length(xs: a)),
-          " roster change(s) the run supports, NOT YET APPLIED: the committed gunbc.native_frontier_roster stays authoritative until a reviewed pull request replaces it with the proposal below"
+          " roster change(s) the run supports, NOT YET APPLIED: the committed v2.workflow.native_frontier_roster stays authoritative until a reviewed pull request replaces it with the proposal below"
         ], "")],
         right: a
       )
@@ -668,13 +670,13 @@ fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
       list_append(
         left: [join([
           int_to_decimal_string(value: length(xs: fl)),
-          " added identit(ies) owed debt under an owned correctness flip, NOT YET APPLIED: the committed gunbc.native_frontier_roster stays authoritative until a reviewed pull request replaces it with the proposal below"
+          " added identit(ies) owed debt under an owned correctness flip, NOT YET APPLIED: the committed v2.workflow.native_frontier_roster stays authoritative until a reviewed pull request replaces it with the proposal below"
         ], "")],
         right: list_append(left: list_map(xs: fl, f: native_frontier_flip_text), right: a)
       )
     FrontierLost { findings: fs } => fs
     FrontierUnminted { proposal: p } =>
-      [join(["UNMINTED: gunbc.native_frontier_roster carries no roster; this complete run proposes a universe of ", int_to_decimal_string(value: length(xs: p.universe)), " identities and ", int_to_decimal_string(value: length(xs: p.rows)), " debt row(s) for review"], "")]
+      [join(["UNMINTED: v2.workflow.native_frontier_roster carries no roster; this complete run proposes a universe of ", int_to_decimal_string(value: length(xs: p.universe)), " identities and ", int_to_decimal_string(value: length(xs: p.rows)), " debt row(s) for review"], "")]
     FrontierNotAMeasurement { reasons: rs } =>
       list_map(xs: rs, f: fn(r) { join(["NOT A MEASUREMENT ", r], "") })
   }
@@ -682,7 +684,7 @@ fn native_frontier_report_lines(v: NativeFrontierVerdict) -> List<String> {
 
 // THE PROPOSED ROSTER, AS THE `.dag` MODULE IT WOULD BE. Present for every arm except `Held` and
 // `NotAMeasurement`. The required native-route lane publishes it; it reaches
-// `dag/gunbc/native_frontier_roster.dag` only through a reviewed pull request that carries it. Dispositions and cause transitions are NOT carried forward, because each describes
+// `src/v2/workflow/native_frontier_roster.dag` only through a reviewed pull request that carries it. Dispositions and cause transitions are NOT carried forward, because each describes
 // a transition relative to the rows it was written against: once the roster is re-minted from the
 // run, a disposition for a subject with no row and a transition whose cause no longer moves are
 // both findings in their own right (`DisposedSubjectHasNoBaselineRow`,
@@ -748,28 +750,28 @@ fn native_frontier_row_line(row: NativeFrontierDebtRow) -> String {
 }
 
 // THE WHOLE ROSTER FILE. It carries only imports and the one data row, so the proposal restates no
-// declaration: the vocabulary lives in gunbc.native_frontier_debt, and the header below names only
+// declaration: the vocabulary lives in v2.workflow.native_frontier_debt, and the header below names only
 // what a minted row spells.
 fn native_frontier_proposal_lines(receipt: NativeRouteReceipt, proposal: NativeFrontierProposal) -> List<String> {
   list_flat_map(
     xs: [
       [
-        "module gunbc.native_frontier_roster",
+        "module v2.workflow.native_frontier_roster",
         "",
         "import v2.compiler.native_test_vocabulary { NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval }",
-        "import gunbc.witness.v2_native_route {",
+        "import v2.workflow.v2_native_route {",
         "  NativeRouteTestIdentity,",
         "  CompilerFrontierAttributed, NativeEntryResolutionLimit, NativeEvalBoundary, UnattributedRefusal,",
         "  NativePassedExpectedRed, NativeFalseExpectedPass, NativeReturnedOtherVerdict, NativeReachedRouteGap",
         "}",
-        "import gunbc.native_frontier_debt {",
+        "import v2.workflow.native_frontier_debt {",
         "  NativeFrontierRosterStanding, RosterMinted, NativeFrontierMintReceipt, NativeFrontierDebtRow, DebtRefused, DebtDiverged",
         "}",
         "",
-        "// Minted by gunbc.native_frontier_ratchet native_frontier_proposal_lines from one complete native",
+        "// Minted by v2.workflow.native_frontier_ratchet native_frontier_proposal_lines from one complete native",
         "// run. The run receipt is below, and the host and command are in the minting pull request. The",
-        "// contract this file is, and what it cannot see, are stated on gunbc.native_frontier_debt and",
-        "// gunbc.native_frontier_ratchet. Never hand-edited: it is rewritten from a run.",
+        "// contract this file is, and what it cannot see, are stated on v2.workflow.native_frontier_debt and",
+        "// v2.workflow.native_frontier_ratchet. Never hand-edited: it is rewritten from a run.",
         "data native_frontier_roster: NativeFrontierRosterStanding = RosterMinted {",
         "  receipt: NativeFrontierMintReceipt {",
         join(["    tested_tree: \"", receipt.tested_tree, "\","], ""),
