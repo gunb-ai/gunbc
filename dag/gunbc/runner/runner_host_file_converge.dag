@@ -1819,6 +1819,60 @@ fn runner_host_cpu_dropin_gate(
 // where the declared administrator cannot sudo reports that by name. Observation does not need
 // privilege and still runs, so an observe-only dispatch against such a host still says what WOULD be
 // written and what the slots hold.
+fn runner_host_file_result(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: RunnerHostFileConvergeMode,
+  privilege: RunnerHostPrivilegeStanding,
+  file: RunnerHostFileDesired,
+) -> RunnerHostFileResult
+{
+  let p = plan_runner_host_file(subject: subject, context: context, file: file)
+  RunnerHostFileResult {
+    planned: p,
+    outcome: match mode {
+      RunnerHostFilesObserveOnly => HostFileNotAppliedObserveOnly
+      RunnerHostFilesApply =>
+        match privilege {
+          AdministratorPrivilegeRefused { reason: why } => HostFileNotAttempted { reason: concat("administrator privilege refused: ", why) }
+          AdministratorPrivilegeAvailable => apply_runner_host_file(subject: subject, context: context, planned: p)
+        }
+    },
+  }
+}
+
+// A WRITTEN UNIT FILE IS LOADED BEFORE ANY SLOT IS ACTUATED. When this run wrote a file, the manager
+// is reloaded first, so an activation starts the unit the fragment just declared rather than a stale
+// one. A refused reload is reported as an unsettled actuation and blocks the CPU drop-in.
+fn runner_host_pre_actuation_reload(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: RunnerHostFileConvergeMode,
+  privilege: RunnerHostPrivilegeStanding,
+  results: List<RunnerHostFileResult>,
+) -> List<SlotActuationOutcome>
+{
+  let wrote = any(results, r => match r.outcome {
+    HostFileConvergedByWrite { converged: _ } => true
+    HostFileLeftInPlace => false
+    HostFileWriteRefused { step: _, reason: _ } => false
+    HostFileNotAttempted { reason: _ } => false
+    HostFileNotAppliedObserveOnly => false
+  })
+  if !wrote { [] } else {
+    match mode {
+      RunnerHostFilesObserveOnly => []
+      RunnerHostFilesApply =>
+        match reload_runner_host_manager(subject: subject, context: context) {
+          ManagerReloaded => []
+          ManagerReloadNotOwed => []
+          ManagerReloadRefused { reason: why } => [SlotActuationRefused { unit: "daemon-reload" as NonEmptyStr, step: "pre-actuation-reload", reason: why }]
+          ManagerReloadOwedNotAttempted { reason: why } => [SlotActuationRefused { unit: "daemon-reload" as NonEmptyStr, step: "pre-actuation-reload", reason: why }]
+        }
+    }
+  }
+}
+
 fn run_runner_host_files(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
@@ -1829,21 +1883,17 @@ fn run_runner_host_files(
 ) -> RunnerHostFileRun
 {
   let privilege = observe_runner_host_administrator_privilege(subject: subject, context: context)
+  // ORDER (review on ff67e67949): every file but the CPU drop-in is written first and the manager
+  // reloaded, so a fresh host has the unit fragment before a slot is activated and converges in one
+  // pass; then the slots are actuated; only then is the CPU drop-in written, gated on every actuation
+  // having settled, so no host carries the committed-width quota over fewer running slots.
+  let unit_files = filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String))
+  let unit_results = map(unit_files, f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
+  let pre_reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results)
   let actuations = runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege)
-  let gated = runner_host_cpu_dropin_gate(files: files, withheld: withheld, actuations: actuations, mode: mode)
-  let planned = map(gated.files, f => plan_runner_host_file(subject: subject, context: context, file: f))
-  let results = map(planned, p =>
-    RunnerHostFileResult {
-      planned: p,
-      outcome: match mode {
-        RunnerHostFilesObserveOnly => HostFileNotAppliedObserveOnly
-        RunnerHostFilesApply =>
-          match privilege {
-            AdministratorPrivilegeRefused { reason: why } => HostFileNotAttempted { reason: concat("administrator privilege refused: ", why) }
-            AdministratorPrivilegeAvailable => apply_runner_host_file(subject: subject, context: context, planned: p)
-          }
-      },
-    })
+  let gated = runner_host_cpu_dropin_gate(files: files, withheld: withheld, actuations: concat(pre_reload, actuations), mode: mode)
+  let cpu_results = map(filter(gated.files, f => (f.path as String) == (gunbc_runner_per_slot_cpu_dropin_path as String)), f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
+  let results = concat(unit_results, cpu_results)
   let residue_observed = observe_retired_residue(subject: subject, context: context, residue: ctrl_jobserver_retired_residue)
   let fragment_delivered = runner_host_files_deliver_fragment(files: gated.files)
   let expect = runner_slot_expectation(per_slot: per_slot, fragment_delivered: fragment_delivered, residue_absent: match residue_observed {
@@ -1870,7 +1920,7 @@ fn run_runner_host_files(
     privilege: privilege,
     results: results,
     withheld: gated.withheld,
-    actuations: actuations,
+    actuations: concat(pre_reload, actuations),
     residue: converge_retired_residue(subject: subject, context: context, mode: mode, privilege: privilege, residue: ctrl_jobserver_retired_residue, observed: residue_observed, gate: gate),
     reload: reload,
     slots: slots,

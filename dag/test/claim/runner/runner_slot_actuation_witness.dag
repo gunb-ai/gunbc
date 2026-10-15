@@ -16,6 +16,7 @@ import gunbc.runner.runner_slot_actuation {
   slot_activation_plan, slot_activation_read_back_holds,
   slot_drain_plan, slot_drain_read_back_holds,
   slot_actuation_reading_of,
+  slot_activity_of_listing,
   slot_actuation_reading_typed,
   SlotReadingTyped, SlotReadingUnknownWord,
   slot_actuation_argvs,
@@ -226,4 +227,20 @@ test fn a_missing_unit_is_not_installed_not_masked() -> Bool {
     && string_contains(s: slot_actuation_outcome_wire(o: SlotNotInstalled { unit: slot_u }), pattern: "not-installed")
     && !string_contains(s: slot_actuation_outcome_wire(o: SlotNotInstalled { unit: slot_u }), pattern: "masked-and-stopped")
     && slot_actuation_settled(o: SlotNotInstalled { unit: slot_u })
+}
+
+// BLOCKER RED (review on ff67e67949): a listing whose unit column does not name the slot -- ps without
+// systemd prints `-` -- must not read idle, so an Active slot running a job is refused, never stopped.
+test fn an_unattributed_listing_refuses_and_does_not_stop() -> Bool {
+  let blind = slot_activity_of_listing(listing: "- Runner.Worker\n- Runner.Listener\n", unit: slot_u)
+  (match blind { SlotActivityUnobserved { cause: _ } => true SlotIdle => false SlotHasLiveWorker => false })
+    && (match slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: blind) {
+      DrainRefused { reason: _ } => true
+      DrainSteps { steps: _ } => false
+      DrainWaitForJob { mask: _ } => false
+      DrainWaitForStop { mask: _ } => false
+      DrainAlreadyMasked => false
+      DrainUnitNotInstalled => false
+    })
+    && (match slot_activity_of_listing(listing: "actions-runner@srv3-18.service Runner.Listener\n", unit: slot_u) { SlotIdle => true SlotActivityUnobserved { cause: _ } => false SlotHasLiveWorker => false })
 }

@@ -18,7 +18,7 @@ import extdeps.systemd.systemctl {
   systemctl_mask_argv,
   systemctl_stop_argv,
 }
-import extdeps.procps.ps { ps_unit_comm_listing_argv, ps_unit_runs_command }
+import extdeps.procps.ps { ps_unit_comm_listing_argv, ps_unit_runs_command, ps_unit_runs_any_process }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import extdeps.sudo.elevation { sudo_elevate }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
@@ -356,17 +356,30 @@ fn read_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: No
   }
 }
 
+// IDLE IS PROVEN BY THE UNIT'S OWN PROCESS, NEVER BY ABSENCE (review on ff67e67949). The decision is
+// only asked of an active unit, and an active runner unit always owns its Runner.Listener. So a listing
+// in which the unit's name appears on no line -- ps built without systemd prints `-` in the unit
+// column, or the column truncated the full actions-runner@<slot>.service name -- has not shown this
+// unit at all, and reading it as idle would stop a slot whose job ran unattributed. It is unobserved.
+fn slot_activity_of_listing(listing: String, unit: NonEmptyStr) -> SlotActivityObservation {
+  if ps_unit_runs_command(listing: listing, unit: unit as String, comm: runner_job_process_comm) {
+    SlotHasLiveWorker
+  } else if ps_unit_runs_any_process(listing: listing, unit: unit as String) {
+    SlotIdle
+  } else {
+    SlotActivityUnobserved { cause: join(["the process listing attributes no process to ", unit as String, ", which an active runner unit always has (its Runner.Listener): the unit column is missing or truncated, so idleness is unproven"], "") as NonEmptyStr }
+  }
+}
+
 fn read_slot_worker_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActivityObservation
 {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ps_unit_comm_listing_argv()) {
     TypedArgvExecRefused { reason: why } => SlotActivityUnobserved { cause: why as NonEmptyStr }
     TypedArgvExecConverged { result: r } =>
-      if !r.success || trim(s: r.stdout) == "" {
+      if !r.success {
         SlotActivityUnobserved { cause: join(["ps exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") as NonEmptyStr }
-      } else if ps_unit_runs_command(listing: r.stdout, unit: unit as String, comm: runner_job_process_comm) {
-        SlotHasLiveWorker
       } else {
-        SlotIdle
+        slot_activity_of_listing(listing: r.stdout, unit: unit)
       }
   }
 }
