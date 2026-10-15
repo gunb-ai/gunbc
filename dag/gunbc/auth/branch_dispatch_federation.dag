@@ -20,8 +20,8 @@ import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ApiSurface, WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
   MintsNoCredential, ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
   AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession,
-  PatternSelected, ManualStepRequired, NoAdmissiblePattern, PatternSelectionNeedsEvidence,
-  PatternSelectionNeedsPolicy, PatternSelectionRefused,
+  AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
+  PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
   select_authorization_pattern,
 }
 
@@ -250,6 +250,9 @@ fn run_scoped_federation_named(account_id: String) -> DedicatedFederation? {
 type BootCredentialSource
   = ReviewedMainDedicatedFederation
   | RunScopedApprovedGrant
+  | BootCredentialSourceRefused
+
+data boot_credential_source_emit_refused_poison: String = "__GUNBC_BOOT_CREDENTIAL_SOURCE_REFUSED__ select_boot_credential_source did not admit PatternSelected FederatedScopedGrant or OperatorApprovedCapability; this marker is not a WIF provider or service account, so the committed workflow drift gate goes red rather than emitting a fabricated credential source (DESIGN §5: refuse, never widen)"
 
 fn dedicated_boot_workload_identity() -> WorkloadIdentityStanding {
   match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
@@ -291,18 +294,22 @@ fn boot_credential_source_from_pattern(p: AuthorizationPattern) -> BootCredentia
   match p {
     FederatedScopedGrant => ReviewedMainDedicatedFederation
     OperatorApprovedCapability => RunScopedApprovedGrant
-    HumanOnlyStep { step: _ } => RunScopedApprovedGrant
-    OperatorOwnSession => RunScopedApprovedGrant
+    HumanOnlyStep { step: _ } => BootCredentialSourceRefused
+    OperatorOwnSession => BootCredentialSourceRefused
+  }
+}
+
+fn boot_credential_source_from_selection(s: AuthorizationPatternSelection) -> BootCredentialSource {
+  match s {
+    PatternSelected { pattern: p, receipt: _ } => boot_credential_source_from_pattern(p: p)
+    ManualStepRequired { step: _, receipt: _ } => BootCredentialSourceRefused
+    NoAdmissiblePattern { causes: _, scope: _ } => BootCredentialSourceRefused
+    PatternSelectionNeedsEvidence { needs: _ } => BootCredentialSourceRefused
+    PatternSelectionNeedsPolicy { survivors: _ } => BootCredentialSourceRefused
+    PatternSelectionRefused { defects: _ } => BootCredentialSourceRefused
   }
 }
 
 fn select_boot_credential_source(on_reviewed_main: Bool) -> BootCredentialSource {
-  match select_authorization_pattern(e: boot_credential_effect(on_reviewed_main: on_reviewed_main)) {
-    PatternSelected { pattern: p, receipt: _ } => boot_credential_source_from_pattern(p: p)
-    ManualStepRequired { step: _, receipt: _ } => RunScopedApprovedGrant
-    NoAdmissiblePattern { causes: _, scope: _ } => RunScopedApprovedGrant
-    PatternSelectionNeedsEvidence { needs: _ } => RunScopedApprovedGrant
-    PatternSelectionNeedsPolicy { survivors: _ } => RunScopedApprovedGrant
-    PatternSelectionRefused { defects: _ } => RunScopedApprovedGrant
-  }
+  boot_credential_source_from_selection(s: select_authorization_pattern(e: boot_credential_effect(on_reviewed_main: on_reviewed_main)))
 }
