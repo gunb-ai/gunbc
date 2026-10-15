@@ -655,14 +655,14 @@ fn claimed_body_refused_after_plant(plant: fn(String) -> Bool, needle: String) -
 
 test fn a_fifo_request_body_is_refused_without_reading() -> Bool {
   claimed_body_refused_after_plant(
-    plant: (body) => shell.Exec.RunArgv(program: "mkfifo", arguments: ["--", body]).exit_code == 0,
+    plant: body => shell.Exec.RunArgv(program: "mkfifo", arguments: ["--", body]).exit_code == 0,
     needle: "fifo",
   )
 }
 
 test fn a_symlinked_request_body_is_refused_without_following() -> Bool {
   claimed_body_refused_after_plant(
-    plant: (body) => shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/dev/zero", body]).exit_code == 0,
+    plant: body => shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/dev/zero", body]).exit_code == 0,
     needle: "symlink",
   )
 }
