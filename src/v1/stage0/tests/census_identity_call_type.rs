@@ -4,23 +4,27 @@ use v1_compiler::std_algebra::{
 };
 use v1_compiler::std_induction::SubValueRelation;
 use v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity;
-use v1_compiler::v1_compiler_infer::type_match_for_direct_call_target;
+use v1_compiler::v1_compiler_infer::{
+    call_target_for_direct_call, type_match_for_direct_call_target, InferScope,
+};
 use v1_compiler::v1_compiler_infer_env::{
-    empty_type_env, lookup_type_by_name, TypeBinding, TypeEnv,
+    empty_type_env, lookup_type_by_name, GlobalBareLookupState, TypeBinding,
 };
 use v1_compiler::v1_compiler_infer_items::{item_kind, ItemKind};
+use v1_compiler::v1_compiler_infer_lookup::{
+    census_declaration_identity, func_sig_from_global_bare,
+};
 use v1_compiler::v1_compiler_infer_method::{
     bare_call_non_declaration_binding, NonDeclarationBinding,
 };
-use v1_compiler::v1_compiler_infer_sigs::CallTargetOutcome;
-use v1_compiler::v1_std_core::{
-    make_pattern_binder_declaration_node, no_span, DeclaredCallableIdentity,
-};
+use v1_compiler::v1_compiler_infer_sigs::{CallTargetOutcome, FuncSigLookup, ResolvedFuncEnv};
+use v1_compiler::v1_std_core::{make_pattern_binder_declaration_node, no_span, Node};
 
 // Compile fixtures live in test.claim.kernel_method_free_call_census_skip_witness
 // and test.claim.census_identity_callable_not_a_type_witness. This seed test is
 // only the classification subset those witnesses cannot state: KernelMethodOnly
-// ⊆ algebra_method_template_name, plus the IdentityResolved type-lookup skip.
+// ⊆ algebra_method_template_name, plus the IdentityResolved type-lookup skip
+// driven through census Present + FuncSigUnresolved + call_target_for_direct_call.
 #[test]
 fn kernel_method_only_names_are_algebra_method_templates() {
     for profile in kernel_algebra_profile().values() {
@@ -43,7 +47,7 @@ fn kernel_method_only_names_are_algebra_method_templates() {
     ));
 }
 
-fn other_item_census_node(name: &str) -> Rc<v1_compiler::v1_std_core::Node> {
+fn other_item_census_node(name: &str) -> Rc<Node> {
     make_pattern_binder_declaration_node(
         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name.to_string(),
@@ -51,18 +55,42 @@ fn other_item_census_node(name: &str) -> Rc<v1_compiler::v1_std_core::Node> {
     )
 }
 
-fn env_with_str_binding(name: String, node: Rc<v1_compiler::v1_std_core::Node>) -> Rc<TypeEnv> {
+fn identity_resolved_scope(name: String, node: Rc<Node>) -> Rc<InferScope> {
+    let binding = Rc::new(TypeBinding {
+        name: name.clone(),
+        resolved: node,
+        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        alias_rhs: None,
+    });
     let mut env = (*empty_type_env()).clone();
-    env.str_bindings = Rc::new((*env.str_bindings).update(
-        name.clone(),
-        Rc::new(TypeBinding {
-            name,
-            resolved: node,
-            provenance: Rc::new(SubValueRelation::SubValueUnknown),
-            alias_rhs: None,
+    env.str_bindings = Rc::new((*env.str_bindings).update(name.clone(), binding.clone()));
+    let mut index = (*env.symbol_index).clone();
+    index.global_bare = Rc::new((*index.global_bare).update(
+        name,
+        Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
+            module_path: "kmfx.ident_decoy".to_string(),
+            binding,
         }),
     ));
-    Rc::new(env)
+    env.symbol_index = Rc::new(index);
+    Rc::new(InferScope {
+        type_env: Rc::new(env),
+        func_env: Rc::new(ResolvedFuncEnv {
+            name: "kmfx.ident_probe".to_string(),
+            local: Rc::new(im::HashMap::new()),
+            parents: Rc::new(im::Vector::new()),
+        }),
+        locals: Rc::new(im::HashMap::new()),
+        body_locals: Rc::new(im::HashMap::new()),
+        match_bound_names: Rc::new(im::HashMap::new()),
+        module_name: "kmfx.ident_probe".to_string(),
+        service_registry: Rc::new(im::HashMap::new()),
+        item_registry: Rc::new(im::HashMap::new()),
+        lambda_param_provenance: Rc::new(im::HashMap::new()),
+        caller_decl_name: "".to_string(),
+        in_flight_lambda_param_names: Rc::new(im::Vector::new()),
+        enclosing_declared_type_param_names: Rc::new(im::Vector::new()),
+    })
 }
 
 #[test]
@@ -73,22 +101,37 @@ fn identity_resolved_type_lookup_skip_covers_func_sig_unresolved_other_item() {
     assert!(node.params.is_empty());
     assert!(node.inferred.is_none());
     assert!(node.type_annotation.is_none());
+    assert!(matches!(
+        bare_call_non_declaration_binding(name.clone()),
+        NonDeclarationBinding::DeclarationOnly
+    ));
 
-    let env = env_with_str_binding(name.clone(), node.clone());
+    let scope = identity_resolved_scope(name.clone(), node);
+    let env = scope.type_env.clone();
     assert!(
         lookup_type_by_name(env.clone(), name.clone()).is_some(),
         "control requires lookup_type_by_name to steal the OtherItem if the skip is deleted"
     );
-
-    let call_target = Rc::new(CallTargetOutcome::DeclaredCallableIdentityResolved {
-        declared: Rc::new(DeclaredCallableIdentity {
-            owner_module_path: "kmfx.ident_decoy".to_string(),
-            decl_name: name.clone(),
-        }),
-        borrowed_declaration: node,
-    });
     assert!(
-        type_match_for_direct_call_target(env, name, call_target).is_none(),
+        census_declaration_identity(env.clone(), name.clone()).is_some(),
+        "census Present requires symbol_index.global_bare UniqueBinding"
+    );
+    assert!(matches!(
+        (*func_sig_from_global_bare(env.clone(), name.clone())).clone(),
+        FuncSigLookup::FuncSigUnresolved
+    ));
+
+    let target = call_target_for_direct_call(scope, name.clone());
+    assert!(
+        matches!(
+            (*target.clone()).clone(),
+            CallTargetOutcome::DeclaredCallableIdentityResolved { .. }
+        ),
+        "call_target_for_direct_call must mint IdentityResolved, got {:?}",
+        target
+    );
+    assert!(
+        type_match_for_direct_call_target(env, name, target).is_none(),
         "IdentityResolved must skip type lookup; deleting the skip returns Named(census_heads)"
     );
 }
