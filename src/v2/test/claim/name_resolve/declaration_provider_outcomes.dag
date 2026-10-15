@@ -4,6 +4,8 @@ import v2.compiler.compile {
   native_test_context_from_ingest,
   native_lane_file_refusal_index,
   native_module_resolve_verdict,
+  native_demand_census_closure_outcomes,
+  native_demand_census_function_available,
   NativeTestContext,
   NativeModuleResolveVerdict,
   NativeModuleResolveAccepted,
@@ -18,9 +20,10 @@ import v2.compiler.resolve {
   ModuleOutcome,
   ModuleUnavailable
 }
+import v2.compiler.dependency_demand_census { AuthoredUsesFunction, UsesAliasBindUnique }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -58,13 +61,19 @@ data dpo_mut_user_source: String = "module v2.test.dpo.mut_user\n\nimport v2.tes
 
 data dpo_never_user_source: String = "module v2.test.dpo.never_user\n\nimport v2.test.dpo.mixed { NeverDeclared }\nfn n(x: NeverDeclared) -> NeverDeclared { x }\n"
 
-data dpo_gone_source: String = "module v2.test.dpo.gone\n\nimport v2.test.dpo.missing { Ghost }\ntype Named = Int\ntype Other = Int\n"
+data dpo_gone_source: String = "module v2.test.dpo.gone\n\nimport v2.test.dpo.missing { Ghost }\ntype Named = Int\ntype Other = Int\ntype UsesGhost = Ghost\n"
 
 data dpo_gone_named_user_source: String = "module v2.test.dpo.gone_named_user\n\nimport v2.test.dpo.gone { Named }\nfn gn(x: Named) -> Named { x }\n"
 
 data dpo_gone_other_user_source: String = "module v2.test.dpo.gone_other_user\n\nimport v2.test.dpo.gone { Other }\nfn go(x: Other) -> Other { x }\n"
 
 data dpo_uses_gone_source: String = "module v2.test.dpo.uses_gone\n\nimport v2.test.dpo.gone { Named }\ntype UsesGone = Named\n"
+
+data dpo_v2lib_source: String = "module v2.test.dpo.v2lib\n\ntype Lib = L\n"
+
+data dpo_xtree_source: String = "module v2.test.dpo.xtree\n\nimport v2.test.dpo.v2lib { Lib }\ntype Rec { value: Lib }\ntype Plain = Int\n"
+
+data dpo_xtree_user_source: String = "module v2.test.dpo.xtree_user\n\nimport v2.test.dpo.xtree { Plain }\nfn xp(x: Plain) -> Plain { x }\n"
 
 fn dpo_read(text: String, id: Symbol, path: String, root: SourceRootRef) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -87,7 +96,10 @@ fn dpo_ingest() -> List<DagSourceReadWitness> {
     dpo_read(text: dpo_gone_source, id: ^dpo_gone, path: "src/v2/test/fixture/dpo/gone.dag", root: DagTree),
     dpo_read(text: dpo_gone_named_user_source, id: ^dpo_gone_named_user, path: "src/v2/test/fixture/dpo/gone_named_user.dag", root: DagTree),
     dpo_read(text: dpo_gone_other_user_source, id: ^dpo_gone_other_user, path: "src/v2/test/fixture/dpo/gone_other_user.dag", root: DagTree),
-    dpo_read(text: dpo_uses_gone_source, id: ^dpo_uses_gone, path: "src/v2/test/fixture/dpo/uses_gone.dag", root: DagTree)
+    dpo_read(text: dpo_uses_gone_source, id: ^dpo_uses_gone, path: "src/v2/test/fixture/dpo/uses_gone.dag", root: DagTree),
+    dpo_read(text: dpo_v2lib_source, id: ^dpo_v2lib, path: "src/v2/test/fixture/dpo/v2lib.dag", root: V2Tree),
+    dpo_read(text: dpo_xtree_source, id: ^dpo_xtree, path: "src/v2/test/fixture/dpo/xtree.dag", root: DagTree),
+    dpo_read(text: dpo_xtree_user_source, id: ^dpo_xtree_user, path: "src/v2/test/fixture/dpo/xtree_user.dag", root: DagTree)
   ]
 }
 
@@ -287,12 +299,24 @@ test fn dpo_mutual_pair_with_one_bad_member_refuses_both() -> Bool {
   }
 }
 
+fn dpo_census_authored(owner: String, name: Symbol) -> AuthoredUsesFunction {
+  AuthoredUsesFunction { owner: dpo_path(dotted: owner), name: optional_present(value: name), types: [], alias_bind: UsesAliasBindUnique }
+}
+
+// The census asks through native_demand_census_function_available, the shared authority's caller, over the
+// outcomes the census itself reads (native_demand_census_closure_outcomes). Bad is refused beside Ok, so a
+// census that answered "available" for everything, or consulted another source, goes red on Bad.
 test fn dpo_census_shares_declaration_available() -> Bool {
-  match dpo_outcomes() {
-    Absent => false
-    Present { value: outcomes } =>
-      declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.mixed.Ok"))
-        && declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.ok_user.f"))
+  match dpo_context() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let outcomes = native_demand_census_closure_outcomes(context: context)
+        native_demand_census_function_available(outcomes: outcomes, authored: dpo_census_authored(owner: "v2.test.dpo.mixed", name: ^Ok))
+          && native_demand_census_function_available(outcomes: outcomes, authored: dpo_census_authored(owner: "v2.test.dpo.ok_user", name: ^f))
+          && !native_demand_census_function_available(outcomes: outcomes, authored: dpo_census_authored(owner: "v2.test.dpo.mixed", name: ^Bad))
+          && !native_demand_census_function_available(outcomes: outcomes, authored: dpo_census_authored(owner: "v2.test.dpo.mixed", name: ^Dep))
+      }
   }
 }
 
@@ -303,7 +327,7 @@ test fn dpo_one_namespace_per_module() -> Bool {
       match context.resolution {
         Rejected { diagnostics: _ } => false
         Accepted { value: shared, diagnostics: _ } =>
-          closure_declarations_demand(shared: shared).context.namespaces_built == 11
+          closure_declarations_demand(shared: shared).context.namespaces_built == 14
       }
   }
 }
@@ -325,5 +349,47 @@ test fn dpo_module_unavailable_mutant_is_not_available() -> Bool {
           outcomes: dpo_module_unavailable_mutant(),
           path: dpo_path(dotted: "v2.test.dpo.mixed.Ok")
         )
+  }
+}
+
+// Option B (operator ruling 2026-10-14, gunbc.roadmap.roadmap_authority node declaration-provider-outcomes):
+// a declaration is available when its own walk resolves and every declaration it demands is available. Named
+// and Other do not demand Ghost (import v2.test.dpo.missing), so they stay available beside it; UsesGhost
+// demands the listed import Ghost, whose module is not in the closure, so it is refused, not published.
+test fn dpo_declaration_depending_on_ghost_listed_import_is_refused() -> Bool {
+  match dpo_outcomes() {
+    Absent => false
+    Present { value: outcomes } =>
+      !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.gone.UsesGhost"))
+        && declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.gone.Named"))
+  }
+}
+
+// The module-wide arm, produced by the real resolver: a DagTree module importing a V2Tree one is refused at
+// namespace admission (cross-tree policy), so every declaration of it is unavailable, including the one that
+// demands nothing cross-tree. The outcome row is ModuleUnavailable as the closure produced it.
+fn dpo_is_module_unavailable(outcomes: List<ModuleOutcome>, module: QualifiedName) -> Bool {
+  fold(outcomes, init: false, f: fn(found, o) {
+    found || match o {
+      ModuleUnavailable { module: m, refusal: _ } => m == module
+      ModuleObserved { module: _, declarations: _ } => false
+    }
+  })
+}
+
+test fn dpo_real_module_unavailable_is_module_wide() -> Bool {
+  match dpo_outcomes() {
+    Absent => false
+    Present { value: outcomes } =>
+      dpo_is_module_unavailable(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.xtree"))
+        && !dpo_is_module_unavailable(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.mixed"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.xtree.Plain"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.xtree.Rec"))
+        && match dpo_verdict(module: "v2.test.dpo.xtree_user", path: ^dpo_xtree_user) {
+          Absent => false
+          Present { value: v } =>
+            dpo_refuses_with(v: v, reason: ^resolve_reason_declarer_refused)
+              && dpo_chain_names(v: v, reason: ^resolve_cross_tree_import_denied)
+        }
   }
 }

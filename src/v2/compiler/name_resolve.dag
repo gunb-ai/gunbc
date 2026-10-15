@@ -18,7 +18,9 @@ import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.body_lowering_fold { TypeDeclarationModifierChannel }
 import v2.compiler.resolve {
+  empty_module_outcome_index,
   Namespace,
+  ModuleOutcomeIndex,
   namespace_bindings_augment_from_module_atoms,
   namespace_with_module_outcomes,
   ObservationIncomplete,
@@ -40,7 +42,7 @@ import v2.compiler.resolve {
   resolve_walk_with_namespace_policy,
   ResolveWalkAccepted,
   type_declaration_modifier_channel_of_trees,
-  module_outcomes_except_subject
+  module_outcome_index
 }
 import v2.compiler.lexical_scope {
   DeclaredBinding,
@@ -205,6 +207,9 @@ type ResolutionContext {
 type ClosureIndex {
   declarations: SymbolIndex
   module_outcomes: List<ModuleOutcome>
+  // The roster grouped by module and declaration path, built once with the roster; each subject walk
+  // reads it with its own module excluded (v2.compiler.resolve unavailable_provider_for_path).
+  outcome_index: ModuleOutcomeIndex
 }
 
 // One stored production: the admission it was produced under, and its outcome -- a refusal is
@@ -749,7 +754,7 @@ fn admission_namespace_base(canonical_symbols: PointwisePower<Symbol>) -> Namesp
     test_code: test_code_index_empty(),
     declared_in: Empty,
     imported_origins: empty_map(),
-    module_outcomes: []
+    module_outcomes: empty_module_outcome_index()
   }
 }
 
@@ -912,7 +917,7 @@ fn admitted_subject_from_bindings(
       test_code: test_code,
       declared_in: module_qn,
       imported_origins: origins,
-      module_outcomes: []
+      module_outcomes: empty_module_outcome_index()
     },
     subject_root: subject_module_root
   }
@@ -1597,7 +1602,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
           policy: phase1.context.policy,
           namespaces: phase1.context.namespaces,
           namespaces_built: phase1.context.namespaces_built,
-          closure_declarations: optional_present(value: ClosureIndex { declarations: index, module_outcomes: observed }),
+          closure_declarations: optional_present(value: ClosureIndex { declarations: index, module_outcomes: observed, outcome_index: module_outcome_index(outcomes: observed) }),
           type_declaration_modifiers: phase1.context.type_declaration_modifiers
         }
       }
@@ -1625,9 +1630,8 @@ fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admis
       match demand.admitted {
         Accepted { value: admitted, diagnostics: namespace_diag } =>
           let outcomes = match demand.context.closure_declarations {
-            Present { value: closure } =>
-              module_outcomes_except_subject(providers: closure.module_outcomes, subject: admission.subject.name)
-            Absent => []
+            Present { value: closure } => closure.outcome_index
+            Absent => empty_module_outcome_index()
           }
           ContextWalk {
             walk: resolve_walk_prefix_pending(

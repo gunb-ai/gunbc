@@ -2,6 +2,7 @@ module v2.test.claim.binder_admission.callable_binder_slice
 
 import std.occurrence_identity { LexicalValueOccurrence }
 import v2.compiler.resolve {
+  empty_module_outcome_index,
   LexicalBinding,
   LexicalUntyped,
   frame_binders_add,
@@ -167,7 +168,7 @@ fn cbs_root_scope_declaring(name: Symbol) -> Scope {
       test_code: test_code_index_empty(),
       declared_in: Empty,
       imported_origins: empty_map(),
-    module_outcomes: []
+    module_outcomes: empty_module_outcome_index()
     }
   }
 }

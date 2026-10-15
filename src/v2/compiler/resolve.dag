@@ -390,35 +390,79 @@ fn module_outcomes_provider_refusals(outcomes: List<ModuleOutcome>) -> List<Clos
   })
 }
 
-fn unavailable_declaration_refusal(
-  providers: List<ModuleOutcome>,
-  path: QualifiedName
-) -> Optional<ClosureProviderRefusal> {
-  fold_list(xs: providers, empty: optional_absent(), cons: fn(acc, o) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match o {
-          ModuleUnavailable { module: _, refusal: _ } => acc
-          ModuleObserved { module: m, declarations: ds } =>
-            fold_list(xs: ds, empty: optional_absent(), cons: fn(hit, d) {
-              match hit {
-                Present { value: _ } => hit
-                Absent =>
-                  match d {
-                    DeclarationAvailable { path: _ } => hit
-                    DeclarationRefused { path: p, refusal: r } =>
-                      if p == path {
-                        optional_present(value: ClosureProviderRefusal { module: m, refusal: r })
-                      } else {
-                        hit
-                      }
-                  }
-              }
-            })
+// THE PATH-KEYED GROUPING OF THE ROSTER. A reference lookup asks about one path or one module, so
+// the roster is grouped once per closure (module_outcome_index) and every per-name read is a map
+// lookup; scanning the list per name cost O(outcomes) per reference. unavailable_modules is keyed by
+// the ModuleUnavailable module, refused_declarations by the DeclarationRefused path; the first row
+// for a key wins, as the list scan's first hit did.
+type ModuleOutcomeIndex {
+  unavailable_modules: Map<QualifiedName, ClosureProviderRefusal>
+  refused_declarations: Map<QualifiedName, ClosureProviderRefusal>
+}
+
+fn empty_module_outcome_index() -> ModuleOutcomeIndex {
+  ModuleOutcomeIndex { unavailable_modules: empty_map(), refused_declarations: empty_map() }
+}
+
+fn module_outcome_index_insert_first(
+  m: Map<QualifiedName, ClosureProviderRefusal>,
+  key: QualifiedName,
+  value: ClosureProviderRefusal
+) -> Map<QualifiedName, ClosureProviderRefusal> {
+  match map_lookup(m: m, key: key) {
+    Present { value: _ } => m
+    Absent => map_insert(m: m, key: key, value: value)
+  }
+}
+
+fn module_outcome_index(outcomes: List<ModuleOutcome>) -> ModuleOutcomeIndex {
+  fold_list(xs: outcomes, empty: empty_module_outcome_index(), cons: fn(acc, o) {
+    match o {
+      ModuleUnavailable { module: m, refusal: r } =>
+        ModuleOutcomeIndex {
+          unavailable_modules: module_outcome_index_insert_first(
+            m: acc.unavailable_modules,
+            key: m,
+            value: ClosureProviderRefusal { module: m, refusal: r }
+          ),
+          refused_declarations: acc.refused_declarations
         }
+      ModuleObserved { module: m, declarations: ds } =>
+        fold_list(xs: ds, empty: acc, cons: fn(a, d) {
+          match d {
+            DeclarationAvailable { path: _ } => a
+            DeclarationRefused { path: p, refusal: r } =>
+              ModuleOutcomeIndex {
+                unavailable_modules: a.unavailable_modules,
+                refused_declarations: module_outcome_index_insert_first(
+                  m: a.refused_declarations,
+                  key: p,
+                  value: ClosureProviderRefusal { module: m, refusal: r }
+                )
+              }
+          }
+        })
     }
   })
+}
+
+// A row belonging to `except` (the subject being walked) is never read: that walk is how the row was recorded.
+fn closure_provider_unless_module(
+  hit: Optional<ClosureProviderRefusal>,
+  except: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  match hit {
+    Present { value: p } => if p.module == except { optional_absent() } else { hit }
+    Absent => hit
+  }
+}
+
+fn unavailable_declaration_refusal(
+  providers: ModuleOutcomeIndex,
+  except: QualifiedName,
+  path: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  closure_provider_unless_module(hit: map_lookup(m: providers.refused_declarations, key: path), except: except)
 }
 
 // THE ONE READ every closure-index miss consults: a DeclarationRefused at this exact path, else a
@@ -426,49 +470,30 @@ fn unavailable_declaration_refusal(
 // would attribute v2.p.child.R to refused parent v2.p. A miss with neither stays the bare miss.
 fn unavailable_provider_for_path(
   index: SymbolIndex,
-  providers: List<ModuleOutcome>,
+  providers: ModuleOutcomeIndex,
+  except: QualifiedName,
   path: QualifiedName
 ) -> Optional<ClosureProviderRefusal> {
-  match unavailable_declaration_refusal(providers: providers, path: path) {
+  match unavailable_declaration_refusal(providers: providers, except: except, path: path) {
     Present { value: p } => optional_present(value: p)
     Absent =>
       match symbol_index_owning_module_of(index: index, path: path) {
-        Present { value: owner } => unavailable_provider_for_module(providers: providers, module: owner)
+        Present { value: owner } => unavailable_provider_for_module(providers: providers, except: except, module: owner)
         Absent => optional_absent()
       }
   }
 }
 
-fn unavailable_provider_for_module(providers: List<ModuleOutcome>, module: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  fold(providers, init: optional_absent(), f: fn(acc, p) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match p {
-          ModuleUnavailable { module: m, refusal: r } =>
-            if m == module {
-              optional_present(value: ClosureProviderRefusal { module: m, refusal: r })
-            } else {
-              acc
-            }
-          ModuleObserved { module: _, declarations: _ } => acc
-        }
-    }
-  })
-}
-
-fn module_outcomes_except_subject(providers: List<ModuleOutcome>, subject: QualifiedName) -> List<ModuleOutcome> {
-  fold_list(xs: providers, empty: [], cons: fn(acc, p) {
-    if module_outcome_module(o: p) == subject {
-      acc
-    } else {
-      list_snoc_item(xs: acc, item: p)
-    }
-  })
+fn unavailable_provider_for_module(
+  providers: ModuleOutcomeIndex,
+  except: QualifiedName,
+  module: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  closure_provider_unless_module(hit: map_lookup(m: providers.unavailable_modules, key: module), except: except)
 }
 
 fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  unavailable_provider_for_path(index: tree.symbol_index, providers: tree.module_outcomes, path: path)
+  unavailable_provider_for_path(index: tree.symbol_index, providers: module_outcome_index(outcomes: tree.module_outcomes), except: Empty, path: path)
 }
 
 // The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
@@ -648,10 +673,10 @@ type Namespace {
   // the row was recorded). An imported name whose declaration is DeclarationRefused, or
   // whose module is ModuleUnavailable, refuses with that chain, not as unbound
   // (resolve_reason_declarer_refused).
-  module_outcomes: List<ModuleOutcome>
+  module_outcomes: ModuleOutcomeIndex
 }
 
-fn namespace_with_module_outcomes(namespace: Namespace, providers: List<ModuleOutcome>) -> Namespace {
+fn namespace_with_module_outcomes(namespace: Namespace, providers: ModuleOutcomeIndex) -> Namespace {
   Namespace {
     bindings: namespace.bindings,
     canonical_symbols: namespace.canonical_symbols,
@@ -777,7 +802,7 @@ fn empty_namespace() -> Namespace {
     test_code: test_code_index_empty(),
     declared_in: Empty,
     imported_origins: empty_map(),
-    module_outcomes: []
+    module_outcomes: empty_module_outcome_index()
   }
 }
 
@@ -1088,7 +1113,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
     ),
     declared_in: declared_in,
     imported_origins: empty_map(),
-    module_outcomes: []
+    module_outcomes: empty_module_outcome_index()
   }
 }
 
@@ -2045,7 +2070,7 @@ fn resolve_reference_path_miss(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, path: path) {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, except: ctx.namespace.module_qn, path: path) {
     Present { value: provider } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -2124,7 +2149,7 @@ fn resolve_atom_bound(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, path: path) {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, except: ctx.namespace.module_qn, path: path) {
     Present { value: provider } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -2287,7 +2312,7 @@ fn resolve_kernel_type_atom_optional(n: Node, identity: Symbol) -> Optional<Node
 fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
   match map_lookup(m: ctx.namespace.imported_origins, key: identity) {
     Present { value: origin } =>
-      match unavailable_provider_for_module(providers: ctx.namespace.module_outcomes, module: origin) {
+      match unavailable_provider_for_module(providers: ctx.namespace.module_outcomes, except: ctx.namespace.module_qn, module: origin) {
         Present { value: provider } =>
           Rejected {
             diagnostics: rejected_with_pending(
