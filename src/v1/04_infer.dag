@@ -14158,10 +14158,14 @@ fn unify_generic_children(formals: List<Node>, actuals: List<Node>, generic_name
 // A kernel container (List, Set, Map) denotes each type argument as a childless parameter node whose
 // resolved element sits in `inferred` (make_container_type), while the authored formal carries the
 // argument type itself. Reading the actual's argument through that element makes the two comparable;
-// every other child is read as it is.
+// every other child, and a bare type variable in particular, is read as it is: unwrapping a
+// variable would replace the authored generic with whatever its resolution resolves to.
 fn unify_container_element(ch: Node) -> Node {
-  if (ch.children |> count) == 0 && ch.connective == NoConnective && ch.inferred != none {
-    child_type_node(ch: ch)
+  if (ch.children |> count) == 0 && ch.connective == NoConnective {
+    match ch.inferred {
+      Present { value: Resolved { node: element } } => element
+      _ => ch
+    }
   } else {
     ch
   }
