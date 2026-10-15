@@ -31,3 +31,15 @@ data wrong_return_is_declared_conformance_not_the_argument_arm: String = "PR D. 
 test fn a_generic_bound_through_a_two_parameter_constructor_is_not_this_argument_arm() -> Bool {
   total_blocking_count_for(source: wrong_return_source) == 0
 }
+
+data keyed_row_concrete_disagree_source: String = "module probe_nary_keyed_red\nimport std.types { Bool, String, Int }\nimport std.keyed_row { KeyedRow }\nfn take(row: KeyedRow<Int, Bool>) -> Int { 0 }\nfn probe(row: KeyedRow<Int, String>) -> Int { take(row: row) }\n"
+
+test fn keyed_row_int_string_at_keyed_row_int_bool_is_refused() -> Bool {
+  total_blocking_count_for(source: keyed_row_concrete_disagree_source) >= 1
+}
+
+data keyed_row_second_variable_source: String = "module probe_nary_keyed_ok\nimport std.types { Bool, String, Int }\nimport std.keyed_row { KeyedRow }\nfn take<V>(row: KeyedRow<Int, V>) -> Int { 0 }\nfn probe(row: KeyedRow<Int, String>) -> Int { take(row: row) }\n"
+
+test fn keyed_row_variable_in_the_second_position_is_accepted() -> Bool {
+  total_blocking_count_for(source: keyed_row_second_variable_source) == 0
+}

@@ -14144,20 +14144,21 @@ fn unify_concrete_heads_or_arity_disagree(formal: Node, actual: Node, source_ind
     false
   } else if formal.connective == Arrow && actual.connective == Arrow {
     callable_signature_mismatch(formal: formal, actual: actual, source_indices: source_indices)
-  } else if formal.children |> count == 1 && actual.children |> count == 1 {
-    match formal.children |> first {
-      Present { value: fc } =>
-        match actual.children |> first {
-          Present { value: ac } => unify_concrete_heads_or_arity_disagree(formal: fc, actual: ac, source_indices: source_indices, text: text)
-          Absent => false
-        }
-      Absent => false
-    }
   } else {
     let f_n = formal.children |> count
     let a_n = actual.children |> count
-    if f_n == a_n && unify_walk_heads_agree(formal: formal, actual: actual, source_indices: source_indices) {
-      false
+    if f_n == a_n && f_n > 0 && unify_walk_heads_agree(formal: formal, actual: actual, source_indices: source_indices) {
+      formal.children |> enumerate |> any(pair =>
+        match actual.children |> skip(pair.first) |> first {
+          Present { value: ac } => unify_concrete_heads_or_arity_disagree(
+            formal: child_type_node(ch: pair.second),
+            actual: child_type_node(ch: ac),
+            source_indices: source_indices,
+            text: text
+          )
+          Absent => true
+        }
+      )
     } else if f_n == 0 && a_n == 0 {
       !node_type_equals(left: formal, right: actual, source_indices: source_indices, text: text)
     } else {
@@ -14203,15 +14204,10 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     }
   } else if (formal.connective == Arrow && actual.connective == Arrow) {
     unify_callable_generics(formal: formal, actual: actual, generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
-  } else if formal.children |> count == 1 && actual.children |> count == 1 {
-    match formal.children |> first {
-      Present { value: fc } =>
-        match actual.children |> first {
-          Present { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
-          Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
-        }
-      Absent => UnifyGenericsAcc { subst: acc, diagnostics: [] }
-    }
+  } else if (formal.children |> count) == (actual.children |> count)
+    && (formal.children |> count) > 0
+    && unify_walk_heads_agree(formal: formal, actual: actual, source_indices: source_indices) {
+    unify_callable_param_pairs(formals: formal.children, actuals: actual.children, generic_names: generic_names, source_indices: source_indices, acc: acc, text: text, module_name: module_name)
   } else if unify_concrete_heads_or_arity_disagree(formal: formal, actual: actual, source_indices: source_indices, text: text) {
     UnifyGenericsAcc {
       subst: acc,

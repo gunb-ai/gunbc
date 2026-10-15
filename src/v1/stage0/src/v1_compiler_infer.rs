@@ -8984,23 +8984,41 @@ fn unify_concrete_heads_or_arity_disagree(
         false
     } else if type_node_is_arrow(formal.clone()) && type_node_is_arrow(actual.clone()) {
         callable_signature_mismatch(formal.clone(), actual.clone(), source_indices.clone())
-    } else if ((formal.children.clone().len() as i64) == 1)
-        && ((actual.children.clone().len() as i64) == 1)
-    {
-        match formal.children.clone().first().cloned() {
-            Some(fc) => match actual.children.clone().first().cloned() {
-                Some(ac) => unify_concrete_heads_or_arity_disagree(fc, ac, source_indices, text),
-                std::option::Option::None => false,
-            },
-            std::option::Option::None => false,
-        }
     } else {
         let f_n = formal.children.clone().len() as i64;
         let a_n = actual.children.clone().len() as i64;
         if (f_n == a_n)
+            && (f_n > 0)
             && unify_walk_heads_agree(formal.clone(), actual.clone(), source_indices.clone())
         {
-            false
+            let mut disagree = false;
+            for pair in formal
+                .children
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+            {
+                match actual.children.clone().get((pair.0) as usize).cloned() {
+                    Some(ac) => {
+                        if unify_concrete_heads_or_arity_disagree(
+                            crate::v1_compiler_infer_types::child_type_node(pair.1.clone()),
+                            crate::v1_compiler_infer_types::child_type_node(ac),
+                            source_indices.clone(),
+                            text.clone(),
+                        ) {
+                            disagree = true;
+                            break;
+                        }
+                    }
+                    std::option::Option::None => {
+                        disagree = true;
+                        break;
+                    }
+                }
+            }
+            disagree
         } else if (f_n == 0) && (a_n == 0) {
             !crate::v1_compiler_infer_types::node_type_equals(
                 formal.clone(),
@@ -24480,29 +24498,24 @@ pub fn unify_generics(
                     module_name.clone(),
                 );
             } else {
-                if (((formal.children.clone().len() as i64) == 1)
-                    && ((actual.children.clone().len() as i64) == 1))
+                if (((formal.children.clone().len() as i64)
+                    == (actual.children.clone().len() as i64))
+                    && ((formal.children.clone().len() as i64) > 0)
+                    && unify_walk_heads_agree(
+                        formal.clone(),
+                        actual.clone(),
+                        source_indices.clone(),
+                    ))
                 {
-                    match formal.children.clone().first().cloned() {
-                        Some(fc) => match actual.children.clone().first().cloned() {
-                            Some(ac) => {
-                                __tco_loop_formal = fc.clone();
-                                __tco_loop_actual = ac.clone();
-                                __tco_loop_generic_names = generic_names;
-                                __tco_loop_source_indices = source_indices;
-                                __tco_loop_acc = acc;
-                                __tco_loop_text = text;
-                                __tco_loop_module_name = module_name;
-                                continue;
-                            }
-                            std::option::Option::None => {
-                                break unify_generics_acc_ok(acc.clone());
-                            }
-                        },
-                        std::option::Option::None => {
-                            break unify_generics_acc_ok(acc.clone());
-                        }
-                    }
+                    break unify_callable_param_pairs(
+                        formal.children.clone(),
+                        actual.children.clone(),
+                        generic_names,
+                        source_indices,
+                        acc,
+                        text,
+                        module_name,
+                    );
                 } else if unify_concrete_heads_or_arity_disagree(
                     formal.clone(),
                     actual.clone(),
