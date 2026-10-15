@@ -65,7 +65,7 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
     ChildAccessorCall { accessor: a } =>
       LoweringTarget { primitive: Descend,
         bound: SubtreeSize { param: a },
-        evidence: Strict, factor: none }
+        evidence: Strict, factor: Absent }
 
     CollectionShrinkCall { amount: p, collection: c } =>
       LoweringTarget { primitive: Fold,
@@ -88,22 +88,22 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
     ParserAdvanceCall { witness: w } =>
       LoweringTarget { primitive: Fold,
         bound: ParserStreamSize { witness: w },
-        evidence: Strict, factor: none }
+        evidence: Strict, factor: Absent }
 
     WorklistDrainCall { element: e } =>
       LoweringTarget { primitive: Fold,
         bound: WorklistDrainSize { element: e },
-        evidence: Strict, factor: none }
+        evidence: Strict, factor: Absent }
 
     FoldBodyCall { outer_collection: oc } =>
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: oc },
-        evidence: NonIncreasing, factor: none }
+        evidence: NonIncreasing, factor: Absent }
 
     SameArgumentCall =>
       LoweringTarget { primitive: Repeat,
         bound: Forever,
-        evidence: NonIncreasing, factor: none }
+        evidence: NonIncreasing, factor: Absent }
   }
 }
 
@@ -114,9 +114,9 @@ fn size_bound_param(bound: SizeBound) -> String? {
     ParserStreamSize { witness: w } => Present { value: w }
     WorklistDrainSize { element: e } => Present { value: e }
     ArithmeticParam { param: p } => Present { value: p }
-    ExplicitCountZero           => none
-    ExplicitCountPositive { steps: _ } => none
-    Forever                     => none
+    ExplicitCountZero           => Absent
+    ExplicitCountPositive { steps: _ } => Absent
+    Forever                     => Absent
   }
 }
 
@@ -137,11 +137,11 @@ fn forever_iteration_bound() -> Int { 9223372036854775807 }
 
 fn constant_bound_value(bound: SizeBound) -> Int? {
   match bound {
-    CollectionSize { param: _ }        => none
-    ParserStreamSize { witness: _ }    => none
-    WorklistDrainSize { element: _ }   => none
-    SubtreeSize { param: _ }           => none
-    ArithmeticParam { param: _ }       => none
+    CollectionSize { param: _ }        => Absent
+    ParserStreamSize { witness: _ }    => Absent
+    WorklistDrainSize { element: _ }   => Absent
+    SubtreeSize { param: _ }           => Absent
+    ArithmeticParam { param: _ }       => Absent
     ExplicitCountZero => Present { value: 0 }
     ExplicitCountPositive { steps: s } => Present { value: positive_descent_count(s) }
     Forever                    => Present { value: forever_iteration_bound() }
@@ -165,12 +165,12 @@ fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? 
     FreeMonoidScalarProfile            => Present { value: CollectionFold }
     FinitePowerSetProfile              => Present { value: CollectionFold }
     FinitelySupportedFunctionProfile   => Present { value: CollectionFold }
-    PointwisePowerCollectionProfile    => none
-    PartialFunctionProfile             => none
+    PointwisePowerCollectionProfile    => Absent
+    PartialFunctionProfile             => Absent
     OrderedRingProfile                 => Present { value: ArithmeticRepeat }
     OrderedSemiringProfile             => Present { value: ArithmeticRepeat }
     ApproximateFieldProfile            => Present { value: ArithmeticRepeat }
-    BooleanAlgebraProfile              => none
+    BooleanAlgebraProfile              => Absent
   }
 }
 
@@ -179,7 +179,7 @@ fn type_iteration_dimension(type_name: String) -> IterationDimension? {
   else {
     match kernel_algebra_profile |> get(type_name) {
       Present { value: p } => algebra_profile_to_dimension(profile: p)
-      Absent => none
+      Absent => Absent
     }
   }
 }

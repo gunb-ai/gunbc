@@ -1,5 +1,5 @@
 module std.keyed_row
-import std.optional { Present }
+import std.optional { Absent, Present }
 
 import std.types { List }
 
@@ -18,7 +18,7 @@ fn keyed_row_find<K, V>(
   wanted_key: K,
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRow<K, V>? {
-  fold(rows, init: none, f: fn(acc, row) {
+  fold(rows, init: Absent, f: fn(acc, row) {
     if key_eq(row.row_key, wanted_key) {
       Present { value: row }
     } else {

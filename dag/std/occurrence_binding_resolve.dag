@@ -180,7 +180,7 @@ fn binding_candidates_from_supplied_declarations(
     init: OccurrenceCandidatePopulationBuild {
       candidates: Empty,
       seen_candidate_ids: empty_map(),
-      refusal: none,
+      refusal: Absent,
     },
     f: (build, candidate_occurrence) =>
       match build.refusal {
@@ -269,7 +269,7 @@ fn binding_candidates_from_supplied_declarations(
                               )],
                             ),
                             seen_candidate_ids: seen_candidate_ids,
-                            refusal: none,
+                            refusal: Absent,
                           }
                         OccurrenceCategoryBindingInadmissible {
                           reference: _,
@@ -278,7 +278,7 @@ fn binding_candidates_from_supplied_declarations(
                           OccurrenceCandidatePopulationBuild {
                             candidates: build.candidates,
                             seen_candidate_ids: seen_candidate_ids,
-                            refusal: none,
+                            refusal: Absent,
                           }
                       }
                   }

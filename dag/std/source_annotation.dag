@@ -219,7 +219,7 @@ fn siblings_starting_at_or_before(siblings: List<AnnotationRegion>, at: Int, lo:
 fn region_scope(region: AnnotationRegion?) -> AnnotationScope? {
   match region {
     Present { value: r } => Present { value: r.scope }
-    Absent => none
+    Absent => Absent
   }
 }
 
@@ -233,10 +233,10 @@ fn region_scope(region: AnnotationRegion?) -> AnnotationScope? {
 fn annotation_gap_in(index: AnnotationRegionIndex, scope: AnnotationScope, origin: SourceSpan, depth: Int) -> AnnotationGap {
   let siblings = annotation_children(index: index, scope: scope)
   let n = siblings_starting_at_or_before(siblings: siblings, at: origin.start, lo: 0, hi: count(siblings))
-  let candidate = if n == 0 { none } else { siblings |> get(n - 1) }
+  let candidate = if n == 0 { Absent } else { siblings |> get(n - 1) }
   let containing = match candidate {
-    Present { value: c } => if region_contains(extent: c.extent, origin: origin) && depth > 0 { Present { value: c } } else { none }
-    Absent => none
+    Present { value: c } => if region_contains(extent: c.extent, origin: origin) && depth > 0 { Present { value: c } } else { Absent }
+    Absent => Absent
   }
   match containing {
     Present { value: inner } => annotation_gap_in(index: index, scope: inner.scope, origin: origin, depth: depth - 1)
@@ -317,7 +317,7 @@ fn attach_annotations(
   let depth = count(regions) + 1
   let acc = fold(
     captures,
-    init: AnnotationAttachAcc { rows: [], pending: none, pending_adjacent: false },
+    init: AnnotationAttachAcc { rows: [], pending: Absent, pending_adjacent: false },
     f: (acc, capture) => annotation_attach_step(acc: acc, capture: capture, index: index, depth: depth)
   )
   SourceAnnotationGraph { rows: annotation_attach_flush(acc: acc) }

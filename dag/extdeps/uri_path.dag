@@ -39,9 +39,9 @@ fn last_path_param(template: PathTemplate) -> String? {
     Present { value: tok } =>
       match tok {
         ParamToken { name: n } => Present { value: n }
-        LiteralToken => none
+        LiteralToken => Absent
       }
-    Absent => none
+    Absent => Absent
   }
 }
 

@@ -91,8 +91,8 @@ fn uri_wire(uri: Uri) -> NonEmptyStr {
 fn uri_from_wire(url: String) -> Uri? {
   let s = trim(url)
   match parse_href_scheme(url: s) {
-    RelativeHref => none
-    UnknownHref => none
+    RelativeHref => Absent
+    UnknownHref => Absent
     HrefScheme { scheme: scheme } => {
       let prefix = uri_scheme_wire(s: scheme) as String
       let locator = join(split(s: s, delimiter: prefix) |> skip(n: 1), prefix)
@@ -104,7 +104,7 @@ fn uri_from_wire(url: String) -> Uri? {
           }
         }
       } else {
-        none
+        Absent
       }
     }
   }
