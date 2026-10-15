@@ -1,15 +1,72 @@
 module gunbc.host.srv1_software_inhabitance_receipt
 
-import std.types { String, NonEmptyStr, Int }
+import std.types { NonEmptyStr, Int, FilePath }
 
-data srv1_software_inhabitance_observer_login: NonEmptyStr = "briansrls"
-data srv1_software_inhabitance_observer_uid: Int = 1000
-data srv1_software_inhabitance_observed_at: NonEmptyStr = "2026-10-15T01:17:54Z"
-data srv1_software_inhabitance_parent_transcript_sha256: NonEmptyStr = "0ff37aa1418aafdc17cd3cd7d44d8577ab758e549fa98b5ad773152a1d3de9b2"
+// Typed inhabitance reading from srv1 as briansrls uid 1000 at 2026-10-15T01:17:54Z
+// (parent bright-moth-475). Boundary transcription (DESIGN 4b): these fields ARE the probe
+// results. The host surface is derived from this row, so a field cannot drift from the receipt
+// without editing this construction. Next-rung trigger: an executing probe route that writes
+// this record from live argv rather than from a committed transcription.
+//
+// parent_transcript_sha256 is the sha of the 6933-byte session file the parent hashed; it is
+// not a second copy of that file.
 
-// Verbatim inhabitance transcript from srv1 as briansrls at 2026-10-15T01:17:54Z
-// (parent bright-moth-475). Standing is minted by srv1_software_inhabitance_ground
-// over this text. Boundary transcription (DESIGN 4b).
+type Srv1SoftwareInhabitanceReading {
+  observer_login: NonEmptyStr
+  observer_uid: Int
+  observed_at: NonEmptyStr
+  parent_transcript_sha256: NonEmptyStr
+  os_version_id: NonEmptyStr
+  os_pretty_name: NonEmptyStr
+  kernel_release_label: NonEmptyStr
+  apparmor_userns: Int
+  procps_version_label: NonEmptyStr
+  procps_package: NonEmptyStr
+  coreutils_version_label: NonEmptyStr
+  coreutils_package: NonEmptyStr
+  git_version_label: NonEmptyStr
+  git_package: NonEmptyStr
+  jq_version_label: NonEmptyStr
+  jq_package: NonEmptyStr
+  systemd_version_label: NonEmptyStr
+  systemd_package: NonEmptyStr
+  tailscale_version_label: NonEmptyStr
+  tailscale_package: NonEmptyStr
+  sudo_observed_all: NonEmptyStr
+  cgroup_controllers: NonEmptyStr
+  git_path: FilePath
+  jq_path: FilePath
+  timeout_path: FilePath
+  systemd_run_path: FilePath
+}
 
-data srv1_software_inhabitance_receipt_text: String = "# srv1 host-software probe; host=srv1 user=briansrls uid=1000 at=2026-10-15T01:17:54Z\n\n$ cat /etc/os-release\nPRETTY_NAME=\"Ubuntu 24.04.4 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.4 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n[exit 0]\n\n$ uname -r\n6.8.0-138-generic\n[exit 0]\n\n$ sysctl -n kernel.apparmor_restrict_unprivileged_userns\n1\n[exit 0]\n\n$ sudo -n -l\nMatching Defaults entries for briansrls on srv1:\n    env_reset, mail_badpass, secure_path=/usr/local/sbin\\:/usr/local/bin\\:/usr/sbin\\:/usr/bin\\:/sbin\\:/bin\\:/snap/bin, use_pty\n\nUser briansrls may run the following commands on srv1:\n    (ALL : ALL) ALL\n    (ALL) NOPASSWD: ALL\n    (gunbc-ntfy) NOPASSWD: /usr/bin/env GUNBC_WORKSPACE_ROOT\\=/opt/gunbc/approval-broker-helpers/4242613b2b2a29451420c65f458413ea18a4bf0f /opt/gunbc/approval-broker-helpers/4242613b2b2a29451420c65f458413ea18a4bf0f/gunbc run --source-root /opt/gunbc/approval-broker-helpers/4242613b2b2a29451420c65f458413ea18a4bf0f/dag --source-root /opt/gunbc/approval-broker-helpers/4242613b2b2a29451420c65f458413ea18a4bf0f/src/v2 --entry /opt/gunbc/approval-broker-helpers/4242613b2b2a29451420c65f458413ea18a4bf0f/dag/gunbc/auth/approval_ntfy_runtime_observe.dag --function approval_ntfy_runtime_observe\n    (ALL) NOPASSWD: /usr/bin/hostnamectl\n    (root) NOPASSWD: /usr/bin/env GUNBC_WORKSPACE_ROOT\\=/opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5 /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/gunbc run --source-root /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/dag --source-root /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/src/v2 --entry /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/dag/gunbc/workspace_commissioning_dispatch.dag --function workspace_dispatch_plan_cli\n    (root) NOPASSWD: /usr/bin/env GUNBC_WORKSPACE_ROOT\\=/opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5 /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/gunbc run --source-root /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/dag --source-root /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/src/v2 --entry /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/dag/gunbc/workspace_commissioning_dispatch.dag --function workspace_dispatch_stage_cli\n    (root) NOPASSWD: /usr/bin/env GUNBC_WORKSPACE_ROOT\\=/opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5 /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/gunbc run --source-root /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/dag --source-root /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/src/v2 --entry /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/dag/gunbc/workspace_commissioning_dispatch.dag --function workspace_dispatch_complete_cli\n    (root) NOPASSWD: /usr/bin/env GUNBC_WORKSPACE_ROOT\\=/opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5 /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/gunbc run --source-root /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/dag --source-root /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/src/v2 --entry /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/dag/gunbc/workspace_commissioning_dispatch.dag --function workspace_dispatch_offer_cli\n    (root) NOPASSWD: /usr/bin/env GUNBC_WORKSPACE_ROOT\\=/opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5 /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/gunbc run --source-root /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/dag --source-root /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/src/v2 --entry /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/dag/gunbc/workspace_commissioning_dispatch.dag --function workspace_dispatch_allocation_plan_cli\n    (root) NOPASSWD: /usr/bin/env GUNBC_WORKSPACE_ROOT\\=/opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5 /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/gunbc run --source-root /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/dag --source-root /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/src/v2 --entry /opt/gunbc/microvm-controller/releases/58019fe745f5135fba98a3c2be1ee3029d3bf0d5/dag/gunbc/workspace_commissioning_dispatch.dag --function workspace_dispatch_allocation_readback_cli\n    (root) NOPASSWD: /usr/bin/sha256sum -- /etc/sudoers.d/gunbc-workspace-commissioning\n[exit 0]\n\n$ kill -V\nbash: line 1: kill: V: invalid signal specification\n[exit 1]\n\n$ timeout --version\ntimeout (GNU coreutils) 9.4\nCopyright (C) 2023 Free Software Foundation, Inc.\nLicense GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\nThis is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n\nWritten by Pádraig Brady.\n[exit 0]\n\n$ git --version\ngit version 2.43.0\n[exit 0]\n\n$ jq --version\njq-1.7\n[exit 0]\n\n$ systemctl --version\nsystemd 255 (255.4-1ubuntu8.17)\n+PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT -GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY +P11KIT +QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -BPF_FRAMEWORK -XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified\n[exit 0]\n\n$ cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers\ncpu memory pids\n[exit 0]\n\n$ tailscale version\n1.102.2\n  tailscale commit: 6cac918179d4d673bfebe2fc74f81183ddd73fea\n  long version: 1.102.2-t6cac91817-g6ff0ddc72\n  other commit: 6ff0ddc7264e38276f40986706ae4607dbab57d8\n  go version: go1.26.5 (tailscale/go 63ae404c82)\n[exit 0]\n\n$ command -v git; command -v jq; command -v timeout; command -v systemd-run\n/usr/bin/git\n/usr/bin/jq\n/usr/bin/timeout\n/usr/bin/systemd-run\n[exit 0]\n\n$ /usr/bin/kill -V\nkill from procps-ng 4.0.4\n[exit 0]\n\n$ dpkg-query -W -f='${Package} ${Version}\\n' procps coreutils git jq systemd tailscale\ncoreutils 9.4-3ubuntu6.3\ngit 1:2.43.0-1ubuntu7.3\njq 1.7.1-3ubuntu0.24.04.2\nprocps 2:4.0.4-4ubuntu3.2\nsystemd 255.4-1ubuntu8.17\ntailscale 1.102.2\n[exit 0]"
-
+fn srv1_software_inhabitance_reading() -> Srv1SoftwareInhabitanceReading {
+  Srv1SoftwareInhabitanceReading {
+    observer_login: "briansrls",
+    observer_uid: 1000,
+    observed_at: "2026-10-15T01:17:54Z",
+    parent_transcript_sha256: "0ff37aa1418aafdc17cd3cd7d44d8577ab758e549fa98b5ad773152a1d3de9b2",
+    os_version_id: "24.04",
+    os_pretty_name: "Ubuntu 24.04.4 LTS",
+    kernel_release_label: "6.8.0-138-generic",
+    apparmor_userns: 1,
+    procps_version_label: "4.0.4",
+    procps_package: "2:4.0.4-4ubuntu3.2",
+    coreutils_version_label: "9.4",
+    coreutils_package: "9.4-3ubuntu6.3",
+    git_version_label: "2.43.0",
+    git_package: "1:2.43.0-1ubuntu7.3",
+    jq_version_label: "jq-1.7",
+    jq_package: "1.7.1-3ubuntu0.24.04.2",
+    systemd_version_label: "255 (255.4-1ubuntu8.17)",
+    systemd_package: "255.4-1ubuntu8.17",
+    tailscale_version_label: "1.102.2",
+    tailscale_package: "1.102.2",
+    sudo_observed_all: "(ALL) NOPASSWD: ALL",
+    cgroup_controllers: "cpu memory pids",
+    git_path: "/usr/bin/git" as FilePath,
+    jq_path: "/usr/bin/jq" as FilePath,
+    timeout_path: "/usr/bin/timeout" as FilePath,
+    systemd_run_path: "/usr/bin/systemd-run" as FilePath,
+  }
+}
