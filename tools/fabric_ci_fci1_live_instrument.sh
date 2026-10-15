@@ -277,7 +277,14 @@ trap cleanup EXIT
 
 # The merged evidence calibration runs against this exact binary before any srv3 observation or
 # reservation effect. It grades only the evidence boundary; FCI-1 cannot self-grade that contract.
-FABRIC_CI_GUNBC_BIN="$FABRIC_CI_GUNBC_BIN" bash "$repo_root/tools/fabric_ci_evidence_calibration.sh"
+calibration_value_root=$(mktemp -d)
+FABRIC_CI_GUNBC_BIN="$FABRIC_CI_GUNBC_BIN" FABRIC_CI_SOURCE_ROOT="$repo_root" FABRIC_CI_VALUE_ROOT="$calibration_value_root" \
+  "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" \
+  --entry "$repo_root/dag/gunbc/instruments/fabric_ci_calibration_actuator.dag" --function fabric_ci_calibration_run \
+  || calibration_status=$?
+rm -rf "$calibration_value_root"
+[[ ${calibration_status-0} -eq 0 ]] || exit "$calibration_status"
+echo 'FCI-EVIDENCE-0 calibration held'
 
 sha256sum "$subject"
 fabric_ci_run_assertion fci1_invalid_before_wire_refuses
