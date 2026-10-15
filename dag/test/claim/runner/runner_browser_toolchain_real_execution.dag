@@ -19,6 +19,7 @@ import gunbc.host.verified_archive_install {
   verified_archive_install, verify_archive_digest,
   ArchiveInstalled, ArchiveDigestMismatched, ArchiveDigestMatches, ArchiveDigestMismatch,
 }
+import gunbc.host.host_effect { LocalShell }
 import gunbc.runner.runner_browser_toolchain {
   library_readback_wet, HostLibrariesResolved,
   RunnerBrowserToolchainLocation, runner_browser_toolchain_location_at, runner_browser_toolchain_readback_at_wet,
@@ -57,6 +58,7 @@ fn install_fixture(dir: String, pin: ArchiveDigestPin) -> Bool {
     archive: archive as NonEmptyStr,
     pin: pin,
     install: [mkdir_parents_command(path: installed)],
+    transport: LocalShell,
   )
   match outcome { ArchiveInstalled => true  _ => false }
 }
@@ -75,7 +77,7 @@ test fn a_verified_archive_installs_and_its_retained_bytes_read_back_verified_by
       let pin = ArchiveSha256 { hex: dg.hex }
       install_fixture(dir: d, pin: pin)
         && exists(path: concat(d, "/installed"))
-        && (match verify_archive_digest(archive: concat(d, "/archives/fixture") as NonEmptyStr, pin: pin) { ArchiveDigestMatches => true  _ => false })
+        && (match verify_archive_digest(archive: concat(d, "/archives/fixture") as NonEmptyStr, pin: pin, transport: LocalShell) { ArchiveDigestMatches => true  _ => false })
     }
   }
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
@@ -93,6 +95,7 @@ test fn a_sha256_mismatch_refuses_and_runs_no_install_by_real_execution() -> Boo
     archive: concat(d, "/archives/fixture") as NonEmptyStr,
     pin: ArchiveSha256 { hex: wrong_sha256 },
     install: [mkdir_parents_command(path: concat(d, "/installed"))],
+    transport: LocalShell,
   )
   let refused = match outcome { ArchiveDigestMismatched { archive: _ } => true  _ => false }
   let fetched = exists(path: concat(d, "/archives/fixture"))
@@ -113,6 +116,7 @@ test fn an_npm_integrity_mismatch_refuses_and_runs_no_install_by_real_execution(
     archive: concat(d, "/archives/fixture") as NonEmptyStr,
     pin: ArchiveNpmIntegrity { wire: playwright_1_62_1_npm_tarball.integrity },
     install: [mkdir_parents_command(path: concat(d, "/installed"))],
+    transport: LocalShell,
   )
   let refused = match outcome { ArchiveDigestMismatched { archive: _ } => true  _ => false }
   let installed = exists(path: concat(d, "/installed"))
@@ -133,7 +137,7 @@ test fn a_retained_archive_altered_after_install_reads_back_mismatched_by_real_e
       let placed = install_fixture(dir: d, pin: pin)
       let altered = Filesystem.Write(path: concat(d, "/archives/fixture"), content: "altered after verification\n")
       placed && altered.success
-        && (match verify_archive_digest(archive: concat(d, "/archives/fixture") as NonEmptyStr, pin: pin) { ArchiveDigestMismatch => true  _ => false })
+        && (match verify_archive_digest(archive: concat(d, "/archives/fixture") as NonEmptyStr, pin: pin, transport: LocalShell) { ArchiveDigestMismatch => true  _ => false })
     }
   }
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)

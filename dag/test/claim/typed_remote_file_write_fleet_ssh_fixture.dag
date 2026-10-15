@@ -92,6 +92,9 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     decl_ref(module_path: "test.claim.typed_remote_file_converge_witness", decl_name: "the_converge_route_yields_a_receipt_naming_the_exact_write_and_target"),
     decl_ref(module_path: "test.claim.fleet.fleet_bootstrap_principal_session_witness", decl_name: "witness_leg_stdout"),
     decl_ref(module_path: "test.claim.fleet.fleet_bootstrap_principal_session_witness", decl_name: "a_missing_password_session_binary_refuses_before_the_transport"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "fleet_ssh_transport"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "over_fleet_ssh_an_npm_pin_is_unverifiable_and_installs_nothing"),
+    decl_ref(module_path: "test.claim.host.verified_archive_install_transport_witness", decl_name: "over_fleet_ssh_a_sha256_transport_mock_is_unverifiable_not_a_mismatch"),
   ]
 {
   match fixture_attempt() {

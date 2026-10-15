@@ -1110,7 +1110,7 @@ fn run_ok(command: ArgvCommand) -> Bool {
 // step is `mv -T <stage> <root>`, which fails if anything occupies <root> by then -- a competing
 // converge that published first -- and the readback then judges that converge's tree.
 fn publish_staged_wet(location: RunnerBrowserToolchainLocation, staging: String) -> Bool {
-  publish_staged_tree_wet(staging: staging, root: location.root as String)
+  publish_staged_tree_wet(staging: staging, root: location.root as String, transport: LocalShell)
 }
 
 // EVERY CONVERGE OWNS ITS SCRATCH AND ITS STAGING: manifests in a temporary directory of its own,
@@ -1128,7 +1128,7 @@ fn place_toolchain_wet(location: RunnerBrowserToolchainLocation, archives: List<
 }
 
 fn stage_and_publish_wet(location: RunnerBrowserToolchainLocation, archives: List<StagedArchive>, pinned: NonEmptyStr, scratch: String, staging: String) -> ToolchainPlacement {
-  let staged = stage_archives_wet(archives_dir: location.archives as String, staging: staging, archives: archives)
+  let staged = stage_archives_wet(archives_dir: location.archives as String, staging: staging, archives: archives, transport: LocalShell)
   if archives_all_staged(ps: staged, archives: archives) == false {
     ToolchainPlacementRefused { archives: staged, cause: "an archive did not verify or extract into staging; nothing was published" }
   } else {
