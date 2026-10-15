@@ -23,6 +23,10 @@ import gunbc.host.verified_archive_install {
 import test.claim.host.verified_archive_install_local_shell_recorder { local_shell_legs_record_text }
 import gunbc.runner.runner_qemu_toolchain { qemu_toolchain_staged_archive }
 import extdeps.virtualization.qemu { qemu_8_2_2_ubuntu_noble_arm64 }
+import gunbc.runner.runner_microvm_host_ready {
+  firecracker_fetch_commands, firecracker_install_commands, firecracker_install_root,
+}
+import extdeps.virtualization.firecracker { firecracker_release_aarch64 }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.mkdir { mkdir_parents_command }
 
@@ -175,5 +179,48 @@ test fn local_shell_legs_record_covers_the_three_callers() -> Bool {
     && string_contains(s: t, pattern: "browser-node-fetch")
     && string_contains(s: t, pattern: "firecracker-fetch")
     && string_contains(s: t, pattern: "qemu-publish")
+}
+
+test fn qemu_fetch_and_install_argv_match_the_main_standing_oracle() -> Bool {
+  let a = qemu_toolchain_staged_archive(a: qemu_8_2_2_ubuntu_noble_arm64.archive)
+  let fetch = map(staged_archive_fetch_commands(archives_dir: "/b/archives", a: a), c => join(argv_words(command: c), " "))
+  let install = map(staged_archive_install_commands(archives_dir: "/b/archives", tree: "/b/staging.X", a: a), c => join(argv_words(command: c), " "))
+  fetch == [
+    "/usr/bin/mkdir -p /b/archives/pool/main/q/qemu",
+    "curl -fsL -o /b/archives/pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb https://ports.ubuntu.com/ubuntu-ports/pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb",
+  ]
+    && install == [
+      "/usr/bin/mkdir -p /b/staging.X/.",
+      "dpkg-deb -x /b/archives/pool/main/q/qemu/qemu-system-arm_8.2.2+ds-0ubuntu1.18_arm64.deb /b/staging.X/.",
+    ]
+    && argv_words(command: publish_staged_tree_command(staging: "/b/staging.X", root: "/b/root")) == ["mv", "-T", "/b/staging.X", "/b/root"]
+}
+
+test fn firecracker_fetch_and_install_programs_match_the_main_host_ready_oracle() -> Bool {
+  let root = firecracker_install_root(executor_home: "/home/x")
+  let fetch = firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s")
+  let install = firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s")
+  map(fetch, c => c.program.invocation as String) == ["/usr/bin/mkdir", "/usr/bin/mkdir", "curl"]
+    && map(install, c => c.program.invocation as String) == ["tar", "cp"]
+}
+
+test fn a_non_portable_fetch_word_refuses_over_fleet_ssh_before_any_local_leg() -> Bool {
+  match fleet_ssh_transport() {
+    Absent => false
+    Present { value: t } =>
+      match verified_archive_install(
+        fetch: [mkdir_parents_command(path: "/tmp/verified archive space")],
+        archive: "/tmp/verified-archive-space/a" as NonEmptyStr,
+        pin: ArchiveSha256 { hex: empty_file_sha256 },
+        install: [mkdir_parents_command(path: "/tmp/verified-archive-space-installed")],
+        transport: t,
+      ) {
+        ArchiveFetchRefused { archive: _, reason: r } => string_contains(s: r, pattern: "portable")
+        ArchiveInstalled => false
+        ArchiveDigestMismatched { archive: _ } => false
+        ArchiveDigestUnverified { archive: _, reason: _ } => false
+        ArchiveInstallRefused { archive: _, reason: _ } => false
+      }
+  }
 }
 
