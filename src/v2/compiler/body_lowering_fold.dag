@@ -17,7 +17,7 @@ import v2.std.service_realization_labels {
 }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq, empty_map, list_at_optional, map_insert, map_lookup }
 import v2.compiler.fold_lowering {
   CallbackAllByAnd,
   CallbackAnyByOr,
@@ -55,6 +55,7 @@ import v2.compiler.body_producer_forward {
   body_producer_forward_surface_identities
 }
 import v2.extdeps.languages.dag {
+  dag_surface_where_refinement_clause_edge,
   namespace_graft_namespace_body_node,
   dag_int_literal_magnitude_int_from_node,
   ParseSubtreeAbsent,
@@ -90,12 +91,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
 import v2.std.node { content_hash }
-import v2.std.collection {
-  empty_map,
-  list_at_optional,
-  map_insert,
-  map_lookup
-}
+
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
 import v2.std.resource_declaration { resource_kind_of_label, resource_mode_of_label }
@@ -167,6 +163,7 @@ import v2.std.diagnostic {
   diagnostics_merge,
   outcome_accepted,
   outcome_rejected,
+  outcome_with_diagnostics,
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
@@ -7109,7 +7106,7 @@ fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
   }
   body_lower_transform_call(
     operator: qualified_name_spine_node(
-      qn: [^v2, ^std, ^collection, ^list_at_optional],
+      qn: [^std, ^algebra, ^list_at_optional],
       occurrence_id: operator_occurrence
     ),
     args: [
@@ -10467,13 +10464,9 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<BodyLow
   }
 }
 
-fn body_lower_edge_names_where_clause(e: Edge) -> Bool {
-  dag_surface_edge_is(e: e, edge: ^dag_surface_where_refinement_clause)
-}
-
 fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
   match fold(root.children, init: false, f: fn(found, e) {
-    found || body_lower_edge_names_where_clause(e: e)
+    found || dag_surface_where_refinement_clause_edge(e: e)
   }) {
     true => Present { value: root }
     false =>

@@ -4,11 +4,11 @@ import v2.compiler.body_lowering_fold { type_declaration_modifiers_covering_no_m
 import std.optional { optional_absent }
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.resolve { ClosureProviderRefusal, ResolvedTree }
+import v2.compiler.resolve { empty_module_outcome_index, module_outcome_index, ClosureProviderRefusal, ModuleOutcome, ResolvedTree }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree, infer_facts_lookup_miss_diagnostic }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection { Map, empty_map }
+import std.types { Map }
 import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
@@ -27,14 +27,14 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, Occurrenc
 import v2.std.node { Authored, ComputationNode, Conj, Edge, Positional, Transform }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, optional_present }
-import std.algebra { Cons, list_append, list_map }
+import std.algebra { Cons, list_append, list_map, empty_map }
 
 // A HAND-BUILT TREE SUPPLIED AT INFER'S INTERFACE (DESIGN section 3: a witness supplies its input
 // rather than executing the layers beneath it). infer takes resolve's output, which carries the index
 // resolution consulted; a supplied tree was never resolved, so it carries an index holding NO
 // declarations -- the name says so, and a declaration lookup through it finds nothing and refuses.
 fn claim_resolved_tree_without_declarations(root: Node) -> ResolvedTree {
-  ResolvedTree { root: root, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }
+  ResolvedTree { root: root, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }
 }
 
 fn claim_atom_node(s: Symbol) -> Node {
@@ -73,7 +73,8 @@ fn claim_inferred_facts_witness(
   InferredFacts {
     grounding: DerivedGrounding { grounding: grounding },
     descent: descent,
-    denotation: optional_absent()
+    denotation: optional_absent(),
+    type_instances: []
   }
 }
 
@@ -235,7 +236,7 @@ fn claim_resolved_call_tree(
       params: params
     ),
     lexical_bindings: empty_map(),
-    unavailable_providers: [],
+    module_outcomes: [], outcome_index: empty_module_outcome_index(),
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent()
   }
@@ -251,7 +252,7 @@ fn claim_resolved_call_tree(
 // path, the function at its path and the parameter at the function's path extended by its name. A record that
 // is NOT supplied is absent from the index, which is the state a provider dropped from the closure leaves;
 // `unavailable` is the refused-provider roster resolve hands infer beside it (ResolvedTree
-// unavailable_providers), the cause infer reports ahead of such a miss.
+// module_outcomes), the cause infer reports ahead of such a miss.
 type ClaimRecord {
   path: QualifiedName
   fields: List<ClaimParam>
@@ -268,7 +269,7 @@ fn claim_record_declaration(r: ClaimRecord) -> Node {
 
 fn claim_resolved_projection_tree(
   records: List<ClaimRecord>,
-  unavailable: List<ClosureProviderRefusal>,
+  unavailable: List<ModuleOutcome>,
   fn_path: QualifiedName,
   fn_name: Symbol,
   param: ClaimParam,
@@ -300,7 +301,8 @@ fn claim_resolved_projection_tree(
       params: [param]
     ),
     lexical_bindings: empty_map(),
-    unavailable_providers: unavailable,
+    module_outcomes: unavailable,
+    outcome_index: module_outcome_index(outcomes: unavailable),
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent()
   }

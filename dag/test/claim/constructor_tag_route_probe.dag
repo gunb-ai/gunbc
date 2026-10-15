@@ -1,0 +1,47 @@
+module test.claim.constructor_tag_route_probe
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type WideProbe
+  = W01 { a: Int }
+  | W02 { a: String }
+  | W03 { a: Int, b: Int }
+  | W04
+  | W05 { a: String }
+  | W06 { a: Int }
+  | W07 { a: String, b: String }
+  | W08
+  | W09 { a: Int }
+  | W10 { a: String }
+  | W11 { a: Int }
+  | W12 { a: String }
+
+test fn wide_same_arm_ignores_payload() -> Bool {
+  discriminant(v: W11 { a: 1 }) == discriminant(v: W11 { a: 2 })
+}
+
+test fn wide_cross_arm_distinct() -> Bool {
+  (discriminant(v: W10 { a: "x" }) == discriminant(v: W12 { a: "x" })) == false
+}
+
+test fn wide_nullary_arms() -> Bool {
+  (discriminant(v: W04) == discriminant(v: W08)) == false
+}
+
+type ConstructorTag<T> = ConstructorTag { name: String }
+
+fn tag_of<T>(v: T) -> ConstructorTag<T> {
+  ConstructorTag { name: discriminant(v: v) }
+}
+
+fn same_arm<T>(a: T, b: T) -> Bool {
+  tag_of(v: a) == tag_of(v: b)
+}
+
+test fn carrier_same_arm_ignores_payload() -> Bool {
+  same_arm(a: W11 { a: 1 }, b: W11 { a: 2 })
+}
+
+test fn carrier_cross_arm_distinct() -> Bool {
+  (same_arm(a: W10 { a: "x" }, b: W12 { a: "x" })) == false
+}

@@ -7,6 +7,7 @@ import gunbc.fleet.fleet_lifecycle_observation { ProcessReceipt }
 import extdeps.ssh.keys { SshPublicKey }
 import extdeps.netfilter.nfct { nfct_installed_path }
 import extdeps.tools.conntrack { conntrack_installed_path }
+import extdeps.sudo.visudo { visudo_binary_path }
 import extdeps.netfilter.iptables_legacy { iptables_legacy_save_installed_path }
 import extdeps.nftables.ruleset { nft_installed_path }
 import std.content_hash { Fnv1a64Structural }
@@ -224,7 +225,7 @@ fn fleet_posix_operator_sudo_grant_is_hostnamectl_only() -> Bool {
 
 data fleet_apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
 
-data fleet_visudo_binary_path: NonEmptyStr = "/usr/sbin/visudo"
+data fleet_visudo_binary_path: NonEmptyStr = visudo_binary_path
 
 data fleet_install_binary_path: NonEmptyStr = "/usr/bin/install"
 

@@ -10,10 +10,10 @@ import std.optional { Absent, Optional, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Instantiation, Node, TypeNode, node_subtree_nodes, node_synthetic }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.collection { list_at_optional }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.extdeps.languages.dag { dag_binding_denotation }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_at_optional }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -27,7 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ROUTE REDS THE REAL-PATH CLAIM: remove the count row from collection_roster_rows and `count(` is refused
 // resolve_reason_unbound_symbol (mutation run cited in the PR).
 
-data ccc_route_source: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  count(xs) == 0\n}\n\nfn g(xs: List<Pair>) -> Int {\n  count(xs)\n}\n"
+data ccc_route_source: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { collection_count_shape }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  count(xs) == 0\n}\n\nfn g(xs: List<Pair>) -> Int {\n  count(xs)\n}\n"
 
 type CccRouteReading {
   row_references: Int
