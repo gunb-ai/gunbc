@@ -1447,6 +1447,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, toolchain_h
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: workspace,
     dispatch_base_ref: "origin/main" as NonEmptyStr,
+    publication_base_branch: "main" as NonEmptyStr,
     dispatch_state_scope: DispatchStateInstanceOwned {
       worktree_child: "attempts" as NonEmptyStr,
       attempt_state_child: "attempt-state" as NonEmptyStr,
