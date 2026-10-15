@@ -135,6 +135,7 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 data user_work_scope_ci_env_name: String = "GITHUB_ACTIONS"
 data user_work_scope_xdg_runtime_dir_env_name: String = "XDG_RUNTIME_DIR"
 data user_work_scope_systemd_manager_dir: String = "/run/systemd/system"
+data user_work_scope_buildbuddy_run_id_env_name: String = "BUILDBUDDY_RUN_ID"
 data user_work_scope_user_slice_cgroup_needle: String = "/user.slice/"
 data user_work_scope_service_unit_suffix: String = ".service"
 data user_work_scope_slice_unit_suffix: String = ".slice"
@@ -165,6 +166,7 @@ type UserWorkScopeStanding
   | ExemptBoundedContainer { bytes: ByteSize }
   | BoundedContainerUncapped
   | BoundedContainerUnreadable
+  | ExternallyBoundedExecutor { run_id: String }
 
 type UserWorkScopeStandingEffect
   = WrapIntoUserWorkSlice
@@ -297,6 +299,26 @@ fn bounded_container_standing(root_memory: RootCgroupMemoryRead) -> UserWorkScop
   }
 }
 
+type BuildBuddyRunIdRead
+  = BuildBuddyRunIdPresent { id: String }
+  | BuildBuddyRunIdAbsent
+
+fn namespaced_root_standing(root_memory: RootCgroupMemoryRead, buildbuddy_run_id: BuildBuddyRunIdRead) -> UserWorkScopeStanding {
+  match bounded_container_standing(root_memory: root_memory) {
+    ExemptBoundedContainer { bytes } => ExemptBoundedContainer { bytes: bytes }
+    refused =>
+      match buildbuddy_run_id {
+        BuildBuddyRunIdAbsent => refused
+        BuildBuddyRunIdPresent { id } =>
+          if id == "" {
+            refused
+          } else {
+            ExternallyBoundedExecutor { run_id: id }
+          }
+      }
+  }
+}
+
 fn namespaced_root_without_systemd(cgroup: UserWorkScopeCgroupRead, systemd_manager_present: Bool) -> Bool {
   if systemd_manager_present {
     false
@@ -316,11 +338,12 @@ fn user_work_scope_standing_with_root_memory(
   user_manager_reachable: Bool,
   xdg_runtime_dir: Bool,
   root_memory: RootCgroupMemoryRead,
+  buildbuddy_run_id: BuildBuddyRunIdRead,
 ) -> UserWorkScopeStanding {
   if unit_test {
     UnitTestExempt
   } else if namespaced_root_without_systemd(cgroup: cgroup, systemd_manager_present: systemd_manager_present) {
-    bounded_container_standing(root_memory: root_memory)
+    namespaced_root_standing(root_memory: root_memory, buildbuddy_run_id: buildbuddy_run_id)
   } else {
     user_work_scope_standing(
       unit_test: false,
@@ -393,6 +416,7 @@ fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
       join(["ExemptBoundedContainer:", to_string(value: byte_size_count(b: bytes))], "")
     BoundedContainerUncapped => "BoundedContainerUncapped"
     BoundedContainerUnreadable => "BoundedContainerUnreadable"
+    ExternallyBoundedExecutor { run_id } => join(["ExternallyBoundedExecutor:", run_id], "")
   }
 }
 
@@ -417,6 +441,8 @@ fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeSta
       SkipUserWorkScope { standing: ExemptBoundedContainer { bytes: bytes } }
     BoundedContainerUncapped => RefuseUserWorkScope { standing: BoundedContainerUncapped }
     BoundedContainerUnreadable => RefuseUserWorkScope { standing: BoundedContainerUnreadable }
+    ExternallyBoundedExecutor { run_id } =>
+      SkipUserWorkScope { standing: ExternallyBoundedExecutor { run_id: run_id } }
   }
 }
 

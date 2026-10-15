@@ -33,7 +33,7 @@ import gunbc.compute.unit_bounds {
   user_work_scope_standing, user_work_scope_standing_with_root_memory,
   user_work_scope_standing_effect, user_work_scope_standing_wire,
   user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
-  user_work_scope_systemd_manager_dir,
+  user_work_scope_systemd_manager_dir, user_work_scope_buildbuddy_run_id_env_name,
   user_work_scope_user_slice_cgroup_needle, user_work_scope_service_unit_suffix,
   user_work_scope_slice_unit_suffix, user_work_scope_scope_unit_suffix,
   system_service_unit_from_cgroup,
@@ -48,7 +48,9 @@ import gunbc.compute.unit_bounds {
   SystemServiceNamed, NotSystemService,
   AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, ExemptSystemUnit, UncappedSystemSlice,
   ExemptBoundedContainer, BoundedContainerUncapped, BoundedContainerUnreadable,
+  ExternallyBoundedExecutor,
   RootMemoryCapped, RootMemoryUnbounded, RootMemoryUnreadable,
+  BuildBuddyRunIdPresent, BuildBuddyRunIdAbsent,
   UserSessionAbsent,
   UserManagerOwed, CgroupUnreadable, UserManagerProbeFailed,
   WrapIntoUserWorkSlice, SkipUserWorkScope, RefuseUserWorkScope,
@@ -268,6 +270,10 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_xdg_runtime_dir_env_name, "\"")))
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_systemd_manager_dir`")
     && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_systemd_manager_dir, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_buildbuddy_run_id_env_name`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_buildbuddy_run_id_env_name, "\"")))
+    && string_contains(s: seed, pattern: "ExternallyBoundedExecutor")
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds namespaced_root_standing`")
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: UserSessionAbsent))
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: RunnerSlotExempt))
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: CiExempt))
@@ -457,6 +463,7 @@ test fn a_root_cgroup_with_finite_memory_max_skips_wrap() -> Bool {
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryCapped { bytes: bytes },
+    buildbuddy_run_id: BuildBuddyRunIdAbsent,
   ) {
     ExemptBoundedContainer { bytes: b } =>
       byte_size_count(b: b) == 25769803776
@@ -478,6 +485,7 @@ test fn a_root_cgroup_with_unbounded_memory_max_refuses() -> Bool {
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryUnbounded,
+    buildbuddy_run_id: BuildBuddyRunIdAbsent,
   ) {
     BoundedContainerUncapped =>
       match user_work_scope_standing_effect(s: BoundedContainerUncapped) {
@@ -497,6 +505,7 @@ test fn a_root_cgroup_with_unreadable_memory_max_refuses() -> Bool {
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryUnreadable,
+    buildbuddy_run_id: BuildBuddyRunIdAbsent,
   ) {
     BoundedContainerUnreadable =>
       match user_work_scope_standing_effect(s: BoundedContainerUnreadable) {
@@ -522,12 +531,35 @@ test fn an_unidentified_namespaced_root_without_memory_max_refuses_despite_githu
     user_manager_reachable: false,
     xdg_runtime_dir: false,
     root_memory: RootMemoryUnreadable,
+    buildbuddy_run_id: BuildBuddyRunIdAbsent,
   ) {
     BoundedContainerUnreadable =>
       match user_work_scope_standing_effect(s: BoundedContainerUnreadable) {
         RefuseUserWorkScope { standing: BoundedContainerUnreadable } => true
         _ => false
       }
+    _ => false
+  }
+}
+
+test fn a_buildbuddy_namespaced_root_without_memory_max_is_externally_bounded() -> Bool {
+  match user_work_scope_standing_with_root_memory(
+    unit_test: false,
+    github_actions: true,
+    cgroup: CgroupText { text: "0::/" },
+    systemd_manager_present: false,
+    user_manager_reachable: false,
+    xdg_runtime_dir: false,
+    root_memory: RootMemoryUnreadable,
+    buildbuddy_run_id: BuildBuddyRunIdPresent { id: "measured-rbe-run" },
+  ) {
+    ExternallyBoundedExecutor { run_id } =>
+      run_id == "measured-rbe-run"
+        && match user_work_scope_standing_effect(s: ExternallyBoundedExecutor { run_id: run_id }) {
+          SkipUserWorkScope { standing: ExternallyBoundedExecutor { run_id: sid } } =>
+            sid == "measured-rbe-run"
+          _ => false
+        }
     _ => false
   }
 }
@@ -541,6 +573,7 @@ test fn a_namespaced_root_with_a_systemd_manager_still_wraps() -> Bool {
     user_manager_reachable: true,
     xdg_runtime_dir: true,
     root_memory: RootMemoryCapped { bytes: byte_size(25769803776) },
+    buildbuddy_run_id: BuildBuddyRunIdAbsent,
   ) {
     UserManagerOwed =>
       match user_work_scope_standing_effect(s: UserManagerOwed) {

@@ -22,6 +22,8 @@ const RUNNER_SLOT_CGROUP_NEEDLE: &str = "actions-runner@";
 const USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV: &str = "XDG_RUNTIME_DIR";
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_systemd_manager_dir`
 const SYSTEMD_MANAGER_DIR: &str = "/run/systemd/system";
+// SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_buildbuddy_run_id_env_name`
+const BUILDBUDDY_RUN_ID_ENV: &str = "BUILDBUDDY_RUN_ID";
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_user_slice_cgroup_needle`
 const USER_SLICE_CGROUP_NEEDLE: &str = "/user.slice/";
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_service_unit_suffix`
@@ -56,6 +58,7 @@ enum UserWorkScopeStanding {
     ExemptBoundedContainer { bytes: u64 },
     BoundedContainerUncapped,
     BoundedContainerUnreadable,
+    ExternallyBoundedExecutor { run_id: String },
 }
 
 pub fn reexec_into_user_work_slice_if_owed() {
@@ -122,6 +125,9 @@ fn standing_wire(s: &UserWorkScopeStanding) -> String {
         UserWorkScopeStanding::BoundedContainerUncapped => "BoundedContainerUncapped".to_string(),
         UserWorkScopeStanding::BoundedContainerUnreadable => {
             "BoundedContainerUnreadable".to_string()
+        }
+        UserWorkScopeStanding::ExternallyBoundedExecutor { run_id } => {
+            format!("ExternallyBoundedExecutor:{run_id}")
         }
     }
 }
@@ -388,12 +394,21 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
         let is_root = matches!(cgroup_v2_rel_path(cg).as_deref(), Some("/") | Some(""));
         if is_root && !systemd_manager {
             // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_with_root_memory`
-            return match read_cgroup_memory_file("/", "memory.max") {
+            // SEED MIRROR of `gunbc.compute.unit_bounds namespaced_root_standing`
+            let memory = read_cgroup_memory_file("/", "memory.max");
+            return match memory {
                 Some(MemoryBound::Capped(n)) if n > 0 => {
                     UserWorkScopeStanding::ExemptBoundedContainer { bytes: n }
                 }
-                Some(_) => UserWorkScopeStanding::BoundedContainerUncapped,
-                None => UserWorkScopeStanding::BoundedContainerUnreadable,
+                other => match std::env::var(BUILDBUDDY_RUN_ID_ENV) {
+                    Ok(id) if !id.is_empty() => {
+                        UserWorkScopeStanding::ExternallyBoundedExecutor { run_id: id }
+                    }
+                    _ => match other {
+                        Some(_) => UserWorkScopeStanding::BoundedContainerUncapped,
+                        None => UserWorkScopeStanding::BoundedContainerUnreadable,
+                    },
+                },
             };
         }
     }
