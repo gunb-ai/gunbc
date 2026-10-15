@@ -1,7 +1,8 @@
 module gunbc.live_deploy.slice_bounds
 
-import std.types { NonEmptyStr }
-import std.nat { Nat, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
+import std.types { NonEmptyStr, String, List, Bool }
+import std.optional { Present, Absent }
+import std.nat { Nat, Succ, Zero, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 
@@ -214,6 +215,8 @@ data approval_broker_slice_memory_max: ByteSize = byte_size(17179869184)
 
 data approval_broker_slice_memory_high: ByteSize = byte_size(15032385536)
 
+data approval_broker_slice_unit_name: NonEmptyStr = "gunbc-approval-broker.slice"
+
 // ── THE REPOSITORY CONVERGENCE ONESHOT'S OWN BOUND ──────────────────────────────────────────
 // IT HAS ITS OWN ENVELOPE BECAUSE A SHARED ONE IS A MOVING TARGET. The oneshot ran inside the roadmap
 // deployment slice beside the serving members, so its headroom was whatever those members had not
@@ -242,6 +245,8 @@ data repository_convergence_slice_memory_max: ByteSize = byte_size(25769803776)
 
 data repository_convergence_slice_memory_high: ByteSize = byte_size(21474836480)
 
+data repository_convergence_slice_unit_name: NonEmptyStr = "gunbc-repository-convergence.slice"
+
 // THE CONVERGENCE SLICE FORBIDS SWAP FOR ITS OWN REASON, NOT THE SERVED SLICES'. The deployment-wide
 // row above denies swap because the served processes are latency-bound and operator-facing, which
 // this oneshot is not, so consuming that row here would stretch its argument over a subject it does
@@ -251,7 +256,7 @@ data repository_convergence_slice_memory_high: ByteSize = byte_size(21474836480)
 // MemoryMax, a located failure the restart step's diagnosis arm prints.
 data repository_convergence_slice_memory_swap_max: ByteSize = byte_size(0)
 
-// ── USER-MANAGER WORK (--user transients: gunbc test/run scopes, gunbc-attempt-*, gunbc-compute-*,
+// ── USER-MANAGER WORK (--user transients: gunbc test/run scopes, gunbc-compute-*,
 // gunbc-review-*, gunbc-audit-*, gunbc-supervisor-*) ─
 // THESE UNITS LEAVE EVERY SYSTEM SLICE. systemd-run --user starts them under
 // user@1000.service/app.slice, which is not sessions.slice and not gunbc-roadmap.slice. A pid
@@ -309,11 +314,51 @@ data attempt_worker_slice_unit_name: NonEmptyStr = "gunbc-attempt-worker.slice"
 
 // APPROPRIATION: two 22 GiB slots, the same function as user_work_slice_memory_max_of.
 // Operator decision 2026-10-15 (escalation msg_57614325): stack this 2 x 22 GiB with
-// user-work, srv1 CI width 7 to 5.
+// user-work, srv1 CI width 7 to 5. Charge is served_deployment_slice_allowance, not the wrap.
 data attempt_worker_slice_charged_slots: Nat = Succ { prev: Succ { prev: Zero } }
 
 data attempt_worker_slice_memory_max: ByteSize = user_work_slice_memory_max_of(slots: attempt_worker_slice_charged_slots)
 
 fn attempt_worker_slice_memory_high() -> UserWorkSliceHigh {
   user_work_slice_memory_high_of(memory_max: attempt_worker_slice_memory_max)
+}
+
+// SYSTEM SLICES THAT DECLARE MemoryMax. Exemption from the user-work wrap may skip only when the
+// enclosing slice is one of these rows with a positive max — the unit name is the row's identity,
+// not a separate list. user-work is a --user slice and is not in this census.
+// WHETHER A gunbc RUN IS A SYSTEM UNIT for wrap is
+// gunbc.compute.unit_bounds system_unit_standing_from_cgroup: a cgroup segment that
+// modeled_system_slice_memory_max admits, with a live finite memory.max. Attempt workers
+// sit in attempt_worker_slice_unit_name, so that name is a row here (ExemptSystemUnit)
+// rather than a second wrap policy.
+type DeclaredSliceMemoryMax {
+  unit: NonEmptyStr
+  memory_max: ByteSize
+}
+
+fn declared_system_slice_memory_maxes() -> List<DeclaredSliceMemoryMax> {
+  [
+    DeclaredSliceMemoryMax {
+      unit: repository_convergence_slice_unit_name,
+      memory_max: repository_convergence_slice_memory_max,
+    },
+    DeclaredSliceMemoryMax {
+      unit: approval_broker_slice_unit_name,
+      memory_max: approval_broker_slice_memory_max,
+    },
+    DeclaredSliceMemoryMax {
+      unit: attempt_worker_slice_unit_name,
+      memory_max: attempt_worker_slice_memory_max,
+    },
+  ]
+}
+
+fn modeled_system_slice_memory_max(unit: String) -> ByteSize? {
+  match (
+    declared_system_slice_memory_maxes()
+      |> filter(row => (row.unit as String) == unit && byte_size_count(b: row.memory_max) > 0)
+  ).first() {
+    Absent => none
+    Present { value: row } => Present { value: row.memory_max }
+  }
 }

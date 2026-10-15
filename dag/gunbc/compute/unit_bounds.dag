@@ -1,10 +1,11 @@
 module gunbc.compute.unit_bounds
 
 import std.types { String, List, NonEmptyStr, Bool }
+import std.algebra { trim, string_contains }
 import std.optional { Present, Absent }
-import std.nat { Nat }
-import std.measure { Kibibyte, kibibyte_to_byte_size, byte_size_count, Millicore, millicore_count }
-import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
+import std.nat { Nat, nat_min }
+import std.measure { ByteSize, Kibibyte, kibibyte_to_byte_size, byte_size, byte_size_count, Millicore, millicore_count }
+import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemoryHigh, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
@@ -15,6 +16,7 @@ import extdeps.systemd.systemd_run {
 import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
+  modeled_system_slice_memory_max,
 }
 import gunbc.runner.runner_unit { runner_unit_prefix }
 
@@ -116,27 +118,248 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // UserSessionAbsent refuses: a host that owes the bound and has no user manager must not run
 // unbounded (review 80042). CiExempt / RunnerSlotExempt skip because those processes already sit
 // in a declared slot cgroup, not because the user manager is missing.
+// ExemptSystemUnit skips only when a cgroup path segment is a modeled capped slice
+// AND that slice's live memory.max is finite (live_modeled_slice_standing). A name
+// in declared_system_slice_memory_maxes with unreadable or unbounded memory.max
+// refuses UncappedSystemSlice. sessions.slice is host policy, not a wrap census
+// name; a namespaced-root container is ExemptBoundedContainer only from a live
+// finite memory.max. An observed unbounded root memory.max refuses even when a
+// BuildBuddy run id is present. Unreadable root memory.max plus a non-empty
+// BUILDBUDDY_RUN_ID is ExternallyBoundedExecutor (the measured RBE case). A named
+// .service under an unmodeled slice refuses UncappedSystemSlice { unit, slice }.
+// A session cgroup with no modeled cap and no user manager refuses
+// UserSessionAbsent. Path from /proc/self/cgroup; User= is never consulted.
+//
+// THIS REFUSAL IS OUTSIDE DECIDE-BEFORE-MUTATE. compose_host_script drops Mutate only when a
+// Decide fragment is HostScriptRefused. slice-control is Mutate with HostScriptProceed; the
+// wrap fires later inside ExecStart of gunbc-tree-sync.service (a spec-step Mutate child),
+// after sessions and broker set-property have already run.
 data user_work_scope_ci_env_name: String = "GITHUB_ACTIONS"
 data user_work_scope_xdg_runtime_dir_env_name: String = "XDG_RUNTIME_DIR"
+data user_work_scope_systemd_manager_dir: String = "/run/systemd/system"
+data user_work_scope_buildbuddy_run_id_env_name: String = "BUILDBUDDY_RUN_ID"
+data user_work_scope_user_slice_cgroup_needle: String = "/user.slice/"
+data user_work_scope_service_unit_suffix: String = ".service"
+data user_work_scope_slice_unit_suffix: String = ".slice"
+data user_work_scope_scope_unit_suffix: String = ".scope"
 
 type UserWorkScopeCgroupRead
   = CgroupText { text: String }
   | CgroupReadFailed
+
+type SystemServiceCgroup
+  = SystemServiceNamed { unit: String, slice: String }
+  | NotSystemService
 
 type UserWorkScopeStanding
   = AlreadyInSlice
   | RunnerSlotExempt
   | CiExempt
   | UnitTestExempt
+  | ExemptSystemUnit { unit: String, slice: String }
+  | UncappedSystemSlice { unit: String, slice: String }
   | UserSessionAbsent
   | UserManagerOwed
   | CgroupUnreadable
   | UserManagerProbeFailed
+  | UserWorkSliceAbsent
+  | UserWorkSliceUncapped
+  | CallerEnvelopeUnreadable
+  | ExemptBoundedContainer { bytes: ByteSize }
+  | BoundedContainerUncapped
+  | BoundedContainerUnreadable
+  | ExternallyBoundedExecutor { run_id: String }
 
 type UserWorkScopeStandingEffect
   = WrapIntoUserWorkSlice
   | SkipUserWorkScope { standing: UserWorkScopeStanding }
   | RefuseUserWorkScope { standing: UserWorkScopeStanding }
+
+fn cgroup_path_segments(text: String) -> List<String> {
+  split(s: text.replace(from: "\n", to: "/"), delimiter: "/")
+    |> map(seg => trim(s: seg))
+    |> filter(seg => seg != "")
+}
+
+fn last_cgroup_unit_with_dot_suffix(text: String, suffix: String) -> String? {
+  match reverse(cgroup_path_segments(text: text) |> filter(seg => {
+    let parts = split(s: seg, delimiter: ".")
+    match reverse(parts).first() {
+      Absent => false
+      Present { value: last } => concat(".", last) == suffix && parts.length() >= 2
+    }
+  })).first() {
+    Absent => none
+    Present { value: unit } =>
+      if unit == "" {
+        none
+      } else {
+        Present { value: unit }
+      }
+  }
+}
+
+fn innermost_modeled_capped_slice(text: String) -> String? {
+  match reverse(
+    cgroup_path_segments(text: text)
+      |> filter(seg => match modeled_system_slice_memory_max(unit: seg) {
+        Present { value: _ } => true
+        Absent => false
+      })
+  ).first() {
+    Absent => none
+    Present { value: slice } => Present { value: slice }
+  }
+}
+
+fn cgroup_leaf_unit(text: String) -> String {
+  match last_cgroup_unit_with_dot_suffix(text: text, suffix: user_work_scope_scope_unit_suffix) {
+    Present { value: unit } => unit
+    Absent => match last_cgroup_unit_with_dot_suffix(text: text, suffix: user_work_scope_service_unit_suffix) {
+      Present { value: unit } => unit
+      Absent => ""
+    }
+  }
+}
+
+type RootCgroupMemoryRead
+  = RootMemoryCapped { bytes: ByteSize }
+  | RootMemoryUnbounded
+  | RootMemoryUnreadable
+
+fn live_modeled_slice_standing(unit: String, slice: String, slice_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding {
+  match slice_memory {
+    RootMemoryCapped { bytes } =>
+      if byte_size_count(b: bytes) == 0 {
+        UncappedSystemSlice { unit: unit, slice: slice }
+      } else {
+        ExemptSystemUnit { unit: unit, slice: slice }
+      }
+    RootMemoryUnbounded => UncappedSystemSlice { unit: unit, slice: slice }
+    RootMemoryUnreadable => UncappedSystemSlice { unit: unit, slice: slice }
+  }
+}
+
+fn modeled_slice_standing_from_cgroup(text: String, slice_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding? {
+  match innermost_modeled_capped_slice(text: text) {
+    Absent => none
+    Present { value: slice } =>
+      Present {
+        value: live_modeled_slice_standing(
+          unit: cgroup_leaf_unit(text: text),
+          slice: slice,
+          slice_memory: slice_memory,
+        ),
+      }
+  }
+}
+
+fn system_service_unit_from_cgroup(text: String) -> SystemServiceCgroup {
+  if string_contains(s: text, pattern: user_work_scope_user_slice_cgroup_needle) {
+    NotSystemService
+  } else {
+    match last_cgroup_unit_with_dot_suffix(text: text, suffix: user_work_scope_service_unit_suffix) {
+      Absent => NotSystemService
+      Present { value: unit } =>
+        match last_cgroup_unit_with_dot_suffix(text: text, suffix: user_work_scope_slice_unit_suffix) {
+          Absent => SystemServiceNamed { unit: unit, slice: "" }
+          Present { value: slice } => SystemServiceNamed { unit: unit, slice: slice }
+        }
+    }
+  }
+}
+
+fn system_unit_standing_from_cgroup(text: String, slice_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding? {
+  match system_service_unit_from_cgroup(text: text) {
+    NotSystemService => none
+    SystemServiceNamed { unit, slice } =>
+      match modeled_system_slice_memory_max(unit: slice) {
+        Present { value: _ } =>
+          Present {
+            value: live_modeled_slice_standing(unit: unit, slice: slice, slice_memory: slice_memory),
+          }
+        Absent => Present { value: UncappedSystemSlice { unit: unit, slice: slice } }
+      }
+  }
+}
+
+fn cgroup_text_is_root(text: String) -> Bool {
+  let t = trim(s: text)
+  t == "0::/" || t == "0::"
+}
+
+fn bounded_container_standing(root_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding {
+  match root_memory {
+    RootMemoryCapped { bytes } =>
+      if byte_size_count(b: bytes) == 0 {
+        BoundedContainerUncapped
+      } else {
+        ExemptBoundedContainer { bytes: bytes }
+      }
+    RootMemoryUnbounded => BoundedContainerUncapped
+    RootMemoryUnreadable => BoundedContainerUnreadable
+  }
+}
+
+type BuildBuddyRunIdRead
+  = BuildBuddyRunIdPresent { id: String }
+  | BuildBuddyRunIdAbsent
+
+fn namespaced_root_standing(root_memory: RootCgroupMemoryRead, buildbuddy_run_id: BuildBuddyRunIdRead) -> UserWorkScopeStanding {
+  match bounded_container_standing(root_memory: root_memory) {
+    ExemptBoundedContainer { bytes } => ExemptBoundedContainer { bytes: bytes }
+    BoundedContainerUncapped => BoundedContainerUncapped
+    BoundedContainerUnreadable =>
+      match buildbuddy_run_id {
+        BuildBuddyRunIdAbsent => BoundedContainerUnreadable
+        BuildBuddyRunIdPresent { id } =>
+          if id == "" {
+            BoundedContainerUnreadable
+          } else {
+            ExternallyBoundedExecutor { run_id: id }
+          }
+      }
+    other => other
+  }
+}
+
+fn namespaced_root_without_systemd(cgroup: UserWorkScopeCgroupRead, systemd_manager_present: Bool) -> Bool {
+  if systemd_manager_present {
+    false
+  } else {
+    match cgroup {
+      CgroupReadFailed => false
+      CgroupText { text } => cgroup_text_is_root(text: text)
+    }
+  }
+}
+
+fn user_work_scope_standing_with_root_memory(
+  unit_test: Bool,
+  github_actions: Bool,
+  cgroup: UserWorkScopeCgroupRead,
+  systemd_manager_present: Bool,
+  user_manager_reachable: Bool,
+  xdg_runtime_dir: Bool,
+  root_memory: RootCgroupMemoryRead,
+  slice_memory: RootCgroupMemoryRead,
+  buildbuddy_run_id: BuildBuddyRunIdRead,
+) -> UserWorkScopeStanding {
+  if unit_test {
+    UnitTestExempt
+  } else if namespaced_root_without_systemd(cgroup: cgroup, systemd_manager_present: systemd_manager_present) {
+    namespaced_root_standing(root_memory: root_memory, buildbuddy_run_id: buildbuddy_run_id)
+  } else {
+    user_work_scope_standing(
+      unit_test: false,
+      github_actions: github_actions,
+      cgroup: cgroup,
+      user_manager_reachable: user_manager_reachable,
+      xdg_runtime_dir: xdg_runtime_dir,
+      slice_memory: slice_memory,
+    )
+  }
+}
 
 fn user_work_scope_standing(
   unit_test: Bool,
@@ -144,6 +367,7 @@ fn user_work_scope_standing(
   cgroup: UserWorkScopeCgroupRead,
   user_manager_reachable: Bool,
   xdg_runtime_dir: Bool,
+  slice_memory: RootCgroupMemoryRead,
 ) -> UserWorkScopeStanding {
   if unit_test {
     UnitTestExempt
@@ -157,12 +381,22 @@ fn user_work_scope_standing(
           AlreadyInSlice
         } else if string_contains(s: text, pattern: runner_unit_prefix) {
           RunnerSlotExempt
-        } else if user_manager_reachable {
-          UserManagerOwed
-        } else if xdg_runtime_dir {
-          UserManagerProbeFailed
         } else {
-          UserSessionAbsent
+          match modeled_slice_standing_from_cgroup(text: text, slice_memory: slice_memory) {
+            Present { value: s } => s
+            Absent =>
+              match system_unit_standing_from_cgroup(text: text, slice_memory: slice_memory) {
+                Present { value: s } => s
+                Absent =>
+                  if user_manager_reachable {
+                    UserManagerOwed
+                  } else if xdg_runtime_dir {
+                    UserManagerProbeFailed
+                  } else {
+                    UserSessionAbsent
+                  }
+              }
+          }
         }
     }
   }
@@ -174,10 +408,20 @@ fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
     RunnerSlotExempt => "RunnerSlotExempt"
     CiExempt => "CiExempt"
     UnitTestExempt => "UnitTestExempt"
+    ExemptSystemUnit { unit, slice } => join(["ExemptSystemUnit:", slice, ":", unit], "")
+    UncappedSystemSlice { unit, slice } => join(["UncappedSystemSlice:", slice, ":", unit], "")
     UserSessionAbsent => "UserSessionAbsent"
     UserManagerOwed => "UserManagerOwed"
     CgroupUnreadable => "CgroupUnreadable"
     UserManagerProbeFailed => "UserManagerProbeFailed"
+    UserWorkSliceAbsent => "UserWorkSliceAbsent"
+    UserWorkSliceUncapped => "UserWorkSliceUncapped"
+    CallerEnvelopeUnreadable => "CallerEnvelopeUnreadable"
+    ExemptBoundedContainer { bytes } =>
+      join(["ExemptBoundedContainer:", to_string(value: byte_size_count(b: bytes))], "")
+    BoundedContainerUncapped => "BoundedContainerUncapped"
+    BoundedContainerUnreadable => "BoundedContainerUnreadable"
+    ExternallyBoundedExecutor { run_id } => join(["ExternallyBoundedExecutor:", run_id], "")
   }
 }
 
@@ -188,9 +432,125 @@ fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeSta
     UnitTestExempt => SkipUserWorkScope { standing: UnitTestExempt }
     RunnerSlotExempt => SkipUserWorkScope { standing: RunnerSlotExempt }
     CiExempt => SkipUserWorkScope { standing: CiExempt }
+    ExemptSystemUnit { unit, slice } =>
+      SkipUserWorkScope { standing: ExemptSystemUnit { unit: unit, slice: slice } }
+    UncappedSystemSlice { unit, slice } =>
+      RefuseUserWorkScope { standing: UncappedSystemSlice { unit: unit, slice: slice } }
     CgroupUnreadable => RefuseUserWorkScope { standing: CgroupUnreadable }
     UserManagerProbeFailed => RefuseUserWorkScope { standing: UserManagerProbeFailed }
     UserSessionAbsent => RefuseUserWorkScope { standing: UserSessionAbsent }
+    UserWorkSliceAbsent => RefuseUserWorkScope { standing: UserWorkSliceAbsent }
+    UserWorkSliceUncapped => RefuseUserWorkScope { standing: UserWorkSliceUncapped }
+    CallerEnvelopeUnreadable => RefuseUserWorkScope { standing: CallerEnvelopeUnreadable }
+    ExemptBoundedContainer { bytes } =>
+      SkipUserWorkScope { standing: ExemptBoundedContainer { bytes: bytes } }
+    BoundedContainerUncapped => RefuseUserWorkScope { standing: BoundedContainerUncapped }
+    BoundedContainerUnreadable => RefuseUserWorkScope { standing: BoundedContainerUnreadable }
+    ExternallyBoundedExecutor { run_id } =>
+      SkipUserWorkScope { standing: ExternallyBoundedExecutor { run_id: run_id } }
+  }
+}
+
+// CGROUP / SYSTEMD MEMORY.MAX READBACK. "max" / "infinity" is unbounded, not a missing
+// observation. Tighter of two bounds never raises a finite cap (wrapping must not widen).
+type MemoryBound
+  = MemoryCapped { bytes: ByteSize }
+  | MemoryUnbounded
+
+type UserWorkSliceInstall
+  = UserWorkSliceNotInstalled
+  | UserWorkSliceUncappedInstall
+  | UserWorkSliceInstalled { memory_max: ByteSize, memory_high: MemoryBound }
+
+type CallerMemoryEnvelope
+  = CallerEnvelopeReadFailed
+  | CallerEnvelopeObserved { memory_max: MemoryBound, memory_high: MemoryBound }
+
+fn tighter_memory_bound(a: MemoryBound, b: MemoryBound) -> MemoryBound {
+  match a {
+    MemoryUnbounded => b
+    MemoryCapped { bytes: aa } => match b {
+      MemoryUnbounded => MemoryCapped { bytes: aa }
+      MemoryCapped { bytes: bb } =>
+        MemoryCapped {
+          bytes: byte_size(nat_min(a: byte_size_count(b: aa), b: byte_size_count(b: bb))),
+        }
+    }
+  }
+}
+
+fn user_work_wrap_high_property(memory_max: ByteSize, memory_high: MemoryBound) -> List<SystemdRunProperty> {
+  match memory_high {
+    MemoryUnbounded => []
+    MemoryCapped { bytes: h } =>
+      [
+        SystemdRunProperty {
+          property: MemoryHigh,
+          value: to_string(value: nat_min(a: byte_size_count(b: h), b: byte_size_count(b: memory_max))) as NonEmptyStr,
+        },
+      ]
+  }
+}
+
+fn user_work_wrap_envelope_properties(memory_max: ByteSize, memory_high: MemoryBound) -> List<SystemdRunProperty> {
+  concat(
+    user_work_slice_binding_properties(),
+    concat(
+      [
+        SystemdRunProperty {
+          property: MemoryMax,
+          value: to_string(value: byte_size_count(b: memory_max)) as NonEmptyStr,
+        },
+      ],
+      user_work_wrap_high_property(memory_max: memory_max, memory_high: memory_high),
+    ),
+  )
+}
+
+fn user_work_scope_standing_for_wrap(
+  standing: UserWorkScopeStanding,
+  slice: UserWorkSliceInstall,
+  caller: CallerMemoryEnvelope,
+) -> UserWorkScopeStanding {
+  match standing {
+    UserManagerOwed => match slice {
+      UserWorkSliceNotInstalled => UserWorkSliceAbsent
+      UserWorkSliceUncappedInstall => UserWorkSliceUncapped
+      UserWorkSliceInstalled { memory_max, memory_high: _ } =>
+        if byte_size_count(b: memory_max) == 0 {
+          UserWorkSliceUncapped
+        } else {
+          match caller {
+            CallerEnvelopeReadFailed => CallerEnvelopeUnreadable
+            CallerEnvelopeObserved { memory_max: _, memory_high: _ } => UserManagerOwed
+          }
+        }
+    }
+    other => other
+  }
+}
+
+fn user_work_wrap_ready_properties(slice: UserWorkSliceInstall, caller: CallerMemoryEnvelope) -> List<SystemdRunProperty> {
+  match slice {
+    UserWorkSliceNotInstalled => []
+    UserWorkSliceUncappedInstall => []
+    UserWorkSliceInstalled { memory_max, memory_high } =>
+      match caller {
+        CallerEnvelopeReadFailed => []
+        CallerEnvelopeObserved { memory_max: cmax, memory_high: chigh } =>
+          match tighter_memory_bound(a: cmax, b: MemoryCapped { bytes: memory_max }) {
+            MemoryUnbounded => []
+            MemoryCapped { bytes: tmax } =>
+              if byte_size_count(b: tmax) == 0 {
+                []
+              } else {
+                user_work_wrap_envelope_properties(
+                  memory_max: tmax,
+                  memory_high: tighter_memory_bound(a: chigh, b: memory_high),
+                )
+              }
+          }
+      }
   }
 }
 

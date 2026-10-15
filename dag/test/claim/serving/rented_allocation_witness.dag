@@ -60,7 +60,7 @@ fn a_allocation(route: RentedAccessRoute) -> RentedServingAllocation {
     end: RentedEndsOnOperatorRelease { decided_by: a_operator() },
     engine: RentedNinferEngine { engine_release: ninfer_serve_81c8ce09_sm120_release, launch: operator_pod_ninfer_launch, listen_port: 8000 },
     artifact: qwen3_8_27b_nvfp4_row,
-    host: e_access(endpoint: "203.0.113.7"),
+    host: e_access(octet4: 7),
     route: route,
   }
 }
