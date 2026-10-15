@@ -1,7 +1,9 @@
 module test.claim.host.verified_archive_install_local_shell_recorder
 
 import std.types { String, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import gunbc.host.verified_archive_install {
   staged_archive_fetch_commands, staged_archive_install_commands,
@@ -16,6 +18,8 @@ import gunbc.runner.runner_microvm_host_ready {
 import extdeps.virtualization.firecracker { firecracker_release_aarch64 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data local_shell_legs_path: String = "target/verified-archive-install-local-shell-legs.txt"
 
 fn argv_record_line(command: ArgvCommand) -> String {
   join(argv_words(command: command), "\n  | ")
@@ -50,4 +54,9 @@ fn local_shell_legs_record_text() -> String {
     ],
     "",
   )
+}
+
+fn local_shell_legs_record() -> ProcessExit {
+  let w = Filesystem.Write(path: local_shell_legs_path, content: local_shell_legs_record_text())
+  if w.success { ExitSuccess } else { exit_failure(reason: join(["recorder write failed: ", w.error], "")) }
 }
