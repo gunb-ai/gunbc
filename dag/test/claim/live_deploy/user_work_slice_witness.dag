@@ -310,6 +310,7 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "UserWorkSliceAbsent")
     && string_contains(s: seed, pattern: "UserWorkSliceUncapped")
     && string_contains(s: seed, pattern: "CallerEnvelopeUnreadable")
+    && !string_contains(s: seed, pattern: "unwrap_or(MemoryBound::Unbounded)")
     && string_contains(s: seed, pattern: "ExemptBoundedContainer")
     && string_contains(s: seed, pattern: "BoundedContainerUncapped")
     && string_contains(s: seed, pattern: "BoundedContainerUnreadable")
@@ -450,6 +451,24 @@ test fn sessions_slice_is_not_a_fleet_wide_wrap_exempt() -> Bool {
           }
         _ => false
       }
+  }
+}
+
+test fn a_user_manager_sessions_slice_path_still_wraps() -> Bool {
+  let cg = join([
+    "0::",
+    user_work_scope_user_slice_cgroup_needle,
+    "user-1000.slice/user@1000.service/app.slice/",
+    sessions_slice_unit_name as String,
+    "/run-u.scope",
+  ], "")
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
+    UserManagerOwed =>
+      match user_work_scope_standing_effect(s: UserManagerOwed) {
+        WrapIntoUserWorkSlice => true
+        _ => false
+      }
+    _ => false
   }
 }
 

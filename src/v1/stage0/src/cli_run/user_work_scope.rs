@@ -193,13 +193,15 @@ fn read_slice_install() -> SliceInstallRead {
     }
     match systemctl_user_show(USER_WORK_SLICE, "MemoryMax").and_then(|s| parse_memory_bound(&s)) {
         Some(MemoryBound::Capped(max)) if max > 0 => {
-            let high = systemctl_user_show(USER_WORK_SLICE, "MemoryHigh")
+            match systemctl_user_show(USER_WORK_SLICE, "MemoryHigh")
                 .and_then(|s| parse_memory_bound(&s))
-                .unwrap_or(MemoryBound::Unbounded);
-            SliceInstallRead::Installed(SliceInstall {
-                memory_max: max,
-                memory_high: high,
-            })
+            {
+                Some(high) => SliceInstallRead::Installed(SliceInstall {
+                    memory_max: max,
+                    memory_high: high,
+                }),
+                None => SliceInstallRead::Uncapped,
+            }
         }
         Some(MemoryBound::Capped(_)) | Some(MemoryBound::Unbounded) => SliceInstallRead::Uncapped,
         None => SliceInstallRead::NotInstalled,
@@ -226,8 +228,7 @@ fn read_caller_envelope() -> Option<CallerEnvelope> {
     let cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
     let rel = cgroup_v2_rel_path(&cg)?;
     let memory_max = read_cgroup_memory_file(&rel, "memory.max")?;
-    let memory_high =
-        read_cgroup_memory_file(&rel, "memory.high").unwrap_or(MemoryBound::Unbounded);
+    let memory_high = read_cgroup_memory_file(&rel, "memory.high")?;
     Some(CallerEnvelope {
         memory_max,
         memory_high,
