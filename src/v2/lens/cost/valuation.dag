@@ -88,6 +88,21 @@ type CostValuationEnv {
   bindings: List<CostValuationBinding>
 }
 
+type CostEvaluationZeroStanding
+  = ExactZero
+  | NotExactZero
+
+fn cost_evaluation_zero_standing(e: CostEvaluation) -> CostEvaluationZeroStanding {
+  match e {
+    ExactCost { value: n } =>
+      match n {
+        Zero => ExactZero
+        Succ { prev: _ } => NotExactZero
+      }
+    CostEvaluationRefused { causes: _ } => NotExactZero
+  }
+}
+
 type BindingScan {
   seen: List<SizeVariable>
   duplicates: List<SizeVariable>
@@ -190,6 +205,13 @@ fn combine_evaluation(
   }
 }
 
+fn multiply_after_left_not_exact_zero(a: CostEvaluation, b: CostEvaluation) -> CostEvaluation {
+  match cost_evaluation_zero_standing(e: b) {
+    ExactZero => ExactCost { value: Zero }
+    NotExactZero => combine_evaluation(a: a, b: b, op: nat_mul)
+  }
+}
+
 // A zero factor gives exact zero on EITHER side, and it overrides the refusal dominance that
 // governs every other combination. That is not the absorbing fallback DESIGN section 5 forbids, and
 // the distinction is worth stating precisely because the shapes look alike. An absorbing fallback
@@ -217,13 +239,9 @@ fn combine_evaluation(
 // that generic combiner is the annihilator itself, because addition and max do not have one.
 
 fn multiply_evaluations(a: CostEvaluation, b: CostEvaluation) -> CostEvaluation {
-  match a {
-    ExactCost { value: Zero } => ExactCost { value: Zero }
-    _ =>
-      match b {
-        ExactCost { value: Zero } => ExactCost { value: Zero }
-        _ => combine_evaluation(a: a, b: b, op: nat_mul)
-      }
+  match cost_evaluation_zero_standing(e: a) {
+    ExactZero => ExactCost { value: Zero }
+    NotExactZero => multiply_after_left_not_exact_zero(a: a, b: b)
   }
 }
 
@@ -502,3 +520,4 @@ fn evaluate_cost_expr(
       )
   }
 }
+

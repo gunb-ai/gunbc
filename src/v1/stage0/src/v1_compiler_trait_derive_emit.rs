@@ -3254,20 +3254,25 @@ pub fn v1_generic_param_cloned_by_returned_closure(
     ret: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (((ret.params.clone().len() as i64) > 0) && {
-        let mut __found = false;
-        for vp in value_params.iter().cloned() {
-            if v1_arrow_type_expr_mentions_param(
-                param_name.clone(),
-                crate::v1_std_core::param_node_type_expr(vp.clone()),
-                source_indices.clone(),
-            ) {
-                __found = true;
-                break;
+    (((ret.params.clone().len() as i64) > 0)
+        && ({
+            let mut __found = false;
+            for vp in value_params.iter().cloned() {
+                if v1_arrow_type_expr_mentions_param(
+                    param_name.clone(),
+                    crate::v1_std_core::param_node_type_expr(vp.clone()),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
             }
-        }
-        __found
-    })
+            __found
+        } || v1_arrow_type_expr_mentions_param(
+            param_name.clone(),
+            ret.clone(),
+            source_indices.clone(),
+        )))
 }
 
 pub fn v1_arrow_type_expr_mentions_param(

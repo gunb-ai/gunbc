@@ -955,6 +955,8 @@ pub struct EmitGraphInfo {
     pub fn_type_env: Rc<TypeEnv>,
     pub fn_return_type: Option<Rc<Node>>,
     pub expected_type: Option<Rc<Node>>,
+    pub tco_cursor_param: String,
+    pub tco_cursor_tails: Rc<HashMap<String, i64>>,
     pub item_leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
 }
 
@@ -993,6 +995,8 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         fn_type_env: crate::v1_compiler_infer_env::empty_type_env(),
         fn_return_type: std::option::Option::None,
         expected_type: std::option::Option::None,
+        tco_cursor_param: "".to_string(),
+        tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
     })
 }
 
@@ -1026,6 +1030,8 @@ pub fn emit_info_with_fn_type_context(
         fn_type_env: env.clone(),
         fn_return_type: emit_info.fn_return_type.clone(),
         expected_type: emit_info.expected_type.clone(),
+        tco_cursor_param: emit_info.tco_cursor_param.clone(),
+        tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
     })
 }
 
@@ -1058,6 +1064,8 @@ pub fn emit_info_with_fn_return(
         fn_type_env: emit_info.fn_type_env.clone(),
         fn_return_type: fn_return_type.clone(),
         expected_type: fn_return_type.clone(),
+        tco_cursor_param: emit_info.tco_cursor_param.clone(),
+        tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
     })
 }
 
@@ -1090,6 +1098,8 @@ pub fn emit_info_with_expected_type(
         fn_type_env: emit_info.fn_type_env.clone(),
         fn_return_type: emit_info.fn_return_type.clone(),
         expected_type: expected_type.clone(),
+        tco_cursor_param: emit_info.tco_cursor_param.clone(),
+        tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
     })
 }
 

@@ -195,7 +195,7 @@ fn flex_class_market_median(floors: List<MoneyPerHour>) -> FlexMarketMedian {
   if n == 0 {
     FlexMedianEmpty
   } else {
-    let currency_scan = fold(floors, init: none, f: (acc, row) =>
+    let currency_scan: CurrencyCode? = fold(floors, init: none, f: (acc, row) =>
       match acc {
         Absent => Present { value: row.currency }
         Present { value: c } =>
@@ -410,7 +410,7 @@ fn flex_level_from_identity(id: DeclarationRef) -> FlexBidLevel? {
 }
 
 fn flex_least_sampled_other(tallies: List<FlexLevelTally>, best: FlexBidLevel) -> FlexBidLevel? {
-  let other = fold(
+  let other: FlexLevelTally? = fold(
     filter(tallies, t => !flex_bid_level_eq(left: t.level, right: best)),
     init: none,
     f: (acc, t) =>

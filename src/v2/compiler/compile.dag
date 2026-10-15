@@ -1,5 +1,6 @@
 module v2.compiler.compile
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.compiler_entry { CompilerEntryDriver, SourceRootEvalDriver }
 import gunbc.witness.v2_native_route {
   NativeRouteEmittedBuild,
@@ -56,7 +57,16 @@ import v2.compiler.name_resolve {
   resolve_in_context,
   resolve_with_admission
 }
-import std.occurrence_identity { OccurrenceId, OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIdAllocator,
+  OccurrenceMinted,
+  OccurrencePending,
+  OccurrenceProjected,
+  OccurrenceSynthetic,
+  occurrence_id_allocator_initial,
+  scoped_occurrence_allocator
+}
 import v2.std.dependency { DataDependsOn, DependencyRelation }
 import v2.std.demand_engine {
   DemandAdmitted,
@@ -87,7 +97,12 @@ import v2.std.demand_engine {
   demand_identity_key
 }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_empty, span_index_textual_locus_optional }
+import v2.std.provenance {
+  SpanIndex,
+  node_authored_span_optional,
+  span_index_empty,
+  span_index_in_scope
+}
 import v2.std.source_position { source_line_col_at_byte }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_eq_structural }
 import std.judgment_contract {
@@ -315,6 +330,7 @@ import std.process { ExitFailure, ExitSuccess, ProcessExit }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
 import v2.std.witness { Holds, Violates, Witness, witness_violates }
 import v2.compiler.refinement_discharge { infer_and_discharge }
+import std.roster_frontier { FrontierRow, PathSubject }
 
 // THIS MODULE IS THE COMPILER PIPELINE ENTRY. It carries the fact rather than being recognised
 // by name: the emitter selected its entry-point arm by matching "v1.compiler.compile", a
@@ -1227,7 +1243,6 @@ fn compile_ingest_with_admission(
   )
 }
 
-
 // THE ENTRY A COMMAND LINE CAN BE WIRED TO, MODELLED HERE RATHER THAN AUTHORED IN THE EMITTER.
 //
 // compile_ingest_with_admission is the transaction a compiler driver wants -- source text and a
@@ -1501,17 +1516,10 @@ fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, text: Strin
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
     NodeLocus { anchor: a } =>
-      match node_occurrence_id_optional(node: a.at) {
+      match node_authored_span_optional(node: a.at, index: spans) {
         Absent => FileRefusalAtUnresolvedNode
-        Present { value: id } => native_file_refusal_from_occurrence(spans: spans, id: id, path: path, text: text)
+        Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, text: text)
       }
-  }
-}
-
-fn native_file_refusal_from_occurrence(spans: SpanIndex, id: OccurrenceId, path: Symbol, text: String) -> FileRefusalAt {
-  match span_index_textual_locus_optional(index: spans, id: id) {
-    Absent => FileRefusalAtUnresolvedNode
-    Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, text: text)
   }
 }
 
@@ -1563,9 +1571,23 @@ fn native_census_positions_absorb_accepted(
   }
 }
 
-// A LATER DIAGNOSTIC'S LOCUS, RESOLVED AT THE DEMAND. NodeLocus uses the owner map, then the same
-// native_file_refusal_from_occurrence the front-end NodeLocus arm already uses; a miss is
-// Unresolved, never a guessed line. Textual loci use the stored file text.
+// THE PARSE-MINTED ORDINAL A FROMSOURCE ENTRY WOULD BE UNDER. For a projected node that is the
+// cause's ordinal, used only to pick the owner file; whether that ordinal may be READ as a span
+// is node_authored_span_optional on that file's index (scope-checked). This is not itself an
+// authored-occurrence answer.
+fn native_census_owner_key(node: Node) -> Optional<OccurrenceId> {
+  match node.occurrence_id {
+    OccurrenceMinted { id: id } => optional_present(value: id)
+    OccurrenceProjected { id: _, caused_by: cause } => optional_present(value: cause.occurrence)
+    OccurrenceSynthetic => optional_absent()
+    OccurrencePending { caused_by: _ } => optional_absent()
+  }
+}
+
+// A LATER DIAGNOSTIC'S LOCUS, RESOLVED AT THE DEMAND. NodeLocus finds the owner file by the
+// parse-minted key, then goes through native_file_refusal_at (node_authored_span_optional on
+// THAT file's spans). A foreign projected cause therefore stays Unresolved, same as a miss;
+// never a neighbouring span. Textual loci use the stored file text.
 fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
   match at {
     Textual { file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
@@ -1573,7 +1595,7 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
     NodeLocus { anchor: a } =>
-      match node_occurrence_id_optional(node: a.at) {
+      match native_census_owner_key(node: a.at) {
         Absent => FileRefusalAtUnresolvedNode
         Present { value: id } =>
           match map_lookup(positions.owner, id) {
@@ -1582,7 +1604,7 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
               match map_lookup(positions.files, owner_path) {
                 Absent => FileRefusalAtUnresolvedNode
                 Present { value: file } =>
-                  native_file_refusal_from_occurrence(spans: file.spans, id: id, path: owner_path, text: file.text)
+                  native_file_refusal_at(at: at, path: owner_path, spans: file.spans, text: file.text)
               }
           }
       }
@@ -3720,14 +3742,14 @@ fn native_demand_census_read(
           match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
             Rejected { diagnostics: d } =>
               NativeDemandCensusFoldState {
-                context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: artifact.span_index),
+                context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope)),
                 authored: state.authored,
                 file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
                 unreadable: state.unreadable
               }
             Accepted { value: scoped, diagnostics: _ } =>
               NativeDemandCensusFoldState {
-                context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: artifact.span_index),
+                context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope)),
                 authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
                 file_refused: state.file_refused,
                 unreadable: state.unreadable
@@ -6178,7 +6200,6 @@ fn native_demand_observation_complete(run: NativeDemandRun) -> Bool {
     && (r.classified == length(xs: run.transitions))
 }
 
-
 // A CLOCK THAT NEVER ADVANCES PASSES EVERY CHECK ABOVE, WHICH IS WHY PROGRESS IS ITS OWN FACT.
 // elapsed_observation admits finish == start as ElapsedObserved { nanos: 0 }, so a realization whose
 // body returns a constant zero yields a run in which every transition is CLASSIFIED and VALIDLY
@@ -7245,3 +7266,11 @@ fn census_obligation_modules(rows: List<CensusObligationRow>) -> List<String> {
     }
   })
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "native_demand_occurrence_census_rows" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "native_demand_preparation_standing" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "native_demand_prepared" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "native_demand_resolved_tree" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "native_demand_rollup_step" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

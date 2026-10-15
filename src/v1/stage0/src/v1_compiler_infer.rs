@@ -31912,6 +31912,8 @@ pub fn build_emit_graph_info(
             fn_type_env: crate::v1_compiler_infer_env::empty_type_env(),
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
+            tco_cursor_param: "".to_string(),
+            tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
         })
     }
 }
@@ -31960,47 +31962,6 @@ pub fn typecheck(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<TypedGraph> {
-    typecheck_with_census_extra(
-        graph.clone(),
-        source_indices.clone(),
-        intern_table.clone(),
-        Rc::new(vec![]),
-        source_indices.clone(),
-    )
-}
-
-pub fn effect_incompleteness_diagnostics(
-    causes: Rc<Vec<Rc<EffectIncompleteness>>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for reason in causes.iter().cloned() {
-            __result.push(match (*reason.clone()).clone() {
-    EffectIncompleteness::UnresolvedCalleeEdge { item_identity, spelling, call_site, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: call to '".to_string(), spelling.clone()), "' in ".to_string()), crate::v1_std_core::callable_identity(item_identity.clone())), " has no established callee identity, so its effects cannot be joined".to_string()), call_site.clone(), item_identity.owner_module_path.clone()),
-    EffectIncompleteness::ExpansionBudgetExhausted { remaining_delta: _, .. } => inference_error("effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point".to_string(), crate::v1_std_core::no_span(), "".to_string()),
-    EffectIncompleteness::ResolvedCalleeRegistryRowAbsent { caller, callee, call_site, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), crate::v1_std_core::callable_identity(caller.clone())), " calls ".to_string()), crate::v1_std_core::callable_identity(callee.clone())), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does".to_string()), call_site.clone(), caller.owner_module_path.clone()),
-    EffectIncompleteness::FunctionValueEffectsUnresolved { caller, call_site, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue {
-    caller: crate::v1_std_core::callable_identity(caller.clone()),
-    span: call_site.clone(),
-}), caller.owner_module_path.clone()),
-    EffectIncompleteness::LocalBindingEffectsUnresolved { caller, name, call_site, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding {
-    caller: crate::v1_std_core::callable_identity(caller.clone()),
-    name: name.clone(),
-    span: call_site.clone(),
-}), caller.owner_module_path.clone()),
-});
-        }
-        __result
-    })
-}
-
-pub fn typecheck_with_census_extra(
-    graph: Rc<ModuleGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-    census_fill_modules: Rc<Vec<Rc<Node>>>,
-    census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<TypedGraph> {
     {
         let intern_table = seed_kernel_intern_table(intern_table.clone());
         let resolved_by_name = graph.modules.clone().iter().cloned().fold(
@@ -32013,10 +31974,7 @@ pub fn typecheck_with_census_extra(
                 )
             },
         );
-        let symbol_index = symbol_index_with_qualified_fill(
-            build_symbol_index_census(graph.modules.clone(), census_si.clone()),
-            build_symbol_index_qualified_fill(census_fill_modules.clone(), census_si.clone()),
-        );
+        let symbol_index = build_symbol_index_census(graph.modules.clone(), source_indices.clone());
         let global_variant_base = build_global_bare_variant_locals(
             symbol_index.global_bare.clone(),
             source_indices.clone(),
@@ -32109,6 +32067,31 @@ pub fn typecheck_with_census_extra(
             ),
         })
     }
+}
+
+pub fn effect_incompleteness_diagnostics(
+    causes: Rc<Vec<Rc<EffectIncompleteness>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for reason in causes.iter().cloned() {
+            __result.push(match (*reason.clone()).clone() {
+    EffectIncompleteness::UnresolvedCalleeEdge { item_identity, spelling, call_site, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: call to '".to_string(), spelling.clone()), "' in ".to_string()), crate::v1_std_core::callable_identity(item_identity.clone())), " has no established callee identity, so its effects cannot be joined".to_string()), call_site.clone(), item_identity.owner_module_path.clone()),
+    EffectIncompleteness::ExpansionBudgetExhausted { remaining_delta: _, .. } => inference_error("effect summary incomplete: transitive service expansion exhausted its pass budget while dependencies were still propagating, so the published summary is a truncation rather than a fixed point".to_string(), crate::v1_std_core::no_span(), "".to_string()),
+    EffectIncompleteness::ResolvedCalleeRegistryRowAbsent { caller, callee, call_site, .. } => inference_error(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), crate::v1_std_core::callable_identity(caller.clone())), " calls ".to_string()), crate::v1_std_core::callable_identity(callee.clone())), ", whose identity is established but names no registry row, so the join contributed nothing and the caller's summary omits whatever that callee does".to_string()), call_site.clone(), caller.owner_module_path.clone()),
+    EffectIncompleteness::FunctionValueEffectsUnresolved { caller, call_site, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue {
+    caller: crate::v1_std_core::callable_identity(caller.clone()),
+    span: call_site.clone(),
+}), caller.owner_module_path.clone()),
+    EffectIncompleteness::LocalBindingEffectsUnresolved { caller, name, call_site, .. } => crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding {
+    caller: crate::v1_std_core::callable_identity(caller.clone()),
+    name: name.clone(),
+    span: call_site.clone(),
+}), caller.owner_module_path.clone()),
+});
+        }
+        __result
+    })
 }
 
 pub fn realize_module(
@@ -32563,30 +32546,8 @@ pub fn reconcile(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
-    reconcile_with_census_extra(
-        graph.clone(),
-        source_indices.clone(),
-        intern_table.clone(),
-        Rc::new(vec![]),
-        source_indices.clone(),
-    )
-}
-
-pub fn reconcile_with_census_extra(
-    graph: Rc<ModuleGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-    census_fill_modules: Rc<Vec<Rc<Node>>>,
-    census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ResolvedGraph> {
     {
-        let typed = typecheck_with_census_extra(
-            graph.clone(),
-            source_indices.clone(),
-            intern_table.clone(),
-            census_fill_modules.clone(),
-            census_si.clone(),
-        );
+        let typed = typecheck(graph.clone(), source_indices.clone(), intern_table.clone());
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
         Rc::new(ResolvedGraph {

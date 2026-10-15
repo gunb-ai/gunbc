@@ -1,5 +1,4 @@
 module std.effect_grant
-
 import std.types { Bool, String, List }
 import std.effects { EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect }
 import std.materialization_ladder { Frame }
@@ -10,7 +9,6 @@ import std.access {
 import std.authorization_profile {
   EffectAuthorizationAction, EffectRequest, effect_access_request,
 }
-
 // P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned
 // silent-ibex-417). An effect target is a POSITION in a containment tree that already exists;
 // permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace

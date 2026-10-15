@@ -3,6 +3,7 @@ module v2.std.provenance
 import std.types { List }
 import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
 import std.algebra { fold_list }
+import std.content_hash { Fnv1a64Structural }
 import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.diagnostic {
   ByteRange,
@@ -14,8 +15,16 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.node { Node, Symbol }
-import std.optional { Absent, Optional, Present }
-import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceMinted,
+  OccurrencePending,
+  OccurrenceProjected,
+  OccurrenceSynthetic,
+  ScopedOccurrenceRef,
+  scoped_occurrence_ref_in_scope
+}
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional, witness_violates }
 
 type OriginEvent
@@ -53,23 +62,39 @@ type RecordedSourceExtent
 type SpanIndex {
   entries: Map<OccurrenceId, OriginEvent>
   extents: Map<OccurrenceId, RecordedSourceExtent>
+  scope: Optional<Fnv1a64Structural>
 }
 
 fn span_index_empty() -> SpanIndex {
-  SpanIndex { entries: empty_map(), extents: empty_map() }
+  SpanIndex { entries: empty_map(), extents: empty_map(), scope: optional_absent() }
+}
+
+fn span_index_with_scope(scope: Fnv1a64Structural) -> SpanIndex {
+  SpanIndex { entries: empty_map(), extents: empty_map(), scope: optional_present(value: scope) }
+}
+
+// THE INGEST'S ALLOCATOR DOMAIN ON AN INDEX THAT PARSE ALREADY FILLED. Parse records FromSource
+// entries against a running mark; normalize states every projected cause in the ingest's source-ref
+// digest (v2.compiler.program_assembly program_assembly_ingest_scope). Binding that digest here is
+// the production consumer of span_index_with_scope: without it the index's scope stays Absent and
+// node_authored_projected_cause_in_index can never recover a same-graph cause (DESIGN §3c).
+fn span_index_in_scope(index: SpanIndex, scope: Fnv1a64Structural) -> SpanIndex {
+  span_index_merge(base: span_index_with_scope(scope: scope), incoming: index)
 }
 
 fn span_index_record_extent(index: SpanIndex, id: OccurrenceId, extent: Locus) -> SpanIndex {
   SpanIndex {
     entries: index.entries,
-    extents: map_insert(m: index.extents, key: id, value: SourceExtentKnown { locus: extent })
+    extents: map_insert(m: index.extents, key: id, value: SourceExtentKnown { locus: extent }),
+    scope: index.scope
   }
 }
 
 fn span_index_record_extent_unrepresentable(index: SpanIndex, id: OccurrenceId) -> SpanIndex {
   SpanIndex {
     entries: index.entries,
-    extents: map_insert(m: index.extents, key: id, value: SourceExtentUnrepresentable)
+    extents: map_insert(m: index.extents, key: id, value: SourceExtentUnrepresentable),
+    scope: index.scope
   }
 }
 
@@ -100,7 +125,8 @@ fn span_index_extent(index: SpanIndex, id: OccurrenceId) -> Optional<RecordedSou
 fn span_index_record(index: SpanIndex, id: OccurrenceId, event: OriginEvent) -> SpanIndex {
   SpanIndex {
     extents: index.extents,
-    entries: map_insert(m: index.entries, key: id, value: event)
+    entries: map_insert(m: index.entries, key: id, value: event),
+    scope: index.scope
   }
 }
 
@@ -118,6 +144,10 @@ fn span_index_lookup(index: SpanIndex, id: OccurrenceId) -> Witness<OriginEvent>
 
 fn span_index_merge(base: SpanIndex, incoming: SpanIndex) -> SpanIndex {
   SpanIndex {
+    scope: match base.scope {
+      Present { value: _ } => base.scope
+      Absent => incoming.scope
+    },
     entries: fold_list(
       xs: map_keys(incoming.entries),
       empty: base.entries,
@@ -213,6 +243,39 @@ fn node_occurrence_id_optional(node: Node) -> Optional<OccurrenceId> {
     OccurrenceMinted { id: id } => Present { value: id }
     OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }
     OccurrencePending { caused_by: _ } => Absent
+  }
+}
+
+// THE AUTHORED SPAN OF A NODE. A projected identity is a later-stage id; the SpanIndex is keyed
+// by the parse-minted ids that actually have FromSource entries. Following OccurrenceProjected.caused_by
+// to that authored occurrence is ONE fact (DESIGN 6b: repair at the earliest link), and it is
+// lawful only in the allocator domain the cause names: an ordinal is not a name across graphs
+// (std.occurrence_identity ScopedOccurrenceRef). Looking up caused_by.occurrence while dropping
+// .scope fabricates a local span when another domain minted the same ordinal. When the index has
+// no scope, or the cause's scope is not that graph, the answer is Absent — never a neighbouring
+// span. Cross-graph callers use the existing transport/join.
+fn node_authored_projected_cause_in_index(cause: ScopedOccurrenceRef, index: SpanIndex) -> Optional<OccurrenceId> {
+  match index.scope {
+    Absent => optional_absent()
+    Present { value: scope } =>
+      if scoped_occurrence_ref_in_scope(occurrence_ref: cause, scope: scope) {
+        optional_present(value: cause.occurrence)
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+fn node_authored_span_optional(node: Node, index: SpanIndex) -> Optional<Locus> {
+  match node.occurrence_id {
+    OccurrenceMinted { id: id } => span_index_textual_locus_optional(index: index, id: id)
+    OccurrenceProjected { id: _, caused_by: cause } =>
+      match node_authored_projected_cause_in_index(cause: cause, index: index) {
+        Absent => optional_absent()
+        Present { value: id } => span_index_textual_locus_optional(index: index, id: id)
+      }
+    OccurrenceSynthetic => optional_absent()
+    OccurrencePending { caused_by: _ } => optional_absent()
   }
 }
 
