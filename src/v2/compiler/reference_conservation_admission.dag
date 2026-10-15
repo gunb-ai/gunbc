@@ -4,7 +4,7 @@ import v2.compiler.tokenize { prepare_lex_rules }
 import v2.compiler.normalize { import_binding_capture }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact }
-import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.namespace_alias { AliasBindingRow, CapturedImports }
 import v2.std.node { node_subtree_nodes, symbol_intern_lexeme }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.reference_conservation {
@@ -347,8 +347,8 @@ fn subject_scope_membership(subject: ReferenceConservationSubject) -> ScopeMembe
     Accepted { value: artifact, diagnostics: _ } =>
       match import_binding_capture(tree: artifact.tree, nodes: node_subtree_nodes(root: artifact.tree)) {
         Rejected { diagnostics: d } => MembershipUnreadable { diagnostics: d }
-        Accepted { value: captured, diagnostics: _ } =>
-          if parse_module_is_body_lowering_root(artifact: artifact) || imports_reach_body_lowering_root(rows: captured.bindings) {
+        Accepted { value: CapturedImports { bindings: bindings, modules: _ }, diagnostics: _ } =>
+          if parse_module_is_body_lowering_root(artifact: artifact) || imports_reach_body_lowering_root(rows: bindings) {
             InBodyLoweringScope
           } else {
             OutsideBodyLoweringScope

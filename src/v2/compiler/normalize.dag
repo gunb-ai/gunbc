@@ -399,7 +399,7 @@ fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<Capture
     cons: fn(acc, n) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: captured, diagnostics: _ } =>
+        Accepted { value: CapturedImports { bindings: bindings, modules: modules }, diagnostics: _ } =>
           match parse_production_emitted_identity_optional(node: n) {
             Absent => acc
             Present { value: id } =>
@@ -409,8 +409,8 @@ fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<Capture
                   Accepted { value: row, diagnostics: _ } =>
                     Accepted {
                       value: CapturedImports {
-                        bindings: list_snoc_item(xs: captured.bindings, item: row),
-                        modules: captured.modules
+                        bindings: list_snoc_item(xs: bindings, item: row),
+                        modules: modules
                       },
                       diagnostics: v2.std.diagnostic.None
                     }
@@ -428,10 +428,10 @@ fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<Capture
                           value: CapturedImports {
                             bindings: fold_list(
                               xs: fresh,
-                              empty: captured.bindings,
+                              empty: bindings,
                               cons: fn(a, row) { list_snoc_item(xs: a, item: row) }
                             ),
-                            modules: list_snoc_item(xs: captured.modules, item: target_module)
+                            modules: list_snoc_item(xs: modules, item: target_module)
                           },
                           diagnostics: v2.std.diagnostic.None
                         }
@@ -600,7 +600,7 @@ fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Ou
                 match import_binding_capture(tree: parse_tree, nodes: parse_nodes) {
                   Rejected { diagnostics: r } =>
                     Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
-                  Accepted { value: captured, diagnostics: _ } =>
+                  Accepted { value: CapturedImports { bindings: bindings, modules: modules }, diagnostics: _ } =>
                     match type_declaration_modifier_capture(nodes: parse_nodes) {
                       Rejected { diagnostics: r } =>
                         Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
@@ -608,8 +608,8 @@ fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Ou
                         match admit_normalized_tree(
                           root: grafted,
                           test_markers: markers,
-                          import_bindings: captured.bindings,
-                          imported_modules: captured.modules,
+                          import_bindings: bindings,
+                          imported_modules: modules,
                           type_declaration_kinds: type_declaration_kind_capture(nodes: parse_nodes),
                           type_declaration_modifiers: modifiers,
                           diagnostics: d1
@@ -763,12 +763,12 @@ fn normalize_census(parse_tree: ParseTree) -> Outcome<CensusTree> {
             match import_binding_capture(tree: parse_tree, nodes: parse_nodes) {
               Rejected { diagnostics: r } =>
                 Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
-              Accepted { value: captured, diagnostics: _ } =>
+              Accepted { value: CapturedImports { bindings: bindings, modules: modules }, diagnostics: _ } =>
                 let kinds = type_declaration_kind_capture(nodes: parse_nodes)
                 admit_census_tree(
                   root: grafted,
-                  import_bindings: captured.bindings,
-                  imported_modules: captured.modules,
+                  import_bindings: bindings,
+                  imported_modules: modules,
                   record_declarations: declared_record_names(kinds: kinds),
                   resource_declarations: declared_resource_names(kinds: kinds),
                   diagnostics: d1
