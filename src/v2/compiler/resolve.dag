@@ -4460,12 +4460,21 @@ fn type_param_value_binders(n: Node, declaring: DeclaringPosition) -> Map<Symbol
 // THE VALUE READING OF A TYPE PARAMETER, when its binder is kinded: the path its frame recorded.
 fn resolve_type_parameter_value_reading(ctx: ResolveContext, identity: Symbol) -> Optional<QualifiedName> {
   match lookup_chain(s: ctx.type_scope, name: identity) {
-    Accepted { value: BoundInFrame { canonical: canonical, kind: TypeParameterFrame { binders: binders } }, diagnostics: _ } =>
-      map_lookup(m: binders, key: canonical)
-    Accepted { value: BoundInFrame { canonical: _, kind: _ }, diagnostics: _ } => optional_absent()
-    Accepted { value: BoundAtRoot { canonical: _ }, diagnostics: _ } => optional_absent()
-    Accepted { value: ScopeUnbound, diagnostics: _ } => optional_absent()
+    Accepted { value: binding, diagnostics: _ } => type_parameter_binding_value_reading(binding: binding)
     Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn type_parameter_binding_value_reading(binding: ScopeBinding) -> Optional<QualifiedName> {
+  match binding {
+    BoundInFrame { canonical: canonical, kind: kind } =>
+      match kind {
+        TypeParameterFrame { binders: binders } => map_lookup(m: binders, key: canonical)
+        LexicalFrame { binders: _ } => optional_absent()
+        ParameterFrame { arrow_path: _ } => optional_absent()
+      }
+    BoundAtRoot { canonical: _ } => optional_absent()
+    ScopeUnbound => optional_absent()
   }
 }
 
