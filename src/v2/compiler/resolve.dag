@@ -245,8 +245,10 @@ import v2.std.node {
   ArrowBodyEdge,
   BinderDefaultEdge,
 }
-import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
+import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names }
 import v2.std.node_query {
+  declared_field_list,
+  node_is_coproduct,
   field_projection_edge_field_optional,
   field_projection_optional,
   binder_node_edge,
@@ -3978,6 +3980,8 @@ fn resolve_node_walk_entered(
       }
     TypeNode { connective: Instantiation } =>
       resolve_type_application(ctx: ctx, walked: resolve_children_homogeneous_scope(ctx: ctx, n: n))
+    TypeNode { connective: Occupancy } =>
+      resolve_occupancy(ctx: ctx, walked: resolve_children_homogeneous_scope(ctx: ctx, n: n))
     TypeNode { connective: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
     ComputationNode { behavior: _ } =>
@@ -4001,7 +4005,11 @@ fn resolve_type_application(ctx: ResolveContext, walked: ResolveNodeWalk) -> Res
   match walked {
     ResolveWalkAccepted { value: resolved, diagnostics: d, lexical: l } =>
       match resolve_type_application_refusal_optional(ctx: ctx, n: resolved) {
-        Absent => ResolveWalkAccepted { value: resolve_type_application_normalized(n: resolved), diagnostics: d, lexical: l }
+        Absent =>
+          match resolve_optional_application_contract_refusal_optional(ctx: ctx, n: resolved) {
+            Absent => ResolveWalkAccepted { value: resolve_type_application_normalized(n: resolved), diagnostics: d, lexical: l }
+            Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
+          }
         Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
       }
     ResolveWalkRefused { first: _, rest: _, observation: _ } => walked
@@ -5032,6 +5040,127 @@ fn resolve_walk_with_namespace_policy(
 // (ruling gunbc.design_ruling optional_sugar_is_declaration_bound), so it becomes the one Occupancy node the sugar
 // lowers to, at the application's own occurrence. The head is the resolved declaration path, never the leaf name: a
 // local type named Optional resolves to its own declaration and stays an Instantiation.
+// THE DECLARATION `T?` LOWERS FROM MUST BACK THE OCCUPANCY IT LOWERS TO (ruling gunbc.design_ruling
+// optional_sugar_is_declaration_bound). Acquisition proves only that SOME declaration sits at the canonical path
+// (occupancy_declaration_spelling); the contract is read here, from the declaration the index holds there, by
+// structure: exactly one type parameter, an `Absent` arm carrying no payload, and a `Present` arm whose one field
+// `value` has that parameter as its type. An absent or incompatible declaration refuses, never lowers.
+fn resolve_optional_declaration_refusal_optional(ctx: ResolveContext, at: Node) -> Optional<Diagnostic> {
+  match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: occupancy_declaration_spelling()) {
+    Absent => optional_present(value: resolve_type_application_diagnostic(reason: ^resolve_reason_optional_declaration_unavailable, at: at))
+    Present { value: decl } =>
+      if optional_declaration_backs_occupancy(ctx: ctx, decl: decl) {
+        optional_absent()
+      } else {
+        optional_present(value: resolve_type_application_diagnostic(reason: ^resolve_reason_optional_declaration_incompatible, at: at))
+      }
+  }
+}
+
+fn resolve_occupancy(ctx: ResolveContext, walked: ResolveNodeWalk) -> ResolveNodeWalk {
+  match walked {
+    ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
+      match resolve_optional_declaration_refusal_optional(ctx: ctx, at: resolved) {
+        Absent => walked
+        Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
+      }
+    ResolveWalkRefused { first: _, rest: _, observation: _ } => walked
+  }
+}
+
+// An explicit application whose head resolves to the canonical Optional is rewritten to Occupancy, so it owes the same contract.
+fn resolve_optional_application_contract_refusal_optional(ctx: ResolveContext, n: Node) -> Optional<Diagnostic> {
+  match node_positional_child_targets(node: n) {
+    Cons { head: head, tail: Cons { head: _, tail: Empty } } =>
+      match declaration_reference_path_optional(node: head) {
+        Present { value: path } =>
+          if path == occupancy_declaration_spelling() {
+            resolve_optional_declaration_refusal_optional(ctx: ctx, at: n)
+          } else {
+            optional_absent()
+          }
+        Absent => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+fn optional_declaration_backs_occupancy(ctx: ResolveContext, decl: Node) -> Bool {
+  match symbol_index_declared_binders_at(index: ctx.namespace.symbol_index, qualified_path: occupancy_declaration_spelling()) {
+    Present { value: binders } =>
+      match binder_conj_names(conj: binders) {
+        Cons { head: param, tail: Empty } =>
+          match type_decl_view(target: decl) {
+            PlainTypeDecl { member: m } => optional_member_backs_occupancy(member: m, param: param)
+            GenericTypeDecl { binders: _, member: m } => optional_member_backs_occupancy(member: m, param: param)
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn optional_member_backs_occupancy(member: Node, param: Symbol) -> Bool {
+  node_is_coproduct(node: member)
+    && (count(member.children) == 2)
+    && optional_arm_holds(member: member, arm: ^Absent, param: param)
+    && optional_arm_holds(member: member, arm: ^Present, param: param)
+}
+
+fn optional_arm_holds(member: Node, arm: Symbol, param: Symbol) -> Bool {
+  match optional_arm_target(member: member, arm: arm) {
+    Present { value: payload } =>
+      if symbol_eq(a: arm, b: ^Absent) {
+        optional_arm_is_nullary(payload: payload)
+      } else {
+        optional_arm_carries_the_parameter(payload: payload, param: param)
+      }
+    Absent => false
+  }
+}
+
+fn optional_arm_target(member: Node, arm: Symbol) -> Optional<Node> {
+  fold(member.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          Authored { name: name } => if symbol_eq(a: name, b: arm) { optional_present(value: e.target) } else { optional_absent() }
+          _ => optional_absent()
+        }
+    }
+  })
+}
+
+fn optional_arm_is_nullary(payload: Node) -> Bool {
+  match payload.kind {
+    TypeNode { connective: Conj } => count(payload.children) == 0
+    _ => false
+  }
+}
+
+fn optional_type_names_parameter(type_node: Node, param: Symbol) -> Bool {
+  match type_node.kind {
+    TypeNode { connective: Atom { identity: id } } => symbol_eq(a: id, b: param)
+    _ => false
+  }
+}
+
+fn optional_arm_carries_the_parameter(payload: Node, param: Symbol) -> Bool {
+  match payload.kind {
+    TypeNode { connective: Conj } =>
+      match declared_field_list(payload: payload) {
+        Cons { head: field, tail: Empty } =>
+          (count(payload.children) == 1)
+            && symbol_eq(a: field.name, b: ^value)
+            && optional_type_names_parameter(type_node: field.type_node, param: param)
+        _ => false
+      }
+    _ => false
+  }
+}
+
 fn resolve_type_application_normalized(n: Node) -> Node {
   match node_positional_child_targets(node: n) {
     Cons { head: head, tail: Cons { head: argument, tail: Empty } } =>
