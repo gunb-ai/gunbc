@@ -31,8 +31,10 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v2.std.collection { empty_map }
+import v2.std.namespace_alias { CapturedImportTarget }
 import v2.std.diagnostic {
   Accepted,
+  ByteRange,
   None,
   Outcome,
   Rejected,
@@ -129,7 +131,17 @@ fn fc_admitted(n: Node) -> Outcome<NormalizedTree> {
   admit_normalized_tree(import_bindings: no_import_bindings(), imported_modules: no_imported_modules(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: n, diagnostics: None)
 }
 
-fn fc_admitted_importing(n: Node, modules: FreeMonoid<QualifiedName>) -> Outcome<NormalizedTree> {
+fn fc_located_import(target: QualifiedName) -> CapturedImportTarget {
+  CapturedImportTarget {
+    target: target,
+    at: Textual {
+      file: ^fc_import_file,
+      extent: ByteRange { start: 14, end: 42 }
+    }
+  }
+}
+
+fn fc_admitted_importing(n: Node, modules: FreeMonoid<CapturedImportTarget>) -> Outcome<NormalizedTree> {
   admit_normalized_tree(import_bindings: no_import_bindings(), imported_modules: modules, type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: n, diagnostics: None)
 }
 
@@ -668,7 +680,7 @@ fn fc_unused_missing_import_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
   bind_outcome(
     o: fc_admitted_importing(
       n: fc_module_root(seg: ^fc_subject_seg),
-      modules: Cons { head: fc_qn(seg: ^fc_missing_seg), tail: Empty }
+      modules: Cons { head: fc_located_import(target: fc_qn(seg: ^fc_missing_seg)), tail: Empty }
     ),
     f: fn(a) { outcome_accepted(value: Cons { head: a, tail: Empty }) }
   )
@@ -678,7 +690,7 @@ fn fc_unused_existing_import_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
   bind_outcome(
     o: fc_admitted_importing(
       n: fc_module_root(seg: ^fc_subject_seg),
-      modules: Cons { head: fc_qn(seg: ^fc_found_seg), tail: Empty }
+      modules: Cons { head: fc_located_import(target: fc_qn(seg: ^fc_found_seg)), tail: Empty }
     ),
     f: fn(subject) {
       bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_found_seg)), f: fn(found) {
@@ -699,7 +711,18 @@ test fn unused_missing_import_refuses_under_namespace_only() -> Bool {
       }
     ) {
       Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: d } => d.head.reason == ^resolve_module_not_found
+      Rejected { diagnostics: d } =>
+        (d.head.reason == ^resolve_module_not_found)
+          && (match d.head.at {
+            Textual { file: file, extent: extent } =>
+              (symbol_lexeme(sym: file) == symbol_lexeme(sym: ^fc_import_file))
+                && (match extent {
+                  ByteRange { start: start, end: end } =>
+                    (start == 14) && (end == 42)
+                  _ => false
+                })
+            _ => false
+          })
     }
   })
 }
@@ -708,7 +731,7 @@ test fn unused_existing_import_accepts_under_namespace_only() -> Bool {
   fc_with_roots(o: fc_unused_existing_import_roots(), f: fn(roots) {
     match admit_imported_modules(
       roots: roots,
-      modules: Cons { head: fc_qn(seg: ^fc_found_seg), tail: Empty },
+      modules: Cons { head: fc_located_import(target: fc_qn(seg: ^fc_found_seg)), tail: Empty },
       state: fc_initial_admission_state(),
       subject_qn: fc_qn(seg: ^fc_subject_seg),
       index: source_root_index_empty(),

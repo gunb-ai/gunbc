@@ -14,7 +14,7 @@ import v2.compiler.normalized_tree {
   normalized_tree_roots_to_binding_sources
 }
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
-import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.body_lowering_fold { TypeDeclarationModifierChannel }
 import v2.compiler.resolve {
@@ -766,16 +766,25 @@ fn import_edge_from_binding_row(row: AliasBindingRow) -> Import {
 // merging the imported module's exports (that merge is ImportScoped / admit_import_visible_entry).
 fn admit_imported_module_existence(
   roots: FreeMonoid<NormalizedTree>,
-  import_edge: Import,
+  located: CapturedImportTarget,
   state: AdmissionState
 ) -> AdmissionState {
   match state {
     AdmissionRejected { diagnostics: d } =>
       AdmissionRejected { diagnostics: d }
     AdmissionAccepted { bindings: _, origins: _ } =>
-      match module_root_find(roots: roots, name: import_edge.target) {
+      match module_root_find(roots: roots, name: located.target) {
         Rejected { diagnostics: d } =>
-          AdmissionRejected { diagnostics: d }
+          AdmissionRejected {
+            diagnostics: NonEmptyDiagnostics {
+              head: Diagnostic {
+                reason: d.head.reason,
+                at: located.at,
+                correction: d.head.correction
+              },
+              tail: d.tail
+            }
+          }
         Accepted { value: _, diagnostics: _ } => state
       }
   }
@@ -783,7 +792,7 @@ fn admit_imported_module_existence(
 
 fn admit_imported_modules(
   roots: FreeMonoid<NormalizedTree>,
-  modules: FreeMonoid<QualifiedName>,
+  modules: FreeMonoid<CapturedImportTarget>,
   state: AdmissionState,
   subject_qn: QualifiedName,
   index: SourceRootIndex,
@@ -792,8 +801,8 @@ fn admit_imported_modules(
   fold_list(
     xs: modules,
     empty: state,
-    cons: fn(acc, target) {
-      let edge = Import { target: target, visibility: ImportVisible }
+    cons: fn(acc, located) {
+      let edge = Import { target: located.target, visibility: ImportVisible }
       match admit_import_cross_tree_gate(
         import_edge: edge,
         state: acc,
@@ -804,7 +813,7 @@ fn admit_imported_modules(
         AdmissionRejected { diagnostics: d } =>
           AdmissionRejected { diagnostics: d }
         AdmissionAccepted { bindings: _, origins: _ } =>
-          admit_imported_module_existence(roots: roots, import_edge: edge, state: acc)
+          admit_imported_module_existence(roots: roots, located: located, state: acc)
       }
     }
   )

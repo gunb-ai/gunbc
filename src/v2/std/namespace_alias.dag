@@ -1,6 +1,7 @@
 module v2.std.namespace_alias
 
 import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list }
+import v2.std.diagnostic { Locus }
 import v2.std.node { Node, Symbol }
 import v2.std.qualified_name { QualifiedName }
 
@@ -20,9 +21,17 @@ type AliasBindingRow {
 // import_binding_rows_from_decl_node), not "this module imported nothing". The graft dissolves the
 // decl, so both facts are captured together at normalize. Checking only demanded names drops an
 // unresolvable import that uses nothing, which DESIGN section 5 forbids.
+// `at` is the authored import declaration's source locus (span-index extent when parse recorded
+// one), so a missing-module refusal is located at that line rather than at a synthetic whole-file
+// name of the missing module.
+type CapturedImportTarget {
+  target: QualifiedName
+  at: Locus
+}
+
 type CapturedImports {
   bindings: FreeMonoid<AliasBindingRow>
-  modules: FreeMonoid<QualifiedName>
+  modules: FreeMonoid<CapturedImportTarget>
 }
 
 // WHAT THE SYMBOL INDEX NEEDS FROM ONE MODULE IN ORDER TO BIND IT, and the reason it is a pair

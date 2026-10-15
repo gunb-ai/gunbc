@@ -27,7 +27,7 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list }
 import v2.std.node { Edge, Node, Symbol, content_hash }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 import v2.std.member_declaration_kind { DeclaredMember }
-import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
+import v2.std.namespace_alias { AliasBindingRow, CapturedImportTarget, ModuleBindingSource }
 import v2.std.qualified_name { QualifiedName }
 
 // A NormalizedTree is the ADMITTED product of normalize: a root whose own lowering left no wrapper
@@ -59,7 +59,7 @@ type NormalizedTree sole_constructor {
   root: Node,
   test_markers: TestMarkerChannel,
   import_bindings: FreeMonoid<AliasBindingRow>,
-  imported_modules: FreeMonoid<QualifiedName>,
+  imported_modules: FreeMonoid<CapturedImportTarget>,
   type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
   type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
   member_declarations: NormalizedMemberDeclarations,
@@ -119,7 +119,7 @@ fn no_import_bindings() -> FreeMonoid<AliasBindingRow> {
   Empty
 }
 
-fn no_imported_modules() -> FreeMonoid<QualifiedName> {
+fn no_imported_modules() -> FreeMonoid<CapturedImportTarget> {
   Empty
 }
 
@@ -209,7 +209,7 @@ fn admit_normalized_tree(
   root: Node,
   test_markers: TestMarkerChannel,
   import_bindings: FreeMonoid<AliasBindingRow>,
-  imported_modules: FreeMonoid<QualifiedName>,
+  imported_modules: FreeMonoid<CapturedImportTarget>,
   type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
   type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
   diagnostics: Diagnostics
@@ -279,7 +279,7 @@ fn no_resource_declarations() -> FreeMonoid<Symbol> {
 type CensusTree sole_constructor {
   root: Node,
   import_bindings: FreeMonoid<AliasBindingRow>,
-  imported_modules: FreeMonoid<QualifiedName>,
+  imported_modules: FreeMonoid<CapturedImportTarget>,
   record_declarations: FreeMonoid<Symbol>,
   resource_declarations: FreeMonoid<Symbol>,
 }
@@ -293,7 +293,7 @@ type CensusTree sole_constructor {
 fn admit_census_tree(
   root: Node,
   import_bindings: FreeMonoid<AliasBindingRow>,
-  imported_modules: FreeMonoid<QualifiedName>,
+  imported_modules: FreeMonoid<CapturedImportTarget>,
   record_declarations: FreeMonoid<Symbol>,
   resource_declarations: FreeMonoid<Symbol>,
   diagnostics: Diagnostics
@@ -333,7 +333,7 @@ fn normalized_tree_import_bindings(tree: NormalizedTree) -> FreeMonoid<AliasBind
   tree.import_bindings
 }
 
-fn normalized_tree_imported_modules(tree: NormalizedTree) -> FreeMonoid<QualifiedName> {
+fn normalized_tree_imported_modules(tree: NormalizedTree) -> FreeMonoid<CapturedImportTarget> {
   tree.imported_modules
 }
 

@@ -345,7 +345,7 @@ fn subject_scope_membership(subject: ReferenceConservationSubject) -> ScopeMembe
   match subject.parsed {
     Rejected { diagnostics: d } => MembershipUnreadable { diagnostics: d }
     Accepted { value: artifact, diagnostics: _ } =>
-      match import_binding_capture(tree: artifact.tree, nodes: node_subtree_nodes(root: artifact.tree)) {
+      match import_binding_capture(tree: artifact.tree, nodes: node_subtree_nodes(root: artifact.tree), spans: artifact.span_index) {
         Rejected { diagnostics: d } => MembershipUnreadable { diagnostics: d }
         Accepted { value: CapturedImports { bindings: bindings, modules: _ }, diagnostics: _ } =>
           if parse_module_is_body_lowering_root(artifact: artifact) || imports_reach_body_lowering_root(rows: bindings) {
