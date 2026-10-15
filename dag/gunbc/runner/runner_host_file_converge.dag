@@ -478,23 +478,27 @@ type RunnerHostFileStanding
 // directory, ELOOP, ENOTDIR and EIO all answer 1 with an empty stderr. "The file is not there" and
 // "I could not look" arrived as one value, and they license opposite actions: the absent arm walks
 // into the write-admission and comparison path for a file this module exists to keep root-owned and
-// non-injectable. `extdeps.tools.stat` `stat.File.FileType` states that defect as the whole reason
-// it exists and reports the GNU file-type word on success, saying only that the metadata read
-// FAILED otherwise -- so the read has two honest outcomes here and absence is not one of them.
+// non-injectable. The read has two honest outcomes and absence is not one of them.
+//
+// WHAT THE READ ESTABLISHES IS THAT THE PATH'S METADATA WAS REPORTED, AND NOTHING ABOUT ITS KIND
+// (review 80352). The probe is `extdeps.tools.stat` `stat_default_report_command` because a `-c %F`
+// format cannot cross the fleet SSH edge, and the default report is human text: carrying any of it as
+// a "file type" would give one field two meanings. No consumer here needs the kind -- the comparison
+// and root-only reads that follow decide what the path is -- so the arm carries no payload.
 type RunnerHostFileMetadataReading
-  = HostFileMetadataRead { file_type: String }
+  = HostFileMetadataReported
   | HostFileMetadataUnread { cause: String }
 
-// A COMPLETED READ THAT PRINTED NOTHING IS NOT A TYPE. Exit success is a fact about the CALL, never
-// about whether the output carrying the answer arrived, so an empty `%F` is unread rather than a
-// nameless kind -- the same separation gunbc.fabric.fabric_cell_acquire draws over this operation.
+// A COMPLETED READ THAT PRINTED NOTHING IS NOT A REPORT. Exit success is a fact about the CALL, never
+// about whether the output carrying the answer arrived, so an empty report is unread -- the same
+// separation gunbc.fabric.fabric_cell_acquire draws over this operation.
 fn classify_host_file_metadata(exit_code: Int, stdout: String, stderr: String) -> RunnerHostFileMetadataReading {
   if exit_code == 0 {
-    let w = trim(s: match split(s: stdout, delimiter: "\n").first() { Absent => "" Present { value: l } => l })
+    let w = trim(s: stdout)
     if w == "" {
-      HostFileMetadataUnread { cause: "the metadata read exited successfully and printed no file type, so the path kind is unanswered" }
+      HostFileMetadataUnread { cause: "the metadata read exited successfully and printed no report, so the path is unanswered" }
     } else {
-      HostFileMetadataRead { file_type: w }
+      HostFileMetadataReported
     }
   } else {
     HostFileMetadataUnread { cause: join(["stat could not read the path's metadata; exit=", to_string(exit_code), " ", trim(s: stderr)], "") }
@@ -507,13 +511,13 @@ fn classify_host_file_metadata(exit_code: Int, stdout: String, stderr: String) -
 // gunbc.live_deploy.member_observe `entry_presence`, the landed authority for that rule over a
 // transport, consumed rather than restated (DESIGN section 3).
 type RunnerHostFilePathStanding
-  = HostFilePathPresent { file_type: String }
+  = HostFilePathPresent
   | HostFilePathAbsent
   | HostFilePathUnreadable { cause: String }
 
 fn classify_host_file_path(reading: RunnerHostFileMetadataReading, parent: EntryPresence) -> RunnerHostFilePathStanding {
   match reading {
-    HostFileMetadataRead { file_type: t } => HostFilePathPresent { file_type: t }
+    HostFileMetadataReported => HostFilePathPresent
     HostFileMetadataUnread { cause: c } =>
       match parent {
         EntryAbsent => HostFilePathAbsent
@@ -531,7 +535,7 @@ fn classify_host_file_path(reading: RunnerHostFileMetadataReading, parent: Entry
 // sent both to HostFileAbsent and HostFileAbsent plans a write.
 fn runner_host_file_settled_standing(st: RunnerHostFilePathStanding) -> RunnerHostFileStanding? {
   match st {
-    HostFilePathPresent { file_type: _ } => none
+    HostFilePathPresent => none
     HostFilePathAbsent => Present { value: HostFileAbsent }
     HostFilePathUnreadable { cause: c } => Present { value: HostFileUnobservable { reason: c } }
   }
@@ -541,7 +545,7 @@ fn runner_host_file_settled_standing(st: RunnerHostFilePathStanding) -> RunnerHo
 // portability alphabet, so every file leg and every residue leg reported "NOT attempted" on every
 // host (observe runs 38350252200, 38662663858, 38662666227, 38662668957) while a witness pinned the
 // refused words as correct. The default report needs no format word; only success and the first line
-// are read, which is all classify_host_file_metadata ever used.
+// is read, and the reading carries no kind (RunnerHostFileMetadataReading).
 fn runner_host_file_metadata_probe_argv(path: String) -> List<String> {
   argv_words(command: stat_default_report_command(path: path))
 }
@@ -1033,7 +1037,7 @@ fn observe_runner_host_file_path(
 ) -> RunnerHostFilePathStanding
 {
   match reading {
-    HostFileMetadataRead { file_type: t } => HostFilePathPresent { file_type: t }
+    HostFileMetadataReported => HostFilePathPresent
     HostFileMetadataUnread { cause: _ } =>
       classify_host_file_path(
         reading: reading,
@@ -1313,17 +1317,17 @@ fn classify_retired_residue(load_state_exit: Int, load_state: String, readings: 
   let paths = map(readings, r => r.standing)
   let unreadable = filter(paths, p => match p {
     HostFilePathUnreadable { cause: _ } => true
-    HostFilePathPresent { file_type: _ } => false
+    HostFilePathPresent => false
     HostFilePathAbsent => false
   })
   if load_state_exit != 0 {
     ResidueUnobservable { cause: join(["systemctl show LoadState exit=", to_string(load_state_exit)], "") }
   } else if length(unreadable) > 0 {
-    ResidueUnobservable { cause: join(map(unreadable, p => match p { HostFilePathUnreadable { cause: c } => c HostFilePathPresent { file_type: _ } => "" HostFilePathAbsent => "" }), "; ") }
+    ResidueUnobservable { cause: join(map(unreadable, p => match p { HostFilePathUnreadable { cause: c } => c HostFilePathPresent => "" HostFilePathAbsent => "" }), "; ") }
   } else {
     let unit_known = trim(s: load_state) != (systemd_unit_load_state_not_found_wire as String)
     let present = flat_map(readings, r => match r.standing {
-      HostFilePathPresent { file_type: _ } => [r.path]
+      HostFilePathPresent => [r.path]
       HostFilePathAbsent => []
       HostFilePathUnreadable { cause: _ } => []
     })

@@ -100,7 +100,7 @@ import gunbc.runner.runner_host_file_converge {
   HostFileAbsent,
   HostFileUnobservable,
   RunnerHostFileMetadataReading,
-  HostFileMetadataRead,
+  HostFileMetadataReported,
   HostFileMetadataUnread,
   classify_host_file_metadata,
   RunnerHostFilePathStanding,
@@ -384,15 +384,15 @@ fn standing_is_unobservable(standing: RunnerHostFileStanding) -> Bool {
 }
 
 fn path_is_present(st: RunnerHostFilePathStanding) -> Bool {
-  match st { HostFilePathPresent { file_type: _ } => true HostFilePathAbsent => false HostFilePathUnreadable { cause: _ } => false }
+  match st { HostFilePathPresent => true HostFilePathAbsent => false HostFilePathUnreadable { cause: _ } => false }
 }
 
 fn path_is_absent(st: RunnerHostFilePathStanding) -> Bool {
-  match st { HostFilePathAbsent => true HostFilePathPresent { file_type: _ } => false HostFilePathUnreadable { cause: _ } => false }
+  match st { HostFilePathAbsent => true HostFilePathPresent => false HostFilePathUnreadable { cause: _ } => false }
 }
 
 fn path_is_unreadable(st: RunnerHostFilePathStanding) -> Bool {
-  match st { HostFilePathUnreadable { cause: _ } => true HostFilePathPresent { file_type: _ } => false HostFilePathAbsent => false }
+  match st { HostFilePathUnreadable { cause: _ } => true HostFilePathPresent => false HostFilePathAbsent => false }
 }
 
 // A metadata read that FAILED is the outcome `test -e` could not distinguish from an absence: both
@@ -443,7 +443,7 @@ test fn an_unread_path_reaches_unobservable_and_never_absent() -> Bool {
   settled_is_unobservable(st: classify_host_file_path(reading: unread, parent: EntryPresent))
     && settled_is_absent(st: classify_host_file_path(reading: unread, parent: EntryAbsent))
     && settles_nothing(st: classify_host_file_path(
-         reading: HostFileMetadataRead { file_type: "regular file" },
+         reading: HostFileMetadataReported,
          parent: EntryPresent,
        ))
 }
@@ -451,7 +451,7 @@ test fn an_unread_path_reaches_unobservable_and_never_absent() -> Bool {
 // The read decides presence; the parent decides nothing when the read answered. An indeterminate
 // parent beside a successful read is still present, so the join cannot turn a read file unreadable.
 test fn a_metadata_read_that_answered_is_present_whatever_the_parent_said() -> Bool {
-  let read = HostFileMetadataRead { file_type: "regular file" }
+  let read = HostFileMetadataReported
   path_is_present(st: classify_host_file_path(reading: read, parent: EntryPresent))
     && path_is_present(st: classify_host_file_path(reading: read, parent: EntryAbsent))
     && path_is_present(st: classify_host_file_path(
@@ -464,17 +464,13 @@ test fn a_metadata_read_that_answered_is_present_whatever_the_parent_said() -> B
 // question, so it is unread -- and unread beside a parent that holds the entry is unreadable, never
 // a nameless kind and never an absence.
 fn reading_is_unread(r: RunnerHostFileMetadataReading) -> Bool {
-  match r { HostFileMetadataUnread { cause: _ } => true HostFileMetadataRead { file_type: _ } => false }
+  match r { HostFileMetadataUnread { cause: _ } => true HostFileMetadataReported => false }
 }
 
 test fn a_stat_that_exited_zero_and_printed_nothing_is_unread() -> Bool {
   reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "  \n", stderr: ""))
     && reading_is_unread(r: classify_host_file_metadata(exit_code: 1, stdout: "", stderr: ""))
-    && !reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "regular file\n", stderr: ""))
-    && match classify_host_file_metadata(exit_code: 0, stdout: " directory \n", stderr: "") {
-         HostFileMetadataRead { file_type: t } => t == "directory"
-         HostFileMetadataUnread { cause: _ } => false
-       }
+    && !reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "  File: /etc/default/ctrl-jobserver\n  Size: 12\n", stderr: ""))
 }
 
 // INHABITANCE (DESIGN section 3): the words observe_runner_host_file_content actually sends are the
@@ -1209,7 +1205,7 @@ test fn a_read_uid_delivers_the_fragment_with_no_makeflags() -> Bool {
 // ── The retired ctrl-jobserver residue ─────────────────────────────────────────────────────────────
 
 fn residue_reading(path: String, present: Bool) -> ResiduePathReading {
-  ResiduePathReading { path: path, standing: if present { HostFilePathPresent { file_type: "regular file" } } else { HostFilePathAbsent } }
+  ResiduePathReading { path: path, standing: if present { HostFilePathPresent } else { HostFilePathAbsent } }
 }
 
 fn is_residue_absent(o: RetiredResidueObservation) -> Bool {
