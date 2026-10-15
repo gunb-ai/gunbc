@@ -67,7 +67,7 @@ import extdeps.systemd.unit_file { Environment }
 // reads the environment, the CAS, the readiness store and the locus -- and its inhabitance is the
 // srv1 receipt in the PR that landed it; what these claims discriminate are the decisions the
 // composition consumes: the unit's shape, the per-slot envelope and its width cost, the shakedown
-// slot's guest shape against the fleet row's, the reservation-authorized planner arm's refusals,
+// slot's guest shape against the fleet row's, the cell-grant planner arm's refusals,
 // and the slot selection.
 
 // --- the unit execs the controller as MainPID ---
@@ -202,7 +202,7 @@ test fn the_shakedown_slots_shape_resolves() -> Bool {
   }
 }
 
-// --- the reservation-authorized planner arm ---
+// --- the cell-grant planner arm ---
 
 fn attempt_on(slot: RunnerSlotIdentity) -> List<MicroVmAttempt> {
   match microvm_attempt(slot: slot, attempt_id: "w-1") {

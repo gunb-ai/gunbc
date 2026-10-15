@@ -1,17 +1,20 @@
 module gunbc.fabric.fabric_cell_grant
 
-import std.types { NonEmptyStr, String, Timestamp, List }
+import std.types { NonEmptyStr, String, Timestamp, List, Int }
 import std.decl_ref { decl_ref }
 import std.measure { Measure }
 import std.nat { Nat }
-import std.content_hash { content_hash_of_value }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact }
+import gunbc.durable_cas_file_store { cas_generation_of_digits }
 import std.durable_compare_and_set {
-  CasGeneration, CasStoreFailure, CasSlotObservationRefused, CasUnreadableSlot,
+  CasGeneration, CasStoreFailure, CasSlotObservationRefused,
   CasSuccessorGeneration, CasSuccessorExhausted, cas_generation_count,
 }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef,
-  HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+  HoldReleaseSlotAbsent, HoldReleaseAlreadyFree, HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
+  HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
   HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable,
 }
 import gunbc.workspace_slot_mutation {
@@ -24,14 +27,16 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquirePlanned, FileHoldAcquireNotEligible,
   file_hold_acquire_prepare, file_hold_acquire_commit,
   file_hold_acquire_plan_landing, file_hold_acquire_plan_for_owner,
-  observe_file_hold,
+  FileHoldReleasePlanned, FileHoldReleaseNotEligible, FileHoldReleased, FileHoldReleaseLost,
+  FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
+  file_hold_release_assess, file_hold_release_commit,
 }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, OfferKey, ExecutionAttemptKey, GrantKey }
 import product.fabric.work { Work }
 import product.fabric.selection { SelectedOffer }
 import product.fabric.budget { MoneyAccount, MoneyReservationRequest }
 import product.fabric.execution {
-  Attempt, ExecutionGrant, ReservationRef, LeaseKey, LeaseIdentity, FabricGrantEvidence,
+  Receipt, Attempt, ExecutionGrant, ReservationRef, LeaseKey, LeaseIdentity, FabricGrantEvidence,
 }
 import product.fabric.grant_issue { GrantIssue, GrantCommitted, GrantRefused, GrantIssueRefusal, issue_grant, derive_grant_key }
 import extdeps.accounting.encumbrance { EncumbranceLedger }
@@ -80,12 +85,10 @@ import extdeps.accounting.budget { Appropriation }
 //   issue_grant; a crash after the write loses the advanced account. The hold is the durable
 //   authority for WHO may execute; whether the money ledger is durable is product.fabric.budget's
 //   question, not this transition's.
-// - RELEASE AND SANITATION are FCI-4. A cell held by a grant key is not released by
-//   fabric_control_plane end_cell_hold, whose owner is the money reservation reference; the release
-//   path for a granted cell lands with FCI-4's receipt admission.
-// - The re-read below is the agreement half FCI-3's executor needs; the executor that calls it in
-//   a later process, before starting anything, is FCI-3 and is the named consumer
-//   (gunbc.runner.runner_attempt_launch reservation_authorization_grant_producer_frontier).
+// - RELEASE AND SANITATION are FCI-4: settle_cell_grant below. A cell held by a grant key is not
+//   released by fabric_control_plane end_cell_hold, whose owner is the money reservation reference.
+// - The re-read is gunbc.fabric.fabric_required_build_cell judge_cell_holder, over cell_grant_owner_at
+//   below; the slot controller calls it in a later process before planning anything.
 
 type CellGrant<Q, S>
   = CellGranted { grant: ExecutionGrant<NonEmptyStr>, account: MoneyAccount, ledger: EncumbranceLedger<Q, S> }
@@ -205,72 +208,21 @@ fn grant_selected_cell_under_exclusion<Q, S>(
   }
 }
 
-// THE RE-READ: IS THIS GRANT THE CELL'S CURRENT HOLD? Only CellGrantLive authorizes. Every other
-// arm is a reason to start nothing, and they are separate because their remedies differ: a
-// released or superseded grant is over and is not retried; an absent slot means the grant was
-// never committed here at all (a grant authored outside this transition); an unreadable store says
-// nothing about the grant.
-type CellGrantStanding
-  = CellGrantLive
-  | CellGrantReleased { generation: CasGeneration, released_by: DurableHoldReleaseRef }
-  | CellGrantSuperseded { holder: DurableHoldOwnerRef, generation: CasGeneration }
-  | CellGrantNeverCommitted
-  | CellGrantUnreadable { generation: CasGeneration, detail: NonEmptyStr }
-  | CellGrantStoreUnobserved { cause: CasUnreadableSlot }
-
-fn cell_grant_standing(root: NonEmptyStr, grant: ExecutionGrant<NonEmptyStr>) -> CellGrantStanding {
-  match observe_file_hold(root: root, key: (grant.context.lease.lease_key as String) as NonEmptyStr) {
-    HoldSlotAbsent => CellGrantNeverCommitted
-    HoldSlotFree { generation: g, released_by: r } => CellGrantReleased { generation: g, released_by: r }
-    HoldSlotHeld { generation: g, owner: o } =>
-      if (o as String) == (cell_grant_owner(grant: grant) as String) && cas_generation_count(g: g) == grant.context.lease.generation {
-        CellGrantLive
-      } else {
-        CellGrantSuperseded { holder: o, generation: g }
-      }
-    HoldSlotUndecodable { generation: g, detail: d } => CellGrantUnreadable { generation: g, detail: d }
-    HoldObservationUnavailable { cause: c } => CellGrantStoreUnobserved { cause: c }
-  }
-}
-
-// FCI-3'S RE-READ, FROM COORDINATES A LATER PROCESS ALREADY HOLDS. The executor that starts a
-// guest runs in another process than the issuer and does not receive the grant record; it holds
-// the Work, the attempt, the selected offer and the cell. The hold's owner is the grant key, a
-// content digest over exactly those coordinates and the lease (product.fabric.grant_issue
-// derive_grant_key), so the executor re-derives the key at the generation the slot reports and
-// compares. Nothing the executor is handed can make a mismatch read as live:
-// - grant removed (slot free or absent) -> CellGrantReadReleased / CellGrantReadAbsent;
-// - grant corrupt or for another attempt, work or offer (owner is not this derivation) ->
-//   CellGrantReadForeign;
-// - grant expired (released and re-granted) -> CellGrantReadForeign at the later generation.
-// Only CellGrantReadLive authorizes a target process, and it carries the generation the guest is
-// bound to.
-type CellGrantReread
-  = CellGrantReadLive { generation: CasGeneration, grant: GrantKey }
-  | CellGrantReadAbsent
-  | CellGrantReadReleased { generation: CasGeneration, released_by: DurableHoldReleaseRef }
-  | CellGrantReadForeign { holder: DurableHoldOwnerRef, generation: CasGeneration }
-  | CellGrantReadUnreadable { generation: CasGeneration, detail: NonEmptyStr }
-  | CellGrantReadStoreUnobserved { cause: CasUnreadableSlot }
-
-fn reread_cell_grant(
-  root: NonEmptyStr,
-  slot_key: NonEmptyStr,
+// THE OWNER A GRANT-HELD CELL CARRIES, AS A FUNCTION OF COORDINATES A LATER PROCESS ALREADY HOLDS.
+// The hold owner is the grant key: a content digest over the Work, the attempt, the offer and the
+// lease (product.fabric.grant_issue derive_grant_key), whose lease is the slot at the generation it
+// was granted. So the executor, which does not receive the grant record, re-derives the owner at
+// the generation the slot reports and compares. This is the ONE derivation: grant issuance writes
+// it (cell_grant_owner over the issued grant, whose key derive_grant_key produced from the same
+// coordinates) and gunbc.fabric.fabric_required_build_cell judge_cell_holder reads it.
+fn cell_grant_owner_at(
   work: FabricIdentity<NonEmptyStr, WorkKey>,
   attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
   offer: FabricIdentity<NonEmptyStr, OfferKey>,
-) -> CellGrantReread {
-  match observe_file_hold(root: root, key: slot_key) {
-    HoldSlotAbsent => CellGrantReadAbsent
-    HoldSlotFree { generation: g, released_by: r } => CellGrantReadReleased { generation: g, released_by: r }
-    HoldSlotHeld { generation: g, owner: o } => {
-      let key = derive_grant_key(work: work, attempt: attempt, offer: offer, lease: cell_grant_lease(slot_key: slot_key, generation: g))
-      if (o as String) == (key as String) { CellGrantReadLive { generation: g, grant: key } }
-      else { CellGrantReadForeign { holder: o, generation: g } }
-    }
-    HoldSlotUndecodable { generation: g, detail: d } => CellGrantReadUnreadable { generation: g, detail: d }
-    HoldObservationUnavailable { cause: c } => CellGrantReadStoreUnobserved { cause: c }
-  }
+  slot_key: NonEmptyStr,
+  generation: CasGeneration,
+) -> DurableHoldOwnerRef {
+  (derive_grant_key(work: work, attempt: attempt, offer: offer, lease: cell_grant_lease(slot_key: slot_key, generation: generation)) as String) as DurableHoldOwnerRef
 }
 
 // THE BROKER THAT ISSUES. fabric_control_plane broker_reserve_for_demand ranks, then reserves under
@@ -321,5 +273,99 @@ fn broker_grant_for_demand(
         evidence: evidence,
         issued_at: issued_at,
       ) }
+  }
+}
+
+// FCI-4 OVER A CELL: ONE RECEIPT ADMITTED AT MOST ONCE, AND THE CELL RELEASED ONLY AFTER SANITATION.
+//
+// The same move as issuance, run the other way. The cell's hold is Held(grant key) at the grant's
+// generation; admission is ONE compare-and-set that moves it to Free, and the release reference
+// written into that same write names the receipt and the sanitized cell. So:
+// - ADMITTED AT MOST ONCE, BY CONSTRUCTION. A second delivery of the same receipt finds the slot
+//   already free under exactly its own reference at the next generation and reads
+//   CellGrantReceiptAlreadyAdmitted: nothing is written and no second standing exists. The release
+//   reference IS the deduplication key, and it lives in the store, not in a caller's list.
+// - A FOREIGN RECEIPT WRITES NOTHING. A receipt is this grant's only when its own attempt and lease
+//   re-derive the hold's owner (cell_grant_owner_at). Another attempt's, another cell's or another
+//   generation's receipt does not, and the slot is untouched.
+// - NO RELEASE BEFORE SANITATION. The cell's readiness (product.fabric.sanitation, read back from
+//   the teardown) must be CellReady for this cell before the write is planned; unproven or refuted
+//   sanitation refuses and leaves the cell HELD, which is the quarantine -- a held cell is not
+//   supply, so nothing re-grants it. The quarantine is a visible, countable standing, not only a
+//   hold that never frees: the teardown that produced the readiness already recorded CellQuarantined
+//   in the cell readiness store at the attempt's generation (gunbc.runner.runner_microvm_lifecycle
+//   TeardownSettlement), and the settlement returned here names the unproven facts.
+//
+// The Work and the offer are the admitter's, as in the controller's re-read: the receipt carries the
+// attempt and the lease, the grant key is derived over Work, attempt, offer and lease, and a receipt
+// for another Work or offer re-derives another owner and is foreign.
+type CellGrantSettlement
+  = CellGrantReceiptAdmitted { slot_key: NonEmptyStr, released_at: CasGeneration, released_by: DurableHoldReleaseRef }
+  | CellGrantReceiptAlreadyAdmitted { slot_key: NonEmptyStr, released_at: CasGeneration }
+  | CellGrantReceiptForeign { slot_key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration }
+  | CellGrantReceiptLeaseNotThisCell { slot_key: NonEmptyStr }
+  | CellGrantReceiptGenerationInvalid { slot_key: NonEmptyStr, generation: Int }
+  | CellGrantSanitationUnproven { cell: CellId, unproven: List<UnprovenFact> }
+  | CellGrantSanitationForAnotherCell { slot_key: NonEmptyStr, sanitized: CellId }
+  | CellGrantReleasedUnderAnotherReceipt { slot_key: NonEmptyStr, generation: CasGeneration, released_by: DurableHoldReleaseRef }
+  | CellGrantNeverCommitted { slot_key: NonEmptyStr }
+  | CellGrantSettlementLost { slot_key: NonEmptyStr }
+  | CellGrantSettlementStoreUnavailable { slot_key: NonEmptyStr, detail: NonEmptyStr }
+
+fn cell_grant_release_ref(receipt: Receipt<NonEmptyStr>, cell: CellId) -> DurableHoldReleaseRef {
+  (join(["receipt|", receipt.id.principal as String, "/", receipt.id.key as String, "|sanitized|", cell as String], "")) as DurableHoldReleaseRef
+}
+
+fn settle_cell_grant(
+  root: NonEmptyStr,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+  receipt: Receipt<NonEmptyStr>,
+  readiness: CellReadiness,
+) -> CellGrantSettlement {
+  let slot_key = (receipt.lease.lease_key as String) as NonEmptyStr
+  // THE RECEIPT'S GENERATION IS CALLER DATA, SO IT CROSSES INTO A STORE GENERATION THROUGH THE
+  // DECLARED CHECKED ROUTE (gunbc.durable_cas_file_store cas_generation_of_digits: decimal, at least 1,
+  // within Int) and a value that route refuses is its own typed refusal, not an implicit coercion.
+  match cas_generation_of_digits(s: to_string(receipt.lease.generation)) {
+  Absent => CellGrantReceiptGenerationInvalid { slot_key: slot_key, generation: receipt.lease.generation }
+  Present { value: generation } => {
+  let expected_lease = cell_grant_lease(slot_key: slot_key, generation: generation)
+  if serialize_content_hash(hash: receipt.lease.resource_fingerprint) != serialize_content_hash(hash: expected_lease.resource_fingerprint) {
+    CellGrantReceiptLeaseNotThisCell { slot_key: slot_key }
+  } else {
+    match readiness {
+      CellQuarantined { cell: c, unproven: u } => CellGrantSanitationUnproven { cell: c, unproven: u }
+      CellReady { cell: c } =>
+        if (c as String) != (slot_key as String) {
+          CellGrantSanitationForAnotherCell { slot_key: slot_key, sanitized: c }
+        } else {
+          let owner = cell_grant_owner_at(work: work, attempt: receipt.attempt, offer: offer, slot_key: slot_key, generation: generation)
+          let release_ref = cell_grant_release_ref(receipt: receipt, cell: c)
+          match file_hold_release_assess(root: root, slot_key: slot_key, owner: owner, acquired_generation: generation, released_by: release_ref) {
+            FileHoldReleasePlanned { plan: p } => match file_hold_release_commit(plan: p) {
+              FileHoldReleased { slot_key: _, generation: g } => CellGrantReceiptAdmitted { slot_key: slot_key, released_at: g, released_by: release_ref }
+              FileHoldReleaseLost { slot_key: _ } => CellGrantSettlementLost { slot_key: slot_key }
+              FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => CellGrantSettlementStoreUnavailable { slot_key: slot_key, detail: "the release write was refused by the store" }
+              FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => CellGrantSettlementStoreUnavailable { slot_key: slot_key, detail: "the lease key is not slot-addressable" }
+            }
+            FileHoldReleaseNotEligible { slot_key: _, refusal: r } => match r {
+              HoldReleaseSlotAbsent => CellGrantNeverCommitted { slot_key: slot_key }
+              HoldReleaseAlreadyFree { generation: g, released_by: by } =>
+                if (by as String) == (release_ref as String) && cas_generation_count(g: g) == cas_generation_count(g: generation) + 1 {
+                  CellGrantReceiptAlreadyAdmitted { slot_key: slot_key, released_at: g }
+                } else {
+                  CellGrantReleasedUnderAnotherReceipt { slot_key: slot_key, generation: g, released_by: by }
+                }
+              HoldReleaseHeldByAnotherOwner { generation: g, holder: h } => CellGrantReceiptForeign { slot_key: slot_key, holder: h, generation: g }
+              HoldReleaseAgainstAnotherGeneration { acquired: _, observed: g } => CellGrantReceiptForeign { slot_key: slot_key, holder: owner, generation: g }
+              HoldReleaseSlotUndecodable { generation: _, detail: d } => CellGrantSettlementStoreUnavailable { slot_key: slot_key, detail: d }
+              HoldReleaseObservationUnavailable { cause: _ } => CellGrantSettlementStoreUnavailable { slot_key: slot_key, detail: "the cell hold could not be observed" }
+            }
+          }
+        }
+    }
+  }
+}
   }
 }

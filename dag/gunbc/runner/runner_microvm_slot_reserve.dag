@@ -53,6 +53,11 @@ import gunbc.fabric.fabric_cell_grant {
   CellGrantStoreUnavailable, CellGrantSlotUndecodable, CellGrantGenerationsExhausted, CellGrantAttemptRefused,
 }
 import product.fabric.execution { FabricGrantEvidence }
+import product.fabric.grant_issue {
+  GrantIssueRefusal, AttemptNamesAnotherWork, AttemptPrincipalIsNotTheWorkPrincipal, OfferNotFungibleForWork,
+  OfferCapacityExhausted, GrantAlreadyIssuedForAttempt, MoneyReservationRefused, ResourceReservationRefused,
+  PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand,
+}
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_reserve_unit_name, microvm_slot_reserve_receipt_prefix, microvm_slot_reserve_wait_bound,
@@ -329,6 +334,24 @@ fn shakedown_broker_subject_text(slot: RunnerSlotIdentity) -> String {
   ], "")
 }
 
+// THE ISSUANCE REFUSAL IS NAMED IN THE RECEIPT, with the identities it disagreed about, so a reader
+// of a failed reserve learns which wall refused rather than only that one did.
+fn grant_issue_refusal_text(r: GrantIssueRefusal<NonEmptyStr, Count, One>) -> String {
+  match r {
+    AttemptNamesAnotherWork { attempt_work: a, subject_work: w } => join(["attempt-names-another-work attempt_work=", a.key as String, " subject_work=", w.key as String], "")
+    AttemptPrincipalIsNotTheWorkPrincipal { attempt: a, subject_work: w } => join(["attempt-principal-is-not-the-work-principal attempt=", a.principal as String, " work=", w.principal as String], "")
+    OfferNotFungibleForWork { fungibility: _ } => "offer-not-fungible-for-work"
+    OfferCapacityExhausted { offer: o, quantity_bound: b, grants_outstanding: n } => join(["offer-capacity-exhausted offer=", o.key as String, " bound=", to_string(b), " outstanding=", to_string(n)], "")
+    GrantAlreadyIssuedForAttempt { existing: e } => join(["grant-already-issued-for-attempt existing=", e.key as String], "")
+    MoneyReservationRefused { refusal: m } => join(["money-reservation-refused ", money_refusal_wire(refusal: m) as String], "")
+    ResourceReservationRefused { refusal: _ } => "resource-reservation-refused"
+    PermitNamesAnotherOffer { offer: o, permit_names: n } => join(["permit-names-another-offer offer=", o.key as String, " permit_names=", n.key as String], "")
+    PermitNamesAnotherRoute { offer: o } => join(["permit-names-another-route offer=", o.key as String], "")
+    PermitNamesAnotherWork { permit_work: p, subject_work: w } => join(["permit-names-another-work permit_work=", p.key as String, " subject_work=", w.key as String], "")
+    PermitNamesAnotherDemand { permit_demand: p, subject_demand: d } => join(["permit-names-another-demand permit_demand=", p.key as String, " subject_demand=", d.key as String], "")
+  }
+}
+
 fn cell_grant_text(g: CellGrant<Count, One>) -> String {
   match g {
     CellGranted { grant: grant, account: _, ledger: _ } =>
@@ -337,8 +360,8 @@ fn cell_grant_text(g: CellGrant<Count, One>) -> String {
     CellAlreadyGranted { slot_key: k, holder: h, generation: n } =>
       join(["reservation=already-held slot=", k as String, " holder=", h as String, " generation=", to_string(cas_generation_count(g: n)),
         " -- the cell is released by its holder, not by a second grant"], "")
-    CellGrantIssueRefused { slot_key: k, refusal: _ } =>
-      join(["reservation=issue-refused slot=", k as String], "")
+    CellGrantIssueRefused { slot_key: k, refusal: r } =>
+      join(["reservation=issue-refused slot=", k as String, " cause=", grant_issue_refusal_text(r: r)], "")
     CellGrantLost { slot_key: k } => join(["reservation=lost slot=", k as String], "")
     CellGrantStoreUnavailable { slot_key: k, cause: c } =>
       join(["reservation=store-unavailable slot=", k as String, " cause=", cas_store_failure_wire(cause: c) as String], "")

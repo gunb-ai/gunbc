@@ -79,6 +79,11 @@ type SystemdUnitProperty
   | NextElapseUSecMonotonic
   | AccuracyUSec
   | TimersMonotonic
+  // When the unit's main process started and exited, in CLOCK_MONOTONIC microseconds (systemd.exec(5)
+  // / org.freedesktop.systemd1.Service ExecMainStartTimestampMonotonic, ExecMainExitTimestampMonotonic).
+  // Zero when the event has not happened.
+  | ExecMainStartTimestampMonotonic
+  | ExecMainExitTimestampMonotonic
   | NeedDaemonReload
   | IdProperty
   | KillModeProperty
@@ -158,6 +163,8 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     NextElapseUSecMonotonic => "NextElapseUSecMonotonic" as NonEmptyStr
     AccuracyUSec => "AccuracyUSec" as NonEmptyStr
     TimersMonotonic => "TimersMonotonic" as NonEmptyStr
+    ExecMainStartTimestampMonotonic => "ExecMainStartTimestampMonotonic" as NonEmptyStr
+    ExecMainExitTimestampMonotonic => "ExecMainExitTimestampMonotonic" as NonEmptyStr
     NeedDaemonReload => "NeedDaemonReload" as NonEmptyStr
     IdProperty => "Id" as NonEmptyStr
     KillModeProperty => "KillMode" as NonEmptyStr
