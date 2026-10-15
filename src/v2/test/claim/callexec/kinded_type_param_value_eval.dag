@@ -418,3 +418,12 @@ test fn kpr9_n26_type_parameter_shadows_visible_name() -> Bool { kpt9_reason(src
 test fn kpr9_n27_unbound_symbol() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_unbound_symbol } }
 test fn kpr9_n28_where_predicate_unbound() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_where_predicate_unbound } }
 test fn kpr9_qualified_accepts() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Resolution.Pointer>\n")) == Absent }
+fn kpg_src_forwarded() -> String {
+  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn forward<m: Resolution>(y: Box<m>) -> Int {\n  width_of(x: y)\n}\n"
+}
+test fn kpg_forwarded_binder_is_a_non_literal_instance() -> Bool {
+  match kpg_instance_of(src: kpg_src_forwarded(), name: ^width_of, binder: ^bits) {
+    Present { value: i } => !v2_eval_is_literal_shaped_node(node: i)
+    Absent => false
+  }
+}
