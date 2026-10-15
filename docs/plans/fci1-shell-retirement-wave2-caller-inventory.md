@@ -237,12 +237,91 @@ removed together. The only consumers that would notice a stray registration are 
 `gunbc.drift_watch_workflow` / `gunbc.heal_workflow` lanes (`gunbc.tier_o_artifact_emit`
 `tier_o_artifacts`), which do not block a merge.
 
-The in-gate conservation claim itself checks only the *emit dag's emitted content* (the expected
-`.env` text) and the conservation of the witness dag — **not** the shell scripts. The only in-gate
-references to the FCI-1 set are the generated-artifact registration and the emit dag, which are the
-context.env's own provenance; the rung-drop prose row (`fabric_evidence_gating`) is documentary only.
+Nothing on the required path reads any member of the FCI-1 set: the conservation claim's subject is
+the *witness dag* (not the `.env`, not the emit dag's emitted content) and it is not admitted to the
+required floor; the emit dag's expected content is compared only by the drift phase that v2-bootstrap
+does not execute; and the required job's steps never touch `tools/` artifacts. The only corpus
+references to the FCI-1 set are the generated-artifact registration and the emit dag — the `.env`'s
+own provenance — plus the documentary rung-drop prose row (`fabric_evidence_gating`).
 
-## 5. Open / needs confirmation
+## 5. Deletion set vs coupled surface (wave-1 input)
+
+### 5.1 Dead with the shells (no consumer other than the shells)
+- **The five files** — `tools/fabric_ci_fci1_live_instrument.sh`,
+  `tools/fabric_ci_fci1_bounded_execution_controls.sh`, `tools/fabric_ci_evidence_driver.sh`,
+  `tools/fabric_ci_evidence_calibration.sh`,
+  `tools/fabric_ci_fci1_bounded_execution_context.env`.
+- **Probe-dag `fci1_*` surface (79 of 81 exports)** of
+  `gunbc.instruments.fabric_control_plane_live_probe`: every `fci1_*` fn/type exported by the probe
+  dag has its only real consumer in the two shell files. (Orphaned but not harmful — the
+  unused-declaration lens covers unused *parameters*, is not in the required floor, and an unused
+  top-level fn is legal.)
+- **Evidence-dag `fabric_ci_calibration_*` surface (27 of 34 exports)** of
+  `gunbc.instruments.fabric_ci_evidence`: the calibration step plan, the transport/forgery/wire
+  calibration fns and their coproduct arms have no consumer but the calibration shell.
+- **The projection fixture** `fabric_ci_evidence_projection_fixture.dag` — imported only by the
+  evidence dag (line 11); dies with it.
+- **The emit dag** `gunbc.fabric.fci1_bounded_execution_context_emit` — its only consumers are the
+  `generated_artifact_emit` / `tier_o_artifact_emit` arms that serve the `.env` registration
+  (tier-o lanes, not required) and the `decl_ref` binding. Dies with the registration.
+- **The `.env` provenance arms, all in one change** — `generated_artifact.dag` lines
+  175 (`ArtifactLocation`), 260 (`CommitRequired { consumer: HostReconciler }`), 312 (flag table),
+  390 (equality table), 468 (`decl_ref` to `expected_fci1_bounded_execution_context_env`), plus the
+  `Fci1BoundedExecutionContextArtifact` decl itself; `.gitattributes` line 48
+  (`merge=generated-artifact`); `reference_conservation_stratified_sample_paths` line 497 (the
+  witness dag entry) — *if* the witness dag also retires (see 5.2: the census entry must be removed
+  whenever the listed path stops existing, since a census whose sample path is missing is not
+  self-consistent).
+
+### 5.2 NOT dead — the coupled shared surface
+- **The probe dag survives.** `fabric_control_plane_live_probe.dag` is a multi-family instrument
+  (135 top-level exports across `cp_live_*`, `probe_*`, `nfr_*`, `fci1_*`). Two `fci1_*` decls have
+  non-shell consumers and **must not be deleted with the shells**:
+  - `fci1_assert_checkpoint_token` — driven by both shells AND named (as a string-literal entry
+    name) by two tests in `src/v1/stage0/src/cli_run.rs` (lines ~3358, ~3404); the string literal is
+    not a compile dependency, but the decl is the shared symbol.
+  - `fci1_checkpoint_token` + the coproduct arms
+    `Fci1CheckpointAfterCanonicalCommitBeforeTransport`,
+    `Fci1CheckpointAfterReleaseBeforeGrading`, `Fci1CheckpointGenerationHeldTwo` — imported by
+    `dag/test/claim/fabric/fabric_ci_fci1_allocation_lifecycle_witness.dag` (its `--function`
+    invocation and the `Fci1Checkpoint` import).
+  Wave 1 therefore either (a) trims the probe dag to its non-`fci1` surface plus the five shared
+  checkpoint decls, trimming the now-dead `import gunbc.fabric.fabric_required_build_cell { fci1_allocation_slot_admission, fci1_exact_allocation_restoration }` import along with the orphaned fns
+  that call them, or (b) migrates the lifecycle witness.
+- **The lifecycle witness** `fabric_ci_fci1_allocation_lifecycle_witness.dag` imports probe-dag
+  `fci1_*` decls AND `gunbc.fabric.fci1_bounded_execution_context` (`Fci1BoundedExecutionContext`,
+  `fci1_bounded_execution_context`, `fci1_bounded_execution_context_witness`,
+  `Fci1BoundedExecutionContextWit`). It is a non-required claim (not admitted to the required
+  floor), but it is inside the corpus fold (`dag/test/claim/…` under the `dag` source root), so a
+  dangling import after the probe trim **breaks the fold compile** — the real failure mode of the
+  retirement change (no verdict goes red; the corpus just does not build). It must be retired or
+  rewritten to the surviving surface in the same change.
+- **The evidence-dag wire surface survives.** `fabric_ci_evidence_wire`,
+  `decode_fabric_ci_evidence_wire`, `fabric_ci_write_wire`, `FabricCiEvidenceDecode`,
+  `fabric_ci_shell_crossing_coordinates_hash` are imported by the probe dag (line 133) and the
+  `fabric_ci_evidence_wire_decode_witness.dag` claim. (The `fabric_ci_calibration_assertion_success`
+  mention in `materialization_kernel_closing_frontier_audit.dag` is a prose string literal in a
+  `NotDelivered` reason, not a dependency.) Whether the evidence dag itself retires depends on
+  whether the wire surface is still wanted post-retirement — wave-1 decision.
+- **`gunbc.fabric.fci1_allocation_slot_admission` / `fci1_exact_allocation_restoration` live in
+  `gunbc.fabric.fabric_required_build_cell`, a shared product module** (imported by
+  `workspace_allocation_supply`, `runner_microvm_slot_controller` and their witnesses) — NOT in the
+  probe dag. The probe's import of them is the probe's consumption of a shared module; trimming the
+  probe's `fci1_allocation_*` fns drops that import but does not touch the source module.
+- **The context-twin dag** `gunbc.fabric.fci1_bounded_execution_context` (+ its
+  `fci1_bounded_execution_context_witness.dag`) is imported only by the lifecycle witness — dies
+  with the witness unless the witness is kept.
+- **The two `cli_run.rs` entry-name string literals** (`fci1_assert_checkpoint_token`) are not
+  compile dependencies; they survive the file deletion but name the one probe decl that must stay.
+
+### 5.3 Required-gate impact of the whole change set
+None. No required verdict reads any member of this set (see §4); the required job compiles the
+corpus and runs its own steps only. The retirement change must be **compile-consistent across the
+fold** (witness imports, decl_refs, census sample paths, registration arms all removed or
+re-pointed together) — that, not a verdict, is the failure mode. The non-required `drift_watch`/
+`heal` lanes are the only consumers that would later flag a stray `.env` registration.
+
+## 6. Open / needs confirmation
 - Nothing blocked. This is read-only. Wave 1 (royal-otter-526) landing is what gates any *code*
   change; this inventory is the read-only prep and is independent of that.
 - The `fci1_run_unbounded_memory_control` helper is defined in the context.env and used by the
