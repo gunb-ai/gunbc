@@ -180,6 +180,37 @@ type CpuModelCatalogRow {
   l3_cache_citations: List<FactCitation>
 }
 
+// A SOC FAMILY IS THE GROUPING OF CATALOG MODELS THAT SHARE ONE SO SILICON LINE.
+//
+// The per-model CpuModelCatalogRow rows already carry the upstream-attested architecture of each
+// model. What is missing is the grouping a BOARD admits: a board is designed for a set of SoC
+// families (a dual-socket Altra/Altra Max board admits BOTH the Altra and the Altra Max lines), and
+// the firmware architecture of such a board is only a PLATFORM FACT when every admitted family maps
+// to the same architecture. Grouping the per-model rows into families lets the board edge name the
+// families it admits and lets the architecture be DERIVED from the models it cites, never inferred.
+type SoCFamily {
+  name: NonEmptyStr
+  models: List<CpuModelCatalogRow>
+}
+
+// THE FIRMWARE ARCHITECTURE A FAMILY ESTABLISHES, OR NONE.
+//
+// A family establishes an architecture only when every model in it reports the SAME one. A family
+// whose models disagree — or an empty family — establishes nothing, and the answer is `none`, never
+// "first wins". This is the platform fact a board edge composes over, and the refusal is typed as
+// "unestablished" downstream, not collapsed to an absent selection.
+fn soc_family_architecture(family: SoCFamily) -> Architecture? {
+  match family.models |> first() {
+    Present { value: lead } =>
+      if family.models |> all(m => m.architecture == lead) {
+        Present { value: lead }
+      } else {
+        none
+      }
+    Absent => none
+  }
+}
+
 type CpuDeploymentFacts {
   sustained_per_thread_hz: Hertz
 }

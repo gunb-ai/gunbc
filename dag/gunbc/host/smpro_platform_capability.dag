@@ -1,0 +1,62 @@
+// AMPERE SMpro ACCESS IS A PLATFORM CAPABILITY, not a controller fact and not a MegaRAC reading.
+//
+// SMpro is the Ampere SoC's own out-of-band register interface (the master-write-read path into the
+// RAS error registers). It is present on the Ampere (Aarch64) platform and ABSENT on a non-Ampere
+// (x86) machine: an x86 board has no SMpro to read, so the capability is ABSENT for it, not an
+// empty reading and not a refused one. That distinction is the point of this owner — a machine
+// whose platform does not carry SMpro is still a valid controlled machine, and the absence must be
+// readable as a platform fact rather than mistaken for a failed probe.
+//
+// The reading itself is re-homed here from the boot diagnostic bundle (gunbc.machine_intake
+// .mtcollins1_boot_diagnostic_bundle) because the bundle's own SmproReading is consumed by more than
+// the bundle: the MegaRAC boot diagnostic bundle carries an SMpro field, and it must not mint the
+// type in its own public surface. Both the bundle and the MegaRAC module import the type from here.
+// The raw pass observation it wraps still comes from the observation module this reads through.
+module gunbc.host.smpro_platform_capability
+
+import std.types { NonEmptyStr }
+import extdeps.toolchain.types { Architecture }
+import gunbc.machine_intake.ampere_smpro_observation { SmproPassObservation }
+
+// AN SMpro READING: the pass that was taken (every probe kept whole with its raw observation,
+// including when none of them was answered), or the typed fact that no pass was taken and why.
+// The platform capability below stands on top of this reading.
+type SmproReading
+  = SmproProbed { observation: SmproPassObservation }
+  | SmproNotTaken { reason: NonEmptyStr }
+
+// THE STANDING OF THE SMpro CAPABILITY ON A MACHINE. Present when the platform carries SMpro and a
+// reading exists; Absent on a platform (such as x86) that does not carry it, with the platform
+// named so the absence is located rather than collapsed to an empty reading.
+type SmproCapabilityStanding
+  = SmproCapabilityPresent
+  | SmproCapabilityAbsent { platform: NonEmptyStr }
+
+// THE SMpro PLATFORM CAPABILITY. A machine's capability stands on two facts: the platform
+// architecture (SMpro is an Ampere/Aarch64 capability) and the reading that was taken (or the typed
+// fact that it was not). A non-Ampere platform is ABSENT regardless of any reading; on the Ampere
+// platform a taken reading is Present and a not-taken one is Absent with the reason.
+type SmproCapability sole_constructor {
+  standing: SmproCapabilityStanding
+  reading: SmproReading?
+}
+
+// THE SMpro READ: derive the platform capability standing from the machine's architecture and the
+// SMpro reading taken (or not). The architecture decides whether the platform carries the capability
+// at all; the reading decides whether it was exercised. This is the neutral read the bundle and the
+// MegaRAC module both import.
+fn smpro_capability(architecture: Architecture, reading: SmproReading?) -> SmproCapability {
+  match architecture {
+    Aarch64 => SmproCapability {
+      standing: match reading {
+        Present { value: r } => SmproCapabilityPresent
+        Absent => SmproCapabilityAbsent { platform: "the SMpro pass was not taken" as NonEmptyStr }
+      },
+      reading: reading,
+    }
+    _ => SmproCapability {
+      standing: SmproCapabilityAbsent { platform: "SMpro is an Ampere (Aarch64) capability; this platform does not carry it" as NonEmptyStr },
+      reading: none,
+    }
+  }
+}

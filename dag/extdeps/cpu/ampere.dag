@@ -10,7 +10,7 @@ import extdeps.toolchain.types { Aarch64 }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.cpu.types {
   ProcessorCoolingMount,
-  SocketedLandGrid, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits }
+  SocketedLandGrid, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits, SoCFamily }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -353,6 +353,24 @@ data ampere_cpu_catalog_rows: List<CpuModelCatalogRow> = [
   altra_q6430_catalog,
   altra_q8030_catalog,
 ]
+
+// THE AMPERE ALTRA SOC FAMILY: the Q-series Altra line. Each model's upstream-attested
+// architecture already lives in its catalog row; the family groups the models a board may admit.
+// Grouping is an upstream grouping fact, not an inference: it cites the same models the per-model
+// catalog rows cite, and the family's architecture is DERIVED from them (soc_family_architecture),
+// never asserted separately.
+data ampere_altra_soc_family: SoCFamily = SoCFamily {
+  name: "Altra",
+  models: [altra_q6430_catalog, altra_q8030_catalog],
+}
+
+// THE AMPERE ALTRA MAX SOC FAMILY: the M-series Altra Max line. A dual-socket Altra/Altra Max board
+// (Mt. Collins) admits BOTH families; whether such a board establishes one firmware architecture is
+// then derived from whether both families agree, never defaulted.
+data ampere_altra_max_soc_family: SoCFamily = SoCFamily {
+  name: "Altra Max",
+  models: [altra_max_m12830_catalog],
+}
 
 // Processor Mass Specification, section 4, p.17 of Altra Max Rev A1 issues
 // 1.15/1.25/1.30. Typical package mass, not a guaranteed tolerance interval.

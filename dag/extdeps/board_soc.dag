@@ -1,0 +1,68 @@
+// A BOARD ADMITS A SET OF SoC FAMILIES, and the firmware architecture of such a board is a
+// PLATFORM FACT that is established only when EVERY admitted family maps to the same architecture.
+//
+// This is the board -> SoC edge that the controller/boot machinery reads. It is deliberately the
+// PER-BOARD data row: a board module (for example extdeps.ampere.mt_collins_board) mints its own
+// edge, naming the SoC families it is designed for and citing the upstream that states them. A
+// second board with a different set of families adds a row; nothing in this module or in the
+// consumer code names a board, so a board-name branch would surface here or in the consumer, not
+// in the platform derivation.
+//
+// The edge is a grouping fact. It does NOT establish the architecture by itself: that is derived
+// from the families it names (board_soc_architecture), and the derivation refuses — typed as
+// unestablished — rather than "first wins" when the families disagree or one admits nothing.
+module extdeps.board_soc
+
+import std.types { Bool, List }
+import extdeps.board_authority { BoardAuthorityRef }
+import extdeps.cpu.types { SoCFamily, soc_family_architecture }
+import extdeps.external_authority { FactCitation }
+import extdeps.toolchain.types { Architecture }
+
+// A BOARD ADMITS THIS SET OF SoC FAMILIES. The citations state the upstream that names the
+// families (the product brief for the board), so the edge is cited, not inferred.
+type BoardSocEdge {
+  board: BoardAuthorityRef
+  soc_families: List<SoCFamily>
+  citations: List<FactCitation>
+}
+
+// THE FIRMWARE ARCHITECTURE A BOARD ESTABLISHES, OR NOT. Established carries the one architecture
+// every admitted family agrees on; Unestablished is the typed answer when they disagree, when an
+// admitted family establishes no architecture, or when the edge admits no families. It is never
+// "first wins".
+type BoardSocArchitectureStanding =
+  Established { architecture: Architecture }
+  | Unestablished
+
+// WHETHER TWO SoC FAMILIES ESTABLISH THE SAME ARCHITECTURE. Both must establish one (a family
+// whose models disagree establishes nothing, and so can never "agree" with anything), and the two
+// must name the same architecture. Comparing the families — not an optional architecture — is what
+// keeps the "establishes nothing" case from being mistaken for an agreement.
+fn soc_families_agree(a: SoCFamily, b: SoCFamily) -> Bool {
+  match soc_family_architecture(family: a) {
+    Absent => false
+    Present { value: a_arch } => match soc_family_architecture(family: b) {
+      Absent => false
+      Present { value: b_arch } => a_arch == b_arch
+    }
+  }
+}
+
+// THE ARCHITECTURE THE BOARD'S ADMITTED FAMILIES ESTABLISH TOGETHER. Every admitted family must
+// establish an architecture and agree on the same one. An edge with no families, a family that
+// establishes nothing, or a disagreement, is unestablished.
+fn board_soc_architecture(edge: BoardSocEdge) -> BoardSocArchitectureStanding {
+  match edge.soc_families |> first() {
+    Absent => Unestablished
+    Present { value: lead } =>
+      if edge.soc_families |> all(f => soc_families_agree(a: f, b: lead)) {
+        match soc_family_architecture(family: lead) {
+          Present { value: arch } => Established { architecture: arch }
+          Absent => Unestablished
+        }
+      } else {
+        Unestablished
+      }
+  }
+}
