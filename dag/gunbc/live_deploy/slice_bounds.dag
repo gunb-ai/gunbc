@@ -307,8 +307,9 @@ fn user_slice_backstop_memory_swap_max() -> ByteSize {
 // shares no systemd hierarchy prefix with a serving slice (a dash is a parent edge).
 data attempt_worker_slice_unit_name: NonEmptyStr = "gunbc-attempt-worker.slice"
 
-// APPROPRIATION: two 22 GiB slots, the same function as user_work_slice_memory_max_of. The
-// operator still owns this budget; this row is the default until they confirm or change it.
+// APPROPRIATION: two 22 GiB slots, the same function as user_work_slice_memory_max_of.
+// Operator decision 2026-10-15 (escalation msg_57614325): stack this 2 x 22 GiB with
+// user-work, srv1 CI width 7 to 5.
 data attempt_worker_slice_charged_slots: Nat = Succ { prev: Succ { prev: Zero } }
 
 data attempt_worker_slice_memory_max: ByteSize = user_work_slice_memory_max_of(slots: attempt_worker_slice_charged_slots)

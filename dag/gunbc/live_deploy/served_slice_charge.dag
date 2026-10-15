@@ -139,10 +139,9 @@ fn user_work_charged_in_served_allowance() -> ByteSize {
   }
 }
 
-// THE ATTEMPT-WORKER APPROPRIATION STACKS, it is not a split of user-work. Default is
-// attempt_worker_slice_memory_max (two 22 GiB slots). PENDING the operator's host-split ruling
-// (the same outstanding ruling gunbc.live_deploy.slice_bounds user_manager_remainder names);
-// if that ruling answers a different split, this term moves with the row, not by editing the sum.
+// THE ATTEMPT-WORKER APPROPRIATION STACKS (operator decision 2026-10-15, escalation
+// msg_57614325: stack 2 x 22 GiB, srv1 CI width 7 to 5). It is not a split of user-work.
+// The broader host-split ruling that user_manager_remainder names is still outstanding.
 fn attempt_worker_charged_in_served_allowance() -> ByteSize {
   attempt_worker_slice_memory_max
 }
