@@ -63,7 +63,7 @@ type ResolvedTree {
   root: Node
   symbol_index: SymbolIndex
   resolved_declarations: SymbolIndex
-  occurrence_bindings: Map<OccurrenceId, OccurrenceBinding>
+  occurrence_bindings: Map<OccurrenceId, OccurrenceBindingRecord>
   // An occurrence the walk recorded MORE THAN ONCE, which is a resolver defect: the map above keeps
   // the last write, so this is where the second record stays visible. Empty in a sound walk; read by
   // the exactly-one-source control and by the ambient-name census, never by a binding decision.
@@ -293,7 +293,7 @@ fn resolved_tree_of(
     root: root,
     symbol_index: symbol_index,
     resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
-    occurrence_bindings: fold(bindings, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) }),
+    occurrence_bindings: fold(bindings, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.record) }),
     duplicate_binding_records: occurrence_binding_duplicates(entries: bindings),
     module_outcomes: module_outcomes,
     outcome_index: outcome_index,
@@ -391,11 +391,15 @@ fn resolved_tree_lexical_binding(tree: ResolvedTree, reference: Node) -> Optiona
 
 // The binding resolve recorded for a reference node, read through its own occurrence.
 fn resolved_tree_occurrence_binding(tree: ResolvedTree, reference: Node) -> Optional<OccurrenceBinding> {
-  match reference.occurrence_id {
+  let found = match reference.occurrence_id {
     OccurrenceMinted { id: id } => map_lookup(m: tree.occurrence_bindings, key: id)
     OccurrenceProjected { id: id, caused_by: _ } => map_lookup(m: tree.occurrence_bindings, key: id)
     OccurrenceSynthetic => optional_absent()
     OccurrencePending { caused_by: _ } => optional_absent()
+  }
+  match found {
+    Present { value: r } => optional_present(value: r.binding)
+    Absent => optional_absent()
   }
 }
 
@@ -560,14 +564,36 @@ type OccurrenceBinding
 // (resolve_lexical_reference), because infer must read its binder back.
 type OccurrenceBindingEntry {
   reference: OccurrenceId
+  record: OccurrenceBindingRecord
+}
+
+// THE RECORD UNDER ONE OCCURRENCE: what answered it, and the spelling the author wrote there. The
+// spelling is read off the reference node before it is replaced by what it resolved to, because the
+// resolved node no longer carries it (a declaration reference carries the declaring path, a kernel
+// atom the canonical symbol). Absent only for a reference node whose spine does not read as a
+// qualified name, which the census reports rather than guesses.
+type OccurrenceBindingRecord {
+  authored: Optional<QualifiedName>
   binding: OccurrenceBinding
+}
+
+fn occurrence_binding_authored(n: Node) -> Optional<QualifiedName> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: Cons { head: id, tail: Empty })
+    _ =>
+      match qualified_name_from_node(root: n) {
+        Accepted { value: qn, diagnostics: _ } => optional_present(value: qn)
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+  }
 }
 
 // THE ENTRY FOR A NODE'S OWN OCCURRENCE, or none when the node carries no minted key.
 fn occurrence_binding_entries(n: Node, binding: OccurrenceBinding) -> List<OccurrenceBindingEntry> {
+  let record = OccurrenceBindingRecord { authored: occurrence_binding_authored(n: n), binding: binding }
   match n.occurrence_id {
-    OccurrenceMinted { id: id } => [OccurrenceBindingEntry { reference: id, binding: binding }]
-    OccurrenceProjected { id: id, caused_by: _ } => [OccurrenceBindingEntry { reference: id, binding: binding }]
+    OccurrenceMinted { id: id } => [OccurrenceBindingEntry { reference: id, record: record }]
+    OccurrenceProjected { id: id, caused_by: _ } => [OccurrenceBindingEntry { reference: id, record: record }]
     OccurrenceSynthetic => []
     OccurrencePending { caused_by: _ } => []
   }
@@ -2294,7 +2320,10 @@ fn resolve_lexical_reference_keyed(
   Accepted {
     value: ResolvedAtom {
       node: lexical_reference_node(label: canonical, occurrence_id: n.occurrence_id),
-      bindings: [OccurrenceBindingEntry { reference: id, binding: BoundByLexicalBinder { binding: binding } }]
+      bindings: [OccurrenceBindingEntry {
+        reference: id,
+        record: OccurrenceBindingRecord { authored: occurrence_binding_authored(n: n), binding: BoundByLexicalBinder { binding: binding } }
+      }]
     },
     diagnostics: pending
   }
