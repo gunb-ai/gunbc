@@ -7,9 +7,10 @@
 //! prefixes through `source_layout_lookup`, and hand resolve an index whose
 //! `source_files` *are* that closure.
 //!
-//! Remaining tree-scale reads on this path: none. Census, graph facts and
-//! reconcile underlays run over the acquired set. `gunbc compile` still walks
-//! the tree (parse-as-check); that is a named other consumer, not this verb.
+//! Remaining tree-scale reads on this path: none. Host typecheck uses the
+//! acquired closure only (`same_tree_bare_underlay` is off). Unique-bare
+//! same-tree fill stays on compile/floor (`gunbc.resolver_cost_frontier`
+//! `symbol_index_with_bare_fill`). `gunbc compile` still walks the tree.
 //!
 //! Seed-growth receipt: `gunbc.run_demand_acquire_seed_growth`
 //! `run_demand_acquire_seed_growth_justification`.
