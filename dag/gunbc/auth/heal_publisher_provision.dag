@@ -11,7 +11,8 @@ import extdeps.cloud.gcp.iam {
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.iam_admin {
   workload_identity_pool_display_name_admitted, workload_identity_pool_display_name_max_characters,
-  workload_identity_pool_provider_id_admitted, workload_identity_pool_provider_id_min_characters, workload_identity_pool_provider_id_max_characters,
+  workload_identity_resource_id_admitted, workload_identity_resource_id_min_characters, workload_identity_resource_id_max_characters,
+  workload_identity_resource_id_reserved_prefix,
 }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPoolWire, WifProviderWire }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
@@ -482,20 +483,25 @@ fn create_if(wanted: Bool, subject: String, creation: SubjectCreation) -> String
   }
 }
 
-// The upstream refuses an over-long pool display name or a malformed provider id only once a run
-// holds a token, so every route that may create a pool or provider reads its whole creation
-// population here before it reads one.
+fn workload_identity_resource_id_refusal(f: DedicatedFederation, input: String, id: NonEmptyStr, operation: String) -> List<String> {
+  if workload_identity_resource_id_admitted(id: id) { [] } else { [join([
+    f.label, ": ", input, " \"", id as String, "\" is ", to_string(string_length(s: id as String)), " characters; ", operation, " admits ",
+    to_string(workload_identity_resource_id_min_characters), " to ", to_string(workload_identity_resource_id_max_characters),
+    " characters of [a-z0-9-], not beginning ", workload_identity_resource_id_reserved_prefix,
+  ], "")] }
+}
+
+// The upstream refuses a malformed pool id, an over-long pool display name or a malformed provider id
+// only once a run holds a token, so every route that may create a pool or provider reads its whole
+// creation population here before it reads one.
 fn dedicated_federation_input_refusals(federations: List<DedicatedFederation>) -> List<String> {
   flat_map(federations, f =>
-    (if workload_identity_pool_display_name_admitted(name: f.pool_display_name) { [] } else { [join([
+    workload_identity_resource_id_refusal(f: f, input: "pool id", id: f.pool_id, operation: "CreateWorkloadIdentityPool")
+    + (if workload_identity_pool_display_name_admitted(name: f.pool_display_name) { [] } else { [join([
       f.label, ": pool display name \"", f.pool_display_name as String, "\" is ", to_string(string_length(s: f.pool_display_name as String)),
       " characters; CreateWorkloadIdentityPool admits at most ", to_string(workload_identity_pool_display_name_max_characters),
     ], "")] })
-    + (if workload_identity_pool_provider_id_admitted(id: f.provider_id) { [] } else { [join([
-      f.label, ": provider id \"", f.provider_id as String, "\" is ", to_string(string_length(s: f.provider_id as String)),
-      " characters; CreateWorkloadIdentityPoolProvider admits ", to_string(workload_identity_pool_provider_id_min_characters), " to ",
-      to_string(workload_identity_pool_provider_id_max_characters), " characters of [a-z0-9-]",
-    ], "")] }))
+    + workload_identity_resource_id_refusal(f: f, input: "provider id", id: f.provider_id, operation: "CreateWorkloadIdentityPoolProvider"))
 }
 
 fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationClassification) -> String
