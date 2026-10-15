@@ -110,13 +110,6 @@ fn census_reconciliation_operations(
   denominator_ops + observation_ops + membership_probes
 }
 
-fn census_subject_key_in_index(
-  index: KeyedRosterIndex<CensusSubjectKey, CensusSubjectKey>,
-  key: CensusSubjectKey,
-) -> Bool {
-  match map_get(index.slots, SubjectKey { subject: key }) { Present { value: _ } => true, Absent => false }
-}
-
 fn pair_with(left: Fnv1a64Structural, right: Fnv1a64Structural) -> Fnv1a64Structural {
   content_hash_combine_structural(left: left, right: right)
 }
@@ -384,13 +377,19 @@ fn census_reconcile_aligned_subjects(
   let missing = census_subject_keys_of_subject_keys(
     subject_keys: filter(
       keyed_roster_distinct(index: denominator_index),
-      subject_key => !census_subject_key_in_index(index: observation_index, key: subject_key.subject),
+      subject_key => match map_get(observation_index.slots, SubjectKey { subject: subject_key.subject }) {
+        Present { value: _ } => false
+        Absent => true
+      }
     ),
   )
   let unexpected = census_subject_keys_of_subject_keys(
     subject_keys: filter(
       keyed_roster_distinct(index: observation_index),
-      subject_key => !census_subject_key_in_index(index: denominator_index, key: subject_key.subject),
+      subject_key => match map_get(denominator_index.slots, SubjectKey { subject: subject_key.subject }) {
+        Present { value: _ } => false
+        Absent => true
+      }
     ),
   )
   let duplicates = census_resolve_duplicates_from_indexes(
