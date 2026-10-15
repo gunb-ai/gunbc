@@ -4247,10 +4247,7 @@ fn infer_type_alias_stored_at(declarations: SymbolIndex, path: QualifiedName) ->
     MentionDeclaringUnavailable => optional_absent()
     MentionDeclaringContested { claimants: _ } => optional_absent()
     MentionDeclaringUnique { declaring: identity } =>
-      match symbol_index_lookup(index: declarations, qualified_path: identity) {
-        Present { value: stored } => optional_present(value: stored)
-        Absent => symbol_index_lookup(index: declarations, qualified_path: path)
-      }
+      symbol_index_lookup(index: declarations, qualified_path: identity)
   }
 }
 
