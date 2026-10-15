@@ -1,0 +1,71 @@
+module test.claim.live_deploy.pre_swap_admission_serve_compile_inhabitance_witness
+
+import std.types { Bool, String, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.output_policy { OutcomeIsData }
+import gunbc.instruments.host_prelude { witness_bin_release_path }
+import gunbc.live_deploy.spec { deployment_serve_source_roots, roadmap_serve_entry_file }
+import gunbc.live_deploy.pre_swap_admission {
+  observe_serve_entry_compile_clean,
+  ServeEntryCompileAdmitted,
+  ServeEntryCompileBlocked,
+  ServeEntryCompileUnobserved,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git
+import extdeps.shell
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data real_execution_home_doc: String = "Inhabitance for gunbc.live_deploy.pre_swap_admission observe_serve_entry_compile_clean: the checkout's own built gunbc compiles a serve entry under deployment_serve_source_roots to the dag target, and the verdict fold reads that exit and those error lines. Runs the real binary, so it is a LocalRepoWetLane claim."
+
+fn checkout_root() -> String {
+  git.Inspect.Toplevel().path as String
+}
+
+fn checkout_gunbc() -> String {
+  witness_bin_release_path(root: checkout_root(), bin_name: "gunbc")
+}
+
+// The pairing obligation (DESIGN 3): the real producer, the real serve entry, the real roots. The
+// candidate this checkout is compiles its own serve entry clean through the route the pre-swap
+// admission takes, which is the inhabitance the hermetic verdict claims are supplied against.
+test fn the_checkouts_serve_entry_compiles_clean_through_the_gate_route() -> Bool {
+  match observe_serve_entry_compile_clean(
+    repo_root: checkout_root(),
+    bin_path: checkout_gunbc(),
+    roots: deployment_serve_source_roots,
+    entry: roadmap_serve_entry_file as String,
+  ) {
+    ServeEntryCompileAdmitted => true
+    ServeEntryCompileBlocked { blocking: _, diagnostics: _ } => false
+    ServeEntryCompileUnobserved { detail: _ } => false
+  }
+}
+
+fn staged_verdict_is(source: String, file: String, want_blocked: Bool) -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let root = tmp.path as String
+    let wrote = Filesystem.Write(path: join([root, "/", file], ""), content: source)
+    let verdict = observe_serve_entry_compile_clean(repo_root: root, bin_path: checkout_gunbc(), roots: ["."], entry: file)
+    let _ = shell.Remove.RecursiveForce(path: tmp.path)
+    wrote.success && match verdict {
+      ServeEntryCompileBlocked { blocking, diagnostics } => want_blocked && blocking > 0 && any(diagnostics, l => string_contains(s: l, pattern: file))
+      ServeEntryCompileAdmitted => !want_blocked
+      ServeEntryCompileUnobserved { detail: _ } => false
+    }
+  }
+}
+
+// RED by real execution: a serve entry whose body does not inhabit its declared type is blocked,
+// and the block carries the compiler's located line for that file.
+test fn a_staged_type_error_entry_is_blocked_by_real_execution() -> Bool {
+  staged_verdict_is(source: "module probe_serve_red\nfn f() -> Int { \"x\" }\n", file: "probe_serve_red.dag", want_blocked: true)
+}
+
+test fn a_staged_clean_entry_is_admitted_by_real_execution() -> Bool {
+  staged_verdict_is(source: "module probe_serve_green\nfn f() -> Int { 1 }\n", file: "probe_serve_green.dag", want_blocked: false)
+}

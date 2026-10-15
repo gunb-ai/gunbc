@@ -386,6 +386,11 @@ fn dashboard_serve_wall_limit() -> EvaluationLimit {
 // fact about WHICH SERVER this config describes, so it sits beside serve_function, which is the
 // other half of the same fact.
 
+// THE SERVE ROUTE'S SOURCE ROOTS, relative to the deployed tree. The emitted ExecStart passes them to
+// `serve`, and the pre-swap admission compiles the serve entry under the same roots, so both read
+// this one value rather than each spelling the flags.
+data deployment_serve_source_roots: List<String> = ["dag", "src/v2"]
+
 data roadmap_serve_entry_file: NonEmptyStr = "dag/gunbc/roadmap/roadmap_serve.dag"
 
 data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_broker_serve.dag"

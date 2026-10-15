@@ -3,21 +3,15 @@ module gunbc.live_deploy.pre_swap_admission
 import std.types { String, Bool, Int, NonEmptyStr, GitRef, List }
 import std.algebra { trim }
 import std.integer { int_to_decimal_string }
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CompileDiagnosticCensusRow,
-  CensusObserved,
-  CensusNotRunnable,
-  census_blocking_rows,
-  census_total_count,
-}
 import gunbc.live_deploy.desired {
   DesiredDeployment,
   selected_deployment_spec,
 }
-import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_serve_source_roots }
+import gunbc.instruments.host_prelude { witness_bin_release_path }
 import gunbc.output_policy { OutcomeIsData }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.gunbc
+import extdeps.shell
 import extdeps.git
 import extdeps.git.inspect {
   merge_base_outcome,
@@ -36,8 +30,17 @@ import extdeps.git.inspect {
 // The candidate's declared serve entry file (DeploymentServiceConfig.serve_entry, the same
 // path ExecStart binds) is compiled before any apply fold runs. The path is a spec fact, not
 // a reverse lookup of a module name (DESIGN §3: paths follow names; this does not invent a
-// second path-to-name table). The compiled subject is that file's own source, not a glued
-// probe module.
+// second path-to-name table).
+//
+// THE COMPILE IS THE CANDIDATE COMPILER'S OWN, OVER THE SERVE ROUTE'S CLOSURE. The candidate's
+// gunbc compiles the entry under deployment_serve_source_roots (the roots ExecStart passes to
+// `serve`) to the dag target, and its exit status is the verdict. An earlier cut fed the file's
+// text to the compile_dag_diagnostic_census builtin, whose declared scope is a synthetic
+// single-module source on the Rust render target and which states it says nothing about the
+// interpreter's disposition of the same program, so it refused real candidates whose serve entry
+// compiles clean. What this
+// still cannot see is a failure of `serve` itself after its compile (a bind, a listener); that
+// stays with readiness after the swap.
 //
 // (2) TARGET-BOUND BRANCH. Operator 2026-10-09 let an empty --candidate-branch admit any nonempty
 // checkout (fleet_converge_deploy_branch_admits). Operator 2026-10-13 (gunbc.design_ruling
@@ -51,7 +54,7 @@ type TargetBranchAdmission
 
 type ServeEntryCompileVerdict
   = ServeEntryCompileAdmitted
-  | ServeEntryCompileBlocked { blocking: Int, rows: List<CompileDiagnosticCensusRow> }
+  | ServeEntryCompileBlocked { blocking: Int, diagnostics: List<String> }
   | ServeEntryCompileUnobserved { detail: String }
 
 type PreSwapAdmission
@@ -76,58 +79,74 @@ fn target_branch_admission(admitted: NonEmptyStr, observed: String) -> TargetBra
   }
 }
 
-fn serve_entry_compile_of(census: CompileDiagnosticCensus) -> ServeEntryCompileVerdict {
-  match census {
-    CensusNotRunnable { cause } => ServeEntryCompileUnobserved { detail: cause as String }
-    CensusObserved { rows } => {
-      let blocking = census_total_count(rows: census_blocking_rows(rows: rows))
-      if blocking > 0 {
-        ServeEntryCompileBlocked { blocking: blocking, rows: census_blocking_rows(rows: rows) }
-      } else {
-        ServeEntryCompileAdmitted
-      }
-    }
+// The verdict is the compiler's own: exit 0 admits whatever it printed; a nonzero exit with error
+// lines is blocked and carries them; a nonzero exit with none (the binary missing, a spawn
+// failure) is unobserved, never admitted.
+fn serve_entry_compile_verdict_of(exit_success: Bool, exit_code: Int, stderr: String) -> ServeEntryCompileVerdict {
+  let errors = filter(split(s: stderr, sep: "\n"), l => starts_with(s: l, prefix: "error"))
+  if exit_success {
+    ServeEntryCompileAdmitted
+  } else if count(errors) > 0 {
+    ServeEntryCompileBlocked { blocking: count(errors), diagnostics: errors }
+  } else {
+    ServeEntryCompileUnobserved { detail: join([
+      "the serve-entry compile exited ",
+      int_to_decimal_string(value: exit_code),
+      " with no error line",
+    ], "") }
   }
 }
 
-// A refusal names what blocked it: the blocking census rows (class, subject, count), the first eight
-// in census order, then how many rows it left out. A bare count sent the operator to a second compile
-// to find out why the swap was refused.
-data serve_entry_blocking_rows_shown: Int = 8
+// A refusal names what blocked it: the compiler's first eight error lines, then how many it left out.
+data serve_entry_blocking_lines_shown: Int = 8
 
-fn serve_entry_blocking_summary(rows: List<CompileDiagnosticCensusRow>) -> String {
-  let shown = map(rows.take(n: serve_entry_blocking_rows_shown), r => join([
-    r.diagnostic_class as String,
-    " ",
-    r.subject_name,
-    " (",
-    int_to_decimal_string(value: r.count),
-    ")",
-  ], ""))
-  let hidden = count(rows) - count(shown)
+fn serve_entry_blocking_summary(diagnostics: List<String>) -> String {
+  let shown = diagnostics.take(n: serve_entry_blocking_lines_shown)
+  let hidden = count(diagnostics) - count(shown)
   if hidden > 0 {
-    join([join(shown, "; "), "; and ", int_to_decimal_string(value: hidden), " more row(s)"], "")
+    join([join(shown, "; "), "; and ", int_to_decimal_string(value: hidden), " more"], "")
   } else {
     join(shown, "; ")
   }
 }
 
-fn observe_serve_entry_file_compile(entry: String) -> ServeEntryCompileVerdict {
+fn serve_entry_compile_args(roots: List<String>, entry: String, out_dir: String) -> List<String> {
+  concat(
+    concat(["compile"], fold(roots, init: [], f: (acc, r) => concat(acc, ["--source-root", r]))),
+    ["--entry", entry, "--output-dir", out_dir, "--target", "dag"],
+  )
+}
+
+fn observe_serve_entry_compile_clean(repo_root: String, bin_path: String, roots: List<String>, entry: String) -> ServeEntryCompileVerdict {
   let path = trim(s: entry)
   if path == "" {
     ServeEntryCompileUnobserved { detail: "serve entry path is empty" }
   } else {
-    let r = Filesystem.Read(path: path)
-    if !r.success {
-      ServeEntryCompileUnobserved { detail: r.error }
+    let tmp = shell.Mktemp.Dir()
+    if !tmp.success {
+      ServeEntryCompileUnobserved { detail: "no scratch directory for the serve-entry compile output" }
     } else {
-      serve_entry_compile_of(census: compile_dag_diagnostic_census(r.content))
+      let run = gunbc.WitnessBin.Run(
+        workdir: repo_root,
+        bin_path: bin_path,
+        args: serve_entry_compile_args(roots: roots, entry: path, out_dir: concat(tmp.path as String, "/out")),
+        expect: OutcomeIsData,
+      )
+      let _ = shell.Remove.RecursiveForce(path: tmp.path)
+      serve_entry_compile_verdict_of(exit_success: run.success, exit_code: run.exit_code, stderr: run.stderr)
     }
   }
 }
 
+// The candidate is the checkout this process runs in, compiled by the gunbc that checkout built.
 fn observe_spec_serve_entry_compile(spec: DeploymentSpec) -> ServeEntryCompileVerdict {
-  observe_serve_entry_file_compile(entry: spec.service.serve_entry as String)
+  let root = git.Inspect.Toplevel()
+  observe_serve_entry_compile_clean(
+    repo_root: root.path as String,
+    bin_path: witness_bin_release_path(root: root.path as String, bin_name: "gunbc"),
+    roots: deployment_serve_source_roots,
+    entry: spec.service.serve_entry as String,
+  )
 }
 
 // Named checkout as git reports it. A detached HEAD is the literal "HEAD"; provenance for that
@@ -278,13 +297,13 @@ fn live_deploy_pre_swap_admission(
     TargetBranchAdmitted =>
       match compile {
         ServeEntryCompileAdmitted => PreSwapAdmitted
-        ServeEntryCompileBlocked { blocking, rows } =>
+        ServeEntryCompileBlocked { blocking, diagnostics } =>
           PreSwapRefused {
             reason: join([
               "live_deploy: ServeEntryCompileBlocked — the candidate serve entry has ",
               int_to_decimal_string(value: blocking),
               " blocking diagnostic(s): ",
-              serve_entry_blocking_summary(rows: rows),
+              serve_entry_blocking_summary(diagnostics: diagnostics),
               "; nothing was mutated",
             ], ""),
           }
