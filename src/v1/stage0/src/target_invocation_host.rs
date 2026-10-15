@@ -1494,8 +1494,11 @@ fn run_census_infer_reading(
     );
     let scratch = std::path::Path::new("target").join(label_name);
     let mut write_root = |name: &str, function: &str| -> Result<String, String> {
-        let root = scratch.join(name);
-        let _ = std::fs::remove_dir_all(&root);
+        // A NATIVE SOURCE ROOT IS A GOVERNED TREE'S DIRECTORY (v2.cli.repository_layout
+        // repository_root_argument_names_tree): the fixture is written as a `dag` tree under its own
+        // directory, so `fx.decls` lands at <root>/dag/fx/decls.dag and the driver binds the root.
+        let _ = std::fs::remove_dir_all(scratch.join(name));
+        let root = scratch.join(name).join("dag");
         let files = crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
             .map_err(|cause| format!("{label_name}: {function} failed: {cause}"))?;
         for (path, content) in fixture_file_rows(&ctx, &files)? {
@@ -1602,8 +1605,11 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
     );
     let scratch = std::path::Path::new("target").join(label_name);
     let write_root = |name: &str, function: &str| -> Result<String, String> {
-        let root = scratch.join(name);
-        let _ = std::fs::remove_dir_all(&root);
+        // A NATIVE SOURCE ROOT IS A GOVERNED TREE'S DIRECTORY (v2.cli.repository_layout
+        // repository_root_argument_names_tree): the fixture is written as a `dag` tree under its own
+        // directory, so `fx.decls` lands at <root>/dag/fx/decls.dag and the driver binds the root.
+        let _ = std::fs::remove_dir_all(scratch.join(name));
+        let root = scratch.join(name).join("dag");
         let files = crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
             .map_err(|cause| format!("{function} failed: {cause}"))?;
         for (path, content) in fixture_file_rows(&ctx, &files)? {
@@ -1693,6 +1699,17 @@ fn run_base_ambient_name_census(
         }
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     };
+    // The base ref may be absent from a shallow or single-branch checkout; fetch it by name first.
+    if let Some((remote, branch)) = base_ref.split_once('/') {
+        git(&[
+            "fetch",
+            "--quiet",
+            "--depth=500",
+            remote,
+            &format!("{branch}:refs/remotes/{base_ref}"),
+        ])?;
+        let _ = git(&["fetch", "--quiet", "--deepen=500", remote]);
+    }
     let merge_base = git(&["merge-base", "HEAD", base_ref])?;
     let tree = scratch.join("base_tree");
     let tree_text = tree.to_string_lossy().into_owned();
