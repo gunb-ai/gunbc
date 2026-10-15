@@ -55,12 +55,12 @@ fn wra_read(source: String, name: String) -> DagSourceReadWitness {
 }
 
 data wra_ingest: SourceRootIngest = Cons {
-  head: wra_read(source: wra_home_source, name: "dag/wra_home.dag"),
+  head: wra_read(source: wra_home_source, name: "src/v2/wra_home.dag"),
   tail: Cons {
-    head: wra_read(source: wra_two_aliases_source, name: "dag/wra_two_aliases.dag"),
+    head: wra_read(source: wra_two_aliases_source, name: "src/v2/wra_two_aliases.dag"),
     tail: Cons {
-      head: wra_read(source: wra_char_like_source, name: "dag/wra_char_like.dag"),
-      tail: Cons { head: wra_read(source: wra_duplicate_source, name: "dag/wra_duplicate.dag"), tail: Empty }
+      head: wra_read(source: wra_char_like_source, name: "src/v2/wra_char_like.dag"),
+      tail: Cons { head: wra_read(source: wra_duplicate_source, name: "src/v2/wra_duplicate.dag"), tail: Empty }
     }
   }
 }
