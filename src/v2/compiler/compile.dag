@@ -3530,7 +3530,7 @@ fn native_module_resolve_verdict(
                     root: resolved,
                     symbol_index: shared.symbol_index,
                     closure_declarations: closure.declarations,
-                    module_outcomes: closure.module_outcomes,
+                    module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index,
                     member_kinds: no_member_declaration_kinds(),
                     type_declaration_modifiers: shared.type_declaration_modifiers,
                     lexical: lexical
