@@ -2379,10 +2379,10 @@ test fn deploy_branch_policy_admits_any_observed_branch_when_unconstrained() -> 
 // it emits is what fleet apply executes after reobserving the same subject. So these rows drive it
 // rather than the helpers beneath it: a control that proved the realization and left the renderer
 // unexamined is how this branch previously shipped a teardown that never consulted retirement at all.
-// THE FIXTURE IS A REQUIRED RETIREE OF THE OPEN 12→7 CUT, NOT WIDTH+1. Review 80784: srv4's
-// prior equals its committed width. Escalation default (split): 07..11 are required and
-// unpermitted under the origin/main 13..50 grant. An empty or unresolved set yields srv1-00,
-// which is never a retiree, so the membership conjunct reds.
+// THE FIXTURE IS A REQUIRED RETIREE OF THE OPEN 12→7 CUT, NOT WIDTH+1 AND NOT A SURPLUS INDEX.
+// Review 80784: srv4's prior equals its committed width, so width+1 is not a retiree. 07..11
+// are already completed (run 38785880931) and are not in the origin/main 13..50 grant; srv1-12
+// is never owed. An empty or unresolved set yields srv1-00, which is never a retiree.
 fn witness_open_transition_delta_units() -> List<NonEmptyStr> {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesKnown { units: us } => us

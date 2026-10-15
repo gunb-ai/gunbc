@@ -946,8 +946,8 @@ test fn srv4s_authorization_does_not_cover_srv1s_obligation() -> Bool {
     }
 }
 
-// THE 2026-09-17 GRANT IS origin/main (13..50) AND DOES NOT COVER THE 12→7 OBLIGATION.
-// 07..11 are required and unpermitted (escalation default: split). A sibling srv4 length==0
+// THE 2026-09-17 GRANT IS origin/main (13..50) AND DOES NOT COVER 07..11. Those units are an
+// already-completed retirement (run 38785880931); no grant is minted. A sibling srv4 length==0
 // row was deleted because an empty obligation cannot admit coverage.
 test fn srv1s_declared_grant_does_not_cover_the_width_7_retirees() -> Bool {
   let required = known_obligation_of(host: operator_host_srv1)

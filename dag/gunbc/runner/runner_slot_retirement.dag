@@ -330,9 +330,10 @@ data srv4_transition_interruption_authorization: InterruptionAuthorization = Int
   operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
 }
 
-// PERMISSION IS THE 2026-09-17 ROW ON origin/main, UNCHANGED (escalation default: split).
-// Scope 13..50 does not name 01..12. The open 12→7 obligation is 07..11; those units refuse as
-// unauthorized until a separate grant. 07..11 are already masked (run 38785880931).
+// PERMISSION IS THE 2026-09-17 ROW ON origin/main, UNCHANGED. Scope 13..50 does not name 01..12
+// and never names srv1-12 (the model never owes it). 07..11 are an already-completed retirement:
+// sleek-owl-397 run 38785880931 masked and stopped them; Drain never interrupts a job. No grant
+// is minted for those units.
 fn srv1_transition_interruption_scope() -> List<NonEmptyStr> {
   desired_unit_names_range(host: operator_host_srv1, slot: 13, limit: 50) |> map(u => u as NonEmptyStr)
 }
