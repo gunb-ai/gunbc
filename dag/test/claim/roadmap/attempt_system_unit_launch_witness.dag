@@ -7,11 +7,14 @@ import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
-import gunbc.live_deploy.emit { attempt_system_unit_grant_steps }
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.emit { attempt_system_unit_grant_steps, apply_intent_from_effects }
+import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
+import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
+import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_full_install_plan }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
@@ -180,6 +183,48 @@ test fn the_launcher_grant_pins_a_root_owned_release_the_deploy_installs() -> Bo
     && string_contains(s: steps, pattern: "'--no-preserve=all'")
     && string_contains(s: steps, pattern: "'-o' 'root' '-g' 'root'")
     && string_contains(s: steps, pattern: dir)
+}
+
+// THE DEPLOY RUNS THE GRANT (review 80299). The grant fold above is the shape; whether a deploy installs it is a
+// fact of the apply the real producer emits (apply_intent_from_effects over the instance's spec, a full
+// install), so these claims read that apply. The grant once sat on an emit_artifact_upsert arm no apply
+// reaches while the fold's own claim stayed green. Each instance's apply installs its own grant and never
+// the other instance's: a lab apply never touches production's privilege surface.
+fn full_install_apply_text(spec: DeploymentSpec) -> String {
+  join(map(
+    apply_intent_from_effects(
+      spec: spec,
+      effects: apply_empty_host_effects(spec: spec),
+      access: ci_deploy_srv1_access,
+      plan: deploy_witness_full_install_plan(spec: spec),
+      cap_authorization: CapConvergeWithheld { cause: "the launcher grant claims are not about the cap step" },
+      oidc_now: claim_oidc_now(),
+    ).steps,
+    st => pipeline_step_text(st: st)
+  ), "")
+}
+
+fn apply_installs_only_its_own_grant(spec: DeploymentSpec, own: HostDashboardInstance, other: HostDashboardInstance) -> Bool {
+  let text = full_install_apply_text(spec: spec)
+  string_contains(s: text, pattern: attempt_system_unit_sudoers_path(instance: own))
+    && string_contains(s: text, pattern: join([attempt_system_unit_launcher_helpers_root, "/", own.instance_id as String], ""))
+    && !string_contains(s: text, pattern: attempt_system_unit_sudoers_path(instance: other))
+}
+
+test fn the_production_full_install_apply_installs_the_production_launcher_grant() -> Bool {
+  apply_installs_only_its_own_grant(
+    spec: deployment_spec_srv1(),
+    own: srv1_live_dashboard_instance(),
+    other: srv1_lab_dashboard_instance(),
+  )
+}
+
+test fn the_lab_full_install_apply_installs_only_the_lab_launcher_grant() -> Bool {
+  apply_installs_only_its_own_grant(
+    spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+    own: srv1_lab_dashboard_instance(),
+    other: srv1_live_dashboard_instance(),
+  )
 }
 
 fn launcher_execstoppost_argv_keeps_single_dollar(instance: HostDashboardInstance, exec_line: NonEmptyStr) -> Bool {
