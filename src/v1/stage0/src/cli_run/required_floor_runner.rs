@@ -1168,34 +1168,6 @@ pub(crate) fn floor_ts() -> String {
     format!("{h:02}:{m:02}:{s:02}.{millis:03}")
 }
 
-pub(crate) fn floor_color_enabled() -> bool {
-    if std::env::var("NO_COLOR").is_ok() {
-        return false;
-    }
-    if std::env::var("GUNBC_FLOOR_COLOR")
-        .map(|v| v == "1" || v == "true")
-        .unwrap_or(false)
-    {
-        return true;
-    }
-    use std::io::IsTerminal;
-    std::io::stderr().is_terminal()
-        || std::env::var("GITHUB_ACTIONS")
-            .map(|v| v == "true")
-            .unwrap_or(false)
-}
-
-/// Live realization view: stream affected witnesses to stderr as they finish, one colored
-/// line per shard, so a run reads as "the affected set unrolling in real time" rather than a
-/// silent wait then a summary. On by default (opt out with `GUNBC_FLOOR_QUIET=1`); color
-/// auto-detected (a terminal or GitHub Actions), `NO_COLOR` honored, `GUNBC_FLOOR_COLOR=1`
-/// forces it on. Only RUN witnesses reach the stream — skips are counted, not narrated.
-pub(crate) fn floor_stream_enabled() -> bool {
-    !std::env::var("GUNBC_FLOOR_QUIET")
-        .map(|v| v == "1" || v == "true")
-        .unwrap_or(false)
-}
-
 /// THE SEEDS OF THE REQUIRED FLOOR'S NOMINAL PREPARED SUBJECT -- what the floor prepares when a
 /// run touches nothing: the gate's prefix roster and authored-module roster, both decoded from
 /// `v2.workflow.required_floor` in a frame over that module's own closure, and the local-repo wet

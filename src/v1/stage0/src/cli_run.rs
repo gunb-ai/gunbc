@@ -6200,123 +6200,6 @@ fn entry_file_touched_via_import_closure(
     }))
 }
 
-/// Receipted Rust mirror of the single authority `v2.std.live_read.live_read_carrier_homes_v0`
-/// (`src/v2/std/live_read.dag`) — the module names of the declared live-read carrier homes.
-/// Kept in lockstep with that `.dag` roster by hand; drift here is fail-closed-safe for axis (iv)
-/// only while this list is a SUPERSET of the `.dag` roster, so every `.dag` addition must be
-/// mirrored here — the drift gate below
-/// (`live_read_carrier_home_modules_v0_is_superset_of_dag_authority`) evaluates the `.dag`
-/// authority through a real interpreter context and fails the build when this const falls behind.
-/// Dissolution trigger: every caller of `runtime_data_dependency_touched_via_carrier_closure`
-/// (the skip-before-resolve fast path and the precompute-count helpers below) is itself a named
-/// `SCAFFOLD (§7 hand-Rust shrink-to-zero)` whose DELETE WHEN note ties dissolution to
-/// `v2.workflow.affected_set_floor_runner`'s `.dag` disposition owning the same predicate
-/// end-to-end. This const has no independent caller, so no independent dissolution path or
-/// generator lane: it and its drift gate delete with those scaffolds, not before.
-const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
-    "v2.lens.enforcement.cost_coverage",
-    "v2.lens.enforcement.grammar_coverage",
-    "v2.lens.complexity_accumulator_copy.roster_gate",
-    "v2.compiler.self_host",
-    "v2.std.decl_index",
-    "v2.lens.module_graph",
-    "gunbc.instruments.dag_compile_clean_shard_roster",
-    "gunbc.instruments.dag_compile_clean_scope",
-    "gunbc.namespace_cut.namespace_cut_subject_observation",
-];
-
-fn runtime_data_dependency_touched_via_carrier_closure(
-    entry_path: &str,
-    facts: &ModuleGraphFactsLive,
-    touched_paths: &[String],
-) -> bool {
-    if touched_paths.is_empty() {
-        return false;
-    }
-    let mut closure_modules: HashSet<String> = HashSet::new();
-    let closure_paths: HashSet<String> = import_closure_live_paths_with_facts(entry_path, facts)
-        .into_iter()
-        .map(|p| workspace_relative_repo_path(&p))
-        .collect();
-    for node in &facts.nodes {
-        let rel = workspace_relative_repo_path(&node.path);
-        if closure_paths.contains(&rel)
-            || closure_paths
-                .iter()
-                .any(|closure_path| repo_paths_match_touched(closure_path, &rel))
-        {
-            closure_modules.insert(node.module.clone());
-        }
-    }
-    LIVE_READ_CARRIER_HOME_MODULES_V0
-        .iter()
-        .any(|carrier_home| {
-            import_closure_module_reaches_carrier_home(&closure_modules, carrier_home)
-        })
-}
-
-#[cfg(test)]
-mod live_read_carrier_home_roster_drift_gate_tests {
-    use super::{
-        build_multi_entry_index, make_eval_context, resolve_entry_with_index, workspace_root,
-        LIVE_READ_CARRIER_HOME_MODULES_V0,
-    };
-    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    use std::collections::HashSet;
-
-    const LIVE_READ_ENTRY: &str = "src/v2/std/live_read.dag";
-
-    fn record_field<'a>(
-        ctx: &v1_interpreter::InterpContext,
-        fields: &'a [(v1_interpreter::Symbol, Value)],
-        field_name: &str,
-    ) -> Option<&'a Value> {
-        fields
-            .iter()
-            .find(|(sym, _)| ctx.sym_eq(*sym, field_name))
-            .map(|(_, v)| v)
-    }
-
-    // Reads the `.dag`-side single authority directly by evaluating
-    // `live_read_carrier_homes_v0` in a real interpreter context — not a re-hand-authored Rust
-    // copy of the roster — so this test's own expectation cannot drift the same way the
-    // production const can.
-    fn dag_carrier_home_modules() -> HashSet<String> {
-        std::env::set_current_dir(workspace_root()).expect("chdir workspace");
-        let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
-        let (graph, indices) = resolve_entry_with_index(&index, LIVE_READ_ENTRY)
-            .unwrap_or_else(|e| panic!("resolve {LIVE_READ_ENTRY}: {e}"));
-        let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
-        let val = v1_interpreter::with_active_context(&ctx, || {
-            v1_interpreter::eval_data_item_value(&ctx, "live_read_carrier_homes_v0")
-        })
-        .unwrap_or_else(|e| panic!("eval live_read_carrier_homes_v0: {e}"))
-        .unwrap_or_else(|| panic!("live_read_carrier_homes_v0 not found as a data item"));
-        let Value::List(ref items) = val else {
-            panic!("live_read_carrier_homes_v0 is not a List: {val:?}");
-        };
-        items
-            .iter()
-            .map(|item| {
-                let Value::Record { fields, .. } = item else {
-                    panic!("live_read_carrier_homes_v0 entry is not a Record: {item:?}");
-                };
-                match record_field(&ctx, fields, "module") {
-                    Some(Value::Str(s)) => s.to_string(),
-                    other => panic!("LiveReadCarrierHome.module is not a String: {other:?}"),
-                }
-            })
-            .collect()
-    }
-}
-
-fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &str) -> bool {
-    diff_edits
-        .edited_test_fns
-        .iter()
-        .any(|(file, _)| diff_file_matches_entry(file, entry_path))
-}
-
 /// The closure-node definition SHARED by the falsifier/floor calibration emission and the
 /// space-lens memory predictor (THIS function is the single authority — the predictor binds to
 /// it, never re-derives; predictor design in flight on PR #6442, landed parent-lane authority
@@ -21195,12 +21078,6 @@ fn normalize_repo_path(path: &str) -> String {
     path.strip_prefix("./").unwrap_or(path).replace('\\', "/")
 }
 
-fn diff_file_matches_entry(diff_file: &str, entry_path: &str) -> bool {
-    let file = normalize_repo_path(diff_file);
-    let entry = normalize_repo_path(entry_path);
-    file == entry || entry.ends_with(&file) || file.ends_with(&entry)
-}
-
 fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLineRange>> {
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
     let mut current_file: Option<String> = None;
@@ -21320,13 +21197,6 @@ fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, Hash
 fn span_file_matches(span_file: &str, target_norm: &str) -> bool {
     let s = normalize_repo_path(span_file);
     s == target_norm || s.ends_with(target_norm) || target_norm.ends_with(&s)
-}
-
-fn touched_file_in_import_closure(touched_file: &str, closure_files: &HashSet<String>) -> bool {
-    let norm = normalize_repo_path(touched_file);
-    closure_files
-        .iter()
-        .any(|closure_file| span_file_matches(closure_file, &norm))
 }
 
 fn value_is_test_claim(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> bool {
