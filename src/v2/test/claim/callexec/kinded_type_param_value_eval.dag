@@ -249,3 +249,11 @@ test fn kpq2_bare_type_param_call_grounded() -> Bool { kpz_call_grounded(src: "m
 test fn kpq2_list_of_param_call_grounded() -> Bool { kpz_call_grounded(src: "module p\n\nfn f<t>(x: List<t>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  f(x: [1])\n}\n", name: ^f) }
 test fn kpq2_record_kinded_call_grounded() -> Bool { kpz_call_grounded(src: concat(kpe_prelude(), "fn constant<bits: Resolution>(x: Box<bits>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  constant(x: mk8())\n}\n"), name: ^constant) }
 test fn kpq2_record_unkinded_call_grounded() -> Bool { kpz_call_grounded(src: "module p\n\ntype Box<n> {\n  v: Int\n}\n\nfn mk() -> Box<Int> {\n  Box { v: 0 }\n}\n\nfn constant<n>(x: Box<n>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  constant(x: mk())\n}\n", name: ^constant) }
+
+fn kpr2_src() -> String {
+  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> = Int where bx_any\n\nfn bx_any(value: Int) -> Bool {\n  true\n}\n\nfn mk8() -> Box<8> {\n  0\n}\n\nfn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  width_of(x: mk8())\n}\n"
+}
+test fn kpr2_assembles() -> Bool { match cref_inferred_of(o: cref_assemble(src: kpr2_src())) { Present { value: _ } => true
+  Absent => false } }
+test fn kpr2_call_grounded() -> Bool { kpz_call_grounded(src: kpr2_src(), name: ^width_of) }
+test fn kpr2_is_8() -> Bool { kpe_int_of(r: cref_eval_of_call_to(o: cref_assemble(src: kpr2_src()), name: ^width_of)) == Present { value: 8 } }
