@@ -3,8 +3,14 @@ module gunbc.runner.runner_slot_actuation
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.optional { Absent, Present }
 import std.algebra { trim }
-import extdeps.systemd { IdProperty, LoadState, UnitFileState, ActiveState, systemd_unit_property_wire, SystemdUnitProperty }
+import extdeps.systemd {
+  IdProperty, LoadState, UnitFileState, ActiveState, systemd_unit_property_wire, SystemdUnitProperty,
+  SystemdUnitLoadState, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, parse_systemd_unit_load_state,
+  SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, parse_systemd_unit_active_state,
+}
 import extdeps.systemd.systemctl {
+  UnitEnabled, UnitEnabledRuntime, UnitLinked, UnitMasked, UnitStatic, UnitDisabled, UnitIndirect, UnitGenerated, UnitTransient, UnitBad,
+  parse_unit_file_state,
   systemctl_show_properties_argv,
   systemctl_unmask_argv,
   systemctl_enable_argv,
@@ -34,11 +40,39 @@ data slot_actuation_show_properties: List<SystemdUnitProperty> = [IdProperty, Lo
 // in Runner.Worker, so a unit owning a Runner.Worker is executing a job and must not be stopped.
 data runner_job_process_comm: String = "Runner.Worker"
 
+// THE READING IS TYPED AT THE BOUNDARY (review 80499). Each word systemctl prints is parsed into the
+// extdeps.systemd vocabulary it belongs to -- SystemdUnitLoadState, extdeps.systemd.systemctl
+// UnitFileState, SystemdUnitActiveState -- and a word outside that vocabulary refuses the reading, so
+// no decision below can fall through an `else` on a string it did not recognize. A unit the manager
+// does not know prints an empty UnitFileState; that is carried as Absent, never guessed.
 type SlotActuationReading {
   unit: NonEmptyStr
-  load_state: String
-  unit_file_state: String
-  active_state: String
+  load: SystemdUnitLoadState
+  file: extdeps.systemd.systemctl.UnitFileState?
+  active: SystemdUnitActiveState
+}
+
+type SlotActuationReadingResolution
+  = SlotReadingTyped { reading: SlotActuationReading }
+  | SlotReadingUnknownWord { property: String, raw: String }
+
+fn slot_actuation_reading_typed(unit: NonEmptyStr, load_raw: String, file_raw: String, active_raw: String) -> SlotActuationReadingResolution {
+  match parse_systemd_unit_load_state(raw: trim(s: load_raw)) {
+    Absent => SlotReadingUnknownWord { property: "LoadState", raw: load_raw }
+    Present { value: load } =>
+      match parse_systemd_unit_active_state(raw: trim(s: active_raw)) {
+        Absent => SlotReadingUnknownWord { property: "ActiveState", raw: active_raw }
+        Present { value: active } =>
+          if trim(s: file_raw) == "" {
+            SlotReadingTyped { reading: SlotActuationReading { unit: unit, load: load, file: none, active: active } }
+          } else {
+            match parse_unit_file_state(raw: trim(s: file_raw)) {
+              Absent => SlotReadingUnknownWord { property: "UnitFileState", raw: file_raw }
+              Present { value: f } => SlotReadingTyped { reading: SlotActuationReading { unit: unit, load: load, file: Present { value: f }, active: active } }
+            }
+          }
+      }
+  }
 }
 
 type SlotWorkerReading
@@ -75,43 +109,91 @@ fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
 
 // ── Pure decisions ──────────────────────────────────────────────────────────────────────────────
 
-fn slot_state_active(active_state: String) -> Bool {
-  trim(s: active_state) == "active" || trim(s: active_state) == "activating" || trim(s: active_state) == "reloading"
+// Running means the manager holds the unit up or is bringing it up; stopped means it is not and will
+// not on its own. Deactivating is neither: it is a stop in progress, so a drain waits for it.
+fn slot_state_active(active: SystemdUnitActiveState) -> Bool {
+  match active { Active => true Activating => true Reloading => true Inactive => false Failed => false Deactivating => false }
 }
 
-fn slot_state_stopped(active_state: String) -> Bool {
-  trim(s: active_state) == "inactive" || trim(s: active_state) == "failed"
+fn slot_state_stopped(active: SystemdUnitActiveState) -> Bool {
+  match active { Inactive => true Failed => true Active => false Activating => false Reloading => false Deactivating => false }
+}
+
+fn slot_file_is(file: extdeps.systemd.systemctl.UnitFileState?, enabled: Bool) -> Bool {
+  match file {
+    Absent => false
+    Present { value: f } => match f {
+      UnitEnabled => enabled
+      UnitMasked => !enabled
+      UnitEnabledRuntime => false UnitLinked => false UnitStatic => false UnitDisabled => false UnitIndirect => false UnitGenerated => false UnitTransient => false UnitBad => false
+    }
+  }
+}
+
+fn slot_is_masked(r: SlotActuationReading) -> Bool {
+  slot_file_is(file: r.file, enabled: false) || match r.load { UnitLoadMasked => true UnitLoaded => false UnitLoadNotFound => false UnitLoadBadSetting => false UnitLoadError => false }
+}
+
+fn slot_is_enabled(r: SlotActuationReading) -> Bool {
+  slot_file_is(file: r.file, enabled: true)
 }
 
 // AN ACTIVE SLOT IS LOADED, ENABLED AND RUNNING. A unit the manager does not know cannot be brought
-// into service by this effect -- installing the slot is a different effect -- so not-found refuses.
+// into service by this effect -- installing the slot is a different effect -- so not-found refuses,
+// as do a bad-setting or error load, a deactivating unit (wait for the stop), and a unit file state
+// this effect does not move (linked, static, generated, transient, runtime, bad).
 type SlotActivationPlan
   = ActivationAlreadyActive
   | ActivationSteps { steps: List<List<String>> }
   | ActivationRefused { reason: String }
 
 fn slot_activation_plan(r: SlotActuationReading) -> SlotActivationPlan {
-  let load = trim(s: r.load_state)
-  let file = trim(s: r.unit_file_state)
-  if load == "not-found" || load == "" {
-    ActivationRefused { reason: concat("the slot's unit is not installed on this host (LoadState=", concat(load, ")")) }
-  } else if file == "enabled" && slot_state_active(active_state: r.active_state) {
-    ActivationAlreadyActive
-  } else {
-    ActivationSteps {
-      steps: concat(
-        if file == "masked" { [systemctl_unmask_argv(unit: r.unit)] } else { [] },
-        concat(
-          if file == "enabled" { [] } else { [systemctl_enable_argv(unit: r.unit)] },
-          if slot_state_active(active_state: r.active_state) { [] } else { [systemctl_start_argv(unit: r.unit)] },
-        ),
-      ),
-    }
+  match r.load {
+    UnitLoadNotFound => ActivationRefused { reason: "the slot's unit is not installed on this host (LoadState=not-found)" }
+    UnitLoadBadSetting => ActivationRefused { reason: "the slot's unit file has a bad setting (LoadState=bad-setting)" }
+    UnitLoadError => ActivationRefused { reason: "the manager failed to load the slot's unit (LoadState=error)" }
+    UnitLoaded => slot_activation_plan_loaded(r: r)
+    UnitLoadMasked => slot_activation_plan_loaded(r: r)
+  }
+}
+
+fn slot_activation_plan_loaded(r: SlotActuationReading) -> SlotActivationPlan {
+  match r.active {
+    Deactivating => ActivationRefused { reason: "the slot's unit is deactivating; activation waits for the stop to finish" }
+    Active => slot_activation_plan_steps(r: r)
+    Activating => slot_activation_plan_steps(r: r)
+    Reloading => slot_activation_plan_steps(r: r)
+    Inactive => slot_activation_plan_steps(r: r)
+    Failed => slot_activation_plan_steps(r: r)
+  }
+}
+
+fn slot_activation_plan_steps(r: SlotActuationReading) -> SlotActivationPlan {
+  match r.file {
+    Absent => ActivationRefused { reason: "the slot's unit reports no unit file state, so whether it is enabled is unknown" }
+    Present { value: f } =>
+      match f {
+        UnitEnabled =>
+          if slot_state_active(active: r.active) { ActivationAlreadyActive } else { ActivationSteps { steps: [systemctl_start_argv(unit: r.unit)] } }
+        UnitMasked =>
+          ActivationSteps { steps: concat([systemctl_unmask_argv(unit: r.unit), systemctl_enable_argv(unit: r.unit)], if slot_state_active(active: r.active) { [] } else { [systemctl_start_argv(unit: r.unit)] }) }
+        UnitDisabled =>
+          ActivationSteps { steps: concat([systemctl_enable_argv(unit: r.unit)], if slot_state_active(active: r.active) { [] } else { [systemctl_start_argv(unit: r.unit)] }) }
+        UnitIndirect =>
+          ActivationSteps { steps: concat([systemctl_enable_argv(unit: r.unit)], if slot_state_active(active: r.active) { [] } else { [systemctl_start_argv(unit: r.unit)] }) }
+        UnitEnabledRuntime => ActivationRefused { reason: "UnitFileState=enabled-runtime: a runtime enablement this effect does not convert" }
+        UnitLinked => ActivationRefused { reason: "UnitFileState=linked: the unit file is linked from outside the unit path" }
+        UnitStatic => ActivationRefused { reason: "UnitFileState=static: the unit has no install section to enable" }
+        UnitGenerated => ActivationRefused { reason: "UnitFileState=generated: the unit is produced by a generator" }
+        UnitTransient => ActivationRefused { reason: "UnitFileState=transient: the unit is transient" }
+        UnitBad => ActivationRefused { reason: "UnitFileState=bad: the unit file is invalid" }
+      }
   }
 }
 
 fn slot_activation_read_back_holds(r: SlotActuationReading) -> Bool {
-  trim(s: r.load_state) == "loaded" && trim(s: r.unit_file_state) == "enabled" && slot_state_active(active_state: r.active_state)
+  (match r.load { UnitLoaded => true UnitLoadMasked => false UnitLoadNotFound => false UnitLoadBadSetting => false UnitLoadError => false })
+    && slot_is_enabled(r: r) && slot_state_active(active: r.active)
 }
 
 // A DRAINED SLOT IS MASKED AND STOPPED. The mask comes first and is safe at any time: it only stops
@@ -119,6 +201,7 @@ fn slot_activation_read_back_holds(r: SlotActuationReading) -> Bool {
 // a Runner.Worker present means a job is in flight, so the slot is left masked and running and the
 // effect reports DrainPending; the ephemeral runner exits when its job ends, the mask keeps it down,
 // and the next pass reads it stopped. An unreadable process listing refuses rather than guessing idle.
+// A deactivating unit is a stop already in progress: it is masked and waited for, never re-stopped.
 //
 // RESIDUAL RISK, STATED: between reading the listing idle and the stop, the listener can accept a job.
 // The window is one SSH round trip, and closing it needs the runner itself to refuse new work
@@ -130,28 +213,43 @@ type SlotDrainPlan
   | DrainRefused { reason: String }
 
 fn slot_drain_plan(r: SlotActuationReading, worker: SlotWorkerReading) -> SlotDrainPlan {
-  let load = trim(s: r.load_state)
-  let file = trim(s: r.unit_file_state)
-  let masked = file == "masked" || load == "masked"
-  let mask = if masked { [] } else { [systemctl_mask_argv(unit: r.unit)] }
-  if load == "not-found" {
-    DrainAlreadyMasked
-  } else if masked && slot_state_stopped(active_state: r.active_state) {
-    DrainAlreadyMasked
-  } else if slot_state_stopped(active_state: r.active_state) {
-    DrainSteps { steps: mask }
-  } else {
-    match worker {
-      SlotWorkerUnread { cause: c } => DrainRefused { reason: concat("whether the slot is executing a job could not be read, so it is not stopped: ", c) }
-      SlotWorkerPresent => DrainWaitForJob { mask: mask }
-      SlotWorkerAbsent => DrainSteps { steps: concat(mask, [systemctl_stop_argv(unit: r.unit)]) }
-    }
+  let mask = if slot_is_masked(r: r) { [] } else { [systemctl_mask_argv(unit: r.unit)] }
+  match r.load {
+    UnitLoadNotFound => DrainAlreadyMasked
+    UnitLoadBadSetting => DrainRefused { reason: "the slot's unit file has a bad setting (LoadState=bad-setting)" }
+    UnitLoadError => DrainRefused { reason: "the manager failed to load the slot's unit (LoadState=error)" }
+    UnitLoaded => slot_drain_plan_loaded(r: r, worker: worker, mask: mask)
+    UnitLoadMasked => slot_drain_plan_loaded(r: r, worker: worker, mask: mask)
+  }
+}
+
+fn slot_drain_plan_loaded(r: SlotActuationReading, worker: SlotWorkerReading, mask: List<List<String>>) -> SlotDrainPlan {
+  match r.active {
+    Inactive => if slot_is_masked(r: r) { DrainAlreadyMasked } else { DrainSteps { steps: mask } }
+    Failed => if slot_is_masked(r: r) { DrainAlreadyMasked } else { DrainSteps { steps: mask } }
+    Deactivating => DrainWaitForJob { mask: mask }
+    Active => slot_drain_plan_running(r: r, worker: worker, mask: mask)
+    Activating => slot_drain_plan_running(r: r, worker: worker, mask: mask)
+    Reloading => slot_drain_plan_running(r: r, worker: worker, mask: mask)
+  }
+}
+
+fn slot_drain_plan_running(r: SlotActuationReading, worker: SlotWorkerReading, mask: List<List<String>>) -> SlotDrainPlan {
+  match worker {
+    SlotWorkerUnread { cause: c } => DrainRefused { reason: concat("whether the slot is executing a job could not be read, so it is not stopped: ", c) }
+    SlotWorkerPresent => DrainWaitForJob { mask: mask }
+    SlotWorkerAbsent => DrainSteps { steps: concat(mask, [systemctl_stop_argv(unit: r.unit)]) }
   }
 }
 
 fn slot_drain_read_back_holds(r: SlotActuationReading) -> Bool {
-  trim(s: r.load_state) == "not-found"
-    || ((trim(s: r.unit_file_state) == "masked" || trim(s: r.load_state) == "masked") && slot_state_stopped(active_state: r.active_state))
+  match r.load {
+    UnitLoadNotFound => true
+    UnitLoadBadSetting => false
+    UnitLoadError => false
+    UnitLoaded => slot_is_masked(r: r) && slot_state_stopped(active: r.active)
+    UnitLoadMasked => slot_state_stopped(active: r.active)
+  }
 }
 
 // ── Readings ────────────────────────────────────────────────────────────────────────────────────
@@ -164,7 +262,7 @@ fn slot_show_value(lines: List<String>, property: SystemdUnitProperty) -> String
 
 // The reading for ONE unit out of a show over several, joined by Id; a unit with no complete block is
 // unread, never borrowed from a neighbour.
-fn slot_actuation_reading_of(unit: NonEmptyStr, show_stdout: String) -> SlotActuationReading? {
+fn slot_actuation_reading_of(unit: NonEmptyStr, show_stdout: String) -> SlotActuationReadingResolution? {
   fold(split(s: show_stdout, delimiter: "\n\n"), init: none, f: (acc, b) => {
     let lines = map(split(s: b, delimiter: "\n"), l => trim(s: l))
     match slot_show_value(lines: lines, property: IdProperty) {
@@ -179,7 +277,7 @@ fn slot_actuation_reading_of(unit: NonEmptyStr, show_stdout: String) -> SlotActu
                 Present { value: fs } =>
                   match slot_show_value(lines: lines, property: ActiveState) {
                     Absent => acc
-                    Present { value: a } => Present { value: SlotActuationReading { unit: unit, load_state: ls, unit_file_state: fs, active_state: a } }
+                    Present { value: a } => Present { value: slot_actuation_reading_typed(unit: unit, load_raw: ls, file_raw: fs, active_raw: a) }
                   }
               }
           }
@@ -218,7 +316,11 @@ fn read_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: No
       } else {
         match slot_actuation_reading_of(unit: unit, show_stdout: r.stdout) {
           Absent => SlotReadRefused { reason: "systemctl show returned no complete block for the unit" }
-          Present { value: rd } => SlotRead { reading: rd }
+          Present { value: res } =>
+            match res {
+              SlotReadingUnknownWord { property: p, raw: w } => SlotReadRefused { reason: join(["systemctl show printed ", p, "=", w, ", a word outside the systemd vocabulary this effect decides on"], "") }
+              SlotReadingTyped { reading: rd } => SlotRead { reading: rd }
+            }
         }
       }
   }
@@ -270,7 +372,7 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
                 SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "readback", reason: why }
                 SlotRead { reading: after } =>
                   if slot_activation_read_back_holds(r: after) { SlotActivated { unit: unit } } else {
-                    SlotActuationRefused { unit: unit, step: "readback", reason: join(["not active after activation: LoadState=", after.load_state, " UnitFileState=", after.unit_file_state, " ActiveState=", after.active_state], "") }
+                    SlotActuationRefused { unit: unit, step: "readback", reason: "not loaded, enabled and active after activation" }
                   }
               }
           }
@@ -283,7 +385,7 @@ fn drain_and_mask_runner_slot_over(target: SshTarget, context: FleetSshExecution
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
     SlotRead { reading: r } => {
-      let worker = if slot_state_active(active_state: r.active_state) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotWorkerAbsent }
+      let worker = if slot_state_active(active: r.active) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotWorkerAbsent }
       match slot_drain_plan(r: r, worker: worker) {
         DrainAlreadyMasked => SlotActuationNoop { unit: unit, state: "masked-and-stopped" }
         DrainRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
@@ -300,7 +402,7 @@ fn drain_and_mask_runner_slot_over(target: SshTarget, context: FleetSshExecution
                 SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "readback", reason: why }
                 SlotRead { reading: after } =>
                   if slot_drain_read_back_holds(r: after) { SlotDrainedAndMasked { unit: unit } } else {
-                    SlotActuationRefused { unit: unit, step: "readback", reason: join(["not masked and stopped after drain: LoadState=", after.load_state, " UnitFileState=", after.unit_file_state, " ActiveState=", after.active_state], "") }
+                    SlotActuationRefused { unit: unit, step: "readback", reason: "not masked and stopped after drain" }
                   }
               }
           }
