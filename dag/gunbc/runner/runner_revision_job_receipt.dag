@@ -150,15 +150,18 @@ fn publish_revision_job_receipt(store_root: String, staging_path: String, d: Rev
         }
         if !dirs_ok { RevisionJobPublicationRefused { step: "mkdir", detail: store_root } }
         else {
+          // THE RECEIPT FIRST, THE INDEX ONLY OVER A GOOD RECEIPT: the index entry is written only once
+          // the address holds exactly these bytes (newly linked, or already present and equal), so a
+          // refusal never leaves an index entry naming a publication the caller was told failed.
           let linked = Filesystem.LinkCreateNew(source: staging_path, path: receipt_path)
-          let indexed = Filesystem.WriteCreateNew(path: index_entry, content: concat(receipt_path, "\n"))
-          if linked.success && indexed.success { RevisionJobPublished { address: address as NonEmptyStr, index_entry: index_entry } }
-          else if !linked.success && !indexed.success && Filesystem.Read(path: receipt_path).content == body {
-            RevisionJobAlreadyPublished { address: address as NonEmptyStr }
-          } else if !linked.success && Filesystem.Read(path: receipt_path).content != body {
+          if !linked.success && Filesystem.Read(path: receipt_path).content != body {
             RevisionJobPublicationRefused { step: "link-receipt", detail: linked.error }
-          } else if !indexed.success { RevisionJobPublicationRefused { step: "index-entry", detail: indexed.error } }
-          else { RevisionJobPublished { address: address as NonEmptyStr, index_entry: index_entry } }
+          } else {
+            let indexed = Filesystem.WriteCreateNew(path: index_entry, content: concat(receipt_path, "\n"))
+            if indexed.success { RevisionJobPublished { address: address as NonEmptyStr, index_entry: index_entry } }
+            else if Filesystem.Read(path: index_entry).content == concat(receipt_path, "\n") { RevisionJobAlreadyPublished { address: address as NonEmptyStr } }
+            else { RevisionJobPublicationRefused { step: "index-entry", detail: indexed.error } }
+          }
         }
       }
     }
