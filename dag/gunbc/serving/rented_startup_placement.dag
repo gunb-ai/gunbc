@@ -188,8 +188,8 @@ fn rented_engine_promotion(roots: RentedStoreRoots, engine: NinferEngineRelease,
   match verdict {
     RentedEngineVerified => RentedEnginePromoted {
       commands: [mv_exact_destination_command(
-        source: rented_engine_staging_directory(roots: roots, engine: release, attempt: attempt),
-        destination: rented_engine_directory(roots: roots, engine: release),
+        source: rented_engine_staging_directory(roots: roots, engine: engine, attempt: attempt),
+        destination: rented_engine_directory(roots: roots, engine: engine),
       )],
     }
     refused => RentedEngineRefused { verdict: refused }
