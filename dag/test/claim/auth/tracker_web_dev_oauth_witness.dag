@@ -57,7 +57,7 @@ import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAt
 import gunbc.workspace_allocation_policy { workspace_operator_principal }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id, srv2_deploy_dashboard_id }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 
 fn witness_revision() -> ReleaseRevisionBinding {
   RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" as CommitSha }

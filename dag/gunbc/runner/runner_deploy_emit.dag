@@ -7,7 +7,7 @@ import gunbc.ci.ci_runner_placement {
   PrimaryCpuUnavailable, UsableRamUnavailable, SessionReservationUnestablished,
   FixedOverheadUnavailable, CompilePoolUnavailable,
   HostAllocationOversubscribedOnHost, HostAllocationUnchargeableOnHost,
-  ZeroRunnerWidth, JobserverCitationAbsent, HostCpuAllocationUnchargeable, HostNotEnrolledInFleet,
+  ZeroRunnerWidth, HostCpuAllocationUnchargeable, HostNotEnrolledInFleet,
   FleetDeploymentComplete, FleetDeploymentIncomplete, fleet_deployment_completion,
   host_deployment_refusal_text,
   RunnerHostDeployment,
@@ -84,7 +84,7 @@ fn manifest_host_fields(h: RunnerHostDeployment) -> List<SerialField> {
     serial_field(key: "runner_count", value: serial_scalar(text: to_string(h.runner_count))),
     serial_field(key: "runner_slice_cap_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.runner_slice_cap)))),
     serial_field(key: "per_slot_memory_max_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.per_runner_memory_cap)))),
-    serial_field(key: "build_tokens", value: serial_scalar(text: to_string(hardware_thread_count_value(t: h.build_tokens)))),
+    serial_field(key: "sessions_cpu_cap", value: serial_scalar(text: to_string(hardware_thread_count_value(t: h.sessions_cpu_cap)))),
     serial_field(key: "labels", value: serial_scalar(text: runner_labels_text(spec: h.runner))),
     serial_field(key: "cpu_weight", value: serial_scalar(text: to_string(workload_class_cpu_weight(wc: h.workload_class)))),
     serial_field(key: "per_slot_cpu_quota", value: serial_scalar(text: runner_cpu_boundary_text(b: h.per_runner_cpu_boundary)))

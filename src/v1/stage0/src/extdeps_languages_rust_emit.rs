@@ -14,6 +14,7 @@ pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_emit_model::SimpleMethodSpec;
+pub use crate::std_optional::Optional;
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::*;
 use crate::std_trait_derive_shape::PairCompletionBody::{
@@ -218,12 +219,12 @@ pub fn fresh_rust_value_binding_name(blocked: Rc<Vec<String>>, prefix: String) -
                 (blocked.clone().len() as i64),
             )]),
         );
-        candidates.iter().cloned().fold(
-            std::option::Option::None,
-            |found: Option<String>, candidate: String| {
+        candidates
+            .iter()
+            .cloned()
+            .fold(std::option::Option::None, |found: _, candidate: String| {
                 rust_value_binding_choose_unblocked(found, candidate.clone(), blocked.clone())
-            },
-        )
+            })
     }
 }
 

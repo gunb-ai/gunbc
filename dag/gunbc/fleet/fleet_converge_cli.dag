@@ -145,7 +145,6 @@ fn absent_converge_target_cause(host: String) -> ConvergeCliRefusalCause {
         HostAllocationUnchargeableOnHost { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
         ZeroRunnerWidth => HostDeploymentRefused { host: host, cause: r.cause }
         CommittedWidthUnresolved { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
-        JobserverCitationAbsent { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
         HostCpuAllocationUnchargeable { cause: _ } => HostDeploymentRefused { host: host, cause: r.cause }
       }
     HostRunnerDeploymentDerived { deployment: _ } =>

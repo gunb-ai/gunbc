@@ -6,7 +6,7 @@ import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice, Step, RunStep, UsesStep
 }
 
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,

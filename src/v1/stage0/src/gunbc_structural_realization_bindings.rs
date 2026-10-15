@@ -12,6 +12,7 @@ pub use crate::std_literal_elaboration::{
     LiteralUnfolding,
 };
 pub use crate::std_operator_realization::StructuralOrderingBinding;
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

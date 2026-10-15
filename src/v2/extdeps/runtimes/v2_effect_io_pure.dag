@@ -1,17 +1,9 @@
 module v2.extdeps.runtimes.v2_effect_io_pure
 
-import std.types { List }
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty }
-import v2.std.collection {
-  Absent,
-  Map,
-  Present,
-  empty_map,
-  list_nth,
-  map_get_checked,
-  map_insert
-}
+import std.algebra { Cons, Empty, empty_map, map_insert }
+import std.optional { Absent, Present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -44,7 +36,7 @@ import v2.std.runtime {
   effect_handler_for_kind,
   runtime_value_node_projection
 }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.witness { Holds, Violates, Witness, list_nth, map_get_checked }
 
 type EffectIoResourceBackend
   = FileResourceBackend

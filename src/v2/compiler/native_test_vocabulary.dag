@@ -18,7 +18,7 @@ import v2.std.text { String }
 import std.optional { Optional }
 import v2.std.integer { Int }
 import v2.std.source_position { SourceByteColumn }
-import v2.std.collection { List }
+import std.types { List }
 
 // THE NATIVE-TEST VERDICT VOCABULARY, HOMED BELOW BOTH OF ITS READERS.
 //
