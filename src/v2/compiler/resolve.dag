@@ -4445,6 +4445,8 @@ fn resolve_type_param_frame(n: Node, outer: Scope, declaring: DeclaringPosition)
 // (std.machine_constraints machine_width_literal_roster_frontier). An unkinded binder, or a binder
 // with no declaring path (a lambda, an anonymous arrow), records nothing, so its value read keeps
 // refusing resolve_reason_type_parameter_in_value_position.
+// EMITTER WORKAROUND, row gunbc.recurring_failure_mode.an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head: the seed is a typed let because an
+// untyped empty_map() in the fold init is emitted with the bare FreeMonoid alias head (E0107).
 fn type_param_value_binders(n: Node, declaring: DeclaringPosition) -> Map<Symbol, QualifiedName> {
   match declaring {
     DeclaringAt { path: path } =>
@@ -4465,6 +4467,9 @@ fn resolve_type_parameter_value_reading(ctx: ResolveContext, identity: Symbol) -
   }
 }
 
+// EMITTER WORKAROUND, row gunbc.recurring_failure_mode.an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded: this and resolve_type_parameter_value_reading
+// are two single-level matches because one match nesting a variant under Accepted is emitted with every
+// arm guarded (E0004).
 fn type_parameter_binding_value_reading(binding: ScopeBinding) -> Optional<QualifiedName> {
   match binding {
     BoundInFrame { canonical: canonical, kind: kind } =>
