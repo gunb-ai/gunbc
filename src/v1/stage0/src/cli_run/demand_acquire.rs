@@ -158,6 +158,9 @@ fn read_layout_module(
     source_roots: &[String],
     name: &str,
 ) -> Result<Option<Rc<v1_compiler_compile::SourceFile>>, String> {
+    if let Some(derived) = read_derived_roster_module(name)? {
+        return Ok(Some(derived));
+    }
     let Ok(rel) = module_storage_relative(name) else {
         return Ok(None);
     };
@@ -182,6 +185,45 @@ fn read_layout_module(
             declared.unwrap_or_else(|| "<no module line>".to_string())
         ));
     }
+    Ok(Some(Rc::new(v1_compiler_compile::SourceFile {
+        path: workspace_relative_repo_path(&rel),
+        content,
+    })))
+}
+
+/// `gunbc.rung_drop.roster` and `gunbc.recurring_failure_mode.roster` have no file;
+/// the tree walk mints them in memory (`derived_row_roster::acquire_dir_files`).
+fn read_derived_roster_module(
+    name: &str,
+) -> Result<Option<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let Some(roster) = super::derived_row_roster::DERIVED_ROW_ROSTERS
+        .iter()
+        .copied()
+        .find(|r| r.roster_module == name)
+    else {
+        return Ok(None);
+    };
+    let dir = workspace_root().join("dag").join(roster.row_dir_rel);
+    if !dir.is_dir() {
+        return Ok(None);
+    }
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    for ent in std::fs::read_dir(&dir).map_err(|e| format!("read {}: {e}", dir.display()))? {
+        let ent = ent.map_err(|e| format!("read {}: {e}", dir.display()))?;
+        let path = ent.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            files.push(path);
+        }
+    }
+    files.sort();
+    let acquired = super::derived_row_roster::acquire_dir_files(&dir, files)?;
+    let Some(roster_src) = acquired.into_iter().find(|a| a.is_derived()) else {
+        return Ok(None);
+    };
+    let content = roster_src
+        .read()
+        .map_err(|e| format!("derived roster {name}: {e}"))?;
+    let rel = format!("dag/{}/roster.dag", roster.row_dir_rel);
     Ok(Some(Rc::new(v1_compiler_compile::SourceFile {
         path: workspace_relative_repo_path(&rel),
         content,
