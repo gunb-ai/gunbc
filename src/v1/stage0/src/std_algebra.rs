@@ -642,6 +642,37 @@ pub fn collection_count_shape() -> Rc<AlgebraFieldTemplate> {
     })
 }
 
+pub fn collection_first_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "first".to_string(),
+        param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+        return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
+            inner: Rc::new(AlgebraTypeTemplate::ReceiverElement),
+        }),
+        size_effect: Some(CollectionSizeEffect::ProjectionEffect),
+        cost_shape: Some(CostShape::ShapeLinearScan),
+        callback_element_position: std::option::Option::None,
+    })
+}
+
+pub fn collection_join_shape() -> Rc<AlgebraFieldTemplate> {
+    Rc::new(AlgebraFieldTemplate {
+        name: "join".to_string(),
+        param_types: Rc::new(vec![
+            Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+            Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                name: "String".to_string(),
+            }),
+        ]),
+        return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+            name: "String".to_string(),
+        }),
+        size_effect: std::option::Option::None,
+        cost_shape: Some(CostShape::ShapeLinearScan),
+        callback_element_position: std::option::Option::None,
+    })
+}
+
 pub fn collection_sort_by_shape() -> Rc<AlgebraFieldTemplate> {
     Rc::new(AlgebraFieldTemplate {
         name: "sort_by".to_string(),
@@ -1855,16 +1886,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
         collection_any_shape(),
         collection_all_shape(),
         collection_count_shape(),
-        Rc::new(AlgebraFieldTemplate {
-            name: "first".to_string(),
-            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-            return_type: Rc::new(AlgebraTypeTemplate::OptionalOf {
-                inner: Rc::new(AlgebraTypeTemplate::ReceiverElement),
-            }),
-            size_effect: Some(CollectionSizeEffect::ProjectionEffect),
-            cost_shape: Some(CostShape::ShapeLinearScan),
-            callback_element_position: std::option::Option::None,
-        }),
+        collection_first_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "last".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
@@ -1965,21 +1987,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             cost_shape: Some(CostShape::ShapeLinearScan),
             callback_element_position: std::option::Option::None,
         }),
-        Rc::new(AlgebraFieldTemplate {
-            name: "join".to_string(),
-            param_types: Rc::new(vec![
-                Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                    name: "String".to_string(),
-                }),
-            ]),
-            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-                name: "String".to_string(),
-            }),
-            size_effect: std::option::Option::None,
-            cost_shape: Some(CostShape::ShapeLinearScan),
-            callback_element_position: std::option::Option::None,
-        }),
+        collection_join_shape(),
         collection_concat_shape(),
         Rc::new(AlgebraFieldTemplate {
             name: "list_push".to_string(),
