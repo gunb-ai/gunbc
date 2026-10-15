@@ -7,9 +7,9 @@ import gunbc.host.host_software_surface {
   HostSoftwareSurface,
   HostPackageManagerKnown,
   HostPackageManagerUnobserved,
-  UserManagerEnforcesSandbox,
   UserManagerDoesNotEnforceSandbox,
   UserManagerSandboxUnobserved,
+  UserManagerSandboxEnforcementUnobserved,
   UserManagerSandboxSysctlUnreadable,
   host_software_surface_for_identity,
   host_os_package_manager,
@@ -28,17 +28,19 @@ import gunbc.roadmap.roadmap_dashboard_instance { srv1_linux_toolchain }
 // refusal when the surface has not observed them.
 //
 // WORKER-SANDBOX SELECTION. A host whose user manager does not enforce ProtectHome must not yield a
-// plan that claims user-manager confinement. The system-manager launcher of gunbc#13942 is the
+// plan that claims user-manager confinement (sysctl 1 → system-manager launcher). Sysctl 0 is a
+// bet that the user manager would enforce, not an observation of confinement, so the plan refuses
+// rather than minting ProtectHome (DESIGN 4d). The system-manager launcher of gunbc#13942 is the
 // selected realization identity here; this module does not import that PR's types (COORDINATE:
 // session/bold-dove-819). Wiring the launcher itself stays with that change.
 
 type WorkerSandboxRefusal
   = WorkerSandboxUnobserved { obligation: NonEmptyStr }
+  | WorkerSandboxEnforcementUnobserved { obligation: NonEmptyStr }
   | WorkerSandboxSysctlUnreadable { value: Int }
 
 type WorkerSandboxChoice
-  = UserManagerProtectHomeSelected
-  | SystemManagerLauncherSelected
+  = SystemManagerLauncherSelected
 
 type WorkerSandboxSelection
   = WorkerSandboxChosen { choice: WorkerSandboxChoice }
@@ -47,6 +49,7 @@ type WorkerSandboxSelection
 type LabDeployPlanRefusal
   = LabOsUnobserved { obligation: NonEmptyStr }
   | LabSandboxUnobserved { obligation: NonEmptyStr }
+  | LabSandboxEnforcementUnobserved { obligation: NonEmptyStr }
   | LabSandboxSysctlUnreadable { value: Int }
   | LabToolchainUnobserved { obligation: NonEmptyStr }
 
@@ -70,8 +73,8 @@ fn select_worker_sandbox(surface: HostSoftwareSurface) -> WorkerSandboxSelection
       WorkerSandboxRefused { cause: WorkerSandboxSysctlUnreadable { value: n } }
     UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } =>
       WorkerSandboxChosen { choice: SystemManagerLauncherSelected }
-    UserManagerEnforcesSandbox =>
-      WorkerSandboxChosen { choice: UserManagerProtectHomeSelected }
+    UserManagerSandboxEnforcementUnobserved { obligation: o } =>
+      WorkerSandboxRefused { cause: WorkerSandboxEnforcementUnobserved { obligation: o } }
   }
 }
 
@@ -84,6 +87,8 @@ fn lab_deploy_plan_from_software(surface: HostSoftwareSurface) -> LabDeployPlan 
           match c {
             WorkerSandboxUnobserved { obligation: o } =>
               LabPlanRefused { cause: LabSandboxUnobserved { obligation: o } }
+            WorkerSandboxEnforcementUnobserved { obligation: o } =>
+              LabPlanRefused { cause: LabSandboxEnforcementUnobserved { obligation: o } }
             WorkerSandboxSysctlUnreadable { value: n } =>
               LabPlanRefused { cause: LabSandboxSysctlUnreadable { value: n } }
           }
@@ -135,7 +140,6 @@ fn plan_claims_user_manager_protect_home(plan: LabDeployPlan) -> Bool {
     LabPlanRefused { cause: _ } => false
     LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
       match choice {
-        UserManagerProtectHomeSelected => true
         SystemManagerLauncherSelected => false
       }
   }
@@ -147,7 +151,6 @@ fn plan_selects_system_manager_launcher(plan: LabDeployPlan) -> Bool {
     LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
       match choice {
         SystemManagerLauncherSelected => true
-        UserManagerProtectHomeSelected => false
       }
   }
 }

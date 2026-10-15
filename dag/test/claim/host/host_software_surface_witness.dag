@@ -20,7 +20,7 @@ import gunbc.host.host_software_surface {
   HostPackageManagerUnobserved,
   user_manager_sandbox_enforcement,
   UserManagerDoesNotEnforceSandbox,
-  UserManagerEnforcesSandbox,
+  UserManagerSandboxEnforcementUnobserved,
   UserManagerSandboxUnobserved,
   UserManagerSandboxSysctlUnreadable,
   host_sudo_observed_all_is_not_the_declared_roster,
@@ -92,13 +92,13 @@ test fn srv1_user_manager_does_not_enforce_sandbox_because_of_the_sysctl() -> Bo
       srv1_software_surface().apparmor_userns.value.value == Present { value: apparmor_unprivileged_userns_restricted }
         && srv1_software_surface().apparmor_userns.value.name == apparmor_restrict_unprivileged_userns_sysctl_name
         && (receipt as String) == (srv1_user_manager_protect_home_wrote_into_home_receipt as String)
-    UserManagerEnforcesSandbox => false
+    UserManagerSandboxEnforcementUnobserved { obligation: _ } => false
     UserManagerSandboxUnobserved { obligation: _ } => false
     UserManagerSandboxSysctlUnreadable { value: _ } => false
   }
 }
 
-test fn a_sysctl_zero_host_is_the_enforcing_variant() -> Bool {
+test fn a_sysctl_zero_host_does_not_promote_the_enforcing_bet() -> Bool {
   let surface = software_surface(
     host: operator_host_srv1,
     os: srv1_software_surface().os_release.value,
@@ -114,7 +114,7 @@ test fn a_sysctl_zero_host_is_the_enforcing_variant() -> Bool {
     toolchain: srv1_software_surface().toolchain_paths.value,
   )
   match user_manager_sandbox_enforcement(surface: surface) {
-    UserManagerEnforcesSandbox => true
+    UserManagerSandboxEnforcementUnobserved { obligation: _ } => true
     UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
     UserManagerSandboxUnobserved { obligation: _ } => false
     UserManagerSandboxSysctlUnreadable { value: _ } => false
@@ -214,7 +214,7 @@ test fn srv1_software_is_observed_by_the_inhabitance_receipt() -> Bool {
 test fn unobserved_apparmor_is_not_a_default_enforcement() -> Bool {
   match user_manager_sandbox_enforcement(surface: unobserved_software_surface(host: operator_host_srv2)) {
     UserManagerSandboxUnobserved { obligation: _ } => true
-    UserManagerEnforcesSandbox => false
+    UserManagerSandboxEnforcementUnobserved { obligation: _ } => false
     UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
     UserManagerSandboxSysctlUnreadable { value: _ } => false
   }

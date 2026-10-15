@@ -416,9 +416,9 @@ fn host_os_package_manager(surface: HostSoftwareSurface) -> HostPackageManagerRe
 }
 
 type UserManagerSandboxEnforcement
-  = UserManagerEnforcesSandbox
-  | UserManagerDoesNotEnforceSandbox { wrote_into_home: NonEmptyStr }
+  = UserManagerDoesNotEnforceSandbox { wrote_into_home: NonEmptyStr }
   | UserManagerSandboxUnobserved { obligation: NonEmptyStr }
+  | UserManagerSandboxEnforcementUnobserved { obligation: NonEmptyStr }
   | UserManagerSandboxSysctlUnreadable { value: Int }
 
 fn host_program_version(surface: HostSoftwareSurface, program: ProgramIdentity) -> HostProgramVersionFact? {
@@ -445,9 +445,11 @@ fn host_program_version_label(surface: HostSoftwareSurface, program: ProgramIden
 // OBSERVATION PLUS A BET, NOT A CITED systemd FACT (DESIGN 4d). srv1 on 2026-10-14: a user-manager
 // unit with ProtectHome wrote into home (github.com/gunb-ai/gunbc/issues/13942#issuecomment-6175000334).
 // That this happens because Ubuntu's apparmor userns sysctl is 1 is the bet: systemd.exec does not
-// state that coupling. Sysctl 1 on this host is DoesNotEnforce (observed). Sysctl 0 is treated as
-// the enforcing variant as a bet, not as CitedToAuthority. Any other sysctl is unreadable.
+// state that coupling. Sysctl 1 on this host is DoesNotEnforce (observed). Sysctl 0 is only a bet
+// that the user manager would enforce; it is not an observation of confinement, so it stays
+// Unobserved rather than Enforces. Any other sysctl is unreadable.
 data srv1_user_manager_protect_home_wrote_into_home_receipt: NonEmptyStr = "github.com/gunb-ai/gunbc/issues/13942#issuecomment-6175000334"
+data user_manager_protect_home_enforcement_read_obligation: NonEmptyStr = "ProtectHome confinement observed on this host (sysctl 0 is a bet, not that observation)"
 
 fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManagerSandboxEnforcement {
   match surface.apparmor_userns.value.value {
@@ -463,7 +465,9 @@ fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManager
           wrote_into_home: srv1_user_manager_protect_home_wrote_into_home_receipt
         }
       } else if n == 0 {
-        UserManagerEnforcesSandbox
+        UserManagerSandboxEnforcementUnobserved {
+          obligation: user_manager_protect_home_enforcement_read_obligation
+        }
       } else {
         UserManagerSandboxSysctlUnreadable { value: n }
       }

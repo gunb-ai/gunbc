@@ -24,6 +24,7 @@ import gunbc.live_deploy.lab_host_plan {
   LabPlanRefused,
   LabOsUnobserved,
   LabSandboxUnobserved,
+  LabSandboxEnforcementUnobserved,
   LabSandboxSysctlUnreadable,
   LabToolchainUnobserved,
   plan_claims_user_manager_protect_home,
@@ -67,7 +68,7 @@ test fn a_host_whose_user_manager_does_not_enforce_never_yields_protect_home_con
   !plan_claims_user_manager_protect_home(plan: lab_deploy_plan_from_software(surface: srv1_software_surface()))
 }
 
-test fn a_host_that_enforces_may_claim_user_manager_protect_home() -> Bool {
+test fn a_sysctl_zero_host_refuses_and_does_not_claim_protect_home() -> Bool {
   let surface = software_surface(
     host: srv1_software_surface().host,
     os: srv1_software_surface().os_release.value,
@@ -82,7 +83,18 @@ test fn a_host_that_enforces_may_claim_user_manager_protect_home() -> Bool {
     cgroup: blank_cgroup(),
     toolchain: srv1_software_surface().toolchain_paths.value,
   )
-  plan_claims_user_manager_protect_home(plan: lab_deploy_plan_from_software(surface: surface))
+  match lab_deploy_plan_from_software(surface: surface) {
+    LabPlanRefused { cause: c } =>
+      match c {
+        LabSandboxEnforcementUnobserved { obligation: _ } =>
+          !plan_claims_user_manager_protect_home(plan: lab_deploy_plan_from_software(surface: surface))
+        LabSandboxUnobserved { obligation: _ } => false
+        LabOsUnobserved { obligation: _ } => false
+        LabToolchainUnobserved { obligation: _ } => false
+        LabSandboxSysctlUnreadable { value: _ } => false
+      }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
+  }
 }
 
 test fn unobserved_os_refuses_and_does_not_keep_srv1_apt() -> Bool {
@@ -95,6 +107,7 @@ test fn unobserved_os_refuses_and_does_not_keep_srv1_apt() -> Bool {
             HostPackageManagerUnobserved { obligation: _ } => false
           }
         LabSandboxUnobserved { obligation: _ } => false
+        LabSandboxEnforcementUnobserved { obligation: _ } => false
         LabToolchainUnobserved { obligation: _ } => false
         LabSandboxSysctlUnreadable { value: _ } => false
       }
@@ -131,6 +144,7 @@ test fn unobserved_apparmor_with_known_os_refuses_sandbox_rather_than_defaulting
     LabPlanRefused { cause: c } =>
       match c {
         LabSandboxUnobserved { obligation: _ } => true
+        LabSandboxEnforcementUnobserved { obligation: _ } => false
         LabOsUnobserved { obligation: _ } => false
         LabToolchainUnobserved { obligation: _ } => false
         LabSandboxSysctlUnreadable { value: _ } => false
@@ -159,6 +173,7 @@ test fn unreadable_apparmor_sysctl_refuses_as_sysctl_unreadable_not_unobserved()
       match c {
         LabSandboxSysctlUnreadable { value: n } => n == 2
         LabSandboxUnobserved { obligation: _ } => false
+        LabSandboxEnforcementUnobserved { obligation: _ } => false
         LabOsUnobserved { obligation: _ } => false
         LabToolchainUnobserved { obligation: _ } => false
       }
