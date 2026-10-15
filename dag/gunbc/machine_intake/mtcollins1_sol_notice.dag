@@ -9,12 +9,7 @@ import extdeps.github.log_annotations { LogAnnotation, AnnotationError, Annotati
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.machine_intake.sol_hold { sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker }
-import gunbc.machine_intake.mtcollins1_boot_run {
-  mtcollins1_boot_sol_capture_path_env, mtcollins1_sol_incident_path, mtcollins1_sol_client_diagnostic_path,
-  mtcollins1_sol_workflow_events_path, mtcollins1_sol_workflow_event_prefix, mtcollins1_sol_delivery_suffix,
-  mtcollins1_boot_sol_pid_path_env, mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance,
-  mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_token_env,
-}
+import gunbc.machine_intake.mtcollins1_sol_notice_facts { mtcollins1_boot_sol_capture_path_env, mtcollins1_sol_incident_path, mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_workflow_events_path, mtcollins1_sol_workflow_event_prefix, mtcollins1_sol_delivery_suffix, mtcollins1_boot_sol_pid_path_env, mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance, mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_token_env }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
@@ -25,7 +20,7 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 // publishes two facts other authorities establish:
 //   (1) THE COLLECTOR'S EXIT, as the hold's supervisor recorded it (gunbc.machine_intake.sol_hold
 //       sol_hold_exit_record_prefix: status and instant), with the last act this run had RECORDED
-//       requesting (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_sol_workflow_event_prefix) at
+//       requesting (gunbc.machine_intake.mtcollins1_sol_notice_facts mtcollins1_sol_workflow_event_prefix) at
 //       requested strength -- a preceding request is not proven to be the cause;
 //   (2) THE CLASSIFIED INCIDENT the boot's watch freezes (mtcollins1_sol_loss_freeze, renamed into
 //       place whole, so it is never read half-written).
