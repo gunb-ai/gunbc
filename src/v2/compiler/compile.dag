@@ -103,7 +103,7 @@ import v2.std.provenance {
   span_index_empty,
   span_index_in_scope
 }
-import v2.std.source_position { source_line_col_at_byte }
+import v2.std.source_position { SourcePositionIndex, source_line_col_in, source_position_index }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_eq_structural }
 import std.judgment_contract {
   DeclaredInput,
@@ -247,12 +247,15 @@ import v2.compiler.resolve {
   resolve,
   resolved_tree_of,
   ResolvedTree,
-  ClosureProviderRefusal
+  ClosureProviderRefusal,
+  ModuleOutcome,
+  declaration_available,
+  module_outcomes_provider_refusals
 }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize }
 import v2.std.staging { then_outcome }
 import v2.std.compilers.lexing { TokenStream }
-import v2.std.grammar { ParseTree }
+import v2.std.grammar { ParseTree, node_atom_identity_optional }
 import v2.std.language_model { LanguageModel }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.target_model { TargetModel }
@@ -273,9 +276,9 @@ import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.content_hash { Fnv1a64Structural, content_hash_of_value, serialize_content_hash }
-import std.types { NonEmptyStr, List }
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, trim, list_append, list_snoc_item, contains, fold_list, is_empty, length, list_find_first, list_map, list_reverse, list_starts_with }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup, map_contains_key }
+import std.types { NonEmptyStr, List, Map }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, trim, list_append, list_snoc_item, contains, fold_list, is_empty, length, list_find_first, list_map, list_reverse, list_starts_with, empty_map, map_insert, map_lookup }
+
 import v2.std.integer { Int }
 import v2.std.diagnostic {
   UserInputBoundary,
@@ -286,6 +289,7 @@ import v2.std.diagnostic {
   Locus,
   NonEmptyDiagnostics,
   Outcome,
+  None,
   Some,
   Textual,
   WholeFile,
@@ -296,6 +300,7 @@ import v2.std.diagnostic {
   InvariantPortLocus,
   DeclarationLocus,
   declaration_locus,
+  source_port_locus,
   diagnostics_fatal,
   diagnostics_fatal_reason,
   invariant_port_locus,
@@ -308,8 +313,9 @@ import v2.std.diagnostic {
   outcome_rejected,
   outcome_with_diagnostics
 }
-import v2.std.node { Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Node, NodeFold, NodeKind, Occupancy, Positional, Symbol, Transform, TypeNode, Value, fold_node, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
-import v2.compiler.inferred_tree { AuthoredOccurrenceCollision, authored_occurrence_collisions }
+import v2.std.lens_verdict { lens_verdict_diagnostic_located_text_in_spans }
+import v2.std.node { Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Edge, Instantiation, Loop, Match, Node, NodeFold, NodeKind, Occupancy, Positional, Symbol, Transform, TypeNode, Value, fold_node, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
+import v2.compiler.inferred_tree { AuthoredOccurrenceCollision, DerivedGrounding, GroundingNotDerived, authored_occurrence_collisions }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
@@ -1423,13 +1429,14 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // ACCEPTED FILES' SPAN INDEXES, JOINED BY OCCURRENCE ID TO THE FILE THAT MINTED THEM. The census
 // locates a later resolve/infer fatal by looking up the owner and resolving that file's index at
 // the demand (native_census_locate), not by converting every occurrence to a line at absorb
-// (DESIGN §2: one undeclared pure demand may recompute; §6: ids × bytes through
-// source_line_col_at_byte is a quadratic fold). The stored values are a path and a SpanIndex, never
-// a Locus on the census row. Refused parses do not contribute: their ids are reused by the next
+// (DESIGN §6: ids × bytes would be a quadratic fold). What the file keeps for those demands is its
+// SourcePositionIndex, derived once here, never its text: a demand that re-swept the text paid
+// refusals × bytes, which is what made a 16k-line module with ten thousand refusals take two hours.
+// The stored values are a path, a SpanIndex and a SourcePositionIndex, never a Locus on the census row. Refused parses do not contribute: their ids are reused by the next
 // file (native_test_context_absorb). A colliding id already in `owner` is left as it was (base-wins).
 type NativeCensusFileSpans {
   spans: SpanIndex
-  text: String
+  lines: SourcePositionIndex
 }
 
 type NativeCensusPositionTable {
@@ -1453,6 +1460,83 @@ type NativeTestContext {
 type NativeTestPreparedModule {
   module: QualifiedName
   inferred: InferredTree
+  frontier: NativeInferAcceptedFrontier
+}
+
+// ACCEPTED-PATH FRONTIERS THE NATIVE VERDICT MUST NOT DROP (DESIGN §5). infer's Accepted
+// outcome carries advisories; GroundingNotDerived lives on InferredTree.facts. native_lane
+// and census-infer used to match diagnostics: _ and proceed as if infer had said nothing.
+// grounding_not_derived is counted from facts. advisories are the Accepted diagnostics
+// grouped by reason (inhabitance_undecidable_* and every other mint); infer_grounding_not_derived
+// also appears there as the advisory spelling of the facts count, not a second fact carrier.
+type NativeInferAdvisoryCount {
+  reason: Symbol
+  count: Int
+}
+
+type NativeInferAcceptedFrontier {
+  grounding_not_derived: Int
+  advisories: List<NativeInferAdvisoryCount>
+}
+
+fn native_infer_advisory_counts_add(acc: List<NativeInferAdvisoryCount>, reason: Symbol) -> List<NativeInferAdvisoryCount> {
+  match acc {
+    Empty => [NativeInferAdvisoryCount { reason: reason, count: 1 }]
+    Cons { head: row, tail: rest } =>
+      if row.reason == reason {
+        Cons { head: NativeInferAdvisoryCount { reason: reason, count: row.count + 1 }, tail: rest }
+      } else {
+        Cons { head: row, tail: native_infer_advisory_counts_add(acc: rest, reason: reason) }
+      }
+  }
+}
+
+fn native_infer_advisory_counts(d: Diagnostics) -> List<NativeInferAdvisoryCount> {
+  match d {
+    None => []
+    Some { diagnostics: ne } =>
+      fold_list(
+        xs: Cons { head: ne.head, tail: ne.tail },
+        empty: [],
+        cons: fn(acc, diag) {
+          native_infer_advisory_counts_add(acc: acc, reason: diag.reason)
+        }
+      )
+  }
+}
+
+fn native_infer_grounding_not_derived_count(tree: InferredTree) -> Int {
+  fold_list(
+    xs: node_subtree_nodes(root: tree.root),
+    empty: 0,
+    cons: fn(acc, n) {
+      match tree.facts.lookup(n) {
+        Absent => acc
+        Present { value: facts } =>
+          match facts.grounding {
+            GroundingNotDerived { node: _ } => acc + 1
+            DerivedGrounding { grounding: _ } => acc
+          }
+      }
+    }
+  )
+}
+
+fn native_infer_accepted_frontier(tree: InferredTree, diagnostics: Diagnostics) -> NativeInferAcceptedFrontier {
+  NativeInferAcceptedFrontier {
+    grounding_not_derived: native_infer_grounding_not_derived_count(tree: tree),
+    advisories: native_infer_advisory_counts(d: diagnostics)
+  }
+}
+
+fn native_infer_advisory_count_for(frontier: NativeInferAcceptedFrontier, reason: Symbol) -> Int {
+  fold_list(
+    xs: frontier.advisories,
+    empty: 0,
+    cons: fn(acc, row) {
+      if row.reason == reason { row.count } else { acc }
+    }
+  )
 }
 
 // `alloc` IS THE OCCURRENCE-ID MARK THIS FOLD HAS REACHED, and it is here for the reason
@@ -1487,13 +1571,14 @@ fn native_refused_file_module(content: String) -> Optional<QualifiedName> {
 }
 
 fn native_test_file_refusal(path: Symbol, module: Optional<QualifiedName>, d: NonEmptyDiagnostics, spans: SpanIndex, text: String) -> NativeTestFileRefusal {
+  let lines = source_position_index(text: text)
   NativeTestFileRefusal {
     path: path,
     module: module,
     chain: FreeSemigroup {
-      head: native_file_refusal_link(d: d.head, path: path, spans: spans, text: text),
+      head: native_file_refusal_link(d: d.head, path: path, spans: spans, lines: lines),
       tail: fold_list(xs: d.tail, empty: Empty, cons: fn(acc, diag) {
-        list_snoc_item(xs: acc, item: native_file_refusal_link(d: diag, path: path, spans: spans, text: text))
+        list_snoc_item(xs: acc, item: native_file_refusal_link(d: diag, path: path, spans: spans, lines: lines))
       })
     }
   }
@@ -1501,42 +1586,42 @@ fn native_test_file_refusal(path: Symbol, module: Optional<QualifiedName>, d: No
 
 // ONE LINK, RESOLVED HERE AND NOWHERE LATER. A node locus goes through THIS file's span index to
 // its textual extent; a textual extent in THIS file becomes a line and byte column against THIS
-// file's text (v2.std.source_position, which walks UTF-8 octets, never characters). Everything
+// file's line index (v2.std.source_position, derived from UTF-8 octets, never characters). Everything
 // else keeps its own typed reason for having no line.
-fn native_file_refusal_link(d: Diagnostic, path: Symbol, spans: SpanIndex, text: String) -> FileRefusalLink {
-  FileRefusalLink { reason: d.reason, at: native_file_refusal_at(at: d.at, path: path, spans: spans, text: text) }
+fn native_file_refusal_link(d: Diagnostic, path: Symbol, spans: SpanIndex, lines: SourcePositionIndex) -> FileRefusalLink {
+  FileRefusalLink { reason: d.reason, at: native_file_refusal_at(at: d.at, path: path, spans: spans, lines: lines) }
 }
 
-fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, text: String) -> FileRefusalAt {
+fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, lines: SourcePositionIndex) -> FileRefusalAt {
   match at {
-    Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
-    SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+    Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
+    SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
     NodeLocus { anchor: a } =>
       match node_authored_span_optional(node: a.at, index: spans) {
         Absent => FileRefusalAtUnresolvedNode
-        Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, text: text)
+        Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, lines: lines)
       }
   }
 }
 
-fn native_file_refusal_from_resolved_locus(resolved: Locus, path: Symbol, text: String) -> FileRefusalAt {
+fn native_file_refusal_from_resolved_locus(resolved: Locus, path: Symbol, lines: SourcePositionIndex) -> FileRefusalAt {
   match resolved {
-    Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
-    SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+    Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
+    SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
     NodeLocus { anchor: _ } => FileRefusalAtUnresolvedNode
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
   }
 }
 
-fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, text: String) -> FileRefusalAt {
+fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, lines: SourcePositionIndex) -> FileRefusalAt {
   if file == path {
     match extent {
       WholeFile => FileRefusalAtWholeFile
       ByteRange { start: st, end: _ } => {
-        let lc = source_line_col_at_byte(text: text, offset: st)
+        let lc = source_line_col_in(index: lines, offset: st)
         FileRefusalAtLine { line: lc.line, byte_column: lc.byte_column }
       }
     }
@@ -1546,8 +1631,8 @@ fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, text:
 }
 
 // ONE ACCEPTED FILE, RECORDED FOR LATER LOOKUP. Occurrence ids are owned by this path (base-wins);
-// the span index and text stay with the file so a later fatal can resolve a line through
-// native_file_refusal_at. A refused parse never enters this table.
+// the span index and the file's line index (derived here, once) stay with the file so a later fatal
+// can resolve a line through native_file_refusal_at. A refused parse never enters this table.
 fn native_census_positions_absorb_accepted(
   table: NativeCensusPositionTable,
   path: Symbol,
@@ -1565,7 +1650,7 @@ fn native_census_positions_absorb_accepted(
         }
       }
     ),
-    files: map_insert(m: table.files, key: path, value: NativeCensusFileSpans { spans: spans, text: text })
+    files: map_insert(m: table.files, key: path, value: NativeCensusFileSpans { spans: spans, lines: source_position_index(text: text) })
   }
 }
 
@@ -1585,7 +1670,7 @@ fn native_census_owner_key(node: Node) -> Optional<OccurrenceId> {
 // A LATER DIAGNOSTIC'S LOCUS, RESOLVED AT THE DEMAND. NodeLocus finds the owner file by the
 // parse-minted key, then goes through native_file_refusal_at (node_authored_span_optional on
 // THAT file's spans). A foreign projected cause therefore stays Unresolved, same as a miss;
-// never a neighbouring span. Textual loci use the stored file text.
+// never a neighbouring span. Textual loci use the stored line index.
 fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
   match at {
     Textual { file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
@@ -1602,7 +1687,7 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
               match map_lookup(positions.files, owner_path) {
                 Absent => FileRefusalAtUnresolvedNode
                 Present { value: file } =>
-                  native_file_refusal_at(at: at, path: owner_path, spans: file.spans, text: file.text)
+                  native_file_refusal_at(at: at, path: owner_path, spans: file.spans, lines: file.lines)
               }
           }
       }
@@ -1611,7 +1696,7 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
 
 fn native_census_locate_textual(file: Symbol, extent: Extent, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
   match map_lookup(positions.files, file) {
-    Present { value: stored } => native_file_refusal_textual(file: file, extent: extent, path: path, text: stored.text)
+    Present { value: stored } => native_file_refusal_textual(file: file, extent: extent, path: path, lines: stored.lines)
     Absent =>
       if file == path {
         FileRefusalAtUnresolvedNode
@@ -1894,15 +1979,18 @@ fn native_test_infer_resolved(
   module: QualifiedName,
   resolved: ResolvedTree
 ) -> Outcome<NativeTestPreparedModule> {
-  bind_outcome(
-    o: infer_and_discharge(tree: resolved),
-    f: fn(inferred) {
-      outcome_accepted(value: NativeTestPreparedModule {
-        module: module,
-        inferred: inferred
-      })
-    }
-  )
+  match infer_and_discharge(tree: resolved) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: inferred, diagnostics: d } =>
+      Accepted {
+        value: NativeTestPreparedModule {
+          module: module,
+          inferred: inferred,
+          frontier: native_infer_accepted_frontier(tree: inferred, diagnostics: d)
+        },
+        diagnostics: d
+      }
+  }
 }
 
 type NativeTestPrepared {
@@ -3442,7 +3530,7 @@ fn native_module_resolve_verdict(
                     root: resolved,
                     symbol_index: shared.symbol_index,
                     closure_declarations: closure.declarations,
-                    unavailable_providers: closure.refused,
+                    module_outcomes: closure.module_outcomes,
                     member_kinds: no_member_declaration_kinds(),
                     type_declaration_modifiers: shared.type_declaration_modifiers,
                     lexical: lexical
@@ -3467,6 +3555,76 @@ fn native_module_resolve_verdict(
           }
       }
       }
+  }
+}
+
+// A RESOLVE REFUSAL'S FIRST DIAGNOSTIC IS THE MODULE'S OWN FIRST CAUSE, and the operator line must
+// name the file, the unbound (or other) atom, and the authored span. NativeCensusModuleResolveRefused
+// already carries that chain; NativeTestRefused used to keep only the NodeLocus, so
+// native_route_member_row_text (empty SpanIndex) printed a projected occurrence and never the
+// provider file. The authored locus is prepended -- the original NodeLocus stays as the fatal's
+// occurrence identity (DESIGN §3: one fact, two projections, not a rewrite of the resolver's
+// diagnostic).
+fn native_node_authored_locus(node: Node, positions: NativeCensusPositionTable) -> Optional<Locus> {
+  match native_census_owner_key(node: node) {
+    Absent => optional_absent()
+    Present { value: id } =>
+      match map_lookup(positions.owner, id) {
+        Absent => optional_absent()
+        Present { value: owner_path } =>
+          match map_lookup(positions.files, owner_path) {
+            Absent => optional_absent()
+            Present { value: file } => node_authored_span_optional(node: node, index: file.spans)
+          }
+      }
+  }
+}
+
+fn native_locus_naming_atom(locus: Locus, node: Node) -> Locus {
+  match locus {
+    Textual { file: f, extent: e } =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: name } => source_port_locus(port: name, file: f, extent: e)
+        Absent => locus
+      }
+    SourcePortLocus { anchor: _, file: _, extent: _ } => locus
+    NodeLocus { anchor: _ } => locus
+    InvariantPortLocus { anchor: _, invariant: _ } => locus
+    DeclarationLocus { declaration: _ } => locus
+  }
+}
+
+fn native_authored_first_cause_diagnostic(d: Diagnostic, positions: NativeCensusPositionTable) -> Optional<Diagnostic> {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      match native_node_authored_locus(node: a.at, positions: positions) {
+        Absent => optional_absent()
+        Present { value: locus } =>
+          optional_present(value: Diagnostic {
+            reason: d.reason,
+            at: native_locus_naming_atom(locus: locus, node: a.at),
+            correction: d.correction
+          })
+      }
+    Textual { file: _, extent: _ } => optional_absent()
+    SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
+    InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
+    DeclarationLocus { declaration: _ } => optional_absent()
+  }
+}
+
+fn native_diagnostics_report_first_cause(d: NonEmptyDiagnostics, positions: NativeCensusPositionTable) -> NonEmptyDiagnostics {
+  match native_authored_first_cause_diagnostic(d: d.head, positions: positions) {
+    Absent => d
+    Present { value: located } =>
+      NonEmptyDiagnostics { head: located, tail: Cons { head: d.head, tail: d.tail } }
+  }
+}
+
+fn native_prepare_resolve_refused(diagnostics: NonEmptyDiagnostics, positions: NativeCensusPositionTable) -> NativeTestVerdict {
+  NativeTestRefused {
+    stage: NativeTestStagePrepare,
+    diagnostics: native_diagnostics_report_first_cause(d: diagnostics, positions: positions)
   }
 }
 
@@ -3503,14 +3661,17 @@ fn native_lane_module_resolution(
         NativeLaneModuleResolveRowsDecided {
           rows: native_lane_module_refusal_rows(
             entry: entry,
-            verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: native_import_target_refusal_diagnostics(target: t, resolver: d) }
+            verdict: native_prepare_resolve_refused(
+              diagnostics: native_import_target_refusal_diagnostics(target: t, resolver: d),
+              positions: step.context.positions
+            )
           )
         }
       NativeModuleResolveRefused { first: d, rest: _, observation: _ } =>
         NativeLaneModuleResolveRowsDecided {
           rows: native_lane_module_refusal_rows(
             entry: entry,
-            verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
+            verdict: native_prepare_resolve_refused(diagnostics: d, positions: step.context.positions)
           )
         }
       NativeModuleResolveAccepted { resolved: resolved } =>
@@ -3718,7 +3879,7 @@ fn native_demand_census_read(
           }
         Accepted { value: artifact, diagnostics: _ } =>
           let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
-          match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
+          match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope), spans: artifact.span_index) {
             Rejected { diagnostics: d } =>
               NativeDemandCensusFoldState {
                 context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope)),
@@ -3744,6 +3905,34 @@ type NativeDemandCensusWalk {
   operations: List<OperationFact>
   audited: List<QualifiedName>
   standings: List<DemandCensusModuleStanding>
+}
+
+type NativeDemandCensusAuthoredSplit {
+  available: List<AuthoredUsesFunction>
+  refused: List<AuthoredUsesFunction>
+}
+
+fn native_demand_census_split_authored(
+  mine: List<AuthoredUsesFunction>,
+  outcomes: List<ModuleOutcome>
+) -> NativeDemandCensusAuthoredSplit {
+  fold_list(
+    xs: mine,
+    empty: NativeDemandCensusAuthoredSplit { available: Empty, refused: Empty },
+    cons: fn(acc, a) {
+      if native_demand_census_function_available(outcomes: outcomes, authored: a) {
+        NativeDemandCensusAuthoredSplit {
+          available: list_snoc_item(xs: acc.available, item: a),
+          refused: acc.refused
+        }
+      } else {
+        NativeDemandCensusAuthoredSplit {
+          available: acc.available,
+          refused: list_snoc_item(xs: acc.refused, item: a)
+        }
+      }
+    }
+  )
 }
 
 // The module's root scope, as resolution itself built it for the module just resolved: the namespace
@@ -3786,20 +3975,60 @@ fn native_demand_census_unbound_standing(authored: List<AuthoredUsesFunction>, d
   DemandModuleResolveRefused { authored: authored, first_reason: diagnostics_fatal_reason(d: d), first_unbound: demand_census_unbound_locus_from_diagnostics(d: d) }
 }
 
+fn native_demand_census_closure_outcomes(context: NativeTestContext) -> List<ModuleOutcome> {
+  match context.resolution {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: shared, diagnostics: _ } => closure_declarations_demand(shared: shared).module_outcomes
+  }
+}
+
+fn native_demand_census_function_available(outcomes: List<ModuleOutcome>, authored: AuthoredUsesFunction) -> Bool {
+  match authored.name {
+    Absent => false
+    Present { value: name } =>
+      declaration_available(outcomes: outcomes, path: qualified_name_snoc(qn: authored.owner, segment: name))
+  }
+}
+
 fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, authored: List<AuthoredUsesFunction>) -> NativeDemandCensusWalk {
   match qualified_name_from_module_node(root: root.root) {
     Rejected { diagnostics: _ } => w
     Accepted { value: module_qn, diagnostics: _ } =>
       let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc } })
       let step = native_test_resolve_module(context: w.context, module: module_qn)
+      let outcomes = native_demand_census_closure_outcomes(context: step.context)
       match step.resolved {
         Rejected { diagnostics: d } =>
+          // A Rejected module always files the refused standing, even when every census-authored
+          // function is declaration_available (empty split.refused). Omitting it undercounts
+          // resolve_refused_modules. Available authored still get DemandModuleResolved beside it.
+          let split = native_demand_census_split_authored(mine: mine, outcomes: outcomes)
+          let with_refused = list_snoc_item(
+            xs: w.standings,
+            item: native_demand_census_resolve_refused(
+              context: step.context,
+              module_qn: module_qn,
+              authored: split.refused,
+              d: d
+            )
+          )
           NativeDemandCensusWalk {
             context: step.context,
             functions: w.functions,
             operations: w.operations,
             audited: w.audited,
-            standings: list_snoc_item(xs: w.standings, item: native_demand_census_resolve_refused(context: step.context, module_qn: module_qn, authored: mine, d: d))
+            standings: match length(xs: split.available) > 0 {
+              true =>
+                list_snoc_item(xs: with_refused, item: DemandModuleResolved {
+                  readings: fold_list(xs: split.available, empty: Empty, cons: fn(acc, a) {
+                    list_snoc_item(xs: acc, item: DemandCensusAuthoredReading {
+                      authored: a,
+                      readings: native_demand_census_readings(context: step.context, module_qn: module_qn, authored: a)
+                    })
+                  })
+                })
+              false => with_refused
+            }
           }
         Accepted { value: resolved, diagnostics: _ } =>
           let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
@@ -3985,7 +4214,11 @@ type NativeInferCensusOutcome
       rest: List<NonEmptyDiagnostics>
       observation: ObservationCompleteness
     }
-  | NativeInferCensusInferred { resolved: ResolvedTree, inferred: InferredTree }
+  | NativeInferCensusInferred {
+      resolved: ResolvedTree
+      inferred: InferredTree
+      frontier: NativeInferAcceptedFrontier
+    }
   | NativeInferCensusInferRefused { resolved: ResolvedTree, chain: NonEmptyDiagnostics }
 
 // `cascade` IS THE RESOLVE VERDICT'S IMPORT ATTRIBUTION, carried exactly as
@@ -4018,7 +4251,11 @@ fn native_census_module_inference(
       NativeModuleResolveAccepted { resolved: resolved } =>
         match native_test_infer_resolved(module: qualified_name_from_dotted_string(dotted: entry.module), resolved: resolved) {
           Accepted { value: prepared, diagnostics: _ } =>
-            NativeInferCensusInferred { resolved: resolved, inferred: prepared.inferred }
+            NativeInferCensusInferred {
+              resolved: resolved,
+              inferred: prepared.inferred,
+              frontier: prepared.frontier
+            }
           Rejected { diagnostics: d } =>
             NativeInferCensusInferRefused { resolved: resolved, chain: d }
         }
@@ -4043,7 +4280,7 @@ fn native_census_infer_type_contribution(
       type_census_unreached(module: entry.module, stage: "front_end", cause: "file refused by the context")
     NativeInferCensusResolveRefused { first: f, rest: _, observation: _ } =>
       type_census_unreached(module: entry.module, stage: "resolve", cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: f)))
-    NativeInferCensusInferred { resolved: r, inferred: i } =>
+    NativeInferCensusInferred { resolved: r, inferred: i, frontier: _ } =>
       type_census_contribution(module: entry.module, resolved: r, normalized: native_census_normalized_tree(context: context, module: entry.module), typing: AsTypedBy { tree: i, resolved: r })
     NativeInferCensusInferRefused { resolved: r, chain: c } =>
       type_census_contribution(module: entry.module, resolved: r, normalized: native_census_normalized_tree(context: context, module: entry.module), typing: AsUntyped { cause: "module did not infer: " + symbol_lexeme(sym: diagnostics_fatal_reason(d: c)) })
@@ -4521,7 +4758,7 @@ fn native_census_cause_groups_add_resolve_refused(
 // program can author (DESIGN section 4b). Its proposed edge, a fatal located at T's declaration, is
 // not readable either, because every infer diagnostic is located at a node of M's own tree.
 // What does exist is the edge v2.compiler.infer infer_closure_miss_refusal builds: when a closure
-// provider's own RESOLVE refused (ResolvedTree unavailable_providers), M's projection through one of
+// provider's own RESOLVE refused (ClosureProviderRefusal derived from ResolvedTree module_outcomes), M's projection through one of
 // its declarations refuses as a closure miss, with the provider's refusal chain carried immediately
 // ahead of that miss in M's chain. M
 // resolved, so it IS an infer subject. That is a cross-stage cascade the design said could not
@@ -4547,7 +4784,7 @@ fn native_census_infer_cascade(
 ) -> NativeCensusCascade {
   native_census_infer_cascade_of(
     module_paths: module_paths,
-    providers: resolved.unavailable_providers,
+    providers: module_outcomes_provider_refusals(outcomes: resolved.module_outcomes),
     chain: chain,
     attribution: fn(provider) { native_import_target_attribution(context: context, module: provider) }
   )
@@ -4619,7 +4856,7 @@ fn native_census_cause_groups_add_infer_module(
     NativeInferCensusFileRefused => groups
     NativeInferCensusResolveRefused { first: f, rest: r, observation: _ } =>
       native_census_cause_groups_add_resolve_refused(groups: groups, positions: step.context.positions, closure: closure, entry: entry, first: f, rest: r, cascade: step.cascade)
-    NativeInferCensusInferred { resolved: _, inferred: _ } => groups
+    NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } => groups
     NativeInferCensusInferRefused { resolved: resolved, chain: chain } =>
       match native_census_infer_cascade(context: step.context, module_paths: module_paths, resolved: resolved, chain: chain) {
         NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
@@ -4665,10 +4902,19 @@ fn native_census_infer_completeness(outcome: NativeInferCensusOutcome) -> Native
       NativeCensusCompletenessUnavailable { reason: ^native_census_file_never_reached_resolve }
     NativeInferCensusResolveRefused { first: _, rest: _, observation: o } =>
       NativeCensusCompletenessObserved { observation: o }
-    NativeInferCensusInferred { resolved: _, inferred: _ } =>
+    NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } =>
       NativeCensusCompletenessObserved { observation: ObservationComplete }
     NativeInferCensusInferRefused { resolved: _, chain: _ } =>
       NativeCensusCompletenessObserved { observation: ObservationIncomplete { reason: ^native_census_infer_stops_at_first_fatal } }
+  }
+}
+
+fn native_census_infer_accepted_frontier(outcome: NativeInferCensusOutcome) -> Optional<NativeInferAcceptedFrontier> {
+  match outcome {
+    NativeInferCensusInferred { resolved: _, inferred: _, frontier: f } => Present { value: f }
+    NativeInferCensusFileRefused => Absent
+    NativeInferCensusResolveRefused { first: _, rest: _, observation: _ } => Absent
+    NativeInferCensusInferRefused { resolved: _, chain: _ } => Absent
   }
 }
 
@@ -5527,7 +5773,21 @@ fn native_demand_settled_label(state: DemandState<NativeDemandValue>) -> String 
           match r {
             NativeLaneModuleResolved { resolved: _ } => "resolve_available"
             NativeLaneModuleContextRowsDecided { rows: _ } => "resolve_context_refused"
-            NativeLaneModuleResolveRowsDecided { rows: _ } => "resolve_refused"
+            NativeLaneModuleResolveRowsDecided { rows: rows } =>
+              match rows {
+                Empty => "resolve_refused"
+                Cons { head: row, tail: _ } =>
+                  match row.verdict {
+                    NativeTestRefused { stage: _, diagnostics: d } =>
+                      concat(
+                        "resolve_refused first=",
+                        lens_verdict_diagnostic_located_text_in_spans(d: d.head, index: span_index_empty())
+                      )
+                    NativeTestPassed => "resolve_refused"
+                    NativeTestReturnedFalse => "resolve_refused"
+                    NativeTestReturnedOther => "resolve_refused"
+                  }
+              }
           }
         NativeInferValue { preparation: p } =>
           match p {

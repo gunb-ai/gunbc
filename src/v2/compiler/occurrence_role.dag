@@ -1,7 +1,7 @@
 module v2.compiler.occurrence_role
 
-import std.types { List }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_map, list_snoc_item }
+import std.types { List, Map }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_map, list_snoc_item, empty_map, map_insert, map_lookup }
 import std.occurrence_identity {
   CallableOccurrence,
   DeclarationRole,
@@ -35,7 +35,7 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional
 }
 import v2.std.integer { Int }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, GrammarRoot, node_atom_identity_optional, StampBinding, StampClass, StampLexeme, fold_grammar_expr, parse_production_emitted_identity_optional }

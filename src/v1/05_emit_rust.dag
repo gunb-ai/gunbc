@@ -3451,7 +3451,8 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
 }
 
 fn group_unlisted_type_names(diags: List<ErrorNode>) -> Map<String, List<String>> {
-  diags |> fold(init: empty_map(), f: (acc, en) =>
+  let seed: Map<String, List<String>> = empty_map()
+  diags |> fold(init: seed, f: (acc, en) =>
     match en.diagnostic {
       UnlistedImportUse { name: nm, span: _ } =>
         let existing = match map_get(acc, en.module_name) { Present { value: v } => v  Absent => [] }
@@ -6034,14 +6035,16 @@ type ModuleIndex {
 }
 
 fn build_module_index(modules: List<TypedModule>, leaf_owner_modules: Map<String, LeafOwner>) -> ModuleIndex {
-  let by_name = modules |> fold(init: empty_map(), f: (acc, tm) =>
+  let by_name_seed: Map<String, TypedModule> = empty_map()
+  let by_name = modules |> fold(init: by_name_seed, f: (acc, tm) =>
     let nm = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     match map_get(acc, nm) {
       Present { value: _ } => acc
       Absent => map_insert(acc, nm, tm)
     }
   )
-  let by_filename = modules |> fold(init: empty_map(), f: (acc, tm) =>
+  let by_filename_seed: Map<String, List<TypedModule>> = empty_map()
+  let by_filename = modules |> fold(init: by_filename_seed, f: (acc, tm) =>
     let fname = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
     match map_get(acc, fname) {
       Present { value: prior } => map_insert(acc, fname, list_push(prior, tm))
@@ -8350,7 +8353,7 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
   } else if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
     render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, source_indices: source_indices, env: env)
   } else if authored_type.connective == NoConnective && authored_type.children |> count > 0 {
-    render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+    render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: generic_param_names, env: env))
   } else {
     render_rust_type_with_applied_binding(n: resolved_type(n: field), shared_types: shared_types, source_indices: source_indices, env: env)
   }
@@ -8884,7 +8887,8 @@ fn v1_fn_bounds_by_param(
   set_element_param_names: List<String>,
   static_param_names: List<String>
 ) -> Map<String, List<String>> {
-  let with_clone = clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"]))
+  let bounds_seed: Map<String, List<String>> = empty_map()
+  let with_clone = clone_param_names |> fold(init: bounds_seed, f: (m, n) => map_insert(m, n, ["Clone"]))
   let with_eq = eq_param_names |> fold(init: with_clone, f: (m, n) =>
     match map_get(m, n) {
       Present { value: traits } => map_insert(m, n, concat(traits, ["PartialEq"]))
@@ -12016,22 +12020,22 @@ fn rust_runtime_bridge_name(function_name: String) -> String {
   }
 }
 
-fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match map_type.children |> skip(1) |> first {
     Present { value: value_child } =>
-      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
       if rendered == "" { "" } else { rendered }
     Absent => ""
   }
 }
 
-fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let key_str = match map_type.children |> first {
     Present { value: key_child } =>
-      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     Absent => ""
   }
-  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
+  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if key_str != "" && val_str != "" {
     concat(key_str, ", ", val_str)
   } else { "" }
@@ -12064,21 +12068,28 @@ fn type_node_carries_erased_type_argument(n: Node) -> Bool {
     (t.inferred != none && is_compiler_error(inferred: t.inferred.value)) || type_node_carries_erased_type_argument(n: t))
 }
 
+// Uninstantiated Map formals arrive as TypeVariable children of map_type. render_rust_type
+// matches TypeVariable ids against emit_info.fn_generic_param_names by spelling, so Map's own
+// parameter V is captured as the enclosing fn's V and an unbound K renders `_`. Those children
+// are the typed fact that instantiation never reached this call; defer `::<_, _>()` from that,
+// not from the rendered string. Instantiated Map<K2, Entry<V>> children are not TypeVariables:
+// render their argument types (Entry<V> then correctly names the fn parameter).
+fn type_node_child_is_type_variable(c: Node) -> Bool {
+  let ch = child_type_node(ch: c)
+  if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
+}
+
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
+  let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
   } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)
-    || type_node_carries_erased_type_argument(n: map_type) {
+    || type_node_carries_erased_type_argument(n: map_type)
+    || map_type.children |> any(c => type_node_child_is_type_variable(c: c)) {
     "v1_rt::rc_empty_map::<_, _>()"
   } else {
     concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
   }
-}
-
-fn type_node_child_is_type_variable(c: Node) -> Bool {
-  let ch = child_type_node(ch: c)
-  if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
@@ -19958,7 +19969,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
       "    native_census_module_completeness, native_census_module_resolution, native_census_modules,", "\n",
       "    native_census_module_inference, native_census_infer_type_contribution,", "\n",
-      "    native_census_infer_completeness, native_census_cause_groups_add_infer_module, native_census_module_paths,", "\n",
+      "    native_census_infer_completeness, native_census_infer_accepted_frontier, native_census_cause_groups_add_infer_module, native_census_module_paths,", "\n",
       "    native_census_subject_closure, native_census_root_subject_membership, native_census_subject_label,", "\n",
       "    native_census_residual_rows,", "\n",
       "    native_census_cause_groups_add_module, native_census_cause_groups_from_file_refusals,", "\n",
@@ -20475,6 +20486,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \"nanos\": span_nanos(started),", "\n",
       "            \"outcome\": outcome_label,", "\n",
       "            \"occurrence_completeness\": native_census_infer_completeness(step.outcome.clone()),", "\n",
+      "            \"accepted_frontier\": native_census_infer_accepted_frontier(step.outcome.clone()),", "\n",
       "        \}));", "\n",
       "    \}", "\n",
       "    let cause_groups = native_census_cause_group_rows(groups.clone());", "\n",

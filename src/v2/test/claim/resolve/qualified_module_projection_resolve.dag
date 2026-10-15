@@ -18,8 +18,8 @@ import v2.extdeps.languages.dag {
   dag_named_edge,
   dag_surface_edge,
 }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.collection { empty_map }
+import std.algebra { Cons, Empty, FreeMonoid, empty_map }
+
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node {
   Atom,
@@ -102,7 +102,7 @@ fn qmpr_namespace(index: SymbolIndex) -> Namespace {
     test_code: test_code_index_empty(),
     declared_in: qmpr_consumer_qn,
     imported_origins: empty_map(),
-    unavailable_providers: []
+    module_outcomes: []
   }
 }
 

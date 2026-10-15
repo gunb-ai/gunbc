@@ -19,7 +19,7 @@ import v2.extdeps.languages.dag {
   dag_fixture_emitted_add_fn,
   dag_int_inhabitant_node
 }
-import v2.std.collection { list_at_optional }
+
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -40,7 +40,7 @@ import v2.std.node {
   symbol_lexeme
 }
 import v2.std.text { String }
-import std.algebra { list_snoc_item, fold_list }
+import std.algebra { list_snoc_item, fold_list, list_at_optional }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.node_query { BinderParts, binder_node_parts }
 
