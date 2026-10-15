@@ -237,7 +237,6 @@ import v1.compiler.infer_lookup {
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig, func_env_declared_func_sig, func_sig_from_global_bare,
   resolved_plain_call_target_for_outcome, resolved_declaration_call_target, census_declaration_identity,
-  func_sig_from_global_bare,
   global_bare_callable_node, constructor_declaration_for_admission,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
