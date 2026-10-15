@@ -1,0 +1,49 @@
+module test.claim.width_type_arg_identity_refusal_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// rust_type_arg_identity_spelling used to render a width Nat literal and a Word8–128 type-arg
+// token as `()`, collapsing every such argument to one Rust type. The floor is a located
+// compile_error! (same shape as UnitVariantPhantomEvidenceUnavailable). PointerWidth stays a
+// unit-variant marker, not this arm.
+
+fn w_width_nat_literal_type_arg_is_located_refusal() -> Bool {
+  compile_dag_rust_emit_check(
+    "module width_nat_literal_type_arg\n\ntype WidthResolution = StaticWidthIndex | PointerWidth\n\ntype MachineWidth<bits: WidthResolution>\n\ntype Held = MachineWidth<8>\n",
+    "src/width_nat_literal_type_arg.rs",
+    ["width type argument has no Rust type identity at", "compile_error!"],
+    ["MachineWidth<()>"]
+  )
+}
+
+test fn width_nat_literal_type_arg_refuses_rather_than_erasing_to_unit() -> Bool {
+  w_width_nat_literal_type_arg_is_located_refusal()
+}
+
+fn w_word_token_type_arg_is_located_refusal() -> Bool {
+  compile_dag_rust_emit_check(
+    "module word_token_type_arg\n\ntype Word8 { bytes: Int }\n\ntype Wrapper<M> { count: Int }\n\ntype Held = Wrapper<Word8>\n",
+    "src/word_token_type_arg.rs",
+    ["width type argument has no Rust type identity at", "compile_error!"],
+    ["Wrapper<()>"]
+  )
+}
+
+test fn word_token_type_arg_refuses_rather_than_erasing_to_unit() -> Bool {
+  w_word_token_type_arg_is_located_refusal()
+}
+
+fn w_pointer_width_type_arg_keeps_marker_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    "module pointer_width_type_arg\n\ntype WidthResolution = StaticWidthIndex | PointerWidth\n\ntype MachineWidth<bits: WidthResolution>\n\ntype Held = MachineWidth<PointerWidth>\n",
+    "src/pointer_width_type_arg.rs",
+    ["MachineWidth<PointerWidth>"],
+    ["width type argument has no Rust type identity at", "MachineWidth<()>"]
+  )
+}
+
+test fn pointer_width_type_arg_is_not_the_width_nat_refusal() -> Bool {
+  w_pointer_width_type_arg_keeps_marker_identity()
+}

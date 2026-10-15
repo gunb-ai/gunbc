@@ -2097,6 +2097,25 @@ pub fn is_machine_width_phantom_token(name: String) -> bool {
         || (name.clone() == "Word128".to_string()))
 }
 
+pub fn emit_width_type_arg_identity_refusal(n: Rc<Node>, name: String) -> String {
+    emit_rust_compile_error_expr(v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "width type argument has no Rust type identity at ".to_string(),
+                        n.span.clone().file.clone(),
+                    ),
+                    ":".to_string(),
+                ),
+                crate::v1_compiler_emit_core_support::to_string(n.span.clone().start.clone()),
+            ),
+            " (".to_string(),
+        ),
+        v1_rt::concat(name, ")".to_string()),
+    ))
+}
+
 pub fn rust_type_arg_identity_spelling(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -2130,7 +2149,10 @@ pub fn rust_type_arg_identity_spelling(
                     if (crate::v1_compiler_infer_resolve::is_width_nat_type_literal(n.clone())
                         || is_machine_width_phantom_token(name.clone()))
                     {
-                        Some("()".to_string())
+                        Some(emit_width_type_arg_identity_refusal(
+                            n.clone(),
+                            name.clone(),
+                        ))
                     } else {
                         std::option::Option::None
                     }

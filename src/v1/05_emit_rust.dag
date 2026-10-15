@@ -1498,10 +1498,17 @@ fn is_machine_width_phantom_token(name: String) -> Bool {
   name == "Word8" || name == "Word16" || name == "Word32" || name == "Word64" || name == "Word128"
 }
 
+fn emit_width_type_arg_identity_refusal(n: Node, name: String) -> String {
+  emit_rust_compile_error_expr(message: concat("width type argument has no Rust type identity at ", n.span.file, ":", to_string(n.span.start), " (", name, ")"))
+}
+
 // A type argument's Rust identity is decided from the declaration visible in this module, never
 // from the syntactic position that happened to render it. Unit variants admitted by the resolver's
 // identity-bearing phantom index already receive distinct zero-sized Rust marker declarations;
 // erasing those markers to `()` makes distinct source types identical in the projection.
+// A width Nat literal or Word8–128 token has no Rust type identity at this rung (const-generic N
+// is PR-B). Silent `()` was a second identity for every such argument; the arm is a located
+// compile_error! carrying the source span, the same shape as UnitVariantPhantomEvidenceUnavailable.
 fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String? {
   let name = type_leaf_name_for_collapse(n: n, source_indices: source_indices)
   if generic_param_names |> any(g => g == name) {
@@ -1511,7 +1518,7 @@ fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, s
       UnitVariantPhantomPresent { variant: _ } => Present { value: name }
       UnitVariantPhantomAbsent =>
         if is_width_nat_type_literal(n: n) || is_machine_width_phantom_token(name: name) {
-          Present { value: "()" }
+          Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
         } else { none }
       UnitVariantPhantomEvidenceUnavailable =>
         Present { value: emit_rust_compile_error_expr(message: concat("unit-variant marker identity evidence unavailable for ", name, " at ", n.span.file, ":", to_string(n.span.start))) }
