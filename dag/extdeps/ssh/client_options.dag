@@ -100,6 +100,28 @@ type UpdateHostKeysValue
   | UpdateHostKeysNo
   | UpdateHostKeysAsk
 
+// CONNECTION SHARING (ssh_config(5) ControlMaster, ControlPath, ControlPersist). ControlMaster
+// "Enables the sharing of multiple sessions over a single network connection"; its domain is
+// yes | no | ask | auto | autoask, and auto "will use a master connection if one is available, or
+// connect normally if one is not" and become the master. ControlPath names the socket and expands
+// %C, "a hash of %l%h%p%r%j" (local host, remote host, port, user, ProxyJump). ControlPersist is
+// yes | no | a time: with a time "the master connection will remain open in the background ... and
+// will automatically terminate after it has remained idle (with no client connections) for the
+// specified time". A multiplexed session reuses the master's authentication, so a client's own
+// trust and credential options do not apply to it -- the socket path is a trust boundary, which is
+// why its owner (the caller) must bind it to everything the master authenticated with.
+type ControlMasterValue
+  = ControlMasterYes
+  | ControlMasterNo
+  | ControlMasterAsk
+  | ControlMasterAuto
+  | ControlMasterAutoAsk
+
+type ControlPersistValue
+  = ControlPersistNo
+  | ControlPersistIndefinite
+  | ControlPersistIdle { seconds: Second }
+
 // One variant per keyword, each carrying the value domain THAT keyword admits, so a nonsensical
 // pairing has no constructor. ServerAliveInterval and ServerAliveCountMax are the LIVENESS half of a
 // deadline, distinct from ConnectTimeout, which bounds only the TCP connect: ssh_config(5) --
@@ -137,6 +159,9 @@ type SshClientOption
   | KbdInteractiveAuthentication { enabled: Bool }
   | User { name: NonEmptyStr }
   | RemotePort { port: Port }
+  | ControlMaster { value: ControlMasterValue }
+  | ControlPath { path: NonEmptyStr }
+  | ControlPersist { value: ControlPersistValue }
 
 // The ONE place each keyword's wire spelling lives. A rename upstream is a one-line edit here
 // rather than a corpus-wide grep.
@@ -162,6 +187,9 @@ fn ssh_client_option_keyword(option: SshClientOption) -> String {
     KbdInteractiveAuthentication { enabled: _ } => "KbdInteractiveAuthentication"
     User { name: _ } => "User"
     RemotePort { port: _ } => "Port"
+    ControlMaster { value: _ } => "ControlMaster"
+    ControlPath { path: _ } => "ControlPath"
+    ControlPersist { value: _ } => "ControlPersist"
   }
 }
 
@@ -191,6 +219,24 @@ fn update_host_keys_wire(value: UpdateHostKeysValue) -> String {
   }
 }
 
+fn control_master_wire(value: ControlMasterValue) -> String {
+  match value {
+    ControlMasterYes => "yes"
+    ControlMasterNo => "no"
+    ControlMasterAsk => "ask"
+    ControlMasterAuto => "auto"
+    ControlMasterAutoAsk => "autoask"
+  }
+}
+
+fn control_persist_wire(value: ControlPersistValue) -> String {
+  match value {
+    ControlPersistNo => "no"
+    ControlPersistIndefinite => "yes"
+    ControlPersistIdle { seconds: s } => to_string(second_count(s: s))
+  }
+}
+
 fn ssh_client_option_value(option: SshClientOption) -> String {
   match option {
     StrictHostKeyChecking { value: v } => strict_host_key_checking_wire(value: v)
@@ -213,6 +259,9 @@ fn ssh_client_option_value(option: SshClientOption) -> String {
     KbdInteractiveAuthentication { enabled: e } => if e { "yes" } else { "no" }
     User { name: n } => n as String
     RemotePort { port: n } => to_string(n)
+    ControlMaster { value: v } => control_master_wire(value: v)
+    ControlPath { path: p } => p as String
+    ControlPersist { value: v } => control_persist_wire(value: v)
   }
 }
 
@@ -371,6 +420,9 @@ fn serialize_ssh_config_file_flag(option: SshClientOption) -> List<String> {
     KbdInteractiveAuthentication { enabled: _ } => serialize_ssh_client_option(option: option)
     User { name: _ } => serialize_ssh_client_option(option: option)
     RemotePort { port: _ } => serialize_ssh_client_option(option: option)
+    ControlMaster { value: _ } => serialize_ssh_client_option(option: option)
+    ControlPath { path: _ } => serialize_ssh_client_option(option: option)
+    ControlPersist { value: _ } => serialize_ssh_client_option(option: option)
   }
 }
 

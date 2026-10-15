@@ -1,0 +1,87 @@
+module test.claim.fleet.fleet_ssh_multiplexing_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  FleetSshExecutionContext,
+  SshTarget,
+  portable_remote_words,
+  shape_fleet_ssh_exec,
+  fleet_ssh_multiplex_control_path,
+  fleet_ssh_multiplex_control_path_bound,
+}
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_at_witness_fixture }
+
+// THE KEY-SESSION LEG SHARES ONE AUTHENTICATED CONNECTION PER HOST PER ATTEMPT (fleet-converge run
+// 38767890891: two of five srv1 slot legs reset at kex past sshd MaxStartups). Every fleet key leg,
+// including the runner-host-file converge legs through gunbc.fleet.fleet_bootstrap_principal_session
+// exec_as_fleet_principal_observed, is shaped by shape_fleet_ssh_exec, so the claims are on its argv.
+
+fn context_at(attempt_raw: String, rental: Bool) -> FleetSshExecutionContext? {
+  fleet_ssh_execution_context_at_witness_fixture(attempt_raw: attempt_raw, rental: rental)
+}
+
+fn path_at(attempt_raw: String, rental: Bool) -> String {
+  match context_at(attempt_raw: attempt_raw, rental: rental) {
+    Present { value: c } => fleet_ssh_multiplex_control_path(context: c) as String
+    Absent => ""
+  }
+}
+
+fn shaped_line(attempt_raw: String) -> String {
+  match context_at(attempt_raw: attempt_raw, rental: false) {
+    Absent => ""
+    Present { value: c } =>
+      match portable_remote_words(raws: ["id", "-un"]) {
+        Absent => ""
+        Present { value: w } =>
+          join(shape_fleet_ssh_exec(
+            context: c,
+            target: SshTarget { endpoint: "srv1" as NonEmptyStr, principal: "ubuntu" as NonEmptyStr },
+            words: w,
+          ), " ")
+      }
+  }
+}
+
+// The leg carries the three multiplexing options as ssh OPTIONS, before the endpoint: after it they
+// would be remote words and the leg would open its own connection again.
+test fn w_the_fleet_key_leg_multiplexes_over_one_master() -> Bool {
+  let line = shaped_line(attempt_raw: "mux-witness-a")
+  contains(line, "-o ControlMaster=auto ")
+    && contains(line, concat("-o ControlPath=", path_at(attempt_raw: "mux-witness-a", rental: false)))
+    && contains(line, "-o ControlPersist=60 srv1 -- id -un")
+}
+
+// The socket carries ssh's own host-port-user hash, so two hosts or principals never share a master.
+test fn w_the_control_path_carries_the_host_port_user_hash() -> Bool {
+  ends_with(s: path_at(attempt_raw: "mux-witness-a", rental: false), suffix: "-%C")
+}
+
+// RED: a socket shared across attempts would hand a leg a session authenticated under another
+// attempt's anchor and credential, which its own options cannot override.
+test fn red_two_attempts_never_share_a_control_socket() -> Bool {
+  let a = path_at(attempt_raw: "mux-witness-a", rental: false)
+  let b = path_at(attempt_raw: "mux-witness-b", rental: false)
+  a != "" && b != "" && a != b
+}
+
+// RED: within one attempt, a different trust registry is a different master.
+test fn red_two_trust_registries_never_share_a_control_socket() -> Bool {
+  let fleet = path_at(attempt_raw: "mux-witness-a", rental: false)
+  let rental = path_at(attempt_raw: "mux-witness-a", rental: true)
+  fleet != "" && rental != "" && fleet != rental
+}
+
+// THE SOCKET FITS sun_path whatever the attempt id: %C expands to 40 characters and ssh binds a
+// 17-character temporary suffix before renaming. A long attempt id must not lengthen the path.
+fn expanded_socket_length(path: String) -> Int {
+  string_length(s: path) - 2 + 40 + 17
+}
+
+test fn w_the_control_socket_fits_sun_path_for_any_attempt() -> Bool {
+  let short = path_at(attempt_raw: "a", rental: false)
+  let long = path_at(attempt_raw: "runner-host-file-converge-ci-with-a-much-longer-attempt-identity-than-any-today", rental: false)
+  short != "" && long != ""
+    && string_length(s: short) == string_length(s: long)
+    && expanded_socket_length(path: long) <= fleet_ssh_multiplex_control_path_bound
+}

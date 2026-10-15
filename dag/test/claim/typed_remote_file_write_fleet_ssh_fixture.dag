@@ -1,6 +1,6 @@
 module test.claim.typed_remote_file_write_fleet_ssh_fixture
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Bool, String }
 import std.content_hash { content_hash_of_value }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshAttemptIdentity,
@@ -98,6 +98,37 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     Absent => none
     Present { value: attempt } => {
       let anchor = known_hosts_anchor_hermetic_witness_fixture(attempt: attempt)
+      match fixture_credential_verification() {
+        FleetSshCredentialVerified { binding: binding } => Present {
+          value: fleet_ssh_execution_context_seal(
+            attempt: attempt,
+            trust: fleet_openssh_trust_policy_hermetic_witness_fixture(anchor: anchor),
+            credential: binding,
+          ),
+        }
+        FleetSshCredentialIdentityMismatch { expected_line: _, observed_line: _ } => none
+        FleetSshCredentialDerivationRefused { cause: _ } => none
+      }
+    }
+  }
+}
+
+// THE SAME CONTEXT AT A CHOSEN ATTEMPT AND REGISTRY, for the multiplexing witness: the control
+// socket must differ whenever either differs, so the witness needs two contexts that differ in
+// exactly one of them.
+fn fleet_ssh_execution_context_at_witness_fixture(attempt_raw: String, rental: Bool) -> FleetSshExecutionContext?
+  admit_callers: [
+    decl_ref(module_path: "test.claim.fleet.fleet_ssh_multiplexing_witness", decl_name: "context_at"),
+  ]
+{
+  match fleet_ssh_attempt_identity(raw: attempt_raw) {
+    Absent => none
+    Present { value: attempt } => {
+      let anchor = if rental {
+        rental_known_hosts_anchor_hermetic_witness_fixture(attempt: attempt)
+      } else {
+        known_hosts_anchor_hermetic_witness_fixture(attempt: attempt)
+      }
       match fixture_credential_verification() {
         FleetSshCredentialVerified { binding: binding } => Present {
           value: fleet_ssh_execution_context_seal(
