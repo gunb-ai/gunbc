@@ -172,7 +172,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.python", decl_name: "python_program"),
     decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_status_command"),
     decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_identity"),
-    decl_ref(module_path: "extdeps.linux.apparmor_userns", decl_name: "sysctl_program"),
+    decl_ref(module_path: "extdeps.procps.sysctl", decl_name: "sysctl_program"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "scp_program"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_add_program"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "openssh_client_program"),

@@ -2,10 +2,8 @@ module gunbc.host.srv1_software_inhabitance_receipt
 
 import std.types { NonEmptyStr, Int, FilePath, List, String }
 import extdeps.exec.program { ProgramIdentity }
-import extdeps.linux.apparmor_userns {
-  apparmor_restrict_unprivileged_userns_sysctl_name,
-  sysctl_program,
-}
+import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
+import extdeps.procps.sysctl { sysctl_program }
 import extdeps.tools.gnu_coreutils { cat_program, timeout_program }
 import extdeps.tools.uname { uname_program }
 import extdeps.sudo.elevation { sudo_program }

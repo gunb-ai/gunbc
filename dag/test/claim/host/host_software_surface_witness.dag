@@ -50,6 +50,7 @@ import extdeps.procps.kill {
   kill_program,
   procps_pgid_signal_host_consumer_frontier,
 }
+import extdeps.procps.sysctl { sysctl_standing }
 import extdeps.external_authority {
   CitedFigureStanding,
   CitedToAuthority,
@@ -233,6 +234,7 @@ fn standing_is_cited_to_authority(s: CitedFigureStanding) -> Bool {
 test fn upstream_sandbox_procps_and_apparmor_figures_are_cited_to_authority() -> Bool {
   standing_is_cited_to_authority(s: apparmor_userns_restriction_standing())
     && standing_is_cited_to_authority(s: procps_kill_standing())
+    && standing_is_cited_to_authority(s: sysctl_standing())
 }
 
 test fn srv1_software_is_observed_by_the_inhabitance_receipt() -> Bool {
