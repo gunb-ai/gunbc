@@ -62,8 +62,7 @@ import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text_in_span
 import v2.compiler.inferred_tree {
   DerivedGrounding,
   GroundingNotDerived,
-  InferredTree,
-  inferred_facts_nullary_coproduct_arm
+  InferredTree
 }
 import v2.std.node {
   Arrow,
@@ -111,6 +110,8 @@ data probe_a_source: String = "module v2.test.probe_a\n\ntype Color = Red | Blue
 
 data probe_b_source: String = "module v2.test.probe_b\n\nimport v2.test.probe_a { Color, Red, Blue }\n\ndata painted: Color = Red\n\nfn pick() -> Color { if true { Red } else { Blue } }\n"
 
+data probe_c_source: String = "module v2.test.probe_c\n\ntype Rec = { }\n\ntype Alias = Int\n\ndata rec_rhs: Rec = Rec\n\ndata alias_rhs: Alias = Alias\n"
+
 fn probe_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
@@ -123,7 +124,8 @@ fn probe_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness 
 fn probe_ingest() -> SourceRootIngest {
   [
     probe_read(source: probe_a_source, id: ^probe_a_read, path: "src/v2/test/probe_a.dag"),
-    probe_read(source: probe_b_source, id: ^probe_b_read, path: "src/v2/test/probe_b.dag")
+    probe_read(source: probe_b_source, id: ^probe_b_read, path: "src/v2/test/probe_b.dag"),
+    probe_read(source: probe_c_source, id: ^probe_c_read, path: "src/v2/test/probe_c.dag")
   ]
 }
 
@@ -246,13 +248,9 @@ fn probe_facts_tag(tree: InferredTree, node: Node) -> String {
   match tree.facts.lookup(node) {
     Absent => "lookup-absent"
     Present { value: facts } =>
-      if inferred_facts_nullary_coproduct_arm(facts: facts) {
-        "stamp"
-      } else {
-        match facts.grounding {
-          DerivedGrounding { grounding: _ } => "derived"
-          GroundingNotDerived { node: _ } => "not-derived"
-        }
+      match facts.grounding {
+        DerivedGrounding { grounding: _ } => "derived"
+        GroundingNotDerived { node: _ } => "not-derived"
       }
   }
 }
@@ -298,6 +296,10 @@ fn probe_member_is_b(q: QualifiedName) -> Bool {
   qualified_name_to_dotted_string(qn: q) == "v2.test.probe_b"
 }
 
+fn probe_member_is_c(q: QualifiedName) -> Bool {
+  qualified_name_to_dotted_string(qn: q) == "v2.test.probe_c"
+}
+
 fn probe_b_emitted_text(modules: FreeMonoid<ClosureMemberEmission>) -> String {
   match list_find_first(xs: modules, predicate: fn(m) {
     match m {
@@ -319,6 +321,22 @@ fn probe_b_arm_reason(modules: FreeMonoid<ClosureMemberEmission>) -> Optional<Sy
     match m {
       ClosureMemberEmitted { module: q, text: _ } => probe_member_is_b(q: q)
       ClosureMemberRefused { module: q, diagnostics: _ } => probe_member_is_b(q: q)
+    }
+  }) {
+    Absent => Absent
+    Present { value: m } =>
+      match m {
+        ClosureMemberEmitted { module: _, text: _ } => Absent
+        ClosureMemberRefused { module: _, diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+      }
+  }
+}
+
+fn probe_c_arm_reason(modules: FreeMonoid<ClosureMemberEmission>) -> Optional<Symbol> {
+  match list_find_first(xs: modules, predicate: fn(m) {
+    match m {
+      ClosureMemberEmitted { module: q, text: _ } => probe_member_is_c(q: q)
+      ClosureMemberRefused { module: q, diagnostics: _ } => probe_member_is_c(q: q)
     }
   }) {
     Absent => Absent
@@ -368,6 +386,7 @@ type ProbeBundle {
   native_resolved_color: String
   emit_red_payload: String
   emit_painted_facts: String
+  emit_c_reason: String
 }
 
 fn probe_bundle() -> Optional<ProbeBundle> {
@@ -458,11 +477,21 @@ fn probe_bundle() -> Optional<ProbeBundle> {
           }
           let emit_painted_facts = match emit_resolved {
             Rejected { diagnostics: _ } => "resolve-refused"
-            Accepted { value: tree, diagnostics: _ } =>
-              match infer_and_discharge(tree: tree) {
+            Accepted { value: resolved, diagnostics: _ } =>
+              match infer_and_discharge(tree: resolved) {
                 Rejected { diagnostics: _ } => "infer-refused"
                 Accepted { value: inferred, diagnostics: _ } => probe_painted_facts(tree: inferred)
               }
+          }
+          let emit_located_c = emit_closure_from_ingest_located(
+            ingest: ingest,
+            entry: probe_qn(dotted: "v2.test.probe_c"),
+            entry_locus: node_synthetic(kind: TypeNode { connective: Atom { identity: ^probe_emit_c_locus } }, children: []),
+            target: rust_target_model()
+          )
+          let emit_c_reason = match emit_located_c.outcome {
+            Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
+            Accepted { value: e, diagnostics: _ } => probe_c_arm_reason(modules: e.modules)
           }
           Present {
             value: ProbeBundle {
@@ -487,7 +516,8 @@ fn probe_bundle() -> Optional<ProbeBundle> {
               emit_resolved_color: probe_resolved_color(o: emit_resolved),
               native_resolved_color: native_resolved_color,
               emit_red_payload: probe_red_payload(index: emit_idx),
-              emit_painted_facts: emit_painted_facts
+              emit_painted_facts: emit_painted_facts,
+              emit_c_reason: probe_reason_text(o: emit_c_reason)
             }
           }
       }
@@ -560,6 +590,13 @@ test fn imported_two_nullary_arms_in_one_body_both_emitted_holds() -> Bool {
   }
 }
 
+test fn imported_record_or_alias_reference_rhs_still_refuses_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } => b.emit_c_reason != "accepted"
+  }
+}
+
 test fn native_red_declaring_is_color_holds() -> Bool {
   match probe_bundle() {
     Absent => false
@@ -605,7 +642,7 @@ test fn red_payload_is_variant_arm_holds() -> Bool {
 test fn painted_facts_has_stamp_holds() -> Bool {
   match probe_bundle() {
     Absent => false
-    Present { value: b } => string_contains(s: b.emit_painted_facts, pattern: "stamp")
+    Present { value: b } => string_contains(s: b.emit_painted_facts, pattern: "marked")
   }
 }
 

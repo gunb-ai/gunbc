@@ -23,6 +23,7 @@ import v2.std.compilers.target_model {
 }
 import extdeps.communication.medium { Medium }
 import v2.std.collection { Absent, Present, list_at_optional, map_get_checked }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import std.algebra { Cons, Empty, PartialFunction, list_append, list_snoc_item, contains, fold_list, FreeMonoid }
 import v2.std.diagnostic {
   Accepted,
@@ -377,9 +378,9 @@ fn emit_module_member_refused(reason: Symbol, at: Node) -> Outcome<Medium<String
   outcome_rejected(d: emit_produced_decl_diagnostic(reason: reason, node: at))
 }
 
-fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>, tree: InferredTree) -> Outcome<Medium<String>> {
+fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>, tree: InferredTree, declarations: SymbolIndex) -> Outcome<Medium<String>> {
   match module_member_class(edge: edge, kinds: kinds) {
-    ModuleMemberBodiedArrow => emit_produced_decl_declaring(decl: produced_decl_node_for_edge(edge: edge), target: target, realization_host: realization_host, tree: tree)
+    ModuleMemberBodiedArrow => emit_produced_decl_declaring(decl: produced_decl_node_for_edge(edge: edge), target: target, realization_host: realization_host, tree: tree, declarations: declarations)
     ModuleMemberCoproduct { name: n, coproduct: c } => emit_semantic_type_decl(name: n, params: [], node: c, target: target, realization_host: realization_host)
     ModuleMemberRecord { name: n, record: r } => emit_semantic_type_decl(name: n, params: [], node: r, target: target, realization_host: realization_host)
     ModuleMemberRefinement { name: n, refinement: m } => emit_refinement_declaration(name: n, refinement: m, target: target, realization_host: realization_host)
@@ -432,7 +433,7 @@ fn produced_module_bodies_declare_members(root: Node) -> Bool {
 
 // Every module body's members, in order, each through its one realization; the first refusal refuses
 // the module with nothing partial published.
-fn emit_module_body_members(tree: InferredTree, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>) -> Outcome<Medium<String>> {
+fn emit_module_body_members(tree: InferredTree, target: TargetModel, realization_host: TargetModel, kinds: FreeMonoid<DeclaredTypeKind>, declarations: SymbolIndex) -> Outcome<Medium<String>> {
   let members = fold(module_bodies_in_tree(node: tree.root, acc: []), init: [], f: fn(acc, b) {
     concat(acc, module_body_member_edges(body: b))
   })
@@ -445,7 +446,7 @@ fn emit_module_body_members(tree: InferredTree, target: TargetModel, realization
           o: acc,
           f: fn(partial) {
             bind_outcome(
-              o: emit_module_member(edge: edge, target: target, realization_host: realization_host, kinds: kinds, tree: tree),
+              o: emit_module_member(edge: edge, target: target, realization_host: realization_host, kinds: kinds, tree: tree, declarations: declarations),
               f: fn(medium) {
                 Accepted { value: concat(partial, medium.carried, emit_module_decl_separator), diagnostics: None }
               }
@@ -461,13 +462,14 @@ fn emit_module_body_members(tree: InferredTree, target: TargetModel, realization
 fn emit_produced_decl_with_target(
   decl: Node,
   target: TargetModel,
-  tree: InferredTree
+  tree: InferredTree,
+  declarations: SymbolIndex
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: emit_produced_decl_inner_arrow(decl: decl),
     f: fn(arrow) {
       bind_outcome(
-        o: target_serialize_bodied_arrow_from_model(target: target, emitted: arrow, tree: tree),
+        o: target_serialize_bodied_arrow_from_model(target: target, emitted: arrow, tree: tree, declarations: declarations),
         f: fn(text) {
           target_source_medium(text: render_target_text(t: text), target: target)
         }
@@ -495,11 +497,12 @@ fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>
           Absent
         }
       }
-    }
+    },
+    declarations: empty_symbol_index()
   )
 }
 
-fn emit_produced_decl_declaring(decl: Node, target: TargetModel, realization_host: TargetModel, tree: InferredTree) -> Outcome<Medium<String>> {
+fn emit_produced_decl_declaring(decl: Node, target: TargetModel, realization_host: TargetModel, tree: InferredTree, declarations: SymbolIndex) -> Outcome<Medium<String>> {
   match target.produced_decl_support {
     ProducedDeclUnwired =>
       outcome_rejected(
@@ -521,7 +524,8 @@ fn emit_produced_decl_declaring(decl: Node, target: TargetModel, realization_hos
               base_row: base_row,
               scaffold: scaffold
             ),
-            tree: tree
+            tree: tree,
+            declarations: declarations
           )
         }
       )

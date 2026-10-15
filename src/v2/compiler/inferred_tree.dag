@@ -16,8 +16,7 @@ import v2.std.node {
   Instantiation,
   Node,
   Occupancy,
-  TypeNode,
-  declaration_reference_body_marked
+  TypeNode
 }
 import v2.std.witness { Witness }
 
@@ -69,18 +68,9 @@ type InferredTree {
   facts: PartialFunction<Node, InferredFacts>
 }
 
-// THE NULLARY COPRODUCT-ARM STAMP INFER ALREADY WROTE. denotation is the empty-product arm
-// declaration. derived type is infer_coproduct_type_applied_open: Instantiation when the coproduct
-// has parameters, otherwise the coproduct's declaration-reference node (a marked Conj path, not
-// a leaf Atom and not the Disj). Emit reads this; it does not re-derive constructor typing.
-fn inferred_facts_nullary_coproduct_arm(facts: InferredFacts) -> Bool {
-  match facts.denotation {
-    Absent => false
-    Present { value: declared } =>
-      inferred_facts_empty_product_shape(declared: declared) && inferred_facts_coproduct_value_type(facts: facts)
-  }
-}
-
+// THE EMPTY-PRODUCT ARM BODY. Whether that body is a nullary coproduct arm is not a type-node
+// shape of the use's derived type (Atom/Conj/Disj/Instantiation); v2.compiler.infer
+// infer_nullary_zero_param_coproduct_arm_use keys it on the resolved declaration.
 fn inferred_facts_empty_product_shape(declared: Node) -> Bool {
   match declared.kind {
     TypeNode { connective: Conj } => length(xs: declared.children) == 0
@@ -90,23 +80,6 @@ fn inferred_facts_empty_product_shape(declared: Node) -> Bool {
     TypeNode { connective: Occupancy } => false
     TypeNode { connective: Instantiation } => false
     ComputationNode { behavior: _ } => false
-  }
-}
-
-fn inferred_facts_coproduct_value_type(facts: InferredFacts) -> Bool {
-  match facts.grounding {
-    DerivedGrounding { grounding: g } =>
-      match g.witness.structural.evidence.kind {
-        TypeNode { connective: Disj } => true
-        TypeNode { connective: Instantiation } => true
-        TypeNode { connective: Atom { identity: _ } } => true
-        TypeNode { connective: Conj } =>
-          declaration_reference_body_marked(target: g.witness.structural.evidence)
-        TypeNode { connective: Arrow } => false
-        TypeNode { connective: Occupancy } => false
-        ComputationNode { behavior: _ } => false
-      }
-    GroundingNotDerived { node: _ } => false
   }
 }
 

@@ -8,9 +8,9 @@ import std.occurrence_identity {
 import v2.compiler.inferred_tree {
   InferredFacts,
   InferredTree,
-  authored_occurrence_id,
-  inferred_facts_nullary_coproduct_arm
+  authored_occurrence_id
 }
+import v2.compiler.infer { infer_nullary_zero_param_coproduct_arm_use }
 import v2.extdeps.languages.dag {
   dag_surface_operator_canonicalization_member,
   dag_value_expression_projection,
@@ -103,6 +103,7 @@ import v2.std.qualified_name {
   qualified_name_init,
   qualified_name_last_segment
 }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.std.type_binder {
   type_param_names
 }
@@ -904,11 +905,16 @@ fn project_value_node_from_inferred_facts(
   node: Node,
   target: TargetModel,
   tree: InferredTree,
+  declarations: SymbolIndex,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match inferred_facts_for_projected_node(tree: tree, node: node) {
     Present { value: facts } =>
-      if inferred_facts_nullary_coproduct_arm(facts: facts) {
+      if infer_nullary_zero_param_coproduct_arm_use(
+        node: node,
+        index: declarations,
+        facts: facts
+      ) {
         project_nullary_arm_binding(node: node)
       } else {
         project_value_node_structurally(
@@ -916,6 +922,7 @@ fn project_value_node_from_inferred_facts(
           node: node,
           target: target,
           tree: tree,
+          declarations: declarations,
           handle_transform: handle_transform
         )
       }
@@ -925,6 +932,7 @@ fn project_value_node_from_inferred_facts(
         node: node,
         target: target,
         tree: tree,
+        declarations: declarations,
         handle_transform: handle_transform
       )
   }
@@ -935,6 +943,7 @@ fn project_occupancy_carrier_from_inferred_facts(
   occupancy: Node,
   target: TargetModel,
   tree: InferredTree,
+  declarations: SymbolIndex,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match fold_list(
@@ -955,6 +964,7 @@ fn project_occupancy_carrier_from_inferred_facts(
         node: inner,
         target: target,
         tree: tree,
+        declarations: declarations,
         handle_transform: handle_transform
       )
   }
@@ -965,6 +975,7 @@ fn project_branch_from_inferred_facts(
   body: Node,
   target: TargetModel,
   tree: InferredTree,
+  declarations: SymbolIndex,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
@@ -1000,6 +1011,7 @@ fn project_branch_from_inferred_facts(
                   node: cond,
                   target: target,
                   tree: tree,
+                  declarations: declarations,
                   handle_transform: handle_transform
                 ),
                 f: fn(projected_cond) {
@@ -1009,6 +1021,7 @@ fn project_branch_from_inferred_facts(
                       node: then_arm,
                       target: target,
                       tree: tree,
+                      declarations: declarations,
                       handle_transform: handle_transform
                     ),
                     f: fn(projected_then) {
@@ -1018,6 +1031,7 @@ fn project_branch_from_inferred_facts(
                           node: else_arm,
                           target: target,
                           tree: tree,
+                          declarations: declarations,
                           handle_transform: handle_transform
                         ),
                         f: fn(projected_else) {
@@ -1044,6 +1058,7 @@ fn project_value_node_structurally(
   node: Node,
   target: TargetModel,
   tree: InferredTree,
+  declarations: SymbolIndex,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match node.kind {
@@ -1053,6 +1068,7 @@ fn project_value_node_structurally(
         body: node,
         target: target,
         tree: tree,
+        declarations: declarations,
         handle_transform: handle_transform
       )
     TypeNode { connective: Occupancy } =>
@@ -1061,6 +1077,7 @@ fn project_value_node_structurally(
         occupancy: node,
         target: target,
         tree: tree,
+        declarations: declarations,
         handle_transform: handle_transform
       )
     TypeNode { connective: Conj } =>
@@ -1127,6 +1144,7 @@ fn project_arrow_body_from_inferred_facts(
   arrow: Node,
   target: TargetModel,
   tree: InferredTree,
+  declarations: SymbolIndex,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match find_arrow_body_child(root: arrow) {
@@ -1137,6 +1155,7 @@ fn project_arrow_body_from_inferred_facts(
         node: body,
         target: target,
         tree: tree,
+        declarations: declarations,
         handle_transform: handle_transform
       )
   }
@@ -1145,7 +1164,8 @@ fn project_arrow_body_from_inferred_facts(
 fn target_serialize_bodied_arrow_from_model(
   target: TargetModel,
   emitted: Node,
-  tree: InferredTree
+  tree: InferredTree,
+  declarations: SymbolIndex
 ) -> Outcome<TargetText> {
   if count(type_param_names(n: emitted)) > 0 {
     outcome_rejected(d: translate_generic_arrow_not_rendered_diagnostic(arrow: emitted))
@@ -1164,6 +1184,7 @@ fn target_serialize_bodied_arrow_from_model(
                   arrow: emitted,
                   target: target,
                   tree: tree,
+                  declarations: declarations,
                   handle_transform: fn(a, b, t) {
                     translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
                   }
@@ -1218,7 +1239,7 @@ fn target_serialize_relation_row_with_lex_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
-    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted, tree: serialize_facts_absent_tree(root: emitted))
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted, tree: serialize_facts_absent_tree(root: emitted), declarations: empty_symbol_index())
   } else {
     bind_outcome(
       o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
@@ -1362,7 +1383,7 @@ fn target_serialize_source_from_model_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
-    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted, tree: serialize_facts_absent_tree(root: emitted))
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted, tree: serialize_facts_absent_tree(root: emitted), declarations: empty_symbol_index())
   } else if is_dag_import_carrier(emitted: emitted) {
     bind_outcome(
       o: module_import_projection_from_target(target: target),
