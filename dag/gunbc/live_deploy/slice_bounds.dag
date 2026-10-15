@@ -314,8 +314,6 @@ type DeclaredSliceMemoryMax {
   memory_max: ByteSize
 }
 
-data sessions_slice_unit_name: NonEmptyStr = "sessions.slice"
-
 fn declared_system_slice_memory_maxes() -> List<DeclaredSliceMemoryMax> {
   [
     DeclaredSliceMemoryMax {

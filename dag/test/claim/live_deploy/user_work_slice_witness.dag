@@ -19,12 +19,12 @@ import gunbc.live_deploy.slice_bounds {
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
   repository_convergence_slice_memory_max, repository_convergence_slice_unit_name,
   declared_system_slice_memory_maxes, modeled_system_slice_memory_max,
-  sessions_slice_unit_name,
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, user_work_charged_slots }
 import gunbc.live_deploy.served_slice_charge {
   user_work_charged_in_served_allowance,
 }
+import gunbc.oomd_install { gunbc_oomd_sessions_slice }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.compute.unit_bounds {
   compute_grant_unit_properties, gunbc_user_work_scope_command,
@@ -286,7 +286,7 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds system_service_unit_from_cgroup`")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes` unit names")
     && string_contains(s: seed, pattern: concat("\"", concat(repository_convergence_slice_unit_name as String, "\"")))
-    && !string_contains(s: seed, pattern: concat("\"", concat(sessions_slice_unit_name as String, "\"")))
+    && !string_contains(s: seed, pattern: concat("\"", concat(gunbc_oomd_sessions_slice as String, "\"")))
     && !any(
       declared_system_slice_memory_maxes(),
       row => byte_size_count(b: row.memory_max) > 0
@@ -437,10 +437,10 @@ test fn sessions_slice_is_not_a_fleet_wide_wrap_exempt() -> Bool {
     "0::",
     user_work_scope_user_slice_cgroup_needle,
     "user-1000.slice/user@1000.service/app.slice/",
-    sessions_slice_unit_name as String,
+    gunbc_oomd_sessions_slice as String,
     "/docker-deadbeef.scope",
   ], "")
-  match modeled_system_slice_memory_max(unit: sessions_slice_unit_name as String) {
+  match modeled_system_slice_memory_max(unit: gunbc_oomd_sessions_slice as String) {
     Present { value: _ } => false
     Absent =>
       match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
@@ -459,7 +459,7 @@ test fn a_user_manager_sessions_slice_path_still_wraps() -> Bool {
     "0::",
     user_work_scope_user_slice_cgroup_needle,
     "user-1000.slice/user@1000.service/app.slice/",
-    sessions_slice_unit_name as String,
+    gunbc_oomd_sessions_slice as String,
     "/run-u.scope",
   ], "")
   match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
