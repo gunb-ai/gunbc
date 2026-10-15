@@ -10,6 +10,7 @@ use self::ContainerSource::*;
 use self::CostShape::*;
 use self::ListAtLookup::*;
 use self::Ordering::*;
+pub use crate::std_error_primitives::pure_dag_seam_unreachable_string;
 use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
 pub use crate::std_error_primitives::{DivError, Result};

@@ -29,16 +29,11 @@ pub enum DivError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct DivideByZero;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Overflow;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Never {}
 
 #[allow(unreachable_code)]
-pub fn absurd<T>(n: Never) -> T {
-    match n {}
+pub fn absurd<T: Clone>(n: Never) -> T {
+    match n.clone() {}
 }
 
 pub fn pure_dag_seam_unreachable() -> i64 {
@@ -46,7 +41,7 @@ pub fn pure_dag_seam_unreachable() -> i64 {
 }
 
 pub fn pure_dag_seam_unreachable_float() -> f64 {
-    if v1_rt::pure_dag_seam_unreachable() == 0 {
+    if (v1_rt::pure_dag_seam_unreachable() == 0) {
         0.0
     } else {
         0.0
@@ -54,9 +49,14 @@ pub fn pure_dag_seam_unreachable_float() -> f64 {
 }
 
 pub fn pure_dag_seam_unreachable_string() -> String {
-    if v1_rt::pure_dag_seam_unreachable() == 0 {
+    if (v1_rt::pure_dag_seam_unreachable() == 0) {
         "".to_string()
     } else {
         "".to_string()
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DivideByZero;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Overflow;
