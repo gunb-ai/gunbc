@@ -10423,8 +10423,8 @@ pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> 
     module_name: "v1.compiler.trace".to_string(),
     method: "map".to_string(),
     occurrences: 1,
-    receiver_shape: "Product(SpanMapping)".to_string(),
-    cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.".to_string(),
+    receiver_shape: "Product(SpanMapping<Primitive(Int),Product(SourceSpan<Product(FilePath<Primitive(String)>),Primitive(Int),Primitive(Int)>)>)".to_string(),
+    cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted. node_type_shape now prints the product's field types, so the key is the applied Product(SpanMapping<...>) rather than the bare Product(SpanMapping).".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "test.claim.sccache_local_content_verified_on_read".to_string(),

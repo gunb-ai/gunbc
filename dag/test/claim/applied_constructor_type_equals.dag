@@ -1,0 +1,37 @@
+module test.claim.applied_constructor_type_equals
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count,
+}
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn same_applied_box_int_is_accepted() -> Bool {
+  blocking_count(source: "module locate.boxeq\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Int>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") == 0
+}
+
+test fn applied_box_int_vs_bool_is_refused() -> Bool {
+  blocking_count(source: "module locate.boxne\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") >= 1
+}
+
+test fn list_int_vs_list_string_is_refused() -> Bool {
+  blocking_count(source: "module locate.listne\nimport std.types { List }\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: List<Int>, y: List<String>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") >= 1
+}
+
+// Callee T is flexible at a call: f<T> calling g<T>(x: T) with x: T binds, it does not
+// compare count_equal#T vs fold_list#T as rigid types.
+test fn a_generic_caller_may_instantiate_a_generic_callee_with_its_own_t() -> Bool {
+  blocking_count(source: "module locate.flex\nfn g<T>(x: T) -> T { x }\nfn f<T>(x: T) -> T {\n  g(x: x)\n}\n") == 0
+}
+
+test fn list_int_equals_freemonoid_int() -> Bool {
+  blocking_count(source: "module locate.listalias\nimport std.types { List }\nimport std.algebra { FreeMonoid }\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: List<Int>, y: FreeMonoid<Int>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") == 0
+}

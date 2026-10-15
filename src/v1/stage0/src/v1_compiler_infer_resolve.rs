@@ -4012,10 +4012,14 @@ pub fn binder_marked_type(
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone());
+        let tv_id = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: id, .. }) => id.clone(),
+            _ => "".to_string(),
+        };
         let is_binder_reference = ((((n.declaration.clone() == std::option::Option::None)
             && ((n.children.clone().len() as i64) == 0))
             && ((n.params.clone().len() as i64) == 0))
-            && {
+            && ({
                 let mut __found = false;
                 for b in binders.iter().cloned() {
                     if (b.clone() == name.clone()) {
@@ -4024,16 +4028,41 @@ pub fn binder_marked_type(
                     }
                 }
                 __found
-            });
+            } || ((tv_id.clone() != "".to_string()) && {
+                let mut __found = false;
+                for b in binders.iter().cloned() {
+                    if (b.clone() == tv_id.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            })));
         if is_binder_reference.clone() {
-            node_with_declaration(
-                n.clone(),
-                crate::std_decl_ref::decl_type_parameter_ref(
-                    owner.module_path.clone(),
-                    owner.decl_name.clone(),
-                    name.clone(),
-                ),
-            )
+            {
+                let parameter = if {
+                    let mut __found = false;
+                    for b in binders.iter().cloned() {
+                        if (b.clone() == name.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    name.clone()
+                } else {
+                    tv_id.clone()
+                };
+                node_with_declaration(
+                    n.clone(),
+                    crate::std_decl_ref::decl_type_parameter_ref(
+                        owner.module_path.clone(),
+                        owner.decl_name.clone(),
+                        parameter.clone(),
+                    ),
+                )
+            }
         } else {
             {
                 let is_arrow = match n.connective.clone() {

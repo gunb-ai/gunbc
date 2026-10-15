@@ -1377,12 +1377,17 @@ fn node_with_declaration(n: Node, declaration: DeclarationRef) -> Node {
 // the return, the type arguments beneath them, and an arrow's parameter and return positions.
 fn binder_marked_type(n: Node, owner: DeclarationRef, binders: List<String>, env: TypeEnv) -> Node {
   let name = authored_name(env: env, node: n)
+  let tv_id = match n.inferred {
+    Present { value: TypeVariable { id: id } } => id
+    _ => ""
+  }
   let is_binder_reference = n.declaration == none
     && n.children |> count == 0
     && n.params |> count == 0
-    && binders |> any(b => b == name)
+    && (binders |> any(b => b == name) || (tv_id != "" && (binders |> any(b => b == tv_id))))
   if is_binder_reference {
-    node_with_declaration(n: n, declaration: decl_type_parameter_ref(module_path: owner.module_path as String, decl_name: owner.decl_name as String, parameter: name))
+    let parameter = if binders |> any(b => b == name) { name } else { tv_id }
+    node_with_declaration(n: n, declaration: decl_type_parameter_ref(module_path: owner.module_path as String, decl_name: owner.decl_name as String, parameter: parameter))
   } else {
     let is_arrow = match n.connective { Arrow => true  _ => false }
     let children = map(n.children, c => binder_marked_type(n: c, owner: owner, binders: binders, env: env))
