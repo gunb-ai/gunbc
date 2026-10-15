@@ -36,7 +36,12 @@ import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_events_path,
   CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
 }
-import extdeps.cache.sccache { sccache_installed_binary_path }
+import extdeps.cache.sccache {
+  sccache_installed_binary_path, sccache_server_uds_env_var, sccache_cache_dir_env_var,
+}
+import gunbc.build_cache.build_cache_instance { ci_cache_instance }
+import product.host_identity { HostIdentity }
+import extdeps.linux.procfs { procfs_status_effective_uid }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
@@ -485,10 +490,53 @@ fn compute_operation_env(op: WorkOperation) -> List<SystemdSetenvBinding> {
   }
 }
 
+// The unit's environment is the user manager plus --setenv only. An undeclared sccache endpoint
+// falls through to TCP 4226, which another uid's server can hold. The socket is keyed by USER
+// (the launching uid's runtime dir / sccache.sock), not by layout/identity, so one server serves
+// every identity of that uid and the cache directory stays the shared CI store.
+fn compute_user_sccache_server_uds(user_runtime_dir: FilePath) -> NonEmptyStr {
+  join([user_runtime_dir as String, "/sccache.sock"], "") as NonEmptyStr
+}
+
+fn compute_launching_user_runtime_dir() -> FilePath? {
+  let status = Filesystem.Read(path: "/proc/self/status")
+  if !status.success {
+    none
+  } else {
+    match procfs_status_effective_uid(content: status.content) {
+      Absent => none
+      Present { value: uid } => {
+        let runtime_dir = join(["/run/user/", to_string(value: uid)], "") as FilePath
+        let listed = Filesystem.List(path: runtime_dir)
+        if listed.success {
+          Present { value: runtime_dir }
+        } else {
+          none
+        }
+      }
+    }
+  }
+}
+
+fn compute_unit_sccache_setenv(instance: HostDashboardInstance, user_runtime_dir: FilePath) -> List<SystemdSetenvBinding> {
+  [
+    SystemdSetenvBinding {
+      name: sccache_server_uds_env_var,
+      value: compute_user_sccache_server_uds(user_runtime_dir: user_runtime_dir),
+    },
+    // HostDashboardInstance has no cache-dir field. The shared CI disk is
+    // gunbc.build_cache.build_cache_instance ci_cache_instance intended_storage (host-invariant).
+    SystemdSetenvBinding {
+      name: sccache_cache_dir_env_var,
+      value: ci_cache_instance(host: instance.host_identity as HostIdentity).intended_storage,
+    },
+  ]
+}
+
 // launcher_env is applied to the systemd-run process via env(1), not as unit --setenv. Empty is
 // inherit; a cold instrument supplies XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS when the job env
 // has none. One fold: production and the instrument both call this.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte) -> ComputeUnitRunReading {
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeUnitRunExecuted { run: ComputeUnitRun {
@@ -503,10 +551,16 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
     match gunbc_user_work_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
       properties: compute_unit_properties(layout: layout, granted: granted),
-      setenv_bindings: concat([
-        SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
-        SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
-      ], env),
+      setenv_bindings: concat(
+        concat(
+          [
+            SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
+            SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
+          ],
+          compute_unit_sccache_setenv(instance: instance, user_runtime_dir: user_runtime_dir),
+        ),
+        env,
+      ),
       command_argv: argv,
     ) {
       SystemdSummaryPrintingWaitRefused { cause: why } =>
@@ -2404,7 +2458,18 @@ fn compute_spawn_and_collect(
   grant_was_ceiling: Bool,
   launched: AttemptGate,
 ) -> ComputeAttempt {
-  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted) {
+  match compute_launching_user_runtime_dir() {
+    Absent =>
+      ComputeAttempt {
+        outcome: WorkRefusedByInfrastructure {
+          identity: identity,
+          cause: ToolchainUnobserved { detail: "launching user's /run/user/<uid> is not present, so SCCACHE_SERVER_UDS cannot be declared on the unit" },
+        },
+        summary: compute_unspawned_summary(),
+        gate: launched,
+      }
+    Present { value: user_runtime_dir } =>
+  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
@@ -2432,6 +2497,7 @@ fn compute_spawn_and_collect(
     gate: launched,
   }
     }
+  }
   }
 }
 

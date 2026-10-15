@@ -296,6 +296,7 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
                     ),
                     launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
                     granted: compute_run_unit_cold_unit_grant(),
+                    user_runtime_dir: runtime_dir,
                   ) {
                     ComputeUnitRunRefused { cause: _ } =>
                       CliWirePrintable {
@@ -442,10 +443,11 @@ fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobTool
         ),
         launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
         granted: kibibyte_from_byte_size_floor(b: gibibyte_to_byte_size(g: gibibyte(count: 1))),
+        user_runtime_dir: runtime_dir,
       ) {
         ComputeUnitRunRefused { cause: _ } => "unit printenv: launch refused\n"
         ComputeUnitRunExecuted { run: unit_run } => join([
-          "=== unit printenv SCCACHE/RUSTC_WRAPPER (compute_run_unit, no extra sccache setenv) ===\n",
+          "=== unit printenv SCCACHE/RUSTC_WRAPPER (compute_run_unit declares UDS + SCCACHE_DIR) ===\n",
           match unit_run.exec {
             ComputeExecOk { stdout, stderr: _ } => join([
               lines_with_needle(text: stdout, needle: "SCCACHE"),
