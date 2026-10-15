@@ -7,7 +7,7 @@ import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { bound_dissolution }
 import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefault, r2_object_url }
-import extdeps.ninfer.ninfer_serve { NinferEngineRelease }
+import extdeps.ninfer.ninfer_serve { NinferEngineRelease, ninfer_serve_81c8ce09_sm120_release }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { NinferModelRow, qwen3_8_27b_nvfp4_row }
 import gunbc.cloudflare.r2_origin { fleet_cloudflare_account_id, OriginCredentialStanding, OriginCredentialMintEntryUnbuilt }
 
@@ -52,8 +52,29 @@ fn rented_models_source(key: NonEmptyStr) -> RentedArtifactSource {
   }
 }
 
-fn rented_engine_source(release: NinferEngineRelease) -> RentedArtifactSource {
-  rented_models_source(key: release.object_key)
+// THE SHIPPED TARBALL IS THIS REPOSITORY'S TO OBSERVE, so its missing digest is a coverage obligation here and
+// not a property of the upstream engine module. The card's run.sh deletes the tarball after extracting it, so no
+// card-side observation can supply the digest; the installed-file pins on the release are what verification
+// rests on until it is read.
+type RentedTarballPin
+  = RentedTarballUnobserved { read_obligation: NonEmptyStr }
+
+data rented_tarball_read_obligation: NonEmptyStr = "Read the sha256 and byte size of the engine tarball at its object key from the store that holds it, by an operator with custody of that store; then replace RentedTarballUnobserved with a pinned arm." as NonEmptyStr
+
+type RentedEngineArtifact {
+  release: NinferEngineRelease
+  object_key: NonEmptyStr
+  tarball: RentedTarballPin
+}
+
+data rented_ninfer_81c8ce09_sm120_engine_artifact: RentedEngineArtifact = RentedEngineArtifact {
+  release: ninfer_serve_81c8ce09_sm120_release,
+  object_key: "bin/ninfer-serve-81c8ce09-sm120.tgz" as NonEmptyStr,
+  tarball: RentedTarballUnobserved { read_obligation: rented_tarball_read_obligation },
+}
+
+fn rented_engine_source(artifact: RentedEngineArtifact) -> RentedArtifactSource {
+  rented_models_source(key: artifact.object_key)
 }
 
 // A MODEL'S OBJECT IS ITS OWN ROW, never a prefix applied to any row: the key names one model's container, so

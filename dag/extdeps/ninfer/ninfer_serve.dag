@@ -176,7 +176,8 @@ fn ninfer_qwen35_kv_capacity_admission(plan: NinferQwen35KvCapacityPlan) -> Ninf
 
 // ── THE ENGINE RELEASE A RENTED CARD INSTALLS ───────────────────────────────────────────────────
 // ninfer-serve built at the pinned source revision for one GPU architecture and shipped as a tarball the card
-// extracts. Read read-only from the live card (Vast RTX PRO 5000 Blackwell) on 2026-10-15 around 04:00Z: the
+// extracts (the tarball, its object key and its unobserved digest are the consuming layer's:
+// gunbc.serving.rented_ninfer_source). Read read-only from the live card (Vast RTX PRO 5000 Blackwell) on 2026-10-15 around 04:00Z: the
 // installed binary and the rev file are measured; the TARBALL is not, because the card's run.sh deletes it
 // after extracting. WHERE the tarball lives and how the card is allowed to read it is the consumer layer's
 // (gunbc.serving.rented_ninfer_source), not this module's.
@@ -189,29 +190,19 @@ type NinferInstalledFile {
   sha256: Sha256Digest
 }
 
-// THE TARBALL'S OWN DIGEST IS A BET NOBODY HAS PLACED. It is typed as unobserved with the obligation that
-// would ground it, and the installed-file pins below are what verification can rest on until it is read.
-type NinferTarballPin
-  = NinferTarballUnobserved { read_obligation: NonEmptyStr }
-
 type NinferEngineRelease {
   release: NonEmptyStr
   source: NinferSourceRevision
   build_target: NinferBuildTarget
-  object_key: NonEmptyStr
   binary: NinferInstalledFile
   rev_file: NinferInstalledFile
-  tarball: NinferTarballPin
   standing: CitedFigureStanding
 }
-
-data ninfer_tarball_read_obligation: NonEmptyStr = "Read the sha256 and byte size of the engine tarball at its object key from the store that holds it, by an operator with custody of that store; the card deletes the tarball after extracting it, so no card-side observation can supply them. Then replace NinferTarballUnobserved with a pinned arm." as NonEmptyStr
 
 data ninfer_serve_81c8ce09_sm120_release: NinferEngineRelease = NinferEngineRelease {
   release: "ninfer-serve-81c8ce09-sm120" as NonEmptyStr,
   source: ninfer_qwen35_planner_revision,
   build_target: NinferSm120 {},
-  object_key: "bin/ninfer-serve-81c8ce09-sm120.tgz" as NonEmptyStr,
   binary: NinferInstalledFile {
     relative_path: "ninfer/ninfer-serve" as NonEmptyStr,
     bytes: byte_size(count: 238462696),
@@ -222,9 +213,8 @@ data ninfer_serve_81c8ce09_sm120_release: NinferEngineRelease = NinferEngineRele
     bytes: byte_size(count: 41),
     sha256: Sha256Digest { hex: "e9ae34b6ca7a2496dfb45d54d2f4bf8517424a872fa2610dee3108ebdb9940dd" },
   },
-  tarball: NinferTarballUnobserved { read_obligation: ninfer_tarball_read_obligation },
   standing: TranscribedUncited {
-    read_obligation: "Installed-file figures were read read-only from one live card on 2026-10-15 around 04:00Z (paths relative to its /root/serve). Re-derive them by hashing the extracted tarball once its own digest is read (ninfer_tarball_read_obligation)." as NonEmptyStr
+    read_obligation: "Installed-file figures were read read-only from one live card on 2026-10-15 around 04:00Z (paths relative to its /root/serve). Re-derive them by hashing the extracted tarball once the shipped tarball's own digest is read (gunbc.serving.rented_ninfer_source)." as NonEmptyStr
   },
 }
 
