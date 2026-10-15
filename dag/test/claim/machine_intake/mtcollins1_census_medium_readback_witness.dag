@@ -215,6 +215,50 @@ test fn only_an_agreed_readback_lets_the_boot_proceed() -> Bool {
     && (match census_readback_refusal(subject: mtcollins1_census_machine, readback: CensusMediumReadbackNotCensus) { Present { value: _ } => true  Absent => false })
 }
 
+// THE REFUSAL NAMES THE SUBJECT IT IS GIVEN AND THE HOST ITS RECEIPT RECORDED. Every claim above
+// passes mtcollins1's machine label and srv2's receipts, so a renderer that ignored its subject
+// parameter and hardcoded the mtcollins1 name -- or that ignored the receipt host and hardcoded srv2
+// -- would stay green. This claim is the discriminating control for that contract: a SECOND subject's
+// label must appear in the text (and the mtcollins1 label must not), and a NON-srv2 receipt host must
+// appear in the rendered text (and srv2 must not). Pure: it renders a constructed readback, so a
+// renderer that drops the parameters goes RED here (DESIGN 5 -- green by execution plus a
+// discriminating input).
+test fn control_c_refusal_names_the_subject_and_the_host_its_receipt_recorded() -> Bool {
+  // A not-census refusal for the SECOND subject: the subject is a parameter, so the text names the
+  // second subject, not mtcollins1.
+  let second_not_census = match census_readback_refusal(subject: second_subject_stem, readback: CensusMediumReadbackNotCensus) {
+    Present { value: w } => w
+    Absent => "" as String
+  }
+  let second_unreadable = CensusMediumReadbackRecordUnreadable { host: "census2-exporter", record_path: "/srv/census2/record.txt", reason: "ssh: connect refused" }
+  let second_record_refusal = match census_readback_refusal(subject: second_subject_stem, readback: second_unreadable) {
+    Present { value: w } => w
+    Absent => "" as String
+  }
+  let mtcollins1_not_census = match census_readback_refusal(subject: mtcollins1_census_machine, readback: CensusMediumReadbackNotCensus) {
+    Present { value: w } => w
+    Absent => "" as String
+  }
+  let mtcollins1_unreadable = CensusMediumReadbackRecordUnreadable { host: srv2, record_path: "/srv/census/record.txt", reason: "ssh: connect refused" }
+  let mtcollins1_record_refusal = match census_readback_refusal(subject: mtcollins1_census_machine, readback: mtcollins1_unreadable) {
+    Present { value: w } => w
+    Absent => "" as String
+  }
+  // The second subject's label names its refusal and the mtcollins1 label does not; and the
+  // mtcollins1 label names ITS refusal and the second label does not. (Subject is a parameter, not a
+  // spelling.)
+  string_contains(s: second_not_census, pattern: second_subject_stem as String)
+    && !string_contains(s: second_not_census, pattern: mtcollins1_census_machine as String)
+    && string_contains(s: mtcollins1_not_census, pattern: mtcollins1_census_machine as String)
+    && !string_contains(s: mtcollins1_not_census, pattern: second_subject_stem as String)
+    // The receipt host names its refusal and srv2 does not (and vice versa) on the record-unreadable
+    // arm, so the host is the receipt's, not a parameter the renderer invents.
+    && string_contains(s: second_record_refusal, pattern: "census2-exporter")
+    && !string_contains(s: second_record_refusal, pattern: srv2 as String)
+    && string_contains(s: mtcollins1_record_refusal, pattern: srv2 as String)
+    && !string_contains(s: mtcollins1_record_refusal, pattern: "census2-exporter")
+}
+
 // INHABITANCE OF THE ADAPTER (DESIGN §3, the pairing obligation): remote_answer_of is the one seam
 // between typed_argv_exec_over_fleet_ssh and the RemoteAnswer every claim above supplies. Both
 // arms execute here, so a swapped stdout/stderr or a wrong refusal code is red in this claim
