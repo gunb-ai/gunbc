@@ -161,6 +161,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_clippy_command"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_build_release_bin_offline_command"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_vendor_command"),
+    decl_ref(module_path: "extdeps.rust.standalone_installer", decl_name: "rust_standalone_install_command"),
+    decl_ref(module_path: "extdeps.rust.rustc", decl_name: "rustc_version_command"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_version_command"),
     decl_ref(module_path: "extdeps.tools.sed", decl_name: "sed_in_place_command"),
     decl_ref(module_path: "extdeps.tools.xorriso", decl_name: "xorriso_extract_command"),
