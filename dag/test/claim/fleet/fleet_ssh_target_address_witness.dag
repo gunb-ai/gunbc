@@ -12,7 +12,6 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   shape_fleet_ssh_exec, shape_fleet_ssh_password_exec_trusting,
 }
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target, fleet_automation_principal_login }
-import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -95,27 +94,3 @@ test fn an_enrolled_fleet_host_resolves_at_port_22_through_the_real_producer() -
   }
 }
 
-// THE PORT-22 RENDERS, RE-DERIVED THROUGH THE NEW ROUTE, in the exact layout of the recorder that ran
-// at the S2(b1) head (test.claim.fleet.fleet_ssh_shaper_recorder on session/deep-bear-539-s2b2-recorder):
-// per enrolled host the receipt wire, then the key and password argv one word per line. A host whose
-// endpoint text refused would print a refusal line the recording does not contain.
-fn w_renders_now() -> String {
-  match fleet_ssh_execution_context_hermetic_witness_fixture() {
-    Absent => "NO-CONTEXT"
-    Present { value: ctx } =>
-      match portable_remote_words(raws: ["hostname"]) {
-        Absent => "NO-WORDS"
-        Present { value: words } =>
-          join(map(fleet_reach_probe_targets, h =>
-            match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: h), principal: fleet_automation_principal_login) {
-              SshTargetRefused { endpoint: e, refusal: _ } => join(["host=", h, " REFUSED ", e, "\n"], "")
-              SshTargetResolved { target: t } =>
-                join([
-                  "host=", h, " wire=", ssh_target_wire(target: t) as String, "\n",
-                  "key=", join(shape_fleet_ssh_exec(context: ctx, target: t, words: words), "\n  | "), "\n",
-                  "pw=", join(shape_fleet_ssh_password_exec_trusting(trust: ctx.trust, target: t, words: words), "\n  | "), "\n",
-                ], "")
-            }), "")
-      }
-  }
-}
