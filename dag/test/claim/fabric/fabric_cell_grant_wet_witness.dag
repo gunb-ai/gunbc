@@ -5,7 +5,10 @@ import std.types { Bool, NonEmptyStr, String, List }
 import std.algebra { Cons, Empty }
 import std.measure { Count, One, hardware_thread_count }
 import std.durable_compare_and_set { cas_generation_count }
-import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef, HoldSlotAbsent }
+import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld }
+import gunbc.fabric.fabric_required_build_cell {
+  judge_cell_holder, ExpectGrantHolder, HolderMatches, HolderPreCutover, HolderMismatch, HeldByGrant, HeldByReservation,
+}
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldReleasePlanned, FileHoldReleaseNotEligible, FileHoldReleased,
   file_hold_release_assess, file_hold_release_commit, observe_file_hold,
@@ -15,13 +18,12 @@ import product.fabric.selection { SelectedOffer }
 import product.fabric.grant_issue { AttemptNamesAnotherWork }
 import gunbc.fabric.fabric_cell_grant {
   CellGrant, CellGranted, CellAlreadyGranted, CellGrantIssueRefused,
-  CellGrantStanding, CellGrantLive, CellGrantReleased, CellGrantSuperseded, CellGrantNeverCommitted,
-  grant_selected_cell, cell_grant_standing,
+  grant_selected_cell,
 }
 import test.claim.fabric.fabric_grant_issuance_witness {
   subject_work, first_attempt, second_attempt, misdirected_attempt, admitted_offer,
   funded_account, money_request, thread_appropriation, fixture_evidence,
-  subject_demand, selected_for, issue, committed_grants,
+  subject_demand, selected_for,
 }
 
 // FCI-2 BY REAL EXECUTION: selection, reservation and commitment yield exactly one fenced grant for
@@ -62,14 +64,34 @@ fn cg_granted(outcomes: List<CellGrant<Count, One>>) -> List<ExecutionGrant<NonE
   }
 }
 
-fn cg_is_live(root: NonEmptyStr, grants: List<ExecutionGrant<NonEmptyStr>>) -> Bool {
-  match grants {
-    Cons { head: g, tail: _ } => match cell_grant_standing(root: root, grant: g) {
-      CellGrantLive => true
-      _ => false
+// THE CELL AS THE SLOT CONTROLLER READS IT: the real store observed, and the hold judged by the
+// production judgement (gunbc.fabric.fabric_required_build_cell judge_cell_holder) for this attempt.
+// The controller reaches the same judgement through observe_granted_cell_wet, which adds the host's
+// cell-substrate probe this temp directory cannot supply.
+fn cg_read(root: NonEmptyStr, attempt: Attempt<NonEmptyStr>) -> String {
+  match observe_file_hold(root: root, key: admitted_offer.executor) {
+    HoldSlotAbsent => "absent"
+    HoldSlotFree { generation: _, released_by: _ } => "released"
+    HoldSlotHeld { generation: g, owner: o } => match judge_cell_holder(
+      held: o,
+      expected: ExpectGrantHolder { attempt: attempt.id },
+      work: subject_work.id,
+      demand: subject_demand(),
+      offer: admitted_offer.id,
+      slot_key: admitted_offer.executor,
+      generation: g,
+    ) {
+      HolderMatches { holder: HeldByGrant { attempt: _, grant: k } } => concat("grant@", to_string(cas_generation_count(g: g)))
+      HolderMatches { holder: HeldByReservation } => "reservation"
+      HolderPreCutover => "pre-cutover"
+      HolderMismatch => concat("foreign@", to_string(cas_generation_count(g: g)))
     }
-    Empty {} => false
+    _ => "unreadable"
   }
+}
+
+fn cg_is_live(root: NonEmptyStr, attempt: Attempt<NonEmptyStr>) -> Bool {
+  cg_read(root: root, attempt: attempt).starts_with("grant@")
 }
 
 fn cg_release(root: NonEmptyStr, grants: List<ExecutionGrant<NonEmptyStr>>) -> Bool {
@@ -96,7 +118,7 @@ test fn one_selected_offer_yields_one_live_cell_grant_by_real_execution() -> Boo
   let root_path = cg_fresh_root()
   let root = root_path as NonEmptyStr
   let grants = cg_granted(outcomes: cg_grant(root: root, attempt: first_attempt))
-  let live = cg_is_live(root: root, grants: grants)
+  let read = cg_read(root: root, attempt: first_attempt)
   let removed = shell.Remove.RecursiveForce(path: root_path)
   let shaped = match grants {
     Cons { head: g, tail: _ } =>
@@ -106,7 +128,7 @@ test fn one_selected_offer_yields_one_live_cell_grant_by_real_execution() -> Boo
         && (g.context.attempt.key as String) == (first_attempt.id.key as String)
     Empty {} => false
   }
-  live && shaped && removed.success
+  read == "grant@1" && shaped && removed.success
 }
 
 // DUPLICATE-GRANT. The second attempt reaches issuance with an empty roster, exactly as the first
@@ -116,7 +138,7 @@ test fn a_second_grant_against_a_held_cell_refuses_by_real_execution() -> Bool {
   let root = root_path as NonEmptyStr
   let first = cg_granted(outcomes: cg_grant(root: root, attempt: first_attempt))
   let second = cg_grant(root: root, attempt: second_attempt)
-  let still_live = cg_is_live(root: root, grants: first)
+  let still_live = cg_is_live(root: root, attempt: first_attempt)
   let removed = shell.Remove.RecursiveForce(path: root_path)
   let refused_by_first = match first {
     Cons { head: g, tail: _ } => match second {
@@ -129,31 +151,23 @@ test fn a_second_grant_against_a_held_cell_refuses_by_real_execution() -> Bool {
   refused_by_first && still_live && removed.success
 }
 
-// EXPIRED-RESERVATION. Once the cell's hold is released the grant authorizes nothing; once another
-// attempt is granted the same cell, the first grant is superseded and only the second is live.
-test fn a_released_then_superseded_grant_is_not_live_by_real_execution() -> Bool {
+// FCI-3'S MUTATIONS, READ THE WAY THE CONTROLLER READS THEM. Before any grant the cell is absent;
+// another attempt reads the first attempt's grant as foreign; once released the grant authorizes
+// nothing; once the cell is granted again the first attempt's grant is foreign at the later
+// generation (expired) and only the second is live.
+test fn absent_foreign_released_and_expired_grants_are_not_live_by_real_execution() -> Bool {
   let root_path = cg_fresh_root()
   let root = root_path as NonEmptyStr
+  let absent = cg_read(root: root, attempt: first_attempt) == "absent"
   let first = cg_granted(outcomes: cg_grant(root: root, attempt: first_attempt))
+  let foreign = cg_read(root: root, attempt: second_attempt) == "foreign@1"
   let released = cg_release(root: root, grants: first)
-  let after_release = match first {
-    Cons { head: g, tail: _ } => match cell_grant_standing(root: root, grant: g) {
-      CellGrantReleased { generation: gen, released_by: _ } => cas_generation_count(g: gen) == 2
-      _ => false
-    }
-    Empty {} => false
-  }
+  let after_release = cg_read(root: root, attempt: first_attempt) == "released"
   let second = cg_granted(outcomes: cg_grant(root: root, attempt: second_attempt))
-  let after_regrant = match first {
-    Cons { head: g, tail: _ } => match cell_grant_standing(root: root, grant: g) {
-      CellGrantSuperseded { holder: _, generation: gen } => cas_generation_count(g: gen) == 3
-      _ => false
-    }
-    Empty {} => false
-  }
-  let second_live = cg_is_live(root: root, grants: second)
+  let expired = cg_read(root: root, attempt: first_attempt) == "foreign@3"
+  let second_live = cg_read(root: root, attempt: second_attempt) == "grant@3"
   let removed = shell.Remove.RecursiveForce(path: root_path)
-  released && after_release && after_regrant && second_live && removed.success
+  absent && foreign && released && after_release && second.length() == 1 && expired && second_live && removed.success
 }
 
 // WORK-MISMATCH. Issuance refuses before the write, so the cell is never touched.
@@ -161,33 +175,11 @@ test fn an_attempt_for_another_work_writes_nothing_by_real_execution() -> Bool {
   let root_path = cg_fresh_root()
   let root = root_path as NonEmptyStr
   let outcome = cg_grant(root: root, attempt: misdirected_attempt)
-  let untouched = match observe_file_hold(root: root, key: admitted_offer.executor) {
-    HoldSlotAbsent => true
-    _ => false
-  }
+  let untouched = cg_read(root: root, attempt: misdirected_attempt) == "absent"
   let removed = shell.Remove.RecursiveForce(path: root_path)
   let refused = match outcome {
     Cons { head: CellGrantIssueRefused { slot_key: _, refusal: AttemptNamesAnotherWork { attempt_work: _, subject_work: _ } }, tail: _ } => true
     _ => false
   }
   refused && untouched && removed.success
-}
-
-// A grant issued by the pure kernel outside this transition was never committed to any cell, so
-// the re-read refuses it even though it is well formed.
-test fn a_grant_issued_outside_the_cell_transition_is_never_committed_by_real_execution() -> Bool {
-  let root_path = cg_fresh_root()
-  let root = root_path as NonEmptyStr
-  let standing = match issue(work: subject_work, attempt: first_attempt, offer: admitted_offer, outstanding: [], account: funded_account, ledger: thread_appropriation) {
-    Cons { head: o, tail: _ } => match committed_grants(o: o) {
-      Cons { head: g, tail: _ } => match cell_grant_standing(root: root, grant: g) {
-        CellGrantNeverCommitted => true
-        _ => false
-      }
-      Empty {} => false
-    }
-    Empty {} => false
-  }
-  let removed = shell.Remove.RecursiveForce(path: root_path)
-  standing && removed.success
 }

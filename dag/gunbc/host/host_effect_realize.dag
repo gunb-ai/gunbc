@@ -2,7 +2,7 @@ module gunbc.host.host_effect_realize
 
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text }
 
-import std.algebra { Cons, Empty, list_append, list_snoc_item, trim, fold_list, list_map }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, trim, fold_list, list_map, string_concat_join }
 import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -424,6 +424,7 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
 }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, list_length }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -3032,7 +3033,7 @@ fn srv3_tool_receipt_entry(observation: Srv3ToolObservation) -> String {
 fn srv3_toolchain_receipt(observations: List<Srv3ToolObservation>) -> String {
   concat(
     "OsInstallActuatorToolchainReceipt: ",
-    join(list_map(xs: observations, f: fn(o) { srv3_tool_receipt_entry(observation: o) }), " "),
+    string_concat_join(fields: observations.map(o => srv3_tool_receipt_entry(observation: o)), separator: " "),
   )
 }
 
@@ -3040,17 +3041,14 @@ fn srv3_realize_os_install_actuator_toolchain_ensure_body(
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let observations = list_map(
-    xs: srv3_toolchain_rows(),
-    f: fn(row) {
-      Srv3ToolObservation {
-        tool_name: row.tool.program.invocation,
-        verdict: srv3_ensure_tool(row: row, transport: transport),
-      }
-    },
+  let observations = srv3_toolchain_rows().map(row =>
+    Srv3ToolObservation {
+      tool_name: row.tool.program.invocation,
+      verdict: srv3_ensure_tool(row: row, transport: transport),
+    }
   )
   let verdict = srv3_summarize_independent_observations(
-    steps: list_map(xs: observations, f: fn(o) { o.verdict }),
+    steps: observations.map(o => o.verdict),
   )
   let stdout = srv3_toolchain_receipt(observations: observations)
   match verdict {
@@ -3573,7 +3571,7 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
         success: false,
         stdout: join([
           "host_effect_apply: run_shell_transport refuses the FleetSsh transport for endpoint=",
-          t.endpoint as String,
+          known_hosts_host_field(address: t.address) as String,
           ". This carrier is a shell script BODY -- a command string, not argv -- and the fleet path admits",
           " only portable remote words, so there is no shaping that preserves the script's meaning. The refusal",
           " is the carrier's shape surfacing, not a missing case: the residue dissolves when the effect reaches",
@@ -3704,7 +3702,7 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
       RunArgvTransportRefused {
         reason: join([
           "host_effect_apply: run_argv_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
-          t.endpoint as String,
+          known_hosts_host_field(address: t.address) as String,
           ". The command is typed argv, so the old carrier objection (a script body where the fleet path",
           " admits portable words) does not apply; what remains is the transport's own authority: the fleet",
           " seam executes through its own session type and trust policy, and admitting shape_fleet_ssh_exec",
@@ -3751,7 +3749,7 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
       RunArgvTransportRefused {
         reason: join([
           "host_effect_apply: run_argv_stdin_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
-          t.endpoint as String,
+          known_hosts_host_field(address: t.address) as String,
           ". The command is typed argv with its payload on stdin, so the old carrier objection (a script",
           " body where the fleet path admits portable words) does not apply; what remains is the",
           " transport's own authority: the fleet seam executes through its own session type and trust",
@@ -4346,7 +4344,7 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
       ], "")
     FleetSsh { target: t, context: _ } =>
       join([
-        "live_deploy apply refused over fleet ssh endpoint=", t.endpoint as String,
+        "live_deploy apply refused over fleet ssh endpoint=", known_hosts_host_field(address: t.address) as String,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
       ], "")
