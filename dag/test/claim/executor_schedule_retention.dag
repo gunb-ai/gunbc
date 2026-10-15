@@ -10,7 +10,7 @@ import gunbc.executor_schedule_retention {
   schedule_retention_entry_line_asserts_execution,
 }
 
-data witness_note: String = "In-corpus consumer of the schedule-derived retention policy carrier: asserts the modeled policy facts by execution (green-by-execution). The Rust realization in cli_run.rs mirrors these same facts and a Rust lockstep witness (schedule_retention_policy_matches_modeled_authority) pins the two together, so a policy edit that forgets either side reds."
+data witness_note: String = "In-corpus consumer of the schedule-derived retention policy carrier: asserts the modeled policy facts by execution (green-by-execution). The host drain that once mirrored these facts in cli_run.rs was deleted after run_required_floor left it unarmed; this module is the remaining executing consumer."
 
 test fn schedule_retention_exposes_no_tunables() -> Bool {
   schedule_retention_tunable_count == 0

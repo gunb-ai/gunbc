@@ -93,23 +93,6 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-/// Live compile-clean pipeline module paths for census exclusion silent-loss checks.
-/// Shard entry paths plus their import closures — modules the compile-clean gate may touch.
-pub fn compile_clean_live_pipeline_module_paths() -> Vec<String> {
-    let pool_roots = default_source_roots();
-    let facts = build_module_graph_facts_live(&pool_roots);
-    let mut paths = BTreeSet::new();
-    let roster = compile_clean_shard_entry_paths_fast().unwrap_or_else(|reason| {
-        panic!("compile_clean_live_pipeline_module_paths: {reason}");
-    });
-    for entry in roster {
-        for path in import_closure_live_paths_with_facts(&entry, &facts) {
-            paths.insert(path);
-        }
-    }
-    paths.into_iter().collect()
-}
-
 pub(crate) fn compile_clean_resolve_has_hard_errors(
     result: &v1_compiler_compile::ResolvedPipelineResult,
 ) -> bool {
@@ -192,14 +175,6 @@ pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorN
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
-/// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
-pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
-    if compile_clean_policy_read_refuses_gate() {
-        return true;
-    }
-    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
-}
-
 pub(crate) fn compile_clean_all_touched_paths_docs_universe(
     touched_paths: &[String],
 ) -> Result<bool, String> {
@@ -229,57 +204,6 @@ pub(crate) fn compile_clean_departed_paths_outside_docs(
         "departed_paths",
         &paths,
     )
-}
-
-/// Module paths in the compile-clean closure (format-independent identity — see
-/// `gunbc compile` census_only_sources wiring in main.rs).
-pub(crate) fn compile_clean_closure_module_paths(
-    compiled: &[Rc<v1_compiler_compile::SourceFile>],
-) -> HashSet<String> {
-    compiled
-        .iter()
-        .filter_map(|s| extract_module_path(&s.content))
-        .collect()
-}
-
-/// Indexed pool modules outside the compile closure enter the name census only
-/// (fill = whole tree; policy gates lookup, never fill).
-pub(crate) fn compile_clean_census_only_sources_for_compiled(
-    index: &MultiEntryIndex,
-    compiled: &[Rc<v1_compiler_compile::SourceFile>],
-) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
-    let closure_modules = compile_clean_closure_module_paths(compiled);
-    let mut pool_rest: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = index
-        .source_files
-        .iter()
-        .filter(|(module_path, _)| !closure_modules.contains(*module_path))
-        .map(|(module_path, source)| (module_path.clone(), source.clone()))
-        .collect();
-    pool_rest.sort_by(|a, b| a.0.cmp(&b.0));
-    pool_rest.into_iter().map(|(_, source)| source).collect()
-}
-
-pub(crate) fn compile_clean_pipeline_options_for_sources(
-    index: Option<&MultiEntryIndex>,
-    compiled: &[Rc<v1_compiler_compile::SourceFile>],
-) -> Rc<v1_compiler_compile::CompilePipelineOptions> {
-    let census_only = index
-        .map(|idx| compile_clean_census_only_sources_for_compiled(idx, compiled))
-        .unwrap_or_default();
-    if census_only.is_empty() {
-        return Rc::new(v1_compiler_compile::CompilePipelineOptions {
-            analyze_complexity: false,
-            census_only_sources: Rc::new(im::Vector::new()),
-        });
-    }
-    eprintln!(
-        "[census] {} indexed modules outside the compile-clean closure enter the name census only (not compiled)",
-        census_only.len()
-    );
-    Rc::new(v1_compiler_compile::CompilePipelineOptions {
-        analyze_complexity: false,
-        census_only_sources: Rc::new(census_only.into()),
-    })
 }
 
 pub(crate) fn compile_clean_scope_plan_from_touched_paths(
@@ -551,8 +475,7 @@ pub(crate) fn compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
 }
 
 pub(crate) fn compile_clean_scoping_active() -> bool {
-    FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst)
-        || std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
+    std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
         || std::env::var("GITHUB_ACTIONS")
             .map(|v| v == "true")
             .unwrap_or(false)
@@ -592,12 +515,6 @@ pub(crate) fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     }
     match floor_git_diff_name_status_range() {
         Ok((changed_paths, departed_paths)) => {
-            if FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst) {
-                return compile_clean_scope_plan_from_touched_paths_floor_fast(
-                    &changed_paths,
-                    &departed_paths,
-                );
-            }
             match compile_clean_scope_plan_from_touched_paths(&changed_paths, &departed_paths) {
                 Ok(plan) => plan,
                 Err(msg) => CompileCleanScopePlan::Refused {
@@ -609,41 +526,6 @@ pub(crate) fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
             reason: format!("diff observation failed: {msg}"),
         },
     }
-}
-
-/// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
-/// Instrument path for diagnostic histogram — not for cargo tests.
-///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
-/// dissolves when ROADMAP §1 namespace-only lane closes (import strip + global_bare wiring fixed)
-/// or a floor-enrolled diagnostic-histogram lens subsumes this host transport.
-/// Uses the same resolve kernel as `witness_layer_roots_compile_clean_check`
-/// (`compile_to_resolved` on the whole-tree source closure).
-pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<ErrorNode>>, String> {
-    // The index the closure was loaded from supplies the census and the corpus claim, so a ledger
-    // row naming a deleted module refuses here (review 68429) without a second build (review 68591).
-    let (sources, index) = compile_clean_whole_tree_sources_and_index()?;
-    let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
-    let result =
-        v1_compiler_compile::compile_to_resolved_with_options(Rc::new(sources.into()), options);
-    Ok(result
-        .diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .cloned()
-        .collect())
-}
-
-pub(crate) fn compile_clean_whole_tree_resolved(
-) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
-    // The index the closure was loaded from supplies the census and the corpus claim, so a ledger
-    // row naming a deleted module refuses here (review 68429) without a second build (review 68591).
-    let (sources, index) = compile_clean_whole_tree_sources_and_index()?;
-    let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
-    Ok(v1_compiler_compile::compile_to_resolved_with_options(
-        Rc::new(sources.into()),
-        options,
-    ))
 }
 
 fn unlisted_import_rows_from_resolved(
@@ -1442,34 +1324,6 @@ pub fn compile_clean_diagnostic_census(
         classes,
         unlisted_import_rows,
     })
-}
-
-/// Floor compile-clean verdict over the whole-tree closure (shared-index receipt semantics).
-pub fn compile_clean_floor_verdict_whole_tree() -> Result<bool, String> {
-    let roots = default_source_roots();
-    let sources = match witness_layer_roots_compile_clean_sources_for_plan(
-        &CompileCleanScopePlan::WholeTree,
-    )? {
-        None => return Ok(true),
-        Some(s) => s,
-    };
-    Ok(floor_compile_clean_emit_ok_via_index(sources, &roots).0)
-}
-
-/// CLI compile-clean verdict: same source closure and diagnostic policy as the floor,
-/// without the shared-index receipt shortcut (the standalone `gunbc compile` transport).
-pub fn compile_clean_cli_verdict_whole_tree() -> Result<bool, String> {
-    let result = compile_clean_whole_tree_resolved()?;
-    let graph_ok = result.graph.is_some();
-    let hard = compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref());
-    Ok(graph_ok && !hard)
-}
-
-/// Both realizations must agree modulo the single policy row.
-pub fn compile_clean_cli_floor_verdicts_agree() -> Result<bool, String> {
-    let floor = compile_clean_floor_verdict_whole_tree()?;
-    let cli = compile_clean_cli_verdict_whole_tree()?;
-    Ok(floor == cli)
 }
 
 /// `(class, name)` key for histogram aggregation over hard diagnostics.

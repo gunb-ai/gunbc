@@ -1687,9 +1687,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "discard_removes_the_snapshot_the_take_wrote" },
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "discard_tombstones_the_snapshot_the_take_wrote" },
       entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
-      function: "discard_removes_the_snapshot_the_take_wrote",
+      function: "discard_tombstones_the_snapshot_the_take_wrote",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -1747,9 +1747,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "an_abandoned_cursor_attempt_leaves_no_snapshot_behind" },
+      identity: WitnessIdentity { module_path: "test.claim.dispatch_credential_snapshot_wet_witness", function: "an_abandoned_cursor_attempt_leaves_a_tombstone" },
       entry: "dag/test/claim/dispatch_credential_snapshot_wet_witness.dag",
-      function: "an_abandoned_cursor_attempt_leaves_no_snapshot_behind",
+      function: "an_abandoned_cursor_attempt_leaves_a_tombstone",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

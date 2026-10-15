@@ -13,6 +13,7 @@ import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ScannedFirstCont
 import gunbc.workspace_allocation_policy { workspace_operator_principal }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
 import gunbc.harness.harness_operator_route { operator_endpoint_tunnel }
+import gunbc.serving.rented_ninfer_source { ninfer_serve_81c8ce09_sm120_release }
 import gunbc.serving.rented_replica { RentedGpuDevice }
 import gunbc.serving.rented_host_access { RentedHostAccessDeclaration }
 import gunbc.serving.rented_allocation {
@@ -68,7 +69,7 @@ data operator_pod_allocation: RentedServingAllocation = RentedServingAllocation 
   contract: RentedContractUnread { obligation: operator_pod_allocation_contract_obligation },
   card: RentedGpuDevice { index: 0, model: "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition" as NonEmptyStr, memory: byte_size(count: 102641958912) },
   end: RentedEndsOnOperatorRelease { decided_by: workspace_operator_principal() },
-  engine: RentedNinferEngine { revision: "81c8ce09" as NonEmptyStr, launch: operator_pod_ninfer_launch, listen_port: operator_pod_listen_port },
+  engine: RentedNinferEngine { engine_release: ninfer_serve_81c8ce09_sm120_release, launch: operator_pod_ninfer_launch, listen_port: operator_pod_listen_port },
   artifact: qwen3_8_27b_nvfp4_row,
   host: RentedHostAccessDeclaration {
     node: "vast-55954143" as NonEmptyStr,

@@ -155,7 +155,7 @@ data emit_severity_summary_one_error: String = "1 error(s)"
 
 data emit_noise_line: String = "resolved 3892 sources (transitive import closure)"
 
-data emit_scope_line: String = "resolved 27 sources (reference-derived closure), 3897 indexed modules in the name census only"
+data emit_scope_line: String = "resolved 27 sources (reference-derived closure)"
 
 data emit_whole_tree_scope_line: String = "resolved 3892 sources (transitive import closure)"
 

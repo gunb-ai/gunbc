@@ -110,6 +110,7 @@ import v2.compiler.refinement_discharge { infer_and_discharge }
 type ClosureParsedFile {
   parse_tree: ParseTree
   source_root: SourceRootRef
+  span_index: SpanIndex
 }
 
 // `alloc` is the allocator mark after the last file parsed; `spans` is the merge of every file's span
@@ -176,7 +177,7 @@ fn closure_parse_loop(
             rest: remaining,
             lex: lex,
             prepared: prepared,
-            files: Cons { head: ClosureParsedFile { parse_tree: artifact.tree, source_root: read.source_root }, tail: files },
+            files: Cons { head: ClosureParsedFile { parse_tree: artifact.tree, source_root: read.source_root, span_index: artifact.span_index }, tail: files },
             alloc: artifact.alloc,
             spans: span_index_merge(base: spans, incoming: artifact.span_index)
           )
@@ -204,7 +205,8 @@ fn closure_duplicate_module_diagnostics(first: Node, second: Node) -> NonEmptyDi
 fn closure_member_normalized(file: ClosureParsedFile, alloc: OccurrenceIdAllocator) -> Outcome<NormalizedTree> {
   match normalize_scoped(
     parse_tree: file.parse_tree,
-    allocator: scoped_occurrence_allocator(alloc: alloc, scope: content_hash(n: file.parse_tree))
+    allocator: scoped_occurrence_allocator(alloc: alloc, scope: content_hash(n: file.parse_tree)),
+    spans: file.span_index
   ) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: scoped, diagnostics: d } => Accepted { value: scoped.tree, diagnostics: d }
@@ -279,7 +281,7 @@ fn closure_resolve_member(
           policy: default_name_resolution_policy()
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index, closure_declarations: symbol_index, unavailable_providers: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
+      ).walk, symbol_index: symbol_index, closure_declarations: symbol_index, module_outcomes: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
     }
   )
 }
