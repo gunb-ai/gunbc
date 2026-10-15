@@ -1657,6 +1657,8 @@ pub(crate) fn typed_module_cache_cap_derivation() -> Result<(usize, String, bool
             eprintln!(
                 "[floor-drain] host_memory_budget source=externally_bounded executor={label}"
             );
+            // SEED MIRROR of `gunbc.typed_module_cache_capacity` `CapEntriesExternallyBounded`
+            // (not `CapEntries`: that arm is a derived bound from observed/declared bytes).
             return Ok((TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR, label, false));
         }
         crate::memory_governor::HostBudgetResolution::Unreadable { reason } => {
