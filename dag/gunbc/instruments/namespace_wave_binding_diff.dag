@@ -2,7 +2,7 @@ module gunbc.instruments.namespace_wave_binding_diff
 
 import std.types { String, Bool, List, Int, Map, NonEmptyStr }
 import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional, list_snoc_item }
-import std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, KernelTypeSpellingTable, ambient_name_homes }
@@ -215,16 +215,16 @@ fn rebind_red_failure(base_stdout: String, head_stdout: String) -> Optional<Stri
   let diff = binding_diff(base_stdout: base_stdout, head_stdout: head_stdout, rows: [])
   let refused = diff.refused
   if count(diff.unreached_one_side + diff.unobserved_both_sides) != 0 {
-    Present { value: "the re-bind fixture was not observed: " + ((diff.unreached_one_side + diff.unobserved_both_sides) |> join(separator: ", ")) }
+    optional_present(value: "the re-bind fixture was not observed: " + ((diff.unreached_one_side + diff.unobserved_both_sides) |> join(separator: ", ")))
   } else {
       if count(refused |> filter(d => delta_line(d: d) == "refused\tTargetChanged\tfx.uses helper#0\tdeclared fx.a.helper -> declared fx.b.helper")) == 1 {
         if count(refused) == 1 {
-          Absent
+          optional_absent()
         } else {
-          Present { value: "the re-bind fixture refused more than the one re-binding: " + (refused |> map(d => delta_line(d: d)) |> join(separator: "; ")) }
+          optional_present(value: "the re-bind fixture refused more than the one re-binding: " + (refused |> map(d => delta_line(d: d)) |> join(separator: "; ")))
         }
       } else {
-        Present { value: "the re-bind fixture did not refuse fx.uses helper#0 as TargetChanged fx.a.helper -> fx.b.helper; refused: " + (refused |> map(d => delta_line(d: d)) |> join(separator: "; ")) }
+        optional_present(value: "the re-bind fixture did not refuse fx.uses helper#0 as TargetChanged fx.a.helper -> fx.b.helper; refused: " + (refused |> map(d => delta_line(d: d)) |> join(separator: "; ")))
       }
   }
 }
@@ -240,11 +240,11 @@ fn home_control_failure() -> Optional<String> {
   let home = binding_diff(base_stdout: before, head_stdout: moved, rows: home_control_rows())
   let not_home = binding_diff(base_stdout: before, head_stdout: elsewhere, rows: home_control_rows())
   if (count(home.admitted) != 1) || (count(home.refused) != 0) {
-    Present { value: "an ambient Int moving to its row's home was not admitted alone" }
+    optional_present(value: "an ambient Int moving to its row's home was not admitted alone")
   } else if (count(not_home.admitted) != 0) || (count(not_home.refused) != 1) {
-    Present { value: "an ambient Int moving somewhere other than its home was not refused" }
+    optional_present(value: "an ambient Int moving somewhere other than its home was not refused")
   } else {
-    Absent
+    optional_absent()
   }
 }
 
