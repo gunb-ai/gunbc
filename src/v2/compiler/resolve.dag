@@ -325,6 +325,9 @@ type ResolvedTree {
   // THE CLOSURE'S PUBLICATION ROSTER. Includes DeclarationAvailable rows; unavailability is
   // read from it by ClosureProviderRefusal (unavailable_provider_for_path).
   module_outcomes: List<ModuleOutcome>
+  // THE ROSTER GROUPED ONCE PER CLOSURE (module_outcome_index), carried from the closure to every infer read
+  // of unavailable_provider_for_path; infer does not regroup module_outcomes per lookup.
+  outcome_index: ModuleOutcomeIndex
   member_kinds: MemberKindChannel
   type_declaration_modifiers: TypeDeclarationModifierChannel
   constructing_module: Optional<Symbol>
@@ -493,7 +496,7 @@ fn unavailable_provider_for_module(
 }
 
 fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  unavailable_provider_for_path(index: tree.symbol_index, providers: module_outcome_index(outcomes: tree.module_outcomes), except: Empty, path: path)
+  unavailable_provider_for_path(index: tree.symbol_index, providers: tree.outcome_index, except: Empty, path: path)
 }
 
 // The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
@@ -535,6 +538,7 @@ fn resolved_tree_of(
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
   module_outcomes: List<ModuleOutcome>,
+  outcome_index: ModuleOutcomeIndex,
   member_kinds: MemberKindChannel,
   type_declaration_modifiers: TypeDeclarationModifierChannel,
   lexical: List<LexicalBindingEntry>
@@ -545,6 +549,7 @@ fn resolved_tree_of(
     resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
     lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) }),
     module_outcomes: module_outcomes,
+    outcome_index: outcome_index,
     member_kinds: member_kinds,
     type_declaration_modifiers: type_declaration_modifiers,
     constructing_module: resolved_tree_constructing_module_of(root: root)
@@ -2730,13 +2735,14 @@ fn resolved_tree_outcome(
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
   module_outcomes: List<ModuleOutcome>,
+  outcome_index: ModuleOutcomeIndex,
   member_kinds: MemberKindChannel,
   type_declaration_modifiers: TypeDeclarationModifierChannel
 ) -> Outcome<ResolvedTree> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
       Accepted {
-        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, module_outcomes: module_outcomes, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, lexical: l),
+        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, module_outcomes: module_outcomes, outcome_index: outcome_index, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, lexical: l),
         diagnostics: d
       }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
@@ -5159,6 +5165,7 @@ fn resolve_with_namespace_policy(
     symbol_index: namespace.symbol_index,
     closure_declarations: empty_symbol_index(),
     module_outcomes: [],
+    outcome_index: empty_module_outcome_index(),
     member_kinds: channel,
     type_declaration_modifiers: type_declaration_modifier_channel_of_tree(tree: tree)
   )

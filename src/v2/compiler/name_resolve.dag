@@ -1166,6 +1166,7 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
                   symbol_index: after.symbol_index,
                   closure_declarations: closure.declarations,
                   module_outcomes: closure.module_outcomes,
+                  outcome_index: closure.outcome_index,
                   member_kinds: channel,
                   type_declaration_modifiers: after.type_declaration_modifiers
                 )
@@ -1208,6 +1209,7 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
 type ClosureDeclarations {
   declarations: SymbolIndex
   module_outcomes: List<ModuleOutcome>
+  outcome_index: ModuleOutcomeIndex
   context: ResolutionContext
 }
 
@@ -1559,7 +1561,7 @@ fn closure_phase1_walk_module(
 // published.
 fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations {
   match shared.closure_declarations {
-    Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, module_outcomes: closure.module_outcomes, context: shared }
+    Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index, context: shared }
     Absent =>
       let phase1 = fold_list(
         xs: shared.roots.roots,
@@ -1590,9 +1592,11 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
             )
         }
       })
+      let outcome_index = module_outcome_index(outcomes: observed)
       ClosureDeclarations {
         declarations: index,
         module_outcomes: observed,
+        outcome_index: outcome_index,
         context: ResolutionContext {
           lm: phase1.context.lm,
           roots: phase1.context.roots,
@@ -1602,7 +1606,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
           policy: phase1.context.policy,
           namespaces: phase1.context.namespaces,
           namespaces_built: phase1.context.namespaces_built,
-          closure_declarations: optional_present(value: ClosureIndex { declarations: index, module_outcomes: observed, outcome_index: module_outcome_index(outcomes: observed) }),
+          closure_declarations: optional_present(value: ClosureIndex { declarations: index, module_outcomes: observed, outcome_index: outcome_index }),
           type_declaration_modifiers: phase1.context.type_declaration_modifiers
         }
       }
