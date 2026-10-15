@@ -946,7 +946,7 @@ fn path_segment(s: NonEmptyStr) -> NonEmptyStr {
   match base64_octets(values: bytes_octets(b: utf8_encode_bytes(s: s as String))) {
     QualifiedOctetsReady { value: qualified } =>
       join([path_segment_prefix, base64_encode(octets: qualified, variant: UrlSafe)], "") as NonEmptyStr
-    QualifiedOctetsRefused { observed: _ } => pure_dag_seam_unreachable_string()
+    QualifiedOctetsRefused { observed: _ } => pure_dag_seam_unreachable_string() as NonEmptyStr
   }
 }
 

@@ -117,6 +117,12 @@ test fn empty_match_nested_in_call_arg_must_refuse() -> Bool {
   never_eliminator_any_blocking_count(source: empty_match_nested_in_call_source) >= 1
 }
 
+data empty_uninhabited_match_two_returns_source: String = "module neverprobe.two_ret\n\nimport std.types { Int, String }\nimport std.error_primitives { Never }\n\nfn f(n: Never) -> Int { match (n) { } }\n\nfn g(n: Never) -> String { match (n) { } }\n"
+
+test fn empty_uninhabited_match_two_declared_returns_admit() -> Bool {
+  never_eliminator_any_blocking_count(source: empty_uninhabited_match_two_returns_source) == 0
+}
+
 data handle_emit_source: String = "module neverprobe.emit_handle\n\ntype Handle\n\nfn id(h: Handle) -> Handle {\n  h\n}\n"
 
 test fn emitted_opaque_handle_is_not_an_empty_enum() -> Bool {
