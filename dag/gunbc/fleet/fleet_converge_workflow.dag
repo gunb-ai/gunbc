@@ -4826,7 +4826,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   },
   DispatchInput {
     name: "credential",
-    description: Present { value: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.fleet.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and a row scoped to one host refuses any other" },
+    description: Present { value: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.fleet.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and its target host: a row scoped to one host is delivered there from whichever executor host names" },
     required: false,
     default: none,
     type: InputChoice { options: host_custody_credential_options },
