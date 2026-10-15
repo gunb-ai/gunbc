@@ -6,7 +6,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.realization_width { int_min, int_max }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, DissolutionUnbound, DissolutionPending, DissolutionFired, unbound_dissolution, dissolution_status }
 import gunbc.host.host_budget_source {
   HostBudgetResolution,
   HostBudgetResolved,
@@ -112,6 +112,26 @@ fn typed_module_cache_cap_is_refused(c: TypedModuleCacheCap) -> Bool {
     CapEntries { entries: _ } => false
     CapEntryRefused { reason: _ } => true
     CapEntriesExternallyBounded { entries: _, run_id: _ } => false
+  }
+}
+
+data typed_module_cache_externally_bounded_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.typed_module_cache_capacity",
+    decl_name: "CapEntriesExternallyBounded",
+    field: WholeDeclaration
+  }
+}
+
+fn cap_entries_externally_bounded_still_interim() -> Bool {
+  match dissolution_status(
+    condition: typed_module_cache_externally_bounded_dissolves_on,
+    present_decls: [],
+  ) {
+    DissolutionUnbound => true
+    DissolutionPending => false
+    DissolutionFired => false
   }
 }
 

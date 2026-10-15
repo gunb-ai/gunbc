@@ -140,7 +140,7 @@ fn host_budget_with_external_executor(
     HostBudgetUnreadable { reason: r } =>
       match standing {
         ExternallyBoundedExecutor { run_id: id } =>
-          HostBudgetExternallyBounded { run_id: id as NonEmptyStr }
+          HostBudgetExternallyBounded { run_id: id }
         _ => HostBudgetUnreadable { reason: r }
       }
     HostBudgetResolved { effective_bytes: e, requested_bytes: q, observation: o } =>

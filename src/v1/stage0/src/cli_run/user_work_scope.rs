@@ -406,6 +406,7 @@ fn namespaced_root_standing(
         RootMemoryRead::Unbounded => UserWorkScopeStanding::BoundedContainerUncapped,
         RootMemoryRead::Unreadable => match buildbuddy_run_id {
             Some(id) if !id.is_empty() => UserWorkScopeStanding::ExternallyBoundedExecutor {
+                // DAG: ExternallyBoundedExecutor.run_id is NonEmptyStr; empty is unwritable there.
                 run_id: id.to_string(),
             },
             _ => UserWorkScopeStanding::BoundedContainerUnreadable,

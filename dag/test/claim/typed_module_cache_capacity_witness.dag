@@ -20,8 +20,11 @@ import gunbc.typed_module_cache_capacity {
   typed_module_cache_entry_cap_with_override,
   typed_module_cache_entries_floor,
   typed_module_cache_entries_ceiling,
+  cap_entries_externally_bounded_still_interim,
+  typed_module_cache_externally_bounded_disposition,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.disposition { Scaffold, Terminal }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -127,4 +130,12 @@ test fn an_externally_bounded_executor_does_not_reuse_derived_cap_entries() -> B
       n == typed_module_cache_entries_floor
         && (id as String) == "bb77f2ae-888b-4f04-9bef-6dab045b1548"
   }
+}
+
+test fn the_externally_bounded_cap_arm_carries_a_read_dissolution() -> Bool {
+  cap_entries_externally_bounded_still_interim()
+    && match typed_module_cache_externally_bounded_disposition {
+      Scaffold { dissolves_to: _, bind: r } => (r.decl_name as String) == "CapEntriesExternallyBounded"
+      Terminal { reason: _ } => false
+    }
 }
