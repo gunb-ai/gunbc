@@ -33,9 +33,9 @@ fn infer_literal_node_types_litstr_as_string() {
     assert_eq!(n.name.as_str(), "String");
 }
 
-// Flip census after the producer change. Inhabitance of Symbol vs String at a declared
-// return is implicit-safe equality (operator decision), not this PR: `-> String { ^tag }`
-// still compiles today because declared_type_conformance uses node_type_compatible.
+// Producer flip only. `-> String { ^tag }` still compiles: conformance is
+// declared_type_conformance_diags_core !both_ground, not a declared Symbol→String
+// conversion and not node_type_compatible treating the names as equal.
 #[test]
 fn two_carets_still_compare() {
     let msgs = blocking("module litsymbol.eq\nfn f() -> Bool { ^tag == ^tag }\n");
@@ -46,4 +46,13 @@ fn two_carets_still_compare() {
 fn quoted_string_still_inhabits_string() {
     let msgs = blocking("module litsymbol.litstr\nfn f() -> String { \"tag\" }\n");
     assert!(msgs.is_empty(), "LitStr is still String: {msgs:?}");
+}
+
+#[test]
+fn caret_still_inhabits_declared_string() {
+    let msgs = blocking("module litsymbol.caret_at_string\nfn f() -> String { ^tag }\n");
+    assert!(
+        msgs.is_empty(),
+        "caret-to-String is still accepted until conformance judges Symbol: {msgs:?}"
+    );
 }
