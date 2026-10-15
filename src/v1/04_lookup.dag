@@ -431,7 +431,7 @@ fn census_fallback_skips_non_declaration_binding(name: String) -> Bool {
   match bare_call_non_declaration_binding(name: name) {
     EmptyCollectionConstructor => true
     BuiltinFunction => false
-    KernelMethodOnly => true
+    KernelMethodOnly => false
     DeclarationOnly => false
   }
 }

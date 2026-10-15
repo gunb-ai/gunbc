@@ -14032,7 +14032,13 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
             EmptyCollectionConstructor => BuiltinCallableResolved { primitive_name: func_name }
             BuiltinFunction => BuiltinCallableResolved { primitive_name: func_name }
             KernelMethodOnly =>
-              CallableUnresolved { name: func_name }
+              match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
+                Present { value: bd } => DeclaredCallableIdentityResolved {
+                  declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
+                  borrowed_declaration: bd.node
+                }
+                Absent => CallableUnresolved { name: func_name }
+              }
             DeclarationOnly =>
               match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
                 Present { value: bd } => DeclaredCallableIdentityResolved {

@@ -318,7 +318,7 @@ pub fn census_fallback_skips_non_declaration_binding(name: String) -> bool {
     match crate::v1_compiler_infer_method::bare_call_non_declaration_binding(name.clone()) {
         NonDeclarationBinding::EmptyCollectionConstructor => true,
         NonDeclarationBinding::BuiltinFunction => false,
-        NonDeclarationBinding::KernelMethodOnly => true,
+        NonDeclarationBinding::KernelMethodOnly => false,
         NonDeclarationBinding::DeclarationOnly => false,
     }
 }
