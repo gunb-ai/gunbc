@@ -39,17 +39,22 @@ test fn the_photographs_establish_no_input_bound() -> Bool {
   }
 }
 
-// The auxiliary path's capacitors (Panasonic EEH-ZU1J151, 63 V) and D2 (5.0SMDJ60A by code, 60 V
-// standoff) are now identified by datasheet marking, so their ratings are observed -- and still bound
-// nothing: neither is shown across J20's rail (continuity found a one-way junction between the caps
-// and J20's supply; D2's terminals are unread). An identified rating is not a placed one.
-test fn identified_capacitors_are_observed_and_bound_nothing() -> Bool {
+// J20'S INPUT IS BOUNDED BY D2, AND ONLY BY D2. D2 (5.0SMDJ60A by code, 60 V standoff) was traced by
+// continuity across J20's supply and ground, so its standoff bounds J20's working voltage at 60 V.
+// The 63 V capacitors are identified too, but continuity found a one-way junction between them and
+// J20's supply, so they stay observed and do not enter the bound: an identified rating is not a
+// placed one.
+test fn d2_bounds_j20_and_the_capacitors_do_not() -> Bool {
   match path_bound(layout: p4261_k1_layout, path: AuxiliaryInputPath) {
-    NoEstablishedBound { observed_ratings: rs } =>
-      count(rs) == 2
-        && any(rs, r => (r as String).contains("63 V capacitor rated voltage, placed by adjacency only"))
-        && any(rs, r => (r as String).contains("60 V TVS reverse standoff, placed by adjacency only"))
-    BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
+    BoundByRatedParts { maximum: m, limiting: l, relation: r } =>
+      volt_count(v: m) == 60
+        && (l as String).contains("TVS")
+        && (r as String).contains("tied to J20's supply pins")
+        && all(filter(p4261_k1_layout.power_components, c => is_capacitor_row(c: c)), c => match c.membership {
+          OnPathByAdjacency { basis: _ } => true
+          RatingAcrossInputRail { evidence: _ } => false
+        })
+    NoEstablishedBound { observed_ratings: _ } => false
   }
 }
 
@@ -180,9 +185,9 @@ test fn only_a_rating_across_the_input_rail_bounds_it() -> Bool {
 // hypothesis with what would decide it -- never as a derived class.
 test fn the_reading_names_its_limits() -> Bool {
   let r = carrier_input_reading(layout: p4261_k1_layout)
-  r.contains("no input bound established")
+  r.contains("main input: no input bound established")
     && r.contains("hypothesis, not a derivation: the P4261 main input is a 48-54 V-class bus")
+    && r.contains("at most 60 V, limited by the unidirectional TVS diode beside J20")
     && r.contains("The input voltage contract is unknown")
-    && !r.contains("at most")
     && count(p4261_main_bus_hypothesis.sources) == 2
 }

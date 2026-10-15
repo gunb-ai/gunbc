@@ -36,10 +36,11 @@ import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 // across the part's rated terminals, which is the only relation under which a rating bounds a rail.
 //
 // GH200-P9 (2026-10-15): THE OPERATOR'S OWN BENCH READINGS of a received carrier. The operator read
-// J20 and its neighbourhood with a multimeter, unpowered, and photographed the parts beside it, on the
-// carrier the operator believes is the one bought from Central Valley (not this K1). Both are P4261
-// boards, and J20's continuity is a property of the board design rather than of one unit; the unit
-// identity matters for lot codes and labels, which are recorded with that caveat. A continuity reading is stronger than
+// J20 and its neighbourhood with a multimeter, unpowered, and photographed the parts beside it, on a
+// carrier whose label reads revision E1 -- not this K1; the operator believes it is the board bought
+// from Central Valley. Both are P4261 boards (E1 and K1 revisions), and J20's continuity is taken as
+// a property of the board design rather than of one unit: a revision change could alter it, so the
+// readings carry their unit, and lot codes and labels are recorded with that caveat. A continuity reading is stronger than
 // adjacency (it says two points are joined, or are not) and weaker than a traced net under power (a
 // switch that is open while unpowered hides the rail behind it).
 
@@ -114,7 +115,7 @@ data k1_adjacency_aux: PathMembership = OnPathByAdjacency {
 // nothing. The reading that would place them: their positive terminal shown joined to J20's supply
 // pins with the board powered, or the board's schematic.
 data k1_aux_caps_membership: PathMembership = OnPathByAdjacency {
-  basis: "operator continuity readings, unpowered, 2026-10-15: each can's negative terminal is tied to ground; its positive terminal is NOT tied to J20's supply pins, and a diode-mode reading between them gives 0.523 V one way and open the other -- a one-way junction separates them, consistent with the body diode of the switch between R010 and the cans, and equally with a converter's switch, which would put the cans on a different rail",
+  basis: "operator continuity readings on the E1 carrier, unpowered, 2026-10-15: each can's negative terminal is tied to ground; its positive terminal is NOT tied to J20's supply pins, and a diode-mode reading between them gives 0.523 V one way and open the other -- a one-way junction separates them, consistent with the body diode of the switch between R010 and the cans, and equally with a converter's switch, which would put the cans on a different rail",
 }
 
 data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
@@ -173,7 +174,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       role: "unidirectional TVS diode beside J20, in an SMC-class package",
       identification: IdentifiedByDatasheetMarking { row: tvs_5_0smdj60a, marking_read: "5PGK / ZCN5U under a boxed maker logo (read 2026-10-15 from an in-focus close-up; the earlier reading '5P0X / ZCNSU' was a misread). 5PGK is 5.0SMDJ60A in Bourns's marking table; the logo is not Bourns-identified, so the match is by code" },
       path: AuxiliaryInputPath,
-      membership: k1_adjacency_aux,
+      membership: RatingAcrossInputRail { evidence: "operator continuity readings on the E1 carrier, unpowered, 2026-10-15: D2's tab nearer J20 is tied to J20's supply pins, its farther tab to ground (beside the capacitors' grounded terminals); diode mode reads 0.6 V with the red probe on the ground tab and the black on the supply tab, so the cathode is on J20's supply -- the orientation of a TVS guarding that rail. A unidirectional TVS across a rail holds off its standoff voltage in normal operation, so J20's working voltage is at most 60 V; its lower limit is not established" },
     },
     ObservedComponent {
       designators: [],
