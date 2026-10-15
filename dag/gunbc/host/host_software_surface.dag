@@ -18,7 +18,6 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2,
 import gunbc.host.host_resource {
   HostResource,
   HostResourceIdentity,
-  ResourceOccurrenceId,
   resource_occurrence_allocator_initial,
   alloc_resource_occurrence,
 }
@@ -58,7 +57,7 @@ import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code, timeou
 import gunbc.fleet.fleet_posix_accounts {
   GroundedPosixPrincipal,
   fleet_posix_operator_principal,
-  fleet_posix_operator_sudo_grants,
+  fleet_posix_operator_sudo_grant_is_hostnamectl_only,
 }
 import extdeps.version.semver { semver_version_parse }
 import extdeps.tailscale.serve {
@@ -158,25 +157,6 @@ fn srv1_software_inhabitance_probe_commands() -> List<NonEmptyStr> {
   srv1_software_inhabitance_receipt.probe_commands
 }
 
-fn occurrence_ids_for_host() -> List<ResourceOccurrenceId> {
-  let a0 = resource_occurrence_allocator_initial()
-  let m0 = alloc_resource_occurrence(alloc: a0)
-  let m1 = alloc_resource_occurrence(alloc: m0.alloc)
-  let m2 = alloc_resource_occurrence(alloc: m1.alloc)
-  let m3 = alloc_resource_occurrence(alloc: m2.alloc)
-  let m4 = alloc_resource_occurrence(alloc: m3.alloc)
-  let m5 = alloc_resource_occurrence(alloc: m4.alloc)
-  let m6 = alloc_resource_occurrence(alloc: m5.alloc)
-  [m0.id, m1.id, m2.id, m3.id, m4.id, m5.id, m6.id]
-}
-
-fn occurrence_at(ids: List<ResourceOccurrenceId>, index: Int) -> ResourceOccurrenceId {
-  match ids[index] {
-    Present { value: id } => id
-    Absent => alloc_resource_occurrence(alloc: resource_occurrence_allocator_initial()).id
-  }
-}
-
 fn software_surface(
   host: HostIdentity,
   os: HostOsReleaseFact,
@@ -187,41 +167,48 @@ fn software_surface(
   cgroup: HostCgroupDelegationFact,
   toolchain: HostToolchainPathFact,
 ) -> HostSoftwareSurface {
-  let ids = occurrence_ids_for_host()
+  let a0 = resource_occurrence_allocator_initial()
+  let m0 = alloc_resource_occurrence(alloc: a0)
+  let m1 = alloc_resource_occurrence(alloc: m0.alloc)
+  let m2 = alloc_resource_occurrence(alloc: m1.alloc)
+  let m3 = alloc_resource_occurrence(alloc: m2.alloc)
+  let m4 = alloc_resource_occurrence(alloc: m3.alloc)
+  let m5 = alloc_resource_occurrence(alloc: m4.alloc)
+  let m6 = alloc_resource_occurrence(alloc: m5.alloc)
   HostSoftwareSurface {
     host: host,
     os_release: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 0) },
+      identity: HostResourceIdentity { host: host, occurrence: m0.id },
       role: OsRelease,
       value: os,
     },
     kernel_release: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 1) },
+      identity: HostResourceIdentity { host: host, occurrence: m1.id },
       role: KernelRelease,
       value: kernel,
     },
     apparmor_userns: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 2) },
+      identity: HostResourceIdentity { host: host, occurrence: m2.id },
       role: Sysctl,
       value: apparmor,
     },
     programs: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 3) },
+      identity: HostResourceIdentity { host: host, occurrence: m3.id },
       role: ToolVersion,
       value: programs,
     },
     sudo_policy: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 4) },
+      identity: HostResourceIdentity { host: host, occurrence: m4.id },
       role: SudoPolicy,
       value: sudo_policy,
     },
     user_cgroup_delegation: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 5) },
+      identity: HostResourceIdentity { host: host, occurrence: m5.id },
       role: CgroupDelegation,
       value: cgroup,
     },
     toolchain_paths: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 6) },
+      identity: HostResourceIdentity { host: host, occurrence: m6.id },
       role: ToolchainPaths,
       value: toolchain,
     },
@@ -523,13 +510,14 @@ fn host_coreutils_timeout_expired_exit_code(surface: HostSoftwareSurface) -> Int
 // (operator hold). The live listing `(ALL) NOPASSWD: ALL` is an observation of the dashboard
 // service principal on this host; it is not copied into the grant roster.
 fn host_sudo_observed_all_is_not_the_declared_roster(surface: HostSoftwareSurface) -> Bool {
+  let r = srv1_software_inhabitance_receipt
   match surface.sudo_policy.value.observed_listing {
     Absent => false
     Present { value: listing } =>
-      (listing as String).contains("(ALL : ALL) ALL")
-        && (listing as String).contains("(ALL) NOPASSWD: ALL")
-        && fleet_posix_operator_sudo_grants().length() == 1
-        && surface.sudo_policy.value.principal.posix.name as String == "briansrls"
+      (listing as String).contains(r.sudo_all_as_all as String)
+        && (listing as String).contains(r.sudo_nopasswd_all as String)
+        && fleet_posix_operator_sudo_grant_is_hostnamectl_only()
+        && surface.sudo_policy.value.principal.posix.name == fleet_posix_operator_principal().posix.name
   }
 }
 

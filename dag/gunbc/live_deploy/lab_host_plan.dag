@@ -20,7 +20,6 @@ import gunbc.host.host_software_surface {
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_intent { ComputeHost }
 import extdeps.tailscale.serve { TailscaleServeCapability }
-import extdeps.systemd { ProtectHomeProperty, systemd_unit_property_wire }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_linux_toolchain }
 
 // FIRST CONSUMER of the per-host software surface (DESIGN 3c). The srv1 lab deploy plan is computed
@@ -33,24 +32,16 @@ import gunbc.roadmap.roadmap_dashboard_instance { srv1_linux_toolchain }
 // selected realization identity here; this module does not import that PR's types (COORDINATE:
 // session/bold-dove-819). Wiring the launcher itself stays with that change.
 
-type WorkerSandboxRealization
-  = UserManagerProtectHomeRealization
-  | SystemManagerLauncherRealization
-
-type WorkerSandboxClaim
-  = ClaimsUserManagerProtectHomeConfinement
-  | ClaimsSystemManagerConfinement
-  | ClaimsNoConfinement
-
 type WorkerSandboxRefusal
   = WorkerSandboxUnobserved { obligation: NonEmptyStr }
   | WorkerSandboxSysctlUnreadable { value: Int }
 
+type WorkerSandboxChoice
+  = UserManagerProtectHomeSelected
+  | SystemManagerLauncherSelected
+
 type WorkerSandboxSelection
-  = WorkerSandboxSelected {
-      realization: WorkerSandboxRealization
-      claim: WorkerSandboxClaim
-    }
+  = WorkerSandboxChosen { choice: WorkerSandboxChoice }
   | WorkerSandboxRefused { cause: WorkerSandboxRefusal }
 
 type LabDeployPlanRefusal
@@ -67,7 +58,7 @@ type LabDeployPlan
       git_path: FilePath
       jq_path: FilePath
       timeout_path: FilePath
-      worker_sandbox: WorkerSandboxSelection
+      worker_sandbox: WorkerSandboxChoice
     }
   | LabPlanRefused { cause: LabDeployPlanRefusal }
 
@@ -77,14 +68,10 @@ fn select_worker_sandbox(surface: HostSoftwareSurface) -> WorkerSandboxSelection
       WorkerSandboxRefused { cause: WorkerSandboxUnobserved { obligation: o } }
     UserManagerSandboxSysctlUnreadable { value: n } =>
       WorkerSandboxRefused { cause: WorkerSandboxSysctlUnreadable { value: n } }
-    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => WorkerSandboxSelected {
-      realization: SystemManagerLauncherRealization,
-      claim: ClaimsSystemManagerConfinement,
-    }
-    UserManagerEnforcesSandbox => WorkerSandboxSelected {
-      realization: UserManagerProtectHomeRealization,
-      claim: ClaimsUserManagerProtectHomeConfinement,
-    }
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } =>
+      WorkerSandboxChosen { choice: SystemManagerLauncherSelected }
+    UserManagerEnforcesSandbox =>
+      WorkerSandboxChosen { choice: UserManagerProtectHomeSelected }
   }
 }
 
@@ -100,7 +87,7 @@ fn lab_deploy_plan_from_software(surface: HostSoftwareSurface) -> LabDeployPlan 
             WorkerSandboxSysctlUnreadable { value: n } =>
               LabPlanRefused { cause: LabSandboxSysctlUnreadable { value: n } }
           }
-        WorkerSandboxSelected { realization: r, claim: c } =>
+        WorkerSandboxChosen { choice: choice } =>
           match surface.toolchain_paths.value.git {
             Absent => LabPlanRefused {
               cause: LabToolchainUnobserved { obligation: "command -v git" as NonEmptyStr }
@@ -122,7 +109,7 @@ fn lab_deploy_plan_from_software(surface: HostSoftwareSurface) -> LabDeployPlan 
                       git_path: git,
                       jq_path: jq,
                       timeout_path: timeout,
-                      worker_sandbox: WorkerSandboxSelected { realization: r, claim: c },
+                      worker_sandbox: choice,
                     }
                   }
               }
@@ -146,20 +133,10 @@ fn srv1_lab_deploy_plan() -> LabDeployPlan {
 fn plan_claims_user_manager_protect_home(plan: LabDeployPlan) -> Bool {
   match plan {
     LabPlanRefused { cause: _ } => false
-    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: box } =>
-      match box {
-        WorkerSandboxRefused { cause: _ } => false
-        WorkerSandboxSelected { realization: r, claim: c } =>
-          match c {
-            ClaimsUserManagerProtectHomeConfinement =>
-              match r {
-                UserManagerProtectHomeRealization =>
-                  (systemd_unit_property_wire(property: ProtectHomeProperty) as String) == "ProtectHome"
-                SystemManagerLauncherRealization => true
-              }
-            ClaimsSystemManagerConfinement => false
-            ClaimsNoConfinement => false
-          }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
+      match choice {
+        UserManagerProtectHomeSelected => true
+        SystemManagerLauncherSelected => false
       }
   }
 }
@@ -167,14 +144,10 @@ fn plan_claims_user_manager_protect_home(plan: LabDeployPlan) -> Bool {
 fn plan_selects_system_manager_launcher(plan: LabDeployPlan) -> Bool {
   match plan {
     LabPlanRefused { cause: _ } => false
-    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: box } =>
-      match box {
-        WorkerSandboxRefused { cause: _ } => false
-        WorkerSandboxSelected { realization: r, claim: _ } =>
-          match r {
-            SystemManagerLauncherRealization => true
-            UserManagerProtectHomeRealization => false
-          }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
+      match choice {
+        SystemManagerLauncherSelected => true
+        UserManagerProtectHomeSelected => false
       }
   }
 }
