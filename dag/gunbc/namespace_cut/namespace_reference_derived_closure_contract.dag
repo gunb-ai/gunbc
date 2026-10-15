@@ -1,6 +1,7 @@
 module gunbc.namespace_cut.namespace_reference_derived_closure_contract
 
 import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
+  NoDagReachableNativeOccurrenceTransportProducer,
   ReferenceDerivedClosureAdmission,
   ReferenceDerivedClosureCapability,
   ReferenceDerivedClosureEstablished,
@@ -26,11 +27,15 @@ import std.types { Bool, Int, List, String }
 // unavailable evidence all remain in the derived frontier; duplicate admissions cannot erase a
 // missing capability, and zero progress is red.
 //
-// This module deliberately does NOT derive visibility or dependencies. The production admissions
-// live in test.fixture.namespace_reference_derived_closure_production_admissions (they import the
-// real producers, which this fold must not, and a leaf avoids a cycle through the structural
-// observations contract). The fixture witnesses here construct observations to prove this fold
-// discriminates; the quarantined closing witness consumes only the production-admission function.
+// This module deliberately does NOT derive visibility or dependencies.
+// namespace_reference_derived_closure_acceptance_admissions carries six typed unavailable rows, all
+// naming NoDagReachableNativeOccurrenceTransportProducer: every clause needs an OccurrenceTransport
+// produced from parsed source (clauses a-d directly; e and f through the parser-produced closure that
+// v1.gunbc.namespace_reference_derived_closure_clause_e_production assembles), and no dag-reachable
+// native parse -> occurrence-transport producer exists. The hand-built cross-file fixture is NOT
+// production authority (its own note), so assessing it would be specification-without-execution.
+// The fixture witnesses construct observations to prove this fold discriminates; the quarantined
+// closing witness consumes only the production-admission function.
 
 data namespace_reference_derived_closure_contract_dissolution_note: String = "DISSOLVES BY GREENING, never deletion. The implementation adds production-derived observations to namespace_reference_derived_closure_acceptance_admissions as each clause becomes executable. When all six establish, the unchanged closing witness greens; its QuarantineProbeExpectRed exclusion and known-red roster entry delete in the same change, promoting it to the ordinary discovery corpus as the permanent regression wall."
 
@@ -89,4 +94,33 @@ fn reference_derived_closure_closing_contract_holds(
   admissions: List<ReferenceDerivedClosureAdmission>,
 ) -> Bool {
   reference_derived_closure_closing_frontier_count(admissions: admissions) == 0
+}
+
+fn namespace_reference_derived_closure_acceptance_admissions() -> List<ReferenceDerivedClosureAdmission> {
+  [
+    ReferenceDerivedClosureUnavailable {
+      capability: SameFileEarlierNeighbourVisible,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
+    },
+    ReferenceDerivedClosureUnavailable {
+      capability: SiblingDecisionBranchExcluded,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
+    },
+    ReferenceDerivedClosureUnavailable {
+      capability: LaterDeclarationExcluded,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
+    },
+    ReferenceDerivedClosureUnavailable {
+      capability: DistinctSameSpelledDeclarationsPreserved,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
+    },
+    ReferenceDerivedClosureUnavailable {
+      capability: RepeatedMentionsCollapseDependency,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
+    },
+    ReferenceDerivedClosureUnavailable {
+      capability: UnrelatedLoadedFileExcluded,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
+    },
+  ]
 }
