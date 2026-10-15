@@ -407,11 +407,22 @@ mod tests {
         ];
         let function = "__no_such_function__";
         let selected: Vec<&str> = match std::env::var("GUNBC_EQ_ENTRY") {
-            Ok(one) if !one.is_empty() => entries
-                .iter()
-                .copied()
-                .filter(|e| *e == one.as_str() || e.ends_with(one.as_str()))
-                .collect(),
+            Ok(raw) if !raw.is_empty() => {
+                let wanted: Vec<&str> = raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                entries
+                    .iter()
+                    .copied()
+                    .filter(|e| {
+                        wanted
+                            .iter()
+                            .any(|w| *e == *w || e.ends_with(w) || e.contains(w))
+                    })
+                    .collect()
+            }
             _ => entries.to_vec(),
         };
         assert!(
