@@ -2,7 +2,7 @@ module v2.test.claim.field_projection.field_projection_stages
 
 import v2.compiler.resolve { Namespace, ResolvedTree, empty_namespace, root_binding_names_value }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
-import v2.std.collection { map_insert }
+
 import v2.compiler.infer { infer }
 import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -10,7 +10,7 @@ import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty, contains }
+import std.algebra { Cons, Empty, contains, map_insert }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic {

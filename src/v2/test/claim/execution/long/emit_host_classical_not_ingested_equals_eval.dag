@@ -1,7 +1,7 @@
 module v2.test.claim.execution.long.emit_host_classical_not_ingested_equals_eval
 
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
-import std.types { List }
+import std.types { List, Map }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
@@ -39,10 +39,7 @@ import v2.extdeps.languages.rust_fixtures {
 }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations, claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection {
-  Map,
-  list_at_optional
-}
+import std.algebra { list_at_optional }
 import std.optional {
   Absent,
   Optional,

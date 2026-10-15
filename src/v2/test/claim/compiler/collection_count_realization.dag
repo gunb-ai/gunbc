@@ -10,10 +10,10 @@ import std.optional { Absent, Optional, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Instantiation, Node, TypeNode, node_subtree_nodes, node_synthetic }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.collection { list_at_optional }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.extdeps.languages.dag { dag_binding_denotation }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, list_at_optional }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

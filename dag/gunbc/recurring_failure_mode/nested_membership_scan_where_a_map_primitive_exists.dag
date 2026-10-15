@@ -30,8 +30,8 @@ data nested_membership_scan_where_a_map_primitive_exists: RecurringFailureMode =
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.std.collection", decl_name: "map_insert", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.std.collection", decl_name: "map_lookup", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "map_insert", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "map_lookup", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.workflow.floor_grandfathered_roster", decl_name: "floor_grandfathered_holds", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.workflow.required_floor", decl_name: "new_witness_over_budget_first_remedy", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps", decl_name: "floor_cost_cpu_regression_at_constant_eval_steps", field: WholeDeclaration },

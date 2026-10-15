@@ -1,6 +1,6 @@
 module v2.test.claim.execution.emit_host_meet_join_equals_eval
 
-import std.types { List }
+import std.types { List, Map }
 import v2.std.node_query { find_core_child }
 
 import v2.compiler.emit_host {
@@ -30,10 +30,7 @@ import v2.extdeps.languages.rust_fixtures {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection {
-  Map,
-  list_at_optional
-}
+import std.algebra { list_at_optional }
 import std.optional {
   Optional,
   Absent,
