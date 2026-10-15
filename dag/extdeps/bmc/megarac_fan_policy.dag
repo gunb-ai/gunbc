@@ -2,6 +2,7 @@ module extdeps.bmc.megarac_fan_policy
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
+import std.algebra { contains }
 import std.measure { Percent, RevolutionsPerMinute, percent_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
@@ -137,20 +138,13 @@ fn megarac_fan_slot_standing(pwm: Percent, sdr: MegaRacSdrFanPresence) -> MegaRa
 
 data megarac_fan_pwm_all_admitted_wires: List<Int> = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]
 
-fn megarac_int_in(xs: List<Int>, n: Int) -> Bool {
-  match xs.first() {
-    Absent => false
-    Present { value: h } => if (h == n) { true } else { megarac_int_in(xs: xs.skip(n: 1), n: n) }
-  }
-}
-
 type MegaRacFanPwmAll
   = MegaRacFanPwmAllAdmitted { wire: NonEmptyStr }
   | MegaRacFanPwmAllRefused { duty: Percent }
 
 fn megarac_fan_pwm_all_of(duty: Percent) -> MegaRacFanPwmAll {
   let n = percent_count(p: duty) as Int
-  if (megarac_int_in(xs: megarac_fan_pwm_all_admitted_wires, n: n)) {
+  if (contains(xs: megarac_fan_pwm_all_admitted_wires, item: n, eq: fn(a, b) { a == b })) {
     MegaRacFanPwmAllAdmitted { wire: to_string(n) as NonEmptyStr }
   } else {
     MegaRacFanPwmAllRefused { duty: duty }
