@@ -2,6 +2,8 @@ module v2.test.claim.callexec.kinded_type_param_value_eval
 
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer, infer_diagnostics_none, inferred_facts_grounding_derived }
+import v2.extdeps.runtimes.v2_evaluator { v2_eval_is_literal_shaped_node }
+import v2.std.inhabitance { type_variable_instance_lookup }
 import v2.test.claim.callexec.declaration_reference_eval {
   cref_assemble,
   cref_eval_of_call_to,
@@ -340,3 +342,35 @@ test fn kpb_assembles() -> Bool { match cref_inferred_of(o: cref_assemble(src: k
   Absent => false } }
 test fn kpb_call_grounded() -> Bool { kpz_call_grounded(src: kpb_src(), name: ^width_of) }
 test fn kpb_is_8() -> Bool { kpe_int_of(r: cref_eval_of_call_to(o: cref_assemble(src: kpb_src()), name: ^width_of)) == Present { value: 8 } }
+fn kpg_instance_of(src: String, name: Symbol, binder: Symbol) -> Optional<Node> {
+  match cref_inferred_of(o: cref_assemble(src: src)) {
+    Absent => Absent
+    Present { value: tree } =>
+      match cref_the_call_to(root: tree.root, name: name) {
+        Absent => Absent
+        Present { value: call } =>
+          match tree.facts.lookup(call) {
+            Absent => Absent
+            Present { value: facts } => type_variable_instance_lookup(instances: facts.type_instances, binder: binder)
+          }
+      }
+  }
+}
+fn kpg_src_pointer() -> String {
+  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn mkp() -> Box<Pointer> {\n  let r = Box { v: 0 }\n  r\n}\n\nfn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  width_of(x: mkp())\n}\n"
+}
+test fn kpg_literal_argument_is_the_inferred_instance() -> Bool {
+  match kpg_instance_of(src: kps2_src(), name: ^width_of, binder: ^bits) {
+    Present { value: i } => v2_eval_is_literal_shaped_node(node: i)
+    Absent => false
+  }
+}
+test fn kpg_variant_argument_is_a_non_literal_instance() -> Bool {
+  match kpg_instance_of(src: kpg_src_pointer(), name: ^width_of, binder: ^bits) {
+    Present { value: i } => !v2_eval_is_literal_shaped_node(node: i)
+    Absent => false
+  }
+}
+test fn kpg_instance_is_present_for_pointer() -> Bool {
+  kpg_instance_of(src: kpg_src_pointer(), name: ^width_of, binder: ^bits) != Absent
+}
