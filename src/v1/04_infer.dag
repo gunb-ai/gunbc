@@ -9414,7 +9414,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               // type (Named(exit_failure)), so the call is typed as the name instead of the
               // return (ProcessExit vs Named(exit_failure) at srv3_boot_once_cd).
               let type_match = match call_target {
-                DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => none
+                DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: bn } =>
+                  match item_kind(item: bn) {
+                    FnItem => none
+                    _ => lookup_type_by_name(env: scope.type_env, name: func_name)
+                  }
                 _ => lookup_type_by_name(env: scope.type_env, name: func_name)
               }
               let global_bare_callable = match type_match {
@@ -14048,10 +14052,17 @@ fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTarg
                 Absent => CallableUnresolved { name: func_name }
               }
             DeclarationOnly =>
-              match func_sig_from_global_bare(type_env: scope.type_env, name: func_name) {
-                FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
-                FuncSigUnresolved => CallableUnresolved { name: func_name }
-                FuncSigAmbiguous { candidates: _ } => CallableUnresolved { name: func_name }
+              match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
+                Present { value: bd } =>
+                  match func_sig_from_global_bare(type_env: scope.type_env, name: func_name) {
+                    FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
+                    FuncSigUnresolved => DeclaredCallableIdentityResolved {
+                      declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
+                      borrowed_declaration: bd.node
+                    }
+                    FuncSigAmbiguous { candidates: _ } => CallableUnresolved { name: func_name }
+                  }
+                Absent => CallableUnresolved { name: func_name }
               }
           }
       }

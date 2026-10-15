@@ -14475,7 +14475,16 @@ Rc::new(InferResult {
     Some(ctor_result) => ctor_result.clone(),
     std::option::Option::None => {
                                                 let type_match = match (*call_target.clone()).clone() {
-    CallTargetOutcome::DeclaredCallableIdentityResolved { .. } => std::option::Option::None,
+    CallTargetOutcome::DeclaredCallableIdentityResolved {
+        borrowed_declaration: bn,
+        ..
+    } => match crate::v1_compiler_infer_items::item_kind(bn.clone()) {
+        crate::v1_compiler_infer_items::ItemKind::FnItem => std::option::Option::None,
+        _ => crate::v1_compiler_infer_env::lookup_type_by_name(
+            scope.type_env.clone(),
+            func_name.clone(),
+        ),
+    },
     _ => crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), func_name.clone()),
 };
 let global_bare_callable = match type_match.clone() {
@@ -24081,22 +24090,48 @@ pub fn call_target_for_direct_call(
                             }
                         }
                         NonDeclarationBinding::DeclarationOnly => {
-                            match (*crate::v1_compiler_infer_lookup::func_sig_from_global_bare(
+                            match crate::v1_compiler_infer_lookup::census_declaration_identity(
                                 scope.type_env.clone(),
                                 func_name.clone(),
-                            ))
-                            .clone()
-                            {
-                                FuncSigLookup::FuncSigResolved {
-                                    sig: s,
-                                    declared: d,
-                                    ..
-                                } => Rc::new(CallTargetOutcome::DeclaredCallableResolved {
-                                    sig: s.clone(),
-                                    declared: d.clone(),
-                                }),
-                                FuncSigLookup::FuncSigUnresolved
-                                | FuncSigLookup::FuncSigAmbiguous { .. } => {
+                            ) {
+                                Some(bd) => {
+                                    match (*crate::v1_compiler_infer_lookup::func_sig_from_global_bare(
+                                        scope.type_env.clone(),
+                                        func_name.clone(),
+                                    ))
+                                    .clone()
+                                    {
+                                        FuncSigLookup::FuncSigResolved {
+                                            sig: s,
+                                            declared: d,
+                                            ..
+                                        } => Rc::new(CallTargetOutcome::DeclaredCallableResolved {
+                                            sig: s.clone(),
+                                            declared: d.clone(),
+                                        }),
+                                        FuncSigLookup::FuncSigUnresolved => {
+                                            Rc::new(
+                                                CallTargetOutcome::DeclaredCallableIdentityResolved {
+                                                    declared: Rc::new(DeclaredCallableIdentity {
+                                                        owner_module_path: bd
+                                                            .owner_module_path
+                                                            .clone(),
+                                                        decl_name: crate::v1_std_core::qualified_last_segment(
+                                                            func_name.clone(),
+                                                        ),
+                                                    }),
+                                                    borrowed_declaration: bd.node.clone(),
+                                                },
+                                            )
+                                        }
+                                        FuncSigLookup::FuncSigAmbiguous { .. } => {
+                                            Rc::new(CallTargetOutcome::CallableUnresolved {
+                                                name: func_name.clone(),
+                                            })
+                                        }
+                                    }
+                                }
+                                std::option::Option::None => {
                                     Rc::new(CallTargetOutcome::CallableUnresolved {
                                         name: func_name.clone(),
                                     })
