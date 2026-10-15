@@ -1,5 +1,6 @@
 module test.claim.runner.runner_revision_job_receipt_wet_witness
 
+import gunbc.target_invocation { ClaimRouteVerdict, ClaimHeld, ClaimUnobserved }
 import extdeps.shell
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim, string_contains }
@@ -11,7 +12,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessRefused }
 import gunbc.command_runner { run_shell_command_capture }
 import product.fabric.identity { FabricIdentity, ReceiptKey }
-import product.fabric.execution { Receipt, ExecutionReceipt, LeaseIdentity }
+import product.fabric.execution { Receipt, ReceiptPayload, ExecutionReceipt, MaterializationReceipt, LeaseIdentity }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult }
 import gunbc.runner.runner_revision_job_stage { RevisionJobInputDigests }
 import gunbc.runner.runner_revision_job_spec { RevisionJobSpecDecoded, RevisionJobSpecRefused, decode_revision_job_spec }
@@ -24,7 +25,7 @@ import test.claim.runner.runner_revision_job_spec_witness { spec, commit, tree }
 // PUBLICATION BY REAL EXECUTION: the receipt is linked create-only at its own SHA-256, indexed once
 // under its commit, and a second publication of the same bytes reads as already published.
 
-fn document(exit: Int) -> List<RevisionJobReceiptDocument> {
+fn document(verdict: ClaimRouteVerdict, payload: ReceiptPayload) -> List<RevisionJobReceiptDocument> {
   match decode_revision_job_spec(text: spec(claims: "[\"//gunbc/instruments:self-host\"]", extra: "")) {
     RevisionJobSpecRefused { refusal: _ } => []
     RevisionJobSpecDecoded { spec: s } => [RevisionJobReceiptDocument {
@@ -34,16 +35,20 @@ fn document(exit: Int) -> List<RevisionJobReceiptDocument> {
         id: FabricIdentity { principal: "gunbc", key: "receipt-1" as ReceiptKey },
         attempt: FabricIdentity { principal: "gunbc", key: "attempt-1" },
         lease: LeaseIdentity { lease_key: "srv1-14", resource_fingerprint: content_hash_of_value(value: "srv1-14"), generation: 1 },
-        payload: ExecutionReceipt { step_id: "claim-set", outputs: content_hash_of_value(value: "outputs"), billable: second(count: 7), completed_at: "2026-10-15T07:00:00Z" },
+        payload: payload,
       },
-      results: [ClaimSetResult { label: "//gunbc/instruments:self-host", exit: exit, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr }],
+      results: [ClaimSetResult { label: "//gunbc/instruments:self-host", verdict: verdict, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr }],
     }]
   }
 }
 
+fn executed() -> ReceiptPayload {
+  ExecutionReceipt { step_id: "claim-set", outputs: content_hash_of_value(value: "outputs"), billable: second(count: 7), completed_at: "2026-10-15T07:00:00Z" }
+}
+
 test fn a_receipt_publishes_once_at_its_own_digest_and_is_indexed_under_its_commit_by_real_execution() -> Bool {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_receipt.XXXXXX").path
-  let verdict = match document(exit: 0).first() {
+  let verdict = match document(verdict: ClaimHeld, payload: executed()).first() {
     Absent => false
     Present { value: d } => match publish_revision_job_receipt(store_root: root, staging_path: concat(root, "/staging-1.json"), d: d) {
       RevisionJobPublished { address: a, index_entry: e } =>
@@ -61,10 +66,10 @@ test fn a_receipt_publishes_once_at_its_own_digest_and_is_indexed_under_its_comm
 }
 
 test fn the_document_states_a_non_qualifying_standing_for_an_unobserved_claim() -> Bool {
-  match document(exit: 2).first() {
+  match document(verdict: ClaimUnobserved, payload: executed()).first() {
     Absent => false
     Present { value: d } => {
-      let body = revision_job_receipt_json(d: d)
+      let body = match revision_job_receipt_json(d: d) { Present { value: b } => b  Absent => "" }
       string_contains(s: body, pattern: "some-unobserved") && !string_contains(s: body, pattern: "all-held")
         && !string_contains(s: body, pattern: "true")
     }
@@ -77,7 +82,7 @@ test fn the_document_states_a_non_qualifying_standing_for_an_unobserved_claim() 
 test fn a_disagreeing_receipt_address_refuses_and_writes_no_index_entry_by_real_execution() -> Bool {
   let probe = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_receipt.XXXXXX").path
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_receipt.XXXXXX").path
-  let verdict = match document(exit: 0).first() {
+  let verdict = match document(verdict: ClaimHeld, payload: executed()).first() {
     Absent => false
     Present { value: d } => match publish_revision_job_receipt(store_root: probe, staging_path: concat(probe, "/staging.json"), d: d) {
       RevisionJobPublished { address: a, index_entry: _ } => {
@@ -99,4 +104,20 @@ test fn a_disagreeing_receipt_address_refuses_and_writes_no_index_entry_by_real_
   let r1 = shell.Remove.RecursiveForce(path: probe)
   let r2 = shell.Remove.RecursiveForce(path: root)
   verdict && r1.success && r2.success
+}
+
+// A FABRIC RECEIPT THAT IS NOT AN EXECUTION RECEIPT DESCRIBES NO JOB RUN: it renders no document and
+// publishing it refuses before anything is written.
+test fn a_non_execution_receipt_renders_nothing_and_publishes_nothing_by_real_execution() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_receipt.XXXXXX").path
+  let held = match document(verdict: ClaimHeld, payload: MaterializationReceipt { source: content_hash_of_value(value: "source"), verified_at: "2026-10-15T07:00:00Z" }).first() {
+    Absent => false
+    Present { value: d } => (match revision_job_receipt_json(d: d) { Absent => true  Present { value: _ } => false })
+      && match publish_revision_job_receipt(store_root: root, staging_path: concat(root, "/staging.json"), d: d) {
+        RevisionJobPublicationRefused { step: st, detail: _ } => (st as String) == "receipt-payload" && !Filesystem.Read(path: concat(root, "/staging.json")).success
+        _ => false
+      }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root)
+  held && removed.success
 }

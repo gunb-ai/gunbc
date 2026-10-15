@@ -303,6 +303,9 @@ type CellGrantSettlement
   = CellGrantReceiptAdmitted { slot_key: NonEmptyStr, released_at: CasGeneration, released_by: DurableHoldReleaseRef }
   | CellGrantReceiptAlreadyAdmitted { slot_key: NonEmptyStr, released_at: CasGeneration }
   | CellGrantReceiptForeign { slot_key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration }
+  // The slot is at another generation than the receipt's lease. The store's refusal names the two
+  // generations and not a holder, so this arm carries exactly those -- never a holder it did not read.
+  | CellGrantReceiptAgainstAnotherGeneration { slot_key: NonEmptyStr, receipt_generation: CasGeneration, observed: CasGeneration }
   | CellGrantReceiptLeaseNotThisCell { slot_key: NonEmptyStr }
   | CellGrantReceiptGenerationInvalid { slot_key: NonEmptyStr, generation: Int }
   | CellGrantSanitationUnproven { cell: CellId, unproven: List<UnprovenFact> }
@@ -358,7 +361,7 @@ fn settle_cell_grant(
                   CellGrantReleasedUnderAnotherReceipt { slot_key: slot_key, generation: g, released_by: by }
                 }
               HoldReleaseHeldByAnotherOwner { generation: g, holder: h } => CellGrantReceiptForeign { slot_key: slot_key, holder: h, generation: g }
-              HoldReleaseAgainstAnotherGeneration { acquired: _, observed: g } => CellGrantReceiptForeign { slot_key: slot_key, holder: owner, generation: g }
+              HoldReleaseAgainstAnotherGeneration { acquired: a, observed: g } => CellGrantReceiptAgainstAnotherGeneration { slot_key: slot_key, receipt_generation: a, observed: g }
               HoldReleaseSlotUndecodable { generation: _, detail: d } => CellGrantSettlementStoreUnavailable { slot_key: slot_key, detail: d }
               HoldReleaseObservationUnavailable { cause: _ } => CellGrantSettlementStoreUnavailable { slot_key: slot_key, detail: "the cell hold could not be observed" }
             }

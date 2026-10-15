@@ -1,5 +1,6 @@
 module test.claim.runner.runner_revision_job_spec_witness
 
+import gunbc.target_invocation { ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold, ClaimUnobserved }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult }
@@ -7,7 +8,7 @@ import gunbc.runner.runner_revision_job_spec {
   RevisionJobSpecDecoded, RevisionJobSpecRefused, SpecUnreadable, SpecMemberMissing, SpecMemberMalformed,
   SpecObjectIdInvalid, SpecClaimsEmpty, SpecClaimNotALabel, SpecClaimDuplicated,
   decode_revision_job_spec, RevisionJobStanding, RevisionJobAllHeld, RevisionJobSomeNotHeld, RevisionJobSomeUnobserved,
-  revision_job_standing, revision_job_qualifies,
+  revision_job_standing,
 }
 
 // THE SPEC AT ITS INTERFACE: supplied JSON, decoded by the job's own reader. Braces are spelled as
@@ -55,8 +56,8 @@ test fn every_malformed_spec_refuses_by_name_before_any_vm() -> Bool {
     && label(text: join([o, "\"commit\": \"", commit, "\", \"tree\": \"", tree, "\", \"claims\": [\"//a:b\"]", c], "")) == "missing:repository"
 }
 
-fn r(label: String, exit: Int) -> ClaimSetResult {
-  ClaimSetResult { label: label as NonEmptyStr, exit: exit, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr }
+fn r(label: String, verdict: ClaimRouteVerdict) -> ClaimSetResult {
+  ClaimSetResult { label: label as NonEmptyStr, verdict: verdict, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr }
 }
 
 fn standing_label(s: RevisionJobStanding) -> String {
@@ -68,12 +69,9 @@ fn standing_label(s: RevisionJobStanding) -> String {
 }
 
 test fn an_unobserved_claim_never_qualifies_whatever_the_others_did() -> Bool {
-  standing_label(s: revision_job_standing(results: [r(label: "//a:x", exit: 0), r(label: "//a:y", exit: 0)])) == "all-held"
-    && revision_job_qualifies(standing: revision_job_standing(results: [r(label: "//a:x", exit: 0)]))
-    && standing_label(s: revision_job_standing(results: [r(label: "//a:x", exit: 0), r(label: "//a:y", exit: 1)])) == "not-held://a:y"
-    && standing_label(s: revision_job_standing(results: [r(label: "//a:x", exit: 0), r(label: "//a:typo", exit: 2)])) == "unobserved://a:typo"
-    && !revision_job_qualifies(standing: revision_job_standing(results: [r(label: "//a:x", exit: 0), r(label: "//a:typo", exit: 2)]))
-    && !revision_job_qualifies(standing: revision_job_standing(results: [r(label: "//a:y", exit: 1)]))
-    && !revision_job_qualifies(standing: revision_job_standing(results: [r(label: "//a:x", exit: 0), r(label: "//a:z", exit: 99)]))
-    && standing_label(s: revision_job_standing(results: [r(label: "//a:z", exit: 99)])) == "unobserved://a:z"
+  standing_label(s: revision_job_standing(results: [r(label: "//a:x", verdict: ClaimHeld), r(label: "//a:y", verdict: ClaimHeld)])) == "all-held"
+    && standing_label(s: revision_job_standing(results: [r(label: "//a:x", verdict: ClaimHeld)])) == "all-held"
+    && standing_label(s: revision_job_standing(results: [r(label: "//a:x", verdict: ClaimHeld), r(label: "//a:y", verdict: ClaimDidNotHold)])) == "not-held://a:y"
+    && standing_label(s: revision_job_standing(results: [r(label: "//a:x", verdict: ClaimHeld), r(label: "//a:typo", verdict: ClaimUnobserved)])) == "unobserved://a:typo"
+    && standing_label(s: revision_job_standing(results: [r(label: "//a:y", verdict: ClaimDidNotHold), r(label: "//a:z", verdict: ClaimUnobserved)])) == "unobserved://a:z"
 }

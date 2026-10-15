@@ -19,8 +19,7 @@ import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_sha1_
 import extdeps.rust.cargo_build { cargo_vendor_command, cargo_version_command }
 import extdeps.bazel.label { Label, render_label }
 import extdeps.tools.coreutils_truncate
-import extdeps.virtualization.firecracker { firecracker_block_sector_size }
-import gunbc.runner.runner_microvm { jit_drive_newline_sector, jit_drive_utf8_size }
+import gunbc.runner.runner_microvm { newline_padded_to_whole_sectors }
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.fabric.fabric_witness_run {
   VerifiedGitCommitTree, GitCommitTreeVerified, GitCommitTreeMismatch, verify_git_commit_tree,
@@ -126,9 +125,7 @@ fn revision_job_spec_text(revision: VerifiedGitCommitTree, claims: FreeSemigroup
 // launch plan stages the spec drive from them -- one producer, so the staged spec and the booted one
 // cannot differ.
 fn revision_job_spec_device_content(spec_text: String) -> String {
-  let sector = byte_size_count(b: firecracker_block_sector_size)
-  let tail = byte_size_count(b: jit_drive_utf8_size(text: spec_text)) % sector
-  if tail == 0 { spec_text } else { concat(spec_text, substring(s: jit_drive_newline_sector(), start: 0, end: sector - tail)) }
+  newline_padded_to_whole_sectors(body: spec_text)
 }
 
 fn vendor_cache_key(lockfile: ContentHash, cargo_identity: NonEmptyStr) -> NonEmptyStr {
