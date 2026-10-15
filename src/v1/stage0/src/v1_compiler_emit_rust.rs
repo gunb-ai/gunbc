@@ -661,9 +661,10 @@ pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
 }
 
 pub fn rust_shared_wrap_ctor(inner_expr: String) -> String {
-    if ((v1_rt::starts_with(inner_expr.clone(), "panic!(".to_string())
+    if (((v1_rt::starts_with(inner_expr.clone(), "panic!(".to_string())
         || v1_rt::starts_with(inner_expr.clone(), "compile_error!(".to_string()))
         || v1_rt::starts_with(inner_expr.clone(), "unreachable!(".to_string()))
+        || v1_rt::starts_with(inner_expr.clone(), "v1_rt::never(".to_string()))
     {
         inner_expr.clone()
     } else {
@@ -13649,9 +13650,26 @@ pub fn is_parametric_opaque_type_decl_item(
         ) || is_self_referential_opaque_type_resolved(item.clone(), source_indices.clone())))
 }
 
+pub fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> bool {
+    (module_path == crate::std_types::never_type_module_path())
+        && (name == crate::std_types::never_type_name())
+}
+
+pub fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
+    if (module_path == crate::std_types::never_type_module_path())
+        && ((name == crate::std_types::never_producer_name())
+            || (name == crate::std_types::never_eliminator_name()))
+    {
+        "#[allow(unreachable_code)]\n".to_string()
+    } else {
+        "".to_string()
+    }
+}
+
 pub fn emit_zero_param_phantom_opaque_struct(
     item: Rc<Node>,
     map_key_required: bool,
+    module_path: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -13665,7 +13683,18 @@ pub fn emit_zero_param_phantom_opaque_struct(
             ),
             "\n".to_string(),
         );
-        if crate::std_types::is_kernel_type(item_text.clone()) {
+        if rust_uninhabited_empty_enum_decl(module_path.clone(), item_text.clone()) {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(derive, rust_visibility_prefix()),
+                        "enum ".to_string(),
+                    ),
+                    item_text.clone(),
+                ),
+                " {}".to_string(),
+            )
+        } else {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
@@ -13678,17 +13707,6 @@ pub fn emit_zero_param_phantom_opaque_struct(
                     item_text.clone(),
                 ),
                 "(pub std::marker::PhantomData<()>);".to_string(),
-            )
-        } else {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(derive, rust_visibility_prefix()),
-                        "enum ".to_string(),
-                    ),
-                    item_text.clone(),
-                ),
-                " {}".to_string(),
             )
         }
     }
@@ -15981,6 +15999,7 @@ pub fn emit_typed_item(
                                                 item_text.clone(),
                                             ),
                                         ),
+                                        env.module_path.clone(),
                                         env.source_indices.clone(),
                                     )
                                 } else {
@@ -20415,7 +20434,7 @@ pub fn emit_fn_def(
         if (realized_seam.clone() && ((value_params.clone().len() as i64) == 0)) {
             {
                 let kw = rust_items().func_keyword.clone();
-                return v1_rt::concat(
+                let fn_text = v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
@@ -20457,6 +20476,10 @@ pub fn emit_fn_def(
                         ),
                     ),
                     "()\n}".to_string(),
+                );
+                return v1_rt::concat(
+                    rust_uninhabited_elim_allow_attr(scope.module_name.clone(), name.clone()),
+                    fn_text,
                 );
             }
         }
@@ -20540,19 +20563,22 @@ pub fn emit_fn_def(
         } else {
             {
                 let return_is_unit = return_type_is_unit(inferred.clone(), si.clone());
-                emit_fn_def_non_tco(
-                    name.clone(),
-                    type_params_str.clone(),
-                    params_str.clone(),
-                    ret_str.clone(),
-                    body.clone(),
-                    registry.clone(),
-                    body_scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    body_emit_info.clone(),
-                    needs_stacker.clone(),
-                    return_is_unit.clone(),
+                v1_rt::concat(
+                    rust_uninhabited_elim_allow_attr(scope.module_name.clone(), name.clone()),
+                    emit_fn_def_non_tco(
+                        name.clone(),
+                        type_params_str.clone(),
+                        params_str.clone(),
+                        ret_str.clone(),
+                        body.clone(),
+                        registry.clone(),
+                        body_scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        body_emit_info.clone(),
+                        needs_stacker.clone(),
+                        return_is_unit.clone(),
+                    ),
                 )
             }
         }
