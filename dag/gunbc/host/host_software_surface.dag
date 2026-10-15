@@ -1,6 +1,6 @@
 module gunbc.host.host_software_surface
 
-import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
+import std.types { Int, List, NonEmptyStr, String, FilePath }
 import std.optional { Absent, Present }
 import std.os.types {
   OperatingSystemSurface,
@@ -51,15 +51,14 @@ import extdeps.linux.apparmor_userns {
   apparmor_unprivileged_userns_restricted,
 }
 import extdeps.exec.program { ProgramIdentity }
-import extdeps.procps.kill { procps_ng_kill_term_pgid_argv, kill_program }
+import extdeps.procps.kill { kill_program }
 import extdeps.git { git_program }
 import extdeps.tools.jq { jq_program }
 import extdeps.systemd.systemctl { systemctl_path_resolved_program }
-import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code, timeout_program }
+import extdeps.tools.gnu_coreutils { timeout_program }
 import gunbc.fleet.fleet_posix_accounts {
   GroundedPosixPrincipal,
   fleet_posix_operator_principal,
-  fleet_posix_operator_sudo_grant_is_hostnamectl_only,
 }
 import extdeps.version.semver { semver_version_parse }
 import extdeps.tailscale.serve {
@@ -455,13 +454,6 @@ fn host_program_version(surface: HostSoftwareSurface, program: ProgramIdentity) 
   )
 }
 
-fn host_program_version_label(surface: HostSoftwareSurface, program: ProgramIdentity) -> NonEmptyStr? {
-  match host_program_version(surface: surface, program: program) {
-    Absent => none
-    Present { value: fact } => fact.version_label
-  }
-}
-
 // OBSERVATION PLUS A BET, NOT A CITED systemd FACT (DESIGN 4d). srv1 on 2026-10-14: a user-manager
 // unit with ProtectHome wrote into home (github.com/gunb-ai/gunbc/issues/13942#issuecomment-6175000334).
 // DoesNotEnforce is an identity join: surface.host equals the observation's host, and sysctl is 1.
@@ -530,35 +522,6 @@ fn host_tailscale_client(surface: HostSoftwareSurface) -> TailscaleServeCapabili
             Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
           }
       }
-  }
-}
-
-fn host_procps_kill_term_pgid_argv(surface: HostSoftwareSurface, pgid: Int) -> List<String>? {
-  match host_program_version_label(surface: surface, program: kill_program()) {
-    Absent => none
-    Present { value: _ } => Present { value: procps_ng_kill_term_pgid_argv(pgid: pgid) }
-  }
-}
-
-fn host_coreutils_timeout_expired_exit_code(surface: HostSoftwareSurface) -> Int? {
-  match host_program_version_label(surface: surface, program: timeout_program()) {
-    Absent => none
-    Present { value: _ } => Present { value: coreutils_timeout_expired_exit_code }
-  }
-}
-
-// JOIN, NOT RESTATEMENT. The declared operator PosixSudoGrant roster stays hostnamectl-only
-// (operator hold). The live listing `(ALL) NOPASSWD: ALL` is an observation of the dashboard
-// service principal on this host; it is not copied into the grant roster.
-fn host_sudo_observed_all_is_not_the_declared_roster(surface: HostSoftwareSurface) -> Bool {
-  let r = srv1_software_inhabitance_receipt
-  match surface.sudo_policy.value.observed_listing {
-    Absent => false
-    Present { value: listing } =>
-      (listing as String).contains(r.sudo_all_as_all as String)
-        && (listing as String).contains(r.sudo_nopasswd_all as String)
-        && fleet_posix_operator_sudo_grant_is_hostnamectl_only()
-        && surface.sudo_policy.value.principal.posix.name == fleet_posix_operator_principal().posix.name
   }
 }
 

@@ -1,9 +1,9 @@
 module gunbc.live_deploy.lab_host_plan
 
-import std.types { Bool, Int, NonEmptyStr, String, FilePath }
+import std.types { Int, NonEmptyStr, String, FilePath }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.optional { Absent, Present }
-import std.os.types { OsPackageManager, Apt, Winget, HomebrewDeFacto }
+import std.os.types { OsPackageManager }
 import gunbc.host.host_software_surface {
   HostSoftwareSurface,
   HostPackageManagerKnown,
@@ -159,56 +159,6 @@ fn lab_plan_deploy_fields(plan: LabDeployPlan) -> LabPlanDeployFields {
         os_package_manager: none,
         tailscale_client: ScopedRemovalUnobserved { reason: lab_plan_refusal_reason(cause: c) as String },
       }
-  }
-}
-
-fn plan_selects_system_manager_launcher(plan: LabDeployPlan) -> Bool {
-  match plan {
-    LabPlanRefused { cause: _ } => false
-    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
-      match choice {
-        SystemManagerLauncherSelected => true
-      }
-  }
-}
-
-fn plan_package_manager(plan: LabDeployPlan) -> OsPackageManager? {
-  match plan {
-    LabPlanRefused { cause: _ } => none
-    LabPlanReady { host: _, os_package_manager: m, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
-      Present { value: m }
-  }
-}
-
-fn plan_git_path(plan: LabDeployPlan) -> FilePath? {
-  match plan {
-    LabPlanRefused { cause: _ } => none
-    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: p, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
-      Present { value: p }
-  }
-}
-
-fn plan_jq_path(plan: LabDeployPlan) -> FilePath? {
-  match plan {
-    LabPlanRefused { cause: _ } => none
-    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: p, timeout_path: _, worker_sandbox: _ } =>
-      Present { value: p }
-  }
-}
-
-fn plan_timeout_path(plan: LabDeployPlan) -> FilePath? {
-  match plan {
-    LabPlanRefused { cause: _ } => none
-    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: p, worker_sandbox: _ } =>
-      Present { value: p }
-  }
-}
-
-fn package_manager_is_apt(m: OsPackageManager) -> Bool {
-  match m {
-    Apt => true
-    Winget => false
-    HomebrewDeFacto => false
   }
 }
 

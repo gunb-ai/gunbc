@@ -2,7 +2,7 @@ module test.claim.live_deploy.lab_host_plan_witness
 
 import std.types { Bool, String, FilePath }
 import std.optional { Absent, Present }
-import std.os.types { Apt }
+import std.os.types { Apt, Winget, HomebrewDeFacto }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 import gunbc.host.host_software_surface {
@@ -29,12 +29,7 @@ import gunbc.live_deploy.lab_host_plan {
   LabOsUnobserved,
   LabSandbox,
   LabToolchainUnobserved,
-  plan_selects_system_manager_launcher,
-  plan_package_manager,
-  plan_git_path,
-  plan_jq_path,
-  plan_timeout_path,
-  package_manager_is_apt,
+  SystemManagerLauncherSelected,
   lab_plan_deploy_fields,
   system_manager_launcher_wiring_frontier,
 }
@@ -52,34 +47,38 @@ import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sys
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv1_as_data_yields_apt_and_receipt_toolchain_paths() -> Bool {
-  let plan = srv1_lab_deploy_plan()
   let r = srv1_software_inhabitance_receipt
-  match plan_package_manager(plan: plan) {
-    Absent => false
-    Present { value: m } =>
-      package_manager_is_apt(m: m)
-        && match plan_git_path(plan: plan) {
-          Present { value: p } => p == r.git_path
-          Absent => false
-        }
-        && match plan_jq_path(plan: plan) {
-          Present { value: p } => p == r.jq_path
-          Absent => false
-        }
-        && match plan_timeout_path(plan: plan) {
-          Present { value: p } => p == r.timeout_path
-          Absent => false
-        }
-        && match deployment_srv1_target().os_package_manager {
-          Present { value: pm } => pm == m
-          Absent => false
-        }
-        && srv1_lab_desired_deployment().target.host.identity == srv1_host.identity
+  match srv1_lab_deploy_plan() {
+    LabPlanRefused { cause: _ } => false
+    LabPlanReady { host: _, os_package_manager: m, tailscale_client: _, git_path: git, jq_path: jq, timeout_path: timeout, worker_sandbox: _ } =>
+      match m {
+        Apt =>
+          git == r.git_path
+            && jq == r.jq_path
+            && timeout == r.timeout_path
+            && match deployment_srv1_target().os_package_manager {
+              Present { value: pm } =>
+                match pm {
+                  Apt => srv1_lab_desired_deployment().target.host.identity == srv1_host.identity
+                  Winget => false
+                  HomebrewDeFacto => false
+                }
+              Absent => false
+            }
+        Winget => false
+        HomebrewDeFacto => false
+      }
   }
 }
 
 test fn srv1_plan_selects_system_manager_launcher() -> Bool {
-  plan_selects_system_manager_launcher(plan: lab_deploy_plan_for_compute_host(host: srv1_host))
+  match lab_deploy_plan_for_compute_host(host: srv1_host) {
+    LabPlanRefused { cause: _ } => false
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
+      match choice {
+        SystemManagerLauncherSelected => true
+      }
+  }
 }
 
 test fn a_sysctl_zero_host_refuses_and_does_not_claim_protect_home() -> Bool {
@@ -120,7 +119,12 @@ test fn unobserved_os_refuses_and_does_not_keep_srv1_apt() -> Bool {
       match c {
         LabOsUnobserved { obligation: _ } =>
           match host_os_package_manager(surface: srv1_software_surface()) {
-            HostPackageManagerKnown { manager: m } => package_manager_is_apt(m: m)
+            HostPackageManagerKnown { manager: m } =>
+              match m {
+                Apt => true
+                Winget => false
+                HomebrewDeFacto => false
+              }
             HostPackageManagerUnobserved { obligation: _ } => false
           }
         LabSandbox { cause: _ } => false
@@ -255,17 +259,26 @@ test fn srv1_deploy_target_reads_the_ready_plan_fields() -> Bool {
       match fields.os_package_manager {
         Absent => false
         Present { value: fm } =>
-          package_manager_is_apt(m: pm) && package_manager_is_apt(m: fm)
-            && match deployment_srv1_target().tailscale_client {
-              ScopedRemovalSupported { observed: _ } =>
-                match fields.tailscale_client {
-                  ScopedRemovalSupported { observed: _ } => true
-                  ScopedRemovalUnsupported { observed: _ } => false
-                  ScopedRemovalUnobserved { reason: _ } => false
-                }
-              ScopedRemovalUnsupported { observed: _ } => false
-              ScopedRemovalUnobserved { reason: _ } => false
-            }
+          match pm {
+            Winget => false
+            HomebrewDeFacto => false
+            Apt =>
+              match fm {
+                Winget => false
+                HomebrewDeFacto => false
+                Apt =>
+                  match deployment_srv1_target().tailscale_client {
+                    ScopedRemovalSupported { observed: _ } =>
+                      match fields.tailscale_client {
+                        ScopedRemovalSupported { observed: _ } => true
+                        ScopedRemovalUnsupported { observed: _ } => false
+                        ScopedRemovalUnobserved { reason: _ } => false
+                      }
+                    ScopedRemovalUnsupported { observed: _ } => false
+                    ScopedRemovalUnobserved { reason: _ } => false
+                  }
+              }
+          }
       }
   }
 }
