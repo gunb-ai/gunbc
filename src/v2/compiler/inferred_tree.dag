@@ -4,20 +4,11 @@ import std.types { List }
 import v2.std.cardinality { TerminationProof }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
-import std.algebra { length, list_snoc_item, PartialFunction }
-import std.optional { Absent, Optional, Present, optional_absent }
+import std.algebra { list_snoc_item, PartialFunction }
+import std.optional { Absent, Optional, Present }
 import v2.std.constraints { CanonicalGrounding }
-import v2.std.node {
-  Arrow,
-  Atom,
-  ComputationNode,
-  Conj,
-  Disj,
-  Instantiation,
-  Node,
-  Occupancy,
-  TypeNode
-}
+import v2.std.node { Node }
+import std.optional { Optional, optional_absent }
 import v2.std.witness { Witness }
 
 // InferredFacts/InferredTree/InferredFactsEntry are the SHAPE infer's pass
@@ -66,21 +57,6 @@ type InferredFacts {
 type InferredTree {
   root: Node
   facts: PartialFunction<Node, InferredFacts>
-}
-
-// THE EMPTY-PRODUCT ARM BODY. Whether that body is a nullary coproduct arm is not a type-node
-// shape of the use's derived type (Atom/Conj/Disj/Instantiation); v2.compiler.infer
-// infer_nullary_zero_param_coproduct_arm_use keys it on the resolved declaration.
-fn inferred_facts_empty_product_shape(declared: Node) -> Bool {
-  match declared.kind {
-    TypeNode { connective: Conj } => length(xs: declared.children) == 0
-    TypeNode { connective: Atom { identity: _ } } => false
-    TypeNode { connective: Disj } => false
-    TypeNode { connective: Arrow } => false
-    TypeNode { connective: Occupancy } => false
-    TypeNode { connective: Instantiation } => false
-    ComputationNode { behavior: _ } => false
-  }
 }
 
 type InferredFactsEntry {
