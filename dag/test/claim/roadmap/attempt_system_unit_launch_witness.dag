@@ -6,6 +6,13 @@ import std.measure { kibibyte }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
+import gunbc.live_deploy.emit { attempt_system_unit_grant_steps }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
 }
@@ -15,6 +22,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStop, attempt_system_unit_privileged_effect, attempt_system_unit_sudoers_body,
   attempt_system_unit_sudoers_path, attempt_system_unit_name_admitted,
   attempt_system_unit_systemd_run_command, attempt_system_unit_plan_from_facts,
+  attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_dir,
 }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
@@ -130,10 +138,11 @@ test fn the_launcher_site_conforms_in_the_privileged_effect_census() -> Bool {
 test fn each_instance_gets_its_own_sudoers_file_and_body() -> Bool {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
   let live_path = attempt_system_unit_sudoers_path(instance: live)
   let lab_path = attempt_system_unit_sudoers_path(instance: lab)
-  let live_body = attempt_system_unit_sudoers_body(instance: live)
-  let lab_body = attempt_system_unit_sudoers_body(instance: lab)
+  let live_body = attempt_system_unit_sudoers_body(instance: live, revision: rev)
+  let lab_body = attempt_system_unit_sudoers_body(instance: lab, revision: rev)
   live_path != lab_path
     && string_contains(s: live_path, pattern: live.instance_id as String)
     && string_contains(s: lab_path, pattern: lab.instance_id as String)
@@ -145,6 +154,32 @@ test fn each_instance_gets_its_own_sudoers_file_and_body() -> Bool {
     && !string_contains(s: live_body, pattern: lab.instance_root as String)
     && string_contains(s: lab_body, pattern: lab.instance_root as String)
     && !string_contains(s: lab_body, pattern: live.instance_root as String)
+}
+
+// DISCRIMINATING: sudoers pins the sha-addressed root-owned launcher, not the requester-writable
+// instance binary or checkout. The deploy grant installs that tree as root (privileged copy +
+// readback) and writes the sudoers body that names it.
+test fn the_launcher_grant_pins_a_root_owned_release_the_deploy_installs() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  let dir = attempt_system_unit_launcher_dir(instance: live, revision: rev)
+  let body = attempt_system_unit_sudoers_body(instance: live, revision: rev)
+  let steps = pipeline_steps_text(steps: attempt_system_unit_grant_steps(
+    spec: deployment_spec_srv1(),
+    principal: fleet_posix_ci_runner_principal(),
+    revision: rev,
+  ))
+  string_contains(s: dir, pattern: attempt_system_unit_launcher_helpers_root)
+    && string_contains(s: dir, pattern: live.instance_id as String)
+    && string_contains(s: dir, pattern: deploy_witness_release_revision as String)
+    && string_contains(s: body, pattern: dir)
+    && string_contains(s: body, pattern: gunbc_release_bin_name)
+    && !string_contains(s: body, pattern: live.serve_binary as String)
+    && !string_contains(s: body, pattern: live.repo_root as String)
+    && string_contains(s: steps, pattern: dir)
+    && string_contains(s: steps, pattern: "'--no-preserve=all'")
+    && string_contains(s: steps, pattern: "'-o' 'root' '-g' 'root'")
+    && string_contains(s: steps, pattern: dir)
 }
 
 fn launcher_execstoppost_argv_keeps_single_dollar(instance: HostDashboardInstance, exec_line: NonEmptyStr) -> Bool {

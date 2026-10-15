@@ -170,6 +170,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_sudoers_body, attempt_system_unit_sudoers_path,
+  attempt_system_unit_launcher_locus, attempt_system_unit_launcher_revision_receipt_path,
 }
 import gunbc.live_deploy.spec {
   HoldsProdRoleSingletons, HoldsNoRoleSingleton, deployment_fabric_storage_door_socket,
@@ -1094,16 +1095,20 @@ data publication_spool_request_mode: FileMode = FileMode {
 data publication_spool_answer_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
 data attempt_system_unit_grant_unknown_instance_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-system-unit sudoers grant has no HostDashboardInstance for this spec.instance_id, so it will not install a host-global file or another instance's grant. instance="
+data attempt_system_unit_grant_revision_unbound_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-system-unit launcher grant was asked to install under RevisionNotInstalled; a sha-addressed root-owned release has no path that could mean.\n"
 
 fn attempt_system_unit_grant_steps_for_instance(
   spec: DeploymentSpec,
   principal: GroundedPosixPrincipal,
   instance: HostDashboardInstance,
+  revision: ReleaseRevisionBinding,
 ) -> List<PipelineStep> {
+  let locus = attempt_system_unit_launcher_locus(instance: instance)
   let final_path = attempt_system_unit_sudoers_path(instance: instance)
   let temp_path = join([final_path, ".new"], "")
   let stage = join(["gunbc-attempt-system-unit-", instance.instance_id as String], "")
   let readback = join(["gunbc-attempt-system-unit-", instance.instance_id as String, "-readback"], "")
+  let rev_stage = join(["gunbc-attempt-system-unit-", instance.instance_id as String, "-revision"], "")
   concat(
     [
       deploy_raw(command: install_d_owned_command(
@@ -1111,38 +1116,59 @@ fn attempt_system_unit_grant_steps_for_instance(
         path: join([spec.service.instance_root as String, "/attempt-unit-spool"], ""),
       )),
     ],
-    [
-      deploy_raw(command: deploy_stage_write_command(stage_name: stage, content: attempt_system_unit_sudoers_body(instance: instance))),
-      deploy_raw(command: deploy_stage_visudo_check_command(stage_name: stage)),
-      deploy_raw(command: deploy_stage_install_owned_command(
-        stage_name: stage,
-        mode: "0440" as NonEmptyStr,
-        owner: approval_broker_helper_root_principal,
-        group: approval_broker_helper_root_principal,
-        dest: temp_path,
-      )),
-      deploy_raw(command: installed_visudo_policy_check_command(path: temp_path)),
-      deploy_raw(command: rename_no_target_directory_command(source: temp_path, dest: final_path)),
-      deploy_raw(command: installed_visudo_policy_check_command(path: final_path)),
-      deploy_raw(command: deploy_stage_install_from_command(
-        source: final_path,
-        mode: "0400" as NonEmptyStr,
-        owner: grounded_posix_principal_name(p: principal),
-        group: grounded_posix_principal_name(p: principal),
-        stage_name: readback,
-      )),
-      deploy_raw(command: deploy_stage_cmp_stages_command(left: stage, right: readback)),
-    ],
+    concat(
+      root_owned_helper_snapshot_steps(locus: locus, revision: revision),
+      [
+          deploy_raw(command: deploy_stage_write_command(
+            stage_name: rev_stage,
+            content: join([release_revision_execstart_text(binding: revision), "\n"], ""),
+          )),
+          deploy_raw(command: deploy_stage_install_owned_command(
+            stage_name: rev_stage,
+            mode: "0644" as NonEmptyStr,
+            owner: approval_broker_helper_root_principal,
+            group: approval_broker_helper_root_principal,
+            dest: attempt_system_unit_launcher_revision_receipt_path(instance: instance),
+          )),
+          deploy_raw(command: deploy_stage_write_command(stage_name: stage, content: attempt_system_unit_sudoers_body(instance: instance, revision: revision))),
+          deploy_raw(command: deploy_stage_visudo_check_command(stage_name: stage)),
+          deploy_raw(command: deploy_stage_install_owned_command(
+            stage_name: stage,
+            mode: "0440" as NonEmptyStr,
+            owner: approval_broker_helper_root_principal,
+            group: approval_broker_helper_root_principal,
+            dest: temp_path,
+          )),
+          deploy_raw(command: installed_visudo_policy_check_command(path: temp_path)),
+          deploy_raw(command: rename_no_target_directory_command(source: temp_path, dest: final_path)),
+          deploy_raw(command: installed_visudo_policy_check_command(path: final_path)),
+          deploy_raw(command: deploy_stage_install_from_command(
+            source: final_path,
+            mode: "0400" as NonEmptyStr,
+            owner: grounded_posix_principal_name(p: principal),
+            group: grounded_posix_principal_name(p: principal),
+            stage_name: readback,
+          )),
+          deploy_raw(command: deploy_stage_cmp_stages_command(left: stage, right: readback)),
+          deploy_raw(command: helper_snapshot_retire_command(base: locus.base, revision: revision)),
+        ],
+    ),
   )
 }
 
-fn attempt_system_unit_grant_steps(spec: DeploymentSpec, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
-  match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
-    DashboardInstanceIdUnknown { instance_id: id } => [
-      deploy_raw(command: join([attempt_system_unit_grant_unknown_instance_poison, id, "\n"], "")),
+fn attempt_system_unit_grant_steps(spec: DeploymentSpec, principal: GroundedPosixPrincipal, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  match revision {
+    RevisionNotInstalled => [
+      deploy_raw(command: attempt_system_unit_grant_revision_unbound_poison),
     ]
-    DashboardInstanceForId { instance: instance } =>
-      attempt_system_unit_grant_steps_for_instance(spec: spec, principal: principal, instance: instance)
+    RevisionBoundAtEmission { revision: _ } =>
+      match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+        DashboardInstanceIdUnknown { instance_id: id } => [
+          deploy_raw(command: join([attempt_system_unit_grant_unknown_instance_poison, id, "\n"], "")),
+        ]
+        DashboardInstanceForId { instance: instance } =>
+          attempt_system_unit_grant_steps_for_instance(spec: spec, principal: principal, instance: instance, revision: revision)
+      }
   }
 }
 
@@ -3266,22 +3292,27 @@ fn approval_broker_helper_snapshot_readback_command(dir: String) -> String {
 // release's directory. It is one argv, rendered by the same argv authority as every other deploy
 // command. find receives `!`, `{}` and `+` as words; the renderer quotes them and the shell strips
 // the quotes.
-fn approval_broker_helper_snapshot_retire_command(revision: ReleaseRevisionBinding) -> String {
+fn helper_snapshot_retire_command(base: String, revision: ReleaseRevisionBinding) -> String {
   shell_command_text_of_argv(argv: concat(
     [
-      find_program().invocation as String, approval_broker_helper_snapshot_base,
-      "-mindepth", "1", "-maxdepth", "1", "!", "-name", release_revision_execstart_text(binding: revision),
+      find_program().invocation as String, base,
+      "-mindepth", "1", "-maxdepth", "1", "-type", "d", "!", "-name", release_revision_execstart_text(binding: revision),
       "-exec",
     ],
     concat(sudo_elevate_argv(command: [fleet_rm_binary_path as String, "-rf", "--"]), ["{}", "+"]),
   ))
 }
 
-fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let dir = helper_locus_dir(locus: approval_broker_helper_snapshot_locus(), revision: revision)
+fn approval_broker_helper_snapshot_retire_command(revision: ReleaseRevisionBinding) -> String {
+  helper_snapshot_retire_command(base: approval_broker_helper_snapshot_base, revision: revision)
+}
+
+fn root_owned_helper_snapshot_steps(locus: HelperLocus, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let dir = helper_locus_dir(locus: locus, revision: revision)
   concat(
     [
-      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: approval_broker_helper_snapshot_base, privileged: true)),
+      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
+      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: locus.base, privileged: true)),
       deploy_raw(command: rm_force_recursive_command(path: dir)),
       deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: dir, privileged: true)),
       deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: join([dir, "/src"], ""), privileged: true)),
@@ -3293,15 +3324,23 @@ fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> Li
         deploy_raw(command: pwd_file_install_privileged_command(
           rel: join(["target/release/", gunbc_release_bin_name], ""),
           mode: install_executable_shared_mode,
-          owner: approval_broker_helper_root_principal,
-          group: approval_broker_helper_root_principal,
+          owner: locus.owner,
+          group: locus.owner,
           dest: join([dir, "/", gunbc_release_bin_name], ""),
         )),
-        locus_tree_receipt_step_at(owner: approval_broker_helper_root_principal, dir: dir, revision: revision),
-        deploy_raw(command: approval_broker_helper_snapshot_readback_command(dir: dir)),
+        locus_tree_receipt_step_at(owner: locus.owner, dir: dir, revision: revision),
+        deploy_raw(command: helper_snapshot_readback_command_at(
+          ancestors: path_ancestors_inclusive(path: locus.base),
+          dir: dir,
+          owner: bash_build_word_lit(text: locus.owner as String),
+        )),
       ],
     ),
   )
+}
+
+fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  root_owned_helper_snapshot_steps(locus: approval_broker_helper_snapshot_locus(), revision: revision)
 }
 
 fn approval_broker_helper_grant_admitted_install_steps(revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
@@ -3573,7 +3612,7 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
       deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
-    ], concat(approval_broker_lifecycle_steps(spec: spec), attempt_system_unit_grant_steps(spec: spec, principal: principal)))
+    ], concat(approval_broker_lifecycle_steps(spec: spec), attempt_system_unit_grant_steps(spec: spec, principal: principal, revision: revision)))
     PublicationHelperPathUnit => concat(
       concat(
         apply_publication_spool_steps(spec: spec),

@@ -68,6 +68,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 import extdeps.posix.signal { linux_standard_signal_number, linux_standard_signal_render }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
+  SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet,
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_command_argument_words,
 }
@@ -1800,17 +1801,17 @@ fn dispatch_review_unit_properties(
   exit_hook: NonEmptyStr?,
 ) -> List<SystemdRunProperty> {
   concat([
-    SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
-    SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
-    SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
-    SystemdRunProperty { property: StandardErrorProperty, value: join(["append:", log_path], "") as NonEmptyStr },
-    SystemdRunProperty { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
-    SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
-    SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
-    SystemdRunProperty { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
+    NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
+    NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
+    NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
+    NamedUnitSetting { property: StandardErrorProperty, value: join(["append:", log_path], "") as NonEmptyStr },
+    NamedUnitSetting { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
+    NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
+    NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
+    NamedUnitSetting { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
   ], match exit_hook {
-    Present { value: hook } => [SystemdRunProperty { property: ExecStopPostProperty, value: hook }]
-    Absent => [SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr }]
+    Present { value: hook } => [NamedUnitSetting { property: ExecStopPostProperty, value: hook }]
+    Absent => [NamedUnitSetting { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr }]
   })
 }
 
@@ -2979,16 +2980,16 @@ fn dispatch_worker_unit_stream_properties(
   concat(
     compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
     [
-      SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", stdout_path], "") as NonEmptyStr },
-      SystemdRunProperty { property: StandardErrorProperty, value: join(["append:", stderr_path], "") as NonEmptyStr },
-      SystemdRunProperty { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
-      SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
-      SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
-      SystemdRunProperty { property: NoNewPrivilegesProperty, value: "yes" as NonEmptyStr },
-      SystemdRunProperty { property: RestrictSUIDSGIDProperty, value: "yes" as NonEmptyStr },
-      SystemdRunProperty { property: CapabilityBoundingSetProperty, value: "dropped" as NonEmptyStr },
-      SystemdRunProperty { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)) as NonEmptyStr },
-      SystemdRunProperty { property: ExecStopPostProperty, value: exit_hook },
+      NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", stdout_path], "") as NonEmptyStr },
+      NamedUnitSetting { property: StandardErrorProperty, value: join(["append:", stderr_path], "") as NonEmptyStr },
+      NamedUnitSetting { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
+      NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
+      NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
+      NamedUnitSetting { property: NoNewPrivilegesProperty, value: "yes" as NonEmptyStr },
+      NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: "yes" as NonEmptyStr },
+      EmptyCapabilityBoundingSet,
+      NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)) as NonEmptyStr },
+      NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
     ],
   )
 }

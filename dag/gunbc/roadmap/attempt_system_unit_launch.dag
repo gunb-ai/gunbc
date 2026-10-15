@@ -16,13 +16,21 @@ module gunbc.roadmap.attempt_system_unit_launch
 // (`/etc/sudoers.d/gunbc-attempt-system-unit-<instance_id>`). A host-global file that named both
 // srv1-live and srv1-lab meant a lab deploy installed production's grant.
 //
-// THE ROOT-RUN BINARY AND .dag SOURCES ARE REQUESTER-WRITABLE. The grant runs this CLI as root
-// against the instance `serve_binary` and the instance checkout's `dag/` and `src/v2`. Those paths
-// are writable by the instance service user (the requester). That is safe only while the requester
-// is already root-equivalent on the host.
+// THE BYTES ROOT RUNS ARE A ROOT-OWNED RELEASE, not the instance checkout. The grant names
+// /opt/gunbc/attempt-system-unit-helpers/<instance_id>/<sha>/{gunbc,dag,src/v2}, installed by that
+// instance's deploy the same way approval-broker-helpers are: root-owned, not group- or
+// world-writable, sha-addressed, sudoers pinned to that path. The requester can edit
+// instance.serve_binary and the checkout; those paths are not the grant.
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, CommitSha }
 import std.optional { Present }
+import std.algebra { trim }
+import gunbc.live_deploy.release_locus {
+  ReleaseRevisionBinding, RevisionBoundAtEmission, RevisionNotInstalled,
+  HelperLocus, helper_locus_dir, approval_broker_helper_root_principal, approval_broker_tree_subdirs,
+  release_revision_execstart_text,
+}
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.human_intervention { EveryProvision }
@@ -33,7 +41,7 @@ import gunbc.auth.authorization_pattern_selection {
   ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
 }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_command_of, systemd_run_property_options_short,
   systemd_run_command_argument_words, systemd_run_option_words_refused_cause_detail,
   RunUnit, Wait, Quiet, Collect, EndOfOptions,
@@ -61,7 +69,24 @@ data attempt_system_unit_launch_function: String = "attempt_system_unit_launch_c
 data attempt_system_unit_pending_child: String = "attempt-unit-spool/pending"
 data attempt_system_unit_name_prefix: String = "gunbc-attempt-"
 data attempt_system_unit_name_suffix: String = ".service"
+data attempt_system_unit_launcher_helpers_root: String = "/opt/gunbc/attempt-system-unit-helpers"
+data attempt_system_unit_launcher_revision_receipt_name: String = "installed-revision"
 data attempt_system_unit_source_roots: List<NonEmptyStr> = ["dag" as NonEmptyStr, "src/v2" as NonEmptyStr]
+
+fn attempt_system_unit_launcher_locus(instance: HostDashboardInstance) -> HelperLocus {
+  HelperLocus {
+    base: join([attempt_system_unit_launcher_helpers_root, "/", instance.instance_id as String], ""),
+    owner: approval_broker_helper_root_principal,
+  }
+}
+
+fn attempt_system_unit_launcher_dir(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> String {
+  helper_locus_dir(locus: attempt_system_unit_launcher_locus(instance: instance), revision: revision)
+}
+
+fn attempt_system_unit_launcher_revision_receipt_path(instance: HostDashboardInstance) -> String {
+  join([attempt_system_unit_launcher_locus(instance: instance).base, "/", attempt_system_unit_launcher_revision_receipt_name], "")
+}
 
 fn attempt_system_unit_privileged_effect_subject() -> NonEmptyStr {
   "start, stop, or reset-failed one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance service user, with the typed confinement property set and no other unit, user, property, or program" as NonEmptyStr
@@ -150,7 +175,7 @@ fn attempt_system_unit_control_admitted(verb: AttemptSystemUnitVerb, unit: NonEm
 }
 
 fn attempt_system_unit_user_property(user: NonEmptyStr) -> SystemdRunProperty {
-  SystemdRunProperty { property: User, value: user }
+  NamedUnitSetting { property: User, value: user }
 }
 
 fn attempt_system_unit_properties(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, user: NonEmptyStr) -> List<SystemdRunProperty> {
@@ -228,17 +253,18 @@ fn attempt_system_unit_launch_named_argument(instance_root: String) -> NamedArgu
   admit_named_argument(name: "instance_root", value: instance_root)
 }
 
-fn attempt_system_unit_launch_gunbc_argv(instance: HostDashboardInstance) -> List<NonEmptyStr> {
+fn attempt_system_unit_launch_gunbc_argv_at(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<NonEmptyStr> {
+  let dir = attempt_system_unit_launcher_dir(instance: instance, revision: revision)
   match attempt_system_unit_launch_named_argument(instance_root: instance.instance_root as String) {
     NamedArgumentNameEmpty => []
     NamedArgumentNameHoldsSeparator { name: _ } => []
     NamedArgumentAdmitted { argument: arg } =>
       concat(
         gunbc_entry_run_argv(
-          workspace_root: instance.repo_root as NonEmptyStr,
-          binary: instance.serve_binary as NonEmptyStr,
-          source_roots: attempt_system_unit_source_roots,
-          entry: attempt_system_unit_launch_entry as NonEmptyStr,
+          workspace_root: dir as NonEmptyStr,
+          binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
+          source_roots: map(approval_broker_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
+          entry: join([dir, "/", attempt_system_unit_launch_entry], "") as NonEmptyStr,
           function: attempt_system_unit_launch_function as NonEmptyStr,
         ),
         ["--arg" as NonEmptyStr, join([arg.name, "=", arg.value], "") as NonEmptyStr],
@@ -246,8 +272,8 @@ fn attempt_system_unit_launch_gunbc_argv(instance: HostDashboardInstance) -> Lis
   }
 }
 
-fn attempt_system_unit_launch_host_argv(instance: HostDashboardInstance) -> HostExecArgv {
-  let gunbc_argv = attempt_system_unit_launch_gunbc_argv(instance: instance)
+fn attempt_system_unit_launch_host_argv_at(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> HostExecArgv {
+  let gunbc_argv = attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision)
   if count(gunbc_argv) == 0 {
     host_exec_argv(program: "/usr/bin/false", args: ["attempt-system-unit-launch-argv-refused"])
   } else {
@@ -256,13 +282,25 @@ fn attempt_system_unit_launch_host_argv(instance: HostDashboardInstance) -> Host
   }
 }
 
-fn attempt_system_unit_sudoers_line(instance: HostDashboardInstance) -> String {
+fn attempt_system_unit_launch_host_argv(instance: HostDashboardInstance) -> HostExecArgv {
+  let read = Filesystem.Read(path: attempt_system_unit_launcher_revision_receipt_path(instance: instance))
+  if !read.success {
+    host_exec_argv(program: "/usr/bin/false", args: ["attempt-system-unit-launcher-revision-unreadable"])
+  } else {
+    attempt_system_unit_launch_host_argv_at(
+      instance: instance,
+      revision: RevisionBoundAtEmission { revision: trim(s: read.content) as CommitSha },
+    )
+  }
+}
+
+fn attempt_system_unit_sudoers_line(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> String {
   join([
     instance.directory_owner.user as String,
     " ALL=(",
     executor_sudoers_run_as as String,
     ") NOPASSWD: ",
-    join(map(attempt_system_unit_launch_gunbc_argv(instance: instance), w => sudoers_argument_word(w: w as String)), " "),
+    join(map(attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision), w => sudoers_argument_word(w: w as String)), " "),
   ], "")
 }
 
@@ -270,10 +308,10 @@ fn attempt_system_unit_sudoers_path(instance: HostDashboardInstance) -> String {
   join(["/etc/sudoers.d/gunbc-attempt-system-unit-", instance.instance_id as String], "")
 }
 
-fn attempt_system_unit_sudoers_body(instance: HostDashboardInstance) -> String {
+fn attempt_system_unit_sudoers_body(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> String {
   join([
     "# GENERATED by gunbc.roadmap.attempt_system_unit_launch — do not hand-edit",
-    attempt_system_unit_sudoers_line(instance: instance),
+    attempt_system_unit_sudoers_line(instance: instance, revision: revision),
     "",
   ], "\n")
 }

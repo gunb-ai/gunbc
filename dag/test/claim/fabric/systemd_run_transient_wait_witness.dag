@@ -1,10 +1,13 @@
 module test.claim.fabric.systemd_run_transient_wait_witness
 
-import std.types { Bool, List }
-import extdeps.systemd { WorkingDirectoryProperty, MemoryMax }
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.systemd { WorkingDirectoryProperty, MemoryMax, CapabilityBoundingSetProperty, systemd_unit_property_wire }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet,
+  systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused,
+  CapabilityBoundingSetValueUnexpressible, UnitSettingValueMultiline,
+  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   SystemdRunOptionWordsProjected, SystemdRunOptionWordsRefused,
   SystemdSetenvBinding,
   RunUserManager, RunScope, Wait, Quiet, Pipe, Collect, EndOfOptions, SetEnv,
@@ -20,8 +23,8 @@ import gunbc.systemd_run_transient {
 }
 
 data wait_properties: List<SystemdRunProperty> = [
-  SystemdRunProperty { property: WorkingDirectoryProperty, value: "/tmp/path with space" },
-  SystemdRunProperty { property: MemoryMax, value: "17179869184" },
+  NamedUnitSetting { property: WorkingDirectoryProperty, value: "/tmp/path with space" },
+  NamedUnitSetting { property: MemoryMax, value: "17179869184" },
 ]
 
 // THE POSITIVE CONTROL FOR THE TYPED CUTOVER: the words the typed option model projects are
@@ -68,12 +71,27 @@ test fn systemd_wait_route_materializes_the_projected_words() -> Bool {
 test fn a_property_value_the_wire_cannot_carry_is_refused() -> Bool {
   match systemd_run_transient_wait_unit_command(
     unit: "fci1-refused.service",
-    properties: [SystemdRunProperty { property: WorkingDirectoryProperty, value: "/tmp/a\nb" as NonEmptyStr }],
+    properties: [NamedUnitSetting { property: WorkingDirectoryProperty, value: "/tmp/a\nb" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
     SystemdRunCommandRefused { cause: UnitSettingValueMultiline { property: p } } => systemd_unit_property_wire(property: p) == "WorkingDirectory"
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: _ } => false
+  }
+}
+
+// DISCRIMINATING: a non-empty CapabilityBoundingSet value is refused, not rewritten to the empty
+// set. The empty set is EmptyCapabilityBoundingSet; the wire spelling is never the dispatch key.
+test fn a_nonempty_capability_bounding_set_is_not_silently_replaced() -> Bool {
+  match systemd_run_property_assignment(property: NamedUnitSetting { property: CapabilityBoundingSetProperty, value: "CAP_NET_RAW" as NonEmptyStr }) {
+    SystemdRunPropertyAssignmentRefused { cause: CapabilityBoundingSetValueUnexpressible { value: v } } =>
+      (v as String) == "CAP_NET_RAW"
+        && match systemd_run_property_assignment(property: EmptyCapabilityBoundingSet) {
+          SystemdRunPropertyAssignmentReady { assignment: a } => a == "CapabilityBoundingSet="
+          SystemdRunPropertyAssignmentRefused { cause: _ } => false
+        }
+    SystemdRunPropertyAssignmentRefused { cause: _ } => false
+    SystemdRunPropertyAssignmentReady { assignment: _ } => false
   }
 }
 
@@ -87,7 +105,7 @@ test fn a_property_value_the_wire_cannot_carry_is_refused() -> Bool {
 test fn the_collecting_transient_builder_emits_unit_collect_properties() -> Bool {
   match systemd_run_transient_unit_command(
     unit: "fci1-order.service",
-    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    properties: [NamedUnitSetting { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
     SystemdRunCommandRefused { cause: _ } => false
@@ -106,7 +124,7 @@ test fn the_collecting_transient_builder_emits_unit_collect_properties() -> Bool
 test fn the_retained_transient_builder_omits_collect() -> Bool {
   match systemd_run_transient_retained_unit_command(
     unit: "fci1-retained.service",
-    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    properties: [NamedUnitSetting { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
     SystemdRunCommandRefused { cause: _ } => false
@@ -123,7 +141,7 @@ test fn the_retained_transient_builder_omits_collect() -> Bool {
 test fn the_user_wait_builder_renders_the_old_order() -> Bool {
   match systemd_run_user_wait_command(
     unit: "fci1-user.service",
-    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    properties: [NamedUnitSetting { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     setenv_bindings: [SystemdSetenvBinding { name: "A" as NonEmptyStr, value: "c" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
@@ -143,7 +161,7 @@ test fn the_user_wait_builder_renders_the_old_order() -> Bool {
 // properties, then --.
 test fn the_scope_builder_leads_with_scope_only() -> Bool {
   match systemd_run_system_scope_command(
-    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    properties: [NamedUnitSetting { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
     SystemdRunCommandRefused { cause: _ } => false

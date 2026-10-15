@@ -63,7 +63,10 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command,
   dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv,
 }
-import extdeps.systemd.systemd_run { systemd_run_option_words_refused_cause_detail, systemd_run_property_assignment }
+import extdeps.systemd.systemd_run {
+  systemd_run_option_words_refused_cause_detail, systemd_run_property_assignments,
+  SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
+}
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection,
@@ -250,7 +253,7 @@ import gunbc.worker_lifecycle {
 }
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
 import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
-import extdeps.systemd.systemd_run { SystemdRunProperty, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_facts_from_plan, attempt_system_unit_encode_start,
   attempt_system_unit_write_pending, attempt_system_unit_launch_host_argv,
@@ -1488,7 +1491,11 @@ fn belt_session_container_create(
           }
         Present { value: held } => {
           let properties = dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: held.grant.amount, process_bounds: session_process_bounds)
-          match session_placement_record_write(stores: held.stores, host: instance.host_identity as String, grant: held.grant, unit_properties: map(properties, p => systemd_run_property_assignment(property: p))) {
+          match systemd_run_property_assignments(properties: properties) {
+            SystemdRunPropertyAssignmentsRefused { cause: why } =>
+              ExecStepFailed { step: "session-placement-record", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
+            SystemdRunPropertyAssignmentsReady { assignments: property_texts } =>
+          match session_placement_record_write(stores: held.stores, host: instance.host_identity as String, grant: held.grant, unit_properties: property_texts) {
             SessionPlacementWriteFailed { path, error } =>
               ExecStepFailed { step: "session-placement-record", detail: join(["the placement record could not be written at ", path, ": ", error], "") }
             SessionPlacementWritten { path: _ } =>
@@ -1515,6 +1522,7 @@ fn belt_session_container_create(
                     )
                   }
               }
+          }
           }
         }
       }
@@ -14580,12 +14588,12 @@ fn belt_obligation_unit_command(
   gunbc_user_work_transient_command(
     unit: unit,
     properties: concat([
-      SystemdRunProperty { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },
-      SystemdRunProperty { property: RuntimeMaxSecProperty, value: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
-      SystemdRunProperty { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
-      SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
+      NamedUnitSetting { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },
+      NamedUnitSetting { property: RuntimeMaxSecProperty, value: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
+      NamedUnitSetting { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
+      NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     ], match stop_hook {
-      Present { value: hook } => [SystemdRunProperty { property: ExecStopPostProperty, value: hook }]
+      Present { value: hook } => [NamedUnitSetting { property: ExecStopPostProperty, value: hook }]
       Absent => [] as List<SystemdRunProperty>
     }),
     setenv_bindings: [SystemdSetenvBinding { name: belt_spawn_workdir_env_var, value: repo as NonEmptyStr }],

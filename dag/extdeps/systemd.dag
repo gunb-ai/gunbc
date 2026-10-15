@@ -1,6 +1,6 @@
 module extdeps.systemd
 
-import std.types { NonEmptyStr, String, Int }
+import std.types { NonEmptyStr, String, Int, Bool }
 import std.types { list_length }
 import std.algebra { trim }
 import std.types { List }
@@ -185,6 +185,67 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     NoNewPrivilegesProperty => "NoNewPrivileges" as NonEmptyStr
     RestrictSUIDSGIDProperty => "RestrictSUIDSGID" as NonEmptyStr
     CapabilityBoundingSetProperty => "CapabilityBoundingSet" as NonEmptyStr
+  }
+}
+
+// THE VARIANT IS THE DISPATCH KEY. systemd_unit_property_wire is the man-page spelling, not a
+// selector: comparing that spelling would fork the typed property into a string identity.
+fn systemd_unit_property_is_capability_bounding_set(property: SystemdUnitProperty) -> Bool {
+  match property {
+    CapabilityBoundingSetProperty => true
+    MemoryMax => false
+    MemorySwapMax => false
+    MemoryHigh => false
+    CPUWeight => false
+    CPUQuota => false
+    CPUQuotaPerSecUSec => false
+    MemoryCurrent => false
+    MemoryPeak => false
+    TasksMax => false
+    TasksCurrent => false
+    ControlGroup => false
+    SliceProperty => false
+    PartOf => false
+    ActiveEnterTimestampMonotonic => false
+    ActiveState => false
+    MainPID => false
+    LoadState => false
+    UnitFileState => false
+    SubState => false
+    Result => false
+    ExecMainStatus => false
+    ExecStartProperty => false
+    ExecStopPostProperty => false
+    User => false
+    WorkingDirectoryProperty => false
+    RuntimeDirectoryProperty => false
+    Unit => false
+    NextElapseUSecMonotonic => false
+    AccuracyUSec => false
+    TimersMonotonic => false
+    NeedDaemonReload => false
+    IdProperty => false
+    KillModeProperty => false
+    ExitTypeProperty => false
+    EnvironmentProperty => false
+    EnvironmentFilesProperty => false
+    PassEnvironmentProperty => false
+    AfterProperty => false
+    WantsProperty => false
+    InvocationIDProperty => false
+    FragmentPathProperty => false
+    StandardOutputProperty => false
+    StandardErrorProperty => false
+    ProtectSystemProperty => false
+    ProtectHomeProperty => false
+    PrivateTmpProperty => false
+    ReadWritePathsProperty => false
+    RemainAfterExitProperty => false
+    RuntimeMaxSecProperty => false
+    CollectModeProperty => false
+    JobProperty => false
+    NoNewPrivilegesProperty => false
+    RestrictSUIDSGIDProperty => false
   }
 }
 
