@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.algebra { FreeSemigroup }
 import std.nat { Nat, nat_ceil_div }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.measure { Second, second, ByteSize, byte_size, byte_size_count }
+import std.measure { Second, second, micro_per_unit, ByteSize, byte_size, byte_size_count }
 import std.content_hash { ContentHash, serialize_content_hash, content_hash_of_value }
 import extdeps.bazel.label { Label }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -72,7 +72,7 @@ fn unit_runtime_from_stamps(start_us: String, exit_us: String) -> UnitRuntimeRea
         else if e < s { UnitRuntimeUnread { detail: "the exit timestamp precedes the start timestamp" } }
         else { match checked_int_to_nat(n: e - s) {
           Absent => UnitRuntimeUnread { detail: "runtime is not a natural number" }
-          Present { value: micros } => match nat_ceil_div(a: micros, b: 1000000) {
+          Present { value: micros } => match nat_ceil_div(a: micros, b: micro_per_unit()) {
             Absent => UnitRuntimeUnread { detail: "runtime did not divide into seconds" }
             Present { value: secs } => UnitRuntimeMeasured { billable: second(count: secs) }
           }
