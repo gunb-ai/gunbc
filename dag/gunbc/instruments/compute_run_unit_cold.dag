@@ -19,7 +19,7 @@ import extdeps.rust.rustup { rustup_home_env_name }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
-  NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire, compute_unit_name,
+  NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire,
 }
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_request { work_default_build }
@@ -205,76 +205,6 @@ fn no_observation(bytes: String, reason: String) -> CliWireResponse {
   CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: reason } }
 }
 
-fn observe_host_cmd(instance: HostDashboardInstance, script: String) -> String {
-  match compute_exec(program: "/usr/bin/bash", workdir: ".", args: ["-lc", script]) {
-    ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
-    ComputeExecFailed { exit_code, stdout, stderr } =>
-      join(["exit=", to_string(value: exit_code), "\n", stdout, stderr], "")
-  }
-}
-
-data compute_run_unit_slot_fs_unit_grant_bytes: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 1))
-
-fn compute_run_unit_slot_fs_unit_grant() -> Kibibyte {
-  kibibyte_from_byte_size_floor(b: compute_run_unit_slot_fs_unit_grant_bytes)
-}
-
-fn compute_run_unit_slot_fs_job_memory_demand() -> ByteSize {
-  measure_add(a: compute_run_unit_slot_fs_unit_grant_bytes, b: compute_run_unit_cold_launcher_headroom)
-}
-
-fn slot_fs_host_script(layout: ComputeLayout, workspace: String) -> String {
-  join([
-    "echo '=== job id ==='\n",
-    "id; echo hostname=$(hostname); echo uname=$(uname -a)\n",
-    "echo '=== job euid home ==='\n",
-    "getent passwd \"$(id -u)\" || true\n",
-    "echo '=== user manager ==='\n",
-    "systemctl --user show --property=Id,ControlGroup,DefaultMemoryAccounting,ProtectSystem,ProtectHome,PrivateTmp,ReadWritePaths 2>/dev/null || true\n",
-    "echo '=== user@.service (system) ==='\n",
-    "systemctl show \"user@$(id -u).service\" --property=User,UID,FragmentPath,DropInPaths,ProtectSystem,ProtectHome,PrivateTmp,ReadWritePaths 2>/dev/null || true\n",
-    "echo '=== linger ==='\n",
-    "loginctl show-user \"$(id -un)\" -p Linger -p UID -p Name 2>/dev/null || true\n",
-    "echo '=== path chain owner/mode ==='\n",
-    "for p in '", layout.target_dir, "' '", layout.work_dir, "' '", layout.checkout, "' '", layout.root, "' '", workspace, "' /opt/actions-runner /opt; do\n",
-    "  if [ -e \"$p\" ]; then stat -c 'path=%n owner=%U group=%G uid=%u gid=%g mode=%a type=%F' \"$p\"; else echo missing=\"$p\"; fi\n",
-    "done\n",
-    "echo '=== parents of workspace (_work) ==='\n",
-    "cur='", workspace, "'\n",
-    "while [ -n \"$cur\" ] && [ \"$cur\" != / ]; do\n",
-    "  stat -c 'path=%n owner=%U group=%G uid=%u gid=%g mode=%a' \"$cur\" || true\n",
-    "  cur=$(dirname \"$cur\")\n",
-    "done\n",
-    "echo '=== ACL target_dir ==='\n",
-    "if command -v getfacl >/dev/null; then getfacl -p '", layout.target_dir, "' 2>/dev/null || true; else echo getfacl=absent; ls -ld '", layout.target_dir, "'; fi\n",
-    "echo '=== mount of target_dir ==='\n",
-    "df -T '", layout.target_dir, "' 2>/dev/null || true\n",
-    "findmnt -T '", layout.target_dir, "' 2>/dev/null || true\n",
-  ], "")
-}
-
-fn slot_fs_unit_script(layout: ComputeLayout, unit: String) -> String {
-  join([
-    "echo '=== unit id ==='\n",
-    "id\n",
-    "echo '=== unit umask ==='\n",
-    "umask\n",
-    "echo '=== unit euid home ==='\n",
-    "getent passwd \"$(id -u)\" || true\n",
-    "echo '=== unit touch target ==='\n",
-    "touch '", layout.target_dir, "/slot-fs-probe'; echo touch_rc=$?\n",
-    "mkdir -p '", layout.target_dir, "/release/deps'\n",
-    "echo x > '", layout.target_dir, "/release/deps/probe.d'; echo write_d_rc=$?\n",
-    "stat -c 'path=%n owner=%U group=%G uid=%u gid=%g mode=%a' '", layout.target_dir, "' '", layout.target_dir, "/release/deps' 2>/dev/null || true\n",
-    "echo '=== unit systemctl show ==='\n",
-    "systemctl --user show '", unit, "' -p ProtectSystem -p ProtectHome -p PrivateTmp -p ReadWritePaths -p User -p UID -p GID -p WorkingDirectory -p BindPaths -p InaccessiblePaths -p TemporaryFileSystem -p MountFlags -p ProtectControlGroups\n",
-    "echo '=== unit invocation env ==='\n",
-    "echo INVOCATION_ID=$INVOCATION_ID\n",
-    "echo CARGO_TARGET_DIR=$CARGO_TARGET_DIR\n",
-    "pwd\n",
-  ], "")
-}
-
 fn compute_run_unit_cold_exit() -> CliWireResponse {
   match observe_hermetic_user_session_runtime() {
     HermeticUserSessionRuntimeAbsent =>
@@ -416,112 +346,4 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
     }
   }
 }
-}
-
-fn compute_run_unit_slot_fs_exit() -> CliWireResponse {
-  match observe_hermetic_user_session_runtime() {
-    HermeticUserSessionRuntimeAbsent =>
-      no_observation(
-        bytes: "compute-run-unit-slot-fs: no observation: user session bus absent at /run/user/<uid>/bus (systemd-run --user cannot run)",
-        reason: "user session bus absent",
-      )
-    HermeticUserSessionRuntimeBound { runtime_dir } => {
-      match observe_isolated_job_toolchain_homes() {
-        Absent =>
-          CliWirePrintable {
-            bytes: "compute-run-unit-slot-fs: ToolchainHomesNotIsolated CARGO_HOME/RUSTUP_HOME unset or empty",
-            exit: ExitFailure { code: 1, reason: "ToolchainHomesNotIsolated" },
-          }
-        Present { value: toolchain_homes } => {
-          let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, toolchain_homes: toolchain_homes)
-          let workspace = observe_workspace(instance: probe)
-          let identity = observe_run_identity()
-          if workspace == "" {
-            CliWirePrintable {
-              bytes: "compute-run-unit-slot-fs: git toplevel (job workspace) could not be read",
-              exit: ExitFailure { code: 1, reason: "workspace unreadable" },
-            }
-          } else if identity == "" {
-            no_observation(
-              bytes: "compute-run-unit-slot-fs: no observation: clock unix millis unreadable",
-              reason: "run identity unreadable",
-            )
-          } else if path_is_under_opt_gunbc(path: workspace) {
-            CliWirePrintable {
-              bytes: join(["compute-run-unit-slot-fs: workspace is host-shared production path ", workspace], ""),
-              exit: ExitFailure { code: 1, reason: "workspace under /opt/gunbc" },
-            }
-          } else {
-            let run_root = join([workspace, "/.gunbc-compute-hermetic/", identity], "")
-            let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: run_root as FilePath, toolchain_homes: toolchain_homes)
-            let layout = compute_layout(instance: instance, identity_hex: identity)
-            let root = compute_root(instance: instance) as String
-            if path_is_under_opt_gunbc(path: instance.instance_root as String) || path_is_under_opt_gunbc(path: root) {
-              CliWirePrintable {
-                bytes: join(["compute-run-unit-slot-fs: compute root resolved to host-shared path ", root], ""),
-                exit: ExitFailure { code: 1, reason: "compute root under /opt/gunbc" },
-              }
-            } else {
-              let roots_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
-                && mkdir_ok(instance: instance, path: layout.work_dir)
-                && mkdir_ok(instance: instance, path: layout.checkout)
-                && mkdir_ok(instance: instance, path: layout.target_dir)
-                && mkdir_ok(instance: instance, path: layout.attempts_dir)
-              if !roots_ok {
-                CliWirePrintable {
-                  bytes: join(["compute-run-unit-slot-fs: could not create layout under ", layout.root], ""),
-                  exit: ExitFailure { code: 1, reason: "layout directories were not created" },
-                }
-              } else {
-                let unit = compute_unit_name(identity_hex: identity) as String
-                let job_obs = observe_host_cmd(instance: instance, script: slot_fs_host_script(layout: layout, workspace: workspace))
-                match compute_run_unit(
-                  instance: instance,
-                  layout: layout,
-                  identity_hex: identity,
-                  argv: ["/usr/bin/bash", "-lc", slot_fs_unit_script(layout: layout, unit: unit)],
-                  env: concat(
-                    hermetic_user_session_unit_setenv(runtime_dir: runtime_dir),
-                    hermetic_toolchain_unit_setenv(homes: toolchain_homes),
-                  ),
-                  launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
-                  granted: compute_run_unit_slot_fs_unit_grant(),
-                ) {
-                  ComputeUnitRunRefused { cause: _ } =>
-                    CliWirePrintable {
-                      bytes: join(["compute-run-unit-slot-fs: systemd-run option words refused\n", job_obs], ""),
-                      exit: ExitFailure { code: 1, reason: "unit launch refused" },
-                    }
-                  ComputeUnitRunExecuted { run: unit_run } => {
-                    let invoked = unit_was_invoked(summary: unit_run.summary)
-                    let bytes = join([
-                      "compute-run-unit-slot-fs identity=", identity, "\n",
-                      "workspace=", workspace, "\n",
-                      "run_root=", run_root, "\n",
-                      "compute_root=", root, "\n",
-                      "target_dir=", layout.target_dir, "\n",
-                      "checkout=", layout.checkout, "\n",
-                      "user_runtime_dir=", runtime_dir as String, "\n",
-                      "unit=", unit, "\n",
-                      "unit_invoked=", if invoked { "true" } else { "false" }, "\n",
-                      "unit result: ", compute_summary_result_wire(summary: unit_run.summary), "\n",
-                      "=== job-side ===\n",
-                      job_obs,
-                      "=== unit-side ===\n",
-                      match unit_run.exec {
-                        ComputeExecOk { stdout, stderr } => join(["exec=ok\n", stdout, stderr], "")
-                        ComputeExecFailed { exit_code, stdout, stderr } =>
-                          join(["exec=failed exit=", to_string(value: exit_code), "\n", stdout, stderr], "")
-                      },
-                    ], "")
-                    CliWirePrintable { bytes: bytes, exit: ExitSuccess }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
 }

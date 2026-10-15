@@ -560,13 +560,6 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
                 function: "compute_run_unit_cold_exit",
             },
         ),
-        (
-            instrument_label("compute-run-unit-slot-fs"),
-            TargetProducer::CliWireProgram {
-                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
-                function: "compute_run_unit_slot_fs_exit",
-            },
-        ),
     ]
 }
 
