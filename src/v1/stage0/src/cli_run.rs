@@ -33814,8 +33814,8 @@ mod union_dedup_import_facts_law {
 ///
 /// A cache that is never consulted twice is not an optimisation, it is a claim about the
 /// call graph written in the wrong place — and one that a reader can only check by counting
-/// callers. Direct value flow states it structurally: `prepare_repository_once` is called at
-/// one site, and every frame is derived from what it returned.
+/// callers. Direct value flow states it structurally: `prepare_repository_from_corpus` is
+/// called at the remaining seed sites, and every frame is derived from what it returned.
 ///
 /// WHAT PREPARATION LEARNED IS RETAINED; THE BYTES IT LEARNED IT FROM ARE NOT. Preparation
 /// already walked and read every admitted file, so a later consumer that walks again to ask
@@ -33935,7 +33935,7 @@ pub fn release_process_caches_at_exit() {
 
 /// THE SUBJECT THE REQUIRED RUN PREPARES — assembled once, BEFORE any judgment is passed on it.
 ///
-/// Split out of [`prepare_repository_once`] rather than copied beside it because a consumer that
+/// Split out of [`prepare_repository_from_corpus`] rather than copied beside it because a consumer that
 /// wants to MEASURE the compiler's judgment over the required run's population must read the same
 /// population BY CONSTRUCTION, not by a second discovery that happens to agree today (DESIGN §3:
 /// one authority for "which modules CI compiles"). Two discoveries that drift make a measurement
@@ -34332,17 +34332,7 @@ pub(crate) fn module_name_is_or_is_contained_by(module: &str, seed: &str) -> boo
             && module.as_bytes()[seed.len()] == b'.')
 }
 
-/// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
-/// typecheck gate, and returns everything a later consumer could want to know about the
-/// subject so that none of them reaches for the repository again.
-pub fn prepare_repository_once(
-    source_roots: &[String],
-    exclude_substrings: &[String],
-) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
-    prepare_repository_closure(source_roots, exclude_substrings, None)
-}
-
-/// `prepare_repository_once` over the import closure of a seed-prefix roster; see
+/// Prepare over the import closure of a seed-prefix roster; see
 /// `assemble_prepared_subject_closure`.
 pub fn prepare_repository_closure(
     source_roots: &[String],
@@ -34800,27 +34790,6 @@ fn scope_order_index(prepared: &PreparedRepository) -> Rc<ScopeOrderIndex> {
             .push((prepared.subject_digest.clone(), created.clone()))
     });
     created
-}
-
-/// How many modules each per-subject memo currently holds — (fragments, reached lists).
-/// Reads the live caches for the given subject; absent caches read as zero.
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn scope_memo_population_for_test(prepared: &PreparedRepository) -> (usize, usize) {
-    let fragments = SCOPE_FRAGMENT_CACHES.with(|c| {
-        c.borrow()
-            .iter()
-            .find(|(digest, _)| *digest == prepared.subject_digest)
-            .map(|(_, cache)| cache.borrow().len())
-            .unwrap_or(0)
-    });
-    let reached = SCOPE_ORDER_INDEXES.with(|c| {
-        c.borrow()
-            .iter()
-            .find(|(digest, _)| *digest == prepared.subject_digest)
-            .map(|(_, index)| index.reached_by_module.borrow().len())
-            .unwrap_or(0)
-    });
-    (fragments, reached)
 }
 
 /// One module's reached list, memoized. The concatenation order — reference targets first,

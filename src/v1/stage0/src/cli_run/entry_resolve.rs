@@ -1448,39 +1448,6 @@ pub fn resolve_entry_graph_shared(
     Ok(resolved)
 }
 
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn typed_module_cache_len_for_test(index: &MultiEntryIndex) -> usize {
-    index.typed_module_cache.borrow().len()
-}
-
-/// Test-only projection of the durable typed-cache authority: the content keys whose
-/// computations populated this private index. A fresh, non-evicting test index makes
-/// this exactly the distinct-computation set without retaining request attribution.
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn typed_module_cache_content_keys_for_test(
-    index: &MultiEntryIndex,
-) -> std::collections::BTreeSet<String> {
-    index.typed_module_cache.borrow().keys().cloned().collect()
-}
-
-/// Test witness for the sample-once cap: exposes the same accessor runtime
-/// call sites use, so a test can observe that repeated calls against one
-/// `index` return the identical value even as the underlying signal moves —
-/// the property the 2026-07-21 fleet OOM fix depends on.
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn typed_module_cache_cap_for_test(index: &MultiEntryIndex) -> usize {
-    typed_module_cache_cap(index)
-}
-
-/// Keys currently in `resolved_graph_memo`. The harness diffs this across one resolve to
-/// recover that entry's subject key, which is what `index_schedule_entry_completed` needs
-/// to drop the entry's assembled graph — recovered by observation rather than by
-/// re-deriving the subject digest in a second place.
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String> {
-    index.resolved_graph_memo.borrow().keys().cloned().collect()
-}
-
 /// Empty caches over an already-indexed `source_files` map. Recorded as
 /// `ScratchCachesOverExistingSet` so the sharing control can count it without treating it as a
 /// second `NameSetIndex` (`MultiEntryIndexBuiltTwiceForOneNameSet` remains two name-set indexes).
