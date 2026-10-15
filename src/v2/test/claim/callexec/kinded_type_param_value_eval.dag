@@ -257,3 +257,11 @@ test fn kpr2_assembles() -> Bool { match cref_inferred_of(o: cref_assemble(src: 
   Absent => false } }
 test fn kpr2_call_grounded() -> Bool { kpz_call_grounded(src: kpr2_src(), name: ^width_of) }
 test fn kpr2_is_8() -> Bool { kpe_int_of(r: cref_eval_of_call_to(o: cref_assemble(src: kpr2_src()), name: ^width_of)) == Present { value: 8 } }
+
+fn kps2_src() -> String {
+  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn mk8() -> Box<8> {\n  let r = Box { v: 0 }\n  r\n}\n\nfn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  width_of(x: mk8())\n}\n"
+}
+test fn kps2_assembles() -> Bool { match cref_inferred_of(o: cref_assemble(src: kps2_src())) { Present { value: _ } => true
+  Absent => false } }
+test fn kps2_call_grounded() -> Bool { kpz_call_grounded(src: kps2_src(), name: ^width_of) }
+test fn kps2_is_8() -> Bool { kpe_int_of(r: cref_eval_of_call_to(o: cref_assemble(src: kps2_src()), name: ^width_of)) == Present { value: 8 } }
