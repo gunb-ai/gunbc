@@ -138,6 +138,7 @@ import std.optional {
 }
 import v2.std.provenance {
   SpanIndex,
+  node_authored_span_optional,
   node_occurrence_id_optional,
   span_index_empty,
   span_index_textual_locus_optional,
@@ -379,6 +380,7 @@ import v2.std.diagnostic {
   InvariantPortLocus,
   DeclarationLocus,
   declaration_locus,
+  source_port_locus,
   diagnostics_fatal_reason,
   invariant_port_locus,
   Rejected,
@@ -386,6 +388,9 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted,
   diagnostics_fatal,
+}
+import v2.std.lens_verdict {
+  lens_verdict_diagnostic_located_text_in_spans,
 }
 import v2.std.node {
   Arrow,
@@ -2610,6 +2615,76 @@ fn native_module_resolve_verdict(
   }
 }
 
+// A RESOLVE REFUSAL'S FIRST DIAGNOSTIC IS THE MODULE'S OWN FIRST CAUSE, and the operator line must
+// name the file, the unbound (or other) atom, and the authored span. NativeCensusModuleResolveRefused
+// already carries that chain; NativeTestRefused used to keep only the NodeLocus, so
+// native_route_member_row_text (empty SpanIndex) printed a projected occurrence and never the
+// provider file. The authored locus is prepended -- the original NodeLocus stays as the fatal's
+// occurrence identity (DESIGN §3: one fact, two projections, not a rewrite of the resolver's
+// diagnostic).
+fn native_node_authored_locus(node: Node, positions: NativeCensusPositionTable) -> Optional<Locus> {
+  match native_census_owner_key(node: node) {
+    Absent => optional_absent()
+    Present { value: id } =>
+      match map_lookup(positions.owner, id) {
+        Absent => optional_absent()
+        Present { value: owner_path } =>
+          match map_lookup(positions.files, owner_path) {
+            Absent => optional_absent()
+            Present { value: file } => node_authored_span_optional(node: node, index: file.spans)
+          }
+      }
+  }
+}
+
+fn native_locus_naming_atom(locus: Locus, node: Node) -> Locus {
+  match locus {
+    Textual { file: f, extent: e } =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: name } => source_port_locus(port: name, file: f, extent: e)
+        Absent => locus
+      }
+    SourcePortLocus { anchor: _, file: _, extent: _ } => locus
+    NodeLocus { anchor: _ } => locus
+    InvariantPortLocus { anchor: _, invariant: _ } => locus
+    DeclarationLocus { declaration: _ } => locus
+  }
+}
+
+fn native_authored_first_cause_diagnostic(d: Diagnostic, positions: NativeCensusPositionTable) -> Optional<Diagnostic> {
+  match d.at {
+    NodeLocus { anchor: a } =>
+      match native_node_authored_locus(node: a.at, positions: positions) {
+        Absent => optional_absent()
+        Present { value: locus } =>
+          optional_present(value: Diagnostic {
+            reason: d.reason,
+            at: native_locus_naming_atom(locus: locus, node: a.at),
+            correction: d.correction
+          })
+      }
+    Textual { file: _, extent: _ } => optional_absent()
+    SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
+    InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
+    DeclarationLocus { declaration: _ } => optional_absent()
+  }
+}
+
+fn native_diagnostics_report_first_cause(d: NonEmptyDiagnostics, positions: NativeCensusPositionTable) -> NonEmptyDiagnostics {
+  match native_authored_first_cause_diagnostic(d: d.head, positions: positions) {
+    Absent => d
+    Present { value: located } =>
+      NonEmptyDiagnostics { head: located, tail: Cons { head: d.head, tail: d.tail } }
+  }
+}
+
+fn native_prepare_resolve_refused(diagnostics: NonEmptyDiagnostics, positions: NativeCensusPositionTable) -> NativeTestVerdict {
+  NativeTestRefused {
+    stage: NativeTestStagePrepare,
+    diagnostics: native_diagnostics_report_first_cause(d: diagnostics, positions: positions)
+  }
+}
+
 type NativeLaneModuleResolutionStep {
   resolution: NativeLaneModuleResolution
   context: NativeTestContext
@@ -2643,14 +2718,17 @@ fn native_lane_module_resolution(
         NativeLaneModuleResolveRowsDecided {
           rows: native_lane_module_refusal_rows(
             entry: entry,
-            verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: native_import_target_refusal_diagnostics(target: t, resolver: d) }
+            verdict: native_prepare_resolve_refused(
+              diagnostics: native_import_target_refusal_diagnostics(target: t, resolver: d),
+              positions: step.context.positions
+            )
           )
         }
       NativeModuleResolveRefused { first: d, rest: _, observation: _ } =>
         NativeLaneModuleResolveRowsDecided {
           rows: native_lane_module_refusal_rows(
             entry: entry,
-            verdict: NativeTestRefused { stage: NativeTestStagePrepare, diagnostics: d }
+            verdict: native_prepare_resolve_refused(diagnostics: d, positions: step.context.positions)
           )
         }
       NativeModuleResolveAccepted { resolved: resolved } =>
@@ -4656,7 +4734,21 @@ fn native_demand_settled_label(state: DemandState<NativeDemandValue>) -> String 
           match r {
             NativeLaneModuleResolved { resolved: _ } => "resolve_available"
             NativeLaneModuleContextRowsDecided { rows: _ } => "resolve_context_refused"
-            NativeLaneModuleResolveRowsDecided { rows: _ } => "resolve_refused"
+            NativeLaneModuleResolveRowsDecided { rows: rows } =>
+              match rows {
+                Empty => "resolve_refused"
+                Cons { head: row, tail: _ } =>
+                  match row.verdict {
+                    NativeTestRefused { stage: _, diagnostics: d } =>
+                      concat(
+                        "resolve_refused first=",
+                        lens_verdict_diagnostic_located_text_in_spans(d: d.head, index: span_index_empty())
+                      )
+                    NativeTestPassed => "resolve_refused"
+                    NativeTestReturnedFalse => "resolve_refused"
+                    NativeTestReturnedOther => "resolve_refused"
+                  }
+              }
           }
         NativeInferValue { preparation: p } =>
           match p {
