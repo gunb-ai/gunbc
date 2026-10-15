@@ -173,3 +173,10 @@ test fn kpv_function_value_body() -> Bool { kpv_reason() == Present { value: ^ev
 test fn kpv_grounding_not_derived() -> Bool { kpv_reason() == Present { value: ^eval_rejected_grounding_not_derived } }
 test fn kpv_parameter_reference_unbound() -> Bool { kpv_reason() == Present { value: ^eval_rejected_parameter_reference_unbound } }
 test fn kpv_absent() -> Bool { kpv_reason() == Absent }
+
+fn kpw_src() -> String {
+  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> = Int\n\nfn mk8() -> Box<8> {\n  0\n}\n\nfn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  width_of(x: mk8())\n}\n"
+}
+test fn kpw_assembles() -> Bool { match cref_inferred_of(o: cref_assemble(src: kpw_src())) { Present { value: _ } => true
+  Absent => false } }
+test fn kpw_is_8() -> Bool { cref_value_int_optional(r: cref_eval_of_call_to(o: cref_assemble(src: kpw_src()), name: ^width_of)) == Present { value: 8 } }
