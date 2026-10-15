@@ -12,7 +12,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.gunbc_cli_command { gunbc_test_command }
-import gunbc.durable_cas_file_store { cas_name_is_digits }
+import std.decimal { decimal_digits_only }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult, claim_set_results_frame }
 
 // THE GUEST'S HALF OF A REVISION JOB, AFTER THE TREE IS VERIFIED AND BUILT.
@@ -140,7 +140,7 @@ fn claim_set_guest_main() -> ProcessExit {
   let tree = claim_set_guest_env(name: claim_set_guest_tree_env)
   let device = claim_set_guest_env(name: claim_set_guest_device_env)
   let bytes_text = claim_set_guest_env(name: claim_set_guest_device_bytes_env)
-  if claims == "" || commit == "" || tree == "" || device == "" || !cas_name_is_digits(s: bytes_text) {
+  if claims == "" || commit == "" || tree == "" || device == "" || bytes_text == "" || !decimal_digits_only(s: bytes_text) {
     exit_failure(reason: "claim_set_guest: GUNBC_CLAIM_SET_CLAIMS, _COMMIT, _TREE, _RESULTS_DEVICE and a decimal _RESULTS_BYTES must all be set")
   } else {
     match claim_set_spec_labels(text: claims) {
