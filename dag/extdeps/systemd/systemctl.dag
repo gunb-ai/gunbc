@@ -227,6 +227,13 @@ fn systemctl_mask_now_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_mask_verb as String, "--now", unit as String]
 }
 
+// MASK WITHOUT --now IS THE INHIBIT ALONE: the unit can no longer be started or restarted, and a
+// process it already runs keeps running. That is what a drain needs -- stop new admission, let the
+// admitted job finish -- where `mask --now` would also stop the unit and kill that job.
+fn systemctl_mask_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_mask_verb as String, unit as String]
+}
+
 fn systemctl_unmask_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_unmask_verb as String, unit as String]
 }

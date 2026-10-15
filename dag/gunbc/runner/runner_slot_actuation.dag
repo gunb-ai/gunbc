@@ -1,0 +1,310 @@
+module gunbc.runner.runner_slot_actuation
+
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.algebra { trim }
+import extdeps.systemd { IdProperty, LoadState, UnitFileState, ActiveState, systemd_unit_property_wire, SystemdUnitProperty }
+import extdeps.systemd.systemctl {
+  systemctl_show_properties_argv,
+  systemctl_unmask_argv,
+  systemctl_enable_argv,
+  systemctl_start_argv,
+  systemctl_mask_argv,
+  systemctl_stop_argv,
+}
+import extdeps.procps.ps { ps_unit_comm_listing_argv, ps_unit_runs_command }
+import extdeps.sudo.elevation { sudo_elevate }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+
+// THE TWO SLOT LIFECYCLE EFFECTS, AS ONE AUTHORITY FOR EVERY CALLER. ActivateRunnerSlot brings a slot
+// the model desires into service; DrainAndMaskRunnerSlot takes a slot out of service without ever
+// killing a running job. gunbc.runner.runner_lifecycle_realize realizes the two HostEffect arms through
+// these functions, and gunbc.runner.runner_host_file_converge sequences them for a whole host; both
+// run over the same administrator-over-fleet-SSH edge, so there is one transport and one meaning.
+//
+// EACH EFFECT IS READ, DECIDE, ACT, READ BACK. The decision is a pure function of the reading, so an
+// already-converged slot issues no leg at all (idempotence is structural, not a flag), and the result
+// is settled only when an independent re-read shows the target state. Every failure is a typed
+// refusal naming its step; nothing widens.
+
+data slot_actuation_show_properties: List<SystemdUnitProperty> = [IdProperty, LoadState, UnitFileState, ActiveState]
+
+// The GitHub Actions runner's job process. The listener (Runner.Listener) waits for work; a job runs
+// in Runner.Worker, so a unit owning a Runner.Worker is executing a job and must not be stopped.
+data runner_job_process_comm: String = "Runner.Worker"
+
+type SlotActuationReading {
+  unit: NonEmptyStr
+  load_state: String
+  unit_file_state: String
+  active_state: String
+}
+
+type SlotWorkerReading
+  = SlotWorkerAbsent
+  | SlotWorkerPresent
+  | SlotWorkerUnread { cause: String }
+
+type SlotActuationOutcome
+  = SlotActuationNoop { unit: NonEmptyStr, state: String }
+  | SlotActivated { unit: NonEmptyStr }
+  | SlotDrainedAndMasked { unit: NonEmptyStr }
+  | SlotDrainPending { unit: NonEmptyStr, cause: String }
+  | SlotActuationRefused { unit: NonEmptyStr, step: String, reason: String }
+
+fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
+  match o {
+    SlotActuationNoop { unit: _, state: _ } => true
+    SlotActivated { unit: _ } => true
+    SlotDrainedAndMasked { unit: _ } => true
+    SlotDrainPending { unit: _, cause: _ } => false
+    SlotActuationRefused { unit: _, step: _, reason: _ } => false
+  }
+}
+
+fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
+  match o {
+    SlotActuationNoop { unit: u, state: st } => join(["actuation ", u as String, " noop ", st], "")
+    SlotActivated { unit: u } => join(["actuation ", u as String, " activated-and-read-back"], "")
+    SlotDrainedAndMasked { unit: u } => join(["actuation ", u as String, " drained-masked-and-read-back"], "")
+    SlotDrainPending { unit: u, cause: c } => join(["actuation ", u as String, " DRAIN-PENDING ", c], "")
+    SlotActuationRefused { unit: u, step: st, reason: r } => join(["actuation ", u as String, " REFUSED step=", st, " ", r], "")
+  }
+}
+
+// ── Pure decisions ──────────────────────────────────────────────────────────────────────────────
+
+fn slot_state_active(active_state: String) -> Bool {
+  trim(s: active_state) == "active" || trim(s: active_state) == "activating" || trim(s: active_state) == "reloading"
+}
+
+fn slot_state_stopped(active_state: String) -> Bool {
+  trim(s: active_state) == "inactive" || trim(s: active_state) == "failed"
+}
+
+// AN ACTIVE SLOT IS LOADED, ENABLED AND RUNNING. A unit the manager does not know cannot be brought
+// into service by this effect -- installing the slot is a different effect -- so not-found refuses.
+type SlotActivationPlan
+  = ActivationAlreadyActive
+  | ActivationSteps { steps: List<List<String>> }
+  | ActivationRefused { reason: String }
+
+fn slot_activation_plan(r: SlotActuationReading) -> SlotActivationPlan {
+  let load = trim(s: r.load_state)
+  let file = trim(s: r.unit_file_state)
+  if load == "not-found" || load == "" {
+    ActivationRefused { reason: concat("the slot's unit is not installed on this host (LoadState=", concat(load, ")")) }
+  } else if file == "enabled" && slot_state_active(active_state: r.active_state) {
+    ActivationAlreadyActive
+  } else {
+    ActivationSteps {
+      steps: concat(
+        if file == "masked" { [systemctl_unmask_argv(unit: r.unit)] } else { [] },
+        concat(
+          if file == "enabled" { [] } else { [systemctl_enable_argv(unit: r.unit)] },
+          if slot_state_active(active_state: r.active_state) { [] } else { [systemctl_start_argv(unit: r.unit)] },
+        ),
+      ),
+    }
+  }
+}
+
+fn slot_activation_read_back_holds(r: SlotActuationReading) -> Bool {
+  trim(s: r.load_state) == "loaded" && trim(s: r.unit_file_state) == "enabled" && slot_state_active(active_state: r.active_state)
+}
+
+// A DRAINED SLOT IS MASKED AND STOPPED. The mask comes first and is safe at any time: it only stops
+// the unit being started again. Stopping is admitted only when the unit is not executing a job --
+// a Runner.Worker present means a job is in flight, so the slot is left masked and running and the
+// effect reports DrainPending; the ephemeral runner exits when its job ends, the mask keeps it down,
+// and the next pass reads it stopped. An unreadable process listing refuses rather than guessing idle.
+//
+// RESIDUAL RISK, STATED: between reading the listing idle and the stop, the listener can accept a job.
+// The window is one SSH round trip, and closing it needs the runner itself to refuse new work
+// (deregistration through the GitHub API) -- not modeled here.
+type SlotDrainPlan
+  = DrainAlreadyMasked
+  | DrainSteps { steps: List<List<String>> }
+  | DrainWaitForJob { mask: List<List<String>> }
+  | DrainRefused { reason: String }
+
+fn slot_drain_plan(r: SlotActuationReading, worker: SlotWorkerReading) -> SlotDrainPlan {
+  let load = trim(s: r.load_state)
+  let file = trim(s: r.unit_file_state)
+  let masked = file == "masked" || load == "masked"
+  let mask = if masked { [] } else { [systemctl_mask_argv(unit: r.unit)] }
+  if load == "not-found" {
+    DrainAlreadyMasked
+  } else if masked && slot_state_stopped(active_state: r.active_state) {
+    DrainAlreadyMasked
+  } else if slot_state_stopped(active_state: r.active_state) {
+    DrainSteps { steps: mask }
+  } else {
+    match worker {
+      SlotWorkerUnread { cause: c } => DrainRefused { reason: concat("whether the slot is executing a job could not be read, so it is not stopped: ", c) }
+      SlotWorkerPresent => DrainWaitForJob { mask: mask }
+      SlotWorkerAbsent => DrainSteps { steps: concat(mask, [systemctl_stop_argv(unit: r.unit)]) }
+    }
+  }
+}
+
+fn slot_drain_read_back_holds(r: SlotActuationReading) -> Bool {
+  trim(s: r.load_state) == "not-found"
+    || ((trim(s: r.unit_file_state) == "masked" || trim(s: r.load_state) == "masked") && slot_state_stopped(active_state: r.active_state))
+}
+
+// ── Readings ────────────────────────────────────────────────────────────────────────────────────
+
+fn slot_show_value(lines: List<String>, property: SystemdUnitProperty) -> String? {
+  let key = concat(systemd_unit_property_wire(property: property) as String, "=")
+  fold(lines, init: none, f: (acc, l) =>
+    if starts_with(s: l, prefix: key) { Present { value: substring(s: l, start: string_length(s: key), end: string_length(s: l)) } } else { acc })
+}
+
+// The reading for ONE unit out of a show over several, joined by Id; a unit with no complete block is
+// unread, never borrowed from a neighbour.
+fn slot_actuation_reading_of(unit: NonEmptyStr, show_stdout: String) -> SlotActuationReading? {
+  fold(split(s: show_stdout, delimiter: "\n\n"), init: none, f: (acc, b) => {
+    let lines = map(split(s: b, delimiter: "\n"), l => trim(s: l))
+    match slot_show_value(lines: lines, property: IdProperty) {
+      Absent => acc
+      Present { value: id } =>
+        if trim(s: id) != (unit as String) { acc } else {
+          match slot_show_value(lines: lines, property: LoadState) {
+            Absent => acc
+            Present { value: ls } =>
+              match slot_show_value(lines: lines, property: UnitFileState) {
+                Absent => acc
+                Present { value: fs } =>
+                  match slot_show_value(lines: lines, property: ActiveState) {
+                    Absent => acc
+                    Present { value: a } => Present { value: SlotActuationReading { unit: unit, load_state: ls, unit_file_state: fs, active_state: a } }
+                  }
+              }
+          }
+        }
+    }
+  })
+}
+
+// ── The argv this module sends, for the portability witness ─────────────────────────────────────
+
+fn slot_actuation_elevated(command: List<String>) -> List<String> {
+  let inv = sudo_elevate(command: command)
+  concat([inv.bin_path], inv.args)
+}
+
+fn slot_actuation_argvs(unit: NonEmptyStr) -> List<List<String>> {
+  concat(
+    [systemctl_show_properties_argv(units: [unit], properties: slot_actuation_show_properties), ps_unit_comm_listing_argv()],
+    map([systemctl_unmask_argv(unit: unit), systemctl_enable_argv(unit: unit), systemctl_start_argv(unit: unit), systemctl_mask_argv(unit: unit), systemctl_stop_argv(unit: unit)], c => slot_actuation_elevated(command: c)),
+  )
+}
+
+// ── Remote legs over the administrator edge ─────────────────────────────────────────────────────
+
+type SlotReadOutcome
+  = SlotRead { reading: SlotActuationReading }
+  | SlotReadRefused { reason: String }
+
+fn read_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotReadOutcome
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: slot_actuation_show_properties)) {
+    TypedArgvExecRefused { reason: why } => SlotReadRefused { reason: why }
+    TypedArgvExecConverged { result: r } =>
+      if !r.success {
+        SlotReadRefused { reason: join(["systemctl show exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
+      } else {
+        match slot_actuation_reading_of(unit: unit, show_stdout: r.stdout) {
+          Absent => SlotReadRefused { reason: "systemctl show returned no complete block for the unit" }
+          Present { value: rd } => SlotRead { reading: rd }
+        }
+      }
+  }
+}
+
+fn read_slot_worker_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotWorkerReading
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ps_unit_comm_listing_argv()) {
+    TypedArgvExecRefused { reason: why } => SlotWorkerUnread { cause: why }
+    TypedArgvExecConverged { result: r } =>
+      if !r.success || trim(s: r.stdout) == "" {
+        SlotWorkerUnread { cause: join(["ps exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
+      } else if ps_unit_runs_command(listing: r.stdout, unit: unit as String, comm: runner_job_process_comm) {
+        SlotWorkerPresent
+      } else {
+        SlotWorkerAbsent
+      }
+  }
+}
+
+fn run_slot_steps_over(target: SshTarget, context: FleetSshExecutionContext, steps: List<List<String>>) -> String?
+{
+  fold(steps, init: none, f: (acc, step) => match acc {
+    Present { value: _ } => acc
+    Absent =>
+      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: slot_actuation_elevated(command: step)) {
+        TypedArgvExecRefused { reason: why } => Present { value: join([join(step, " "), ": ", why], "") }
+        TypedArgvExecConverged { result: r } =>
+          if r.success { none } else { Present { value: join([join(step, " "), " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
+      }
+  })
+}
+
+// ── The two effects ─────────────────────────────────────────────────────────────────────────────
+
+fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
+{
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
+    SlotRead { reading: r } =>
+      match slot_activation_plan(r: r) {
+        ActivationRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
+        ActivationAlreadyActive => SlotActuationNoop { unit: unit, state: "active" }
+        ActivationSteps { steps: ss } =>
+          match run_slot_steps_over(target: target, context: context, steps: ss) {
+            Present { value: why } => SlotActuationRefused { unit: unit, step: "activate", reason: why }
+            Absent =>
+              match read_slot_over(target: target, context: context, unit: unit) {
+                SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "readback", reason: why }
+                SlotRead { reading: after } =>
+                  if slot_activation_read_back_holds(r: after) { SlotActivated { unit: unit } } else {
+                    SlotActuationRefused { unit: unit, step: "readback", reason: join(["not active after activation: LoadState=", after.load_state, " UnitFileState=", after.unit_file_state, " ActiveState=", after.active_state], "") }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn drain_and_mask_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
+{
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
+    SlotRead { reading: r } => {
+      let worker = if slot_state_active(active_state: r.active_state) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotWorkerAbsent }
+      match slot_drain_plan(r: r, worker: worker) {
+        DrainAlreadyMasked => SlotActuationNoop { unit: unit, state: "masked-and-stopped" }
+        DrainRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
+        DrainWaitForJob { mask: m } =>
+          match run_slot_steps_over(target: target, context: context, steps: m) {
+            Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
+            Absent => SlotDrainPending { unit: unit, cause: "a job is running (Runner.Worker present); the unit is masked and is left running until the job ends" }
+          }
+        DrainSteps { steps: ss } =>
+          match run_slot_steps_over(target: target, context: context, steps: ss) {
+            Present { value: why } => SlotActuationRefused { unit: unit, step: "drain", reason: why }
+            Absent =>
+              match read_slot_over(target: target, context: context, unit: unit) {
+                SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "readback", reason: why }
+                SlotRead { reading: after } =>
+                  if slot_drain_read_back_holds(r: after) { SlotDrainedAndMasked { unit: unit } } else {
+                    SlotActuationRefused { unit: unit, step: "readback", reason: join(["not masked and stopped after drain: LoadState=", after.load_state, " UnitFileState=", after.unit_file_state, " ActiveState=", after.active_state], "") }
+                  }
+              }
+          }
+      }
+    }
+  }
+}

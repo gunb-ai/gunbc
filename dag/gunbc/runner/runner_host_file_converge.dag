@@ -96,6 +96,11 @@ import gunbc.runner.runner_unit_file {
 }
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members }
+import gunbc.runner.runner_slot_actuation {
+  SlotActuationOutcome, SlotActuationRefused,
+  activate_runner_slot_over, drain_and_mask_runner_slot_over,
+  slot_actuation_settled, slot_actuation_outcome_wire,
+}
 import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
 import gunbc.runner.runner_unit { runner_slot_unit_name }
 import gunbc.runner.runner_width_transition {
@@ -1711,6 +1716,7 @@ type RunnerHostFileRun {
   privilege: RunnerHostPrivilegeStanding
   results: List<RunnerHostFileResult>
   withheld: List<RunnerHostFileWithheld>
+  actuations: List<SlotActuationOutcome>
   residue: RetiredResidueResult
   reload: RunnerHostManagerReload
   slots: RunnerSlotPopulation
@@ -1751,6 +1757,63 @@ fn runner_host_manager_reload_step(
   }
 }
 
+// THE SLOT POPULATION IS BROUGHT TO THE COMMITTED WIDTH BEFORE ITS CPU CEILING IS WRITTEN. Apply mode
+// activates every desired runner slot (gunbc.runner.runner_slot_actuation activate_runner_slot_over) and
+// drains and masks every fabric member and required retiree (drain_and_mask_runner_slot_over) over the
+// same administrator edge; observe mode actuates nothing. The per-slot quota divides the host by the
+// committed width, so writing it while fewer slots run would hold the live runners to a share sized
+// for slots that are not there -- the CPU drop-in is withheld until every actuation settled.
+fn runner_host_slot_actuations(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: RunnerHostFileConvergeMode,
+  privilege: RunnerHostPrivilegeStanding,
+) -> List<SlotActuationOutcome>
+{
+  match mode {
+    RunnerHostFilesObserveOnly => []
+    RunnerHostFilesApply =>
+      match privilege {
+        AdministratorPrivilegeRefused { reason: why } =>
+          map(concat(subject.desired_units, runner_host_drain_units(subject: subject)), u => SlotActuationRefused { unit: u, step: "privilege", reason: why })
+        AdministratorPrivilegeAvailable =>
+          concat(
+            map(subject.desired_units, u => activate_runner_slot_over(target: subject.target, context: context, unit: u)),
+            map(runner_host_drain_units(subject: subject), u => drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: u)),
+          )
+      }
+  }
+}
+
+fn runner_host_drain_units(subject: RunnerHostFileSubject) -> List<NonEmptyStr> {
+  concat(subject.fabric_units, filter(subject.retired_units, r => !any(subject.fabric_units, f => (f as String) == (r as String))))
+}
+
+type RunnerHostCpuDropinGate {
+  files: List<RunnerHostFileDesired>
+  withheld: List<RunnerHostFileWithheld>
+}
+
+fn runner_host_cpu_dropin_gate(
+  files: List<RunnerHostFileDesired>,
+  withheld: List<RunnerHostFileWithheld>,
+  actuations: List<SlotActuationOutcome>,
+  mode: RunnerHostFileConvergeMode,
+) -> RunnerHostCpuDropinGate {
+  let unsettled = filter(actuations, a => !slot_actuation_settled(o: a))
+  if length(unsettled) == 0 {
+    RunnerHostCpuDropinGate { files: files, withheld: withheld }
+  } else {
+    RunnerHostCpuDropinGate {
+      files: filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String)),
+      withheld: concat(withheld, [RunnerHostFileWithheld {
+        subject: "runner-cpu-dropin" as NonEmptyStr,
+        cause: join(["the slot population is not yet at the committed width (", to_string(length(unsettled)), " actuations unsettled), so the per-slot quota sized for that width is not written"], "") as NonEmptyStr,
+      }]),
+    }
+  }
+}
+
 // ORDER: privilege, observe every file, write the ones that need it, read every slot, reload if the
 // manager owes one, read every slot again. The privilege leg runs FIRST and gates every write, so a host
 // where the declared administrator cannot sudo reports that by name. Observation does not need
@@ -1766,7 +1829,9 @@ fn run_runner_host_files(
 ) -> RunnerHostFileRun
 {
   let privilege = observe_runner_host_administrator_privilege(subject: subject, context: context)
-  let planned = map(files, f => plan_runner_host_file(subject: subject, context: context, file: f))
+  let actuations = runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege)
+  let gated = runner_host_cpu_dropin_gate(files: files, withheld: withheld, actuations: actuations, mode: mode)
+  let planned = map(gated.files, f => plan_runner_host_file(subject: subject, context: context, file: f))
   let results = map(planned, p =>
     RunnerHostFileResult {
       planned: p,
@@ -1780,7 +1845,7 @@ fn run_runner_host_files(
       },
     })
   let residue_observed = observe_retired_residue(subject: subject, context: context, residue: ctrl_jobserver_retired_residue)
-  let fragment_delivered = runner_host_files_deliver_fragment(files: files)
+  let fragment_delivered = runner_host_files_deliver_fragment(files: gated.files)
   let expect = runner_slot_expectation(per_slot: per_slot, fragment_delivered: fragment_delivered, residue_absent: match residue_observed {
     ResidueAbsent => true
     ResiduePresent { unit_known: _, present: _ } => false
@@ -1795,7 +1860,7 @@ fn run_runner_host_files(
     ManagerReloadOwedNotAttempted { reason: _ } => before
   }
   let gate = residue_retirement_gate(
-    withheld: withheld,
+    withheld: gated.withheld,
     fragment_delivered: fragment_delivered && all(results, r => runner_host_file_outcome_settled(outcome: r.outcome)),
     slots_effective: runner_slot_population_effective(population: slots),
   )
@@ -1804,7 +1869,8 @@ fn run_runner_host_files(
     mode: mode,
     privilege: privilege,
     results: results,
-    withheld: withheld,
+    withheld: gated.withheld,
+    actuations: actuations,
     residue: converge_retired_residue(subject: subject, context: context, mode: mode, privilege: privilege, residue: ctrl_jobserver_retired_residue, observed: residue_observed, gate: gate),
     reload: reload,
     slots: slots,
@@ -1851,6 +1917,7 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
     RunnerHostFilesApply =>
       all(run.results, r => runner_host_file_outcome_settled(outcome: r.outcome))
         && length(run.withheld) == 0
+        && all(run.actuations, a => slot_actuation_settled(o: a))
         && retired_residue_settled(result: run.residue)
         && (match run.reload {
           ManagerReloadNotOwed => true
@@ -1898,6 +1965,7 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     "administrator-privilege=", runner_host_privilege_wire(privilege: run.privilege), "\n",
     join(map(run.results, r => runner_host_file_result_line(r: r)), ""),
     "planned-writes=", to_string(length(filter(run.results, r => runner_host_file_planned_write(p: r.planned)))), "\n",
+    join(map(run.actuations, a => concat(slot_actuation_outcome_wire(o: a), "\n")), ""),
     retired_residue_result_line(result: run.residue),
     "manager-reload=", runner_host_manager_reload_wire(reload: run.reload), "\n",
     runner_slot_population_text(population: run.slots),
