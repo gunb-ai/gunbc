@@ -34,6 +34,14 @@ import gunbc.live_deploy.lab_host_plan {
   plan_git_path,
   declared_srv1_toolchain_git,
   package_manager_is_apt,
+  lab_plan_deploy_fields,
+  system_manager_launcher_wiring_frontier,
+}
+import std.dissolution { dissolution_is_bound }
+import extdeps.tailscale.serve {
+  ScopedRemovalUnobserved,
+  ScopedRemovalSupported,
+  ScopedRemovalUnsupported,
 }
 import gunbc.live_deploy.spec { deployment_srv1_target }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment }
@@ -211,4 +219,46 @@ test fn unreadable_apparmor_sysctl_refuses_as_sysctl_unreadable_not_unobserved()
       }
     LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
   }
+}
+
+test fn refused_plan_fields_are_unobserved_so_emit_refuses() -> Bool {
+  let fields = lab_plan_deploy_fields(
+    plan: lab_deploy_plan_from_software(surface: unobserved_software_surface(host: operator_host_srv2)),
+  )
+  match fields.os_package_manager {
+    Present { value: _ } => false
+    Absent =>
+      match fields.tailscale_client {
+        ScopedRemovalUnobserved { reason: _ } => true
+        ScopedRemovalSupported { observed: _ } => false
+        ScopedRemovalUnsupported { observed: _ } => false
+      }
+  }
+}
+
+test fn srv1_deploy_target_reads_the_ready_plan_fields() -> Bool {
+  let fields = lab_plan_deploy_fields(plan: srv1_lab_deploy_plan())
+  match deployment_srv1_target().os_package_manager {
+    Absent => false
+    Present { value: pm } =>
+      match fields.os_package_manager {
+        Absent => false
+        Present { value: fm } =>
+          package_manager_is_apt(m: pm) && package_manager_is_apt(m: fm)
+            && match deployment_srv1_target().tailscale_client {
+              ScopedRemovalSupported { observed: _ } =>
+                match fields.tailscale_client {
+                  ScopedRemovalSupported { observed: _ } => true
+                  ScopedRemovalUnsupported { observed: _ } => false
+                  ScopedRemovalUnobserved { reason: _ } => false
+                }
+              ScopedRemovalUnsupported { observed: _ } => false
+              ScopedRemovalUnobserved { reason: _ } => false
+            }
+      }
+  }
+}
+
+test fn system_manager_launcher_wiring_is_a_named_unbound_frontier() -> Bool {
+  !dissolution_is_bound(condition: system_manager_launcher_wiring_frontier)
 }

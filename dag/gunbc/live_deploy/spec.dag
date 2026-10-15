@@ -27,12 +27,9 @@ import extdeps.tailscale.serve {
   tailscale_serve_route_member_path,
 }
 import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
-import gunbc.host.host_software_surface {
-  srv1_software_surface,
-  host_os_package_manager,
-  host_tailscale_client,
-  HostPackageManagerKnown,
-  HostPackageManagerUnobserved,
+import gunbc.live_deploy.lab_host_plan {
+  srv1_lab_deploy_plan,
+  lab_plan_deploy_fields,
 }
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
 import gunbc.fleet.fleet_intent_network {
@@ -1044,13 +1041,6 @@ fn ubuntu_noble_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
-fn srv1_host_os_package_manager() -> OsPackageManager? {
-  match host_os_package_manager(surface: srv1_software_surface()) {
-    HostPackageManagerKnown { manager: m } => Present { value: m }
-    HostPackageManagerUnobserved { obligation: _ } => none
-  }
-}
-
 type DeploymentSpec {
   target: DeploymentHostTarget
   steps: List<DeploymentStep>
@@ -1373,20 +1363,16 @@ fn deployment_owned_steps_retract_order(spec: DeploymentSpec) -> List<Deployment
 }
 
 fn deployment_srv1_target() -> DeploymentHostTarget {
-  let surface = srv1_software_surface()
+  let fields = lab_plan_deploy_fields(plan: srv1_lab_deploy_plan())
   DeploymentHostTarget {
     host: srv1_host,
     ssh_host: operator_host_srv1 as NonEmptyStr,
     tailscale_endpoint: srv1_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
-    os_package_manager: srv1_host_os_package_manager(),
-    tailscale_client: host_tailscale_client(surface: surface),
+    os_package_manager: fields.os_package_manager,
+    tailscale_client: fields.tailscale_client,
     host_directories: deployment_srv1_host_directories(),
   }
-}
-
-fn srv1_observed_tailscale_client() -> TailscaleServeCapability {
-  host_tailscale_client(surface: srv1_software_surface())
 }
 
 fn deployment_service_config(

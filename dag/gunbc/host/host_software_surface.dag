@@ -404,20 +404,31 @@ fn cited_figure_obligation(standing: CitedFigureStanding) -> NonEmptyStr? {
   }
 }
 
-fn host_toolchain_read_obligation(surface: HostSoftwareSurface) -> NonEmptyStr {
-  match cited_figure_obligation(standing: surface.toolchain_paths.value.standing) {
+fn host_surface_unobserved_obligation(standing: CitedFigureStanding, fallback: NonEmptyStr) -> NonEmptyStr {
+  match cited_figure_obligation(standing: standing) {
     Present { value: o } => o
-    Absent => srv1_toolchain_read_obligation()
+    Absent => fallback
   }
+}
+
+data host_os_release_unobserved_obligation: NonEmptyStr = "observe /etc/os-release on this host"
+data host_apparmor_sysctl_unobserved_obligation: NonEmptyStr = "observe kernel.apparmor_restrict_unprivileged_userns on this host"
+data host_program_version_unobserved_obligation: NonEmptyStr = "observe this program's version on this host"
+
+fn host_toolchain_read_obligation(surface: HostSoftwareSurface) -> NonEmptyStr {
+  host_surface_unobserved_obligation(
+    standing: surface.toolchain_paths.value.standing,
+    fallback: srv1_toolchain_read_obligation(),
+  )
 }
 
 fn host_os_package_manager(surface: HostSoftwareSurface) -> HostPackageManagerReading {
   match surface.os_release.value.distro {
     Absent => HostPackageManagerUnobserved {
-      obligation: match cited_figure_obligation(standing: surface.os_release.value.standing) {
-        Present { value: o } => o
-        Absent => host_software_probe_obligation(p: srv1_os_release_probe())
-      }
+      obligation: host_surface_unobserved_obligation(
+        standing: surface.os_release.value.standing,
+        fallback: host_os_release_unobserved_obligation,
+      )
     }
     Present { value: distro } =>
       HostPackageManagerKnown { manager: ubuntu_distribution_catalog_row(distro: distro).package_manager }
@@ -471,10 +482,10 @@ data user_manager_wrote_into_home_observed_on_this_host_obligation: NonEmptyStr 
 fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManagerSandboxEnforcement {
   match surface.apparmor_userns.value.value {
     Absent => UserManagerSandboxUnobserved {
-      obligation: match cited_figure_obligation(standing: surface.apparmor_userns.value.standing) {
-        Present { value: o } => o
-        Absent => host_software_probe_obligation(p: srv1_apparmor_sysctl_probe())
-      }
+      obligation: host_surface_unobserved_obligation(
+        standing: surface.apparmor_userns.value.standing,
+        fallback: host_apparmor_sysctl_unobserved_obligation,
+      )
     }
     Present { value: n } =>
       if n == apparmor_unprivileged_userns_restricted {
@@ -500,14 +511,16 @@ fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManager
 
 fn host_tailscale_client(surface: HostSoftwareSurface) -> TailscaleServeCapability {
   match host_program_version(surface: surface, program: tailscale_program()) {
-    Absent => ScopedRemovalUnobserved { reason: host_software_probe_obligation(p: srv1_tailscale_probe()) as String }
+    Absent => ScopedRemovalUnobserved {
+      reason: host_program_version_unobserved_obligation as String
+    }
     Present { value: fact } =>
       match fact.version_label {
         Absent => ScopedRemovalUnobserved {
-          reason: match cited_figure_obligation(standing: fact.standing) {
-            Present { value: o } => o as String
-            Absent => host_software_probe_obligation(p: srv1_tailscale_probe()) as String
-          }
+          reason: host_surface_unobserved_obligation(
+            standing: fact.standing,
+            fallback: host_program_version_unobserved_obligation,
+          ) as String
         }
         Present { value: label } =>
           match semver_version_parse(cps: chars(s: label as String)) {

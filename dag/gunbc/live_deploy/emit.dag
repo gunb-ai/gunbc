@@ -4345,6 +4345,16 @@ fn retract_unobserved_client_poison(reason: String) -> String {
   )
 }
 
+fn apply_unobserved_client_poison(reason: String) -> String {
+  concat(
+    "__GUNBC_DEPLOY_REFUSED__ live-deploy apply NOT EMITTED: this target's tailscale client version is UNOBSERVED (",
+    concat(
+      reason,
+      "), so a LabPlanRefused (or any unobserved client) cannot be deployed. Observe the host software surface until the lab plan is Ready (DESIGN 5: refuse, never widen)",
+    ),
+  )
+}
+
 // THE RETRACT FRAME'S COMMENT BLOCK, DECLARED ONCE SO A CLAIM CAN READ IT WITHOUT RENDERING THE
 // WHOLE PROGRAM.
 //
@@ -4629,6 +4639,32 @@ fn approval_broker_dark_install_script(spec: DeploymentSpec, revision: ReleaseRe
 }
 
 fn live_deploy_apply_script_for(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  cap_authorization: CapConvergeDecision,
+  oidc_now: Second?,
+  access: DeployAccess,
+) -> String {
+  match spec.target.tailscale_client {
+    ScopedRemovalUnobserved { reason: r } => apply_unobserved_client_poison(reason: r)
+    ScopedRemovalUnsupported { observed: _ } => live_deploy_apply_script_when_client_observed(
+      spec: spec,
+      plan: plan,
+      cap_authorization: cap_authorization,
+      oidc_now: oidc_now,
+      access: access,
+    )
+    ScopedRemovalSupported { observed: _ } => live_deploy_apply_script_when_client_observed(
+      spec: spec,
+      plan: plan,
+      cap_authorization: cap_authorization,
+      oidc_now: oidc_now,
+      access: access,
+    )
+  }
+}
+
+fn live_deploy_apply_script_when_client_observed(
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,

@@ -1,6 +1,7 @@
 module gunbc.live_deploy.lab_host_plan
 
-import std.types { Bool, NonEmptyStr, String, FilePath }
+import std.types { Bool, Int, NonEmptyStr, String, FilePath }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.optional { Absent, Present }
 import std.os.types { OsPackageManager, Apt, Winget, HomebrewDeFacto }
 import gunbc.host.host_software_surface {
@@ -21,20 +22,21 @@ import gunbc.host.host_software_surface {
 }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_intent { ComputeHost }
-import extdeps.tailscale.serve { TailscaleServeCapability }
+import extdeps.tailscale.serve { TailscaleServeCapability, ScopedRemovalUnobserved }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_linux_toolchain }
 
-// FIRST CONSUMER of the per-host software surface (DESIGN 3c). The srv1 lab deploy plan is computed
-// from host data supplied at this interface. It does not hardcode Ubuntu's catalog, the tailscale
-// version literal, or DashboardToolchain paths: those are readings of the surface, or a typed
-// refusal when the surface has not observed them.
+// FIRST CONSUMER of the per-host software surface (DESIGN 3c). gunbc.live_deploy.spec
+// deployment_srv1_target matches srv1_lab_deploy_plan: LabPlanReady fills os_package_manager and
+// tailscale_client; LabPlanRefused maps to none / ScopedRemovalUnobserved so emit refuses to
+// produce a retract (and apply, once the client is unobserved) rather than deploying past a
+// refused plan. Witnesses are not this consumer.
 //
 // WORKER-SANDBOX SELECTION. A host whose user manager does not enforce ProtectHome must not yield a
 // plan that claims user-manager confinement (sysctl 1 → system-manager launcher). Sysctl 0 is a
 // bet that the user manager would enforce, not an observation of confinement, so the plan refuses
-// rather than minting ProtectHome (DESIGN 4d). The system-manager launcher of gunbc#13942 is the
-// selected realization identity here; this module does not import that PR's types (COORDINATE:
-// session/bold-dove-819). Wiring the launcher itself stays with that change.
+// rather than minting ProtectHome (DESIGN 4d). The selected identity is SystemManagerLauncherSelected.
+// Wiring that identity into the launcher / apply path is a declared frontier
+// (system_manager_launcher_wiring_frontier), not a comment.
 
 type WorkerSandboxChoice
   = SystemManagerLauncherSelected
@@ -120,6 +122,45 @@ fn lab_deploy_plan_for_compute_host(host: ComputeHost) -> LabDeployPlan {
 
 fn srv1_lab_deploy_plan() -> LabDeployPlan {
   lab_deploy_plan_from_software(surface: srv1_software_surface())
+}
+
+data system_manager_launcher_wiring_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: gunbc#13942 (session/bold-dove-819) lands a consumed system-manager launcher identity, and live_deploy emit / host_effect realize bind LabPlanReady.worker_sandbox SystemManagerLauncherSelected to that identity on the applying path. NOT satisfied by this module importing those types while apply still launches without them. Trigger: the apply emitter takes WorkerSandboxChoice from the Ready plan and emits that launcher." as NonEmptyStr,
+)
+
+fn lab_plan_refusal_reason(cause: LabDeployPlanRefusal) -> NonEmptyStr {
+  match cause {
+    LabOsUnobserved { obligation: o } => o
+    LabToolchainUnobserved { obligation: o } => o
+    LabSandbox { cause: e } =>
+      match e {
+        UserManagerSandboxUnobserved { obligation: o } => o
+        UserManagerSandboxEnforcementUnobserved { obligation: o } => o
+        UserManagerDoesNotEnforceSandbox { wrote_into_home: r } => r
+        UserManagerSandboxSysctlUnreadable { value: n } =>
+          join(["apparmor userns sysctl unreadable: ", to_string(n)], "") as NonEmptyStr
+      }
+  }
+}
+
+type LabPlanDeployFields {
+  os_package_manager: OsPackageManager?
+  tailscale_client: TailscaleServeCapability
+}
+
+fn lab_plan_deploy_fields(plan: LabDeployPlan) -> LabPlanDeployFields {
+  match plan {
+    LabPlanReady { host: _, os_package_manager: m, tailscale_client: ts, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
+      LabPlanDeployFields {
+        os_package_manager: Present { value: m },
+        tailscale_client: ts,
+      }
+    LabPlanRefused { cause: c } =>
+      LabPlanDeployFields {
+        os_package_manager: none,
+        tailscale_client: ScopedRemovalUnobserved { reason: lab_plan_refusal_reason(cause: c) as String },
+      }
+  }
 }
 
 fn plan_selects_system_manager_launcher(plan: LabDeployPlan) -> Bool {
