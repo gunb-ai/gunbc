@@ -6,10 +6,11 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import extdeps.procps.ps { ps_unit_runs_command }
 import extdeps.systemd { UnitLoadError, Failed }
+import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_mask_argv, systemctl_unmask_argv, systemctl_enable_argv, systemctl_start_argv }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationReading,
-  SlotWorkerAbsent, SlotWorkerPresent, SlotWorkerUnread,
+  DrainWaitForStop, DrainPendingJobRunning, DrainPendingStopInProgress,
   SlotActivationPlan, ActivationAlreadyActive, ActivationSteps, ActivationRefused,
   SlotDrainPlan, DrainAlreadyMasked, DrainSteps, DrainWaitForJob, DrainRefused,
   slot_activation_plan, slot_activation_read_back_holds,
@@ -52,7 +53,7 @@ fn steps_of_activation(p: SlotActivationPlan) -> List<List<String>> {
 }
 
 fn steps_of_drain(p: SlotDrainPlan) -> List<List<String>> {
-  match p { DrainSteps { steps: ss } => ss DrainWaitForJob { mask: m } => m DrainAlreadyMasked => [] DrainRefused { reason: _ } => [] }
+  match p { DrainSteps { steps: ss } => ss DrainWaitForJob { mask: m } => m DrainWaitForStop { mask: m } => m DrainAlreadyMasked => [] DrainRefused { reason: _ } => [] }
 }
 
 // ── ActivateRunnerSlot ──────────────────────────────────────────────────────────────────────────
@@ -90,8 +91,9 @@ test fn activation_refuses_an_uninstalled_unit_and_a_failed_readback() -> Bool {
 
 // RED, THE ONE THAT MATTERS: a slot executing a job is masked and NEVER stopped.
 test fn a_slot_running_a_job_is_masked_and_not_stopped() -> Bool {
-  match slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotWorkerPresent) {
+  match slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker) {
     DrainWaitForJob { mask: m } => m == [systemctl_mask_argv(unit: slot_u)] && !any(m, step => step == systemctl_stop_argv(unit: slot_u))
+    DrainWaitForStop { mask: _ } => false
     DrainSteps { steps: _ } => false
     DrainAlreadyMasked => false
     DrainRefused { reason: _ } => false
@@ -100,7 +102,7 @@ test fn a_slot_running_a_job_is_masked_and_not_stopped() -> Bool {
 
 // POSITIVE CONTROL: an idle slot is masked then stopped, and the masked-and-stopped read-back holds.
 test fn an_idle_slot_is_masked_then_stopped() -> Bool {
-  steps_of_drain(p: slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotWorkerAbsent))
+  steps_of_drain(p: slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotIdle))
     == [systemctl_mask_argv(unit: slot_u), systemctl_stop_argv(unit: slot_u)]
     && slot_drain_read_back_holds(r: reading(load: "masked", file: "masked", active: "inactive"))
 }
@@ -108,18 +110,18 @@ test fn an_idle_slot_is_masked_then_stopped() -> Bool {
 // IDEMPOTENT: masked and stopped, or absent, issues no leg; a masked slot whose job ended needs only
 // the read, and a stopped unmasked slot only the mask.
 test fn a_drained_slot_is_a_noop() -> Bool {
-  (match slot_drain_plan(r: reading(load: "masked", file: "masked", active: "inactive"), worker: SlotWorkerAbsent) { DrainAlreadyMasked => true DrainSteps { steps: _ } => false DrainWaitForJob { mask: _ } => false DrainRefused { reason: _ } => false })
-    && (match slot_drain_plan(r: reading(load: "not-found", file: "", active: "inactive"), worker: SlotWorkerAbsent) { DrainAlreadyMasked => true DrainSteps { steps: _ } => false DrainWaitForJob { mask: _ } => false DrainRefused { reason: _ } => false })
-    && steps_of_drain(p: slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "inactive"), worker: SlotWorkerAbsent)) == [systemctl_mask_argv(unit: slot_u)]
+  (match slot_drain_plan(r: reading(load: "masked", file: "masked", active: "inactive"), worker: SlotIdle) { DrainAlreadyMasked => true DrainSteps { steps: _ } => false DrainWaitForJob { mask: _ } => false DrainWaitForStop { mask: _ } => false DrainRefused { reason: _ } => false })
+    && (match slot_drain_plan(r: reading(load: "not-found", file: "", active: "inactive"), worker: SlotIdle) { DrainAlreadyMasked => true DrainSteps { steps: _ } => false DrainWaitForJob { mask: _ } => false DrainWaitForStop { mask: _ } => false DrainRefused { reason: _ } => false })
+    && steps_of_drain(p: slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "inactive"), worker: SlotIdle)) == [systemctl_mask_argv(unit: slot_u)]
 }
 
 // RED: an unreadable process listing is never read as idle, and a stopped-but-unmasked or masked-but-
 // running unit is not drained.
 test fn an_unread_worker_refuses_and_partial_states_are_not_drained() -> Bool {
-  (match slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotWorkerUnread { cause: "ps refused" }) { DrainRefused { reason: _ } => true DrainSteps { steps: _ } => false DrainWaitForJob { mask: _ } => false DrainAlreadyMasked => false })
+  (match slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotActivityUnobserved { cause: "ps refused" as NonEmptyStr }) { DrainRefused { reason: _ } => true DrainSteps { steps: _ } => false DrainWaitForJob { mask: _ } => false DrainWaitForStop { mask: _ } => false DrainAlreadyMasked => false })
     && !slot_drain_read_back_holds(r: reading(load: "loaded", file: "enabled", active: "inactive"))
     && !slot_drain_read_back_holds(r: reading(load: "masked", file: "masked", active: "active"))
-    && !slot_actuation_settled(o: SlotDrainPending { unit: slot_u, cause: "job running" })
+    && !slot_actuation_settled(o: SlotDrainPending { unit: slot_u, cause: DrainPendingJobRunning })
     && slot_actuation_settled(o: SlotActuationNoop { unit: slot_u, state: "masked-and-stopped" })
 }
 
@@ -155,7 +157,7 @@ fn cpu_file() -> RunnerHostFileDesired {
 // RED: one unsettled actuation withholds the CPU drop-in (and a withheld file refuses apply);
 // POSITIVE CONTROL: all settled, it is written.
 test fn the_cpu_dropin_waits_for_the_slot_population() -> Bool {
-  let pending = runner_host_cpu_dropin_gate(files: [cpu_file()], withheld: [], actuations: [SlotActivated { unit: slot_u }, SlotDrainPending { unit: "actions-runner@srv3-07.service" as NonEmptyStr, cause: "job running" }], mode: RunnerHostFilesApply)
+  let pending = runner_host_cpu_dropin_gate(files: [cpu_file()], withheld: [], actuations: [SlotActivated { unit: slot_u }, SlotDrainPending { unit: "actions-runner@srv3-07.service" as NonEmptyStr, cause: DrainPendingJobRunning }], mode: RunnerHostFilesApply)
   let settled = runner_host_cpu_dropin_gate(files: [cpu_file()], withheld: [], actuations: [SlotActivated { unit: slot_u }, SlotActuationNoop { unit: "actions-runner@srv3-07.service" as NonEmptyStr, state: "masked-and-stopped" }], mode: RunnerHostFilesApply)
   length(pending.files) == 0 && length(pending.withheld) == 1
     && length(settled.files) == 1 && length(settled.withheld) == 0
@@ -179,7 +181,7 @@ test fn an_unknown_systemd_word_refuses_and_is_never_planned() -> Bool {
     && (match slot_actuation_reading_typed(unit: slot_u, load_raw: "not-found", file_raw: "", active_raw: "inactive") {
       SlotReadingTyped { reading: r } =>
         (match slot_activation_plan(r: r) { ActivationRefused { reason: _ } => true ActivationAlreadyActive => false ActivationSteps { steps: _ } => false })
-          && (match slot_drain_plan(r: r, worker: SlotWorkerAbsent) { DrainAlreadyMasked => true DrainSteps { steps: _ } => false DrainWaitForJob { mask: _ } => false DrainRefused { reason: _ } => false })
+          && (match slot_drain_plan(r: r, worker: SlotIdle) { DrainAlreadyMasked => true DrainSteps { steps: _ } => false DrainWaitForJob { mask: _ } => false DrainWaitForStop { mask: _ } => false DrainRefused { reason: _ } => false })
       SlotReadingUnknownWord { property: _, raw: _ } => false
     })
 }
@@ -188,4 +190,23 @@ test fn an_unknown_systemd_word_refuses_and_is_never_planned() -> Bool {
 test fn a_static_or_linked_unit_refuses_activation() -> Bool {
   (match slot_activation_plan(r: reading(load: "loaded", file: "static", active: "inactive")) { ActivationRefused { reason: _ } => true ActivationAlreadyActive => false ActivationSteps { steps: _ } => false })
     && (match slot_activation_plan(r: reading(load: "loaded", file: "linked", active: "inactive")) { ActivationRefused { reason: _ } => true ActivationAlreadyActive => false ActivationSteps { steps: _ } => false })
+}
+
+// RED (review 80610): a deactivating unit is a stop in progress -- it plans a wait-for-stop with the
+// mask only, whatever the activity read would say, and is never reported as a running job.
+test fn a_deactivating_slot_waits_for_its_stop_and_is_not_a_running_job() -> Bool {
+  (match slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "deactivating"), worker: SlotIdle) {
+    DrainWaitForStop { mask: m } => m == [systemctl_mask_argv(unit: slot_u)]
+    DrainWaitForJob { mask: _ } => false
+    DrainSteps { steps: _ } => false
+    DrainAlreadyMasked => false
+    DrainRefused { reason: _ } => false
+  })
+    && (match slot_drain_plan(r: reading(load: "loaded", file: "enabled", active: "active"), worker: SlotHasLiveWorker) {
+      DrainWaitForJob { mask: _ } => true
+      DrainWaitForStop { mask: _ } => false
+      DrainSteps { steps: _ } => false
+      DrainAlreadyMasked => false
+      DrainRefused { reason: _ } => false
+    })
 }

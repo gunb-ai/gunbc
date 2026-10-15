@@ -19,6 +19,7 @@ import extdeps.systemd.systemctl {
   systemctl_stop_argv,
 }
 import extdeps.procps.ps { ps_unit_comm_listing_argv, ps_unit_runs_command }
+import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import extdeps.sudo.elevation { sudo_elevate }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -75,16 +76,37 @@ fn slot_actuation_reading_typed(unit: NonEmptyStr, load_raw: String, file_raw: S
   }
 }
 
-type SlotWorkerReading
-  = SlotWorkerAbsent
-  | SlotWorkerPresent
-  | SlotWorkerUnread { cause: String }
+// WHETHER THE SLOT IS RUNNING A JOB IS gunbc.runner.runner_disk_reclaim SlotActivityObservation, not a
+// third copy (review 80610). That module names cgroup membership as the structural answer -- every
+// Runner.Worker lives in its slot's actions-runner@<slot>.service cgroup -- and this module is its
+// producer over the fleet SSH edge. The unit's own cgroup PATH cannot cross that edge (systemd escapes
+// the slice as `system-actions\x2drunner.slice`, and the portability alphabet refuses the backslash),
+// so the membership is read through ps(1)'s `unit` column, which procps derives from each process's
+// /proc/<pid>/cgroup: the same kernel fact, in words the edge admits.
+// §3b DIVERGENCE, STATED: gunbc.runner.runner_local_state RunnerSlotBusyStanding answers the same question
+// with the worker's ProcessIdentity (boot id, pid, start time). This effect needs only the busy/idle
+// answer, so it maps into the payload-free SlotActivityObservation rather than reading a boot id and a
+// start time it would discard; a caller that needs the worker's identity uses that standing.
+
+// WHY A DRAIN IS NOT YET SETTLED, AS A TYPE (review 80610): a job is running (the activity read found a
+// Runner.Worker), or a stop is already in progress (ActiveState=deactivating, which is not read as a
+// job and needs no activity read). Neither is a refusal; both are retried by the next pass.
+type SlotDrainPendingCause
+  = DrainPendingJobRunning
+  | DrainPendingStopInProgress
+
+fn slot_drain_pending_cause_wire(c: SlotDrainPendingCause) -> String {
+  match c {
+    DrainPendingJobRunning => "a job is running (Runner.Worker in the unit's cgroup); the unit is masked and left running until the job ends"
+    DrainPendingStopInProgress => "a stop is already in progress (ActiveState=deactivating); the unit is masked and the stop is not re-issued"
+  }
+}
 
 type SlotActuationOutcome
   = SlotActuationNoop { unit: NonEmptyStr, state: String }
   | SlotActivated { unit: NonEmptyStr }
   | SlotDrainedAndMasked { unit: NonEmptyStr }
-  | SlotDrainPending { unit: NonEmptyStr, cause: String }
+  | SlotDrainPending { unit: NonEmptyStr, cause: SlotDrainPendingCause }
   | SlotActuationRefused { unit: NonEmptyStr, step: String, reason: String }
 
 fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
@@ -102,7 +124,7 @@ fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
     SlotActuationNoop { unit: u, state: st } => join(["actuation ", u as String, " noop ", st], "")
     SlotActivated { unit: u } => join(["actuation ", u as String, " activated-and-read-back"], "")
     SlotDrainedAndMasked { unit: u } => join(["actuation ", u as String, " drained-masked-and-read-back"], "")
-    SlotDrainPending { unit: u, cause: c } => join(["actuation ", u as String, " DRAIN-PENDING ", c], "")
+    SlotDrainPending { unit: u, cause: c } => join(["actuation ", u as String, " DRAIN-PENDING ", slot_drain_pending_cause_wire(c: c)], "")
     SlotActuationRefused { unit: u, step: st, reason: r } => join(["actuation ", u as String, " REFUSED step=", st, " ", r], "")
   }
 }
@@ -210,9 +232,10 @@ type SlotDrainPlan
   = DrainAlreadyMasked
   | DrainSteps { steps: List<List<String>> }
   | DrainWaitForJob { mask: List<List<String>> }
+  | DrainWaitForStop { mask: List<List<String>> }
   | DrainRefused { reason: String }
 
-fn slot_drain_plan(r: SlotActuationReading, worker: SlotWorkerReading) -> SlotDrainPlan {
+fn slot_drain_plan(r: SlotActuationReading, worker: SlotActivityObservation) -> SlotDrainPlan {
   let mask = if slot_is_masked(r: r) { [] } else { [systemctl_mask_argv(unit: r.unit)] }
   match r.load {
     UnitLoadNotFound => DrainAlreadyMasked
@@ -223,22 +246,22 @@ fn slot_drain_plan(r: SlotActuationReading, worker: SlotWorkerReading) -> SlotDr
   }
 }
 
-fn slot_drain_plan_loaded(r: SlotActuationReading, worker: SlotWorkerReading, mask: List<List<String>>) -> SlotDrainPlan {
+fn slot_drain_plan_loaded(r: SlotActuationReading, worker: SlotActivityObservation, mask: List<List<String>>) -> SlotDrainPlan {
   match r.active {
     Inactive => if slot_is_masked(r: r) { DrainAlreadyMasked } else { DrainSteps { steps: mask } }
     Failed => if slot_is_masked(r: r) { DrainAlreadyMasked } else { DrainSteps { steps: mask } }
-    Deactivating => DrainWaitForJob { mask: mask }
+    Deactivating => DrainWaitForStop { mask: mask }
     Active => slot_drain_plan_running(r: r, worker: worker, mask: mask)
     Activating => slot_drain_plan_running(r: r, worker: worker, mask: mask)
     Reloading => slot_drain_plan_running(r: r, worker: worker, mask: mask)
   }
 }
 
-fn slot_drain_plan_running(r: SlotActuationReading, worker: SlotWorkerReading, mask: List<List<String>>) -> SlotDrainPlan {
+fn slot_drain_plan_running(r: SlotActuationReading, worker: SlotActivityObservation, mask: List<List<String>>) -> SlotDrainPlan {
   match worker {
-    SlotWorkerUnread { cause: c } => DrainRefused { reason: concat("whether the slot is executing a job could not be read, so it is not stopped: ", c) }
-    SlotWorkerPresent => DrainWaitForJob { mask: mask }
-    SlotWorkerAbsent => DrainSteps { steps: concat(mask, [systemctl_stop_argv(unit: r.unit)]) }
+    SlotActivityUnobserved { cause: c } => DrainRefused { reason: concat("whether the slot is executing a job could not be read, so it is not stopped: ", c as String) }
+    SlotHasLiveWorker => DrainWaitForJob { mask: mask }
+    SlotIdle => DrainSteps { steps: concat(mask, [systemctl_stop_argv(unit: r.unit)]) }
   }
 }
 
@@ -326,17 +349,17 @@ fn read_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: No
   }
 }
 
-fn read_slot_worker_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotWorkerReading
+fn read_slot_worker_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActivityObservation
 {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ps_unit_comm_listing_argv()) {
-    TypedArgvExecRefused { reason: why } => SlotWorkerUnread { cause: why }
+    TypedArgvExecRefused { reason: why } => SlotActivityUnobserved { cause: why as NonEmptyStr }
     TypedArgvExecConverged { result: r } =>
       if !r.success || trim(s: r.stdout) == "" {
-        SlotWorkerUnread { cause: join(["ps exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
+        SlotActivityUnobserved { cause: join(["ps exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") as NonEmptyStr }
       } else if ps_unit_runs_command(listing: r.stdout, unit: unit as String, comm: runner_job_process_comm) {
-        SlotWorkerPresent
+        SlotHasLiveWorker
       } else {
-        SlotWorkerAbsent
+        SlotIdle
       }
   }
 }
@@ -385,14 +408,19 @@ fn drain_and_mask_runner_slot_over(target: SshTarget, context: FleetSshExecution
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
     SlotRead { reading: r } => {
-      let worker = if slot_state_active(active: r.active) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotWorkerAbsent }
+      let worker = if slot_state_active(active: r.active) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotIdle }
       match slot_drain_plan(r: r, worker: worker) {
         DrainAlreadyMasked => SlotActuationNoop { unit: unit, state: "masked-and-stopped" }
         DrainRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
         DrainWaitForJob { mask: m } =>
           match run_slot_steps_over(target: target, context: context, steps: m) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
-            Absent => SlotDrainPending { unit: unit, cause: "a job is running (Runner.Worker present); the unit is masked and is left running until the job ends" }
+            Absent => SlotDrainPending { unit: unit, cause: DrainPendingJobRunning }
+          }
+        DrainWaitForStop { mask: m } =>
+          match run_slot_steps_over(target: target, context: context, steps: m) {
+            Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
+            Absent => SlotDrainPending { unit: unit, cause: DrainPendingStopInProgress }
           }
         DrainSteps { steps: ss } =>
           match run_slot_steps_over(target: target, context: context, steps: ss) {
