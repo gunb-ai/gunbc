@@ -172,6 +172,32 @@ test fn generic_outside_every_key_position_stays_unbounded() -> Bool {
   w_generic_outside_every_key_position_stays_unbounded()
 }
 
+fn w_generic_forwarded_through_a_deep_argument_type_earns_it() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.deep_forwarded\nimport v2.std.collection { Map, map_lookup, empty_map }\nimport std.optional { Optional }\ntype Wrapper<K> {\n  subject: K\n}\ntype Row<K, V> {\n  key: K\n  value: V\n}\ntype Idx<K, V> {\n  slots: Map<Wrapper<K>, V>\n  first: Optional<V>\n}\nfn build_idx<K, V>(rows: List<Row<Wrapper<K>, V>>) -> Idx<K, V> {\n  Idx { slots: empty_map(), first: Absent }\n}\nfn first_of<A, B>(rows: List<Row<Wrapper<A>, B>>) -> Optional<B> {\n  build_idx(rows: rows).first\n}\n",
+    "src/map_key_witness_deep_forwarded.rs",
+    ["pub fn first_of<A: Clone + std::cmp::Eq + std::hash::Hash, B"],
+    ["pub fn first_of<A, B", "pub fn first_of<A: Clone, B"]
+  )
+}
+
+fn w_generic_deep_argument_to_a_non_keying_callee_stays_unbounded() -> Bool {
+  compile_dag_rust_emit_check(
+    "module map_key_witness.deep_unkeyed\nimport std.optional { Optional }\ntype Wrapper<K> {\n  subject: K\n}\ntype Row<K, V> {\n  key: K\n  value: V\n}\nfn count_rows<K, V>(rows: List<Row<Wrapper<K>, V>>) -> Int {\n  0\n}\nfn count_of<A, B>(rows: List<Row<Wrapper<A>, B>>) -> Int {\n  count_rows(rows: rows)\n}\n",
+    "src/map_key_witness_deep_unkeyed.rs",
+    ["pub fn count_of<"],
+    ["std::hash::Hash"]
+  )
+}
+
+test fn generic_forwarded_through_a_deep_argument_type_earns_it() -> Bool {
+  w_generic_forwarded_through_a_deep_argument_type_earns_it()
+}
+
+test fn generic_deep_argument_to_a_non_keying_callee_stays_unbounded() -> Bool {
+  w_generic_deep_argument_to_a_non_keying_callee_stays_unbounded()
+}
+
 // TYPE DECLARATIONS earn the same bound (PR C item 2): a struct generic reaching a map key through a
 // FIELD owes Eq + Hash on its own header (the derives copy header bounds onto each impl), a carrier
 // naming such a struct propagates it, and a fn whose signature names the carrier owes it at the same

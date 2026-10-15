@@ -19231,12 +19231,60 @@ crate::v1_compiler_trait_bound_witness::v1_call_forwarding_bound_wrapper_param_n
                     }
                     __result
                 });
+                let unified = Rc::new({
+                    let mut __result = Vec::new();
+                    for cp in callee_value_params.iter().cloned() {
+                        __result.extend((*match v1_rt::map_get(&arg_by_name, cp.name.clone()) {
+                            std::option::Option::None => Rc::new(vec![]),
+                            Some(arg_node) => {
+                                let solved = crate::v1_compiler_infer::unify_generics(
+                                    crate::v1_std_core::param_node_type_expr(cp.clone()),
+                                    crate::v1_compiler_infer_types::resolved_type(arg_node.clone()),
+                                    callee_generic_param_names.clone(),
+                                    si.clone(),
+                                    v1_rt::rc_empty_map(),
+                                    Rc::new(crate::v1_compiler_infer_types::TextJudgment::TextNotAsked {
+                                        reason: crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForEmitterBoundForwarding,
+                                    }),
+                                    "".to_string(),
+                                )
+                                .subst
+                                .clone();
+                                Rc::new({
+                                    let mut names = Vec::new();
+                                    for g in callee_bound_param_names.iter().cloned() {
+                                        if let Some(bound_to) = v1_rt::map_get(&solved, g.clone()) {
+                                            let wn = crate::v1_std_core::authored_name_at(
+                                                si.clone(),
+                                                bound_to.clone(),
+                                            );
+                                            if wrapper_generic_param_names
+                                                .iter()
+                                                .cloned()
+                                                .any(|w| w == wn)
+                                            {
+                                                names.push(wn);
+                                            }
+                                        }
+                                    }
+                                    names
+                                })
+                            }
+                        })
+                        .iter()
+                        .cloned());
+                    }
+                    __result
+                });
                 crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
                     crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-                        Rc::new(vec![]),
-                        forwarded.clone(),
+                        crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                            Rc::new(vec![]),
+                            forwarded.clone(),
+                        ),
+                        arrow_forwarded.clone(),
                     ),
-                    arrow_forwarded.clone(),
+                    unified.clone(),
                 )
             }
         }

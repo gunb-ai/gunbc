@@ -981,6 +981,7 @@ type TextNotAskedReason
   = TextNotAskedInVariantFieldSummary
   | TextNotAskedForCallableComponentResidue
   | TextNotAskedForSyntheticWitnessNodes
+  | TextNotAskedForEmitterBoundForwarding
 
 fn peel_alias_rhs_once(n: Node, text: TextJudgment) -> Node {
   match text {

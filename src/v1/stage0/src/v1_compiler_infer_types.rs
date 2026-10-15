@@ -2440,6 +2440,7 @@ pub enum TextNotAskedReason {
     TextNotAskedInVariantFieldSummary,
     TextNotAskedForCallableComponentResidue,
     TextNotAskedForSyntheticWitnessNodes,
+    TextNotAskedForEmitterBoundForwarding,
 }
 
 pub fn text_crossing_in_judgment(left: Rc<Node>, right: Rc<Node>, text: Rc<TextJudgment>) -> bool {
@@ -3688,3 +3689,5 @@ pub struct TextNotAskedInVariantFieldSummary;
 pub struct TextNotAskedForCallableComponentResidue;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TextNotAskedForSyntheticWitnessNodes;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TextNotAskedForEmitterBoundForwarding;

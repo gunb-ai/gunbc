@@ -203,6 +203,7 @@ import gunbc.structural_realization_bindings { structural_ordering_rows, kernel_
 import gunbc.rust_source_type_bindings { rust_host_option_carrier_declarations }
 import std.literal_elaboration { KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous, kernel_mint_ownership, DeclarationOwnsTheMint, DeclarationDoesNotOwnTheMint, KernelMintOwnershipAmbiguous, kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
 import v1.compiler.infer_types {
+  TextNotAsked, TextNotAskedForEmitterBoundForwarding,
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
   node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection,
@@ -222,7 +223,7 @@ import v1.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
 }
 import v1.compiler.infer {
-  is_lambda_expr,
+  is_lambda_expr, unify_generics,
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
@@ -9076,7 +9077,34 @@ fn v1_call_forwarding_forwarded_param_names(
           )
       }
     )
-    v1_union_bound_param_names(base: v1_union_bound_param_names(base: [], extra: forwarded), extra: arrow_forwarded)
+    let unified = callee_value_params
+    |> flat_map(cp =>
+      match map_get(arg_by_name, cp.name) {
+        Absent => []
+        Present { value: arg_node } =>
+          let solved = unify_generics(
+            formal: param_node_type_expr(n: cp),
+            actual: resolved_type(n: arg_node),
+            generic_names: callee_generic_param_names,
+            source_indices: si,
+            acc: empty_map(),
+            text: TextNotAsked { reason: TextNotAskedForEmitterBoundForwarding },
+            module_name: ""
+          ).subst
+          callee_bound_param_names |> flat_map(g =>
+            match map_get(solved, g) {
+              Absent => []
+              Present { value: bound_to } =>
+                let wn = authored_name_at(source_indices: si, node: bound_to)
+                if wrapper_generic_param_names |> any(w => w == wn) { [wn] } else { [] }
+            }
+          )
+      }
+    )
+    v1_union_bound_param_names(
+      base: v1_union_bound_param_names(base: v1_union_bound_param_names(base: [], extra: forwarded), extra: arrow_forwarded),
+      extra: unified
+    )
   }
 }
 
