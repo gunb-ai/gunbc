@@ -377,13 +377,13 @@ fn harness_job_stdio_path(output_dir: FilePath, pid: Int, suffix: String) -> Fil
 
 fn harness_backstopped_shell_command(
   timeout_program: FilePath,
-  backstop_seconds: Int,
+  backstop: Second,
   command: String,
 ) -> ArgvCommand
 {
   argv_command(
     program: uncataloged_program(invocation: timeout_program as NonEmptyStr),
-    arguments: [to_string(value: backstop_seconds), "/bin/sh", "-c", command],
+    arguments: [to_string(value: schedule_seconds(s: backstop)), "/bin/sh", "-c", command],
   )
 }
 
@@ -408,7 +408,7 @@ fn harness_start_shell_job(
   } else {
     let inner = harness_backstopped_shell_command(
       timeout_program: timeout_program,
-      backstop_seconds: schedule_seconds(s: schedule.backstop),
+      backstop: schedule.backstop,
       command: command,
     )
     let wrapped = env_prefixed_command_in(
