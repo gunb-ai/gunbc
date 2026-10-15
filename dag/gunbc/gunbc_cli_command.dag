@@ -4,6 +4,8 @@ import extdeps.exec.program { uncataloged_program }
 
 import std.types { String, List, NonEmptyStr }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import gunbc.compute.unit_bounds { gunbc_user_work_scope_command }
+import extdeps.systemd.systemd_run { SystemdRunCommandReading }
 import gunbc.cli_invoke {
   InvocationWord, LiteralWord,
   invocation_words_bare,
@@ -84,5 +86,23 @@ fn gunbc_run_command(entry: String, functions: List<String>) -> ArgvCommand {
       claim_run: false,
       arguments: [],
     )),
+  )
+}
+
+fn gunbc_command_argv(cmd: ArgvCommand) -> List<String> {
+  concat([cmd.program.invocation as String], cmd.arguments)
+}
+
+fn gunbc_test_user_work_scope_command(label: String) -> SystemdRunCommandReading {
+  gunbc_user_work_scope_command(
+    properties: [],
+    command_argv: gunbc_command_argv(cmd: gunbc_test_command(label: label)),
+  )
+}
+
+fn gunbc_run_user_work_scope_command(entry: String, functions: List<String>) -> SystemdRunCommandReading {
+  gunbc_user_work_scope_command(
+    properties: [],
+    command_argv: gunbc_command_argv(cmd: gunbc_run_command(entry: entry, functions: functions)),
   )
 }

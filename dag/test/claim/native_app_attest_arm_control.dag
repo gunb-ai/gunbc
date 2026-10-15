@@ -1,0 +1,13 @@
+module test.claim.native_app_attest_arm_control
+
+import gunbc.instruments.native_app_attest { same_attestation_arm, AttestationValidationCategoryAbsent, AttestationNonceMismatch }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn main_fold_absent_vs_nonce_mismatch_is_false() -> Bool {
+  same_attestation_arm(owed: AttestationValidationCategoryAbsent, got: AttestationNonceMismatch) == false
+}
+
+test fn main_fold_absent_vs_absent_is_true() -> Bool {
+  same_attestation_arm(owed: AttestationValidationCategoryAbsent, got: AttestationValidationCategoryAbsent)
+}

@@ -45,6 +45,8 @@ import extdeps.tmux {
   TmuxLsParseRefused,
   AttemptPanesParsed,
   AttemptPanesParseRefused,
+  TmuxAttemptPaneAlive,
+  TmuxAttemptPaneExited,
   parse_tmux_attempt_panes_output,
   TmuxAttemptPaneAlive,
   TmuxAttemptPaneExited,

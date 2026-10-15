@@ -19,6 +19,9 @@ import std.optional {
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node {
+  Occupancy,
+  Instantiation,
+  Atom,
   Arrow,
   ComputationNode,
   Conj,
@@ -44,6 +47,9 @@ import v2.std.symbol_index {
   VariantArmPayload,
   symbol_index_bind_at,
   symbol_index_mark_module_root,
+  MentionDeclaringContested,
+  MentionDeclaringUnavailable,
+  MentionDeclaringUnique,
   symbol_index_declaring_path_of,
   symbol_index_insert,
   symbol_index_lookup,
@@ -541,14 +547,27 @@ fn symbol_index_bind_pending_round(
     cons: fn(acc, p) {
       match symbol_index_lookup(index: acc.index, qualified_path: p.row.target) {
         Present { value: resolved } =>
-          BindRound {
-            index: symbol_index_bind_at(
-              index: acc.index,
-              binding_path: qualified_name_snoc(qn: p.module_qn, segment: p.row.binding),
-              declaring_path: symbol_index_declaring_path_of(index: acc.index, target: p.row.target),
-              resolved: resolved
-            ),
-            deferred: acc.deferred
+          match symbol_index_declaring_path_of(index: acc.index, target: p.row.target) {
+            MentionDeclaringUnique { declaring: declaring } =>
+              BindRound {
+                index: symbol_index_bind_at(
+                  index: acc.index,
+                  binding_path: qualified_name_snoc(qn: p.module_qn, segment: p.row.binding),
+                  declaring_path: declaring,
+                  resolved: resolved
+                ),
+                deferred: acc.deferred
+              }
+            MentionDeclaringUnavailable =>
+              BindRound {
+                index: acc.index,
+                deferred: list_snoc_item(xs: acc.deferred, item: p)
+              }
+            MentionDeclaringContested { claimants: _ } =>
+              BindRound {
+                index: acc.index,
+                deferred: list_snoc_item(xs: acc.deferred, item: p)
+              }
           }
         Absent =>
           BindRound {
