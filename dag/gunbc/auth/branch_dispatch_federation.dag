@@ -250,7 +250,7 @@ fn run_scoped_federation_named(account_id: String) -> DedicatedFederation? {
 type BootCredentialSource
   = ReviewedMainDedicatedFederation
   | RunScopedApprovedGrant
-  | BootCredentialSourceRefused
+  | BootCredentialSourceRefused { cause: NonEmptyStr }
 
 data boot_credential_source_emit_refused_poison: String = "__GUNBC_BOOT_CREDENTIAL_SOURCE_REFUSED__ select_boot_credential_source did not admit PatternSelected FederatedScopedGrant or OperatorApprovedCapability; this marker is not a WIF provider or service account, so the committed workflow drift gate goes red rather than emitting a fabricated credential source (DESIGN §5: refuse, never widen)"
 
@@ -294,19 +294,19 @@ fn boot_credential_source_from_pattern(p: AuthorizationPattern) -> BootCredentia
   match p {
     FederatedScopedGrant => ReviewedMainDedicatedFederation
     OperatorApprovedCapability => RunScopedApprovedGrant
-    HumanOnlyStep { step: _ } => BootCredentialSourceRefused
-    OperatorOwnSession => BootCredentialSourceRefused
+    HumanOnlyStep { step: _ } => BootCredentialSourceRefused { cause: "the selection named a human-only step, which no workflow credential can perform" as NonEmptyStr }
+    OperatorOwnSession => BootCredentialSourceRefused { cause: "the selection named the operator's own session, which a workflow run does not hold" as NonEmptyStr }
   }
 }
 
 fn boot_credential_source_from_selection(s: AuthorizationPatternSelection) -> BootCredentialSource {
   match s {
     PatternSelected { pattern: p, receipt: _ } => boot_credential_source_from_pattern(p: p)
-    ManualStepRequired { step: _, receipt: _ } => BootCredentialSourceRefused
-    NoAdmissiblePattern { causes: _, scope: _ } => BootCredentialSourceRefused
-    PatternSelectionNeedsEvidence { needs: _ } => BootCredentialSourceRefused
-    PatternSelectionNeedsPolicy { survivors: _ } => BootCredentialSourceRefused
-    PatternSelectionRefused { defects: _ } => BootCredentialSourceRefused
+    ManualStepRequired { step: _, receipt: _ } => BootCredentialSourceRefused { cause: "authorization selection requires a manual step" as NonEmptyStr }
+    NoAdmissiblePattern { causes: _, scope: _ } => BootCredentialSourceRefused { cause: "authorization selection found no admissible pattern" as NonEmptyStr }
+    PatternSelectionNeedsEvidence { needs: _ } => BootCredentialSourceRefused { cause: "authorization selection needs evidence it does not have" as NonEmptyStr }
+    PatternSelectionNeedsPolicy { survivors: _ } => BootCredentialSourceRefused { cause: "authorization selection left several survivors and no policy to choose" as NonEmptyStr }
+    PatternSelectionRefused { defects: _ } => BootCredentialSourceRefused { cause: "authorization selection refused the effect" as NonEmptyStr }
   }
 }
 

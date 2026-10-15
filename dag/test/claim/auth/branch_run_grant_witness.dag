@@ -235,8 +235,8 @@ test fn both_boot_accounts_pin_the_admitted_bmc_and_fleet_key_versions() -> Bool
             (t.service_account_id as String) == (run.service_account_id as String)
               && any(t.secret_grants, g => (g.target.secret as String) == "bmc-mtcollins1-gunbc"
                 && any(admitted.secret_grants, a => (a.target.secret as String) == "bmc-mtcollins1-gunbc" && a.target.version != g.target.version)))
-          && match select_boot_credential_source(on_reviewed_main: true) { ReviewedMainDedicatedFederation => true  RunScopedApprovedGrant => false  BootCredentialSourceRefused => false }
-          && match select_boot_credential_source(on_reviewed_main: false) { RunScopedApprovedGrant => true  ReviewedMainDedicatedFederation => false  BootCredentialSourceRefused => false }
+          && match select_boot_credential_source(on_reviewed_main: true) { ReviewedMainDedicatedFederation => true  RunScopedApprovedGrant => false  BootCredentialSourceRefused { cause: _ } => false }
+          && match select_boot_credential_source(on_reviewed_main: false) { RunScopedApprovedGrant => true  ReviewedMainDedicatedFederation => false  BootCredentialSourceRefused { cause: _ } => false }
       }
     }
   }
@@ -263,8 +263,8 @@ test fn boot_credential_source_is_the_authorization_pattern_selection() -> Bool 
     && !boot_pattern_is_approved(on_reviewed_main: true)
     && boot_pattern_is_approved(on_reviewed_main: false)
     && !boot_pattern_is_federated(on_reviewed_main: false)
-    && match select_boot_credential_source(on_reviewed_main: true) { ReviewedMainDedicatedFederation => true  RunScopedApprovedGrant => false  BootCredentialSourceRefused => false }
-    && match select_boot_credential_source(on_reviewed_main: false) { RunScopedApprovedGrant => true  ReviewedMainDedicatedFederation => false  BootCredentialSourceRefused => false }
+    && match select_boot_credential_source(on_reviewed_main: true) { ReviewedMainDedicatedFederation => true  RunScopedApprovedGrant => false  BootCredentialSourceRefused { cause: _ } => false }
+    && match select_boot_credential_source(on_reviewed_main: false) { RunScopedApprovedGrant => true  ReviewedMainDedicatedFederation => false  BootCredentialSourceRefused { cause: _ } => false }
     && all(filter(privileged_effect_census, r => (r.site.decl_name as String) == "boot_credential_effect_on_reviewed_main"), r =>
       match site_verdict(row: r).conformance { Conforms => true  _ => false })
     && all(filter(privileged_effect_census, r => (r.site.decl_name as String) == "boot_credential_effect_off_reviewed_main"), r =>
@@ -272,19 +272,26 @@ test fn boot_credential_source_is_the_authorization_pattern_selection() -> Bool 
 }
 
 // THE KEY IS EXACTLY <run id>-<run attempt>, both positive.
-// RED (review 38602): a refused or undecided authorization-pattern selection still emitted
-// RunScopedApprovedGrant into the boot WIF literals.
-test fn a_non_selected_boot_credential_pattern_is_not_a_source() -> Bool {
-  match boot_credential_source_from_pattern(p: OperatorOwnSession) { BootCredentialSourceRefused => true  ReviewedMainDedicatedFederation => false  RunScopedApprovedGrant => false }
-    && match boot_credential_source_from_selection(s: PatternSelectionRefused { defects: [] }) {
-      BootCredentialSourceRefused => true  ReviewedMainDedicatedFederation => false  RunScopedApprovedGrant => false
-    }
-}
-
 test fn the_run_key_parses_only_its_own_shape() -> Bool {
   match parse_branch_run_key(key: "37879231670-2") { Present { value: k } => k.run_id == 37879231670 && k.run_attempt == 2  Absent => false }
     && match parse_branch_run_key(key: "37879231670") { Present { value: _ } => false  Absent => true }
     && match parse_branch_run_key(key: "a-1") { Present { value: _ } => false  Absent => true }
     && match parse_branch_run_key(key: "7-0") { Present { value: _ } => false  Absent => true }
     && match parse_branch_run_key(key: "7-1-2") { Present { value: _ } => false  Absent => true }
+}
+
+// RED (review 80417): a selection that does not name one of the two admitted patterns must not
+// become a credential source. Before this, every such arm fell through to RunScopedApprovedGrant,
+// so a refused or undecided selection still emitted the run-scoped account into the boot job.
+test fn red_a_non_admitted_pattern_is_a_refused_boot_credential_source() -> Bool {
+  match boot_credential_source_from_pattern(p: OperatorOwnSession) {
+    BootCredentialSourceRefused { cause: _ } => true
+    ReviewedMainDedicatedFederation => false
+    RunScopedApprovedGrant => false
+  }
+    && match boot_credential_source_from_selection(s: PatternSelectionRefused { defects: [] }) {
+      BootCredentialSourceRefused { cause: _ } => true
+      ReviewedMainDedicatedFederation => false
+      RunScopedApprovedGrant => false
+    }
 }
