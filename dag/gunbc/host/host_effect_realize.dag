@@ -305,7 +305,7 @@ import gunbc.build_cache.build_cache_endpoint_observe {
   owner_proc_stat_command,
   owner_principal_command,
   owner_executable_command,
-  path_kind_of_stat_read,
+  path_kind_of_socket_test_read,
   survey_build_cache_endpoint,
 }
 import gunbc.build_cache.build_cache_endpoint_path {
@@ -5148,9 +5148,9 @@ fn build_cache_path_kind_read(
     SccacheServerUnixSocket { path: p } =>
       match build_cache_host_read_observed(command: endpoint_path_kind_command(path: p), transport: transport) {
         BuildCacheReadRefused { reason: why } =>
-          path_kind_of_stat_read(read: HostReadFailed { detail: why as NonEmptyStr }, exit_success: true)
+          path_kind_of_socket_test_read(read: HostReadFailed { detail: why as NonEmptyStr }, exit_success: true)
         BuildCacheReadRan { observed: o } =>
-          path_kind_of_stat_read(
+          path_kind_of_socket_test_read(
             read: HostReadText { text: o.stdout },
             exit_success: o.success,
           )

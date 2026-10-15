@@ -20,5 +20,6 @@ data a_slot_family_charged_a_cpu_share_it_is_not_capped_to: RecurringFailureMode
   evidence: [
     decl_ref(module_path: "gunbc.ci.ci_runner_placement", decl_name: "host_cpu_allocation"),
     decl_ref(module_path: "gunbc.runner.runner_slot_desired", decl_name: "gunbc_runner_slot_cpu_quota"),
+    decl_ref(module_path: "gunbc.fabric.fabric_cell_effect", decl_name: "fabric_cell_slice_quota_directive"),
   ],
 }

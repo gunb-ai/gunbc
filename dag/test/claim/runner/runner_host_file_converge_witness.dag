@@ -51,12 +51,16 @@ import gunbc.runner.runner_unit_file {
 }
 import gunbc.typed_remote_file_write {
   typed_remote_file_compare_argv,
+  typed_remote_file_stage_argv,
+  typed_remote_file_rename_argv,
+  typed_remote_file_unlink_staging_argv,
+  typed_remote_file_chmod_argv,
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
-import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate }
+import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent }
 import gunbc.runner.runner_host_file_converge {
   RunnerHostFileDesired,
   RunnerHostFilesDesired,
@@ -119,6 +123,11 @@ import gunbc.runner.runner_host_file_converge {
   runner_host_path_ancestors,
   runner_host_root_only_find_argv,
   ctrl_jobserver_retired_residue,
+  runner_host_run_legs,
+  runner_host_leg_argv,
+  runner_host_leg_kind,
+  runner_host_leg_kinds,
+  LegRetireeCgroupEvents,
   classify_runner_slot_population_with_fabric,
   runner_host_fabric_member_units,
   SlotFabricMemberNotARunner,
@@ -1339,24 +1348,45 @@ fn crosses_the_edge(argv: List<String>) -> Bool {
 }
 
 // THE WALL THE PRODUCTION RUNS HIT (observe 38662663858 / 38662666227 / 38662668957): every file leg
-// and the residue leg were NOT attempted because the metadata probe carried `%F`. Now every argv the
-// observe route issues for every production desired file, every residue path and the residue unit
-// is admitted by the transport, and the comparison leg is too.
-test fn every_observe_leg_argv_crosses_the_ssh_edge() -> Bool {
-  match srv1_desired_population() {
-    RunnerHostFilesDesiredRefused { cause: _ } => false
-    RunnerHostFilesDesired { files: fs, withheld: _ } =>
-      length(fs) > 0
-        && all(fs, f => crosses_the_edge(argv: runner_host_file_metadata_probe_argv(path: f.path as String))
-          && crosses_the_edge(argv: runner_host_root_only_find_argv(paths: [f.path as String], kind: "f"))
-          && crosses_the_edge(argv: runner_host_root_only_find_argv(paths: runner_host_path_ancestors(path: f.path as String), kind: "d"))
-          && (match runner_host_file_write_admission(file: f) {
-            TypedRemoteFileWriteAdmitted { write: w } => crosses_the_edge(argv: typed_remote_file_compare_argv(write: w))
-            TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
-          }))
-        && all(concat(ctrl_jobserver_retired_residue.files, ctrl_jobserver_retired_residue.directories), p => crosses_the_edge(argv: runner_host_file_metadata_probe_argv(path: p)))
-        && crosses_the_edge(argv: systemctl_show_load_state_argv(unit: ctrl_jobserver_retired_residue.unit))
+// and the residue leg were NOT attempted because the metadata probe carried `%F`. The command set is
+// DERIVED FROM THE ROUTE (review on #14053): for each runner host, runner_host_run_legs enumerates the
+// legs that host's run issues -- privilege probe, list-units, slot show, the job-user getent, every
+// file's metadata / root-only / ancestor reads, the residue reads and every elevated retire and reload
+// leg -- plus the retiree events read built by the real builder over a supplied show answer. Every
+// leg must cross the edge, and the legs must cover every arm of RunnerHostRemoteLeg, so a new remote
+// call cannot skip this check. The typed_remote_file_write legs and the parent listing, which run
+// through their own modules' builders, are checked over the same files.
+fn host_legs_cross(host: String) -> Bool {
+  match runner_host_file_subject(host: host as HostIdentity) {
+    RunnerHostFileSubjectRefused { cause: _ } => false
+    RunnerHostFileSubjectAdmitted { subject: subj } =>
+      match runner_host_file_desired_population_from_uid_reading(host: host as HostIdentity, reading: fixture_cited_job_user_uid()) {
+        RunnerHostFilesDesiredRefused { cause: _ } => false
+        RunnerHostFilesDesired { files: fs, withheld: _ } => {
+          let legs = concat(
+            runner_host_run_legs(subject: subj, files: fs, residue: ctrl_jobserver_retired_residue),
+            [LegRetireeCgroupEvents { argv: argv_or_empty(o: events_read_of(retired: three_retirees(), show: blocks_for(units: three_retirees(), active: "active", live_cgroup: true))) }],
+          )
+          let kinds = map(legs, l => runner_host_leg_kind(leg: l))
+          all(runner_host_leg_kinds, k => any(kinds, x => x == k))
+            && all(legs, l => crosses_the_edge(argv: runner_host_leg_argv(leg: l)))
+            && all(fs, f => crosses_the_edge(argv: parent_listing_argv(parent: path_parent(path: f.path as String)))
+              && (match runner_host_file_write_admission(file: f) {
+                TypedRemoteFileWriteAdmitted { write: w } =>
+                  crosses_the_edge(argv: typed_remote_file_compare_argv(write: w))
+                    && crosses_the_edge(argv: typed_remote_file_stage_argv(write: w))
+                    && crosses_the_edge(argv: typed_remote_file_rename_argv(write: w))
+                    && crosses_the_edge(argv: typed_remote_file_unlink_staging_argv(write: w))
+                    && crosses_the_edge(argv: typed_remote_file_chmod_argv(write: w, mode: f.mode))
+                TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+              }))
+        }
+      }
   }
+}
+
+test fn every_observe_leg_argv_crosses_the_ssh_edge() -> Bool {
+  host_legs_cross(host: "srv1") && host_legs_cross(host: "srv3") && host_legs_cross(host: "srv4")
 }
 
 // RED: the probe this replaced is refused by the same transport check.
@@ -1401,4 +1431,12 @@ test fn a_loaded_runner_on_a_fabric_member_refuses() -> Bool {
   ], "\n\n")
   !runner_slot_population_effective(population: fabric_population(show: show))
     && population_holds(pop: fabric_population(show: show), unit: "actions-runner@srv1-13.service", wire: "fabric-runs-runner")
+}
+
+// RED (review on #14053, DESIGN 5): a fabric member that list-units named but `systemctl show` returned
+// no block for was a failed read mapped to the declared state. It stays unread, and the host refuses.
+test fn a_fabric_member_with_no_show_block_is_unread_not_declared() -> Bool {
+  let show = "Id=actions-runner@srv1-01.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment="
+  population_holds(pop: fabric_population(show: show), unit: "actions-runner@srv1-13.service", wire: "unread")
+    && !runner_slot_population_effective(population: fabric_population(show: show))
 }
