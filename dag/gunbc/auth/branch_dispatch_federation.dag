@@ -250,6 +250,7 @@ fn run_scoped_federation_named(account_id: String) -> DedicatedFederation? {
 type BootCredentialSource
   = ReviewedMainDedicatedFederation
   | RunScopedApprovedGrant
+  | BootCredentialSourceRefused { cause: NonEmptyStr }
 
 fn dedicated_boot_workload_identity() -> WorkloadIdentityStanding {
   match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
@@ -291,18 +292,18 @@ fn boot_credential_source_from_pattern(p: AuthorizationPattern) -> BootCredentia
   match p {
     FederatedScopedGrant => ReviewedMainDedicatedFederation
     OperatorApprovedCapability => RunScopedApprovedGrant
-    HumanOnlyStep { step: _ } => RunScopedApprovedGrant
-    OperatorOwnSession => RunScopedApprovedGrant
+    HumanOnlyStep { step: _ } => BootCredentialSourceRefused { cause: "the selection named a human-only step, which no workflow credential can perform" as NonEmptyStr }
+    OperatorOwnSession => BootCredentialSourceRefused { cause: "the selection named the operator's own session, which a workflow run does not hold" as NonEmptyStr }
   }
 }
 
 fn select_boot_credential_source(on_reviewed_main: Bool) -> BootCredentialSource {
   match select_authorization_pattern(e: boot_credential_effect(on_reviewed_main: on_reviewed_main)) {
     PatternSelected { pattern: p, receipt: _ } => boot_credential_source_from_pattern(p: p)
-    ManualStepRequired { step: _, receipt: _ } => RunScopedApprovedGrant
-    NoAdmissiblePattern { causes: _, scope: _ } => RunScopedApprovedGrant
-    PatternSelectionNeedsEvidence { needs: _ } => RunScopedApprovedGrant
-    PatternSelectionNeedsPolicy { survivors: _ } => RunScopedApprovedGrant
-    PatternSelectionRefused { defects: _ } => RunScopedApprovedGrant
+    ManualStepRequired { step: _, receipt: _ } => BootCredentialSourceRefused { cause: "authorization selection requires a manual step" as NonEmptyStr }
+    NoAdmissiblePattern { causes: _, scope: _ } => BootCredentialSourceRefused { cause: "authorization selection found no admissible pattern" as NonEmptyStr }
+    PatternSelectionNeedsEvidence { needs: _ } => BootCredentialSourceRefused { cause: "authorization selection needs evidence it does not have" as NonEmptyStr }
+    PatternSelectionNeedsPolicy { survivors: _ } => BootCredentialSourceRefused { cause: "authorization selection left several survivors and no policy to choose" as NonEmptyStr }
+    PatternSelectionRefused { defects: _ } => BootCredentialSourceRefused { cause: "authorization selection refused the effect" as NonEmptyStr }
   }
 }

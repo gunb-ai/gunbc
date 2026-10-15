@@ -4,7 +4,7 @@ import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_rece
 import gunbc.auth.branch_dispatch_federation {
   branch_dispatch_provider_resource, hetzner_cloud_control_service_account, hetzner_cloud_control_service_account_id,
   branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
-  BootCredentialSource, ReviewedMainDedicatedFederation, RunScopedApprovedGrant,
+  BootCredentialSource, ReviewedMainDedicatedFederation, RunScopedApprovedGrant, BootCredentialSourceRefused,
 }
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
@@ -3980,6 +3980,7 @@ fn fleet_converge_mtcollins1_boot_source_provider(source: BootCredentialSource) 
   match source {
     ReviewedMainDedicatedFederation => fleet_converge_mtcollins1_boot_provider_resource()
     RunScopedApprovedGrant => branch_dispatch_provider_resource()
+    BootCredentialSourceRefused { cause: c } => concat("BOOT-CREDENTIAL-REFUSED: ", c as String)
   }
 }
 
@@ -3987,6 +3988,7 @@ fn fleet_converge_mtcollins1_boot_source_account(source: BootCredentialSource) -
   match source {
     ReviewedMainDedicatedFederation => fleet_converge_mtcollins1_boot_service_account()
     RunScopedApprovedGrant => mtcollins1_boot_run_scoped_service_account as String
+    BootCredentialSourceRefused { cause: c } => concat("BOOT-CREDENTIAL-REFUSED: ", c as String)
   }
 }
 
