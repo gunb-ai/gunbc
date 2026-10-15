@@ -378,17 +378,36 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
       buildbuddy_run_id: BuildBuddyRunIdAbsent,
     ),
   )
+  let modeled = join([
+    "0::/",
+    gunbc_repository_convergence_slice_unit_name as String,
+    "/",
+    gunbc_tree_sync_unit_name as String,
+  ], "")
+  let exempt_wire = user_work_scope_standing_wire(
+    s: user_work_scope_standing(
+      unit_test: false,
+      github_actions: false,
+      cgroup: CgroupText { text: modeled },
+      user_manager_reachable: false,
+      xdg_runtime_dir: false,
+      slice_memory: RootMemoryCapped { bytes: byte_size(1) },
+    ),
+  )
   string_contains(s: seed, pattern: sessions)
     && string_contains(s: seed, pattern: system_svc)
     && string_contains(s: seed, pattern: "0::/")
+    && string_contains(s: seed, pattern: modeled)
     && seed_fixture_assert_eq(seed: seed, wire: sessions_wire)
     && seed_fixture_assert_eq(seed: seed, wire: system_wire)
     && seed_fixture_assert_eq(seed: seed, wire: capped_wire)
     && seed_fixture_assert_eq(seed: seed, wire: unbounded_wire)
+    && seed_fixture_assert_eq(seed: seed, wire: exempt_wire)
     && sessions_wire == "UserSessionAbsent"
     && system_wire == "UncappedSystemSlice:system.slice:gunbc-tree-sync.service"
     && capped_wire == "ExemptBoundedContainer:25769803776"
     && unbounded_wire == "BoundedContainerUncapped"
+    && exempt_wire == "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
 }
 
 test fn a_path_segment_without_a_dot_suffix_is_not_a_unit() -> Bool {

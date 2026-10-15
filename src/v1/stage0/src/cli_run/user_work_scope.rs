@@ -616,4 +616,23 @@ mod standing_fixture_tests {
         );
         assert_eq!(got, "BoundedContainerUncapped");
     }
+
+    #[test]
+    fn modeled_slice_with_finite_memory_max_skips() {
+        let cg = "0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service";
+        let got = wire(
+            false,
+            Some(cg),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Capped(1),
+            None,
+        );
+        assert_eq!(
+            got,
+            "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
+        );
+    }
 }
