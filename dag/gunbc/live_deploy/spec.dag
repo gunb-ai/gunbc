@@ -6,9 +6,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String, NonEmptyStr, List, Int, Bool, FilePath, Port }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
-import std.os.types { NobleNumbat2404Lts, OsPackageManager }
+import std.os.types { OsPackageManager }
 import std.optional { Present }
-import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
 import extdeps.package_managers.apt {
   package_tailscale,
   package_tmux,
@@ -1035,10 +1034,6 @@ fn tree_sync_unit_path(names: DeploymentNames) -> NonEmptyStr {
     "/etc/systemd/system/",
     names.tree_sync_unit_name as String,
   ], "") as NonEmptyStr
-}
-
-fn ubuntu_noble_os_package_manager() -> OsPackageManager {
-  ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
 type DeploymentSpec {

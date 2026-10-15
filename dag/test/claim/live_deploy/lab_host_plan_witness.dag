@@ -41,7 +41,7 @@ import extdeps.tailscale.serve {
 }
 import gunbc.host.srv1_software_inhabitance_receipt { srv1_software_inhabitance_receipt }
 import gunbc.live_deploy.spec { deployment_srv1_target }
-import gunbc.live_deploy.desired { srv1_lab_desired_deployment }
+import gunbc.live_deploy.desired { srv1_lab_desired_deployment, deployment_srv2_target }
 import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -285,4 +285,11 @@ test fn srv1_deploy_target_reads_the_ready_plan_fields() -> Bool {
 
 test fn system_manager_launcher_wiring_is_a_named_unbound_frontier() -> Bool {
   !dissolution_is_bound(condition: system_manager_launcher_wiring_frontier)
+}
+
+test fn srv2_deploy_target_does_not_invent_a_package_manager() -> Bool {
+  match deployment_srv2_target().os_package_manager {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
