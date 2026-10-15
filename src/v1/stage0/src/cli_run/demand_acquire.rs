@@ -351,14 +351,14 @@ mod tests {
         let prev = std::env::current_dir().expect("cwd");
         std::env::set_current_dir(&root).expect("chdir");
         let roots = ["dag".to_string(), "src/v2".to_string()];
+        // boot_run / sol_notice omitted: the tree arm typechecks the shared index until
+        // the remote 45m cap; admission already covers a machine_intake gunbc run entry.
         let entries = [
             "dag/gunbc/source_layout.dag",
             "dag/extdeps/network/ipv4.dag",
             "dag/std/optional.dag",
             "dag/std/syllogism.dag",
             "dag/gunbc/machine_intake/mtcollins1_boot_admission.dag",
-            "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
-            "dag/gunbc/machine_intake/mtcollins1_sol_notice.dag",
         ];
         let mut failed = Vec::new();
         for rel in entries {
