@@ -1,5 +1,6 @@
 module test.claim.runner.runner_host_file_converge_witness
 
+import extdeps.ssh.known_hosts { known_hosts_host_field }
 import std.types { Bool, String, NonEmptyStr, Int, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess, serialize_systemd_drop_in }
@@ -309,7 +310,7 @@ test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_sl
     RunnerHostFileSubjectRefused { cause: _ } => false
     RunnerHostFileSubjectAdmitted { subject: s } =>
       (s.target.principal as String) == "ubuntu"
-        && (s.target.endpoint as String) == "srv1"
+        && (known_hosts_host_field(address: s.target.address) as String) == "srv1"
         && length(s.desired_units) > 1
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")

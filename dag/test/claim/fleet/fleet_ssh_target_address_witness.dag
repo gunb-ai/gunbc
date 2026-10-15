@@ -1,0 +1,95 @@
+module test.claim.fleet.fleet_ssh_target_address_witness
+
+import std.types { String, Bool, List, NonEmptyStr, Port }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4, NetworkHostNameMalformed, NetworkHostIpv4Malformed }
+import extdeps.network.ipv4 { ipv4_address }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused,
+  fleet_ssh_target_at_standard_port, ssh_target_wire, portable_remote_words,
+  shape_fleet_ssh_exec, shape_fleet_ssh_password_exec_trusting,
+}
+import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target, fleet_automation_principal_login }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PORT REACHES THE ARGV, AND ONLY WHEN IT IS NOT 22. Each argv is read as one string with a
+// newline before every word, so an assertion names adjacent words exactly and cannot match across
+// a word boundary.
+fn w_rental(port: Port) -> SshTarget {
+  SshTarget { address: socket_address(host: host_by_ipv4(addr: ipv4_address(octet1: 203, octet2: 0, octet3: 113, octet4: 7)), port: port), principal: "root" as NonEmptyStr }
+}
+
+fn w_words_of(argv: List<String>) -> String {
+  join(["", join(argv, "\n"), ""], "\n")
+}
+
+fn w_key_argv(target: SshTarget) -> String {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => ""
+    Present { value: ctx } =>
+      match portable_remote_words(raws: ["hostname"]) {
+        Absent => ""
+        Present { value: words } => w_words_of(argv: shape_fleet_ssh_exec(context: ctx, target: target, words: words))
+      }
+  }
+}
+
+fn w_password_argv(target: SshTarget) -> String {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => ""
+    Present { value: ctx } =>
+      match portable_remote_words(raws: ["hostname"]) {
+        Absent => ""
+        Present { value: words } => w_words_of(argv: shape_fleet_ssh_password_exec_trusting(trust: ctx.trust, target: target, words: words))
+      }
+  }
+}
+
+// RED: a rental behind a provider's port mapping. Both shapers emit `-o Port=11055`, dial the bare
+// host (never the bracketed known_hosts spelling, which ssh does not accept as a destination), and the
+// receipt wire is the bracketed field the anchor pins the key under.
+test fn a_rental_on_another_port_emits_the_port_option_and_the_bracketed_wire() -> Bool {
+  let t = w_rental(port: 11055)
+  let key = w_key_argv(target: t)
+  let pw = w_password_argv(target: t)
+  string_contains(s: key, pattern: "\n-o\nPort=11055\n") && string_contains(s: key, pattern: "\n203.0.113.7\n--\nhostname\n")
+    && string_contains(s: pw, pattern: "\n-o\nPort=11055\n") && string_contains(s: pw, pattern: "\n203.0.113.7\n--\nhostname\n")
+    && !string_contains(s: key, pattern: "[203.0.113.7]") && !string_contains(s: pw, pattern: "[203.0.113.7]")
+    && (ssh_target_wire(target: t) as String) == "[203.0.113.7]:11055"
+}
+
+// CONTROL for the red above: the same host at 22 emits no Port option and its wire is the bare host,
+// so the red is the port and not the shaper. The recorded-bytes control pins the whole argv.
+test fn the_same_host_at_port_22_emits_no_port_option_and_a_bare_wire() -> Bool {
+  let t = w_rental(port: 22)
+  let key = w_key_argv(target: t)
+  key != "" && !string_contains(s: key, pattern: "Port=") && !string_contains(s: w_password_argv(target: t), pattern: "Port=")
+    && string_contains(s: key, pattern: "\n203.0.113.7\n--\nhostname\n")
+    && (ssh_target_wire(target: t) as String) == "203.0.113.7"
+}
+
+// RED: endpoint text that is not a host refuses at the one crossing, with the parse's typed arm,
+// instead of becoming an argv word.
+test fn endpoint_text_that_is_not_a_host_refuses_at_the_crossing() -> Bool {
+  (match fleet_ssh_target_at_standard_port(endpoint: "srv 1", principal: fleet_automation_principal_login) {
+    SshTargetRefused { endpoint: e, refusal: why } => e == "srv 1" && match why { NetworkHostNameMalformed { raw: _, error: _ } => true  _ => false }
+    SshTargetResolved { target: _ } => false
+  })
+    && (match fleet_ssh_target_at_standard_port(endpoint: "10.0.0.256", principal: fleet_automation_principal_login) {
+      SshTargetRefused { endpoint: _, refusal: why } => match why { NetworkHostIpv4Malformed { raw: _, error: _ } => true  _ => false }
+      SshTargetResolved { target: _ } => false
+    })
+}
+
+// INHABITANCE: the real fleet producer, gunbc.fleet.fleet_ssh_locus fleet_locus_ssh_target, resolves an
+// enrolled host through fleet_probe_endpoint_for and the crossing to port 22, wire unchanged.
+test fn an_enrolled_fleet_host_resolves_at_port_22_through_the_real_producer() -> Bool {
+  match fleet_locus_ssh_target(host: "srv1" as HostIdentity) {
+    SshTargetResolved { target: t } => (ssh_target_wire(target: t) as String) == "srv1" && t.address.port == 22
+    SshTargetRefused { endpoint: _, refusal: _ } => false
+  }
+}

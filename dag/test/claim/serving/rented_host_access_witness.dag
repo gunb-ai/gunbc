@@ -70,13 +70,13 @@ test fn a_port_22_row_does_not_anchor_the_same_host_on_another_port() -> Bool {
   }
 }
 
-// A ROW AND A DECLARATION THAT AGREE ON A NON-STANDARD PORT STILL REFUSE, on the port and not on a
-// mismatch: SshTarget cannot carry the port until S2(b2), and dialing the bare host would reach port 22.
-test fn a_rental_on_another_port_refuses_until_the_target_carries_it() -> Bool {
+// A ROW AND A DECLARATION THAT AGREE ON A NON-STANDARD PORT PASS THE ANCHOR CHECK. Whatever refuses
+// next (here the witness host holds no agent) is not a host-field mismatch: the port travels with
+// the target to the shaper (test.claim.fleet.fleet_ssh_target_address_witness).
+test fn a_rental_on_another_port_is_not_refused_as_a_mismatch() -> Bool {
   let at = w_address(octet4: 7, port: 11055)
   match rented_host_access(declaration: w_declaration_with(address: at, row: w_row_at(address: at)), attempt_raw: "w-attempt") {
-    RentedHostAccessRefused { node: _, cause: c } =>
-      string_contains(c, "cannot carry a port other than 22") && string_contains(c, "[203.0.113.7]:11055")
-    RentedHostAccessReady { node: _, transport: _, receipt: _ } => false
+    RentedHostAccessRefused { node: _, cause: c } => !string_contains(c, "would anchor a different host")
+    RentedHostAccessReady { node: _, transport: _, receipt: _ } => true
   }
 }

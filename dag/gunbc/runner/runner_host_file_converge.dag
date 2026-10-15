@@ -26,7 +26,7 @@ import product.host_identity { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text, ssh_target_wire }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -350,11 +350,8 @@ fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmissio
 // resolves its subject some other way -- gunbc.fleet.host_credential_custody_converge resolves custody
 // from the host SPEC, because the App key does not depend on slot width -- consumes this rather than
 // spelling the pair again (DESIGN §3).
-fn administrator_ssh_target(host: HostIdentity) -> SshTarget {
-  SshTarget {
-    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-    principal: executor_bootstrap_principal.login,
-  }
+fn administrator_ssh_target(host: HostIdentity) -> SshTargetResolution {
+  fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: executor_bootstrap_principal.login)
 }
 
 fn runner_host_file_subject_over_obligation(
@@ -372,13 +369,18 @@ fn runner_host_file_subject_over_obligation(
         ], ""),
       }
     RetireesKnown { units: retired } =>
-      RunnerHostFileSubjectAdmitted {
-        subject: RunnerHostFileSubject {
-          host: host,
-          target: administrator_ssh_target(host: host),
-          desired_units: units,
-          retired_units: retired,
-        },
+      match administrator_ssh_target(host: host) {
+        SshTargetRefused { endpoint: e, refusal: why } =>
+          RunnerHostFileSubjectRefused { cause: join(["runner_host_file_converge: ", ssh_target_refusal_text(endpoint: e, refusal: why)], "") }
+        SshTargetResolved { target: target } =>
+          RunnerHostFileSubjectAdmitted {
+            subject: RunnerHostFileSubject {
+              host: host,
+              target: target,
+              desired_units: units,
+              retired_units: retired,
+            },
+          }
       }
   }
 }
@@ -1328,7 +1330,7 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     "host=", run.subject.host as String,
     " mode=", runner_host_file_run_mode_wire(mode: run.mode),
     " principal=", run.subject.target.principal as String,
-    " endpoint=", run.subject.target.endpoint as String, "\n",
+    " endpoint=", ssh_target_wire(target: run.subject.target) as String, "\n",
     "administrator-privilege=", runner_host_privilege_wire(privilege: run.privilege), "\n",
     join(map(run.results, r => runner_host_file_result_line(r: r)), ""),
     "planned-writes=", to_string(length(filter(run.results, r => runner_host_file_planned_write(p: r.planned)))), "\n",

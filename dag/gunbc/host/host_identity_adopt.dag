@@ -49,7 +49,7 @@ fn srv4_host_identity_ssh_transport() -> HostEffectTransport {
 fn host_identity_transport_label(transport: HostEffectTransport) -> String {
   match transport {
     SshShell { ssh_host: h } => concat("SshShell:", h)
-    FleetSsh { target: t, context: _ } => concat("FleetSsh:", t.endpoint as String)
+    FleetSsh { target: t, context: _ } => concat("FleetSsh:", known_hosts_host_field(address: t.address) as String)
     LocalShell => "LocalShell"
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => "EmitArtifactThenThinRun"
   }
