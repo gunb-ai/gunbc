@@ -2,6 +2,7 @@ module v2.test.claim.binder_admission.callable_binder_slice
 
 import std.occurrence_identity { LexicalValueOccurrence }
 import v2.compiler.resolve {
+  empty_module_outcome_index,
   LexicalBinding,
   LexicalUntyped,
   frame_binders_add,
@@ -28,9 +29,9 @@ import v2.compiler.resolve {
 }
 import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.compiler.fold_lowering { fold_carrier_binder_atom }
-import v2.std.collection { Map, empty_map, list_at_optional, map_insert, map_lookup }
+import std.types { Map }
 import v2.std.node_query { node_positional_child_targets }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, empty_map, list_at_optional, map_insert, map_lookup }
 import v2.std.language_model { void_language_model }
 import v2.std.text { String }
 import v2.std.symbol_index { empty_symbol_index }
@@ -167,7 +168,7 @@ fn cbs_root_scope_declaring(name: Symbol) -> Scope {
       test_code: test_code_index_empty(),
       declared_in: Empty,
       imported_origins: empty_map(),
-    unavailable_providers: []
+    module_outcomes: empty_module_outcome_index()
     }
   }
 }

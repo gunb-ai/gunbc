@@ -1,7 +1,7 @@
 module v2.test.claim.collection.list_at_equivalence
 
 import std.types { List }
-import v2.std.collection { list_at_optional, list_at_reference }
+import std.algebra { list_at_optional, list_at_reference }
 import std.optional { Absent, Optional, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

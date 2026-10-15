@@ -1,0 +1,13 @@
+module v2.test.claim.compiler.source_root_ingest_alias
+
+import std.algebra { Empty }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.source_authority { SourceRootIngest }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data ingest: SourceRootIngest = Empty
+
+test fn authored_source_root_ingest_alias_inhabits_a_list_holds() -> Bool {
+  true
+}

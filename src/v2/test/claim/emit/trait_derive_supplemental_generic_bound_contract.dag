@@ -1,10 +1,11 @@
 module v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract
 
-import std.types { List }
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra {
   Cons,
-  Empty
+  Empty,
+  map_insert
 }
 import std.decl_ref {
   DeclarationRef,
@@ -76,10 +77,7 @@ import v2.extdeps.languages.rust {
   rust_set_collection_primary_choice
 }
 import v2.extdeps.languages.rust_fixtures { rust_sgb_target_model_staging }
-import v2.std.collection {
-  Map,
-  map_insert
-}
+
 import v2.std.diagnostic {
   Accepted,
   Rejected

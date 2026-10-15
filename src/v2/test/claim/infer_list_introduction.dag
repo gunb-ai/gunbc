@@ -14,12 +14,12 @@ import v2.std.node_query { node_positional_child_targets }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.logic { bool_node }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
-import v2.std.collection { list_at_optional }
+
 import v2.std.text { String }
 import std.process { ProcessExit, exit_failure }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
 import v2.std.witness { Holds, Violates }
-import std.algebra { Cons, Empty, list_snoc_item }
+import std.algebra { Cons, Empty, list_snoc_item, list_at_optional }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
