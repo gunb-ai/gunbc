@@ -256,11 +256,12 @@ own provenance — plus the documentary rung-drop prose row (`fabric_evidence_ga
   dag has its only real consumer in the two shell files. (Orphaned but not harmful — the
   unused-declaration lens covers unused *parameters*, is not in the required floor, and an unused
   top-level fn is legal.)
-- **Evidence-dag `fabric_ci_calibration_*` surface (27 of 34 exports)** of
+- **Evidence-dag `fabric_ci_calibration_*` surface (27 of 34 exports — PROVISIONAL, re-derive
+  against royal-otter-526's PR, not main)** of
   `gunbc.instruments.fabric_ci_evidence`: the calibration step plan, the transport/forgery/wire
-  calibration fns and their coproduct arms have no consumer but the calibration shell.
-- **The projection fixture** `fabric_ci_evidence_projection_fixture.dag` — imported only by the
-  evidence dag (line 11); dies with it.
+  calibration fns and their coproduct arms have no consumer other than the calibration shell
+  *on main*. Any of them the wave-1 actuator consumes (the step plan it walks, the fns it drives
+  for the REDs, the final assertion) survive with the actuator, not die with the shell.
 - **The emit dag** `gunbc.fabric.fci1_bounded_execution_context_emit` — its only consumers are the
   `generated_artifact_emit` / `tier_o_artifact_emit` arms that serve the `.env` registration
   (tier-o lanes, not required) and the `decl_ref` binding. Dies with the registration.
@@ -274,6 +275,13 @@ own provenance — plus the documentary rung-drop prose row (`fabric_evidence_ga
   self-consistent).
 
 ### 5.2 NOT dead — the coupled shared surface
+- **The projection fixture survives** `fabric_ci_evidence_projection_fixture.dag`. It is the
+  **subject** of the delete-projection-arm RED: `FabricCiCalibrationDeleteProjectionArmRed {
+  subject: "dag/gunbc/instruments/fabric_ci_evidence_projection_fixture.dag", selector:
+  "FabricCiCalibrationBeta { payload: payload } =>" }` — the step the wave-1 actuator must keep
+  as its own child process (deleting/duplicating the Beta arm in the fixture must make
+  `fabric_ci_calibration_assertion_success` red, and that RED is required in every PR body).
+  Moving it to the deletion set would remove the very subject the actuator's RED observes.
 - **The probe dag survives.** `fabric_control_plane_live_probe.dag` is a multi-family instrument
   (135 top-level exports across `cp_live_*`, `probe_*`, `nfr_*`, `fci1_*`). Two `fci1_*` decls have
   non-shell consumers and **must not be deleted with the shells**:
@@ -322,6 +330,17 @@ re-pointed together) — that, not a verdict, is the failure mode. The non-requi
 `heal` lanes are the only consumers that would later flag a stray `.env` registration.
 
 ## 6. Open / needs confirmation
+- **Re-derive the `fabric_ci_calibration_*` 27/34 split against royal-otter-526's PR, not
+  main**, once it is up: the wave-1 actuator replaces the calibration shell as the consumer of
+  the evidence authority's calibration surface, and whichever decls it consumes survive. The
+  projection fixture is already settled as MUST-NOT-DIE (subject of the actuator's
+  delete-projection-arm RED, which the brief requires in every PR body).
+- The `FabricCiCalibrationDeleteProjectionArmRed { subject, selector }` step of the evidence dag
+  (the `delete-projection-arm-red` row in `fabric_ci_calibration_steps()`, subject + selector as
+  in 5.2) is the actuator's RED contract: the actuator must keep a child process that mutates the
+  fixture (zero-match and two-match arms, per the calibration's own snapshot logic), runs the
+  calibration entry, observes `fabric_ci_calibration_assertion_success` red, and restores the
+  fixture.
 - Nothing blocked. This is read-only. Wave 1 (royal-otter-526) landing is what gates any *code*
   change; this inventory is the read-only prep and is independent of that.
 - The `fci1_run_unbounded_memory_control` helper is defined in the context.env and used by the
