@@ -4012,26 +4012,32 @@ pub fn binder_marked_type(
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = crate::v1_compiler_infer_env::authored_name(env.clone(), n.clone());
+        let tv_id = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id, .. }) => id,
+            _ => "".to_string(),
+        };
+        let binder_name = {
+            let mut found = "".to_string();
+            for b in binders.iter().cloned() {
+                if b.clone() == name.clone() || (tv_id.clone() != "" && b.clone() == tv_id.clone())
+                {
+                    found = b;
+                    break;
+                }
+            }
+            found
+        };
         let is_binder_reference = ((((n.declaration.clone() == std::option::Option::None)
             && ((n.children.clone().len() as i64) == 0))
             && ((n.params.clone().len() as i64) == 0))
-            && {
-                let mut __found = false;
-                for b in binders.iter().cloned() {
-                    if (b.clone() == name.clone()) {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            });
+            && (binder_name.clone() != "".to_string()));
         if is_binder_reference.clone() {
             node_with_declaration(
                 n.clone(),
                 crate::std_decl_ref::decl_type_parameter_ref(
                     owner.module_path.clone(),
                     owner.decl_name.clone(),
-                    name.clone(),
+                    binder_name.clone(),
                 ),
             )
         } else {

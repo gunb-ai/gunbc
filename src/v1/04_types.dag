@@ -1126,11 +1126,12 @@ fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, New
   else { left }
 }
 
-// A TYPE PARAMETER COMPARES BY BINDER IDENTITY (owner, TypeParameter { name }), never by
-// the authored spelling "T". Two T's of one fn are the same parameter; T of f and T of g
-// are not. An unmarked TypeVariable leaf is identified by its inference-variable id, not
-// by leaf name. A marked parameter is never equal to an unmarked leaf (the mark is the
-// binder; spelling must not complete it).
+// RIGID TYPE-PARAMETER EQUALITY ONLY. Binder identity (owner, TypeParameter { name }):
+// two occurrences in one scope, or a stored unify binding vs a later actual (#14037 rebind).
+// A callee's own T at a call is FLEXIBLE: unify_generics binds it (count_equal#T := fold_list#T)
+// and must not call this first. An unmarked TypeVariable leaf uses its inference id.
+// A marked parameter is never completed by spelling. Stamp unmarked leaves in
+// v1.compiler.resolve binder_marked_type.
 fn type_parameter_binder(n: Node) -> DeclarationRef? {
   match n.declaration {
     Present { value: r } =>
