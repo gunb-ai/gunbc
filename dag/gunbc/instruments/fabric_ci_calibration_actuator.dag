@@ -96,24 +96,52 @@ fn fabric_ci_coordinate_is_name(coordinate: String) -> Bool {
   count(coordinate) > 0 && count(filter(chars(coordinate), cp => !((cp >= 97 && cp <= 122) || (cp >= 48 && cp <= 57) || cp == 45))) == 0
 }
 
+type FabricCiValueFileState
+  = ValueFileAbsent
+  | ValueFileRegular
+  | ValueFileSymlink
+  | ValueFileOther { row: String }
+  | ValueFileUnobservable { cause: String }
+
 // What the value root holds at <name>: observed through shell.Find.FilesAndSymlinksWithMode, whose
-// rows are `%y\t%m\t%P\t%l\t%s` (type f | l | ..., relative path). Refuses on an unobservable root.
-fn fabric_ci_value_file_state(context: FabricCiCalibrationContext, name: String) -> String {
+// rows are `%y\t%m\t%P\t%l\t%s` (type f | l | ..., relative path). An unobservable root is its own arm.
+fn fabric_ci_value_file_state(context: FabricCiCalibrationContext, name: String) -> FabricCiValueFileState {
   let listed = shell.Find.FilesAndSymlinksWithMode(root: context.value_root as FilePath)
   if listed.success == false {
-    concat("unobservable: ", listed.stderr)
+    ValueFileUnobservable { cause: listed.stderr }
   } else {
     let rows = filter(split(s: listed.stdout, delimiter: "\n"), line => line.contains(join(["\t", name, "\t"], "")))
     match rows.first() {
-      Absent => "absent"
-      Present { value: row } => if starts_with(s: row, prefix: "f\t") { "regular" } else if starts_with(s: row, prefix: "l\t") { "symlink" } else { "other" }
+      Absent => ValueFileAbsent
+      Present { value: row } => if starts_with(s: row, prefix: "f\t") { ValueFileRegular } else if starts_with(s: row, prefix: "l\t") { ValueFileSymlink } else { ValueFileOther { row: row } }
     }
   }
 }
 
-// A value file is acceptable only as a regular file; a symlink (or anything else) is a refusal.
-fn fabric_ci_value_file_refusal(state: String, wanted: String, value_path: String) -> String? {
-  if state == wanted { none } else { Present { value: join(["value file ", value_path, " is ", state, ", wanted ", wanted], "") } }
+fn fabric_ci_value_file_state_text(state: FabricCiValueFileState) -> String {
+  match state {
+    ValueFileAbsent => "absent"
+    ValueFileRegular => "a regular file"
+    ValueFileSymlink => "a symlink"
+    ValueFileOther { row } => concat("not a regular file: ", row)
+    ValueFileUnobservable { cause } => concat("unobservable: ", cause)
+  }
+}
+
+// Before the producer runs the named file must be absent; afterwards it must be a regular file. Any
+// other state, including an unobservable root, is a refusal.
+fn fabric_ci_require_absent(state: FabricCiValueFileState, value_path: String) -> String? {
+  match state {
+    ValueFileAbsent => none
+    _ => Present { value: join(["value file ", value_path, " is ", fabric_ci_value_file_state_text(state: state), ", wanted absent"], "") }
+  }
+}
+
+fn fabric_ci_require_regular(state: FabricCiValueFileState, value_path: String) -> String? {
+  match state {
+    ValueFileRegular => none
+    _ => Present { value: join(["value file ", value_path, " is ", fabric_ci_value_file_state_text(state: state), ", wanted a regular file"], "") }
+  }
 }
 
 type FabricCiTransportCapture
@@ -135,7 +163,7 @@ fn fabric_ci_capture_transport(context: FabricCiCalibrationContext, producer: St
       FilesystemDeleteRefused { path: _, kind: _, error: e } => Present { value: concat("stale value file not removed: ", e) }
       FilesystemDeleteKindUnrecognized { path: _, observed: _, error: e } => Present { value: concat("stale value file not removed: ", e) }
     }
-    let before = fabric_ci_value_file_refusal(state: fabric_ci_value_file_state(context: context, name: name), wanted: "absent", value_path: value_path)
+    let before = fabric_ci_require_absent(state: fabric_ci_value_file_state(context: context, name: name), value_path: value_path)
     match cleared {
       Present { value: r } => FabricCiTransportRefused { reason: r }
       Absent => match before {
@@ -151,7 +179,7 @@ fn fabric_ci_capture_produced(context: FabricCiCalibrationContext, producer: Str
   if produced.exit_code != 0 {
     FabricCiTransportRefused { reason: join(["producer ", producer, " exited ", to_string(produced.exit_code), ": ", produced.diagnostics], "") }
   } else {
-    match fabric_ci_value_file_refusal(state: fabric_ci_value_file_state(context: context, name: name), wanted: "regular", value_path: value_path) {
+    match fabric_ci_require_regular(state: fabric_ci_value_file_state(context: context, name: name), value_path: value_path) {
       Present { value: r } => FabricCiTransportRefused { reason: r }
       Absent => {
         let read = Filesystem.Read(path: value_path)
@@ -276,14 +304,18 @@ fn fabric_ci_symlink_control(context: FabricCiCalibrationContext) -> ProcessExit
   let link = join([context.value_root, "/", name], "")
   let planted = shell.Exec.RunArgv(program: "ln", arguments: fabric_ci_calibration_argv(words: ["-s", "/nonexistent-symlink-target", link]))
   let state = fabric_ci_value_file_state(context: context, name: name)
-  let refusal = fabric_ci_value_file_refusal(state: state, wanted: "regular", value_path: link)
+  let refusal = fabric_ci_require_regular(state: state, value_path: link)
   let removed = Filesystem.Delete(path: link)
   if planted.exit_code != 0 {
     exit_failure(reason: concat("FCI-EVIDENCE-0 symlink control could not plant: ", planted.stderr))
   } else {
-    match refusal {
-      Absent => exit_failure(reason: concat("FCI-EVIDENCE-0 a symlink value file was accepted as regular, state: ", state))
-      Present { value: _ } => ExitSuccess
+    match state {
+      ValueFileSymlink =>
+        match refusal {
+          Absent => exit_failure(reason: "FCI-EVIDENCE-0 a symlink value file was accepted as regular")
+          Present { value: _ } => ExitSuccess
+        }
+      _ => exit_failure(reason: concat("FCI-EVIDENCE-0 symlink control did not observe a symlink: ", fabric_ci_value_file_state_text(state: state)))
     }
   }
 }
