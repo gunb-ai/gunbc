@@ -17852,7 +17852,7 @@ fn shell_argv_declared_param_type(arg: Node, op_node: Node, source_indices: Map<
     ExprVar { binding_kind: _ } => {
       let name = expr_var_name_at(texpr: arg, source_indices: source_indices)
       op_node.params |> fold(init: none, f: (acc, p) =>
-        if param_node_name_at(n: p, source_indices: source_indices) == name {
+        if (param_node_name_at(n: p, source_indices: source_indices) == name) {
           Present { value: param_node_type_expr(n: p) }
         } else { acc }
       )
@@ -17922,9 +17922,9 @@ fn argv_element_type_after_alias_hop(arg: Node, scope: InferScope, op_node: Node
 fn hop_argv_element_type(rt: Node, scope: InferScope, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, fuel: Int) -> Node {
   if fuel <= 0 {
     rt
-  } else if type_node_is_ordered_element_run(n: rt, source_indices: source_indices) || is_rust_string_like(n: rt, source_indices: source_indices) {
+  } else if (type_node_is_ordered_element_run(n: rt, source_indices: source_indices) || is_rust_string_like(n: rt, source_indices: source_indices)) {
     rt
-  } else if rt.connective == Arrow {
+  } else if rust_type_node_is_arrow(n: rt) {
     hop_argv_element_type(rt: argv_follow_inferred(n: rt), scope: scope, emit_info: emit_info, source_indices: source_indices, fuel: fuel - 1)
   } else {
     match rust_operand_alias_or_refinement_continue(rt: rt, scope: scope, fuel: fuel) {
@@ -17941,7 +17941,7 @@ fn hop_argv_element_type(rt: Node, scope: InferScope, emit_info: EmitGraphInfo, 
               }
             } else {
               let next_name = authored_name_at(source_indices: source_indices, node: next)
-              if next_name != name {
+              if (next_name != name) {
                 hop_argv_element_type(rt: next, scope: scope, emit_info: emit_info, source_indices: source_indices, fuel: fuel - 1)
               } else {
                 rt
