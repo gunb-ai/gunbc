@@ -2857,7 +2857,7 @@ fn native_demand_census_read(
           }
         Accepted { value: artifact, diagnostics: _ } =>
           let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
-          match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
+          match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope), spans: artifact.span_index) {
             Rejected { diagnostics: d } =>
               NativeDemandCensusFoldState {
                 context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: artifact.span_index),
