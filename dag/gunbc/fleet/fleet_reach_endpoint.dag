@@ -10,9 +10,6 @@ import gunbc.spark.dgx_procurement {
   dgx_spark_router_bindings,
 }
 import extdeps.network.ipv4 { render_ipv4_address }
-import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
-import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
-import extdeps.ssh.known_hosts { openssh_standard_port }
 import gunbc.fleet.fleet_enrollment { fleet_enrollments }
 import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_3dde7f }
 
@@ -100,18 +97,6 @@ fn fleet_owned_probe_endpoint_for(host: String) -> String {
       acc
     }
   })
-}
-
-// A FLEET HOST REACHED BY NAME, BUILT FROM ITS LABELS. The name is a typed HostName assembled here from
-// the labels a row states, never a HostIdentity string read back as a DNS name, and the port is sshd's
-// standard one, which is the port every fleet sshd listens on. The host key registry consumes it now;
-// S2(b2) moves fleet_probe_network_host onto the same constructor so the probe and the registry cannot
-// name a host two ways.
-fn fleet_name_at_ssh_port(labels: List<DnsLabel>) -> SocketAddress {
-  socket_address(
-    host: host_by_name(name: HostName { name: DomainName { labels: labels }, qualification: PartiallyQualified }),
-    port: openssh_standard_port,
-  )
 }
 
 // The fleet reach roster — every identity a reach-layer consumer (probe, collector,

@@ -5,11 +5,11 @@ import product.host_identity { HostIdentity }
 import std.types { Port }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
 import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
-import gunbc.fleet.fleet_reach_endpoint { fleet_name_at_ssh_port }
 import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow,
   HostKeyEnrollmentProvenance,
   ScannedFirstContact,
+  fleet_name_at_ssh_port,
 }
 import gunbc.fleet.fleet_known_hosts_anchor {
   canonical_known_hosts_fragment,
