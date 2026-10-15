@@ -1,0 +1,286 @@
+module gunbc.serving.rented_startup_placement
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.algebra { list_append }
+import std.optional { Present, Absent }
+import std.measure { ByteSize, byte_size_count }
+import std.content_hash { Sha256Digest }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.gnu_coreutils { mkdir_parents_command, rm_force_command, mv_exact_destination_command, ln_symbolic_force_command }
+import gunbc.cloudflare.r2_origin { OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt }
+import gunbc.serving.rented_ninfer_source { RentedArtifactSource, NinferEngineRelease, NinferInstalledFile }
+
+// WHERE A RENTED CARD KEEPS WHAT IT FETCHED, AND THE ONLY COMMANDS THIS PROGRAM MAY ISSUE AGAINST IT. The
+// card's own run.sh ran `rm -f $MD/model.ninfer` before it fetched, and on 2026-10-13 that destroyed a
+// verified model. This module is the RED against that shape: every path a verified artifact can live at is a
+// path this program never removes or overwrites, and the predicate below judges any command sequence against
+// that rule so a run.sh-shaped sequence is refused by the same code that admits this program's own.
+//
+// THE LAYOUT. Each artifact lives at <root>/sha256/<digest>. A fetch writes <root>/partial/<digest>.<attempt>,
+// a verified rename moves it into place on the same filesystem, and the path the engine reads is a symlink
+// switched by rename only (a sibling `.next` link renamed over it), never removed and recreated. The kernel
+// fact that decides why the model path is not on tmpfs (O_DIRECT is rejected there) is owned by
+// gunbc.host.host_software_surface; this module cites it and restates nothing of it.
+type RentedStoreRoots {
+  root: NonEmptyStr
+  model_link: NonEmptyStr
+}
+
+fn rented_digest_path(roots: RentedStoreRoots, digest: Sha256Digest) -> String {
+  join([roots.root as String, "/sha256/", digest.hex as String], "")
+}
+
+fn rented_partial_directory(roots: RentedStoreRoots) -> String {
+  join([roots.root as String, "/partial"], "")
+}
+
+fn rented_partial_path(roots: RentedStoreRoots, digest: Sha256Digest, attempt: NonEmptyStr) -> String {
+  join([roots.root as String, "/partial/", digest.hex as String, ".", attempt as String], "")
+}
+
+fn rented_link_next_path(roots: RentedStoreRoots) -> String {
+  join([roots.model_link as String, ".next"], "")
+}
+
+// WHAT THE LAB READ BACK FROM THE CARD before this program acts, as supplied values: the program decides over
+// readings and never over its own earlier commands.
+type RentedCopyReading
+  = RentedCopyVerified
+  | RentedCopyAbsent
+  | RentedCopyDiffers { observed: Sha256Digest }
+  | RentedCopyUnreadable { cause: NonEmptyStr }
+
+type RentedLinkReading
+  = RentedLinkPointsAt { target: NonEmptyStr }
+  | RentedLinkAbsent
+  | RentedLinkUnreadable { cause: NonEmptyStr }
+
+type RentedFetchResult
+  = RentedFetchSucceeded
+  | RentedFetchFailed { cause: NonEmptyStr }
+
+// THE FETCH LEG REFUSES ON ITS CREDENTIAL BEFORE IT BUILDS A COMMAND. A read token for the models bucket is
+// not minted into custody (OriginCredentialMintEntryUnbuilt), so there is nothing to sign a request with;
+// the leg refuses typed on the arm rather than reaching for a key. No R2 key or API key from the card's
+// run.sh is copied or used here: the operator owes rotating them.
+type RentedFetchLeg
+  = RentedFetchRefusedMintEntryUnbuilt { secret_id: NonEmptyStr }
+  | RentedFetchRefusedCredentialUnminted { secret_id: NonEmptyStr }
+  | RentedFetchRefusedNoSignedFetchBuilder
+
+fn rented_fetch_leg(source: RentedArtifactSource) -> RentedFetchLeg {
+  match source.read_credential {
+    OriginCredentialMintEntryUnbuilt { secret_id: s } => RentedFetchRefusedMintEntryUnbuilt { secret_id: s }
+    OriginCredentialUnminted { mint_entry: _, secret_id: s } => RentedFetchRefusedCredentialUnminted { secret_id: s }
+    OriginCredentialPinned { access_key_id: _, token_value: _ } => RentedFetchRefusedNoSignedFetchBuilder
+  }
+}
+
+fn rented_fetch_leg_text(leg: RentedFetchLeg) -> String {
+  match leg {
+    RentedFetchRefusedMintEntryUnbuilt { secret_id: s } => join(["fetch refused: no mint entry exists for the read token ", s as String, "; nothing is signed with an unnamed secret"], "")
+    RentedFetchRefusedCredentialUnminted { secret_id: s } => join(["fetch refused: the read token ", s as String, " has an entry but is not minted into custody"], "")
+    RentedFetchRefusedNoSignedFetchBuilder => "fetch refused: a pinned credential exists but no typed signed-fetch command builder does"
+  }
+}
+
+// THE COMMANDS AFTER A FETCH ATTEMPT, over the readback of the digest path taken before it. Only an observed
+// ABSENCE promotes (a rename into place); a copy already verified there is never the destination of a rename,
+// so a late-arriving fetch result is dropped with its own partial. A failed fetch removes ONLY its own
+// partial. Stale partials from a crashed attempt are not removed here: they are S5 release's population.
+fn rented_artifact_sequence(
+  roots: RentedStoreRoots,
+  digest: Sha256Digest,
+  attempt: NonEmptyStr,
+  existing: RentedCopyReading,
+  fetch: RentedFetchResult,
+) -> List<ArgvCommand> {
+  let partial = rented_partial_path(roots: roots, digest: digest, attempt: attempt)
+  let prepare = [mkdir_parents_command(path: rented_partial_directory(roots: roots))]
+  match fetch {
+    RentedFetchFailed { cause: _ } => list_append(left: prepare, right: [rm_force_command(path: partial)])
+    RentedFetchSucceeded =>
+      match existing {
+        RentedCopyAbsent => list_append(left: prepare, right: [mv_exact_destination_command(source: partial, destination: rented_digest_path(roots: roots, digest: digest))])
+        RentedCopyVerified => list_append(left: prepare, right: [rm_force_command(path: partial)])
+        RentedCopyDiffers { observed: _ } => list_append(left: prepare, right: [rm_force_command(path: partial)])
+        RentedCopyUnreadable { cause: _ } => list_append(left: prepare, right: [rm_force_command(path: partial)])
+      }
+  }
+}
+
+// THE MODEL LINK SWITCH, to a digest path the caller has verified: a sibling link is created and renamed over
+// the live one, so the engine never sees the path absent. Already pointing at the verified path is a no-op.
+type RentedLinkSwitch
+  = RentedLinkSwitchNoop
+  | RentedLinkSwitchCommands { commands: List<ArgvCommand> }
+
+fn rented_link_switch(roots: RentedStoreRoots, digest: Sha256Digest, link: RentedLinkReading) -> RentedLinkSwitch {
+  let target = rented_digest_path(roots: roots, digest: digest)
+  let switch = RentedLinkSwitchCommands {
+    commands: [
+      ln_symbolic_force_command(target: target, link_name: rented_link_next_path(roots: roots)),
+      mv_exact_destination_command(source: rented_link_next_path(roots: roots), destination: roots.model_link as String),
+    ],
+  }
+  match link {
+    RentedLinkPointsAt { target: t } => if (t as String) == target { RentedLinkSwitchNoop } else { switch }
+    RentedLinkAbsent => switch
+    RentedLinkUnreadable { cause: _ } => switch
+  }
+}
+
+// THE ENGINE: EXTRACT INTO STAGING, VERIFY THE INSTALLED FILES, THEN RENAME INTO PLACE. The shipped tarball's
+// own digest is unpinned (gunbc.serving.rented_ninfer_source RentedTarballUnobserved), so the install is
+// judged on the INSTALLED binary and rev file against the release's NinferInstalledFile pins. That dissolves
+// the tarball obligation only partially: it shows the installed bytes are the pinned bytes, never that the
+// tarball is the one a store holds.
+type RentedInstalledFileReading
+  = RentedInstalledFileRead { bytes: ByteSize, sha256: Sha256Digest }
+  | RentedInstalledFileUnreadable { cause: NonEmptyStr }
+
+type RentedEngineVerdict
+  = RentedEngineVerified
+  | RentedEngineFileDigestDiffers { relative_path: NonEmptyStr, pinned: Sha256Digest, observed: Sha256Digest }
+  | RentedEngineFileBytesDiffer { relative_path: NonEmptyStr, pinned: ByteSize, observed: ByteSize }
+  | RentedEngineFileUnreadable { relative_path: NonEmptyStr, cause: NonEmptyStr }
+
+fn rented_installed_file_verdict(pin: NinferInstalledFile, reading: RentedInstalledFileReading) -> RentedEngineVerdict {
+  match reading {
+    RentedInstalledFileUnreadable { cause: c } => RentedEngineFileUnreadable { relative_path: pin.relative_path, cause: c }
+    RentedInstalledFileRead { bytes: b, sha256: d } =>
+      if (d.hex as String) != (pin.sha256.hex as String) {
+        RentedEngineFileDigestDiffers { relative_path: pin.relative_path, pinned: pin.sha256, observed: d }
+      } else {
+        if byte_size_count(b: b) != byte_size_count(b: pin.bytes) {
+          RentedEngineFileBytesDiffer { relative_path: pin.relative_path, pinned: pin.bytes, observed: b }
+        } else {
+          RentedEngineVerified
+        }
+      }
+  }
+}
+
+fn rented_engine_verdict(release: NinferEngineRelease, binary: RentedInstalledFileReading, rev_file: RentedInstalledFileReading) -> RentedEngineVerdict {
+  match rented_installed_file_verdict(pin: release.binary, reading: binary) {
+    RentedEngineVerified => rented_installed_file_verdict(pin: release.rev_file, reading: rev_file)
+    refused => refused
+  }
+}
+
+fn rented_engine_directory(roots: RentedStoreRoots, release: NinferEngineRelease) -> String {
+  join([roots.root as String, "/engine/", release.release_name as String], "")
+}
+
+fn rented_engine_staging_directory(roots: RentedStoreRoots, release: NinferEngineRelease, attempt: NonEmptyStr) -> String {
+  join([roots.root as String, "/partial/engine.", release.release_name as String, ".", attempt as String], "")
+}
+
+// THE RENAME INTO PLACE EXISTS ONLY FOR A VERIFIED ENGINE, and a refusal names the file and the figure.
+type RentedEnginePromotion
+  = RentedEnginePromoted { commands: List<ArgvCommand> }
+  | RentedEngineRefused { verdict: RentedEngineVerdict }
+
+fn rented_engine_promotion(roots: RentedStoreRoots, release: NinferEngineRelease, attempt: NonEmptyStr, verdict: RentedEngineVerdict) -> RentedEnginePromotion {
+  match verdict {
+    RentedEngineVerified => RentedEnginePromoted {
+      commands: [mv_exact_destination_command(
+        source: rented_engine_staging_directory(roots: roots, release: release, attempt: attempt),
+        destination: rented_engine_directory(roots: roots, release: release),
+      )],
+    }
+    refused => RentedEngineRefused { verdict: refused }
+  }
+}
+
+// THE PREDICATE: A SEQUENCE THAT REMOVES OR OVERWRITES A PROTECTED PATH IS REFUSED. The protected set is the
+// verified digest paths, the live link's target and the live link itself. Read-only programs may name them;
+// rm may not name one or any directory containing one; mv and ln may not take one as a destination or a
+// source, except the single legal switch: renaming this program's own `.next` link onto the model link.
+// A path that merely contains a protected path as a directory prefix is covered, so `rm -f <root>/sha256`
+// cannot slip through as a parent.
+type RentedProtectedPaths {
+  paths: List<String>
+  model_link: String
+  model_link_next: String
+}
+
+fn rented_covers(argument: String, protected: String) -> Bool {
+  argument == protected || string_contains(s: protected, pattern: concat(argument, "/"))
+}
+
+fn rented_names_protected(argument: String, protected: RentedProtectedPaths) -> Bool {
+  any(xs: protected.paths, predicate: fn(p) { rented_covers(argument: argument, protected: p) })
+}
+
+fn rented_read_only_program(invocation: String) -> Bool {
+  invocation == "sha256sum" || invocation == "readlink" || invocation == "stat" || invocation == "ls" || invocation == "cat" || invocation == "test" || invocation == "curl"
+}
+
+fn rented_operands(command: ArgvCommand) -> List<String> {
+  filter(command.arguments, a => string_contains(s: a, pattern: "/"))
+}
+
+fn rented_destination(command: ArgvCommand) -> String {
+  match last(rented_operands(command: command)) { Present { value: d } => d  Absent => "" }
+}
+
+fn rented_source(command: ArgvCommand) -> String {
+  match get(xs: rented_operands(command: command), index: 0) { Present { value: s } => s  Absent => "" }
+}
+
+fn rented_destination_forbidden(destination: String, protected: RentedProtectedPaths) -> Bool {
+  rented_names_protected(argument: destination, protected: protected) || destination == protected.model_link
+}
+
+fn rented_command_endangers(command: ArgvCommand, protected: RentedProtectedPaths) -> Bool {
+  let invocation = command.program.invocation as String
+  let destination = rented_destination(command: command)
+  let source = rented_source(command: command)
+  if invocation == "mv" {
+    let is_switch = source == protected.model_link_next && destination == protected.model_link
+    if is_switch { false } else { rented_destination_forbidden(destination: destination, protected: protected) || rented_names_protected(argument: source, protected: protected) }
+  } else {
+    if invocation == "ln" {
+      rented_destination_forbidden(destination: destination, protected: protected)
+    } else {
+      if rented_read_only_program(invocation: invocation) {
+        false
+      } else {
+        any(xs: rented_operands(command: command), predicate: fn(a) { rented_destination_forbidden(destination: a, protected: protected) })
+      }
+    }
+  }
+}
+
+fn rented_sequence_endangers(commands: List<ArgvCommand>, protected: RentedProtectedPaths) -> Bool {
+  any(xs: commands, predicate: fn(c) { rented_command_endangers(command: c, protected: protected) })
+}
+
+// DECLARED FRONTIER (DESIGN 3c): the rows below are consumed by the startup program's wet driver, which is not
+// in this change.
+data rented_startup_placement_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_startup_placement", decl_name: "rented_fetch_leg"),
+    reason: "the wet end-to-end run is gated on rotation of the keys the card holds plus a mint entry for cloudflare-r2-models-read-token; until then every R2 fetch leg refuses typed",
+    dissolution: unbound_dissolution(description: "feature:rented-models-read-mint — the operator rotates the card's keys and a mint entry for the models read token exists; then a typed signed-fetch binding replaces the refusing arms"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_startup_placement", decl_name: "rented_artifact_sequence"),
+    reason: "stale partials left by a crashed attempt are residue this program never removes; they are counted here, not silent",
+    dissolution: unbound_dissolution(description: "feature:rented-release-s5 — S5 release owns deleting stale partials and any verified digest path; the population is every <root>/partial entry no live attempt owns"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_startup_placement", decl_name: "rented_engine_verdict"),
+    reason: "the engine tarball digest is unpinned, so installed-file verification dissolves RentedTarballUnobserved's consumer obligation only partially",
+    dissolution: unbound_dissolution(description: "feature:rented-tarball-digest-read — an operator reads the tarball's sha256 and size from the store that holds it and pins it"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_startup_placement", decl_name: "rented_sequence_endangers"),
+    reason: "an on-card onstart script (delivery B) is not modeled; the program runs from the lab over the anchored FleetSsh transport",
+    dissolution: unbound_dissolution(description: "trigger:a Vast restart observed to drop the launch — only then is an on-card onstart script modeled"),
+  ),
+]

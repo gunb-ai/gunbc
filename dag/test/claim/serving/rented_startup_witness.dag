@@ -1,0 +1,123 @@
+module test.claim.serving.rented_startup_witness
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.measure { byte_size }
+import std.content_hash { Sha256Digest }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.gnu_coreutils { rm_force_command }
+import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised }
+import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
+import gunbc.serving.rented_ninfer_source {
+  rented_engine_source, rented_ninfer_81c8ce09_sm120_engine_artifact, rented_weights_source, rented_qwen3_8_27b_nvfp4_weights_placement,
+  ninfer_serve_81c8ce09_sm120_release,
+}
+import gunbc.serving.rented_startup_placement {
+  RentedStoreRoots, RentedProtectedPaths, RentedCopyVerified, RentedCopyAbsent, RentedFetchFailed, RentedFetchSucceeded,
+  RentedFetchRefusedMintEntryUnbuilt, rented_fetch_leg, rented_digest_path, rented_artifact_sequence, rented_sequence_endangers,
+  RentedInstalledFileRead, RentedEngineVerified, RentedEngineFileDigestDiffers, rented_engine_verdict,
+}
+import gunbc.serving.rented_serve_launch {
+  RentedServeNotListening, RentedServeAnswering, RentedServeUnreadable, RentedServeNoop, RentedServeStart, RentedServeRefused, rented_serve_decision,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data w_roots: RentedStoreRoots = RentedStoreRoots {
+  root: "/root/serve/store" as NonEmptyStr,
+  model_link: "/root/serve/model/model.ninfer" as NonEmptyStr,
+}
+
+data w_digest: Sha256Digest = Sha256Digest { hex: "74d2c57145e6ff11d1d2faa79594477f9bc903a611af1fb20218189fbbb77d82" }
+
+data w_protected: RentedProtectedPaths = RentedProtectedPaths {
+  paths: [rented_digest_path(roots: w_roots, digest: w_digest)],
+  model_link: "/root/serve/model/model.ninfer",
+  model_link_next: "/root/serve/model/model.ninfer.next",
+}
+
+// THE RED: a failed fetch beside a verified copy removes only its own partial.
+test fn a_failed_fetch_beside_a_verified_copy_endangers_nothing() -> Bool {
+  !rented_sequence_endangers(
+    commands: rented_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: RentedCopyVerified, fetch: RentedFetchFailed { cause: "connection reset" as NonEmptyStr }),
+    protected: w_protected,
+  )
+}
+
+test fn a_succeeded_fetch_beside_a_verified_copy_never_renames_over_it() -> Bool {
+  !rented_sequence_endangers(
+    commands: rented_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: RentedCopyVerified, fetch: RentedFetchSucceeded),
+    protected: w_protected,
+  )
+}
+
+test fn an_absent_copy_promotes_by_rename_and_endangers_nothing_when_unprotected() -> Bool {
+  !rented_sequence_endangers(
+    commands: rented_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: RentedCopyAbsent, fetch: RentedFetchSucceeded),
+    protected: RentedProtectedPaths { paths: [], model_link: "/root/serve/model/model.ninfer", model_link_next: "/root/serve/model/model.ninfer.next" },
+  )
+}
+
+// THE CONTROL: run.sh's shape, rm -f on the model path, is refused by the same predicate.
+test fn a_run_sh_shaped_sequence_is_refused() -> Bool {
+  rented_sequence_endangers(commands: [rm_force_command(path: "/root/serve/model/model.ninfer")], protected: w_protected)
+}
+
+test fn removing_a_verified_digest_path_or_its_parent_is_refused() -> Bool {
+  rented_sequence_endangers(commands: [rm_force_command(path: rented_digest_path(roots: w_roots, digest: w_digest))], protected: w_protected)
+    && rented_sequence_endangers(commands: [rm_force_command(path: "/root/serve/store/sha256")], protected: w_protected)
+}
+
+// THE FETCH LEG REFUSES TYPED ON THE UNBUILT MINT.
+test fn the_fetch_leg_refuses_on_the_unbuilt_mint_for_both_artifacts() -> Bool {
+  let engine = rented_fetch_leg(source: rented_engine_source(artifact: rented_ninfer_81c8ce09_sm120_engine_artifact))
+  let weights = rented_fetch_leg(source: rented_weights_source(placement: rented_qwen3_8_27b_nvfp4_weights_placement))
+  (match engine { RentedFetchRefusedMintEntryUnbuilt { secret_id: s } => (s as String) == "cloudflare-r2-models-read-token"  _ => false })
+    && (match weights { RentedFetchRefusedMintEntryUnbuilt { secret_id: s } => (s as String) == "cloudflare-r2-models-read-token"  _ => false })
+}
+
+// ENGINE VERIFICATION REFUSES WHEN THE INSTALLED BINARY'S DIGEST DIFFERS FROM THE PIN.
+test fn engine_verification_passes_on_the_pinned_files() -> Bool {
+  let r = ninfer_serve_81c8ce09_sm120_release
+  match rented_engine_verdict(
+    release: r,
+    binary: RentedInstalledFileRead { bytes: r.binary.bytes, sha256: r.binary.sha256 },
+    rev_file: RentedInstalledFileRead { bytes: r.rev_file.bytes, sha256: r.rev_file.sha256 },
+  ) {
+    RentedEngineVerified => true
+    _ => false
+  }
+}
+
+test fn engine_verification_refuses_a_binary_whose_digest_differs() -> Bool {
+  let r = ninfer_serve_81c8ce09_sm120_release
+  match rented_engine_verdict(
+    release: r,
+    binary: RentedInstalledFileRead { bytes: r.binary.bytes, sha256: Sha256Digest { hex: "00" } },
+    rev_file: RentedInstalledFileRead { bytes: r.rev_file.bytes, sha256: r.rev_file.sha256 },
+  ) {
+    RentedEngineFileDigestDiffers { relative_path: _, pinned: _, observed: _ } => true
+    _ => false
+  }
+}
+
+// CONVERGENCE: converged is a Noop, absent starts, a mismatch or an unreadable answer refuses.
+test fn a_converged_readback_is_a_noop() -> Bool {
+  match rented_serve_decision(launch: operator_pod_ninfer_launch, reading: RentedServeAnswering { healthy: true, models: NinferModelsAdvertised { ids: ["qwen"] } }) {
+    RentedServeNoop => true
+    _ => false
+  }
+}
+
+test fn an_absent_readback_starts_exactly_once() -> Bool {
+  match rented_serve_decision(launch: operator_pod_ninfer_launch, reading: RentedServeNotListening) {
+    RentedServeStart => true
+    _ => false
+  }
+}
+
+test fn a_mismatch_or_unreadable_readback_refuses() -> Bool {
+  (match rented_serve_decision(launch: operator_pod_ninfer_launch, reading: RentedServeAnswering { healthy: true, models: NinferModelsAdvertised { ids: ["other"] } }) { RentedServeRefused { cause: _ } => true  _ => false })
+    && (match rented_serve_decision(launch: operator_pod_ninfer_launch, reading: RentedServeAnswering { healthy: false, models: NinferModelsAdvertised { ids: ["qwen"] } }) { RentedServeRefused { cause: _ } => true  _ => false })
+    && (match rented_serve_decision(launch: operator_pod_ninfer_launch, reading: RentedServeUnreadable { cause: "timeout" as NonEmptyStr }) { RentedServeRefused { cause: _ } => true  _ => false })
+}

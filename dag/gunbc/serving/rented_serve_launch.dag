@@ -1,0 +1,39 @@
+module gunbc.serving.rented_serve_launch
+
+import std.types { String, NonEmptyStr, Bool, List }
+import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable }
+
+// THE SERVE-LAUNCH LEG IS CONVERGENCE, NOT A SCRIPT (DESIGN 3d). Before it acts it takes an independent
+// readback from the lab of the port the engine listens on: whether anything answers health, and which model
+// ids it serves. The decision is a caller-supplied requirement (the launch's model id) judged over that
+// readback and nothing else: an engine already serving the pinned model is a Noop, only an observed absence
+// starts one, and a mismatch or an unreadable answer refuses typed. There is never a blind second launch.
+type RentedServeReading
+  = RentedServeNotListening
+  | RentedServeAnswering { healthy: Bool, models: NinferModelsList }
+  | RentedServeUnreadable { cause: NonEmptyStr }
+
+type RentedServeDecision
+  = RentedServeNoop
+  | RentedServeStart
+  | RentedServeRefused { cause: String }
+
+fn rented_serves_model(models: NinferModelsList, model_id: NonEmptyStr) -> Bool {
+  match models {
+    NinferModelsAdvertised { ids: ids } => any(xs: ids, predicate: fn(i) { i == (model_id as String) })
+    NinferModelsUnreadable { cause: _ } => false
+  }
+}
+
+fn rented_serve_decision(launch: NinferServeLaunch, reading: RentedServeReading) -> RentedServeDecision {
+  match reading {
+    RentedServeNotListening => RentedServeStart
+    RentedServeUnreadable { cause: c } => RentedServeRefused { cause: join(["serve readback unreadable: ", c as String], "") }
+    RentedServeAnswering { healthy: h, models: m } =>
+      if h && rented_serves_model(models: m, model_id: launch.model_id) {
+        RentedServeNoop
+      } else {
+        RentedServeRefused { cause: "something answers on the port but is unhealthy or does not serve the pinned model id; refusing a second launch" }
+      }
+  }
+}
