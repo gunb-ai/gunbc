@@ -3118,6 +3118,15 @@ fn type_is_kernel_optional_declaration(t: Node, owner: Node?) -> Bool {
 // A sibling inhabits a corpus declaration when it carries the same DeclarationRef at a different
 // application (the node differs), and the kernel Optional when it is `T?`: that cardinality IS that
 // declaration, so the inhabitance is established by the owner's identity.
+//
+// READING OF THE CORPUS RULE: `t.connective == Disj` makes t the BARE declaration (an application of a
+// generic coproduct is not Disj). Siblings that are applications of the same DeclarationRef (Box<Int>,
+// Box<String>) are not Disj either, so none of them drops and the join between them is unchanged;
+// when every arm would drop, inhabited_join_types keeps them all.
+// PREMISE: v1 types a NULLARY arm literal (`Absent`, `CtlNil`) as the bare declaration. A
+// payload-carrying arm typed bare would ride this rule wrongly, so that typing must not be introduced
+// without revisiting it. The kernel Optional is identified by node equality with the kernel scope's own
+// binding, so a user coproduct that spells `Present`/`Absent` arms never matches.
 fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, optional_owner: Node?) -> Bool {
   t.connective == Disj && (siblings |> any(s =>
     (s != t && t.declaration != none && s.declaration == t.declaration)
