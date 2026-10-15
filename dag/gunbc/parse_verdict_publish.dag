@@ -220,7 +220,7 @@ fn parse_verdict_identity_blob_command() -> String {
       join(["compiler=\"${{ steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_compiler_output, " }}\""], ""),
       "if [ -z \"$compiler\" ]; then echo \"::error::IdentityUnknown: compiler identity missing before the sha-keyed identity save\"; exit 1; fi",
       join(["mkdir -p \"", parse_compiler_sha_identity_blob_dir, "\""], ""),
-      join(["printf '%s' \"$compiler\" > \"", parse_compiler_sha_identity_blob_path(), "\""], "")
+      join(["printf %s \"$compiler\" > \"", parse_compiler_sha_identity_blob_path(), "\""], "")
     ],
     "; "
   )

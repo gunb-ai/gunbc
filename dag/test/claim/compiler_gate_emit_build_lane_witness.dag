@@ -19,6 +19,8 @@ import gunbc.parse_verdict_publish {
   parse_verdict_identity_step,
   parse_verdict_identity_blob_step,
   parse_verdict_identity_blob_save_step,
+  parse_verdict_identity_blob_step_name,
+  parse_verdict_identity_blob_save_step_name,
   parse_verdict_publish_walk_step,
   parse_verdict_publish_save_step,
   parse_verdict_identity_step_name,
@@ -569,6 +571,13 @@ test fn the_publish_save_does_not_restore() -> Bool {
 test fn the_sha_identity_save_key_is_sha_only() -> Bool {
   string_contains(s: parse_compiler_sha_identity_cache_prefix, pattern: "gunbc-parse-identity-")
     && (step_if_condition(step: parse_verdict_identity_blob_save_step()) == materialization_publish_if())
+}
+
+test fn the_committed_witnesses_yml_binds_the_sha_identity_save() -> Bool {
+  let y = Filesystem.Read(path: ".github/workflows/witnesses.yml", expect: ExpectSuccess).content
+  string_contains(s: y, pattern: parse_verdict_identity_blob_step_name)
+    && string_contains(s: y, pattern: parse_verdict_identity_blob_save_step_name())
+    && string_contains(s: y, pattern: parse_compiler_sha_identity_cache_prefix)
 }
 
 test fn the_gha_object_key_carries_compiler_identity_and_sha() -> Bool {
