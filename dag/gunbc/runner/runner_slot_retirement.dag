@@ -342,7 +342,7 @@ fn srv1_transition_interruption_scope() -> List<NonEmptyStr> {
 
 data srv1_transition_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
   scope: srv1_transition_interruption_scope(),
-  operator_reason: "operator decision 2026-09-17, scoped to srv1 surplus internal CI slots 13-50 (historical remainder 22-50 and the 21-to-12 retirees 13-21); slot 13 is now a committed fabric member so the live grant is 14-50; the decision does not name srv1-01..12, sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
+  operator_reason: "operator decision 2026-09-17, scoped to srv1 surplus internal CI slots 13-50 (historical 50-slot remainder 22-50 and the 21-to-12 width-transition retirees 13-21): these may be interrupted for the 26/25 GiB transition; the decision does not name srv1-01..12, sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
 }
 
 type HostInterruptionAuthorizationStanding
