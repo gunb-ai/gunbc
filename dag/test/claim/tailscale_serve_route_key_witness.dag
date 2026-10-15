@@ -284,9 +284,49 @@ test fn w_scope_differing_only_in_uncompared_endpoint_field_still_collides() -> 
     == key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: b)
 }
 
-// Same wall for the keyed index itself: SubjectKey over the scoped key collides identically.
+// Same wall for the keyed index itself, over the SAME a/b pair as the Condition 1 RED above (same
+// label and service, different address): collision must come from the scope projection, not from
+// building the key twice from one value (review 80283).
+fn w_endpoint_moved_address() -> NetworkEndpoint {
+  NetworkEndpoint {
+    label: srv1_tailscale_endpoint.label,
+    subject: srv1_tailscale_endpoint.subject,
+    address: srv2_tailscale_endpoint.address,
+    role: srv1_tailscale_endpoint.role,
+    locality: srv1_tailscale_endpoint.locality,
+  }
+}
+
+fn w_pair_a() -> TailscaleServeRouteSubject {
+  tailscale_route_subject(endpoint: root_endpoint(backend: "8080"))
+}
+
+fn w_pair_b() -> TailscaleServeRouteSubject {
+  tailscale_serve_route_subject(scope: tailscale_serve_scope(node: w_endpoint_moved_address()), endpoint: root_endpoint(backend: "8080"))
+}
+
+fn w_subject_key_of(subject: TailscaleServeRouteSubject) -> SubjectKey<ScopedKey<TailscaleServeRouteKeyRelation, TailscaleServeScopeIdentity, TailscaleServeRouteKey>> {
+  SubjectKey { subject: key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: subject) }
+}
+
 test fn w_subject_key_over_scoped_key_collides_on_uncompared_field() -> Bool {
-  let a = SubjectKey { subject: key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: srv1_root_route_subject()) }
+  w_subject_key_of(subject: w_pair_a()) == w_subject_key_of(subject: w_pair_b())
+}
+
+// Mirror: a pair differing in LABEL stays distinct, so the collision above is not everything collapsing.
+test fn w_subject_key_over_scoped_key_stays_distinct_on_label() -> Bool {
+  let other = tailscale_serve_route_subject(
+    scope: tailscale_serve_scope(node: srv2_tailscale_endpoint),
+    endpoint: root_endpoint(backend: "8080"),
+  )
+  w_subject_key_of(subject: tailscale_route_subject(endpoint: root_endpoint(backend: "8080"))) != w_subject_key_of(subject: other)
+}
+
+// Discrimination: a FULL-NetworkEndpoint scope projection would NOT collide this pair, so the collision
+// test above fails the moment scope_of widens to the whole endpoint.
+test fn w_full_endpoint_scope_projection_would_distinguish_the_pair() -> Bool {
+  w_pair_a().scope.node != w_pair_b().scope.node
+}
   let b = SubjectKey { subject: key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: srv1_root_route_subject()) }
   a == b
 }
