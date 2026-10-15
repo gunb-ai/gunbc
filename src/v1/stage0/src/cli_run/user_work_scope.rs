@@ -383,12 +383,12 @@ fn live_modeled_slice_standing(
     slice_memory: RootMemoryRead,
 ) -> UserWorkScopeStanding {
     match slice_memory {
-        RootMemoryRead::Capped(n) => UserWorkScopeStanding::ExemptSystemUnit {
+        RootMemoryRead::Capped(n) if n > 0 => UserWorkScopeStanding::ExemptSystemUnit {
             unit,
             slice,
             bound: n,
         },
-        RootMemoryRead::Unbounded | RootMemoryRead::Unreadable => {
+        RootMemoryRead::Capped(_) | RootMemoryRead::Unbounded | RootMemoryRead::Unreadable => {
             UserWorkScopeStanding::UncappedSystemSlice { unit, slice }
         }
     }
@@ -699,6 +699,25 @@ mod standing_fixture_tests {
         assert_eq!(
             got,
             "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service:1"
+        );
+    }
+
+    #[test]
+    fn modeled_slice_with_zero_memory_max_refuses() {
+        let cg = "0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service";
+        let got = wire(
+            false,
+            Some(cg),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Capped(0),
+            None,
+        );
+        assert_eq!(
+            got,
+            "UncappedSystemSlice:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
         );
     }
 

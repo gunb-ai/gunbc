@@ -398,6 +398,16 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
       slice_memory: RootMemoryCapped { bytes: byte_size(1) },
     ),
   )
+  let zero_slice_wire = user_work_scope_standing_wire(
+    s: user_work_scope_standing(
+      unit_test: false,
+      github_actions: false,
+      cgroup: CgroupText { text: modeled },
+      user_manager_reachable: false,
+      xdg_runtime_dir: false,
+      slice_memory: RootMemoryCapped { bytes: byte_size(0) },
+    ),
+  )
   string_contains(s: seed, pattern: sessions)
     && string_contains(s: seed, pattern: system_svc)
     && string_contains(s: seed, pattern: "0::/")
@@ -407,6 +417,8 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
     && seed_fixture_assert_eq(seed: seed, wire: capped_wire)
     && seed_fixture_assert_eq(seed: seed, wire: unbounded_wire)
     && seed_fixture_assert_eq(seed: seed, wire: exempt_wire)
+    && seed_fixture_assert_eq(seed: seed, wire: zero_slice_wire)
+    && string_contains(s: seed, pattern: "fn modeled_slice_with_zero_memory_max_refuses")
     && seed_fixture_assert_eq(seed: seed, wire: "UncappedSystemSlice:sessions.slice:docker-deadbeef.scope")
     && seed_fixture_assert_eq(seed: seed, wire: "ExemptSystemUnit:sessions.slice:docker-deadbeef.scope:137438953472")
     && sessions_wire == "UncappedSystemSlice:sessions.slice:docker-deadbeef.scope"
@@ -414,6 +426,7 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
     && capped_wire == "ExemptBoundedContainer:25769803776"
     && unbounded_wire == "BoundedContainerUncapped"
     && exempt_wire == "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service:1"
+    && zero_slice_wire == "UncappedSystemSlice:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
 }
 
 test fn a_path_segment_without_a_dot_suffix_is_not_a_unit() -> Bool {
@@ -498,6 +511,21 @@ test fn a_modeled_slice_with_unbounded_memory_max_refuses() -> Bool {
     gunbc_tree_sync_unit_name as String,
   ], "")
   match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnbounded) {
+    UncappedSystemSlice { unit, slice } =>
+      unit == (gunbc_tree_sync_unit_name as String)
+        && slice == (gunbc_repository_convergence_slice_unit_name as String)
+    _ => false
+  }
+}
+
+test fn a_modeled_slice_with_zero_memory_max_refuses() -> Bool {
+  let cg = join([
+    "0::/",
+    gunbc_repository_convergence_slice_unit_name as String,
+    "/",
+    gunbc_tree_sync_unit_name as String,
+  ], "")
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: byte_size(0) }) {
     UncappedSystemSlice { unit, slice } =>
       unit == (gunbc_tree_sync_unit_name as String)
         && slice == (gunbc_repository_convergence_slice_unit_name as String)
