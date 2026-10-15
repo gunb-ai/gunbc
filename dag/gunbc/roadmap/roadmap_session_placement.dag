@@ -270,17 +270,11 @@ type SessionPlacementAcquisition
 // THE DECLARED WINDOW IS THE CEILING'S OWN ROW, the same as the compute provider's: what it covers is
 // the worktree add, the attempt state and the unit's argv -- the steps between acquisition and
 // session_placement_begin_launch.
-fn session_attempt_record(node_id: String, attempt_key: String, granted: Kibibyte, now: EpochSecs) -> AttemptRecord {
+fn session_attempt_record(node_id: String, attempt_key: String, unit: NonEmptyStr, granted: Kibibyte, now: EpochSecs) -> AttemptRecord {
   AttemptRecord {
     identity: session_attempt_identity(node_id: node_id, attempt_key: attempt_key),
-    reference: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-      Present { value: unit } => unit as String
-      Absent => ""
-    },
-    unit: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-      Present { value: unit } => unit as String
-      Absent => ""
-    },
+    reference: unit as String,
+    unit: unit as String,
     granted: granted,
     opened_at: now,
     launch_deadline: now + compute_pre_launch_ceiling_seconds,
@@ -296,7 +290,7 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
       SessionPlacementRefused { detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }) }
     SystemdUnitNameOverlong { length: n } =>
       SessionPlacementRefused { detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }) }
-    SystemdUnitNameAdmitted { name: _ } =>
+    SystemdUnitNameAdmitted { name } =>
   match session_placement_pool() {
     Absent => SessionPlacementRefused { detail: "the session pool has no size" }
     Present { value: pool } => {
@@ -304,7 +298,7 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
       match now_epoch_seconds() {
         Absent => SessionPlacementRefused { detail: "the host clock could not be read as epoch seconds, and the session's slot carries a launch deadline" }
         Present { value: now } => {
-          let record = session_attempt_record(node_id: node_id, attempt_key: attempt_key, granted: work_class_grant_amount(g: class_grant), now: now)
+          let record = session_attempt_record(node_id: node_id, attempt_key: attempt_key, unit: systemd_unit_name_wire(name: name), granted: work_class_grant_amount(g: class_grant), now: now)
           match attempt_open(root: stores.slots_root, record: record) {
             AttemptLostRace { expected: e, observed: o } =>
               SessionPlacementRefused { detail: join(["a session slot already exists for ", record.unit, " (expected ", e, ", found ", o, "); one attempt holds at most one placement"], "") }
@@ -562,14 +556,14 @@ fn session_release_detail(r: ComputeRelease) -> String {
 
 fn session_placement_release_write(records_dir: String, node_id: String, attempt_key: String, grant_binding: SessionGrantBinding?, reason: NonEmptyStr, freed: ComputeRelease) -> SessionPlacementWrite {
   let path = join([records_dir, "/", session_placement_release_basename(node_id: node_id, attempt_key: attempt_key)], "")
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    Absent => SessionPlacementWriteFailed { path: path, error: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key) }
+    Present { value: unit } => {
   let w = Filesystem.Write(path: path, content: serialize_json(v: json_object(members: concat([
     json_kv(key: "schema", value: json_string(s: session_placement_schema)),
     json_kv(key: "node_id", value: json_string(s: node_id)),
     json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
-    json_kv(key: "reference", value: json_string(s: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-      Present { value: unit } => unit as String
-      Absent => ""
-    })),
+    json_kv(key: "reference", value: json_string(s: unit as String)),
     json_kv(key: "outcome", value: json_string(s: session_release_outcome_wire(r: freed))),
     json_kv(key: "reason", value: json_string(s: reason as String)),
     json_kv(key: "detail", value: json_string(s: session_release_detail(r: freed))),
@@ -581,6 +575,8 @@ fn session_placement_release_write(records_dir: String, node_id: String, attempt
     ]))]
   }))))
   if w.success { SessionPlacementWritten { path: path } } else { SessionPlacementWriteFailed { path: path, error: w.error } }
+    }
+  }
 }
 
 // ── READING THE FILES BACK ─────────────────────────────────────────────────────────────────────
@@ -796,15 +792,19 @@ fn session_release_observation_of(path: String, obs: FilesystemFileObservation, 
           match causes.first() {
             Present { value: c } => SessionReleaseUnreadable { path: path, detail: c }
             Absent => {
+              let admitted_unit = session_unit_wire(node_id: node_id, attempt_key: attempt_key)
               let mismatch = if session_string_or(r: nd) != node_id || session_string_or(r: ak) != attempt_key {
                 join(["the release belongs to ", session_string_or(r: nd), ":", session_string_or(r: ak), ", not ", node_id, ":", attempt_key], "")
-              } else if session_string_or(r: rf) != (match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-                Present { value: unit } => unit as String
-                Absent => ""
-              }) {
-                join(["the release names reference ", session_string_or(r: rf), ", not this attempt's unit"], "")
               } else {
-                session_release_grant_mismatch(doc: doc, grant: grant)
+                match admitted_unit {
+                  Absent => session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key)
+                  Present { value: unit } =>
+                    if session_string_or(r: rf) != (unit as String) {
+                      join(["the release names reference ", session_string_or(r: rf), ", not this attempt's unit"], "")
+                    } else {
+                      session_release_grant_mismatch(doc: doc, grant: grant)
+                    }
+                }
               }
               if mismatch != "" {
                 SessionReleaseUnreadable { path: path, detail: mismatch }

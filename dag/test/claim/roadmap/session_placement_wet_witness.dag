@@ -161,7 +161,7 @@ fn real_grant(dir: String, lease: LeaseGrant, slot: AttemptRecord, generation: C
 }
 
 fn slot_a(opened: EpochSecs) -> AttemptRecord {
-  session_attempt_record(node_id: node_a, attempt_key: key_a, granted: kibibyte(count: 8388608), now: opened)
+  session_attempt_record(node_id: node_a, attempt_key: key_a, unit: unit_a() as NonEmptyStr, granted: kibibyte(count: 8388608), now: opened)
 }
 
 fn record_bytes(node_id: String, attempt_key: String) -> String {
