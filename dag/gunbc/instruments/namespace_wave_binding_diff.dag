@@ -279,3 +279,9 @@ fn binding_diff_standing(
       }
   }
 }
+
+// THE BASE A WAVE IS DIFFED AGAINST: the merge base of HEAD and this ref. A policy fact, so it lives here
+// and the host receives it, rather than as a literal in the host's argv.
+fn binding_diff_base_ref() -> String {
+  "origin/main"
+}

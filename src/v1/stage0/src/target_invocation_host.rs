@@ -256,6 +256,8 @@ pub enum V2NativeCensusReading {
     TypeDeclarationUse,
     /// `gunbc.instruments.ambient_name_census_reading`: the occurrence-binding rows census-infer prints.
     OccurrenceBinding,
+    /// `gunbc.instruments.namespace_wave_binding_diff`: those rows on base and on head, joined.
+    BindingDiff,
     NativeProcessMemory {
         workload: NativeMeasuredWorkload,
     },
@@ -427,6 +429,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("ambient-name-census"),
             TargetProducer::V2NativeCensus {
                 reading: V2NativeCensusReading::OccurrenceBinding,
+            },
+        ),
+        (
+            instrument_label("namespace-wave-binding-diff"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::BindingDiff,
             },
         ),
         (
@@ -951,6 +959,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::OccurrenceBinding,
         } => run_census_infer_reading(&self_host_source_roots(), &AMBIENT_NAME_READING),
+        TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::BindingDiff,
+        } => run_namespace_wave_binding_diff(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::NativeProcessMemory { workload },
         } => run_native_process_memory(&self_host_source_roots(), workload),
@@ -1555,6 +1566,162 @@ fn run_census_infer_reading(
         }
     };
     reader_standing_outcome(&ctx, &value, label_name, reading.standing)
+}
+
+/// THE NAMESPACE-WAVE BINDING DIFF PRODUCER. Everything it decides is
+/// `gunbc.instruments.namespace_wave_binding_diff`'s: the base ref (`binding_diff_base_ref`, a policy
+/// fact the reader owns), the two re-bind fixture roots, and the standing. The host performs only the
+/// effects no fold can: it writes the fixture roots, runs `census-infer` over them and over this tree
+/// with ONE prepared binary, checks out the merge base into a private worktree and runs THAT tree's own
+/// `gunbc test //gunbc/instruments:ambient-name-census` there -- base is read by base's compiler, never
+/// by head's, because a wave deletes a table row the head compiler no longer has -- and removes the
+/// worktree it added. It substitutes nothing for a run that did not happen: every failure is a typed
+/// `InvocationOutcome`.
+fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome {
+    let label_name = "namespace-wave-binding-diff";
+    let unreached = |message: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("{label_name}: {message}"),
+    };
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    const READER: &str = "dag/gunbc/instruments/namespace_wave_binding_diff.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => return unreached(format!("resolve failed for {READER}: {cause}")),
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let scratch = std::path::Path::new("target").join(label_name);
+    let write_root = |name: &str, function: &str| -> Result<String, String> {
+        let root = scratch.join(name);
+        let _ = std::fs::remove_dir_all(&root);
+        let files = crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
+            .map_err(|cause| format!("{function} failed: {cause}"))?;
+        for (path, content) in fixture_file_rows(&ctx, &files)? {
+            let target = root.join(&path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(&target, content).map_err(|e| e.to_string())?;
+        }
+        Ok(root.to_string_lossy().into_owned())
+    };
+    let fixture_roots = write_root("rebind_base", "binding_diff_rebind_base_files")
+        .and_then(|b| write_root("rebind_head", "binding_diff_rebind_head_files").map(|h| (b, h)));
+    let (rebind_base, rebind_head) = match fixture_roots {
+        Ok(pair) => pair,
+        Err(cause) => return unreached(cause),
+    };
+    let base_ref = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "binding_diff_base_ref",
+        &[],
+        true,
+    ) {
+        Ok(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
+        Ok(_) => return unreached("binding_diff_base_ref did not return a string".to_string()),
+        Err(cause) => return unreached(format!("binding_diff_base_ref failed: {cause}")),
+    };
+    let base = match run_base_ambient_name_census(&scratch, &base_ref) {
+        Ok(base) => base,
+        Err(cause) => return unreached(format!("base: {cause}")),
+    };
+    let runs = match cli_run::run_census_infer_root_sets(
+        source_roots,
+        &[vec![rebind_base], vec![rebind_head], source_roots.to_vec()],
+    ) {
+        Ok(runs) => runs,
+        Err(cause) => return unreached(cause),
+    };
+    let text = |s: &str| crate::v1_interpreter::Value::Str(s.to_string().into());
+    let args = [
+        (
+            Some("rebind_base_stdout".to_string()),
+            text(&runs[0].stdout),
+        ),
+        (
+            Some("rebind_head_stdout".to_string()),
+            text(&runs[1].stdout),
+        ),
+        (Some("base_stdout".to_string()), text(&base.0)),
+        (
+            Some("base_status".to_string()),
+            crate::v1_interpreter::Value::Int(i64::from(base.1.unwrap_or(-1))),
+        ),
+        (Some("head_stdout".to_string()), text(&runs[2].stdout)),
+    ];
+    match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "binding_diff_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => reader_standing_outcome(&ctx, &value, label_name, "binding_diff_standing"),
+        Err(cause) => unreached(format!("the reader failed: {cause}")),
+    }
+}
+
+/// Base's own `ambient-name-census`, run by base's own seed in a private worktree of the merge base of
+/// HEAD and `base_ref`. Returns that run's reading and status; removes the worktree it added.
+fn run_base_ambient_name_census(
+    scratch: &std::path::Path,
+    base_ref: &str,
+) -> Result<(String, Option<i32>), String> {
+    let git = |args: &[&str]| -> Result<String, String> {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .output()
+            .map_err(|e| format!("git {}: {e}", args.join(" ")))?;
+        if !out.status.success() {
+            return Err(format!(
+                "git {} exited {:?}: {}",
+                args.join(" "),
+                out.status.code(),
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    };
+    let merge_base = git(&["merge-base", "HEAD", base_ref])?;
+    let tree = scratch.join("base_tree");
+    let tree_text = tree.to_string_lossy().into_owned();
+    let _ = git(&["worktree", "remove", "--force", &tree_text]);
+    let _ = std::fs::remove_dir_all(&tree);
+    std::fs::create_dir_all(scratch).map_err(|e| e.to_string())?;
+    git(&["worktree", "add", "--detach", &tree_text, &merge_base])?;
+    let target_dir = std::fs::canonicalize(scratch)
+        .map_err(|e| e.to_string())?
+        .join("base_target");
+    let run = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--release",
+            "-p",
+            "v1-compiler",
+            "--bin",
+            "gunbc",
+            "--",
+            "test",
+            "//gunbc/instruments:ambient-name-census",
+        ])
+        .current_dir(&tree)
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output();
+    let removed = git(&["worktree", "remove", "--force", &tree_text]);
+    let output = run.map_err(|e| format!("spawning base's gunbc test: {e}"))?;
+    removed?;
+    // `gunbc test` writes its reading to STDERR (the verdict message), so that is what is read.
+    let reading = String::from_utf8(output.stderr).map_err(|e| e.to_string())?;
+    Ok((reading, output.status.code()))
 }
 
 /// A reader's `CliWireResponse`, as the invocation outcome: exit 0 held, 1 did not hold, any other

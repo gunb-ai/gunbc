@@ -45,7 +45,7 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, NativeProcessMemoryReading,
+  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, BindingDiffReading, NativeProcessMemoryReading,
   DependencyDemandCensusProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
@@ -307,6 +307,16 @@ fn type_declaration_use_census_label() -> Label {
 // receipt, not transcribed into committed prose (DESIGN section 6).
 fn ambient_name_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "ambient-name-census" } }
+}
+
+// THE NAMESPACE-WAVE BINDING DIFF (gunbc.instruments.namespace_wave_binding_diff): a wave's PR, read
+// occurrence by occurrence against its merge base. The only admitted change is an ambient occurrence
+// binding the home a gunbc.namespace_cut.ambient_name_home row names; any other re-binding refuses,
+// naming the occurrence. Run by the wave's author on the wave's own PR; on no required path (the
+// deleted namespace-wave admission wall is not rebuilt: gunbc.rung_drop
+// namespace_wave_admission_wall_removed). `gunbc test //gunbc/instruments:namespace-wave-binding-diff`.
+fn namespace_wave_binding_diff_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "namespace-wave-binding-diff" } }
 }
 
 // THE NATIVE PROCESS'S OWN MEMORY (gunbc.instruments.native_process_memory_reading): the emitted v2
@@ -766,6 +776,10 @@ fn ambient_name_census_binding() -> TargetBinding {
   TargetBinding { target: ambient_name_census_label() producer: V2NativeCensusProducer { reading: OccurrenceBindingReading } }
 }
 
+fn namespace_wave_binding_diff_binding() -> TargetBinding {
+  TargetBinding { target: namespace_wave_binding_diff_label() producer: V2NativeCensusProducer { reading: BindingDiffReading } }
+}
+
 fn native_process_memory_census_binding() -> TargetBinding {
   TargetBinding { target: native_process_memory_census_label() producer: V2NativeCensusProducer { reading: NativeProcessMemoryReading { workload: NativeCensusWorkload { verb: NativeCensusFrontEnd } } } }
 }
@@ -911,7 +925,7 @@ fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
-    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(), v2_native_census_scoped_label(), type_declaration_use_census_label(), ambient_name_census_label(), native_process_memory_census_label(),
+    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(), v2_native_census_scoped_label(), type_declaration_use_census_label(), ambient_name_census_label(), namespace_wave_binding_diff_label(), native_process_memory_census_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
@@ -931,7 +945,7 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(), v2_native_census_scoped_binding(), type_declaration_use_census_binding(), ambient_name_census_binding(), native_process_memory_census_binding(),
+    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(), v2_native_census_scoped_binding(), type_declaration_use_census_binding(), ambient_name_census_binding(), namespace_wave_binding_diff_binding(), native_process_memory_census_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
