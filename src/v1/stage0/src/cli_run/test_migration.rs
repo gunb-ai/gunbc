@@ -128,12 +128,7 @@ pub(crate) fn test_migration_rust_test_fn_names(content: &str) -> Result<Vec<Str
 pub(crate) fn test_migration_behavior_discovery_report(
 ) -> &'static TestMigrationBehaviorDiscoveryReport {
     static REPORT: OnceLock<TestMigrationBehaviorDiscoveryReport> = OnceLock::new();
-    shared_fill::once(
-        &REPORT,
-        "test_migration_behavior_discovery",
-        "corpus",
-        build_test_migration_behavior_discovery_report,
-    )
+    REPORT.get_or_init(build_test_migration_behavior_discovery_report)
 }
 
 pub fn test_migration_legacy_behavior_ids() -> Vec<String> {
@@ -211,12 +206,7 @@ pub(crate) fn test_migration_debt_exclude_stems() -> Vec<String> {
 
 pub(crate) fn test_migration_debt_report() -> &'static TestMigrationDebtReport {
     static REPORT: OnceLock<TestMigrationDebtReport> = OnceLock::new();
-    shared_fill::once(
-        &REPORT,
-        "test_migration_debt",
-        "corpus",
-        build_test_migration_debt_report,
-    )
+    REPORT.get_or_init(build_test_migration_debt_report)
 }
 
 pub fn test_migration_debt_module_names() -> Vec<String> {

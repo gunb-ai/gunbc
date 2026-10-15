@@ -25016,20 +25016,8 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            arm "free_call.class_b_import_closure_gate_not_affected_skip" { "class_b_import_closure_gate_not_affected_skip" } => Ok(Some(Value::Bool(
-                crate::cli_run::class_b_import_closure_gate_not_affected_skip_for_ci(),
-            ))),
-
             arm "free_call.witness_layer_roots_compile_clean_check" { "witness_layer_roots_compile_clean_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_check(),
-            ))),
-
-            arm "free_call.witness_layer_roots_compile_clean_emit_check" { "witness_layer_roots_compile_clean_emit_check" } => Ok(Some(Value::Bool(
-                crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
-            ))),
-            arm "free_call.install_or_consume_floor_compile_clean_gate_receipt" { "install_or_consume_floor_compile_clean_gate_receipt" } => Ok(Some(gate_receipt_value(
-                crate::cli_run::install_or_consume_floor_compile_clean_gate_receipt(),
-                $ctx,
             ))),
 
             arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {
@@ -25047,10 +25035,6 @@ macro_rules! v1_builtin_arms {
             arm "free_call.consume_generated_artifact_drift_gate_receipt" { "consume_generated_artifact_drift_gate_receipt" } => Ok(Some(gate_receipt_value(
                 crate::cli_run::consume_generated_artifact_drift_gate_receipt(),
                 $ctx,
-            ))),
-
-            arm "free_call.witness_compile_clean_cli_floor_verdicts_agree" { "witness_compile_clean_cli_floor_verdicts_agree" } => Ok(Some(Value::Bool(
-                crate::cli_run::witness_compile_clean_cli_floor_verdicts_agree(),
             ))),
 
             arm "free_call.test_migration_debt_module_names" { "test_migration_debt_module_names" } => {
