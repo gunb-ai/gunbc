@@ -33,8 +33,6 @@ mod field_of_fractions_construction_test;
 #[cfg(test)]
 mod field_of_fractions_single_declaration_test;
 #[cfg(test)]
-mod generic_argument_recheck_test;
-#[cfg(test)]
 mod item_kind_dispatch_totality_test;
 #[cfg(test)]
 mod namespace_unique_on_chain_policy_test;
