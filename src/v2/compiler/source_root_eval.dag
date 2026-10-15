@@ -3393,6 +3393,14 @@ type NativeCensusCascade
 // b -> a, and a would read an exact 0 (review 75118). The count over the edges that WERE read is
 // then a LOWER BOUND, typed as one with the number of refused files whose imports went unread;
 // it is Counted, an exact answer, only when no other refused file could be a hidden importer.
+// THE RELATION IS IMPORT-EDGE REACHABILITY, AND THAT IS A DECLARED FRONTIER (DESIGN §4b). Both
+// directions come from normalized_tree_import_bindings, so a module that reaches the root only
+// through a qualified reference is in a scoped run's acquired population but can be missing from
+// the root's fan-out: the count is import-edge reachability over the observed population, coverage
+// incomplete -- not demand fan-out, and not evidence that two repairs are independent. Next rung:
+// feed this fold the acquisition's observed request-to-selected-target relation
+// (v2.compiler.module_acquisition), so fan-out walks the edges the acquirer followed. Trigger: the
+// acquisition result carries that relation per member.
 type NativeCensusClosureFanOut
   = NativeCensusClosureFanOutCounted { modules: Int }
   | NativeCensusClosureFanOutAtLeast { modules: Int, unread_refused_files: Int }
@@ -3952,6 +3960,12 @@ fn native_lane_census_scoped_ingest(label: String, source_roots: FreeMonoid<Stri
   }
 }
 
+// THE WHOLE-CORPUS SUBJECT ANNOTATION, AN IMPORT-ONLY WALK, AND A DECLARED FRONTIER (DESIGN §4b).
+// It misses the qualified-reference edges module_acquisition follows, so it is a second closure
+// definition beside acquire_census_closure_of (a §3 fork), kept only because the whole-corpus census
+// walks its roots rather than acquiring. A scoped run never consults it: there the acquired set is
+// the closure. Next rung: re-derive this annotation from the same acquisition and delete the walk.
+// Trigger: the whole-corpus census takes its population from module_acquisition.
 type NativeCensusSubjectClosure
   = NativeCensusSubjectClosureRead { subject: String, members: Map<String, Bool> }
   | NativeCensusSubjectClosureUnavailable { reason: Symbol }
