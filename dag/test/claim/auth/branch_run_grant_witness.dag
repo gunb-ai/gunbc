@@ -16,11 +16,17 @@ import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_default_read_token,
 import gunbc.auth.branch_dispatch_federation {
   hetzner_cloud_control_federation, branch_dispatch_attribute_condition, branch_dispatch_attribute_mapping,
   branch_run_impersonation_cell, branch_run_principal_set, parse_branch_run_key, mode_of_run_title, run_scoped_mode_named,
+  mtcollins1_boot_run_scoped_federation, mtcollins1_boot_run_scoped_service_account_id, select_mtcollins1_boot_credential_source,
+  ReviewedMainDedicatedFederation, RunScopedApprovedGrant, run_scoped_federation_named,
 }
 import gunbc.auth.branch_run_grant {
   BranchRunFacts, BranchRunAdmitted, BranchRunRefused, BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused,
-  judge_branch_run, plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose, run_scoped_federation_named,
+  judge_branch_run, plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
 }
+import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of }
+import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -180,11 +186,57 @@ test fn a_present_cell_holds_and_an_unjudgeable_owned_cell_refuses() -> Bool {
 test fn only_a_declared_mode_reaches_a_declared_account() -> Bool {
   mode_of_run_title(title: title) == "hetzner_cloud_server_read"
     && match run_scoped_mode_named(mode: "hetzner_cloud_server_read") { Present { value: m } => (m.account_id as String) == "hetzner-cloud-control"  Absent => false }
+    && match run_scoped_mode_named(mode: "mtcollins1_boot") { Present { value: m } => (m.account_id as String) == (mtcollins1_boot_run_scoped_service_account_id as String)  Absent => false }
     && match run_scoped_mode_named(mode: "apply") { Present { value: _ } => false  Absent => true }
     && match run_scoped_federation_named(account_id: "fleet-cloud-convergence") { Present { value: _ } => false  Absent => true }
 }
 
 // THE KEY IS EXACTLY <run id>-<run attempt>, both positive.
+fn grant_secret_versions(grants: List<SecretAccessGrant>) -> List<String> {
+  map(grants, g => join([g.target.secret as String, ":", g.target.version], ""))
+}
+
+// RED: a hetzner grant unlocks the boot. Modes map to distinct accounts; the boot account has no
+// standing impersonation, is a converge target, and is not the hetzner account.
+test fn a_hetzner_grant_cannot_unlock_the_boot_account() -> Bool {
+  match mtcollins1_boot_run_scoped_federation() {
+    Absent => false
+    Present { value: boot } =>
+      (boot.service_account_id as String) != (hetzner_cloud_control_federation().service_account_id as String)
+        && impersonation_cells(f: boot).length() == 0
+        && match standing_principal_set(f: boot) { Present { value: _ } => false  Absent => true }
+        && any(gcp_iam_converge_targets, t => (t.service_account as String) == (boot.service_account as String))
+        && match run_scoped_federation_named(account_id: "hetzner-cloud-control") {
+          Present { value: h } => (h.service_account as String) != (boot.service_account as String)
+          Absent => false
+        }
+  }
+}
+
+// RED: the two boot SAs pin different BMC versions. Both derive secret_grants from the admitted
+// pair; a forged second version is not a converge target.
+test fn both_boot_accounts_pin_the_admitted_bmc_and_fleet_key_versions() -> Bool {
+  match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+    Absent => false
+    Present { value: admitted } => match mtcollins1_boot_run_scoped_federation() {
+      Absent => false
+      Present { value: run } => {
+        let standing = boot_dedicated_federation(f: admitted)
+        grant_secret_versions(grants: standing.secret_grants) == grant_secret_versions(grants: admitted.secret_grants)
+          && grant_secret_versions(grants: run.secret_grants) == grant_secret_versions(grants: admitted.secret_grants)
+          && any(admitted.secret_grants, g => (g.target.secret as String) == "fleet-automation-ssh-key" && g.target.version == "1")
+          && any(admitted.secret_grants, g => (g.target.secret as String) == "bmc-mtcollins1-gunbc")
+          && !any(gcp_iam_converge_targets, t =>
+            (t.service_account_id as String) == (run.service_account_id as String)
+              && any(t.secret_grants, g => (g.target.secret as String) == "bmc-mtcollins1-gunbc"
+                && any(admitted.secret_grants, a => (a.target.secret as String) == "bmc-mtcollins1-gunbc" && a.target.version != g.target.version)))
+          && match select_mtcollins1_boot_credential_source(on_reviewed_main: true) { ReviewedMainDedicatedFederation => true  RunScopedApprovedGrant => false }
+          && match select_mtcollins1_boot_credential_source(on_reviewed_main: false) { RunScopedApprovedGrant => true  ReviewedMainDedicatedFederation => false }
+      }
+    }
+  }
+}
+
 test fn the_run_key_parses_only_its_own_shape() -> Bool {
   match parse_branch_run_key(key: "37879231670-2") { Present { value: k } => k.run_id == 37879231670 && k.run_attempt == 2  Absent => false }
     && match parse_branch_run_key(key: "37879231670") { Present { value: _ } => false  Absent => true }

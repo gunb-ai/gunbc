@@ -11,6 +11,10 @@ import gunbc.auth.oidc_claim_pins {
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, RunScopedImpersonation }
 import gunbc.gcp.gcp_estate_observation { role_iam_workload_identity_user }
 import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.auth.managed_host_boot_federation {
+  ManagedHostBootFederation, provisioned_federation_of, boot_federation_for,
+}
 
 // ── A FLEET-CONVERGE RUN FROM A BRANCH, ADMITTED ONE RUN AT A TIME ─────────────────────────────
 // The main-only federation (gunbc.auth.fleet_convergence_federation) keeps every account it reaches
@@ -124,7 +128,10 @@ type RunScopedMode {
 }
 
 fn run_scoped_modes() -> List<RunScopedMode> {
-  [RunScopedMode { mode: "hetzner_cloud_server_read", account_id: hetzner_cloud_control_service_account_id }]
+  [
+    RunScopedMode { mode: "hetzner_cloud_server_read", account_id: hetzner_cloud_control_service_account_id },
+    RunScopedMode { mode: "mtcollins1_boot", account_id: mtcollins1_boot_run_scoped_service_account_id },
+  ]
 }
 
 fn run_scoped_mode_named(mode: String) -> RunScopedMode? {
@@ -178,4 +185,60 @@ fn hetzner_cloud_control_federation() -> DedicatedFederation {
     service_account_member: federated_service_account_member(email: hetzner_cloud_control_service_account),
     secret_grants: hetzner_cloud_api_grants(),
   }
+}
+
+// THE MT. COLLINS BOOT'S RUN-SCOPED ACCOUNT: same pool as Hetzner, own account, grants taken from
+// the admitted boot federation's one secret_grants list (BMC published version and fleet key
+// version). A second pin on this account is unwritable because there is no second list. Rotation
+// of either version is one edit on ManagedHostBootFederation, one converge, both SAs.
+data mtcollins1_boot_run_scoped_service_account_id: NonEmptyStr = "mtcollins1-boot-run"
+
+data mtcollins1_boot_run_scoped_service_account: ServiceAccountEmail = "mtcollins1-boot-run@gunbai-secrets.iam.gserviceaccount.com"
+
+fn mtcollins1_boot_run_scoped_federation_for(f: ManagedHostBootFederation) -> DedicatedFederation {
+  DedicatedFederation {
+    label: "mtcollins1 boot (approved branch runs)",
+    pool_id: branch_dispatch_wif_pool_id,
+    pool_display_name: "Fleet converge (branch runs)",
+    provider_id: branch_dispatch_wif_provider_id,
+    attribute_mapping: branch_dispatch_attribute_mapping,
+    attribute_condition: branch_dispatch_attribute_condition(),
+    impersonation: RunScopedImpersonation,
+    service_account: mtcollins1_boot_run_scoped_service_account,
+    service_account_id: mtcollins1_boot_run_scoped_service_account_id,
+    service_account_display_name: "Mt. Collins boot (run-scoped, WIF-only, no keys)",
+    service_account_member: federated_service_account_member(email: mtcollins1_boot_run_scoped_service_account),
+    secret_grants: f.secret_grants,
+  }
+}
+
+fn mtcollins1_boot_run_scoped_federations() -> List<DedicatedFederation> {
+  match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+    Present { value: f } => [mtcollins1_boot_run_scoped_federation_for(f: f)]
+    Absent => []
+  }
+}
+
+fn mtcollins1_boot_run_scoped_federation() -> DedicatedFederation? {
+  mtcollins1_boot_run_scoped_federations().first()
+}
+
+fn run_scoped_federations() -> List<DedicatedFederation> {
+  concat([hetzner_cloud_control_federation()], mtcollins1_boot_run_scoped_federations())
+}
+
+fn run_scoped_federation_named(account_id: String) -> DedicatedFederation? {
+  filter(run_scoped_federations(), f => (f.service_account_id as String) == account_id).first()
+}
+
+// WHICH WIF SOURCE THE BOOT JOB'S ONE CREDENTIAL SEAM TAKES. Reviewed main keeps the dedicated
+// standing federation; any other ref takes the run-scoped account, which IAM admits only after
+// this run's grant cell exists. The YAML emitter consumes this fold; github.ref in the workflow
+// file is not the wall.
+type MtCollins1BootCredentialSource
+  = ReviewedMainDedicatedFederation
+  | RunScopedApprovedGrant
+
+fn select_mtcollins1_boot_credential_source(on_reviewed_main: Bool) -> MtCollins1BootCredentialSource {
+  if on_reviewed_main { ReviewedMainDedicatedFederation } else { RunScopedApprovedGrant }
 }
