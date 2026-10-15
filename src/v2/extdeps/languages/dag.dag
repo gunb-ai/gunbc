@@ -4407,6 +4407,12 @@ fn dag_surface_module_header_metadata_edge(e: Edge) -> Bool {
     || dag_surface_edge_is(e: e, edge: ^dag_surface_module_header_qualified_name)
 }
 
+// A where-refinement clause holds references (predicate spellings), never declarations: the symbol
+// index fill indexes nothing beneath this edge.
+fn dag_surface_where_refinement_clause_edge(e: Edge) -> Bool {
+  dag_surface_edge_is(e: e, edge: ^dag_surface_where_refinement_clause)
+}
+
 fn dag_resolve_preserve_module_metadata_subtree(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>

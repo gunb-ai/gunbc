@@ -146,7 +146,7 @@ import v2.std.resolution_policy {
   NamespaceOnlyY,
   default_name_resolution_policy
 }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
 import v2.std.symbol_index {
   symbol_index_entry_at,
   LexicalAmbiguous,
@@ -1175,6 +1175,9 @@ fn resolve_ctx_with_declaring(ctx: ResolveContext, declaring: DeclaringPosition)
 fn resolve_declaring_across_named_edge(declaring: DeclaringPosition, e: Edge) -> DeclaringPosition {
   match declaring {
     DeclaringAt { path: path } =>
+      if symbol_index_edge_introduces_no_declarations(e: e) {
+        NotDeclaring
+      } else {
       match e.label {
         StructuralLabel { label: _ } =>
           if dag_surface_module_header_metadata_edge(e: e) || binder_node_edge(e: e) {
@@ -1189,6 +1192,7 @@ fn resolve_declaring_across_named_edge(declaring: DeclaringPosition, e: Edge) ->
             DeclaringAt { path: qualified_name_snoc(qn: path, segment: name) }
           }
         Positional => declaring
+      }
       }
     DeclaringInSpine { path: _, body: _ } => declaring
     NotDeclaring => declaring
