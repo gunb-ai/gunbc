@@ -23,7 +23,6 @@ import gunbc.host.host_software_surface {
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_intent { ComputeHost }
 import extdeps.tailscale.serve { TailscaleServeCapability, ScopedRemovalUnobserved }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_linux_toolchain }
 
 // FIRST CONSUMER of the per-host software surface (DESIGN 3c). gunbc.live_deploy.spec
 // deployment_srv1_target matches srv1_lab_deploy_plan: LabPlanReady fills os_package_manager and
@@ -189,8 +188,20 @@ fn plan_git_path(plan: LabDeployPlan) -> FilePath? {
   }
 }
 
-fn declared_srv1_toolchain_git() -> FilePath {
-  srv1_linux_toolchain.git
+fn plan_jq_path(plan: LabDeployPlan) -> FilePath? {
+  match plan {
+    LabPlanRefused { cause: _ } => none
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: p, timeout_path: _, worker_sandbox: _ } =>
+      Present { value: p }
+  }
+}
+
+fn plan_timeout_path(plan: LabDeployPlan) -> FilePath? {
+  match plan {
+    LabPlanRefused { cause: _ } => none
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: p, worker_sandbox: _ } =>
+      Present { value: p }
+  }
 }
 
 fn package_manager_is_apt(m: OsPackageManager) -> Bool {

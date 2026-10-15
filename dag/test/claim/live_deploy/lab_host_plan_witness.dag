@@ -32,7 +32,8 @@ import gunbc.live_deploy.lab_host_plan {
   plan_selects_system_manager_launcher,
   plan_package_manager,
   plan_git_path,
-  declared_srv1_toolchain_git,
+  plan_jq_path,
+  plan_timeout_path,
   package_manager_is_apt,
   lab_plan_deploy_fields,
   system_manager_launcher_wiring_frontier,
@@ -43,20 +44,30 @@ import extdeps.tailscale.serve {
   ScopedRemovalSupported,
   ScopedRemovalUnsupported,
 }
+import gunbc.host.srv1_software_inhabitance_receipt { srv1_software_inhabitance_receipt }
 import gunbc.live_deploy.spec { deployment_srv1_target }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment }
 import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn srv1_as_data_yields_apt_and_the_declared_git_path() -> Bool {
+test fn srv1_as_data_yields_apt_and_receipt_toolchain_paths() -> Bool {
   let plan = srv1_lab_deploy_plan()
+  let r = srv1_software_inhabitance_receipt
   match plan_package_manager(plan: plan) {
     Absent => false
     Present { value: m } =>
       package_manager_is_apt(m: m)
         && match plan_git_path(plan: plan) {
-          Present { value: p } => p == declared_srv1_toolchain_git()
+          Present { value: p } => p == r.git_path
+          Absent => false
+        }
+        && match plan_jq_path(plan: plan) {
+          Present { value: p } => p == r.jq_path
+          Absent => false
+        }
+        && match plan_timeout_path(plan: plan) {
+          Present { value: p } => p == r.timeout_path
           Absent => false
         }
         && match deployment_srv1_target().os_package_manager {
