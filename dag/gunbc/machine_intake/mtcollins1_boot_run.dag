@@ -2426,7 +2426,7 @@ fn mtcollins1_boot_actuate(
       let media = match before_attach {
         SolLostAt { outcome: o } => MediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
-          match census_readback_refusal_before_attach(subject: mtcollins1_census_machine, host: operator_host_srv2 as NonEmptyStr, readback: census_medium_readback(medium: mtcollins1_boot_medium, image: mtcollins1_census_image, host: operator_host_srv2 as NonEmptyStr, attempt: mtcollins1_census_readback_attempt_raw)) {
+          match census_readback_refusal_before_attach(subject: mtcollins1_census_machine, readback: census_medium_readback(medium: mtcollins1_boot_medium, image: mtcollins1_census_image, host: operator_host_srv2 as NonEmptyStr, attempt: mtcollins1_census_readback_attempt_raw)) {
             Present { value: why } => MediaAttachNotAttempted { reason: why as NonEmptyStr }
             Absent =>
               megarac_attach_boot_image(
@@ -2928,7 +2928,7 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() -> Runner
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
-  match census_readback_refusal_before_filing(subject: mtcollins1_census_machine, host: operator_host_srv2 as NonEmptyStr, readback: census_medium_readback(medium: mtcollins1_boot_medium, image: mtcollins1_census_image, host: operator_host_srv2 as NonEmptyStr, attempt: mtcollins1_census_readback_attempt_raw)) {
+  match census_readback_refusal_before_filing(subject: mtcollins1_census_machine, readback: census_medium_readback(medium: mtcollins1_boot_medium, image: mtcollins1_census_image, host: operator_host_srv2 as NonEmptyStr, attempt: mtcollins1_census_readback_attempt_raw)) {
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }

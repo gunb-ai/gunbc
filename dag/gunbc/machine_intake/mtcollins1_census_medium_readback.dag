@@ -32,10 +32,10 @@ type CensusMediumReadback
       served_path: NonEmptyStr,
       measured_digest: NonEmptyStr,
     }
-  | CensusMediumReadbackRecordUnreadable { record_path: NonEmptyStr, reason: String }
+  | CensusMediumReadbackRecordUnreadable { host: NonEmptyStr, record_path: NonEmptyStr, reason: String }
   | CensusMediumReadbackRecordMalformed { record_path: NonEmptyStr, content: String }
   | CensusMediumReadbackRecordDisagrees { record_path: NonEmptyStr, recorded: NonEmptyStr, selected: NonEmptyStr }
-  | CensusMediumReadbackImageUnreadable { served_path: NonEmptyStr, reason: String }
+  | CensusMediumReadbackImageUnreadable { host: NonEmptyStr, served_path: NonEmptyStr, reason: String }
   | CensusMediumReadbackMeasureMalformed { served_path: NonEmptyStr, content: String }
   | CensusMediumReadbackDiverged { served_path: NonEmptyStr, recorded: NonEmptyStr, measured: NonEmptyStr }
   | CensusMediumReadbackNotCensus
@@ -98,14 +98,14 @@ type CensusRecordStanding
   = CensusRecordAdmitted { recorded: NonEmptyStr }
   | CensusRecordRefused { readback: CensusMediumReadback }
 
-fn census_record_standing(medium: BootMedium, input: UbuntuSeededInstallMediaBuildInput, record: RemoteAnswer) -> CensusRecordStanding {
+fn census_record_standing(medium: BootMedium, host: NonEmptyStr, input: UbuntuSeededInstallMediaBuildInput, record: RemoteAnswer) -> CensusRecordStanding {
   match census_medium_qualification(image_stem: input.image_stem, volume_id: input.volume_id, medium: medium) {
     CensusMediumNotCensus => CensusRecordRefused { readback: CensusMediumReadbackNotCensus }
     CensusMediumExporterUnsupported { supported: sup, named: n } => CensusRecordRefused { readback: CensusMediumReadbackExporterUnsupported { supported: sup, named: n } }
     CensusMediumQualified { digest: selected, export: _ } => {
       let record_path = census_record_path(input: input)
       if record.exit_code != 0 {
-        CensusRecordRefused { readback: CensusMediumReadbackRecordUnreadable { record_path: record_path, reason: concat("exit=", to_string(record.exit_code), " ", trim(s: record.stderr)) } }
+        CensusRecordRefused { readback: CensusMediumReadbackRecordUnreadable { host: host, record_path: record_path, reason: concat("exit=", to_string(record.exit_code), " ", trim(s: record.stderr)) } }
       } else {
         match record_digest(text: record.stdout) {
           Absent => CensusRecordRefused { readback: CensusMediumReadbackRecordMalformed { record_path: record_path, content: trim(s: record.stdout) } }
@@ -133,7 +133,7 @@ fn census_measure_join(
 ) -> CensusMediumReadback {
   let served_path = census_medium_served_path(medium: medium)
   if measure.exit_code != 0 {
-    CensusMediumReadbackImageUnreadable { served_path: served_path, reason: concat("exit=", to_string(measure.exit_code), " ", trim(s: measure.stderr)) }
+    CensusMediumReadbackImageUnreadable { host: host, served_path: served_path, reason: concat("exit=", to_string(measure.exit_code), " ", trim(s: measure.stderr)) }
   } else {
     match sha256sum_digest(line: measure.stdout) {
       Absent => CensusMediumReadbackMeasureMalformed { served_path: served_path, content: trim(s: measure.stdout) }
@@ -167,34 +167,35 @@ fn census_medium_readback_from_answers(
   match image {
     CensusImageRefused { reason: r } => CensusMediumReadbackInputUnderived { reason: r }
     CensusImageDerived { input: input } =>
-      match census_record_standing(medium: medium, input: input, record: record) {
+      match census_record_standing(medium: medium, host: host, input: input, record: record) {
         CensusRecordRefused { readback: r } => r
         CensusRecordAdmitted { recorded: recorded } => census_measure_join(medium: medium, input: input, host: host, recorded: recorded, measure: measure)
       }
   }
 }
 
-// STAGE-NEUTRAL CAUSE. The SUBJECT'S label and the EXECUTOR host the readback ran on are
-// parameters, never a spelling baked into the text: a refusal produced for another subject must
-// blame that subject, not one specific machine, and the named executor is the host that actually
-// took the leg, not a constant (DESIGN 3 -- a materially different contract needs a materially
+// STAGE-NEUTRAL CAUSE. The SUBJECT'S label is a parameter, never a spelling baked into the text:
+// a refusal produced for another subject must blame that subject, not one specific machine. The
+// EXECUTOR host is NOT a parameter here -- it is stored in the readback receipt by the producer
+// (the host it ran on), so the text names the host that actually took the leg, one fact, not two
+// inputs a caller can cross (DESIGN 3 -- a materially different contract needs a materially
 // different name; DESIGN 5 -- no fabricated output, so the receipt names the host that read it).
 // What the boot has and has not touched differs between the two call sites, so the sentence about
 // that is the caller's wrapper below, never this renderer's.
-fn census_readback_refusal(subject: NonEmptyStr, host: NonEmptyStr, readback: CensusMediumReadback) -> String? {
+fn census_readback_refusal(subject: NonEmptyStr, readback: CensusMediumReadback) -> String? {
   match readback {
     CensusMediumReadbackAgreed { host: _, build_key: _, recorded_digest: _, image_name: _, served_path: _, measured_digest: _ } => none
     CensusMediumReadbackNotCensus => Present { value: concat(subject as String, " boot: the medium is not the census image, so there is no served digest to read back") }
     CensusMediumReadbackExporterUnsupported { supported: sup, named: n } =>
       Present { value: concat(subject as String, " boot: the census medium names the exporter ", boot_image_export_text(export: n), " but the census is published to and read back from ", boot_image_export_text(export: sup), "; refusing rather than reading back bytes the medium does not name") }
-    CensusMediumReadbackRecordUnreadable { record_path: p, reason: why } =>
-      Present { value: concat(subject as String, " boot: the census derivation record ", p as String, " could not be read on ", host as String, " (", why, "); refusing rather than trusting the publication receipt") }
+    CensusMediumReadbackRecordUnreadable { host: h, record_path: p, reason: why } =>
+      Present { value: concat(subject as String, " boot: the census derivation record ", p as String, " could not be read on ", h as String, " (", why, "); refusing rather than trusting the publication receipt") }
     CensusMediumReadbackRecordMalformed { record_path: p, content: c } =>
       Present { value: concat(subject as String, " boot: the census derivation record ", p as String, " is not exactly one sha256 digest (", c, "); refusing") }
     CensusMediumReadbackRecordDisagrees { record_path: p, recorded: r, selected: sel } =>
       Present { value: concat(subject as String, " boot: the census derivation record ", p as String, " names ", r as String, " but the medium row selects ", sel as String, "; the row does not describe the current derivation") }
-    CensusMediumReadbackImageUnreadable { served_path: p, reason: why } =>
-      Present { value: concat(subject as String, " boot: the served census image ", p as String, " could not be re-measured on ", host as String, " (", why, "); refusing rather than trusting the publication receipt") }
+    CensusMediumReadbackImageUnreadable { host: h, served_path: p, reason: why } =>
+      Present { value: concat(subject as String, " boot: the served census image ", p as String, " could not be re-measured on ", h as String, " (", why, "); refusing rather than trusting the publication receipt") }
     CensusMediumReadbackMeasureMalformed { served_path: p, content: c } =>
       Present { value: concat(subject as String, " boot: sha256sum over ", p as String, " answered no sha256 digest (", c, "); refusing") }
     CensusMediumReadbackDiverged { served_path: p, recorded: r, measured: m } =>
@@ -205,8 +206,8 @@ fn census_readback_refusal(subject: NonEmptyStr, host: NonEmptyStr, readback: Ce
 }
 
 // Before the approval request is filed nothing has been claimed: the controller is untouched.
-fn census_readback_refusal_before_filing(subject: NonEmptyStr, host: NonEmptyStr, readback: CensusMediumReadback) -> String? {
-  match census_readback_refusal(subject: subject, host: host, readback: readback) {
+fn census_readback_refusal_before_filing(subject: NonEmptyStr, readback: CensusMediumReadback) -> String? {
+  match census_readback_refusal(subject: subject, readback: readback) {
     Absent => none
     Present { value: why } => Present { value: concat(why, " -- controller untouched") }
   }
@@ -215,8 +216,8 @@ fn census_readback_refusal_before_filing(subject: NonEmptyStr, host: NonEmptyStr
 // After the grant the boot has claimed the capability and acquired the SOL session; only the
 // media attach, boot selection and power are still untouched, and the SOL session follows the
 // existing settle/release path.
-fn census_readback_refusal_before_attach(subject: NonEmptyStr, host: NonEmptyStr, readback: CensusMediumReadback) -> String? {
-  match census_readback_refusal(subject: subject, host: host, readback: readback) {
+fn census_readback_refusal_before_attach(subject: NonEmptyStr, readback: CensusMediumReadback) -> String? {
+  match census_readback_refusal(subject: subject, readback: readback) {
     Absent => none
     Present { value: why } => Present { value: concat("after grant, before attach: ", why, " -- media attach, boot selection and power untouched; the SOL session had been acquired and follows the settle/release path") }
   }
@@ -259,11 +260,11 @@ fn census_medium_readback(
         CensusMediumQualified { digest: _, export: export } =>
           match prepare_fleet_ssh_agent_context(attempt_raw: attempt) {
             FleetSshContextRefused { cause: c } =>
-              CensusMediumReadbackRecordUnreadable { record_path: census_record_path(input: input), reason: c }
+              CensusMediumReadbackRecordUnreadable { host: host, record_path: census_record_path(input: input), reason: c }
             FleetSshContextReady { context: context, receipt: _ } => {
               let target = export.target
               let record = remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: census_record_argv(record_path: census_record_path(input: input))))
-              match census_record_standing(medium: medium, input: input, record: record) {
+              match census_record_standing(medium: medium, host: host, input: input, record: record) {
                 CensusRecordRefused { readback: r } => r
                 CensusRecordAdmitted { recorded: recorded } => {
                   let measure = remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: census_readback_argv(path: census_medium_served_path(medium: medium))))
