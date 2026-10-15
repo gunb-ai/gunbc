@@ -180,3 +180,26 @@ fn kpw_src() -> String {
 test fn kpw_assembles() -> Bool { match cref_inferred_of(o: cref_assemble(src: kpw_src())) { Present { value: _ } => true
   Absent => false } }
 test fn kpw_is_8() -> Bool { kpe_int_of(r: cref_eval_of_call_to(o: cref_assemble(src: kpw_src()), name: ^width_of)) == Present { value: 8 } }
+
+fn kpx_reason() -> Optional<Symbol> {
+  match cref_eval_of_call_to(o: cref_assemble(src: kpw_src()), name: ^width_of) {
+    Present { value: Rejected { diagnostics: d } } => Present { value: diagnostics_fatal_reason(d: d) }
+    _ => Absent
+  }
+}
+test fn kpx_type_node() -> Bool { kpx_reason() == Present { value: ^eval_rejected_type_node } }
+test fn kpx_unsupported_callee() -> Bool { kpx_reason() == Present { value: ^eval_rejected_unsupported_callee } }
+test fn kpx_runtime_value_node_unrepresentable() -> Bool { kpx_reason() == Present { value: ^eval_rejected_runtime_value_node_unrepresentable } }
+test fn kpx_argument_bind_absent() -> Bool { kpx_reason() == Present { value: ^eval_rejected_argument_bind_absent } }
+test fn kpx_bind_value_absent() -> Bool { kpx_reason() == Present { value: ^eval_rejected_bind_value_absent } }
+test fn kpx_invalid_node() -> Bool { kpx_reason() == Present { value: ^eval_rejected_invalid_node } }
+test fn kpx_callee_absent() -> Bool { kpx_reason() == Present { value: ^eval_rejected_callee_absent } }
+test fn kpx_grounding_node_mismatch() -> Bool { kpx_reason() == Present { value: ^eval_rejected_grounding_node_mismatch } }
+test fn kpx_resolved_type_mismatch() -> Bool { kpx_reason() == Present { value: ^eval_rejected_resolved_type_mismatch } }
+test fn kpx_inhabitance_mismatch() -> Bool { kpx_reason() == Present { value: ^eval_rejected_inhabitance_mismatch } }
+test fn kpx_grounding_not_derived() -> Bool { kpx_reason() == Present { value: ^eval_rejected_grounding_not_derived } }
+test fn kpx_parameter_reference_unbound() -> Bool { kpx_reason() == Present { value: ^eval_rejected_parameter_reference_unbound } }
+test fn kpx_runtime_binding_lookup_miss() -> Bool { kpx_reason() == Present { value: ^eval_rejected_runtime_binding_lookup_miss } }
+test fn kpx_type_argument_instance_absent() -> Bool { kpx_reason() == Present { value: ^eval_rejected_type_argument_instance_absent } }
+test fn kpx_type_argument_read_as_value() -> Bool { kpx_reason() == Present { value: ^eval_rejected_type_argument_read_as_value } }
+test fn kpx_absent() -> Bool { kpx_reason() == Absent }
