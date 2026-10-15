@@ -225,7 +225,7 @@ test fn both_boot_accounts_pin_the_admitted_bmc_and_fleet_key_versions() -> Bool
         grant_secret_versions(grants: standing.secret_grants) == grant_secret_versions(grants: admitted.secret_grants)
           && grant_secret_versions(grants: run.secret_grants) == grant_secret_versions(grants: admitted.secret_grants)
           && any(admitted.secret_grants, g => (g.target.secret as String) == "fleet-automation-ssh-key" && g.target.version == "1")
-          && any(admitted.secret_grants, g => (g.target.secret as String) == "bmc-mtcollins1-gunbc")
+          && any(admitted.secret_grants, g => (g.target.secret as String) == "bmc-mtcollins1-gunbc" && g.target.version == "2")
           && !any(gcp_iam_converge_targets, t =>
             (t.service_account_id as String) == (run.service_account_id as String)
               && any(t.secret_grants, g => (g.target.secret as String) == "bmc-mtcollins1-gunbc"
