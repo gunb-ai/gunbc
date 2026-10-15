@@ -23,6 +23,8 @@ pub use crate::std_coercion::SubtractionRefinement;
 use crate::std_coercion::SubtractionRefinement::{
     SubtractionEscapesTo, SubtractionRefinementAmbiguous, SubtractionStaysInOperandAlgebra,
 };
+pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{declaration_ref_eq, declaration_ref_is_type_parameter};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
@@ -85,7 +87,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 
 pub fn type_variable_id(n: Rc<Node>) -> String {
     match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id, .. }) => id,
+        Some(InferredNode::TypeVariable { id: id, .. }) => id.clone(),
         _ => "".to_string(),
     }
 }
@@ -94,21 +96,26 @@ pub fn type_variable_leaf_name(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if n.declaration.clone().is_some() {
-        return "".to_string();
-    }
-    if (n.children.clone().len() as i64) == 0
-        && n.connective.clone() == Connective::NoConnective
-        && (n.params.clone().len() as i64) == 0
-    {
-        let authored = crate::v1_std_core::authored_name_at(source_indices, n.clone());
-        if authored != "" {
-            authored
-        } else {
-            n.name.clone()
+    match n.declaration.clone() {
+        Some(_) => "".to_string(),
+        std::option::Option::None => {
+            if ((((n.children.clone().len() as i64) == 0)
+                && (n.connective.clone() == Connective::NoConnective))
+                && ((n.params.clone().len() as i64) == 0))
+            {
+                {
+                    let authored =
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+                    if (authored.clone() != "".to_string()) {
+                        authored.clone()
+                    } else {
+                        n.name.clone()
+                    }
+                }
+            } else {
+                "".to_string()
+            }
         }
-    } else {
-        "".to_string()
     }
 }
 
@@ -2254,61 +2261,63 @@ pub fn type_head_carrier(name: String) -> String {
     }
 }
 
-fn env_for_declaration_module(
-    env: Rc<crate::v1_compiler_infer_env::TypeEnv>,
-    module_path: String,
-) -> Option<Rc<crate::v1_compiler_infer_env::TypeEnv>> {
-    if env.module_path.clone() == module_path {
-        Some(env)
+pub fn env_for_declaration_module(env: Rc<TypeEnv>, module_path: String) -> Option<Rc<TypeEnv>> {
+    if (env.module_path.clone() == module_path.clone()) {
+        Some(env.clone())
     } else {
-        env.parents
-            .iter()
-            .cloned()
-            .find(|p| p.module_path.clone() == module_path)
+        env.parents.clone().iter().cloned().fold(
+            std::option::Option::None,
+            |acc: _, parent: Rc<TypeEnv>| match acc.clone() {
+                Some(_) => acc.clone(),
+                std::option::Option::None => {
+                    if (parent.module_path.clone() == module_path.clone()) {
+                        Some(parent.clone())
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+            },
+        )
     }
 }
 
-fn alias_rhs_of_decl(
-    item_ref: Rc<crate::std_decl_ref::DeclarationRef>,
-    env: Rc<crate::v1_compiler_infer_env::TypeEnv>,
-) -> Option<Rc<Node>> {
-    match env_for_declaration_module(env, item_ref.module_path.clone()) {
+pub fn alias_rhs_of_decl(item_ref: Rc<DeclarationRef>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    match env_for_declaration_module(env.clone(), item_ref.module_path.clone()) {
         Some(declaring) => {
-            match v1_rt::map_get(&declaring.str_bindings, item_ref.decl_name.clone()) {
+            match v1_rt::map_get(&declaring.str_bindings.clone(), item_ref.decl_name.clone()) {
                 Some(binding) => binding.alias_rhs.clone(),
-                None => None,
+                std::option::Option::None => std::option::Option::None,
             }
         }
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
-fn type_head_declaration(
-    n: Rc<Node>,
-    text: Rc<TextJudgment>,
-) -> Option<Rc<crate::std_decl_ref::DeclarationRef>> {
+pub fn type_head_declaration(n: Rc<Node>, text: Rc<TextJudgment>) -> Option<Rc<DeclarationRef>> {
     match n.declaration.clone() {
         Some(d) => match (*text.clone()).clone() {
-            TextJudgment::TextJudgedIn { env, .. } => match alias_rhs_of_decl(d.clone(), env) {
-                Some(rhs) => match rhs.declaration.clone() {
-                    Some(rd) => Some(rd),
-                    None => Some(d),
-                },
-                None => Some(d),
-            },
-            TextJudgment::TextNotAsked { .. } => Some(d),
+            TextJudgment::TextJudgedIn { env: env, .. } => {
+                match alias_rhs_of_decl(d.clone(), env.clone()) {
+                    Some(rhs) => match rhs.declaration.clone() {
+                        Some(rd) => Some(rd.clone()),
+                        std::option::Option::None => Some(d.clone()),
+                    },
+                    std::option::Option::None => Some(d.clone()),
+                }
+            }
+            TextJudgment::TextNotAsked { reason: _, .. } => Some(d.clone()),
         },
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
 pub fn type_heads_agree(left: Rc<Node>, right: Rc<Node>, text: Rc<TextJudgment>) -> bool {
-    match (
-        type_head_declaration(left, text.clone()),
-        type_head_declaration(right, text),
-    ) {
-        (Some(ld), Some(rd)) => crate::std_decl_ref::declaration_ref_eq(ld, rd),
-        _ => false,
+    match type_head_declaration(left.clone(), text.clone()) {
+        Some(ld) => match type_head_declaration(right.clone(), text.clone()) {
+            Some(rd) => crate::std_decl_ref::declaration_ref_eq(ld.clone(), rd.clone()),
+            std::option::Option::None => false,
+        },
+        std::option::Option::None => false,
     }
 }
 
@@ -2872,91 +2881,124 @@ pub fn prefer_specific_type(
     }
 }
 
+pub fn type_parameter_binder(n: Rc<Node>) -> Option<Rc<DeclarationRef>> {
+    match n.declaration.clone() {
+        Some(r) => {
+            if crate::std_decl_ref::declaration_ref_is_type_parameter(r.clone()) {
+                Some(r.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn node_type_equals(
     left: Rc<Node>,
     right: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     text: Rc<TextJudgment>,
 ) -> bool {
-    let left_err = if (left.inferred.clone() != std::option::Option::None) {
-        crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
-    } else {
-        false
-    };
-    let right_err = if (right.inferred.clone() != std::option::Option::None) {
-        crate::v1_std_core::is_compiler_error(right.inferred.clone().clone().unwrap())
-    } else {
-        false
-    };
-    let left_tv = if (left.inferred.clone() != std::option::Option::None) {
-        is_type_variable(left.inferred.clone().clone().unwrap())
-    } else {
-        false
-    };
-    let right_tv = if (right.inferred.clone() != std::option::Option::None) {
-        is_type_variable(right.inferred.clone().clone().unwrap())
-    } else {
-        false
-    };
-    let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
-    let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
-    let right_is_unit_eq = is_unit_like(right.clone());
-    let left_is_unit_eq = is_unit_like(left.clone());
-    if left_err || right_err {
-        return true;
-    }
-    let left_binder = type_parameter_binder(left.clone());
-    let right_binder = type_parameter_binder(right.clone());
-    if left_binder.is_some() && right_binder.is_some() {
-        return crate::std_decl_ref::declaration_ref_eq(
-            left_binder.unwrap(),
-            right_binder.unwrap(),
-        );
-    }
-    if left_binder.is_some() || right_binder.is_some() {
-        return false;
-    }
-    if left_tv || right_tv {
-        let lid = type_variable_id(left.clone());
-        let rid = type_variable_id(right.clone());
-        if lid != "" && rid != "" {
-            return lid == rid;
-        }
-        if lid != "" && !right_tv {
-            return type_variable_leaf_name(right.clone(), source_indices.clone()) == lid;
-        }
-        if rid != "" && !left_tv {
-            return type_variable_leaf_name(left.clone(), source_indices.clone()) == rid;
-        }
-        return false;
-    }
-    if left_opt && right_is_unit_eq {
-        return true;
-    }
-    if left_is_unit_eq && right_opt {
-        return true;
-    }
-    if left_opt && right_opt {
-        return node_type_equals_core(
-            crate::v1_std_core::with_required_cardinality(left.clone()),
-            crate::v1_std_core::with_required_cardinality(right.clone()),
-            source_indices.clone(),
-            text.clone(),
-        );
-    }
-    node_type_equals_core(left, right, source_indices, text)
-}
-
-pub fn type_parameter_binder(n: Rc<Node>) -> Option<Rc<crate::std_decl_ref::DeclarationRef>> {
-    match n.declaration.clone() {
-        Some(r) => {
-            if crate::std_decl_ref::declaration_ref_is_type_parameter(r.clone()) {
-                Some(r)
+    {
+        let left_err = if (left.inferred.clone() != std::option::Option::None) {
+            crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
+        } else {
+            false
+        };
+        let right_err = if (right.inferred.clone() != std::option::Option::None) {
+            crate::v1_std_core::is_compiler_error(right.inferred.clone().clone().unwrap())
+        } else {
+            false
+        };
+        let left_tv = if (left.inferred.clone() != std::option::Option::None) {
+            is_type_variable(left.inferred.clone().clone().unwrap())
+        } else {
+            false
+        };
+        let right_tv = if (right.inferred.clone() != std::option::Option::None) {
+            is_type_variable(right.inferred.clone().clone().unwrap())
+        } else {
+            false
+        };
+        let left_binder = type_parameter_binder(left.clone());
+        let right_binder = type_parameter_binder(right.clone());
+        let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
+        let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
+        let right_is_unit_eq = is_unit_like(right.clone());
+        let left_is_unit_eq = is_unit_like(left.clone());
+        if (left_err.clone() || right_err.clone()) {
+            true
+        } else {
+            if ((left_binder.clone() != std::option::Option::None)
+                && (right_binder.clone() != std::option::Option::None))
+            {
+                match left_binder.clone() {
+                    Some(ld) => match right_binder.clone() {
+                        Some(rd) => crate::std_decl_ref::declaration_ref_eq(ld.clone(), rd.clone()),
+                        std::option::Option::None => false,
+                    },
+                    std::option::Option::None => false,
+                }
             } else {
-                None
+                if ((left_binder.clone() != std::option::Option::None)
+                    || (right_binder.clone() != std::option::Option::None))
+                {
+                    false
+                } else {
+                    if (left_tv.clone() || right_tv.clone()) {
+                        {
+                            let lid = type_variable_id(left.clone());
+                            let rid = type_variable_id(right.clone());
+                            if ((lid.clone() != "".to_string()) && (rid.clone() != "".to_string()))
+                            {
+                                (lid.clone() == rid.clone())
+                            } else {
+                                if ((lid.clone() != "".to_string()) && !right_tv.clone()) {
+                                    (type_variable_leaf_name(right.clone(), source_indices.clone())
+                                        == lid.clone())
+                                } else {
+                                    if ((rid.clone() != "".to_string()) && !left_tv.clone()) {
+                                        (type_variable_leaf_name(
+                                            left.clone(),
+                                            source_indices.clone(),
+                                        ) == rid.clone())
+                                    } else {
+                                        false
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        if (left_opt.clone() && right_is_unit_eq.clone()) {
+                            true
+                        } else {
+                            if (left_is_unit_eq.clone() && right_opt.clone()) {
+                                true
+                            } else {
+                                if (left_opt.clone() && right_opt.clone()) {
+                                    node_type_equals_core(
+                                        crate::v1_std_core::with_required_cardinality(left.clone()),
+                                        crate::v1_std_core::with_required_cardinality(
+                                            right.clone(),
+                                        ),
+                                        source_indices.clone(),
+                                        text.clone(),
+                                    )
+                                } else {
+                                    node_type_equals_core(
+                                        left.clone(),
+                                        right.clone(),
+                                        source_indices.clone(),
+                                        text.clone(),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
-        None => None,
     }
 }
 
