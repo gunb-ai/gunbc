@@ -257,8 +257,18 @@ fn boot_pattern_is_approved(on_reviewed_main: Bool) -> Bool {
   }
 }
 
+fn census_boot_credential_effect_conforms(decl_name: String) -> Bool {
+  let rows = filter(privileged_effect_census, r => (r.site.decl_name as String) == decl_name)
+  rows.length() == 1
+    && match rows.first() {
+      Present { value: r } => match site_verdict(row: r).conformance { Conforms => true  _ => false }
+      Absent => false
+    }
+}
+
 // RED: a local if on github.ref beside select_authorization_pattern. The census rows execute
-// the central selection on the same effects the source fold consumes.
+// the central selection on the same effects the source fold consumes. Vacuous all(filter(...))
+// is not that join (review 80563): a missing or renamed site still passed.
 test fn boot_credential_source_is_the_authorization_pattern_selection() -> Bool {
   boot_pattern_is_federated(on_reviewed_main: true)
     && !boot_pattern_is_approved(on_reviewed_main: true)
@@ -266,10 +276,8 @@ test fn boot_credential_source_is_the_authorization_pattern_selection() -> Bool 
     && !boot_pattern_is_federated(on_reviewed_main: false)
     && match select_boot_credential_source(on_reviewed_main: true) { BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => true  BootCredentialSourceSelected { source: RunScopedApprovedGrant } => false  BootCredentialSourceRefused { cause: _ } => false }
     && match select_boot_credential_source(on_reviewed_main: false) { BootCredentialSourceSelected { source: RunScopedApprovedGrant } => true  BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => false  BootCredentialSourceRefused { cause: _ } => false }
-    && all(filter(privileged_effect_census, r => (r.site.decl_name as String) == "boot_credential_effect_on_reviewed_main"), r =>
-      match site_verdict(row: r).conformance { Conforms => true  _ => false })
-    && all(filter(privileged_effect_census, r => (r.site.decl_name as String) == "boot_credential_effect_off_reviewed_main"), r =>
-      match site_verdict(row: r).conformance { Conforms => true  _ => false })
+    && census_boot_credential_effect_conforms(decl_name: "boot_credential_effect_on_reviewed_main")
+    && census_boot_credential_effect_conforms(decl_name: "boot_credential_effect_off_reviewed_main")
 }
 
 // THE KEY IS EXACTLY <run id>-<run attempt>, both positive.
