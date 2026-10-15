@@ -1,8 +1,8 @@
-//! Fill-stack for process-global caches (`once` / `begin_fill`).
+//! Process-global `OnceLock` fill.
 //!
-//! The floor's printed attribution ledger was reachable only from `run_required_floor`
-//! and is deleted. Callers still wrap cache initialization so a nested fill cannot
-//! leave the stack unbalanced.
+//! The floor attribution ledger that used to read fill-stack timings was reachable
+//! only from `run_required_floor` and is deleted. This wrapper is just
+//! `OnceLock::get_or_init`.
 
 #![warn(
     clippy::assertions_on_constants,
@@ -33,64 +33,8 @@
     unused_mut
 )]
 
-use std::cell::{Cell, RefCell};
 use std::sync::OnceLock;
-use std::time::Instant;
 
-thread_local! {
-    /// One accumulator per fill currently in flight, innermost last.
-    static FILL_CHILD_NANOS: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
-}
-
-pub(crate) fn begin_fill() {
-    FILL_CHILD_NANOS.with(|s| s.borrow_mut().push(0));
-}
-
-pub(crate) fn abandon_fill() {
-    FILL_CHILD_NANOS.with(|s| {
-        s.borrow_mut().pop();
-    });
-}
-
-fn close_fill(inclusive: u64) {
-    FILL_CHILD_NANOS.with(|s| {
-        let mut stack = s.borrow_mut();
-        let children = stack.pop().unwrap_or(0);
-        if let Some(parent) = stack.last_mut() {
-            *parent = parent.saturating_add(inclusive);
-        }
-        let _ = inclusive.saturating_sub(children);
-    })
-}
-
-pub(crate) fn record_fill(_cache: &'static str, _key: &str, nanos: u64) {
-    close_fill(nanos);
-}
-
-pub(crate) fn record_hit(_cache: &'static str, _key: &str) {}
-
-pub(crate) fn once<T>(
-    cell: &'static OnceLock<T>,
-    cache: &'static str,
-    key: &str,
-    build: impl FnOnce() -> T,
-) -> &'static T {
-    if let Some(value) = cell.get() {
-        record_hit(cache, key);
-        return value;
-    }
-    let built = Cell::new(false);
-    begin_fill();
-    let start = Instant::now();
-    let value = cell.get_or_init(|| {
-        built.set(true);
-        build()
-    });
-    if built.get() {
-        record_fill(cache, key, start.elapsed().as_nanos() as u64);
-    } else {
-        abandon_fill();
-        record_hit(cache, key);
-    }
-    value
+pub(crate) fn once<T>(cell: &'static OnceLock<T>, build: impl FnOnce() -> T) -> &'static T {
+    cell.get_or_init(build)
 }

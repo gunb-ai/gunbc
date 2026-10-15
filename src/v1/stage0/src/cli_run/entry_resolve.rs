@@ -101,7 +101,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
 /// it live -- reads one entry, so it must not pay a copy of every entry to ask. `build_module_path_index`
 /// hands its caller an owned index and therefore clones the cached one on every call; a keyed read
 /// made once per visited module or per edge target turned that into corpus-sized work per step.
-/// This is the same cache, the same fill and the same hit accounting, lent for the duration of `f`.
+/// This is the same cache, lent for the duration of `f`.
 pub fn with_module_path_index<R>(
     source_roots: &[String],
     f: impl FnOnce(&HashMap<String, String>) -> R,
@@ -112,13 +112,8 @@ pub fn with_module_path_index<R>(
         .collect::<Vec<_>>()
         .join("\u{1f}");
     let cached = MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow().contains_key(&key));
-    if cached {
-        shared_fill::record_hit("module_path_index", &key);
-    } else {
-        shared_fill::begin_fill();
-        let start = std::time::Instant::now();
+    if !cached {
         let index = build_module_path_index_uncached(source_roots);
-        shared_fill::record_fill("module_path_index", &key, start.elapsed().as_nanos() as u64);
         MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().insert(key.clone(), index));
     }
     MODULE_PATH_INDEX_CACHE.with(|cache| {
@@ -772,17 +767,9 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
     let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
     MODULE_GRAPH_FACTS_CACHE.with(|cache| {
         if let Some(facts) = cache.borrow().get(&key) {
-            shared_fill::record_hit("module_graph_facts", &key);
             return facts.clone();
         }
-        shared_fill::begin_fill();
-        let start = std::time::Instant::now();
         let facts = build_module_graph_facts_live_uncached(pool_roots);
-        shared_fill::record_fill(
-            "module_graph_facts",
-            &key,
-            start.elapsed().as_nanos() as u64,
-        );
         cache.borrow_mut().insert(key, facts.clone());
         facts
     })
@@ -2960,14 +2947,11 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let key = abs_pool_roots.join("\u{1e}");
     if let Some(hit) = REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow().get(&key).cloned()) {
-        shared_fill::record_hit("reference_pool_names", &key);
         return hit;
     }
-    // A PROCESS-WIDE POOL FILL, ACCOUNTED AS ONE. The heads index is built once per pool per
-    // process and then served to every consumer -- the same class as module_path_index and
-    // reference_edges, which already report through shared_fill. Unrecorded, it was billed as the
-    // own CPU of whichever claim first reached an import-less file.
-    shared_fill::begin_fill();
+    // A PROCESS-WIDE POOL FILL. The heads index is built once per pool per process and then
+    // served to every consumer. Unrecorded, it was billed as the own CPU of whichever claim
+    // first reached an import-less file.
     let started = std::time::Instant::now();
     let mut heads: Vec<(String, Rc<crate::v1_std_core::Node>)> = Vec::new();
     for root in &abs_pool_roots {
@@ -3001,11 +2985,6 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
         "reference_pool_names_heads",
         super::pre_entry_phase::PhaseScale::Tree,
         started.elapsed(),
-    );
-    shared_fill::record_fill(
-        "reference_pool_names",
-        &key,
-        started.elapsed().as_nanos() as u64,
     );
     REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow_mut().insert(key, names.clone()));
     names
@@ -3494,11 +3473,8 @@ pub fn reference_resolution_facts(
         exclude_substrings.join("\u{1e}")
     );
     if let Some(cached) = REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
-        shared_fill::record_hit("reference_edges", &cache_key);
         return cached;
     }
-    shared_fill::begin_fill();
-    let reference_edges_fill_start = std::time::Instant::now();
     let names = reference_pool_names(pool_roots);
     let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
     let mut edges: Vec<ReferenceEdgeRaw> = Vec::new();
@@ -3535,11 +3511,6 @@ pub fn reference_resolution_facts(
     }
 
     unaccounted.sort_by(|a, b| a.path.cmp(&b.path));
-    shared_fill::record_fill(
-        "reference_edges",
-        &cache_key,
-        reference_edges_fill_start.elapsed().as_nanos() as u64,
-    );
     REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow_mut().insert(cache_key.clone(), unaccounted));
     REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
     edges
