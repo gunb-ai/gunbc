@@ -14,6 +14,7 @@ pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_emit_model::SimpleMethodSpec;
+pub use crate::std_optional::Optional;
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::*;
 use crate::std_trait_derive_shape::PairCompletionBody::{
@@ -99,8 +100,8 @@ pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 
 pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
     rust_simple_method_specs().iter().cloned().fold(
-        v1_rt::rc_empty_map::<_, _>(),
-        |acc: _, spec: Rc<SimpleMethodSpec>| {
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )
@@ -119,8 +120,8 @@ pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<_, _>(),
-        |acc: _, spec: Rc<SimpleMethodSpec>| {
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, spec: Rc<SimpleMethodSpec>| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
         },
     )
@@ -646,8 +647,10 @@ pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
 
 pub fn rt_functions() -> Rc<HashMap<String, bool>> {
     rt_function_registry().iter().cloned().fold(
-        v1_rt::rc_empty_map::<_, _>(),
-        |acc: _, entry: Rc<RuntimeFunction>| v1_rt::rc_map_insert(acc, entry.name.clone(), true),
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+            v1_rt::rc_map_insert(acc, entry.name.clone(), true)
+        },
     )
 }
 
@@ -664,8 +667,10 @@ pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<_, _>(),
-        |acc: _, entry: Rc<RuntimeFunction>| v1_rt::rc_map_insert(acc, entry.name.clone(), true),
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+            v1_rt::rc_map_insert(acc, entry.name.clone(), true)
+        },
     )
 }
 
@@ -682,8 +687,10 @@ pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<_, _>(),
-        |acc: _, entry: Rc<RuntimeFunction>| v1_rt::rc_map_insert(acc, entry.name.clone(), true),
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+            v1_rt::rc_map_insert(acc, entry.name.clone(), true)
+        },
     )
 }
 
@@ -700,8 +707,8 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<_, _>(),
-        |acc: _, entry: Rc<RuntimeFunction>| {
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), entry.bridge_name.clone())
         },
     )
