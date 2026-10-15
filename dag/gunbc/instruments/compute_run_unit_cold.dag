@@ -447,7 +447,7 @@ fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobTool
       ) {
         ComputeUnitRunRefused { cause: _ } => "unit printenv: launch refused\n"
         ComputeUnitRunExecuted { run: unit_run } => join([
-          "=== unit printenv SCCACHE/RUSTC_WRAPPER (compute_run_unit declares UDS + SCCACHE_DIR) ===\n",
+          "=== unit printenv SCCACHE/RUSTC_WRAPPER (compute_run_unit declares UDS; SCCACHE_DIR unbound) ===\n",
           match unit_run.exec {
             ComputeExecOk { stdout, stderr: _ } => join([
               lines_with_needle(text: stdout, needle: "SCCACHE"),

@@ -37,10 +37,8 @@ import extdeps.linux.cgroup_v2 {
   CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
 }
 import extdeps.cache.sccache {
-  sccache_installed_binary_path, sccache_server_uds_env_var, sccache_cache_dir_env_var,
+  sccache_installed_binary_path, sccache_server_uds_env_var,
 }
-import gunbc.build_cache.build_cache_instance { ci_cache_instance }
-import product.host_identity { HostIdentity }
 import extdeps.linux.procfs { procfs_status_effective_uid }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
@@ -493,7 +491,8 @@ fn compute_operation_env(op: WorkOperation) -> List<SystemdSetenvBinding> {
 // The unit's environment is the user manager plus --setenv only. An undeclared sccache endpoint
 // falls through to TCP 4226, which another uid's server can hold. The socket is keyed by USER
 // (the launching uid's runtime dir / sccache.sock), not by layout/identity, so one server serves
-// every identity of that uid and the cache directory stays the shared CI store.
+// every identity of that uid. SCCACHE_DIR is unbound: HostDashboardInstance does not declare a
+// cache dir, and ci_cache_instance is the CI runner's store, not production's.
 fn compute_user_sccache_server_uds(user_runtime_dir: FilePath) -> NonEmptyStr {
   join([user_runtime_dir as String, "/sccache.sock"], "") as NonEmptyStr
 }
@@ -518,17 +517,11 @@ fn compute_launching_user_runtime_dir() -> FilePath? {
   }
 }
 
-fn compute_unit_sccache_setenv(instance: HostDashboardInstance, user_runtime_dir: FilePath) -> List<SystemdSetenvBinding> {
+fn compute_unit_sccache_setenv(user_runtime_dir: FilePath) -> List<SystemdSetenvBinding> {
   [
     SystemdSetenvBinding {
       name: sccache_server_uds_env_var,
       value: compute_user_sccache_server_uds(user_runtime_dir: user_runtime_dir),
-    },
-    // HostDashboardInstance has no cache-dir field. The shared CI disk is
-    // gunbc.build_cache.build_cache_instance ci_cache_instance intended_storage (host-invariant).
-    SystemdSetenvBinding {
-      name: sccache_cache_dir_env_var,
-      value: ci_cache_instance(host: instance.host_identity as HostIdentity).intended_storage,
     },
   ]
 }
@@ -557,7 +550,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
             SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
             SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
           ],
-          compute_unit_sccache_setenv(instance: instance, user_runtime_dir: user_runtime_dir),
+          compute_unit_sccache_setenv(user_runtime_dir: user_runtime_dir),
         ),
         env,
       ),
