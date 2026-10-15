@@ -12,6 +12,7 @@ import std.env_binding { EnvSet, EnvBinding }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.roadmap.roadmap_dashboard_instance {
   fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance, IsolatedJobToolchainHomes,
+  srv1_live_dashboard_instance, dashboard_path_is_under,
 }
 import extdeps.shell
 import extdeps.rust.cargo { cargo_environment_variable_name, CargoHomeEnv }
@@ -22,6 +23,8 @@ import extdeps.cache.sccache {
 import extdeps.tools.id { id_binary_path }
 import extdeps.iproute2.ss { ss_binary_path }
 import extdeps.tools.stat { stat_program }
+import extdeps.tools.hostname { hostname_program }
+import extdeps.procps.ps { ps_program, ps_user_uid_pid_args_listing_args }
 import extdeps.systemd.systemctl { systemctl_user_manager_probe_command }
 import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
@@ -74,8 +77,9 @@ type HermeticUserSessionRuntime
   = HermeticUserSessionRuntimeBound { runtime_dir: FilePath }
   | HermeticUserSessionRuntimeAbsent
 
-fn path_is_under_opt_gunbc(path: String) -> Bool {
-  (path == "/opt/gunbc") || path.starts_with(prefix: "/opt/gunbc/")
+fn path_is_under_production_instance_root(path: String) -> Bool {
+  let root = srv1_live_dashboard_instance().instance_root
+  (path == root as String) || dashboard_path_is_under(path: path as FilePath, root: root)
 }
 
 fn observe_workspace(instance: HostDashboardInstance) -> String {
@@ -244,20 +248,20 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
           bytes: "compute-run-unit-cold: no observation: clock unix millis unreadable, so this run has no unique root",
           reason: "run identity unreadable",
         )
-      } else if path_is_under_opt_gunbc(path: workspace) {
+      } else if path_is_under_production_instance_root(path: workspace) {
         CliWirePrintable {
           bytes: join(["compute-run-unit-cold: workspace is host-shared production path ", workspace], ""),
-          exit: ExitFailure { code: 1, reason: "workspace under /opt/gunbc" },
+          exit: ExitFailure { code: 1, reason: "workspace under the production instance root" },
         }
       } else {
         let run_root = join([workspace, "/.gunbc-compute-hermetic/", identity], "")
         let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: run_root as FilePath, toolchain_homes: toolchain_homes)
         let layout = compute_layout(instance: instance, identity_hex: identity)
         let root = compute_root(instance: instance) as String
-        if path_is_under_opt_gunbc(path: instance.instance_root as String) || path_is_under_opt_gunbc(path: root) {
+        if path_is_under_production_instance_root(path: instance.instance_root as String) || path_is_under_production_instance_root(path: root) {
           CliWirePrintable {
             bytes: join(["compute-run-unit-cold: compute root resolved to host-shared path ", root], ""),
-            exit: ExitFailure { code: 1, reason: "compute root under /opt/gunbc" },
+            exit: ExitFailure { code: 1, reason: "compute root under the production instance root" },
           }
         } else {
           let roots_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
@@ -415,8 +419,8 @@ fn observe_sccache_host_probe() -> String {
   let tcp_sport = join(["sport = :", to_string(value: sccache_server_default_tcp_port)], "")
   let user_mgr = systemctl_user_manager_probe_command()
   let id_out = observe_argv(program: id_binary_path as String, args: [])
-  let host_out = observe_argv(program: "/usr/bin/hostname", args: [])
-  let ps_out = observe_argv(program: "/usr/bin/ps", args: ["-eo", "user,uid,pid,args"])
+  let host_out = observe_argv(program: hostname_program().invocation as String, args: [])
+  let ps_out = observe_argv(program: ps_program().invocation as String, args: ps_user_uid_pid_args_listing_args())
   let ss_out = observe_argv(program: ss_binary_path as String, args: ["-ltnp", tcp_sport])
   let mgr_env = observe_argv(program: user_mgr.program.invocation as String, args: user_mgr.arguments)
   let ss_unix = observe_argv(program: ss_binary_path as String, args: ["-xlp"])
@@ -442,7 +446,7 @@ fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobTool
     instance: fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, toolchain_homes: toolchain_homes),
   )
   let identity = observe_run_identity()
-  if (workspace == "") || (identity == "") || path_is_under_opt_gunbc(path: workspace) {
+  if (workspace == "") || (identity == "") || path_is_under_production_instance_root(path: workspace) {
     "unit printenv skipped: workspace or identity unusable\n"
   } else {
     let run_root = join([workspace, "/.gunbc-compute-hermetic/", identity], "")
