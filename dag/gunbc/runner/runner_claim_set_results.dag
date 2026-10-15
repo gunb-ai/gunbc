@@ -71,6 +71,10 @@ type ClaimSetResultsUndecodable
   | ResultsCountMissing
   | ResultsCountMalformed { line: String }
   | ResultsRecordMalformed { index: Int, line: String }
+  // A well-formed record whose exit is not a `gunbc test` standing (0 held, 1 did not hold, 2 no
+  // observation). The host trusts nothing the guest writes, so an exit outside that closed set is a
+  // refusal here and never reaches the standing, where it could be mistaken for a pass.
+  | ResultsExitNotAStanding { index: Int, exit: Int }
   | ResultsTruncated { declared: Int, present: Int }
   | ResultsDigestMissing
   | ResultsDigestMismatch { stated: String, recomputed: String }
@@ -123,7 +127,9 @@ fn decode_claim_set_records(lines: List<String>) -> ClaimSetResultsDecode {
     ClaimSetResultsRefused { cause: c } => ClaimSetResultsRefused { cause: c }
     ClaimSetResultsDecoded { results: rs, stated_digest: d } => match decode_claim_set_record(index: count(rs), line: line) {
       Absent => ClaimSetResultsRefused { cause: ResultsRecordMalformed { index: count(rs), line: line } }
-      Present { value: r } => ClaimSetResultsDecoded { results: rs + [r], stated_digest: d }
+      Present { value: r } =>
+        if r.exit != 0 && r.exit != 1 && r.exit != 2 { ClaimSetResultsRefused { cause: ResultsExitNotAStanding { index: count(rs), exit: r.exit } } }
+        else { ClaimSetResultsDecoded { results: rs + [r], stated_digest: d } }
     }
   })
 }
