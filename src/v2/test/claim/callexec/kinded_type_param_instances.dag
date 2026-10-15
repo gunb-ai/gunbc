@@ -30,14 +30,14 @@ fn kti_prelude() -> String {
 }
 
 test fn kti_literal_argument_is_the_inferred_instance() -> Bool {
-  match kti_instance_of(src: concat(kti_prelude(), "fn mk8() -> Box<8> {\n  let r = Box { v: 0 }\n  r\n}\n\nfn consumer() -> Int {\n  width_of(x: mk8())\n}\n"), name: ^width_of, binder: ^bits) {
+  match kti_instance_of(src: concat(kti_prelude(), "fn mk8() -> Box<8> {\n  let r = Box { v: 0 }\n  r\n}\n\nfn consumer() -> Resolution {\n  width_of(x: mk8())\n}\n"), name: ^width_of, binder: ^bits) {
     Present { value: i } => v2_eval_is_literal_shaped_node(node: i)
     Absent => false
   }
 }
 
 test fn kti_forwarded_binder_is_a_non_literal_instance() -> Bool {
-  match kti_instance_of(src: concat(kti_prelude(), "fn forward<m: Resolution>(y: Box<m>) -> Int {\n  width_of(x: y)\n}\n"), name: ^width_of, binder: ^bits) {
+  match kti_instance_of(src: concat(kti_prelude(), "fn forward<m: Resolution>(y: Box<m>) -> Resolution {\n  width_of(x: y)\n}\n"), name: ^width_of, binder: ^bits) {
     Present { value: i } => !v2_eval_is_literal_shaped_node(node: i)
     Absent => false
   }
