@@ -26,7 +26,7 @@ fn kti_instance_of(src: String, name: Symbol, binder: Symbol) -> Optional<Node> 
 }
 
 fn kti_prelude() -> String {
-  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\n"
+  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn width_of<bits: Resolution>(x: Box<bits>) -> Resolution {\n  bits\n}\n\n"
 }
 
 test fn kti_literal_argument_is_the_inferred_instance() -> Bool {
@@ -55,5 +55,23 @@ test fn kti_non_generic_call_carries_no_instances() -> Bool {
             Present { value: facts } => facts.type_instances == Empty
           }
       }
+  }
+}
+
+// THE BODY READ OF A KINDED BINDER HAS THE BINDER'S KIND AS ITS TYPE (review 80612): the argument may be
+// a Nat literal or a named inhabitant, so Int would fabricate a type for the named one. Positive
+// control: the read inhabits its kind (kti_prelude's width_of returns Resolution and infers).
+test fn kti_kinded_read_inhabits_its_kind() -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: kti_prelude())) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// No implicit narrowing: the same read where Int is required refuses; it does not coerce to Int.
+test fn kti_kinded_read_where_int_is_required_refuses() -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\nfn as_int<bits: Resolution>(n: Int) -> Int {\n  bits\n}\n")) {
+    Present { value: _ } => false
+    Absent => true
   }
 }

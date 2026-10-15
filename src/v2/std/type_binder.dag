@@ -410,6 +410,26 @@ fn kinded_type_param_names(n: Node) -> List<Symbol> {
   }
 }
 
+// THE KIND OF ONE KINDED TYPE PARAMETER, by name: the declaration that says what its argument may be.
+// The value read of the binder has exactly this type (v2.compiler.symbol_index_fill
+// symbol_index_fill_kinded_type_params), because the argument is a Nat literal OR a named inhabitant
+// of the kind (std.machine_constraints machine_width_literal_roster_frontier) and only the kind covers both.
+fn kinded_type_param_kind_optional(n: Node, name: Symbol) -> Optional<Node> {
+  let carried = fold(n.children, init: Empty, f: fn(acc, e) {
+    if edge_is_type_params(e: e) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+  })
+  if count(carried) == 1 {
+    fold(carried, init: optional_absent(), f: fn(acc, t) {
+      match type_binder_target_of(binders: t, name: name) {
+        Present { value: b } => type_param_kind_optional(binder: b)
+        Absent => optional_absent()
+      }
+    })
+  } else {
+    optional_absent()
+  }
+}
+
 // WHAT A BINDER'S ANNOTATION BOUNDS IT BY, READ FROM THE MARKER THE BINDER WAS BUILT WITH -- never guessed
 // from the annotation's shape. A BinderTypeEdge (type_param_kind_optional) carries a KIND -- a type
 // expression whose inhabitants are the parameter's admissible arguments, judged at resolve by

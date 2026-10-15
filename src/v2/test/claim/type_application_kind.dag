@@ -82,7 +82,7 @@ fn tak_arity_nongeneric() -> Outcome<ResolvedTree> { tak_assemble(src: concat(ta
 // argument at an application and the value a body names (A0-1). RED on main: the body read of `bits` is
 // NoSuchVariable.
 fn tak_body_reads_kinded_parameter() -> Outcome<ResolvedTree> {
-  tak_assemble(src: concat(tak_prelude(), "fn width_of<bits: Resolution>() -> Int {\n  bits\n}\n"))
+  tak_assemble(src: concat(tak_prelude(), "fn width_of<bits: Resolution>() -> Resolution {\n  bits\n}\n"))
 }
 
 test fn tak_kinded_parameter_is_readable_as_a_value_in_the_body() -> Bool {
