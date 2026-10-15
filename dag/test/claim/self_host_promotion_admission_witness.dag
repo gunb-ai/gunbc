@@ -46,13 +46,13 @@ import v2.compiler.self_host.promotion_admission {
 }
 import v2.compiler.compile {
   CompileLens,
+  RequiredLensCoverageRow,
+  required_lens_roster_digest_of,
   CompileLensRoot,
   CompileLensSubtree,
   RequiredLensCoverageClosed,
   RequiredLensCoverageRefused,
-  RequiredLensCoverageRow,
-  RequiredLensRosterEmpty,
-  required_lens_roster_digest_of
+  RequiredLensRosterEmpty
 }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.occurrence_identity { OccurrenceSynthetic }

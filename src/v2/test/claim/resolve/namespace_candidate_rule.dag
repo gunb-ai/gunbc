@@ -1,10 +1,10 @@
 module v2.test.claim.resolve.namespace_candidate_rule
 
-import v2.compiler.compile {
-  NativeCensusModule,
+import v2.compiler.source_root_eval {
   NativeCensusModuleFileRefused,
   NativeCensusModuleResolveRefused,
   NativeCensusModuleResolved,
+  NativeCensusModule,
   NativeCensusModuleOutcome,
   NativeTestContext,
   native_census_module_resolution,

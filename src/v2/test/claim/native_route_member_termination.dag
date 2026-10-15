@@ -1,12 +1,15 @@
-module test.claim.native_route_member_termination
+module v2.test.claim.native_route_member_termination
 
-import gunbc.instrument_targets { native_route_member_termination }
+import v2.workflow.native_route_member_termination {
+  native_route_member_termination,
+  native_route_termination_under_qualification,
+}
 import gunbc.target_invocation {
   InvocationTermination,
   InvocationObservationHeld, InvocationObservationDidNotHold,
   InvocationSubjectUnreached, InvocationRefused,
 }
-import gunbc.witness.v2_native_route { NativeRouteMemberRow, NativeRouteTestIdentity }
+import v2.compiler.native_test_vocabulary { NativeRouteMemberRow, NativeRouteTestIdentity }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther,
   NativeTestStagePrepare, NativeTestStageEval,

@@ -4,7 +4,7 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, Occurrenc
 import std.algebra { Cons, Empty, length, list_map }
 import std.content_hash { content_hash_atom }
 import v2.compiler.inferred_tree { authored_occurrence_collisions }
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   NativeLaneOccurrenceCensusRow,
   NativeLaneOccurrenceCollision,
   native_lane_occurrence_census,
