@@ -1,5 +1,6 @@
 module gunbc.build_cache.build_cache_endpoint_observe
 
+import std.optional { Absent, Present }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.decimal { decimal_digit_char }
 import std.nat { Nat }
@@ -15,8 +16,7 @@ import extdeps.linux.proc_pid_stat {
   StartTimeUnparseable,
 }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.gnu_coreutils { cat_command, readlink_command, ls_one_per_line_command }
-import extdeps.tools.stat { stat_owner_user_name_command }
+import extdeps.tools.gnu_coreutils { cat_command, readlink_command, ls_one_per_line_command, ls_long_directory_command }
 import extdeps.tools.findutils { find_path_is_socket_command }
 import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
 import extdeps.linux.proc_self_cgroup {
@@ -208,8 +208,23 @@ fn owner_proc_stat_command(pid: Nat) -> ArgvCommand {
   cat_command(path: proc_pid_path(pid: pid, leaf: "stat"))
 }
 
+// THE OWNER IS READ FROM `ls -ld`, NOT `stat -c %U`: `%` cannot cross the fleet SSH edge
+// (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed), so over FleetSsh and SshShell
+// the old read never executed and every remote owner read "unread". ls(1)'s long format puts the owner
+// name in the third field of the one line it prints for the path itself (extdeps.tools.gnu_coreutils
+// ls_long_directory_command); owner_principal_of_ls_read takes that field and nothing else.
 fn owner_principal_command(pid: Nat) -> ArgvCommand {
-  stat_owner_user_name_command(path: proc_pid_path(pid: pid, leaf: ""))
+  ls_long_directory_command(path: proc_pid_path(pid: pid, leaf: ""))
+}
+
+fn owner_principal_of_ls_read(read: HostRead) -> String {
+  match read {
+    HostReadFailed { detail: _ } => "unread"
+    HostReadText { text: t } => {
+      let words = filter(split(s: trim(t), delimiter: " "), w => w != "")
+      match words.skip(n: 2).first() { Absent => "unread" Present { value: o } => o }
+    }
+  }
 }
 
 fn owner_executable_command(pid: Nat) -> ArgvCommand {
@@ -758,7 +773,7 @@ fn endpoint_owner_observation(
             instance: instance,
             owner: who,
             executable: read_text_or(read: reads.owner_executable, fallback: "unread") as NonEmptyStr,
-            principal: read_text_or(read: reads.owner_principal, fallback: "unread") as NonEmptyStr,
+            principal: owner_principal_of_ls_read(read: reads.owner_principal) as NonEmptyStr,
             owner_context: owner_context_of_cgroup_read(instance: instance, read: reads.owner_cgroup),
             memory_limits: none,
             memory_events: none,
