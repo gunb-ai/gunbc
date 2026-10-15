@@ -28,7 +28,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_admitted,
   attempt_system_unit_privileged_effect, attempt_system_unit_sudoers_body,
   AttemptSystemUnitSudoersText, AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
-  attempt_system_unit_sudoers_path, attempt_system_unit_name_admitted,
+  attempt_system_unit_sudoers_path,
   attempt_system_unit_systemd_run_command, attempt_system_unit_plan_from_facts,
   attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_dir,
   AttemptSystemUnitStartRequest, attempt_system_unit_start_facts_for_request,
@@ -91,7 +91,7 @@ test fn a_start_with_the_instance_binary_and_user_is_admitted() -> Bool {
     },
   ) {
     AttemptSystemUnitAdmitted { unit: u, facts: _ } =>
-      attempt_system_unit_name_admitted(unit: u)
+      (u as String) == "gunbc-attempt-n-k.service"
     AttemptSystemUnitRefused { reason: _ } => false
   }
 }
@@ -320,6 +320,36 @@ test fn an_attempt_identity_that_is_not_one_path_segment_is_underivable() -> Boo
     && request_is_underivable(node_id: "..", attempt_key: "k1")
     && request_is_underivable(node_id: "n1", attempt_key: "")
     && !request_is_underivable(node_id: "n1", attempt_key: "k1")
+}
+
+test fn a_path_safe_node_id_with_a_space_is_underivable_as_a_systemd_unit() -> Bool {
+  request_is_underivable(node_id: "a b", attempt_key: "k1")
+}
+
+test fn a_path_safe_node_id_with_at_is_underivable_as_a_systemd_unit() -> Bool {
+  request_is_underivable(node_id: "x@y", attempt_key: "k1")
+}
+
+test fn a_start_whose_node_id_systemd_disallows_is_refused_at_construction() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  match attempt_system_unit_start_admitted(
+    instance: inst,
+    facts: AttemptSystemUnitStartFacts {
+      node_id: "a b",
+      attempt_key: "k",
+      user: inst.directory_owner.user as NonEmptyStr,
+      working_directory: inst.repo_root as String,
+      attempt_worktree: "/tmp/wt",
+      stdout_path: "/tmp/out",
+      stderr_path: "/tmp/err",
+      granted: kibibyte(count: 1),
+      exit_hook: "true" as NonEmptyStr,
+      inner_argv: [inst.serve_binary as String, "run"],
+    },
+  ) {
+    AttemptSystemUnitRefused { reason: why } => string_contains(s: why, pattern: "disallow")
+    AttemptSystemUnitAdmitted { unit: _, facts: _ } => false
+  }
 }
 
 // The earlier wide body carried user, working directory, worktree, both log paths and the exit hook.

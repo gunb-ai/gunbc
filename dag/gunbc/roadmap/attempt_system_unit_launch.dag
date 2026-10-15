@@ -62,7 +62,12 @@ import gunbc.host.host_layout {
 }
 import extdeps.tools.util_linux_flock { flock_exclusive_wait_words }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
-import extdeps.systemd { User }
+import extdeps.systemd {
+  User,
+  systemd_service_unit_name, systemd_unit_name_wire,
+  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
+  SystemdUnitNameOverlong,
+}
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ApiSurface, WorkloadIdentityBindable, MintsNoCredential,
   ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
@@ -86,7 +91,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.roadmap.roadmap_dispatch_actuator {
-  DispatchWorkerUnitPlan, dispatch_attempt_unit_name, dispatch_worker_unit_properties_for_plan,
+  DispatchWorkerUnitPlan, dispatch_attempt_unit_stem,
+  dispatch_worker_unit_properties_for_plan,
   host_exec_argv, HostExecArgv,
   dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
   dispatch_pane_working_directory, GunbcHarnessProvider,
@@ -101,8 +107,6 @@ import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 data attempt_system_unit_launch_entry: String = "dag/gunbc/roadmap/attempt_system_unit_launch.dag"
 data attempt_system_unit_launch_function: String = "attempt_system_unit_launch_cli"
 data attempt_system_unit_request_body_name: String = "request"
-data attempt_system_unit_name_prefix: String = "gunbc-attempt-"
-data attempt_system_unit_name_suffix: String = ".service"
 data attempt_system_unit_launcher_helpers_root: String = "/opt/gunbc/attempt-system-unit-helpers"
 data attempt_system_unit_launcher_revision_receipt_name: String = "installed-revision"
 data attempt_system_unit_launcher_busy_exit: Int = 75
@@ -175,13 +179,6 @@ fn attempt_system_unit_request_body_path(dir: String) -> String {
   join([dir, "/", attempt_system_unit_request_body_name], "")
 }
 
-fn attempt_system_unit_name_admitted(unit: NonEmptyStr) -> Bool {
-  starts_with(s: unit as String, prefix: attempt_system_unit_name_prefix)
-    && string_contains(s: unit as String, pattern: attempt_system_unit_name_suffix)
-    && !string_contains(s: unit as String, pattern: "/")
-    && !string_contains(s: unit as String, pattern: "..")
-}
-
 type AttemptSystemUnitStartFacts {
   node_id: String
   attempt_key: String
@@ -209,12 +206,26 @@ type AttemptSystemUnitStartDerivation
   | AttemptSystemUnitStartUnderivable { reason: String }
 
 // The node id and attempt key become path segments (worktree, attempt state, exit record) and the unit
-// name, so each must be one safe segment (std.types path_segment_is_safe) before anything is derived.
+// name, so each must be one safe segment (std.types path_segment_is_safe) and then inhabit
+// SystemdUnitName (extdeps.systemd systemd_service_unit_name) before anything is derived. Path-safe
+// still admits characters systemd.unit(5) refuses (space, `@`); those refuse here as underivable.
 // The worker is the harness provider's: its working directory is that provider's pane directory.
 fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, request: AttemptSystemUnitStartRequest) -> AttemptSystemUnitStartDerivation {
   if !path_segment_is_safe(raw: request.node_id) || !path_segment_is_safe(raw: request.attempt_key) {
     AttemptSystemUnitStartUnderivable { reason: "node id or attempt key is not one safe path segment" }
   } else {
+    match systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id: request.node_id, attempt_key: request.attempt_key)) {
+      SystemdUnitNameStemEmpty =>
+        AttemptSystemUnitStartUnderivable { reason: "attempt unit name stem is empty" }
+      SystemdUnitNameDisallowedCharacter { stem: _, character: ch } =>
+        AttemptSystemUnitStartUnderivable {
+          reason: join(["node id or attempt key has a character systemd unit names disallow: ", ch], ""),
+        }
+      SystemdUnitNameOverlong { length: _ } =>
+        AttemptSystemUnitStartUnderivable {
+          reason: "attempt unit name exceeds systemd's 255-character limit",
+        }
+      SystemdUnitNameAdmitted { name: _ } => {
     let node = request.node_id as RoadmapNodeId
     let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
     let log = dispatch_attempt_worker_log_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
@@ -236,6 +247,8 @@ fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, 
           },
         }
     }
+      }
+    }
   }
 }
 
@@ -253,20 +266,30 @@ type AttemptSystemUnitAdmission
   | AttemptSystemUnitRefused { reason: String }
 
 fn attempt_system_unit_start_admitted(instance: HostDashboardInstance, facts: AttemptSystemUnitStartFacts) -> AttemptSystemUnitAdmission {
-  let unit = dispatch_attempt_unit_name(node_id: facts.node_id, attempt_key: facts.attempt_key)
-  if !attempt_system_unit_name_admitted(unit: unit) {
-    AttemptSystemUnitRefused { reason: "unit name is not a gunbc-attempt-*.service identity" }
-  } else if (facts.user as String) != (instance.directory_owner.user as String) {
-    AttemptSystemUnitRefused { reason: "User= is not the instance service user" }
-  } else {
-    match facts.inner_argv.first() {
-      Absent => AttemptSystemUnitRefused { reason: "ExecStart argv is empty" }
-      Present { value: program } =>
-        if program != (instance.serve_binary as String) {
-          AttemptSystemUnitRefused { reason: "ExecStart program is not the instance gunbc binary" }
-        } else {
-          AttemptSystemUnitAdmitted { unit: unit, facts: facts }
+  match systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id: facts.node_id, attempt_key: facts.attempt_key)) {
+    SystemdUnitNameStemEmpty =>
+      AttemptSystemUnitRefused { reason: "attempt unit name stem is empty" }
+    SystemdUnitNameDisallowedCharacter { stem: _, character: ch } =>
+      AttemptSystemUnitRefused {
+        reason: join(["attempt unit name has a character systemd disallows: ", ch], ""),
+      }
+    SystemdUnitNameOverlong { length: _ } =>
+      AttemptSystemUnitRefused { reason: "attempt unit name exceeds systemd's 255-character limit" }
+    SystemdUnitNameAdmitted { name } => {
+      let unit = systemd_unit_name_wire(name: name)
+      if (facts.user as String) != (instance.directory_owner.user as String) {
+        AttemptSystemUnitRefused { reason: "User= is not the instance service user" }
+      } else {
+        match facts.inner_argv.first() {
+          Absent => AttemptSystemUnitRefused { reason: "ExecStart argv is empty" }
+          Present { value: program } =>
+            if program != (instance.serve_binary as String) {
+              AttemptSystemUnitRefused { reason: "ExecStart program is not the instance gunbc binary" }
+            } else {
+              AttemptSystemUnitAdmitted { unit: unit, facts: facts }
+            }
         }
+      }
     }
   }
 }
