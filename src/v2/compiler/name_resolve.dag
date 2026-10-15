@@ -1331,7 +1331,10 @@ fn closure_phase2_blocked(
       Absent => blocked
       Present { value: r } =>
         fold_list(xs: component, empty: blocked, cons: fn(acc, name) {
-          map_insert(m: acc, key: name, value: r)
+          match closure_row_at(rows: by_path, path: name) {
+            Absent => acc
+            Present { value: row } => map_insert(m: acc, key: row.path, value: r)
+          }
         })
     }
   })
