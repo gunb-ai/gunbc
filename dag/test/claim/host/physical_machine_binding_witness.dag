@@ -10,7 +10,6 @@ module test.claim.host.physical_machine_binding_witness
 
 import std.optional { Absent, Present }
 import gunbc.host.physical_machine_binding {
-  PhysicalMachineBinding,
   PhysicalMachineAdmitted,
   PhysicalMachineRefused,
   PhysicalMachineHostAllocationMismatch,
@@ -72,18 +71,21 @@ data red2_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   },
 }
 
-// A sealed binding for unit_a (the current subject, no fleet axis, no control axis).
-data binding_a: PhysicalMachineBinding = PhysicalMachineBinding {
-  unit_key: unit_a,
-  subject: subject_for(unit_a),
-  fleet: Absent,
-  control: Absent,
-}
-
 // RED1: a receipt bound to a superseded subject (changed firmware) refuses to apply to the
-// repaired assembly.
+// repaired assembly. The sealed binding is obtained THROUGH admission (PhysicalMachineBinding is
+// sole_constructor: the only way to name a sealed subject is to pass admission).
 test fn red1_superseded_receipt_refuses() -> Bool {
-  receipt_applies_to_binding(binding: binding_a, receipt_subject: stale_subject_for(unit_a)) == false
+  match physical_machine_admission(
+    host: operator_host_mtcollins1,
+    unit_standing: UnitKeyBound { key: unit_a },
+    current_subject: Present { value: subject_for(unit_a) },
+    fleet: Absent,
+    control: Absent,
+  ) {
+    PhysicalMachineAdmitted { binding } =>
+      receipt_applies_to_binding(binding: binding, receipt_subject: stale_subject_for(unit_a)) == false
+    PhysicalMachineRefused { cause: _ } => false
+  }
 }
 
 // RED2: a HostIdentity whose allocation points at another UnitKey refuses.
