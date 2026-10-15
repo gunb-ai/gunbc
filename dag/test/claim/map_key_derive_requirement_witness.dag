@@ -72,7 +72,7 @@ fn w_nullary_coproduct_key_gains_only_hash() -> Bool {
     "module map_key_witness.nullary_key\n\ntype ChoiceKey\n  = ChoiceLeft\n  | ChoiceRight\n\ntype ChoiceTable {\n  entries: Map<ChoiceKey, Int>\n}\n",
     "src/map_key_witness_nullary_key.rs",
     ["pub enum ChoiceKey", "Ord, serde::Serialize, serde::Deserialize, std::hash::Hash)]"],
-    ["serde::Deserialize, Eq"]
+    ["Eq, Eq", "Hash, std::hash::Hash"]
   )
 }
 
