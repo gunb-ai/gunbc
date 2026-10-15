@@ -583,12 +583,12 @@ test fn witness_non_socket_at_the_endpoint_path_is_a_conflict() -> Bool {
   }
 }
 
-test fn witness_stat_type_word_decodes_socket_and_absence() -> Bool {
-  let socket_kind = gunbc.build_cache.build_cache_endpoint_observe.path_kind_of_stat_read(
-    read: gunbc.build_cache.build_cache_endpoint_observe.HostReadText { text: "socket\n" },
+test fn witness_socket_test_decodes_socket_and_absence() -> Bool {
+  let socket_kind = gunbc.build_cache.build_cache_endpoint_observe.path_kind_of_socket_test_read(
+    read: gunbc.build_cache.build_cache_endpoint_observe.HostReadText { text: "/run/sccache/server.sock\n" },
     exit_success: true,
   )
-  let absent_kind = gunbc.build_cache.build_cache_endpoint_observe.path_kind_of_stat_read(
+  let absent_kind = gunbc.build_cache.build_cache_endpoint_observe.path_kind_of_socket_test_read(
     read: gunbc.build_cache.build_cache_endpoint_observe.HostReadText { text: "" },
     exit_success: false,
   )

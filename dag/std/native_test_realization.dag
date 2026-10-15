@@ -1,0 +1,274 @@
+module std.native_test_realization
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { contains, length }
+import std.content_hash { ContentHash, content_hash_equal, serialize_content_hash }
+import std.cache_identity { native_test_verdict_artifact_kind }
+import std.judgment_contract { DeclaredInput, DemandIdentity, identity_digest_component, identity_text_component, length_prefixed_encode }
+import std.decl_ref { decl_ref }
+import std.materialization_provider {
+  EvaluationIdentity,
+  EvaluationResultBinding,
+  EvaluationResultBindingOutcome,
+  ResultContentIdentity,
+  evaluation_identity_canonical,
+  evaluation_result_binding_outcome
+}
+
+// HOW A NATIVE TEST VERDICT IS IDENTIFIED AND REALIZED (gunbc.plans.demand_engine_program D15, B2).
+// Four facts, never one key: the EvaluationIdentity says WHAT was judged, the
+// RealizationProductIdentity says WHICH built product judged it, the EvaluationResultBinding says
+// what the judgment's content is, and the NativeTestVerdictReceipt joins the three. How a product or
+// result was obtained (served, committed) is std.materialization_provider RealizationReceipt's fact
+// and joins here when the provider serves native verdicts (B5); this module does not restate it. Two admitted realizations of one EvaluationIdentity must agree on content, so a
+// disagreement is a conflict and never two answers. This module carries identity, admission and the
+// per-test manifest only: no store, no scheduler, no Cargo adapter. DECLARED FRONTIER (DESIGN section
+// 3c): the production consumer is the native verdict route's realization step (roadmap node
+// native-test-verdict-realization, B3 and B4). TRIGGER: that step constructs these identities from the
+// emitted Cargo test target and binds its per-test results through this manifest.
+
+// THE ONE ADMITTED HANDLER'S REALIZATION FACTS. The generator is the emitter that wrote the Rust (the
+// v2 generation identity, so seed-emitted and v2-emitted products never share a product key).
+type RustNativeRealization {
+  generator: ContentHash
+  target_model: ContentHash
+  toolchain: ContentHash
+}
+
+type NativeHandlerUnavailableCause =
+  | NoAdmittedEmitterForTarget
+
+// A CLOSED HANDLER SET (D15(c)). C and Swift inhabit the interface so it is proven to carry more than
+// one target, and they refuse at admission: no product identity can be formed for them, so emission
+// never begins.
+type NativeTestRealizationHandler
+  = RustNative { realization: RustNativeRealization }
+  | CUnavailable { cause: NativeHandlerUnavailableCause }
+  | SwiftUnavailable { cause: NativeHandlerUnavailableCause }
+
+type NativeHandlerAdmission
+  = NativeHandlerAdmitted { realization: RustNativeRealization }
+  | NativeHandlerRefused { handler: NativeTestRealizationHandler, cause: NativeHandlerUnavailableCause }
+
+fn admit_native_test_handler(handler: NativeTestRealizationHandler) -> NativeHandlerAdmission {
+  match handler {
+    RustNative { realization: r } => NativeHandlerAdmitted { realization: r }
+    CUnavailable { cause: c } => NativeHandlerRefused { handler: handler, cause: c }
+    SwiftUnavailable { cause: c } => NativeHandlerRefused { handler: handler, cause: c }
+  }
+}
+
+// WHAT ONE TEST'S JUDGMENT DEPENDS ON. The reached declarations are carried as the digest of their
+// ordered SEMANTIC CONTENT identities (not their names), so editing a dependency rekeys the evaluation.
+// Nothing here names a handler, toolchain or crate: those are the product's facts.
+type NativeTestEvaluationSubject {
+  test: NonEmptyStr
+  context: ContentHash
+  reached_declarations: ContentHash
+  read_set: ContentHash
+  semantics_version: ContentHash
+}
+
+fn native_test_evaluation_identity(subject: NativeTestEvaluationSubject) -> EvaluationIdentity {
+  EvaluationIdentity {
+    demand: DemandIdentity {
+      kind: native_test_verdict_artifact_kind,
+      subject: identity_text_component(content: subject.test),
+      declared_inputs: [
+        DeclaredInput { ref: "native_test.context", component: identity_digest_component(hash: subject.context) },
+        DeclaredInput { ref: "native_test.reached_declarations", component: identity_digest_component(hash: subject.reached_declarations) },
+        DeclaredInput { ref: "native_test.read_set", component: identity_digest_component(hash: subject.read_set) },
+        DeclaredInput { ref: "native_test.semantics_version", component: identity_digest_component(hash: subject.semantics_version) }
+      ]
+    }
+  }
+}
+
+// THE BUILT PRODUCT. Its key always carries every declaration packaged into it: a crate is compiled as
+// a whole, so its bytes depend on all of them. Only an admitted realization can form one, and only
+// form_realization_product constructs it, so its declarations are always in canonical order.
+type RealizationProductIdentity sole_constructor {
+  realization: RustNativeRealization
+  partition: ContentHash
+  build_configuration: ContentHash
+  packaged_declarations: List<ContentHash>
+}
+
+type RealizationProductFormation
+  = RealizationProductFormed { product: RealizationProductIdentity }
+  | RealizationProductRefused { cause: NativeHandlerUnavailableCause }
+
+fn form_realization_product(
+  handler: NativeTestRealizationHandler,
+  partition: ContentHash,
+  build_configuration: ContentHash,
+  packaged_declarations: List<ContentHash>
+) -> RealizationProductFormation {
+  match admit_native_test_handler(handler: handler) {
+    NativeHandlerAdmitted { realization: r } =>
+      RealizationProductFormed {
+        product: RealizationProductIdentity {
+          realization: r,
+          partition: partition,
+          build_configuration: build_configuration,
+          packaged_declarations: packaged_declarations |> sort_by(d => serialize_content_hash(hash: d) as String)
+        }
+      }
+    NativeHandlerRefused { handler: _, cause: c } => RealizationProductRefused { cause: c }
+  }
+}
+
+// ONE CANONICAL TEXT PER PRODUCT: every realization axis and the ordered packaged declarations, each
+// length-prefixed, so two products are one key exactly when every fact agrees.
+fn realization_product_identity_canonical(product: RealizationProductIdentity) -> NonEmptyStr {
+  join([
+    length_prefixed_encode(s: "realization_product"),
+    length_prefixed_encode(s: serialize_content_hash(hash: product.realization.generator) as String),
+    length_prefixed_encode(s: serialize_content_hash(hash: product.realization.target_model) as String),
+    length_prefixed_encode(s: serialize_content_hash(hash: product.realization.toolchain) as String),
+    length_prefixed_encode(s: serialize_content_hash(hash: product.partition) as String),
+    length_prefixed_encode(s: serialize_content_hash(hash: product.build_configuration) as String),
+    join(product.packaged_declarations |> map(d => length_prefixed_encode(s: serialize_content_hash(hash: d) as String)), "")
+  ], "") as NonEmptyStr
+}
+
+// WHETHER CRATE NEIGHBOURS ARE KNOWN NOT TO CHANGE A DECLARATION'S MEANING (D15(d)). Independence is
+// admitted only through evidence bound to the exact realization it was established under, the bounded
+// declaration population it covered, and the adversarial controls that tried to break it. The record
+// is sealed: a caller cannot write one, and its one mint refuses evidence with no adversarial control
+// or no population. DECLARED FRONTIER: the mint's production caller is the composition falsifier of
+// B3 (adversarial co-residents built alone and beside the closure). TRIGGER: that falsifier lands and
+// is added to the mint's admit_callers; until then only the witness may mint.
+type CompositionIndependenceEvidence sole_constructor {
+  realization: RustNativeRealization
+  partition: ContentHash
+  build_configuration: ContentHash
+  population: List<ContentHash>
+  adversarial_controls: List<NonEmptyStr>
+}
+
+type CompositionEvidenceRefusal =
+  | NoAdversarialControls
+  | EmptyDeclarationPopulation
+
+type CompositionEvidenceAdmission
+  = CompositionEvidenceAdmitted { evidence: CompositionIndependenceEvidence }
+  | CompositionEvidenceRefused { cause: CompositionEvidenceRefusal }
+
+fn admit_composition_independence_evidence(
+  realization: RustNativeRealization,
+  partition: ContentHash,
+  build_configuration: ContentHash,
+  population: List<ContentHash>,
+  adversarial_controls: List<NonEmptyStr>
+) -> CompositionEvidenceAdmission admit_callers: [
+  decl_ref(module_path: "test.claim.native_test_realization_witness", decl_name: "ntr_evidence")
+] {
+  if length(xs: adversarial_controls) == 0 {
+    CompositionEvidenceRefused { cause: NoAdversarialControls }
+  } else if length(xs: population) == 0 {
+    CompositionEvidenceRefused { cause: EmptyDeclarationPopulation }
+  } else {
+    CompositionEvidenceAdmitted {
+      evidence: CompositionIndependenceEvidence {
+        realization: realization,
+        partition: partition,
+        build_configuration: build_configuration,
+        population: population,
+        adversarial_controls: adversarial_controls
+      }
+    }
+  }
+}
+
+type CompositionStanding
+  = CompositionIndependenceUnadmitted
+  | CompositionIndependenceAdmitted { evidence: CompositionIndependenceEvidence }
+
+fn composition_evidence_covers(evidence: CompositionIndependenceEvidence, product: RealizationProductIdentity) -> Bool {
+  content_hash_equal(left: evidence.realization.generator, right: product.realization.generator)
+    && content_hash_equal(left: evidence.realization.target_model, right: product.realization.target_model)
+    && content_hash_equal(left: evidence.realization.toolchain, right: product.realization.toolchain)
+    && content_hash_equal(left: evidence.partition, right: product.partition)
+    && content_hash_equal(left: evidence.build_configuration, right: product.build_configuration)
+    && (product.packaged_declarations |> all(d => contains(xs: evidence.population, item: d, eq: content_hash_equal)))
+}
+
+// THE KEY A STORED VERDICT IS LOOKED UP UNDER. Only admitted evidence covering this exact product lets
+// the semantic EvaluationIdentity answer alone. Otherwise the crate's neighbours are an input the
+// EvaluationIdentity does not declare, so the key carries the COMPLETE product identity: every
+// realization axis and the packaged declaration set. It never narrows on an assumption.
+type VerdictLookupKey
+  = SemanticVerdictKey { evaluation: EvaluationIdentity }
+  | ProductScopedVerdictKey { evaluation: EvaluationIdentity, product: RealizationProductIdentity }
+
+fn verdict_lookup_key(
+  evaluation: EvaluationIdentity,
+  product: RealizationProductIdentity,
+  standing: CompositionStanding
+) -> VerdictLookupKey {
+  match standing {
+    CompositionIndependenceUnadmitted =>
+      ProductScopedVerdictKey { evaluation: evaluation, product: product }
+    CompositionIndependenceAdmitted { evidence: evidence } =>
+      if composition_evidence_covers(evidence: evidence, product: product) {
+        SemanticVerdictKey { evaluation: evaluation }
+      } else {
+        ProductScopedVerdictKey { evaluation: evaluation, product: product }
+      }
+  }
+}
+
+fn verdict_lookup_key_canonical(key: VerdictLookupKey) -> NonEmptyStr {
+  match key {
+    SemanticVerdictKey { evaluation: e } =>
+      join([length_prefixed_encode(s: "semantic"), evaluation_identity_canonical(evaluation: e) as String], "") as NonEmptyStr
+    ProductScopedVerdictKey { evaluation: e, product: p } =>
+      join([
+        length_prefixed_encode(s: "product_scoped"),
+        evaluation_identity_canonical(evaluation: e) as String,
+        realization_product_identity_canonical(product: p) as String
+      ], "") as NonEmptyStr
+  }
+}
+
+type NativeTestVerdictReceipt {
+  evaluation: EvaluationIdentity
+  product: RealizationProductIdentity
+  result: ResultContentIdentity
+}
+
+fn native_test_verdict_receipt_binding(receipt: NativeTestVerdictReceipt) -> EvaluationResultBinding {
+  EvaluationResultBinding { evaluation_identity: receipt.evaluation, result_content_identity: receipt.result }
+}
+
+// TWO RECEIPTS MEET ONLY AT ONE EVALUATION. Under one EvaluationIdentity their content must agree, so the
+// existing binding judgment decides consistency or conflict; receipts for different evaluations are
+// not comparable answers.
+type NativeTestVerdictReceiptJoin
+  = ReceiptsJudged { outcome: EvaluationResultBindingOutcome }
+  | ReceiptsJudgeDifferentEvaluations
+
+fn join_native_test_verdict_receipts(first: NativeTestVerdictReceipt, second: NativeTestVerdictReceipt) -> NativeTestVerdictReceiptJoin {
+  if (evaluation_identity_canonical(evaluation: first.evaluation) as String) == (evaluation_identity_canonical(evaluation: second.evaluation) as String) {
+    ReceiptsJudged {
+      outcome: evaluation_result_binding_outcome(binding: native_test_verdict_receipt_binding(receipt: first), observed: second.result)
+    }
+  } else {
+    ReceiptsJudgeDifferentEvaluations
+  }
+}
+
+// ONE MODULE'S VERDICTS: a manifest of per-test bindings plus its preparation diagnostics, never the
+// semantic unit (D15(d)). Changing one test changes its binding and this manifest, and leaves every
+// other test's EvaluationIdentity and binding addressable.
+type PerTestEvaluationResultBinding {
+  test: NonEmptyStr
+  binding: EvaluationResultBinding
+}
+
+type NativeModuleVerdictManifest {
+  module: ContentHash
+  bindings: List<PerTestEvaluationResultBinding>
+  preparation_diagnostics: ContentHash
+}
