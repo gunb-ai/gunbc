@@ -4538,20 +4538,55 @@ fn realize_live_deploy_apply_on_host(
   }
 }
 
+// RETRACT IS A LOCAL OPERATION OVER THE HOST-EFFECT TRANSPORT, parallel to apply. The unit
+// teardown it performs (stop/disable the owned units, remove the owned files, daemon-reload) is
+// realized as TYPED effects over the LOCAL deploy principal: the removals run as the principal's
+// sudo -n, the observes run unprivileged, and nothing is emitted to a remote tree. The bash emitter
+// it replaces (gunbc.live_deploy.emit live_deploy_retract_script_for -> retained_srvn) was never
+// modeled over ssh or the thin-run artifact locus, so a non-local locus has no admissible typed
+// realization here: refuse it rather than emit a script to run remotely. Fail-closed narrowing
+// (msg_80026187 option A): LocalShell proceeds to the typed fold; every other locus refuses before
+// any step runs. The discriminant is the locus, not the effect — an SshShell or FleetSsh retract
+// spec refuses with this refusal and dispatches nothing.
+fn live_deploy_retract_candidate_locus_refusal(transport: HostEffectTransport) -> String {
+  match transport {
+    LocalShell => ""
+    SshShell { ssh_host: h } =>
+      join([
+        "live_deploy retract refused over ssh host=", h,
+        ": the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over ssh. ",
+        "Refusing the remote locus rather than emit a script to run remotely.",
+      ], "")
+    FleetSsh { target: t, context: _ } =>
+      join([
+        "live_deploy retract refused over fleet ssh endpoint=", t.endpoint as String,
+        ": the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over fleet ssh. ",
+        "Refusing the remote locus rather than emit a script to run remotely.",
+      ], "")
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      "live_deploy retract refused over EmitArtifactThenThinRun: the retract unit teardown is a LOCAL operation over the host-effect transport and the bash emitter it replaces is not modeled over the thin-run artifact locus."
+  }
+}
+
 fn realize_live_deploy_retract_on_host(
   spec: DeploymentSpec,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  realize_shell_on_host(
-    script: retained_srvn(
-      body: live_deploy_retract_script_for(spec: spec, access: access),
-      reason: "live_deploy retract (unit teardown)",
-    ),
-    transport: transport,
-    intent: intent,
-  )
+  let locus_refusal = live_deploy_retract_candidate_locus_refusal(transport: transport)
+  if locus_refusal != "" {
+    NotConverged { reason: locus_refusal, applied: intent }
+  } else {
+    realize_shell_on_host(
+      script: retained_srvn(
+        body: live_deploy_retract_script_for(spec: spec, access: access),
+        reason: "live_deploy retract (unit teardown)",
+      ),
+      transport: transport,
+      intent: intent,
+    )
+  }
 }
 
 // THE DARK INSTALL'S SCRIPT IS THE SAME UNIT VALUE THE BYTE ORACLES PIN, projected to shell by
