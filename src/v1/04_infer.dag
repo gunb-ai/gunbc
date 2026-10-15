@@ -9408,7 +9408,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           match infer_variant_constructor_call(occurrence_identity: texpr.occurrence_identity, func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected) {
             Present { value: ctor_result } => ctor_result
             Absent =>
-              let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
+              // CallTargetOutcome already selected a census callable. lookup_type_by_name
+              // consults the same global_bare map and will return that function NODE as a
+              // type (Named(exit_failure)), so the call is typed as the name instead of the
+              // return (ProcessExit vs Named(exit_failure) at srv3_boot_once_cd).
+              let type_match = match call_target {
+                DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => none
+                _ => lookup_type_by_name(env: scope.type_env, name: func_name)
+              }
               let global_bare_callable = match type_match {
                 Present { value: _ } => none
                 Absent => match call_target {
