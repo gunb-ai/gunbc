@@ -12,6 +12,7 @@ import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
 import gunbc.fabric.fabric_witness_run {
   VerifiedGitCommitTree, GitCommitTreeVerified, GitCommitTreeMismatch, verify_git_commit_tree,
 }
+import gunbc.target_invocation { ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold }
 import gunbc.runner.runner_claim_set_results {
   ClaimSetResult, ClaimSetResultsDecode, ClaimSetResultsDecoded, ClaimSetResultsRefused,
   ResultsDriveSizeMismatch, ResultsDriveUnobserved, ResultsDriveUnwritten, ResultsMagicMismatch, ResultsTruncated,
@@ -50,12 +51,12 @@ fn claims() -> FreeSemigroup<Label> {
   FreeSemigroup { head: self_host_label(), tail: [v2_native_cli_label()] }
 }
 
-fn result(label: Label, exit: Int, tree: String) -> ClaimSetResult {
-  ClaimSetResult { label: render_label(l: label), exit: exit, commit: commit_hex as NonEmptyStr, tree: tree as NonEmptyStr }
+fn result(label: Label, verdict: ClaimRouteVerdict, tree: String) -> ClaimSetResult {
+  ClaimSetResult { label: render_label(l: label), verdict: verdict, commit: commit_hex as NonEmptyStr, tree: tree as NonEmptyStr }
 }
 
 fn good_results() -> List<ClaimSetResult> {
-  [result(label: self_host_label(), exit: 0, tree: tree_hex), result(label: v2_native_cli_label(), exit: 1, tree: tree_hex)]
+  [result(label: self_host_label(), verdict: ClaimHeld, tree: tree_hex), result(label: v2_native_cli_label(), verdict: ClaimDidNotHold, tree: tree_hex)]
 }
 
 fn drive(text: String) -> ClaimSetResultsDecode {
@@ -118,13 +119,14 @@ test fn every_framing_fault_refuses_by_name() -> Bool {
     && cause(d: drive(text: concat(tampered, padding))) == "digest-mismatch"
     && cause(d: drive(text: concat(concat(frame, padding), "x"))) == "trailing"
     && cause(d: drive(text: concat(frame.replace("v2-native-cli 1 ", "v2-native-cli one "), padding))) == "record"
-    && cause(d: drive(text: concat(claim_set_results_frame(results: [result(label: self_host_label(), exit: 0, tree: tree_hex), result(label: v2_native_cli_label(), exit: 99, tree: tree_hex)]), padding))) == "exit-not-a-standing"
+    // A record cannot hold exit 99, so only the guest-written text can carry it.
+    && cause(d: drive(text: concat(frame.replace("v2-native-cli 1 ", "v2-native-cli 99 "), padding))) == "exit-not-a-standing"
 }
 
 test fn results_for_another_tree_or_out_of_order_claims_are_not_admitted() -> Bool {
-  let other_tree = drive(text: concat(claim_set_results_frame(results: [result(label: self_host_label(), exit: 0, tree: tree_hex), result(label: v2_native_cli_label(), exit: 0, tree: other_tree_hex)]), padding))
-  let reversed = drive(text: concat(claim_set_results_frame(results: [result(label: v2_native_cli_label(), exit: 0, tree: tree_hex), result(label: self_host_label(), exit: 0, tree: tree_hex)]), padding))
-  let one = drive(text: concat(claim_set_results_frame(results: [result(label: self_host_label(), exit: 0, tree: tree_hex)]), padding))
+  let other_tree = drive(text: concat(claim_set_results_frame(results: [result(label: self_host_label(), verdict: ClaimHeld, tree: tree_hex), result(label: v2_native_cli_label(), verdict: ClaimHeld, tree: other_tree_hex)]), padding))
+  let reversed = drive(text: concat(claim_set_results_frame(results: [result(label: v2_native_cli_label(), verdict: ClaimHeld, tree: tree_hex), result(label: self_host_label(), verdict: ClaimHeld, tree: tree_hex)]), padding))
+  let one = drive(text: concat(claim_set_results_frame(results: [result(label: self_host_label(), verdict: ClaimHeld, tree: tree_hex)]), padding))
   admission(d: other_tree, c: claims()) == "another-tree"
     && admission(d: reversed, c: claims()) == "claim-mismatch"
     && admission(d: one, c: claims()) == "count-mismatch"

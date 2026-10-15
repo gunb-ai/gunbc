@@ -11,6 +11,7 @@ import product.fabric.identity { FabricIdentity, ExecutionAttemptKey }
 import product.fabric.execution { LeaseIdentity, ExecutionReceipt, MaterializationReceipt, SettlementReceipt }
 import gunbc.instrument_targets { self_host_label }
 import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
+import gunbc.target_invocation { ClaimHeld }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult, claim_set_results_frame, decode_claim_set_results, claim_set_outputs_digest }
 import gunbc.runner.runner_claim_set_receipt {
   UnitRuntimeReading, UnitRuntimeMeasured, UnitRuntimeUnread, unit_runtime_from_stamps,
@@ -27,7 +28,7 @@ fn one_claim() -> FreeSemigroup<Label> {
 }
 
 fn drive_text() -> String {
-  concat(claim_set_results_frame(results: [ClaimSetResult { label: render_label(l: self_host_label()), exit: 0, commit: commit_hex as NonEmptyStr, tree: tree_hex as NonEmptyStr }]), padding)
+  concat(claim_set_results_frame(results: [ClaimSetResult { label: render_label(l: self_host_label()), verdict: ClaimHeld, commit: commit_hex as NonEmptyStr, tree: tree_hex as NonEmptyStr }]), padding)
 }
 
 fn attempt() -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {

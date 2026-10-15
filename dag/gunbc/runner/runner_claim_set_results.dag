@@ -12,6 +12,7 @@ import std.measure { ByteSize, byte_size_count }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
 import std.decimal { decimal_digits_only }
+import gunbc.target_invocation { ClaimRouteVerdict, claim_route_verdict_exit, claim_route_verdict_of_exit }
 
 // THE CLAIM-SET RESULTS FRAME: WHAT A REVISION JOB'S GUEST HANDS BACK, AND HOW THE HOST READS IT.
 //
@@ -53,11 +54,12 @@ data claim_set_results_digest_tag: NonEmptyStr = "gunbc.claim-set-results.v1"
 
 data claim_set_results_nul: String = "\u{0}"
 
-// A RESULT RECORD, AS THE GUEST WROTE IT. The exit status is the claim's own `gunbc test` exit:
-// 0 the observation held, 1 it did not, 2 no observation (DESIGN, Building & checks).
+// A RESULT RECORD, AS THE GUEST WROTE IT. The guest writes the claim's own `gunbc test` exit; the
+// record holds the claim's verdict (gunbc.target_invocation ClaimRouteVerdict), so only held, did not
+// hold and unobserved are constructible and a record cannot carry any other value.
 type ClaimSetResult {
   label: NonEmptyStr
-  exit: Int
+  verdict: ClaimRouteVerdict
   commit: NonEmptyStr
   tree: NonEmptyStr
 }
@@ -85,7 +87,7 @@ type ClaimSetResultsDecode
   | ClaimSetResultsRefused { cause: ClaimSetResultsUndecodable }
 
 fn claim_set_result_line(r: ClaimSetResult) -> String {
-  join(["claim ", r.label as String, " ", to_string(r.exit), " ", r.commit as String, " ", r.tree as String], "")
+  join(["claim ", r.label as String, " ", to_string(claim_route_verdict_exit(v: r.verdict)), " ", r.commit as String, " ", r.tree as String], "")
 }
 
 // THE OUTPUTS DIGEST: a tagged structural fold over the records' canonical lines, in order.
@@ -107,17 +109,27 @@ fn claim_set_results_frame(results: List<ClaimSetResult>) -> String {
 }
 
 
-fn decode_claim_set_record(index: Int, line: String) -> ClaimSetResult? {
+// One record line, read three ways: a record, a line that is not a record, or a record whose exit is
+// not a `gunbc test` status -- kept apart because the refusals name different defects.
+type ClaimSetRecordRead
+  = ClaimSetRecordDecoded { result: ClaimSetResult }
+  | ClaimSetRecordMalformed
+  | ClaimSetRecordExitNotAStanding { exit: Int }
+
+fn decode_claim_set_record(line: String) -> ClaimSetRecordRead {
   let parts: List<String> = line.split(delimiter: " ")
-  if count(parts) != 5 { none } else {
+  if count(parts) != 5 { ClaimSetRecordMalformed } else {
     match parts {
       Cons { head: tag, tail: Cons { head: label, tail: Cons { head: exit, tail: Cons { head: commit, tail: Cons { head: tree, tail: _ } } } } } =>
-        if tag != "claim" || label == "" || commit == "" || tree == "" || exit == "" || !decimal_digits_only(s: exit) { none }
+        if tag != "claim" || label == "" || commit == "" || tree == "" || exit == "" || !decimal_digits_only(s: exit) { ClaimSetRecordMalformed }
         else { match parse_int(s: exit) {
-          Absent => none
-          Present { value: e } => Present { value: ClaimSetResult { label: label as NonEmptyStr, exit: e, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr } }
+          Absent => ClaimSetRecordMalformed
+          Present { value: e } => match claim_route_verdict_of_exit(code: e) {
+            Absent => ClaimSetRecordExitNotAStanding { exit: e }
+            Present { value: st } => ClaimSetRecordDecoded { result: ClaimSetResult { label: label as NonEmptyStr, verdict: st, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr } }
+          }
         } }
-      _ => none
+      _ => ClaimSetRecordMalformed
     }
   }
 }
@@ -125,11 +137,10 @@ fn decode_claim_set_record(index: Int, line: String) -> ClaimSetResult? {
 fn decode_claim_set_records(lines: List<String>) -> ClaimSetResultsDecode {
   fold(lines, init: ClaimSetResultsDecoded { results: [], stated_digest: "" }, f: (acc, line) => match acc {
     ClaimSetResultsRefused { cause: c } => ClaimSetResultsRefused { cause: c }
-    ClaimSetResultsDecoded { results: rs, stated_digest: d } => match decode_claim_set_record(index: count(rs), line: line) {
-      Absent => ClaimSetResultsRefused { cause: ResultsRecordMalformed { index: count(rs), line: line } }
-      Present { value: r } =>
-        if r.exit != 0 && r.exit != 1 && r.exit != 2 { ClaimSetResultsRefused { cause: ResultsExitNotAStanding { index: count(rs), exit: r.exit } } }
-        else { ClaimSetResultsDecoded { results: rs + [r], stated_digest: d } }
+    ClaimSetResultsDecoded { results: rs, stated_digest: d } => match decode_claim_set_record(line: line) {
+      ClaimSetRecordMalformed => ClaimSetResultsRefused { cause: ResultsRecordMalformed { index: count(rs), line: line } }
+      ClaimSetRecordExitNotAStanding { exit: e } => ClaimSetResultsRefused { cause: ResultsExitNotAStanding { index: count(rs), exit: e } }
+      ClaimSetRecordDecoded { result: r } => ClaimSetResultsDecoded { results: rs + [r], stated_digest: d }
     }
   })
 }
