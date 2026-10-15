@@ -38803,6 +38803,7 @@ pub fn emit_operation_method(
             env.source_indices.clone(),
             shared_types.clone(),
             env.clone(),
+            emit_info.clone(),
         );
         let mock_props = Rc::new({
             let mut __result = Vec::new();
@@ -39031,6 +39032,7 @@ pub fn emit_transport_call(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*bound.clone()).clone() {
         BoundOperation::RestBound { transport: t, .. } => emit_rest_call(
@@ -39058,6 +39060,7 @@ pub fn emit_transport_call(
             source_indices.clone(),
             env.clone(),
             shared_types.clone(),
+            emit_info.clone(),
         ),
         BoundOperation::FileBound {
             verb: v,
@@ -40479,6 +40482,7 @@ pub fn emit_shell_call(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
     shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         let argv = transport.children.clone();
@@ -40567,6 +40571,8 @@ pub fn emit_shell_call(
                         if shell_argv_element_is_word_list(
                             arg.clone(),
                             argv_scope.clone(),
+                            op_node.clone(),
+                            emit_info.clone(),
                             source_indices.clone(),
                         ) {
                             v1_rt::concat(
@@ -40586,6 +40592,8 @@ pub fn emit_shell_call(
                         } else if shell_argv_element_is_string_word(
                             arg.clone(),
                             argv_scope.clone(),
+                            op_node.clone(),
+                            emit_info.clone(),
                             source_indices.clone(),
                         ) {
                             v1_rt::concat(
@@ -40607,22 +40615,19 @@ pub fn emit_shell_call(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     "    .arg(".to_string(),
-                                    crate::v1_compiler_emit::emit_error_expr(
+                                    emit_rust_compile_error_expr(v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "argv element is not String or List<String> at "
-                                                        .to_string(),
-                                                    arg.span.clone().file.clone(),
-                                                ),
-                                                ":".to_string(),
+                                                "argv element is not String or List<String> at "
+                                                    .to_string(),
+                                                arg.span.clone().file.clone(),
                                             ),
-                                            crate::v1_compiler_emit_core_support::to_string(
-                                                arg.span.clone().start.clone(),
-                                            ),
+                                            ":".to_string(),
                                         ),
-                                        RenderTarget::Rust,
-                                    ),
+                                        crate::v1_compiler_emit_core_support::to_string(
+                                            arg.span.clone().start.clone(),
+                                        ),
+                                    )),
                                 ),
                                 ")".to_string(),
                             )
@@ -40819,30 +40824,183 @@ pub fn shell_argv_emit_scope(
     })
 }
 
-pub fn argv_element_type_after_alias_hop(
+pub fn shell_argv_declared_param_type(
     arg: Rc<Node>,
-    scope: Rc<InferScope>,
-    fuel: i64,
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    match arg.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: rt, .. }) => {
-            Some(hop_argv_element_type(rt, scope, fuel))
+    match (*arg.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
+            let name = crate::v1_std_core::expr_var_name_at(arg, source_indices.clone());
+            let mut acc: Option<Rc<Node>> = std::option::Option::None;
+            for p in op_node.params.clone().iter().cloned() {
+                if crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone()) == name
+                {
+                    acc = Some(crate::v1_std_core::param_node_type_expr(p.clone()));
+                }
+            }
+            acc
         }
         _ => std::option::Option::None,
     }
 }
 
-pub fn hop_argv_element_type(mut rt: Rc<Node>, scope: Rc<InferScope>, mut fuel: i64) -> Rc<Node> {
+pub fn argv_follow_inferred(n: Rc<Node>) -> Rc<Node> {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => rt,
+        _ => match n.type_annotation.clone() {
+            Some(t) => t,
+            std::option::Option::None => n,
+        },
+    }
+}
+
+pub fn argv_named_decl(
+    name: String,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Option<Rc<Node>> {
+    if name.is_empty() {
+        std::option::Option::None
+    } else {
+        let found = match emit_info.fn_decl_items.get(&name).cloned() {
+            Some(n) => Some(n),
+            std::option::Option::None => {
+                let ids = crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
+                    emit_info.type_decl_items.clone(),
+                    name.clone(),
+                );
+                match ids.first().cloned() {
+                    Some(id) => emit_info.type_decl_items.by_identity.get(&id).cloned(),
+                    std::option::Option::None => {
+                        match crate::v1_compiler_infer_env::lookup_binding_by_name(
+                            scope.type_env.clone(),
+                            name.clone(),
+                        ) {
+                            Some(b) => Some(b.resolved.clone()),
+                            std::option::Option::None => std::option::Option::None,
+                        }
+                    }
+                }
+            }
+        };
+        found
+    }
+}
+
+pub fn argv_element_type_after_alias_hop(
+    arg: Rc<Node>,
+    scope: Rc<InferScope>,
+    op_node: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    fuel: i64,
+) -> Option<Rc<Node>> {
+    match arg.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => Some(hop_argv_element_type(
+            rt,
+            scope,
+            emit_info,
+            source_indices,
+            fuel,
+        )),
+        _ => match shell_argv_declared_param_type(arg.clone(), op_node, source_indices.clone()) {
+            Some(t) => Some(hop_argv_element_type(
+                t,
+                scope,
+                emit_info,
+                source_indices,
+                fuel,
+            )),
+            std::option::Option::None => match (*arg.expr_data.clone()).clone() {
+                ExprData::ExprCall {
+                    ref call_semantics, ..
+                } => {
+                    let fname =
+                        match (*crate::v1_std_core::call_semantics_target(call_semantics.clone()))
+                            .clone()
+                        {
+                            SourceDeclarationCall { decl_name: d, .. } => d,
+                            LocallyBoundCall { name: n, .. } => n,
+                            _ => crate::v1_std_core::expr_call_func_at(
+                                arg.clone(),
+                                source_indices.clone(),
+                            ),
+                        };
+                    match argv_named_decl(fname, scope.clone(), emit_info.clone()) {
+                        Some(d) => Some(hop_argv_element_type(
+                            argv_follow_inferred(d),
+                            scope,
+                            emit_info,
+                            source_indices,
+                            fuel,
+                        )),
+                        std::option::Option::None => std::option::Option::None,
+                    }
+                }
+                _ => std::option::Option::None,
+            },
+        },
+    }
+}
+
+pub fn hop_argv_element_type(
+    mut rt: Rc<Node>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut fuel: i64,
+) -> Rc<Node> {
     loop {
         if fuel <= 0 {
             return rt;
+        }
+        if type_node_is_ordered_element_run(rt.clone(), source_indices.clone())
+            || is_rust_string_like(rt.clone(), source_indices.clone())
+        {
+            return rt;
+        }
+        if rt.connective.clone() == Connective::Arrow {
+            rt = argv_follow_inferred(rt);
+            fuel = v1_rt::int_sub(fuel, 1);
+            continue;
         }
         match rust_operand_alias_or_refinement_continue(rt.clone(), scope.clone(), fuel) {
             Some(next) => {
                 rt = next;
                 fuel = v1_rt::int_sub(fuel, 1);
             }
-            std::option::Option::None => return rt,
+            std::option::Option::None => {
+                let name = crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone());
+                match argv_named_decl(name.clone(), scope.clone(), emit_info.clone()) {
+                    Some(d) => {
+                        let next = argv_follow_inferred(d);
+                        if crate::v1_compiler_infer::is_where_refinement_type(next.clone()) {
+                            match next.children.first().cloned() {
+                                Some(base) => {
+                                    rt = base;
+                                    fuel = v1_rt::int_sub(fuel, 1);
+                                }
+                                std::option::Option::None => return rt,
+                            }
+                        } else {
+                            let next_name = crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                next.clone(),
+                            );
+                            if next_name != name {
+                                rt = next;
+                                fuel = v1_rt::int_sub(fuel, 1);
+                            } else {
+                                return rt;
+                            }
+                        }
+                    }
+                    std::option::Option::None => return rt,
+                }
+            }
         }
     }
 }
@@ -40850,9 +41008,18 @@ pub fn hop_argv_element_type(mut rt: Rc<Node>, scope: Rc<InferScope>, mut fuel: 
 pub fn shell_argv_element_is_word_list(
     arg: Rc<Node>,
     scope: Rc<InferScope>,
+    op_node: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match argv_element_type_after_alias_hop(arg, scope, 8) {
+    match argv_element_type_after_alias_hop(
+        arg,
+        scope,
+        op_node,
+        emit_info,
+        source_indices.clone(),
+        8,
+    ) {
         Some(t) => type_node_is_ordered_element_run(t, source_indices),
         std::option::Option::None => false,
     }
@@ -40861,6 +41028,8 @@ pub fn shell_argv_element_is_word_list(
 pub fn shell_argv_element_is_string_word(
     arg: Rc<Node>,
     scope: Rc<InferScope>,
+    op_node: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*arg.expr_data.clone()).clone() {
@@ -40870,7 +41039,14 @@ pub fn shell_argv_element_is_string_word(
             true
         }
         ExprData::ExprStringInterp => true,
-        _ => match argv_element_type_after_alias_hop(arg, scope, 8) {
+        _ => match argv_element_type_after_alias_hop(
+            arg,
+            scope,
+            op_node,
+            emit_info,
+            source_indices.clone(),
+            8,
+        ) {
             Some(t) => is_rust_string_like(t, source_indices),
             std::option::Option::None => false,
         },
@@ -40889,9 +41065,30 @@ pub fn emit_shell_argv_word_list_element(
         ExprData::ExprVar {
             binding_kind: _, ..
         } => crate::v1_compiler_emit::emit_ident(
-            crate::v1_std_core::expr_var_name_at(arg, source_indices),
+            crate::v1_std_core::expr_var_name_at(arg.clone(), source_indices.clone()),
             RenderTarget::Rust,
         ),
+        ExprData::ExprCall { .. } => {
+            let fname = crate::v1_std_core::expr_call_func_at(arg.clone(), source_indices.clone());
+            let args = Rc::new({
+                let mut __result = Vec::new();
+                for c in arg.children.clone().iter().cloned() {
+                    __result.push(crate::v1_compiler_emit::emit_simple_expr(
+                        c,
+                        RenderTarget::Rust,
+                        source_indices.clone(),
+                    ));
+                }
+                __result
+            });
+            v1_rt::concat(
+                v1_rt::concat(
+                    crate::v1_compiler_emit::emit_ident(fname, RenderTarget::Rust),
+                    "(".to_string(),
+                ),
+                v1_rt::concat(args.join(&", ".to_string()), ")".to_string()),
+            )
+        }
         _ => emit_typed_expr(
             arg,
             registry,
