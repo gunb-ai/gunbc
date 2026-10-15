@@ -7,7 +7,8 @@ import std.types { String, NonEmptyStr, List }
 // {git, gcc, binutils, libc6-dev, libc-bin} over the noble RELEASE pocket of ports.ubuntu.com, arm64 main.
 // Observed 2026-10-15: InRelease Date 'Thu, 25 Apr 2024 15:10:33 UTC' (as read in the fetched file),
 // signed by F6ECB3762474EDA9D21B7022871920D1991BC93C ('Ubuntu Archive Automatic Signing Key (2018)
-// <ftpmaster@ubuntu.com>', ubuntu-keyring), verified with sqv --cleartext; a one-line tamper refuses.
+// <ftpmaster@ubuntu.com>', ubuntu-keyring), verified when generated with sqv --cleartext (a one-line tamper refused); the instrument re-verifies
+// with gpgv (gunbc.runner.runner_revision_job_toolchain verify_toolchain_index).
 // Every row's fields are copied from that index's stanza; Depends/Pre-Depends are verbatim. NO RELATION
 // IN THIS CLOSURE HAS A '|' ALTERNATIVE, so every `alternatives` list is empty; a regenerated closure
 // that meets one records the branch it took there, and the completeness check holds it to that branch. The set is closed on its own: the base

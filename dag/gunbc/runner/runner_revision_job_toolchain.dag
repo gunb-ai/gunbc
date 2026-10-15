@@ -13,7 +13,7 @@ import extdeps.tools.dpkg_deb { dpkg_deb_extract_command, dpkg_deb_control_field
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.gnu_coreutils { ln_symbolic_force_command, cp_preserve_if_absent_command }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell, sha256sum_stdin_digest_via_shell }
-import extdeps.sequoia.sqv { sqv_verify_cleartext_command }
+import extdeps.gnupg.gpgv { gpgv_verify_cleartext_command, gpgv_valid_primary_fingerprints }
 import extdeps.glibc.ldconfig { ldconfig_root_command }
 import extdeps.debian.version { DebianAlternative, parse_debian_relationships, constraint_satisfied }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
@@ -29,8 +29,8 @@ import gunbc.runner.revision_job_toolchain_pins {
 // things make them trustworthy, each executed rather than asserted:
 //
 //   1. THE CHAIN. The instrument fetches InRelease, requires its SHA-256 to equal the pin, verifies it
-//      with sqv against the archive keyring AND requires the pinned signer's fingerprint among the
-//      valid signers, requires the signed text to list Packages.xz at the pinned SHA-256, fetches that
+//      with gpgv against the archive keyring AND requires a VALIDSIG whose primary-key fingerprint is the
+//      pinned one, requires the signed text to list Packages.xz at the pinned SHA-256, fetches that
 //      file and requires the same digest, and decompresses it. Every row's Package, Version,
 //      Architecture, SHA256, Filename, Depends and Pre-Depends must equal its stanza there.
 //   2. COMPLETENESS. Every relation of every row (Depends and Pre-Depends, versioned constraints read
@@ -205,8 +205,8 @@ fn signed_text_lists_index(verified: String) -> Bool {
   })) > 0
 }
 
-// `dir` must not hold an earlier run's files: every write here is create-only (curl -o into a fresh
-// dir, sqv --output, xz without --force), so a leftover refuses rather than standing in.
+// `dir` must be fresh. xz refuses a leftover; gpgv overwrites its output, which is why that output is
+// read only after this run's VALIDSIG.
 fn verify_toolchain_index(dir: String, keyring: String) -> ToolchainIndexChain {
   let base = join([toolchain_archive_base_url as String, "/dists/", toolchain_archive_suite as String], "")
   let inrelease = concat(dir, "/InRelease")
@@ -218,12 +218,18 @@ fn verify_toolchain_index(dir: String, keyring: String) -> ToolchainIndexChain {
     ToolchainIndexRefused { step: "fetch-inrelease", detail: base }
   } else if !file_matches(path: inrelease, expected: toolchain_inrelease_sha256) {
     ToolchainIndexRefused { step: "inrelease-pin", detail: "InRelease does not match its pinned SHA-256" }
-  } else { match run_shell_command_capture(command: sqv_verify_cleartext_command(keyring: keyring, signed_file: inrelease, output: verified_path), transport: LocalExec) {
-    ProcessRefused { exit_code: _, stderr: e } => ToolchainIndexRefused { step: "signature", detail: e }
-    ProcessOutputAbsent => ToolchainIndexRefused { step: "signature", detail: "sqv named no valid signer" }
-    ProcessOutputPresent { text: signers } =>
-      if count(filter(signers.split(delimiter: "\n"), l => trim(s: l) == toolchain_archive_signing_key_fingerprint as String)) == 0 {
-        ToolchainIndexRefused { step: "signer", detail: concat("the pinned signer is not among the valid signers: ", signers) }
+  } else { match run_shell_command_capture(command: gpgv_verify_cleartext_command(keyring: keyring, signed_file: inrelease, output: verified_path), transport: LocalExec) {
+    // 127 is the shell's "command not found": the host does not carry the verifier, which is a
+    // missing host requirement, not a bad signature.
+    ProcessRefused { exit_code: c, stderr: e } =>
+      if c == 127 { ToolchainIndexRefused { step: "verifier-missing", detail: "gpgv is not on this host's PATH" } }
+      else { ToolchainIndexRefused { step: "signature", detail: join(["gpgv exit ", to_string(c), ": ", e], "") } }
+    ProcessOutputAbsent => ToolchainIndexRefused { step: "signature", detail: "gpgv printed no status" }
+    // Exit 0 alone is not enough: gpgv writes the output even on a bad signature, so the signed text is
+    // read only once the pinned PRIMARY key has a VALIDSIG in this run's status.
+    ProcessOutputPresent { text: status } =>
+      if count(filter(gpgv_valid_primary_fingerprints(status: status), f => f == toolchain_archive_signing_key_fingerprint as String)) == 0 {
+        ToolchainIndexRefused { step: "signer", detail: concat("no VALIDSIG from the pinned primary key in: ", status) }
       } else if !signed_text_lists_index(verified: Filesystem.Read(path: verified_path).content) {
         ToolchainIndexRefused { step: "index-listed", detail: "the signed InRelease does not list Packages.xz at its pinned SHA-256" }
       } else if !process_outcome_admitted(outcome: run_shell_command_capture(command: curl_download_command(url: join([base, "/", toolchain_packages_index_path as String], ""), destination: packages_xz), transport: LocalExec)) {

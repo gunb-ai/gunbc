@@ -5,7 +5,8 @@ import extdeps.shell
 import gunbc.clock_read { clock_now_probed_at }
 import std.optional { Present, Absent }
 import std.algebra { trim }
-import std.measure { ByteSize, byte_size, mebibyte, mebibyte_to_byte_size, second, measure_count }
+import std.measure { ByteSize, byte_size, mebibyte, mebibyte_to_byte_size, second, measure_count, HardwareThreadCount, hardware_thread_count }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decimal { decimal_digits_only }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -167,7 +168,7 @@ fn revision_job_run(
   work_dir: String,
   store_root: String,
   invocation_id: NonEmptyStr,
-  vcpus: Int,
+  vcpus: HardwareThreadCount,
   now: Timestamp,
 ) -> RevisionJobOutcome {
   match decode_revision_job_spec(text: spec_text) {
@@ -215,7 +216,7 @@ fn revision_job_launch_and_settle(
   work_dir: String,
   store_root: String,
   invocation_id: NonEmptyStr,
-  vcpus: Int,
+  vcpus: HardwareThreadCount,
   now: Timestamp,
 ) -> RevisionJobOutcome {
   let root = fabric_control_plane_store_root()
@@ -331,14 +332,17 @@ fn revision_job_main() -> ProcessExit {
       Absent => exit_failure(reason: "revision_job: the clock could not be read")
       Present { value: now } => match parse_int(s: vcpus_text) {
         Absent => exit_failure(reason: "revision_job: VCPUS did not parse")
+        Present { value: vcpus_int } => match checked_int_to_nat(n: vcpus_int) {
+        Absent => exit_failure(reason: "revision_job: VCPUS is negative")
         Present { value: vcpus } => {
           let outcome = revision_job_run(spec_text: spec.content, slot_instance: slot, release_dir: release_dir, image_dir: image_dir,
-            cache_dir: cache_dir, work_dir: work_dir, store_root: store_root, invocation_id: invocation as NonEmptyStr, vcpus: vcpus, now: now)
+            cache_dir: cache_dir, work_dir: work_dir, store_root: store_root, invocation_id: invocation as NonEmptyStr, vcpus: hardware_thread_count(count: vcpus), now: now)
           match outcome {
             RevisionJobPublishedOutcome { publication: RevisionJobPublished { address: _, index_entry: _ }, settlement: _ } => ExitSuccess
             RevisionJobPublishedOutcome { publication: RevisionJobAlreadyPublished { address: _ }, settlement: _ } => ExitSuccess
             other => exit_failure(reason: concat("revision_job: ", revision_job_outcome_text(o: other)))
           }
+        }
         }
       }
     } }
