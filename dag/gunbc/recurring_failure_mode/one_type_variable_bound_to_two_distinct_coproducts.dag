@@ -14,19 +14,19 @@ data one_type_variable_bound_to_two_distinct_coproducts: RecurringFailureMode = 
 
     "HARM: silent wrongness (DESIGN section 5 / section 4b values inhabit declared types). Two inhabitants of unrelated coproducts share one type variable.",
 
-    "CLIMBED ON THE V1 .dag AUTHORITY. v1.compiler.infer unify_generics returns UnifyGenericsAcc and refuses a later actual that node_type_equals rejects, with a located TypeMismatch naming the generic and both types. First-wins is gone on that authority. Uninformative and self-binding of T complete; they are not a join of two concretes.",
+    "AUTHORED ON THE V1 .dag, NOT EXECUTED ON THE SEED (review 80480). v1.compiler.infer unify_generics returns UnifyGenericsAcc and names a later actual that node_type_equals rejects. That fold is not in the rust mirror. There is no generic_rebind_refusal_diags. The seed unify_generics still returns a subst map and first-wins.",
 
-    "RUNG HONESTY: after 6e4c89c the executing seed is origin/main's infer.rs again (constructor-admission emit). It returns a subst map and first-wins; generic_rebind_refusal_diags is deleted (it had no .dag authority). Refusal lives on the .dag UnifyGenericsAcc only. EXECUTED RUNG on the seed is therefore still below 3. CEILING: 3. NEXT TRIGGER: fleet regen installs UnifyGenericsAcc so the seed is the .dag emit; same_arm REDs and the nested/record observe rows become refuse controls on that binary.",
+    "RUNG HONESTY: EXECUTED RUNG on the shipped seed is 1 (mitigatable / silent first-wins). The same_arm probes compile clean under compile_dag / compile_dag_diagnostic_census. Claiming rung 2 or 3 from the .dag fold, or from rust tests that grep 'later argument', is inflation. CEILING: 3. NEXT TRIGGER: fleet regen emits UnifyGenericsAcc into v1_compiler_infer.rs; then promote the observed same_arm / nested / record rows to refuse controls on that binary.",
 
     "RESIDUAL, NOT THIS CLIMB: ConstructorTag<P> {} == ConstructorTag<Q> {} is still Accepted (test.claim.cross_coproduct_generic_locate phantom_constructor_tag_equality_is_observed). That is operator follow-up C, not a green control of this class. NEXT TRIGGER for C: a typecheck refusal of that equality (or a declared reason it is a different class).",
 
-    "EVIDENCE THAT SURVIVES THE CLIMB (DESIGN section 4b(4)): test.claim.cross_coproduct_generic_locate same_arm_cross_coproduct_is_refused (P1, Q1) and same_arm_int_bool_is_refused (1, true); controls same_arm_same_coproduct_is_accepted (P1, P2) and same_arm_int_int_is_accepted (1, 2). Also enrolled on the rust compile path as v1-compiler-tests cross_coproduct_generic_locate_test. The polarity-red constructor_tag_route_probe_red probes and their explicit_witness_admission rows are deleted: they were not a typecheck-refusal control.",
+    "ENROLLED OBSERVATIONS, NOT EXECUTED REFUSALS: test.claim.cross_coproduct_generic_locate same_arm_cross_coproduct_is_observed (P1, Q1) and same_arm_int_bool_is_observed (1, true) record seed standing (zero blocking). Controls same_arm_same_coproduct_is_accepted (P1, P2) and same_arm_int_int_is_accepted (1, 2) stay accept. The rust compile_dag tests eprint the same probes and must not assert the Acc message until regen.",
   ],
 
   evidence: [
     DeclarationRef { module_path: "v1.compiler.infer", decl_name: "unify_generics", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.cross_coproduct_generic_locate", decl_name: "same_arm_cross_coproduct_is_refused", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.cross_coproduct_generic_locate", decl_name: "same_arm_int_bool_is_refused", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.cross_coproduct_generic_locate", decl_name: "same_arm_cross_coproduct_is_observed", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.cross_coproduct_generic_locate", decl_name: "same_arm_int_bool_is_observed", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.cross_coproduct_generic_locate", decl_name: "same_arm_same_coproduct_is_accepted", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.cross_coproduct_generic_locate", decl_name: "same_arm_int_int_is_accepted", field: WholeDeclaration },
   ],
