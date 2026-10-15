@@ -2,7 +2,7 @@ module gunbc.host.host_effect_realize
 
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text }
 
-import std.algebra { Cons, Empty, list_append, list_snoc_item, trim, fold_list, list_map }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, trim, fold_list, list_map, string_concat_join }
 import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -3033,7 +3033,7 @@ fn srv3_tool_receipt_entry(observation: Srv3ToolObservation) -> String {
 fn srv3_toolchain_receipt(observations: List<Srv3ToolObservation>) -> String {
   concat(
     "OsInstallActuatorToolchainReceipt: ",
-    join(list_map(xs: observations, f: fn(o) { srv3_tool_receipt_entry(observation: o) }), " "),
+    string_concat_join(fields: observations.map(o => srv3_tool_receipt_entry(observation: o)), separator: " "),
   )
 }
 
@@ -3041,17 +3041,14 @@ fn srv3_realize_os_install_actuator_toolchain_ensure_body(
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let observations = list_map(
-    xs: srv3_toolchain_rows(),
-    f: fn(row) {
-      Srv3ToolObservation {
-        tool_name: row.tool.program.invocation,
-        verdict: srv3_ensure_tool(row: row, transport: transport),
-      }
-    },
+  let observations = srv3_toolchain_rows().map(row =>
+    Srv3ToolObservation {
+      tool_name: row.tool.program.invocation,
+      verdict: srv3_ensure_tool(row: row, transport: transport),
+    }
   )
   let verdict = srv3_summarize_independent_observations(
-    steps: list_map(xs: observations, f: fn(o) { o.verdict }),
+    steps: observations.map(o => o.verdict),
   )
   let stdout = srv3_toolchain_receipt(observations: observations)
   match verdict {

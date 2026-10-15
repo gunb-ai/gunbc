@@ -347,6 +347,55 @@ pub fn parent_closure_callable_candidates(
     )
 }
 
+pub fn owner_module_leaf_callable_candidates(
+    env: Rc<ResolvedFuncEnv>,
+    owner: String,
+    leaf: String,
+) -> Rc<Vec<Rc<CallableCandidate>>> {
+    {
+        let self_hits = if (env.name.clone() == owner.clone()) {
+            match v1_rt::map_get(&env.local.clone(), leaf.clone()) {
+                Some(sig) => Rc::new(vec![Rc::new(CallableCandidate {
+                    identity: Rc::new(CallableIdentity::DeclaredCallable {
+                        identity: Rc::new(DeclaredCallableIdentity {
+                            owner_module_path: owner.clone(),
+                            decl_name: leaf.clone(),
+                        }),
+                    }),
+                    sig: sig.clone(),
+                })]),
+                std::option::Option::None => Rc::new(vec![]),
+            }
+        } else {
+            Rc::new(vec![])
+        };
+        env.parents.clone().iter().cloned().fold(
+            self_hits.clone(),
+            |acc: Rc<Vec<Rc<CallableCandidate>>>, p: Rc<ResolvedFuncEnv>| {
+                if (p.name.clone() == owner.clone()) {
+                    match v1_rt::map_get(&p.local.clone(), leaf.clone()) {
+                        Some(sig) => v1_rt::concat(
+                            acc.clone(),
+                            Rc::new(vec![Rc::new(CallableCandidate {
+                                identity: Rc::new(CallableIdentity::DeclaredCallable {
+                                    identity: Rc::new(DeclaredCallableIdentity {
+                                        owner_module_path: owner.clone(),
+                                        decl_name: leaf.clone(),
+                                    }),
+                                }),
+                                sig: sig.clone(),
+                            })]),
+                        ),
+                        std::option::Option::None => acc.clone(),
+                    }
+                } else {
+                    acc.clone()
+                }
+            },
+        )
+    }
+}
+
 pub fn decide_callable_candidates(candidates: Rc<Vec<Rc<CallableCandidate>>>) -> Rc<FuncSigLookup> {
     match (*crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide(Rc::new(
         {

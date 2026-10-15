@@ -24021,7 +24021,57 @@ pub fn call_target_for_direct_call(
     scope: Rc<InferScope>,
     func_name: String,
 ) -> Rc<CallTargetOutcome> {
-    match v1_rt::map_get(&scope.body_locals.clone(), func_name.clone()) {
+    if v1_rt::contains(func_name.clone(), ".".to_string()) {
+        match (*crate::v1_compiler_infer_lookup::func_env_declared_func_sig(
+            scope.func_env.clone(),
+            scope.type_env.clone(),
+            func_name.clone(),
+        ))
+        .clone()
+        {
+            FuncSigLookup::FuncSigResolved {
+                sig: s,
+                declared: d,
+                ..
+            } => Rc::new(CallTargetOutcome::DeclaredCallableResolved {
+                sig: s.clone(),
+                declared: d.clone(),
+            }),
+            FuncSigLookup::FuncSigAmbiguous { candidates: cs, .. } => {
+                Rc::new(CallTargetOutcome::CallableAmbiguous {
+                    candidates: cs.clone(),
+                })
+            }
+            FuncSigLookup::FuncSigUnresolved => {
+                match (*crate::v1_compiler_infer_lookup::func_sig_from_global_bare(
+                    scope.type_env.clone(),
+                    func_name.clone(),
+                ))
+                .clone()
+                {
+                    FuncSigLookup::FuncSigResolved {
+                        sig: s,
+                        declared: d,
+                        ..
+                    } => Rc::new(CallTargetOutcome::DeclaredCallableResolved {
+                        sig: s.clone(),
+                        declared: d.clone(),
+                    }),
+                    FuncSigLookup::FuncSigAmbiguous { candidates: cs, .. } => {
+                        Rc::new(CallTargetOutcome::CallableAmbiguous {
+                            candidates: cs.clone(),
+                        })
+                    }
+                    FuncSigLookup::FuncSigUnresolved => {
+                        Rc::new(CallTargetOutcome::CallableUnresolved {
+                            name: func_name.clone(),
+                        })
+                    }
+                }
+            }
+        }
+    } else {
+        match v1_rt::map_get(&scope.body_locals.clone(), func_name.clone()) {
     Some(_) => match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
     Some(b) => Rc::new(CallTargetOutcome::LocallyBoundCallee {
     name: func_name.clone(),
@@ -24082,6 +24132,7 @@ pub fn call_target_for_direct_call(
 },
 },
 }
+    }
 }
 
 pub fn split_sig_params(
