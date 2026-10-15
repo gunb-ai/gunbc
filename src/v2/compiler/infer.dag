@@ -8500,7 +8500,6 @@ fn infer_match_arm_formal_refused(frame: InferFrame, at: Node) -> InferFrame {
     },
     uninhabited_match_expected: Absent
   }
-  }
 }
 
 // The scrutinee's arguments are not known (its type is not derived, or not a declared coproduct): the arm
