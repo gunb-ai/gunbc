@@ -1,0 +1,100 @@
+module test.fixture.namespace_reference_derived_closure_production_admissions
+
+import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureUnavailable,
+  SameFileEarlierNeighbourVisible,
+  SiblingDecisionBranchExcluded,
+  LaterDeclarationExcluded,
+  DistinctSameSpelledDeclarationsPreserved,
+  NoDagReachableNativeOccurrenceTransportProducer,
+  assess_reference_binding_observation,
+}
+import std.reference_binding_observation {
+  RepeatedMentionDependencyObservation,
+  UnrelatedLoadedFileObservation,
+}
+import std.occurrence_binding_candidates {
+  AssembledCrossFileBindingClosure,
+  ReferenceDerivedProviderFilesForAssembledClosureReady,
+  ReferenceDerivedProviderFilesForAssembledClosureRefused,
+  reference_derived_provider_files_for_assembled_closure,
+}
+import test.fixture.cross_file_clause_e_fixture {
+  cross_file_clause_e_fixture_baseline_assembled_closure,
+  cross_file_clause_e_fixture_perturbed_assembled_closure,
+  cross_file_clause_e_fixture_unrelated_loaded_provider_row,
+  cross_file_clause_e_fixture_provider_file,
+}
+import std.types { FilePath, List }
+
+// PRODUCTION ADMISSIONS FOR roadmap node namespace-reference-derived-closure. Homed as a leaf
+// beside the cross-file fixture it supplies, because the contract module cannot import the real
+// producers without a cycle and a production module may not import test.fixture.
+
+// A refused projection yields NO provider files, so the assessment refuses (count != 1) rather than
+// the clause silently passing: refusal is never an empty-but-fine dependency set.
+fn provider_files_or_none(closure: AssembledCrossFileBindingClosure) -> List<FilePath> {
+  match reference_derived_provider_files_for_assembled_closure(closure: closure) {
+    ReferenceDerivedProviderFilesForAssembledClosureReady { provider_files } => provider_files
+    ReferenceDerivedProviderFilesForAssembledClosureRefused { refusal: _ } => []
+  }
+}
+
+fn unrelated_loaded_file() -> FilePath {
+  "app/unrelated.dag"
+}
+
+// (e): the fixture consumer mentions `helper` twice; the real assemble_cross_file_binding_closure
+// and dependency projection must collapse both mentions to one provider file.
+fn repeated_mention_admission() -> ReferenceDerivedClosureAdmission {
+  assess_reference_binding_observation(observation: RepeatedMentionDependencyObservation {
+    provider_file: cross_file_clause_e_fixture_provider_file(),
+    projected_dependencies: provider_files_or_none(
+      closure: cross_file_clause_e_fixture_baseline_assembled_closure(),
+    ),
+  })
+}
+
+// (f): the same consumer assembled with an unrelated loaded file in the pool must not gain an edge.
+fn unrelated_loaded_file_admission() -> ReferenceDerivedClosureAdmission {
+  assess_reference_binding_observation(observation: UnrelatedLoadedFileObservation {
+    provider_file: cross_file_clause_e_fixture_provider_file(),
+    unrelated_loaded_file: unrelated_loaded_file(),
+    projected_dependencies: provider_files_or_none(
+      closure: cross_file_clause_e_fixture_perturbed_assembled_closure(
+        unrelated_loaded_provider: cross_file_clause_e_fixture_unrelated_loaded_provider_row(
+          declaration_authored_name: "unrelated_noise",
+          module_dotted: "app.unrelated",
+          file_path: unrelated_loaded_file(),
+        ),
+      ),
+    ),
+  })
+}
+
+// (a)-(d) stay unavailable: the in-file visibility rules need an OccurrenceTransport produced from
+// parsed source, and no dag-reachable native parse -> occurrence-transport producer exists, so a
+// supplied transport would be a fixture admission with no inhabitance claim possible.
+fn namespace_reference_derived_closure_acceptance_admissions() -> List<ReferenceDerivedClosureAdmission> {
+  [
+    ReferenceDerivedClosureUnavailable {
+      capability: SameFileEarlierNeighbourVisible,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
+    },
+    ReferenceDerivedClosureUnavailable {
+      capability: SiblingDecisionBranchExcluded,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
+    },
+    ReferenceDerivedClosureUnavailable {
+      capability: LaterDeclarationExcluded,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
+    },
+    ReferenceDerivedClosureUnavailable {
+      capability: DistinctSameSpelledDeclarationsPreserved,
+      trigger: NoDagReachableNativeOccurrenceTransportProducer,
+    },
+    repeated_mention_admission(),
+    unrelated_loaded_file_admission(),
+  ]
+}

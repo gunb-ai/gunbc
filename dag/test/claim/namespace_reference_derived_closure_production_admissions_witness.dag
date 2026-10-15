@@ -1,0 +1,53 @@
+module test.claim.namespace_reference_derived_closure_production_admissions_witness
+
+import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
+  RepeatedMentionsCollapseDependency,
+  UnrelatedLoadedFileExcluded,
+}
+import gunbc.namespace_cut.namespace_reference_derived_closure_contract {
+  reference_derived_closure_missing_capabilities,
+}
+import std.occurrence_binding_candidates {
+  AssembledClosureDependencyProjectionReady,
+  ReferenceDerivedDependencyProjectionReady,
+  reference_derived_dependency_projection_for_assembled_closure,
+}
+import test.fixture.cross_file_clause_e_fixture {
+  cross_file_clause_e_fixture_baseline_assembled_closure,
+}
+import test.fixture.namespace_reference_derived_closure_production_admissions {
+  namespace_reference_derived_closure_acceptance_admissions,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// INHABITANCE: the real assemble + projection path emits the shape (e) assesses -- two mentions at
+// occurrence grain in binding_provenance, ONE file edge. Deleting the projection's dedupe makes the
+// first control fail; this is the last execution of the real path, not a restated verdict.
+test fn witness_repeated_mentions_are_two_provenances_and_one_edge() -> Bool {
+  match reference_derived_dependency_projection_for_assembled_closure(
+    closure: cross_file_clause_e_fixture_baseline_assembled_closure(),
+  ) {
+    AssembledClosureDependencyProjectionReady { projection } =>
+      match projection {
+        ReferenceDerivedDependencyProjectionReady {
+          binding_provenance,
+          file_dependencies,
+          bound_population: _,
+        } => count(binding_provenance) == 2 && count(file_dependencies) == 1
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_production_admissions_establish_exactly_e_and_f() -> Bool {
+  let missing = reference_derived_closure_missing_capabilities(
+    admissions: namespace_reference_derived_closure_acceptance_admissions(),
+  )
+  count(missing) == 4
+    && !(missing |> any(c => c == RepeatedMentionsCollapseDependency))
+    && !(missing |> any(c => c == UnrelatedLoadedFileExcluded))
+}

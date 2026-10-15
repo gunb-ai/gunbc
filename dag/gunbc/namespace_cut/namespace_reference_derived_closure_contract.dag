@@ -12,9 +12,6 @@ import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
   SiblingDecisionBranchExcluded,
   LaterDeclarationExcluded,
   DistinctSameSpelledDeclarationsPreserved,
-  P2aStructuralCandidateProducer7515,
-  P2aReferenceDependencyProjection7515,
-  P2aPoolIndependentDependencyProjection7515,
 }
 import std.types { Bool, Int, List, String }
 
@@ -29,13 +26,11 @@ import std.types { Bool, Int, List, String }
 // unavailable evidence all remain in the derived frontier; duplicate admissions cannot erase a
 // missing capability, and zero progress is red.
 //
-// This module deliberately does NOT derive visibility or dependencies.
-// namespace_reference_derived_closure_acceptance_admissions carries six typed unavailable rows
-// today: structural visibility/order/ambiguity wait on the P2a candidate producer in #7515,
-// dependency dedupe on its binding projection, and pool-independent closure on that projection's
-// Class-B wall. The fixture witnesses construct observations to prove this fold discriminates, but
-// the quarantined closing witness consumes only the production-admission function; copying fixture
-// observations into it would be specification-without-execution and would not satisfy the contract.
+// This module deliberately does NOT derive visibility or dependencies. The production admissions
+// live in test.fixture.namespace_reference_derived_closure_production_admissions (they import the
+// real producers, which this fold must not, and a leaf avoids a cycle through the structural
+// observations contract). The fixture witnesses here construct observations to prove this fold
+// discriminates; the quarantined closing witness consumes only the production-admission function.
 
 data namespace_reference_derived_closure_contract_dissolution_note: String = "DISSOLVES BY GREENING, never deletion. The implementation adds production-derived observations to namespace_reference_derived_closure_acceptance_admissions as each clause becomes executable. When all six establish, the unchanged closing witness greens; its QuarantineProbeExpectRed exclusion and known-red roster entry delete in the same change, promoting it to the ordinary discovery corpus as the permanent regression wall."
 
@@ -94,33 +89,4 @@ fn reference_derived_closure_closing_contract_holds(
   admissions: List<ReferenceDerivedClosureAdmission>,
 ) -> Bool {
   reference_derived_closure_closing_frontier_count(admissions: admissions) == 0
-}
-
-fn namespace_reference_derived_closure_acceptance_admissions() -> List<ReferenceDerivedClosureAdmission> {
-  [
-    ReferenceDerivedClosureUnavailable {
-      capability: SameFileEarlierNeighbourVisible,
-      trigger: P2aStructuralCandidateProducer7515,
-    },
-    ReferenceDerivedClosureUnavailable {
-      capability: SiblingDecisionBranchExcluded,
-      trigger: P2aStructuralCandidateProducer7515,
-    },
-    ReferenceDerivedClosureUnavailable {
-      capability: LaterDeclarationExcluded,
-      trigger: P2aStructuralCandidateProducer7515,
-    },
-    ReferenceDerivedClosureUnavailable {
-      capability: DistinctSameSpelledDeclarationsPreserved,
-      trigger: P2aStructuralCandidateProducer7515,
-    },
-    ReferenceDerivedClosureUnavailable {
-      capability: RepeatedMentionsCollapseDependency,
-      trigger: P2aReferenceDependencyProjection7515,
-    },
-    ReferenceDerivedClosureUnavailable {
-      capability: UnrelatedLoadedFileExcluded,
-      trigger: P2aPoolIndependentDependencyProjection7515,
-    },
-  ]
 }
