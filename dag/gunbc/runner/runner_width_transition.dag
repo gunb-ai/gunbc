@@ -51,18 +51,22 @@ type RunnerWidthTransition sole_constructor {
 // THE OPEN TRANSITION, ENUMERATED PER HOST.
 //
 // srv3 and srv4 were each admitted 21 slots; their committed width is still 21, so the prior
-// equals the target and they owe no retirees. srv1's prior is the last committed population
-// (width 12: fleet 01..11 plus shakedown 13). The CPU axis now binds srv1 at 7, so the
-// obligation is committed(12) minus committed(7) = srv1-07..11. srv2 is absent deliberately.
+// equals the target and they owe no retirees. srv1's prior is the population it was admitted
+// to run when this transition opened (width 50). The CPU axis now binds srv1 at 7, so the
+// obligation is committed(50) minus committed(7) = srv1-07..12 and 14..50 (13 stays). srv2 is
+// absent deliberately. A later admitted width (12, then 7) is not a reason to rewrite this
+// row: that would complete the 50-slot obligation by edit.
 //
 // A ROW IS SUPERSEDED ONLY WHEN ITS OWN TRANSITION COMPLETES. Editing `prior_width` to match a later
 // observation would destroy the durability the declaration exists for -- the set would track the
-// census again, one indirection further away.
+// census again, one indirection further away. A second `transition_id` for 12→7 is not added:
+// `host_width_transition_standing` reads `rows.first()`, so a sibling row would be unread, and
+// prior 50 minus target 7 already contains that delta.
 data slot_width_transition_26_25: List<RunnerWidthTransition> = [
   RunnerWidthTransition {
     transition_id: "runner-slot-26-25-gib" as NonEmptyStr,
     host: operator_host_srv1,
-    prior_width: 12,
+    prior_width: 50,
   },
   RunnerWidthTransition {
     transition_id: "runner-slot-26-25-gib" as NonEmptyStr,

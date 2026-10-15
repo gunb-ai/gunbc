@@ -946,7 +946,7 @@ test fn srv4s_authorization_does_not_cover_srv1s_obligation() -> Bool {
     }
 }
 
-// srv1'S OWN AUTHORIZATION COVERS ITS OBLIGATION (07..11). Without this row the production
+// srv1'S OWN AUTHORIZATION COVERS ITS OBLIGATION (07..12 and 14..50). Without this row the production
 // observer stays absent.
 test fn srv1s_obligation_is_fully_covered_by_its_declared_scope() -> Bool {
   let required = known_obligation_of(host: operator_host_srv1)
@@ -977,9 +977,10 @@ test fn srv1s_obligation_is_fully_covered_by_its_declared_scope() -> Bool {
     )
 }
 
-// srv4's OBLIGATION IS COVERED BY THE OPERATOR'S ENUMERATION. This is the positive control for
-// coverage; without it every refusal above is satisfied by a check that never admits.
-test fn srv4s_obligation_is_fully_covered_by_the_declared_scope() -> Bool {
+// srv4'S PRIOR EQUALS ITS TARGET, SO THE OBLIGATION IS EMPTY. That is not a coverage admit: there
+// is nothing to cover. The positive control that actually admits is
+// `srv1s_obligation_is_fully_covered_by_its_declared_scope`.
+test fn srv4s_prior_equals_target_so_the_obligation_is_empty() -> Bool {
   let required = known_obligation_of(host: operator_host_srv4)
   list_length(items: required) == 0
 }
@@ -1022,11 +1023,14 @@ test fn a_host_with_no_open_transition_has_no_obligation() -> Bool {
 
 // THE OBLIGATION OF A HOST WITH AN OPEN TRANSITION IS THE PRIOR MINUS THE TARGET, AND IT IS
 // DERIVED RATHER THAN EMPTY. This is the positive half of the carrier introduced for the unresolved
-// arm: srv4's target resolves, so its obligation is a real set that includes the top of the prior
+// arm: srv1's target resolves, so its obligation is a real set that includes the top of the prior
 // population and excludes the members it keeps.
 test fn an_open_transition_derives_the_prior_minus_target_obligation() -> Bool {
-  match required_retirees_for_host(host: operator_host_srv4) {
-    RetireesKnown { units: units } => list_length(items: units) == 0
+  match required_retirees_for_host(host: operator_host_srv1) {
+    RetireesKnown { units: units } =>
+      list_length(items: units) == 43
+        && any(units, u => (u as String) == "actions-runner@srv1-50.service")
+        && !any(units, u => (u as String) == "actions-runner@srv1-01.service")
     RetireesUnresolved { host: _, cause: _ } => false
   }
 }
@@ -1092,19 +1096,19 @@ test fn a_derived_target_width_yields_the_prior_minus_target_obligation() -> Boo
 }
 
 // THE OBLIGATION IS PRIOR COMMITTED IDENTITIES MINUS TARGET COMMITTED IDENTITIES. On srv1, width 7
-// is 01..06 plus shakedown 13; prior 12 is 01..11 plus 13; the delta is 07..11 and never 13.
+// is 01..06 plus shakedown 13; prior 50 is 01..50; the delta is 07..12 and 14..50 and never 13.
 test fn the_obligation_excludes_a_committed_member_above_the_fleet_range() -> Bool {
   match transition_row_for_host(host: operator_host_srv1).first() {
     Absent => false
     Present { value: t } =>
       match transition_required_retirees_at(t: t, target_width: RunnerWidthDerived { slots: 7 }) {
         RetireesKnown { units: units } =>
-          list_length(items: units) == 5
+          list_length(items: units) == 43
             && any(units, u => (u as String) == "actions-runner@srv1-07.service")
-            && any(units, u => (u as String) == "actions-runner@srv1-11.service")
+            && any(units, u => (u as String) == "actions-runner@srv1-12.service")
+            && any(units, u => (u as String) == "actions-runner@srv1-50.service")
             && !any(units, u => (u as String) == "actions-runner@srv1-13.service")
             && !any(units, u => (u as String) == "actions-runner@srv1-06.service")
-            && !any(units, u => (u as String) == "actions-runner@srv1-12.service")
         RetireesUnresolved { host: _, cause: _ } => false
       }
   }
@@ -1128,16 +1132,16 @@ test fn srv1_at_committed_width_7_desires_six_fleet_plus_shakedown() -> Bool {
   }
 }
 
-test fn srv1_at_width_7_owes_retirees_07_through_11() -> Bool {
+test fn srv1_at_width_7_owes_the_open_fifty_slot_delta() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesUnresolved { host: _, cause: _ } => false
     RetireesKnown { units: units } =>
-      list_length(items: units) == 5
+      list_length(items: units) == 43
         && any(units, u => (u as String) == "actions-runner@srv1-07.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-08.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-09.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-10.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-11.service")
+        && any(units, u => (u as String) == "actions-runner@srv1-12.service")
+        && any(units, u => (u as String) == "actions-runner@srv1-14.service")
+        && any(units, u => (u as String) == "actions-runner@srv1-50.service")
+        && !any(units, u => (u as String) == "actions-runner@srv1-13.service")
   }
 }
 
@@ -1157,7 +1161,7 @@ test fn a_host_at_its_current_width_owes_no_retirees() -> Bool {
 // production read yields the same derived obligation the decision produces for that width.
 test fn the_production_wrapper_reaches_the_supplied_decision() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
-    RetireesKnown { units: units } => list_length(items: units) == 5
+    RetireesKnown { units: units } => list_length(items: units) == 43
     RetireesUnresolved { host: _, cause: _ } => false
   }
 }
