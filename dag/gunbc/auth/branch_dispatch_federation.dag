@@ -1,7 +1,8 @@
 module gunbc.auth.branch_dispatch_federation
 
-import std.types { Int, List, Map, NonEmptyStr, String, Timestamp }
+import std.types { Bool, Int, List, Map, NonEmptyStr, String, Timestamp }
 import std.optional { Present, Absent }
+import std.human_intervention { EveryProvision, EveryOperatorRequest }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
 import extdeps.cloud.gcp.iam { GcpIamBindingCell, IamCondition }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
@@ -13,7 +14,15 @@ import gunbc.gcp.gcp_estate_observation { role_iam_workload_identity_user }
 import gunbc.fleet.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.managed_host_boot_federation {
-  ManagedHostBootFederation, provisioned_federation_of, boot_federation_for,
+  ManagedHostBootFederation, provisioned_federation_of, boot_federation_for, boot_federation_service_account_member,
+}
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, ApiSurface, WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
+  MintsNoCredential, ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
+  AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession,
+  PatternSelected, ManualStepRequired, NoAdmissiblePattern, PatternSelectionNeedsEvidence,
+  PatternSelectionNeedsPolicy, PatternSelectionRefused,
+  select_authorization_pattern,
 }
 
 // ── A FLEET-CONVERGE RUN FROM A BRANCH, ADMITTED ONE RUN AT A TIME ─────────────────────────────
@@ -231,14 +240,69 @@ fn run_scoped_federation_named(account_id: String) -> DedicatedFederation? {
   filter(run_scoped_federations(), f => (f.service_account_id as String) == account_id).first()
 }
 
-// WHICH WIF SOURCE THE BOOT JOB'S ONE CREDENTIAL SEAM TAKES. Reviewed main keeps the dedicated
-// standing federation; any other ref takes the run-scoped account, which IAM admits only after
-// this run's grant cell exists. The YAML emitter consumes this fold; github.ref in the workflow
-// file is not the wall.
-type MtCollins1BootCredentialSource
+// WHICH WIF SOURCE THE BOOT JOB'S ONE CREDENTIAL SEAM TAKES. This is not a second decision
+// algebra: the privileged effect's characteristics (whether the dedicated pool can bind this ref)
+// go through select_authorization_pattern. FederatedScopedGrant is the dedicated standing
+// identity on reviewed main. Off main that identity is unbindable (STS admits only refs/heads/main),
+// so the unique survivor is OperatorApprovedCapability -- the run-scoped grant -- and IAM still
+// federates as mtcollins1-boot-run only after that cell exists. github.ref in the workflow file
+// is not the wall.
+type BootCredentialSource
   = ReviewedMainDedicatedFederation
   | RunScopedApprovedGrant
 
-fn select_mtcollins1_boot_credential_source(on_reviewed_main: Bool) -> MtCollins1BootCredentialSource {
-  if on_reviewed_main { ReviewedMainDedicatedFederation } else { RunScopedApprovedGrant }
+fn dedicated_boot_workload_identity() -> WorkloadIdentityStanding {
+  match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+    Present { value: f } => WorkloadIdentityBindable { member: boot_federation_service_account_member(f: f) as NonEmptyStr }
+    Absent => WorkloadIdentityUnbindable {
+      cause: "no admitted boot federation, so no dedicated identity to bind" as NonEmptyStr,
+    }
+  }
+}
+
+fn boot_credential_effect(on_reviewed_main: Bool) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "the boot job's one credential seam: federate as the dedicated boot account on reviewed main; otherwise wait for this run's grant and federate as the run-scoped boot account. Both accounts hold only the admitted boot federation's pinned fleet-key and BMC versions" as NonEmptyStr,
+    frequency: if on_reviewed_main { EveryProvision } else { EveryOperatorRequest },
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: if on_reviewed_main {
+      dedicated_boot_workload_identity()
+    } else {
+      WorkloadIdentityUnbindable {
+        cause: "the dedicated boot pool's attribute condition admits only refs/heads/main; a branch run cannot bind that identity" as NonEmptyStr,
+      }
+    },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+fn boot_credential_effect_on_reviewed_main() -> PrivilegedEffect {
+  boot_credential_effect(on_reviewed_main: true)
+}
+
+fn boot_credential_effect_off_reviewed_main() -> PrivilegedEffect {
+  boot_credential_effect(on_reviewed_main: false)
+}
+
+fn boot_credential_source_from_pattern(p: AuthorizationPattern) -> BootCredentialSource {
+  match p {
+    FederatedScopedGrant => ReviewedMainDedicatedFederation
+    OperatorApprovedCapability => RunScopedApprovedGrant
+    HumanOnlyStep { step: _ } => RunScopedApprovedGrant
+    OperatorOwnSession => RunScopedApprovedGrant
+  }
+}
+
+fn select_boot_credential_source(on_reviewed_main: Bool) -> BootCredentialSource {
+  match select_authorization_pattern(e: boot_credential_effect(on_reviewed_main: on_reviewed_main)) {
+    PatternSelected { pattern: p, receipt: _ } => boot_credential_source_from_pattern(p: p)
+    ManualStepRequired { step: _, receipt: _ } => RunScopedApprovedGrant
+    NoAdmissiblePattern { causes: _, scope: _ } => RunScopedApprovedGrant
+    PatternSelectionNeedsEvidence { needs: _ } => RunScopedApprovedGrant
+    PatternSelectionNeedsPolicy { survivors: _ } => RunScopedApprovedGrant
+    PatternSelectionRefused { defects: _ } => RunScopedApprovedGrant
+  }
 }

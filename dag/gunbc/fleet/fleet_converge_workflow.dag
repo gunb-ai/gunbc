@@ -3,8 +3,8 @@ module gunbc.fleet.fleet_converge_workflow
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
 import gunbc.auth.branch_dispatch_federation {
   branch_dispatch_provider_resource, hetzner_cloud_control_service_account, hetzner_cloud_control_service_account_id,
-  branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_mtcollins1_boot_credential_source,
-  MtCollins1BootCredentialSource, ReviewedMainDedicatedFederation, RunScopedApprovedGrant,
+  branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
+  BootCredentialSource, ReviewedMainDedicatedFederation, RunScopedApprovedGrant,
 }
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
@@ -3971,19 +3971,19 @@ fn fleet_converge_github_ref_is_reviewed_main() -> Expression {
 }
 
 // THE BOOT JOB'S ONE CREDENTIAL SEAM, TWO ADMITTED SOURCES selected by
-// select_mtcollins1_boot_credential_source: reviewed main keeps the dedicated pool; any other ref
-// waits for the run-scoped grant then federates through the branch-dispatch pool. github.ref in this
-// file is not the wall (a branch can edit it); IAM refuses the dedicated pool off main and refuses
-// the run-scoped SA without this run's cell. The fleet-key step is after this seam, so a missing
-// grant fails before the key is read.
-fn fleet_converge_mtcollins1_boot_source_provider(source: MtCollins1BootCredentialSource) -> String {
+// select_boot_credential_source (which executes select_authorization_pattern): reviewed main keeps
+// the dedicated pool; any other ref waits for the run-scoped grant then federates through the
+// branch-dispatch pool. github.ref in this file is not the wall (a branch can edit it); IAM refuses
+// the dedicated pool off main and refuses the run-scoped SA without this run's cell. The fleet-key
+// step is after this seam, so a missing grant fails before the key is read.
+fn fleet_converge_mtcollins1_boot_source_provider(source: BootCredentialSource) -> String {
   match source {
     ReviewedMainDedicatedFederation => fleet_converge_mtcollins1_boot_provider_resource()
     RunScopedApprovedGrant => branch_dispatch_provider_resource()
   }
 }
 
-fn fleet_converge_mtcollins1_boot_source_account(source: MtCollins1BootCredentialSource) -> String {
+fn fleet_converge_mtcollins1_boot_source_account(source: BootCredentialSource) -> String {
   match source {
     ReviewedMainDedicatedFederation => fleet_converge_mtcollins1_boot_service_account()
     RunScopedApprovedGrant => mtcollins1_boot_run_scoped_service_account as String
@@ -3994,9 +3994,9 @@ fn fleet_converge_mtcollins1_boot_wif_provider_resource() -> String {
   interpolate(expression: LogicalOr {
     left: LogicalAnd {
       left: fleet_converge_github_ref_is_reviewed_main(),
-      right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(source: select_mtcollins1_boot_credential_source(on_reviewed_main: true)) },
+      right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(source: select_boot_credential_source(on_reviewed_main: true)) },
     },
-    right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(source: select_mtcollins1_boot_credential_source(on_reviewed_main: false)) },
+    right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(source: select_boot_credential_source(on_reviewed_main: false)) },
   })
 }
 
@@ -4004,9 +4004,9 @@ fn fleet_converge_mtcollins1_boot_wif_service_account() -> String {
   interpolate(expression: LogicalOr {
     left: LogicalAnd {
       left: fleet_converge_github_ref_is_reviewed_main(),
-      right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(source: select_mtcollins1_boot_credential_source(on_reviewed_main: true)) },
+      right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(source: select_boot_credential_source(on_reviewed_main: true)) },
     },
-    right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(source: select_mtcollins1_boot_credential_source(on_reviewed_main: false)) },
+    right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(source: select_boot_credential_source(on_reviewed_main: false)) },
   })
 }
 
