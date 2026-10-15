@@ -14,7 +14,7 @@ data semantic_decl_char_identity_string_at_symbol_return: RecurringFailureMode =
 
     "HARM: the emit path treats a character identity as a Symbol while the value is host text. DESIGN section 4: text crossings go through the declared unfold or refuse; this site names neither.",
 
-    "RUNG FOUND AT: 1. CEILING: structurally guaranteed (decidable inhabitance). NEXT TRIGGER: the function body returns a Symbol (caret, or an explicit intern) or the declaration is String.",
+    "RUNG FOUND AT: below the ladder — Accepted silent inhabitance (DESIGN section 4b), not mitigatable. CEILING: structurally guaranteed (decidable inhabitance). NEXT TRIGGER: the function body returns a Symbol (caret, or an explicit intern) or the declaration is String.",
   ],
 
   evidence: [

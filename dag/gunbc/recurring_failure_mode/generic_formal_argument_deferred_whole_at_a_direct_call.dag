@@ -14,7 +14,7 @@ data generic_formal_argument_deferred_whole_at_a_direct_call: RecurringFailureMo
 
     "HARM: the same silent wrongness as one_type_variable_bound_to_two_distinct_coproducts, observed at the generic-arg walk rather than only at same_arm coproducts.",
 
-    "V1 CEILING: structurally guaranteed only after v1 type representation is canonical (one encoding per decl, DeclarationRef stamped). A (d) hole that is two encodings of one decl is not a real refusal. EXECUTED RUNG: 1.",
+    "RUNG FOUND AT: below the ladder — Accepted silent wrongness (DESIGN section 4b), the same class as one_type_variable_bound_to_two_distinct_coproducts. First-wins / skip-and-not-equals is the silence, not a mitigatable rung. V1 CEILING: structurally guaranteed only after v1 type representation is canonical (one encoding per decl, DeclarationRef stamped). A (d) hole that is two encodings of one decl is not a real refusal.",
 
     "NEXT TRIGGER, NAMED AS A CAPABILITY: v1 type representation canonical (one encoding per decl, DeclarationRef stamped). The v2 wall is PR B (infer_match_generic_formal rebind).",
 

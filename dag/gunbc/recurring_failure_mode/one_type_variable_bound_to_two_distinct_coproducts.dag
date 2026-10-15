@@ -14,7 +14,7 @@ data one_type_variable_bound_to_two_distinct_coproducts: RecurringFailureMode = 
 
     "HARM: silent wrongness (DESIGN section 5 / section 4b values inhabit declared types). Two inhabitants of unrelated coproducts share one type variable.",
 
-    "V1 CEILING: structurally guaranteed, once v1 type representation is canonical (one encoding per decl, DeclarationRef stamped). Until that capability exists, a v1 unify_generics rebind check cannot be honest: the same semantic type has several encodings, so equals both false-refuses and false-accepts. EXECUTED RUNG on the shipped seed is 1 (first-wins). #14037 is parked; it is not the climb.",
+    "RUNG FOUND AT: below the ladder — the program is Accepted and answers falsely (DESIGN section 4b: silent wrongness is not a rung). First-wins on the shipped seed is the mechanism of that silence, not mitigatable containment. RUNG HONESTY: the enrolled probe is a polarity-red, not a discriminating RED on the acceptance path; the authorable RED is an expect-typecheck-refusal fixture, and that harness is still missing. V1 CEILING: structurally guaranteed once v1 type representation is canonical (one encoding per decl, DeclarationRef stamped). Until then a v1 unify_generics rebind check cannot be honest: the same semantic type has several encodings. #14037 is parked; parking does not climb the found-at rung.",
 
     "NEXT TRIGGER, NAMED AS A CAPABILITY: v1 type representation canonical (one encoding per decl, DeclarationRef stamped). The v2 wall is PR B: v2.compiler.infer infer_match_generic_formal must refuse a later actual that disagrees with the stored instance (today a second bind of T is InferFormalMatched without comparing produced).",
 

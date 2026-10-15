@@ -14,7 +14,7 @@ data caret_symbol_inhabits_string_via_conformance_unjudged: RecurringFailureMode
 
     "HARM: DESIGN section 4 — coercion is the implicit-safe subset of DECLARED conversions. A Symbol value inhabits a String obligation with no named conversion, so a later consumer reads host text where a symbol was produced.",
 
-    "RUNG FOUND AT: 1. CEILING: structurally guaranteed (decidable inhabitance once Symbol is ground or a conversion is declared). NEXT TRIGGER: declared_type_conformance judges Symbol against kernel String (add Symbol to the ground set, or a named conversion that the wall consumes), with a RED `-> String { ^tag }` and a green `-> Symbol { ^tag }`. Not #14082 (producer only).",
+    "RUNG FOUND AT: below the ladder — Accepted silent inhabitance (DESIGN section 4b), not mitigatable. CEILING: structurally guaranteed (decidable inhabitance once Symbol is ground or a conversion is declared). NEXT TRIGGER: declared_type_conformance judges Symbol against kernel String (add Symbol to the ground set, or a named conversion that the wall consumes), with a RED `-> String { ^tag }` and a green `-> Symbol { ^tag }`. Not #14082 (producer only).",
   ],
 
   evidence: [
