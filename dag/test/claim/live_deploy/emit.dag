@@ -15,7 +15,7 @@ import gunbc.fabric.fabric_storage_placement { fabric_storage_door_socket, fabri
 import extdeps.access.posix { file_mode_octal }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.live_deploy.spec {
   HoldsNoRoleSingleton,
   DeploymentArtifactStep,
@@ -94,7 +94,8 @@ import extdeps.tailscale.serve {
   ServeRootMount,
   ServeSetPath,
 }
-import extdeps.exec.command { shell_quote }
+import extdeps.exec.command { shell_quote, argv_words, ArgvCommand }
+import std.materialization_ladder { string_list_contains }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.shell_command_text { shell_privileged_command_text_of_argv, shell_command_text_of_node }
 import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_elevated }
@@ -143,7 +144,7 @@ import gunbc.live_deploy.emit {
   approval_broker_lifecycle_steps,
   live_deploy_approval_broker_unit_file,
   live_deploy_fabric_storage_unit_file,
-  deployment_serve_route_script,
+  deployment_serve_route_command,
   emit_release_member_effects,
   deploy_retract_frame_comments,
   deploy_apply_receipt_steps,
@@ -1154,9 +1155,26 @@ data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN 
 // broker's commands from the full apply cost 98,345 eval steps against the 72,300 budget (floor run
 // 36683351599). The claim is therefore stated at the interface it is about: the dashboard's own
 // route is the root mount and scopes no path. Since the route targets the tailnet door, the member
-// itself emits nothing into the apply and the one script that writes the route is the cutover's
-// (gunbc.live_deploy.emit deployment_serve_route_script), which is where the fact is read. The
-// broker's two mounts are pinned byte-for-byte by test.claim.approval_broker_front_door_member_witness.
+// itself emits nothing into the apply and the one command that writes the route is the cutover's
+// typed (gunbc.live_deploy.emit deployment_serve_route_command), which is where the fact is read.
+// The command is the typed ArgvCommand the site now runs, so the claim is stated over its argv
+// words, not over an assembled bash string: the serve route's last word IS the endpoint's door
+// backend (inhabitance, supplied from the real spec), --bg and --https=443 are carried, and the
+// mount is root, so --set-path is absent -- discriminated against a set-path endpoint built from
+// the same port and backend, which carries the flag. The broker's two mounts are pinned
+// byte-for-byte by test.claim.approval_broker_front_door_member_witness.
+fn serve_route_last_word(command: ArgvCommand) -> String {
+  let words = argv_words(command: command)
+  if words.count() == 0 {
+    ""
+  } else {
+    match words.skip(n: words.count() - 1).first() {
+      Absent => ""
+      Present { value: last_word } => last_word
+    }
+  }
+}
+
 test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
   let spec = deployment_spec_srv1()
   let own = pipeline_steps_text(steps: composed_artifact_upsert(
@@ -1167,10 +1185,23 @@ test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
     oidc_now: Absent,
   ).steps)
-  let route = deployment_serve_route_script(endpoint: spec.names.tailscale_serve_endpoint, enabled: true)
+  let endpoint = spec.names.tailscale_serve_endpoint
+  let route = deployment_serve_route_command(endpoint: endpoint, enabled: true)
+  let route_words = argv_words(command: route)
+  let scoped = TailscaleServeEndpoint {
+    https_port: endpoint.https_port,
+    mount: ServeSetPath { path: "/approve" as NonEmptyStr },
+    backend: endpoint.backend,
+  }
+  let scoped_words = argv_words(command: deployment_serve_route_command(endpoint: scoped, enabled: true))
+  let door_backend = endpoint.backend as String
   !string_contains(s: own, pattern: "tailscale")
-    && string_contains(s: route, pattern: "'serve' '--bg' '--https=443' 'unix:")
-    && !string_contains(s: route, pattern: "--set-path")
+    && serve_route_last_word(command: route) == door_backend
+    && string_list_contains(xs: route_words, wanted: "serve")
+    && string_list_contains(xs: route_words, wanted: "--bg")
+    && string_list_contains(xs: route_words, wanted: "--https=443")
+    && !string_list_contains(xs: route_words, wanted: "--set-path")
+    && string_list_contains(xs: scoped_words, wanted: "--set-path=/approve")
 }
 
 test fn twin_apply_serves_its_own_endpoint_and_not_productions() -> Bool {

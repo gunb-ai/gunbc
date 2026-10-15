@@ -25,8 +25,8 @@ import v2.extdeps.languages.dag {
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-import std.algebra { list_append, count_where, Empty, length }
-import v2.std.collection { list_at_optional }
+import std.algebra { list_append, count_where, Empty, length, list_at_optional }
+
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.optional { Absent, optional_absent, optional_present, Present }

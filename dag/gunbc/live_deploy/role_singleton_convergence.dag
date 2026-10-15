@@ -1,7 +1,7 @@
 module gunbc.live_deploy.role_singleton_convergence
 
 import std.types { String, NonEmptyStr, List, Bool, Int, EpochMs, FilePath }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.deployment_risk { DeploymentId, deployment_id, ProdRoleSelection, prod_role_selection }
 import std.decl_ref { decl_ref }
 import gunbc.roadmap.roadmap_dashboard_instance {

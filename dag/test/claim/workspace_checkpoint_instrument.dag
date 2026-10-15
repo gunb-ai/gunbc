@@ -1,11 +1,11 @@
 module test.claim.workspace_checkpoint_instrument
 
-import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.types { String, NonEmptyStr, Int, Bool, List, Map }
 import std.optional { Present, Absent }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, empty_map, map_insert }
 import std.measure { byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
-import v2.std.collection { Map, empty_map, map_insert }
+
 import std.fabric_blob { FabricBlobAddress }
 import std.fabric_storage { FabricObject, FabricStoredObject, FabricObjectFetched, FabricObjectGetRefused, FabricObjectMissing, fabric_object_ref_of, fabric_object_ref_eq }
 import std.durable_compare_and_set { cas_generation_first }

@@ -131,7 +131,7 @@ import extdeps.virtualization.firecracker {
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.exec.command { argv_words }
+import extdeps.exec.command { ArgvCommand, argv_words }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name, release_locus_tree_receipt_name }
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_owner, microvm_controller_firecracker_release,
@@ -233,8 +233,7 @@ import gunbc.host.host_layout {
 }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
-  slice_control_caps_for,
-  SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
+  slice_control_plan_for, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
 }
 import gunbc.host.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
@@ -289,7 +288,7 @@ import v2.std.orchestration {
   Do, If, Run, Comment, Let, Exit, ExprCmdSubst,
   FailFast, ExitZero, Not, DiscardAll
 }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, None }
 import v2.compiler.emit_orchestration { orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
@@ -309,7 +308,7 @@ import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.std.node { Node }
 import gunbc.ci.ci_deploy_access { DeployAccess }
 import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_install_shell }
-import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_command }
 import v2.workflow.effect_plan_bash_materialize { BashBoundOperationInvocation }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command,
@@ -2327,24 +2326,24 @@ fn slice_control_refused_command(host: HostIdentity, cause: String) -> String {
 }
 
 fn apply_slice_control_converge_steps(spec: DeploymentSpec) -> List<PipelineStep> {
-  match slice_control_caps_for(host: spec.target.host.identity) {
-    SliceControlDerived { caps: _ } =>
+  match slice_control_plan_for(host: spec.target.host.identity) {
+    SliceControlPlanDerived { units: _ } =>
       [deploy_raw(command: deploy_slice_control_converge_script(host: spec.target.host.identity))]
-    SliceControlNotOwed => []
-    SliceControlRefused { cause: _ } => []
+    SliceControlPlanNotOwed => []
+    SliceControlPlanRefused { cause: _ } => []
   }
 }
 
 fn apply_slice_control_converge_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
   let host = spec.target.host.identity
-  match slice_control_caps_for(host: host) {
-    SliceControlNotOwed => []
-    SliceControlDerived { caps: _ } =>
+  match slice_control_plan_for(host: host) {
+    SliceControlPlanNotOwed => []
+    SliceControlPlanDerived { units: _ } =>
       host_script_member_proceed(
         member: "slice-control" as NonEmptyStr,
         mutate_steps: apply_slice_control_converge_steps(spec: spec),
       )
-    SliceControlRefused { cause } =>
+    SliceControlPlanRefused { cause } =>
       host_script_member_refused(
         member: "slice-control" as NonEmptyStr,
         cause: cause,
@@ -4703,18 +4702,22 @@ fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipelin
   }
 }
 
-// ONE SERVE ROUTE, WRITTEN OR TURNED OFF, as a script of its own: the same privileged argv the
+// ONE SERVE ROUTE, WRITTEN OR TURNED OFF, as a typed command of its own: the same privileged argv the
 // mapping member's apply and teardown steps carry, for the tailnet door cutover
 // (gunbc.live_deploy.tailnet_door_cutover), which applies the re-point and its restore singly.
-fn deployment_serve_route_script(endpoint: TailscaleServeEndpoint, enabled: Bool) -> String {
-  emit_pipeline_or_poison(
-    p: Pipeline {
-      steps: [deploy_raw(command: shell_privileged_command_text_of_argv(
-        argv: concat(["tailscale"], if enabled { tailscale_serve_enable_argv(endpoint: endpoint) } else { tailscale_serve_off_argv(endpoint: endpoint) }),
-      ))],
-      on_failure: FailFast
-    },
-    refused: live_deploy_ensure_dep_emit_refused_poison,
+//
+// THE CARRIER CHANGED, THE WIRE DID NOT. The old builder folded the words into a bash script body
+// (shell_privileged_command_text_of_argv -> RetainedShellScript) and let the Bash emitter run it
+// (retained_srvn / realize_shell_on_host). That body was a single privileged command with no env,
+// no cwd, no redirect and no pipe (deploy_raw: env Empty, redirect Absent), so the shell added
+// nothing the words did not already say. This typed builder keeps the identical privileged wire
+// (sudo_elevate -> /usr/bin/sudo -n tailscale <serve argv>) as an ArgvCommand and runs it through
+// the typed transport (shell.Exec.RunArgv / typed ssh), so no quoting layer stands between the
+// words and the exec. No policy literal is minted here: the elevation, the program path and the
+// -n flag all come from extdeps.sudo.elevation, and the serve flags from extdeps.tailscale.serve.
+fn deployment_serve_route_command(endpoint: TailscaleServeEndpoint, enabled: Bool) -> ArgvCommand {
+  sudo_elevate_command(
+    command: concat(["tailscale"], if enabled { tailscale_serve_enable_argv(endpoint: endpoint) } else { tailscale_serve_off_argv(endpoint: endpoint) }),
   )
 }
 
