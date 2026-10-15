@@ -44,11 +44,17 @@ thread_local! {
 }
 
 /// Add `elapsed` to the named phase (first record fixes its position in the receipt).
+/// Scale may climb `tree` → `closure` on a later add: `pool_source_tokenize` of the
+/// demand-acquired set must not stay labelled `tree` because the first lex happened
+/// before `mark_demand_acquired_path`.
 pub fn record(name: &'static str, scale: PhaseScale, elapsed: Duration) {
     PHASES.with(|p| {
         let mut p = p.borrow_mut();
         if let Some(row) = p.iter_mut().find(|(n, _, _)| *n == name) {
             row.2 += elapsed;
+            if scale == PhaseScale::Closure {
+                row.1 = PhaseScale::Closure;
+            }
         } else {
             p.push((name, scale, elapsed));
         }
@@ -120,4 +126,33 @@ pub fn pool_module_count(source_roots: &[String]) -> Option<usize> {
         return Some(n);
     }
     super::memoized_process_shared_index(source_roots).map(|index| index.source_files.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tokenize_row_scale_climbs_from_tree_to_closure() {
+        let _ = take_lines();
+        record(
+            "pool_source_tokenize",
+            PhaseScale::Tree,
+            Duration::from_millis(10),
+        );
+        mark_demand_acquired_path();
+        record(
+            "pool_source_tokenize",
+            index_scale(),
+            Duration::from_millis(5),
+        );
+        let lines = take_lines();
+        DEMAND_ACQUIRED_MODULES.with(|c| c.set(None));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("phase=pool_source_tokenize") && l.contains("scale=closure")),
+            "{lines:?}"
+        );
+    }
 }

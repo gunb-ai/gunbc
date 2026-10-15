@@ -50,7 +50,11 @@ fn build_demand_acquired_index(
     entry_file: &str,
 ) -> Result<Rc<MultiEntryIndex>, String> {
     super::pre_entry_phase::mark_demand_acquired_path();
-    let source_files = acquire_layout_closure(source_roots, entry_file)?;
+    let source_files = super::pre_entry_phase::timed(
+        "demand_layout_acquire",
+        super::pre_entry_phase::PhaseScale::Closure,
+        || acquire_layout_closure(source_roots, entry_file),
+    )?;
     super::pre_entry_phase::record_demand_acquired_modules(source_files.len());
     let facts = module_graph_facts_from_acquired(&source_files, source_roots);
     Ok(Rc::new(new_multi_entry_index_acquired(
@@ -133,16 +137,32 @@ fn demanded_module_names(path: &str, content: &str, known: &HashSet<String>) -> 
     names.into_iter().collect()
 }
 
+thread_local! {
+    static LAYOUT_FILE_EXISTS: std::cell::RefCell<std::collections::HashMap<String, bool>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+fn layout_module_file_exists(name: &str) -> bool {
+    LAYOUT_FILE_EXISTS.with(|c| {
+        let mut c = c.borrow_mut();
+        if let Some(hit) = c.get(name) {
+            return *hit;
+        }
+        let exists = module_storage_relative(name)
+            .ok()
+            .is_some_and(|rel| workspace_root().join(&rel).is_file());
+        c.insert(name.to_string(), exists);
+        exists
+    })
+}
+
 fn longest_layout_module_prefix(chain: &[String]) -> Option<String> {
     if chain.len() < 2 {
         return None;
     }
     for len in (2..=chain.len()).rev() {
         let name = chain[..len].join(".");
-        if module_storage_relative(&name)
-            .ok()
-            .is_some_and(|rel| workspace_root().join(&rel).is_file())
-        {
+        if layout_module_file_exists(&name) {
             return Some(name);
         }
     }
