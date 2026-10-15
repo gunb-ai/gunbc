@@ -27,8 +27,6 @@ import gunbc.host.host_software_surface {
   host_procps_kill_term_pgid_argv,
   host_coreutils_timeout_expired_exit_code,
   srv1_software_inhabitance_probe_commands,
-  srv1_os_release_probe,
-  srv1_apparmor_sysctl_probe,
 }
 import extdeps.linux.apparmor_userns {
   apparmor_restrict_unprivileged_userns_sysctl_name,
@@ -39,7 +37,11 @@ import extdeps.systemd.user_manager_sandbox { systemd_exec_protect_home_standing
 import extdeps.git { git_program }
 import extdeps.tools.jq { jq_program }
 import extdeps.tailscale.serve { tailscale_program }
-import gunbc.host.srv1_software_inhabitance_receipt { srv1_software_inhabitance_reading }
+import gunbc.host.srv1_software_inhabitance_receipt {
+  srv1_software_inhabitance_receipt,
+  srv1_os_release_probe,
+  srv1_apparmor_sysctl_probe,
+}
 import extdeps.procps.kill {
   procps_ng_kill_term_pgid_argv,
   procps_ng_kill_term_pgid_without_end_of_options_argv,
@@ -146,7 +148,7 @@ test fn srv1_timeout_expired_is_coreutils_124() -> Bool {
 
 test fn inhabitance_recipe_names_the_probes_the_brief_named() -> Bool {
   let cmds = srv1_software_inhabitance_probe_commands()
-  cmds.length() == 12
+  cmds.length() == 13
     && cmds[0] == Present { value: srv1_os_release_probe }
     && any(cmds, c => (c as String) == "uname -r")
     && any(cmds, c => c == srv1_apparmor_sysctl_probe())
@@ -158,6 +160,7 @@ test fn inhabitance_recipe_names_the_probes_the_brief_named() -> Bool {
     && any(cmds, c => (c as String) == "jq --version")
     && any(cmds, c => (c as String) == "systemctl --version")
     && any(cmds, c => (c as String) == "command -v git; command -v jq; command -v timeout; command -v systemd-run")
+    && any(cmds, c => (c as String).contains("dpkg-query"))
 }
 
 fn standing_is_cited_to_authority(s: CitedFigureStanding) -> Bool {
@@ -175,10 +178,10 @@ test fn upstream_sandbox_procps_and_apparmor_figures_are_cited_to_authority() ->
 }
 
 test fn srv1_software_is_observed_by_the_inhabitance_receipt() -> Bool {
-  let r = srv1_software_inhabitance_reading()
+  let r = srv1_software_inhabitance_receipt
   match srv1_software_surface().os_release.value.standing {
     ObservedByReceipt { observed: o } =>
-      (observed_receipt_ref(observed: o).decl_name as String) == "srv1_software_inhabitance_reading"
+      (observed_receipt_ref(observed: o).decl_name as String) == "srv1_software_inhabitance_receipt"
         && srv1_software_surface().apparmor_userns.value.value == Present { value: r.apparmor_userns }
         && r.apparmor_userns == apparmor_unprivileged_userns_restricted
         && match host_program_version(surface: srv1_software_surface(), program: tailscale_program()) {
@@ -197,8 +200,11 @@ test fn srv1_software_is_observed_by_the_inhabitance_receipt() -> Bool {
         }
         && srv1_software_surface().kernel_release.value.kernel_release_label == Present { value: r.kernel_release_label }
         && srv1_software_surface().os_release.value.pretty_name == Present { value: r.os_pretty_name }
+        && (r.os_codename as String) == "noble"
         && (r.observer_login as String) == "briansrls"
         && r.observer_uid == 1000
+        && (r.sudo_all_as_all as String) == "(ALL : ALL) ALL"
+        && (r.sudo_nopasswd_all as String) == "(ALL) NOPASSWD: ALL"
         && (r.parent_transcript_sha256 as String) == "0ff37aa1418aafdc17cd3cd7d44d8577ab758e549fa98b5ad773152a1d3de9b2"
     CitedToAuthority { authority: _ } => false
     TranscribedUncited { read_obligation: _ } => false

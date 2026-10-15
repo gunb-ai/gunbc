@@ -1,23 +1,41 @@
 module gunbc.host.srv1_software_inhabitance_receipt
 
-import std.types { NonEmptyStr, Int, FilePath }
+import std.types { NonEmptyStr, Int, FilePath, List, String }
+import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
 
-// Typed inhabitance reading from srv1 as briansrls uid 1000 at 2026-10-15T01:17:54Z
-// (parent bright-moth-475). Boundary transcription (DESIGN 4b): these fields ARE the probe
-// results. The host surface is derived from this row, so a field cannot drift from the receipt
-// without editing this construction. Next-rung trigger: an executing probe route that writes
-// this record from live argv rather than from a committed transcription.
-//
-// parent_transcript_sha256 is the sha of the 6933-byte session file the parent hashed; it is
-// not a second copy of that file.
+// Receipt of HOST-1 inhabitance on srv1 as briansrls uid 1000 at 2026-10-15T01:17:54Z
+// (parent bright-moth-475). BOUNDARY TRANSCRIPTION (DESIGN 4b): these fields ARE the probe
+// results. parent_transcript_sha256 is the sha of the 6933-byte session file; this row is
+// not a second copy of that file. Next-rung trigger: an executing probe route that writes
+// this record from live argv.
+
+data srv1_os_release_probe: NonEmptyStr = "cat /etc/os-release"
+data srv1_kernel_release_probe: NonEmptyStr = "uname -r"
+
+fn srv1_apparmor_sysctl_probe() -> NonEmptyStr {
+  join(["sysctl -n ", apparmor_restrict_unprivileged_userns_sysctl_name as String], "") as NonEmptyStr
+}
+
+data srv1_sudo_list_probe: NonEmptyStr = "sudo -n -l"
+data srv1_procps_probe: NonEmptyStr = "/usr/bin/kill -V"
+data srv1_timeout_probe: NonEmptyStr = "timeout --version"
+data srv1_git_probe: NonEmptyStr = "git --version"
+data srv1_jq_probe: NonEmptyStr = "jq --version"
+data srv1_systemd_probe: NonEmptyStr = "systemctl --version"
+data srv1_cgroup_delegation_probe: NonEmptyStr = "cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers"
+data srv1_tailscale_probe: NonEmptyStr = "tailscale version"
+data srv1_toolchain_which_probe: NonEmptyStr = "command -v git; command -v jq; command -v timeout; command -v systemd-run"
+data srv1_dpkg_query_probe: NonEmptyStr = "dpkg-query -W -f='${Package} ${Version}\\n' procps coreutils git jq systemd tailscale"
 
 type Srv1SoftwareInhabitanceReading {
   observer_login: NonEmptyStr
   observer_uid: Int
   observed_at: NonEmptyStr
   parent_transcript_sha256: NonEmptyStr
+  probe_commands: List<NonEmptyStr>
   os_version_id: NonEmptyStr
   os_pretty_name: NonEmptyStr
+  os_codename: NonEmptyStr
   kernel_release_label: NonEmptyStr
   apparmor_userns: Int
   procps_version_label: NonEmptyStr
@@ -32,7 +50,8 @@ type Srv1SoftwareInhabitanceReading {
   systemd_package: NonEmptyStr
   tailscale_version_label: NonEmptyStr
   tailscale_package: NonEmptyStr
-  sudo_observed_all: NonEmptyStr
+  sudo_all_as_all: NonEmptyStr
+  sudo_nopasswd_all: NonEmptyStr
   cgroup_controllers: NonEmptyStr
   git_path: FilePath
   jq_path: FilePath
@@ -40,33 +59,48 @@ type Srv1SoftwareInhabitanceReading {
   systemd_run_path: FilePath
 }
 
-fn srv1_software_inhabitance_reading() -> Srv1SoftwareInhabitanceReading {
-  Srv1SoftwareInhabitanceReading {
-    observer_login: "briansrls",
-    observer_uid: 1000,
-    observed_at: "2026-10-15T01:17:54Z",
-    parent_transcript_sha256: "0ff37aa1418aafdc17cd3cd7d44d8577ab758e549fa98b5ad773152a1d3de9b2",
-    os_version_id: "24.04",
-    os_pretty_name: "Ubuntu 24.04.4 LTS",
-    kernel_release_label: "6.8.0-138-generic",
-    apparmor_userns: 1,
-    procps_version_label: "4.0.4",
-    procps_package: "2:4.0.4-4ubuntu3.2",
-    coreutils_version_label: "9.4",
-    coreutils_package: "9.4-3ubuntu6.3",
-    git_version_label: "2.43.0",
-    git_package: "1:2.43.0-1ubuntu7.3",
-    jq_version_label: "jq-1.7",
-    jq_package: "1.7.1-3ubuntu0.24.04.2",
-    systemd_version_label: "255 (255.4-1ubuntu8.17)",
-    systemd_package: "255.4-1ubuntu8.17",
-    tailscale_version_label: "1.102.2",
-    tailscale_package: "1.102.2",
-    sudo_observed_all: "(ALL) NOPASSWD: ALL",
-    cgroup_controllers: "cpu memory pids",
-    git_path: "/usr/bin/git" as FilePath,
-    jq_path: "/usr/bin/jq" as FilePath,
-    timeout_path: "/usr/bin/timeout" as FilePath,
-    systemd_run_path: "/usr/bin/systemd-run" as FilePath,
-  }
+data srv1_software_inhabitance_receipt: Srv1SoftwareInhabitanceReading = Srv1SoftwareInhabitanceReading {
+  observer_login: "briansrls",
+  observer_uid: 1000,
+  observed_at: "2026-10-15T01:17:54Z",
+  parent_transcript_sha256: "0ff37aa1418aafdc17cd3cd7d44d8577ab758e549fa98b5ad773152a1d3de9b2",
+  probe_commands: [
+    srv1_os_release_probe,
+    srv1_kernel_release_probe,
+    srv1_apparmor_sysctl_probe(),
+    srv1_sudo_list_probe,
+    srv1_procps_probe,
+    srv1_timeout_probe,
+    srv1_git_probe,
+    srv1_jq_probe,
+    srv1_systemd_probe,
+    srv1_cgroup_delegation_probe,
+    srv1_tailscale_probe,
+    srv1_toolchain_which_probe,
+    srv1_dpkg_query_probe,
+  ],
+  os_version_id: "24.04",
+  os_pretty_name: "Ubuntu 24.04.4 LTS",
+  os_codename: "noble",
+  kernel_release_label: "6.8.0-138-generic",
+  apparmor_userns: 1,
+  procps_version_label: "4.0.4",
+  procps_package: "2:4.0.4-4ubuntu3.2",
+  coreutils_version_label: "9.4",
+  coreutils_package: "9.4-3ubuntu6.3",
+  git_version_label: "2.43.0",
+  git_package: "1:2.43.0-1ubuntu7.3",
+  jq_version_label: "jq-1.7",
+  jq_package: "1.7.1-3ubuntu0.24.04.2",
+  systemd_version_label: "255 (255.4-1ubuntu8.17)",
+  systemd_package: "255.4-1ubuntu8.17",
+  tailscale_version_label: "1.102.2",
+  tailscale_package: "1.102.2",
+  sudo_all_as_all: "(ALL : ALL) ALL",
+  sudo_nopasswd_all: "(ALL) NOPASSWD: ALL",
+  cgroup_controllers: "cpu memory pids",
+  git_path: "/usr/bin/git" as FilePath,
+  jq_path: "/usr/bin/jq" as FilePath,
+  timeout_path: "/usr/bin/timeout" as FilePath,
+  systemd_run_path: "/usr/bin/systemd-run" as FilePath,
 }

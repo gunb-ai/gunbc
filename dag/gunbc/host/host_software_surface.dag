@@ -30,7 +30,21 @@ import extdeps.external_authority {
   observed_receipt,
 }
 import std.decl_ref { decl_ref }
-import gunbc.host.srv1_software_inhabitance_receipt { srv1_software_inhabitance_reading }
+import gunbc.host.srv1_software_inhabitance_receipt {
+  srv1_software_inhabitance_receipt,
+  srv1_os_release_probe,
+  srv1_kernel_release_probe,
+  srv1_apparmor_sysctl_probe,
+  srv1_sudo_list_probe,
+  srv1_procps_probe,
+  srv1_timeout_probe,
+  srv1_git_probe,
+  srv1_jq_probe,
+  srv1_systemd_probe,
+  srv1_cgroup_delegation_probe,
+  srv1_tailscale_probe,
+  srv1_toolchain_which_probe,
+}
 import extdeps.linux.apparmor_userns {
   apparmor_restrict_unprivileged_userns_sysctl_name,
   apparmor_unprivileged_userns_restricted,
@@ -127,50 +141,21 @@ fn unobserved_standing(probe: NonEmptyStr) -> CitedFigureStanding {
   TranscribedUncited { read_obligation: probe }
 }
 
-// BOUNDARY TRANSCRIPTION (DESIGN 4b). Standing points at srv1_software_inhabitance_reading, the
-// typed probe-result record. srv1_software_surface is derived from that record, so the host row
-// cannot disagree with the receipt without editing the construction. Next-rung trigger: an
-// executing probe route that writes the reading from live argv.
+// BOUNDARY TRANSCRIPTION (DESIGN 4b). Standing points at srv1_software_inhabitance_receipt,
+// the typed probe-result row. srv1_software_surface is derived from that row. observed_receipt
+// admits this fold by name. Next-rung trigger: an executing probe route that writes the receipt
+// from live argv.
 fn srv1_software_inhabitance_ground() -> CitedFigureStanding {
   ObservedByReceipt {
     observed: observed_receipt(receipt: decl_ref(
       module_path: "gunbc.host.srv1_software_inhabitance_receipt",
-      decl_name: "srv1_software_inhabitance_reading",
+      decl_name: "srv1_software_inhabitance_receipt",
     ))
   }
 }
 
-data srv1_os_release_probe: NonEmptyStr = "cat /etc/os-release"
-data srv1_kernel_release_probe: NonEmptyStr = "uname -r"
-
-fn srv1_apparmor_sysctl_probe() -> NonEmptyStr {
-  join(["sysctl -n ", apparmor_restrict_unprivileged_userns_sysctl_name as String], "") as NonEmptyStr
-}
-data srv1_sudo_list_probe: NonEmptyStr = "sudo -n -l"
-data srv1_procps_probe: NonEmptyStr = "/usr/bin/kill -V"
-data srv1_timeout_probe: NonEmptyStr = "timeout --version"
-data srv1_git_probe: NonEmptyStr = "git --version"
-data srv1_jq_probe: NonEmptyStr = "jq --version"
-data srv1_systemd_probe: NonEmptyStr = "systemctl --version"
-data srv1_cgroup_delegation_probe: NonEmptyStr = "cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers"
-data srv1_tailscale_probe: NonEmptyStr = "tailscale version"
-data srv1_toolchain_which_probe: NonEmptyStr = "command -v git; command -v jq; command -v timeout; command -v systemd-run"
-
 fn srv1_software_inhabitance_probe_commands() -> List<NonEmptyStr> {
-  [
-    srv1_os_release_probe,
-    srv1_kernel_release_probe,
-    srv1_apparmor_sysctl_probe(),
-    srv1_sudo_list_probe,
-    srv1_procps_probe,
-    srv1_timeout_probe,
-    srv1_git_probe,
-    srv1_jq_probe,
-    srv1_systemd_probe,
-    srv1_cgroup_delegation_probe,
-    srv1_tailscale_probe,
-    srv1_toolchain_which_probe,
-  ]
+  srv1_software_inhabitance_receipt.probe_commands
 }
 
 fn occurrence_ids_for_host() -> List<ResourceOccurrenceId> {
@@ -339,11 +324,11 @@ fn unobserved_software_surface(host: HostIdentity) -> HostSoftwareSurface {
   )
 }
 
-// srv1 values are derived from srv1_software_inhabitance_reading. jq version_label is the
+// srv1 values are derived from srv1_software_inhabitance_receipt. jq version_label is the
 // binary self-report; jq package_version_label is the dpkg version. Lab deploy reads PATH
 // and the binary label.
 fn srv1_software_surface() -> HostSoftwareSurface {
-  let r = srv1_software_inhabitance_reading()
+  let r = srv1_software_inhabitance_receipt
   let standing = srv1_software_inhabitance_ground()
   software_surface(
     host: operator_host_srv1,
@@ -372,7 +357,9 @@ fn srv1_software_surface() -> HostSoftwareSurface {
     ],
     sudo_policy: HostSudoPolicyFact {
       principal: fleet_posix_operator_principal(),
-      observed_listing: Present { value: r.sudo_observed_all },
+      observed_listing: Present {
+        value: join([r.sudo_all_as_all as String, "\n", r.sudo_nopasswd_all as String], "") as NonEmptyStr
+      },
       standing: standing,
     },
     cgroup: HostCgroupDelegationFact {
@@ -537,7 +524,8 @@ fn host_sudo_observed_all_is_not_the_declared_roster(surface: HostSoftwareSurfac
   match surface.sudo_policy.value.observed_listing {
     Absent => false
     Present { value: listing } =>
-      (listing as String).contains("(ALL) NOPASSWD: ALL")
+      (listing as String).contains("(ALL : ALL) ALL")
+        && (listing as String).contains("(ALL) NOPASSWD: ALL")
         && fleet_posix_operator_sudo_grants().length() == 1
         && surface.sudo_policy.value.principal.posix.name as String == "briansrls"
   }
