@@ -250,6 +250,9 @@ fn run_scoped_federation_named(account_id: String) -> DedicatedFederation? {
 type BootCredentialSource
   = ReviewedMainDedicatedFederation
   | RunScopedApprovedGrant
+
+type BootCredentialStanding
+  = BootCredentialSourceSelected { source: BootCredentialSource }
   | BootCredentialSourceRefused { cause: NonEmptyStr }
 
 data boot_credential_source_emit_refused_poison: String = "__GUNBC_BOOT_CREDENTIAL_SOURCE_REFUSED__ select_boot_credential_source did not admit PatternSelected FederatedScopedGrant or OperatorApprovedCapability; this marker is not a WIF provider or service account, so the committed workflow drift gate goes red rather than emitting a fabricated credential source (DESIGN §5: refuse, never widen)"
@@ -290,11 +293,11 @@ fn boot_credential_effect_off_reviewed_main() -> PrivilegedEffect {
   boot_credential_effect(on_reviewed_main: false)
 }
 
-fn boot_credential_source_from_pattern(on_reviewed_main: Bool, p: AuthorizationPattern) -> BootCredentialSource {
+fn boot_credential_source_from_pattern(on_reviewed_main: Bool, p: AuthorizationPattern) -> BootCredentialStanding {
   match p {
     FederatedScopedGrant =>
       if on_reviewed_main {
-        ReviewedMainDedicatedFederation
+        BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation }
       } else {
         BootCredentialSourceRefused { cause: "FederatedScopedGrant is the reviewed-main dedicated identity; a branch run cannot bind it" as NonEmptyStr }
       }
@@ -302,14 +305,14 @@ fn boot_credential_source_from_pattern(on_reviewed_main: Bool, p: AuthorizationP
       if on_reviewed_main {
         BootCredentialSourceRefused { cause: "OperatorApprovedCapability is the run-scoped grant; reviewed main uses the dedicated identity" as NonEmptyStr }
       } else {
-        RunScopedApprovedGrant
+        BootCredentialSourceSelected { source: RunScopedApprovedGrant }
       }
     HumanOnlyStep { step: _ } => BootCredentialSourceRefused { cause: "the selection named a human-only step, which no workflow credential can perform" as NonEmptyStr }
     OperatorOwnSession => BootCredentialSourceRefused { cause: "the selection named the operator's own session, which a workflow run does not hold" as NonEmptyStr }
   }
 }
 
-fn boot_credential_source_from_selection(on_reviewed_main: Bool, s: AuthorizationPatternSelection) -> BootCredentialSource {
+fn boot_credential_source_from_selection(on_reviewed_main: Bool, s: AuthorizationPatternSelection) -> BootCredentialStanding {
   match s {
     PatternSelected { pattern: p, receipt: _ } => boot_credential_source_from_pattern(on_reviewed_main: on_reviewed_main, p: p)
     ManualStepRequired { step: _, receipt: _ } => BootCredentialSourceRefused { cause: "authorization selection requires a manual step" as NonEmptyStr }
@@ -320,6 +323,6 @@ fn boot_credential_source_from_selection(on_reviewed_main: Bool, s: Authorizatio
   }
 }
 
-fn select_boot_credential_source(on_reviewed_main: Bool) -> BootCredentialSource {
+fn select_boot_credential_source(on_reviewed_main: Bool) -> BootCredentialStanding {
   boot_credential_source_from_selection(on_reviewed_main: on_reviewed_main, s: select_authorization_pattern(e: boot_credential_effect(on_reviewed_main: on_reviewed_main)))
 }
