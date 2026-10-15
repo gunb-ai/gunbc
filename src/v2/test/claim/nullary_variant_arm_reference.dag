@@ -16,6 +16,7 @@ import v2.compiler.infer {
   ConstructNotARecord,
   ConstructVariantArmIdentityUnavailable,
   ConstructVariantArmIdentityContested,
+  ConstructVariantArmBodyUnavailable,
   infer,
   infer_record_construct_read,
   inferred_facts_resolved_type
@@ -348,6 +349,7 @@ test fn a_record_payload_arm_used_as_a_constructor_is_unchanged_holds() -> Bool 
     ConstructNotARecord => false
     ConstructVariantArmIdentityUnavailable => false
     ConstructVariantArmIdentityContested { claimants: _ } => false
+    ConstructVariantArmBodyUnavailable => false
   }
 }
 
