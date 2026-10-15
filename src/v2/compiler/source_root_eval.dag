@@ -2564,7 +2564,7 @@ fn native_module_resolve_verdict(
             context: step.context,
             import_attribution: attribution
           }
-        ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: lexical } =>
+        ResolveWalkAccepted { value: resolved, diagnostics: _, bindings: lexical } =>
           match step.context.resolution {
             Accepted { value: shared, diagnostics: d } =>
               let closure = closure_declarations_demand(shared: shared)
