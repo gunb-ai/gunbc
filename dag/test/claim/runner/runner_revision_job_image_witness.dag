@@ -4,6 +4,7 @@ import std.types { Bool, String }
 import std.algebra { string_contains }
 import gunbc.runner.runner_revision_job_image {
   revision_job_fstab, revision_job_cargo_config, revision_job_rust_dist_unpacked_dir, revision_job_image_tree_commands,
+  revision_job_image_build, RevisionJobImageToolchainClosureMissing,
 }
 import gunbc.runner.runner_revision_job_guest { revision_job_vendor_dir, revision_job_cargo_config_steps }
 import extdeps.exec.command { argv_words }
@@ -27,5 +28,15 @@ test fn the_tree_refuses_without_git_tar_cargo_and_rustc() -> Bool {
     && count(filter(words, w => w == "test -x /r/revision-job-tree/usr/bin/tar")) == 1
     && count(filter(words, w => w == "test -x /r/revision-job-tree/usr/local/bin/cargo")) == 1
     && count(filter(words, w => w == "test -x /r/revision-job-tree/usr/local/bin/rustc")) == 1
+    && count(filter(words, w => w == "test -x /r/revision-job-tree/usr/bin/cc")) == 1
+    && count(filter(words, w => w == "test -x /r/revision-job-tree/usr/bin/ld")) == 1
     && count(revision_job_cargo_config_steps()) == 2
+}
+
+// UNTIL S4b-3c SUPPLIES THE CLOSURE, THE BUILD REFUSES BY NAME before touching anything.
+test fn the_image_build_refuses_without_the_toolchain_closure_naming_what_is_missing() -> Bool {
+  match revision_job_image_build(root: "/nonexistent", rust_dist_dir: "/nonexistent", closure: none) {
+    RevisionJobImageToolchainClosureMissing { missing: m } => join(m, ",") == "git,cc,ld,libc6-dev"
+    _ => false
+  }
 }

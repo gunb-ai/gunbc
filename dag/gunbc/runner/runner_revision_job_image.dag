@@ -88,6 +88,8 @@ fn revision_job_image_tree_commands(root: String, rust_dist_dir: String) -> List
     test_executable_command(path: concat(tree, "/usr/bin/tar")),
     test_executable_command(path: concat(tree, "/usr/local/bin/cargo")),
     test_executable_command(path: concat(tree, "/usr/local/bin/rustc")),
+    test_executable_command(path: concat(tree, "/usr/bin/cc")),
+    test_executable_command(path: concat(tree, "/usr/bin/ld")),
   ]
 }
 
@@ -123,6 +125,23 @@ fn revision_job_run_commands(commands: List<ArgvCommand>) -> Bool {
 type RevisionJobImageBuild
   = RevisionJobImageBuilt { image: String, sha256: NonEmptyStr }
   | RevisionJobImageRefused { reason: String }
+  // The pinned base carries tar but not git and no C toolchain (bright-moth-475's read of the pinned
+  // squashfs on srv1, 2026-10-15: no git, cc, gcc, ld, libc6-dev, xz or make, and a stripped dpkg
+  // database), while rustc on aarch64-unknown-linux-gnu links through cc and three locked crates
+  // (psm, stacker, ring) compile C in their build scripts. An image without that closure would pass a
+  // git/tar/cargo check and fail at the first guest build, so the build refuses here, naming the
+  // inputs, until the closure is supplied by S4b-3c -- never an interim hand-picked list.
+  | RevisionJobImageToolchainClosureMissing { missing: List<String> }
+
+// THE TOOLCHAIN CLOSURE THE IMAGE NEEDS BEYOND THE BASE, supplied by S4b-3c: a pinned .deb set from
+// the noble release pocket of ports.ubuntu.com, verified through the signed InRelease to Packages to
+// SHA-256 chain, closed on its own (the stripped base contributes nothing to the dependency proof).
+// DECLARED FRONTIER (DESIGN 3c), TRIGGER: S4b-3c's closure completeness check green over that set.
+type RevisionJobToolchainClosure sole_constructor {
+  debs: List<String>
+}
+
+data revision_job_toolchain_closure_inputs: List<String> = ["git", "cc", "ld", "libc6-dev"]
 
 fn pinned(artifact_path: String, artifact: gunbc.runner.microvm_guest_artifacts.GuestBaseArtifact) -> Bool {
   match guest_artifact_verdict(artifact: artifact, observed: sha256sum_file_digest_via_shell(path: artifact_path as NonEmptyStr)) {
@@ -134,8 +153,11 @@ fn pinned(artifact_path: String, artifact: gunbc.runner.microvm_guest_artifacts.
   }
 }
 
-fn revision_job_image_build(root: String, rust_dist_dir: String) -> RevisionJobImageBuild {
+fn revision_job_image_build(root: String, rust_dist_dir: String, closure: RevisionJobToolchainClosure?) -> RevisionJobImageBuild {
   let tree = revision_job_tree_path(root: root)
+  match closure {
+  Absent => RevisionJobImageToolchainClosureMissing { missing: revision_job_toolchain_closure_inputs }
+  Present { value: _ } =>
   if !pinned(artifact_path: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact), artifact: runner_guest_base_rootfs_artifact) {
     RevisionJobImageRefused { reason: "the base rootfs does not match its pin" }
   } else if !pinned(artifact_path: runner_guest_base_artifact_path(root: root, artifact: revision_job_rust_dist_artifact), artifact: revision_job_rust_dist_artifact) {
@@ -158,6 +180,7 @@ fn revision_job_image_build(root: String, rust_dist_dir: String) -> RevisionJobI
         Sha256FileDigest { digest: d } => RevisionJobImageBuilt { image: revision_job_image_path(root: root), sha256: d.hex as NonEmptyStr }
       } }
   } }
+  }
 }
 
 // ── installation, verified like the workspace image ────────────────────────────────────────────
