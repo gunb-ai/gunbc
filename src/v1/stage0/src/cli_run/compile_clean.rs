@@ -192,14 +192,6 @@ pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorN
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
-/// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
-pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
-    if compile_clean_policy_read_refuses_gate() {
-        return true;
-    }
-    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
-}
-
 pub(crate) fn compile_clean_all_touched_paths_docs_universe(
     touched_paths: &[String],
 ) -> Result<bool, String> {
@@ -551,41 +543,6 @@ pub(crate) fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
             reason: format!("diff observation failed: {msg}"),
         },
     }
-}
-
-/// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
-/// Instrument path for diagnostic histogram — not for cargo tests.
-///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
-/// dissolves when ROADMAP §1 namespace-only lane closes (import strip + global_bare wiring fixed)
-/// or a floor-enrolled diagnostic-histogram lens subsumes this host transport.
-/// Uses the same resolve kernel as `witness_layer_roots_compile_clean_check`
-/// (`compile_to_resolved` on the whole-tree source closure).
-pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<ErrorNode>>, String> {
-    // The index the closure was loaded from supplies the census and the corpus claim, so a ledger
-    // row naming a deleted module refuses here (review 68429) without a second build (review 68591).
-    let (sources, _index) = compile_clean_whole_tree_sources_and_index()?;
-    let result = v1_compiler_compile::compile_to_resolved_with_options(
-        Rc::new(sources.into()),
-        v1_compiler_compile::default_compile_pipeline_options(),
-    );
-    Ok(result
-        .diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .cloned()
-        .collect())
-}
-
-pub(crate) fn compile_clean_whole_tree_resolved(
-) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
-    // The index the closure was loaded from supplies the census and the corpus claim, so a ledger
-    // row naming a deleted module refuses here (review 68429) without a second build (review 68591).
-    let (sources, _index) = compile_clean_whole_tree_sources_and_index()?;
-    Ok(v1_compiler_compile::compile_to_resolved_with_options(
-        Rc::new(sources.into()),
-        v1_compiler_compile::default_compile_pipeline_options(),
-    ))
 }
 
 fn unlisted_import_rows_from_resolved(
@@ -1384,15 +1341,6 @@ pub fn compile_clean_diagnostic_census(
         classes,
         unlisted_import_rows,
     })
-}
-
-/// CLI compile-clean verdict: resolve/typecheck over the whole-tree source closure
-/// (the standalone `gunbc compile` transport).
-pub fn compile_clean_cli_verdict_whole_tree() -> Result<bool, String> {
-    let result = compile_clean_whole_tree_resolved()?;
-    let graph_ok = result.graph.is_some();
-    let hard = compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref());
-    Ok(graph_ok && !hard)
 }
 
 /// `(class, name)` key for histogram aggregation over hard diagnostics.
