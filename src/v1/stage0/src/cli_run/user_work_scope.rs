@@ -134,11 +134,12 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
     }
 }
 
-// SEED MIRROR of `gunbc.compute.unit_bounds observed_cgroup_bound`: the process's unified-hierarchy
-// cgroup (`0::<path>`) and each ancestor below the hierarchy root, read LEAF FIRST (the `.dag` fold
-// takes its chain in that order and admits the first bounded entry); bounded when one carries a
-// finite memory.max -- decimal and within u64, the `.dag` side's parse_int/checked_int_to_nat range --
-// AND memory.swap.max = 0. An unreadable chain is not a bound.
+// SEED MIRROR of `gunbc.compute.unit_bounds observed_cgroup_bound`, which reads the chain through
+// `extdeps.linux.cgroup_v2_memory`: the process's unified-hierarchy cgroup (`0::<path>`) and every
+// ancestor below the hierarchy root. Bounded when some level carries a finite memory.max (decimal,
+// within u64 -- `parse_cgroup_memory_limit`'s "Limited") AND some level sets memory.swap.max to 0:
+// any ancestor's limit binds and a swap ceiling of 0 anywhere forbids swap below it. A chain with
+// neither file readable is unread; anything else is unbounded.
 // RETAINED, with this file: the reason is that the trampoline must decide before the corpus is
 // resolved, so it cannot evaluate the `.dag` fold; the migration trigger is the file's own (Test/Run
 // wrap emitted natively, this file deletes). Executed by the unit tests below over fixture trees, not
@@ -168,33 +169,34 @@ fn observed_cgroup_bound_in(proc_self_cgroup: &str, sysfs_root: &std::path::Path
         return CgroupBound::Unread;
     };
     let mut any_read = false;
+    let mut binding_limit = false;
+    let mut swap_forbidden = false;
     let mut current = path.trim().trim_end_matches('/').to_string();
-    loop {
+    while !current.is_empty() {
         let dir = format!("{}{current}", sysfs_root.display());
-        let max =
-            std::fs::read_to_string(format!("{dir}/memory.max")).map(|s| s.trim().to_string());
-        let swap =
-            std::fs::read_to_string(format!("{dir}/memory.swap.max")).map(|s| s.trim().to_string());
-        if let (Ok(max), Ok(swap)) = (max, swap) {
+        if let Ok(max) = std::fs::read_to_string(format!("{dir}/memory.max")) {
             any_read = true;
-            if swap == "0"
-                && !max.is_empty()
-                && max.bytes().all(|b| b.is_ascii_digit())
-                && max.parse::<u64>().is_ok()
-            {
-                return CgroupBound::Bounded;
+            if max.trim().parse::<u64>().is_ok() {
+                binding_limit = true;
+            }
+        }
+        if let Ok(swap) = std::fs::read_to_string(format!("{dir}/memory.swap.max")) {
+            any_read = true;
+            if swap.trim().parse::<u64>() == Ok(0) {
+                swap_forbidden = true;
             }
         }
         match current.rfind('/') {
-            Some(0) | None => {
-                return if any_read {
-                    CgroupBound::Unbounded
-                } else {
-                    CgroupBound::Unread
-                };
-            }
             Some(i) => current.truncate(i),
+            None => current.clear(),
         }
+    }
+    if binding_limit && swap_forbidden {
+        CgroupBound::Bounded
+    } else if any_read {
+        CgroupBound::Unbounded
+    } else {
+        CgroupBound::Unread
     }
 }
 
@@ -252,6 +254,15 @@ mod observed_cgroup_bound_tests {
         let t = tree(&[
             ("/system.slice/job.service", "21474836480", "0"),
             ("/system.slice", "max", "max"),
+        ]);
+        assert_eq!(verdict(&t, "/system.slice/job.service"), "bounded");
+    }
+
+    #[test]
+    fn a_limit_on_one_level_and_no_swap_on_another_bounds_the_leaf() {
+        let t = tree(&[
+            ("/system.slice/job.service", "max", "0"),
+            ("/system.slice", "8589934592", "max"),
         ]);
         assert_eq!(verdict(&t, "/system.slice/job.service"), "bounded");
     }
