@@ -1,7 +1,7 @@
 module test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness
 
 import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
-import std.measure { kibibyte, second }
+import std.measure { kibibyte, second, Second }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.filesystem { path_parent_directory }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -38,7 +38,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartRequest,
-  attempt_system_unit_enqueue_start_wait, attempt_system_unit_enqueue_request,
+  attempt_system_unit_enqueue_start, attempt_system_unit_enqueue_start_wait, attempt_system_unit_enqueue_request,
   AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied, AttemptSystemUnitEnqueueRefused,
   attempt_system_unit_launch_host_argv, attempt_system_unit_host_exec_from_launch_argv,
   AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
@@ -52,7 +52,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_request_entry_name, attempt_system_unit_read_claimed_body,
   AttemptSystemUnitClaimedBodyRead, AttemptSystemUnitClaimedBodyRefused,
   attempt_system_unit_launch_entry, attempt_system_unit_launch_function,
-  attempt_system_unit_launcher_busy_exit, attempt_system_unit_launcher_flock_wait,
+  attempt_system_unit_launcher_busy_exit,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
@@ -701,14 +701,14 @@ fn wet_run_sh(script: String) -> Int {
   shell.Exec.RunArgv(program: cmd.program.invocation as String, arguments: cmd.arguments).exit_code
 }
 
-fn wet_flocked_launch_cli_words(instance: HostDashboardInstance, spool_root: String) -> List<String> {
+fn wet_flocked_launch_cli_words(instance: HostDashboardInstance, spool_root: String, wait: Second) -> List<String> {
   match admit_named_argument(name: "instance_root", value: spool_root) {
     NamedArgumentNameEmpty => [] as List<String>
     NamedArgumentNameHoldsSeparator { name: _ } => [] as List<String>
     NamedArgumentAdmitted { argument: arg } =>
       flock_exclusive_wait_words(
         lock_path: attempt_unit_spool_drain_lock_path(instance_root: spool_root) as NonEmptyStr,
-        wait: attempt_system_unit_launcher_flock_wait,
+        wait: wait,
         conflict_exit_code: attempt_system_unit_launcher_busy_exit,
         command: map(
           concat(
@@ -736,6 +736,9 @@ fn wet_answer_is_started_or_refused(reading: AttemptSystemUnitAnswerRead) -> Boo
   }
 }
 
+// TWO REAL DRAINS, NOT FLOCK-WAIT EXPIRY. The holder is the first gunbc launch_cli over this
+// spool; the second wait (30s) is longer than that hold (a refuse-fast undeclared instance_root).
+// Discriminating RED: the same cell on aff3ea58ee9 (pre-flock) leaves a Missing answer.
 test fn two_concurrent_launcher_runs_each_read_their_own_answer() -> Bool {
   let tmp = shell.Mktemp.Dir()
   if !tmp.success {
@@ -743,26 +746,27 @@ test fn two_concurrent_launcher_runs_each_read_their_own_answer() -> Bool {
   } else {
     let root = tmp.path as String
     let inst = srv1_lab_dashboard_instance()
-    let flocked = wet_flocked_launch_cli_words(instance: inst, spool_root: root)
-    if count(flocked) == 0 {
+    let first = wet_flocked_launch_cli_words(instance: inst, spool_root: root, wait: second(count: 5))
+    let second = wet_flocked_launch_cli_words(instance: inst, spool_root: root, wait: second(count: 30))
+    if count(first) == 0 || count(second) == 0 {
       false
     } else {
       attempt_system_unit_spool_prepare(instance_root: root)
-        && match attempt_system_unit_enqueue_start_wait(
+        && match attempt_system_unit_enqueue_start(
           instance_root: root,
           request: wet_word_request(node_id: "n-a", attempt_key: "k1", argv_word: "one"),
         ) {
           AttemptSystemUnitEnqueued { entry: a } =>
-            match attempt_system_unit_enqueue_start_wait(
+            match attempt_system_unit_enqueue_start(
               instance_root: root,
               request: wet_word_request(node_id: "n-b", attempt_key: "k1", argv_word: "two"),
             ) {
               AttemptSystemUnitEnqueued { entry: b } => {
                 let script = join([
-                  wet_quoted_argv(words: flocked),
-                  " &\n",
-                  wet_quoted_argv(words: flocked),
-                  " &\nwait\n",
+                  wet_quoted_argv(words: first),
+                  " &\n/usr/bin/sleep 0.2\n",
+                  wet_quoted_argv(words: second),
+                  "\nwait\n",
                 ], "")
                 let _ = wet_run_sh(script: script)
                 wet_answer_is_started_or_refused(
