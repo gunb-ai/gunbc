@@ -3614,6 +3614,33 @@ fn parse_compiler_identity_digest(
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// Basename of the publisher copy. YAML interpolates `${{ runner.temp }}/` + this name;
+/// keep_generation_one_executable writes that path when RUNNER_TEMP is set. No glob.
+const PARSE_VERDICT_GENERATION_ONE_BASENAME: &str = "v2-native-cli-gen-one";
+
+/// When Actions set `GITHUB_OUTPUT`, bind compiler_identity for the receipts cache key
+/// and `--compiler`. The binary path is the fixed RUNNER_TEMP basename, not an output.
+fn write_parse_verdict_github_outputs(parse_compiler_identity: &str) -> Result<(), String> {
+    if parse_compiler_identity.is_empty() {
+        return Ok(());
+    }
+    let Ok(path) = std::env::var("GITHUB_OUTPUT") else {
+        return Ok(());
+    };
+    if path.is_empty() {
+        return Ok(());
+    }
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("V2-NATIVE REFUSAL cause=GithubOutputUnwritable — {path}: {e}"))?;
+    writeln!(f, "compiler_identity={parse_compiler_identity}")
+        .map_err(|e| format!("V2-NATIVE REFUSAL cause=GithubOutputUnwritable — {path}: {e}"))?;
+    Ok(())
+}
+
 /// THE GENERATION-ONE EXECUTABLE OUTLIVES THE RUN, because generation two is that executable
 /// emitting `v2.compiler.compile` and nothing else may stand in for it. The probe root is NOT
 /// retained: once the executable is copied out and its copy re-hashes to the identity the run
@@ -3680,6 +3707,26 @@ fn keep_generation_one_executable(prepared: &EmittedPreparation) -> Result<PathB
             )
         })?;
     }
+    if let Ok(runner_temp) = std::env::var("RUNNER_TEMP") {
+        if !runner_temp.is_empty() {
+            let publisher =
+                std::path::Path::new(&runner_temp).join(PARSE_VERDICT_GENERATION_ONE_BASENAME);
+            std::fs::copy(&kept, &publisher).map_err(|e| {
+                format!(
+                    "V2-NATIVE REFUSAL cause=GenOneExecutableNotKept — copy {} -> {}: {e}",
+                    kept.display(),
+                    publisher.display()
+                )
+            })?;
+            if sha256_file(&publisher)? != prepared.binary_identity {
+                return Err(format!(
+                    "V2-NATIVE REFUSAL cause=GenOneExecutableNotKept — {} does not hash to {}",
+                    publisher.display(),
+                    prepared.binary_identity
+                ));
+            }
+        }
+    }
     Ok(kept)
 }
 
@@ -3710,6 +3757,7 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
             .join("cli_door_emission_check"),
     )?;
     let generation_one_executable = keep_generation_one_executable(&prepared)?;
+    write_parse_verdict_github_outputs(&prepared.parse_compiler_identity)?;
     // The counters are carried and not adjudicated here, on the same rule `run_self_host` follows:
     // a non-clean build is an observation that did not hold, a refusal above is the subject never
     // having been reached, and the instrument seam is the one place that knows the difference.

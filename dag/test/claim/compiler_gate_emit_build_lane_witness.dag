@@ -16,19 +16,16 @@ import gunbc.witness.compiler_gate_workflow {
 }
 import gunbc.parse_verdict_publish {
   materialization_publish_if,
-  parse_verdict_identity_step,
-  parse_verdict_identity_blob_step,
   parse_verdict_identity_blob_save_step,
-  parse_verdict_identity_blob_step_name,
   parse_verdict_identity_blob_save_step_name,
   parse_verdict_publish_walk_step,
   parse_verdict_publish_save_step,
-  parse_verdict_identity_step_name,
   parse_verdict_publish_step_name,
   parse_verdict_save_step_name,
   parse_verdict_publish_cache_key,
-  parse_verdict_publish_step_id,
+  parse_verdict_publish_command,
   parse_verdict_compiler_output,
+  parse_verdict_generation_one_basename,
 }
 import gunbc.parse_verdict_schema {
   parse_verdict_request_family,
@@ -50,6 +47,7 @@ import gunbc.emitted_subject_build_gate {
   native_step_memory_bind_env_name, native_step_memory_trip_text, native_step_memory_trip,
   native_step_memory_envelope_env_name, native_step_memory_envelope_slot_value,
   NativeStepMemoryInput, native_step_memory_inputs,
+  emitted_subject_v2_native_cli_step_id,
   emit_build_memory_envelope_lines
 }
 import std.measure { byte_size_count }
@@ -496,31 +494,27 @@ fn publisher_save_is_cache_save_only(step: Step) -> Bool {
   }
 }
 
-fn publisher_identity_walk_save_triple(identity: Step, walk: Step, save: Step) -> Bool {
-  (step_name_text(step: identity) == parse_verdict_identity_step_name)
-    && match identity {
-      RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => true
-      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
-    }
-    && (step_name_text(step: walk) == parse_verdict_publish_step_name)
+fn publisher_walk_then_saves(walk: Step, receipts: Step, identity: Step) -> Bool {
+  (step_name_text(step: walk) == parse_verdict_publish_step_name)
     && match walk {
       RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => true
       UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
     }
-    && publisher_save_is_cache_save_only(step: save)
+    && publisher_save_is_cache_save_only(step: receipts)
+    && (step_name_text(step: identity) == parse_verdict_identity_blob_save_step_name())
 }
 
 fn publisher_order_holds(steps: List<Step>) -> Bool {
   match list_head(xs: steps) {
     Absent => false
-    Present { value: identity } =>
+    Present { value: walk } =>
       match list_head(xs: skip(xs: steps, n: 1)) {
         Absent => false
-        Present { value: walk } =>
+        Present { value: receipts } =>
           match list_head(xs: skip(xs: steps, n: 2)) {
             Absent => false
-            Present { value: save } =>
-              publisher_identity_walk_save_triple(identity: identity, walk: walk, save: save)
+            Present { value: identity } =>
+              publisher_walk_then_saves(walk: walk, receipts: receipts, identity: identity)
                 || publisher_order_holds(steps: skip(xs: steps, n: 1))
           }
       }
@@ -536,14 +530,22 @@ test fn the_required_job_binds_the_parse_verdict_publisher() -> Bool {
 
 test fn a_pr_head_run_never_publishes() -> Bool {
   let guard = materialization_publish_if()
-  (step_if_condition(step: parse_verdict_identity_step()) == guard)
-    && (step_if_condition(step: parse_verdict_publish_walk_step()) == guard)
+  (step_if_condition(step: parse_verdict_publish_walk_step()) == guard)
     && (step_if_condition(step: parse_verdict_publish_save_step()) == guard)
-    && (step_if_condition(step: parse_verdict_identity_blob_step()) == guard)
     && (step_if_condition(step: parse_verdict_identity_blob_save_step()) == guard)
     && string_contains(s: guard, pattern: "refs/heads/main")
     && string_contains(s: guard, pattern: "push")
     && (string_contains(s: guard, pattern: "pull_request") == false)
+}
+
+test fn the_walk_argv_has_no_lookup_shell() -> Bool {
+  let cmd = parse_verdict_publish_command()
+  string_contains(s: cmd, pattern: "--write-identity")
+    && string_contains(s: cmd, pattern: "--receipts")
+    && string_contains(s: cmd, pattern: parse_verdict_generation_one_basename)
+    && (string_contains(s: cmd, pattern: "for f in") == false)
+    && (string_contains(s: cmd, pattern: "GITHUB_OUTPUT") == false)
+    && (string_contains(s: cmd, pattern: "mkdir") == false)
 }
 
 fn step_with_keys(step: Step) -> List<String> {
@@ -575,14 +577,25 @@ test fn the_sha_identity_save_key_is_sha_only() -> Bool {
 
 test fn the_committed_witnesses_yml_binds_the_sha_identity_save() -> Bool {
   let y = Filesystem.Read(path: ".github/workflows/witnesses.yml", expect: ExpectSuccess).content
-  string_contains(s: y, pattern: parse_verdict_identity_blob_step_name)
-    && string_contains(s: y, pattern: parse_verdict_identity_blob_save_step_name())
+  string_contains(s: y, pattern: parse_verdict_identity_blob_save_step_name())
     && string_contains(s: y, pattern: parse_compiler_sha_identity_cache_prefix)
+    && string_contains(s: y, pattern: emitted_subject_v2_native_cli_step_id)
+    && string_contains(s: y, pattern: parse_verdict_generation_one_basename)
+    && string_contains(s: y, pattern: "--write-identity")
+    && string_contains(s: y, pattern: "--receipts")
+    && (string_contains(s: y, pattern: "for f in") == false)
+    && (string_contains(s: y, pattern: ">> \"$GITHUB_OUTPUT\"") == false)
+    && (string_contains(s: y, pattern: "mkdir -p") == false)
+}
+
+test fn the_seed_keep_uses_the_publisher_basename() -> Bool {
+  let runner = Filesystem.Read(path: native_lane_runner_source_path, expect: ExpectSuccess).content
+  string_contains(s: runner, pattern: parse_verdict_generation_one_basename)
 }
 
 test fn the_gha_object_key_carries_compiler_identity_and_sha() -> Bool {
   let k = parse_verdict_publish_cache_key()
   string_contains(s: k, pattern: join(["gunbc-materialization-", parse_verdict_request_family, "-"], ""))
-    && string_contains(s: k, pattern: join(["steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_compiler_output], ""))
+    && string_contains(s: k, pattern: join(["steps.", emitted_subject_v2_native_cli_step_id, ".outputs.", parse_verdict_compiler_output], ""))
     && string_contains(s: k, pattern: "github.sha")
 }
