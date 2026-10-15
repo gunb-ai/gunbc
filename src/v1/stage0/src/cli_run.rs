@@ -17835,11 +17835,10 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                         return;
                     }
                 };
-                // ONE FILE THROUGH THE REVISION-DECLARATION READER: it tokenizes with the
-                // annotation channel, parses in an occurrence scope and binds every comment to
-                // its gap, exactly as the compile frontend does, so the sweep reads each file the
-                // way a compile would. Called with a single source, so files stay independent
-                // and nothing resolves across them. The head grammar is named here because this
+                // ONE FILE THROUGH THE REVISION-DECLARATION READER: tokenize, parse in an
+                // occurrence scope, then declaration records from the modules and occurrence
+                // transport. It does not bind annotations (the compile frontend does that) and
+                // nothing resolves across files. The head grammar is named here because this
                 // reader has no defaulting wrapper.
                 let path_str = path.to_string_lossy().to_string();
                 let fill = crate::v1_compiler_compile::parse_revision_declarations_with_environment(
