@@ -2254,36 +2254,61 @@ pub fn type_head_carrier(name: String) -> String {
     }
 }
 
-pub fn type_head_is_declared_carrier_alias(name: String) -> bool {
-    match crate::std_types::container_template_algebra(crate::v1_std_core::qualified_last_segment(
-        name.clone(),
-    )) {
-        Some(_) => true,
-        std::option::Option::None => false,
+fn env_for_declaration_module(
+    env: Rc<crate::v1_compiler_infer_env::TypeEnv>,
+    module_path: String,
+) -> Option<Rc<crate::v1_compiler_infer_env::TypeEnv>> {
+    if env.module_path.clone() == module_path {
+        Some(env)
+    } else {
+        env.parents
+            .iter()
+            .cloned()
+            .find(|p| p.module_path.clone() == module_path)
     }
 }
 
-pub fn type_heads_agree(
-    left: Rc<Node>,
-    right: Rc<Node>,
-    left_name: String,
-    right_name: String,
-) -> bool {
-    if (type_head_is_declared_carrier_alias(left_name.clone())
-        || type_head_is_declared_carrier_alias(right_name.clone()))
-    {
-        (type_head_carrier(left_name.clone()) == type_head_carrier(right_name.clone()))
-    } else {
-        match left.declaration.clone() {
-            Some(ld) => match right.declaration.clone() {
-                Some(rd) => {
-                    ((ld.module_path.clone() == rd.module_path.clone())
-                        && (ld.decl_name.clone() == rd.decl_name.clone()))
-                }
-                std::option::Option::None => false,
-            },
-            std::option::Option::None => false,
+fn alias_rhs_of_decl(
+    item_ref: Rc<crate::std_decl_ref::DeclarationRef>,
+    env: Rc<crate::v1_compiler_infer_env::TypeEnv>,
+) -> Option<Rc<Node>> {
+    match env_for_declaration_module(env, item_ref.module_path.clone()) {
+        Some(declaring) => {
+            match v1_rt::map_get(&declaring.str_bindings, item_ref.decl_name.clone()) {
+                Some(binding) => binding.alias_rhs.clone(),
+                None => None,
+            }
         }
+        None => None,
+    }
+}
+
+fn type_head_declaration(
+    n: Rc<Node>,
+    text: Rc<TextJudgment>,
+) -> Option<Rc<crate::std_decl_ref::DeclarationRef>> {
+    match n.declaration.clone() {
+        Some(d) => match (*text.clone()).clone() {
+            TextJudgment::TextJudgedIn { env, .. } => match alias_rhs_of_decl(d.clone(), env) {
+                Some(rhs) => match rhs.declaration.clone() {
+                    Some(rd) => Some(rd),
+                    None => Some(d),
+                },
+                None => Some(d),
+            },
+            TextJudgment::TextNotAsked { .. } => Some(d),
+        },
+        None => None,
+    }
+}
+
+pub fn type_heads_agree(left: Rc<Node>, right: Rc<Node>, text: Rc<TextJudgment>) -> bool {
+    match (
+        type_head_declaration(left, text.clone()),
+        type_head_declaration(right, text),
+    ) {
+        (Some(ld), Some(rd)) => crate::std_decl_ref::declaration_ref_eq(ld, rd),
+        _ => false,
     }
 }
 
@@ -3114,8 +3139,7 @@ pub fn node_type_equals_core(
                                             if !type_heads_agree(
                                                 left.clone(),
                                                 right.clone(),
-                                                left_name.clone(),
-                                                right_name.clone(),
+                                                text.clone(),
                                             ) {
                                                 false
                                             } else {
@@ -3205,8 +3229,7 @@ pub fn node_type_equals_core(
                                                                 if !type_heads_agree(
                                                                     left.clone(),
                                                                     right.clone(),
-                                                                    left_name.clone(),
-                                                                    right_name.clone(),
+                                                                    text.clone(),
                                                                 ) {
                                                                     false
                                                                 } else {
