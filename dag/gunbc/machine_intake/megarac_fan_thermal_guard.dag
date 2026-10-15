@@ -2,7 +2,7 @@ module gunbc.machine_intake.megarac_fan_thermal_guard
 
 import std.types { Bool, List, NonEmptyStr }
 import std.optional { Present, Absent }
-import std.measure { Celsius, Percent, celsius, celsius_count }
+import std.measure { Celsius, CelsiusDelta, Percent, celsius, celsius_count, celsius_delta, celsius_delta_count }
 import extdeps.external_authority {
   CitedFigureStanding,
   CitedToAuthority,
@@ -44,10 +44,10 @@ fn megarac_manual_duty_soc_ceiling() -> Celsius {
 // POLICY MARGIN, NOT A DATASHEET FIGURE. Ampere cites 100C continuous junction; a trip at that
 // wall is too late for manual low duty. Fifteen degrees is the same span the fleet quiet curve
 // uses between emergency full duty (85C) and that junction maximum.
-data megarac_manual_duty_soc_trip_margin: Celsius = celsius(15)
+data megarac_manual_duty_soc_trip_margin: CelsiusDelta = celsius_delta(15)
 
 fn megarac_manual_duty_soc_trip() -> Celsius {
-  celsius(celsius_count(megarac_manual_duty_soc_ceiling()) - celsius_count(megarac_manual_duty_soc_trip_margin))
+  celsius(celsius_count(megarac_manual_duty_soc_ceiling()) - celsius_delta_count(megarac_manual_duty_soc_trip_margin))
 }
 
 data megarac_manual_duty_dimm_trip: Celsius = celsius(85)
