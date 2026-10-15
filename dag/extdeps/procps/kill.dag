@@ -1,6 +1,6 @@
 module extdeps.procps.kill
 
-import std.types { Int, List, NonEmptyStr, String, Bool }
+import std.types { Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
@@ -40,32 +40,20 @@ fn procps_kill_standing() -> CitedFigureStanding {
 fn kill_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/kill")
 
 // THE QUIRK IS A REALIZATION FACT, NOT "THE HOST'S kill". A shell builtin named kill (bash
-// `kill -V` is "invalid signal specification") is not procps-ng. Only execve of kill_program
-// (`/usr/bin/kill`) has the negative-PGID option-eating behaviour.
+// `kill -V` is "invalid signal specification") is not procps-ng. ProcpsNgArgvKill IS execve of
+// kill_program (`/usr/bin/kill`); the arm cannot hold another program.
 type KillSignalRealization
-  = ExecveKill { program: ProgramIdentity }
+  = ProcpsNgArgvKill
   | ShellBuiltinKill
-
-fn procps_ng_argv_kill_realization() -> KillSignalRealization {
-  ExecveKill { program: kill_program() }
-}
-
-fn procps_ng_kill_quirk_applies(realization: KillSignalRealization) -> Bool {
-  match realization {
-    ShellBuiltinKill => false
-    ExecveKill { program: p } => (p.invocation as String) == (kill_program().invocation as String)
-  }
-}
 
 fn procps_ng_kill_term_pgid_argv(pgid: Int) -> List<String> {
   [kill_program().invocation as String, "-TERM", "--", concat("-", to_string(pgid))]
 }
 
 fn procps_ng_kill_term_pgid_form(realization: KillSignalRealization, pgid: Int) -> List<String>? {
-  if procps_ng_kill_quirk_applies(realization: realization) {
-    Present { value: procps_ng_kill_term_pgid_argv(pgid: pgid) }
-  } else {
-    none
+  match realization {
+    ProcpsNgArgvKill => Present { value: procps_ng_kill_term_pgid_argv(pgid: pgid) }
+    ShellBuiltinKill => none
   }
 }
 

@@ -27,6 +27,7 @@ import gunbc.host.host_software_surface {
   srv1_user_manager_protect_home_wrote_into_home,
   user_manager_wrote_into_home_observed_on_this_host_obligation,
   host_kill_signal_realization,
+  host_kill_signal_realizations,
 }
 import extdeps.linux.apparmor_userns {
   apparmor_restrict_unprivileged_userns_sysctl_name,
@@ -49,10 +50,10 @@ import gunbc.host.srv1_software_inhabitance_receipt {
 import extdeps.procps.kill {
   procps_ng_kill_term_pgid_argv,
   procps_ng_kill_term_pgid_form,
-  procps_ng_kill_quirk_applies,
-  procps_ng_argv_kill_realization,
   procps_kill_standing,
   kill_program,
+  KillSignalRealization,
+  ProcpsNgArgvKill,
   ShellBuiltinKill,
   procps_pgid_signal_host_consumer_frontier,
 }
@@ -170,34 +171,53 @@ test fn srv1_procps_kill_uses_end_of_options() -> Bool {
   match host_kill_signal_realization(surface: srv1_software_surface()) {
     Absent => false
     Present { value: realization } =>
-      procps_ng_kill_quirk_applies(realization: realization)
-        && match procps_ng_kill_term_pgid_form(realization: realization, pgid: 1234) {
-          Absent => false
-          Present { value: argv } =>
-            match argv[0] {
-              Absent => false
-              Present { value: bin } =>
-                (bin as String) == (kill_program().invocation as String)
-                  && match argv[2] {
-                    Absent => false
-                    Present { value: sep } => (sep as String) == "--"
-                  }
-                  && argv != [
-                    kill_program().invocation as String,
-                    "-TERM",
-                    concat("-", to_string(1234)),
-                  ]
-            }
-        }
+      match realization {
+        ShellBuiltinKill => false
+        ProcpsNgArgvKill =>
+          match procps_ng_kill_term_pgid_form(realization: ProcpsNgArgvKill, pgid: 1234) {
+            Absent => false
+            Present { value: argv } =>
+              match argv[0] {
+                Absent => false
+                Present { value: bin } =>
+                  (bin as String) == (kill_program().invocation as String)
+                    && match argv[2] {
+                      Absent => false
+                      Present { value: sep } => (sep as String) == "--"
+                    }
+                    && argv != [
+                      kill_program().invocation as String,
+                      "-TERM",
+                      concat("-", to_string(1234)),
+                    ]
+              }
+          }
+      }
+  }
+}
+
+fn realization_is_shell_builtin(r: KillSignalRealization) -> Bool {
+  match r {
+    ShellBuiltinKill => true
+    ProcpsNgArgvKill => false
+  }
+}
+
+fn realization_is_procps_argv(r: KillSignalRealization) -> Bool {
+  match r {
+    ProcpsNgArgvKill => true
+    ShellBuiltinKill => false
   }
 }
 
 test fn a_shell_builtin_kill_does_not_inherit_the_procps_pgid_quirk() -> Bool {
-  !procps_ng_kill_quirk_applies(realization: ShellBuiltinKill)
+  let realized = host_kill_signal_realizations(surface: srv1_software_surface())
+  any(realized, realization_is_shell_builtin)
+    && any(realized, realization_is_procps_argv)
     && procps_ng_kill_term_pgid_form(realization: ShellBuiltinKill, pgid: 1234) == none
-    && procps_ng_kill_quirk_applies(realization: procps_ng_argv_kill_realization())
-    && procps_ng_kill_term_pgid_form(realization: procps_ng_argv_kill_realization(), pgid: 1234)
+    && procps_ng_kill_term_pgid_form(realization: ProcpsNgArgvKill, pgid: 1234)
       == Present { value: procps_ng_kill_term_pgid_argv(pgid: 1234) }
+    && host_kill_signal_realizations(surface: unobserved_software_surface(host: operator_host_srv2)).length() == 0
 }
 
 test fn unobserved_procps_does_not_keep_srv1s_kill_form() -> Bool {

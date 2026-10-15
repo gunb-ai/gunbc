@@ -51,7 +51,12 @@ import extdeps.linux.apparmor_userns {
   apparmor_unprivileged_userns_restricted,
 }
 import extdeps.exec.program { ProgramIdentity }
-import extdeps.procps.kill { kill_program, KillSignalRealization, ExecveKill }
+import extdeps.procps.kill {
+  kill_program,
+  KillSignalRealization,
+  ProcpsNgArgvKill,
+  ShellBuiltinKill,
+}
 import extdeps.git { git_program }
 import extdeps.tools.jq { jq_program }
 import extdeps.systemd.systemctl { systemctl_path_resolved_program }
@@ -462,15 +467,41 @@ fn host_program_version(surface: HostSoftwareSurface, program: ProgramIdentity) 
   )
 }
 
-fn host_kill_signal_realization(surface: HostSoftwareSurface) -> KillSignalRealization? {
+fn srv1_observed_kill_realizations() -> List<KillSignalRealization> {
+  [ProcpsNgArgvKill, ShellBuiltinKill]
+}
+
+fn host_kill_signal_realizations(surface: HostSoftwareSurface) -> List<KillSignalRealization> {
   match host_program_version(surface: surface, program: kill_program()) {
-    Absent => none
+    Absent => []
     Present { value: fact } =>
       match fact.version_label {
-        Absent => none
-        Present { value: _ } => Present { value: ExecveKill { program: fact.program } }
+        Absent => []
+        Present { value: _ } =>
+          if host_identity_eq(a: surface.host, b: operator_host_srv1) {
+            if srv1_software_inhabitance_receipt.kill_shell_builtin_listed {
+              srv1_observed_kill_realizations()
+            } else {
+              [ProcpsNgArgvKill]
+            }
+          } else {
+            [ProcpsNgArgvKill]
+          }
       }
   }
+}
+
+fn host_kill_signal_realization(surface: HostSoftwareSurface) -> KillSignalRealization? {
+  fold(host_kill_signal_realizations(surface: surface), init: none, f: (acc, r) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        match r {
+          ProcpsNgArgvKill => Present { value: ProcpsNgArgvKill }
+          ShellBuiltinKill => none
+        }
+    }
+  )
 }
 
 // OBSERVATION PLUS A BET, NOT A CITED systemd FACT (DESIGN 4d). srv1 on 2026-10-14: a user-manager

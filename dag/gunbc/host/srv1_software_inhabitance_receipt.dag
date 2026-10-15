@@ -1,6 +1,6 @@
 module gunbc.host.srv1_software_inhabitance_receipt
 
-import std.types { NonEmptyStr, Int, FilePath, List, String }
+import std.types { NonEmptyStr, Int, FilePath, List, String, Bool }
 import std.optional { Absent, Present }
 import extdeps.exec.program { ProgramIdentity }
 import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
@@ -149,6 +149,7 @@ type Srv1SoftwareInhabitanceReading {
   apparmor_userns: Int
   procps_version_stdout: NonEmptyStr
   procps_version_label: NonEmptyStr
+  kill_shell_builtin_listed: Bool
   procps_package: NonEmptyStr?
   coreutils_version_label: NonEmptyStr
   coreutils_package: NonEmptyStr?
@@ -204,6 +205,7 @@ data srv1_software_inhabitance_receipt: Srv1SoftwareInhabitanceReading = Srv1Sof
   apparmor_userns: 1,
   procps_version_stdout: "kill from procps-ng 4.0.4",
   procps_version_label: "4.0.4",
+  kill_shell_builtin_listed: true,
   procps_package: none,
   coreutils_version_label: "9.4",
   coreutils_package: none,
