@@ -14120,7 +14120,39 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
         }
       Absent => acc
     }
+  } else if (formal.children |> count) >= 2
+    && (formal.children |> count) == (actual.children |> count)
+    && unify_children_heads_agree(formal: formal, actual: actual, source_indices: source_indices) {
+    unify_generic_children(formals: formal.children, actuals: actual.children, generic_names: generic_names, source_indices: source_indices, acc: acc)
   } else { acc }
+}
+
+// N-ARY BINDING DESCENT, LOCKSTEP, ONLY WHERE THE HEADS AGREE AND THE ARITIES MATCH. The arity-one arm
+// above stopped at the first two-child constructor, so a generic under one
+// (`List<KeyedRow<SubjectKey<K>, V>>`) was never bound, and the emitter's bound forwarding, which
+// reads this unifier, could not see K. This is BINDING ONLY: first-wins is unchanged and nothing
+// here refuses; a head or arity disagreement binds nothing and is left to the argument check.
+fn unify_children_heads_agree(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let formal_name = authored_name_at(source_indices: source_indices, node: formal)
+  formal_name != "" && qualified_last_segment(name: formal_name) == qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: actual))
+}
+
+fn unify_generic_children(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
+  match formals |> first {
+    Absent => acc
+    Present { value: f } =>
+      match actuals |> first {
+        Absent => acc
+        Present { value: a } =>
+          unify_generic_children(
+            formals: formals |> skip(1),
+            actuals: actuals |> skip(1),
+            generic_names: generic_names,
+            source_indices: source_indices,
+            acc: unify_generics(formal: child_type_node(ch: f), actual: child_type_node(ch: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
+          )
+      }
+  }
 }
 
 // A callable denotes its parameters in params and its return in inferred (make_callable_type), so

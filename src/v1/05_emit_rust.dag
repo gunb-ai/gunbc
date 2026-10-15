@@ -222,7 +222,7 @@ import v1.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
 }
 import v1.compiler.infer {
-  is_lambda_expr,
+  is_lambda_expr, unify_generics,
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
@@ -9076,7 +9076,32 @@ fn v1_call_forwarding_forwarded_param_names(
           )
       }
     )
-    v1_union_bound_param_names(base: v1_union_bound_param_names(base: [], extra: forwarded), extra: arrow_forwarded)
+    let unified = callee_value_params
+    |> flat_map(cp =>
+      match map_get(arg_by_name, cp.name) {
+        Absent => []
+        Present { value: arg_node } =>
+          let solved = unify_generics(
+            formal: param_node_type_expr(n: cp),
+            actual: resolved_type(n: arg_node),
+            generic_names: callee_generic_param_names,
+            source_indices: si,
+            acc: empty_map()
+          )
+          callee_bound_param_names |> flat_map(g =>
+            match map_get(solved, g) {
+              Absent => []
+              Present { value: bound_to } =>
+                let wn = authored_name_at(source_indices: si, node: bound_to)
+                if wrapper_generic_param_names |> any(w => w == wn) { [wn] } else { [] }
+            }
+          )
+      }
+    )
+    v1_union_bound_param_names(
+      base: v1_union_bound_param_names(base: v1_union_bound_param_names(base: [], extra: forwarded), extra: arrow_forwarded),
+      extra: unified
+    )
   }
 }
 
