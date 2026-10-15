@@ -2578,6 +2578,121 @@ fn v1_item_wf_propagated_clone_bounded_param_names(
   )
 }
 
+// EVERY GENERIC INSIDE A KEY-POSITION TYPE ARGUMENT EARNS THE BOUND, AT ANY DEPTH. The key type of
+// `Map<SubjectKey<K>, V>` is `SubjectKey<K>`, and the im::HashMap bridges require that whole type to
+// be Eq + Hash; a derived `SubjectKey<K>: Hash` holds only when `K: Hash`, so `K` owes the bound
+// although it is not the head of the key. Reading only the key's head name left `K` bare (rustc
+// E0277 on the std.keyed_roster index). The walk collects every name in the key expression and
+// the caller filters to the fn's generics, so a generic that never reaches a key position stays
+// unbounded (pinned by the negative control in map_key_derive_requirement_witness).
+// The key subtree is walked through child_type_node at EVERY level: a child that carries an
+// inference is a wrapper whose structure (its type arguments) lives on the resolved type, so
+// reading `.children` of the raw child saw `Wrapper` and lost the `K` inside `Wrapper<K>`; only a
+// bare `K` key was found, through the head. The same resolved node answers the head and the
+// arguments, so one walk covers both.
+fn v1_type_expr_all_names(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let node = v1_wf_child_type_node(ch: type_expr, source_indices: source_indices)
+  concat(
+    [authored_name_at(source_indices: source_indices, node: node)],
+    node.children |> flat_map(c => v1_type_expr_all_names(type_expr: c, source_indices: source_indices))
+  )
+}
+
+fn v1_map_key_nested_names_in_type_expr(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let own = match v1_type_expr_keyed_map_verdict(type_expr: type_expr, source_indices: source_indices) {
+    KeyedMap =>
+      match type_expr.children |> first {
+        Present { value: key_child } => v1_type_expr_all_names(type_expr: key_child, source_indices: source_indices)
+        Absent => []
+      }
+    NotKeyedMap => []
+    KeyedMapUndecidable { name: _ } => []
+  }
+  concat(
+    own,
+    type_expr.children |> flat_map(ch =>
+      v1_map_key_nested_names_in_type_expr(type_expr: child_type_node(ch: ch), source_indices: source_indices)
+    )
+  )
+}
+
+
+// THE SAME LAW, AT A TYPE DECLARATION. A struct or enum whose field is a keyed map over `Wrapper<K>`
+// owes `K: Eq + Hash` on its OWN header: the derives it carries (Clone, PartialEq, ...) copy the
+// header bounds onto each impl, and the map's bridges require them (rustc E0277/E0369 on the
+// std.keyed_roster index carriers). Seeded from the field type expressions through the SAME
+// key-position walker the fn signatures use, then propagated through declared types by the
+// trait-agnostic well-formedness fixpoint (a carrier naming `KeyedRosterIndex<K, V>` owes what its
+// declaration owes). A generic that reaches no key position is never seeded, so it stays bare
+// (negative control in map_key_derive_requirement_witness). Hand-written FreeMonoid/Set impls
+// still copy only the Clone half of the header (v1_item_header_bound_spellings): a declared
+// boundary, no carrier of that shape holds a key-position generic today.
+fn v1_map_key_bound_seed_for_item(
+  round: CloneBoundRound,
+  type_name: String,
+  item: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> CloneBoundRound {
+  let names = v1_item_field_type_exprs(item: item, source_indices: source_indices)
+    |> flat_map(te => v1_map_key_nested_names_in_type_expr(type_expr: te, source_indices: source_indices))
+  item.params |> fold(init: round, f: (acc, p) =>
+    let param_name = generic_param_name_at(n: p, source_indices: source_indices)
+    if names |> any(n => n == param_name) {
+      v1_clone_bound_round_add(round: acc, type_name: type_name, param_name: param_name)
+    } else {
+      acc
+    }
+  )
+}
+
+fn v1_map_key_bounded_type_params(
+  type_decl_items: TypeDeclIndex,
+  source_indices: Map<String, NewlineIndex>
+) -> Map<String, Set<String>> {
+  let generic_type_names = v1_generic_declared_type_names(type_decl_items: type_decl_items)
+  let seeded = generic_type_names |> fold(init: CloneBoundRound { bounds: empty_map(), added: 0 }, f: (acc, type_name) =>
+    match map_get(type_decl_items.by_identity, type_name) {
+      Present { value: item } =>
+        v1_map_key_bound_seed_for_item(round: acc, type_name: type_name, item: item, source_indices: source_indices)
+      Absent => acc
+    }
+  )
+  v1_clone_bound_fixpoint_loop(
+    generic_type_names: generic_type_names,
+    type_decl_items: type_decl_items,
+    bounds: seeded.bounds,
+    remaining: (generic_type_names |> count) + 1,
+    source_indices: source_indices
+  )
+}
+
+fn v1_item_map_key_bounded_param_names(
+  item_identity: String,
+  generic_param_names: List<String>,
+  bounds: Map<String, Set<String>>
+) -> List<String> {
+  v1_item_clone_bounded_param_names(item_identity: item_identity, generic_param_names: generic_param_names, bounds: bounds)
+}
+
+// One header: each parameter renders the union of what it earned, Clone first then the key bounds.
+fn v1_emit_type_params_with_map_key_bounds(
+  params: List<Node>,
+  clone_param_names: List<String>,
+  key_param_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  v1_emit_type_params_with_bounds(
+    params: params,
+    bounds_by_param: params |> fold(init: empty_map(), f: (m, p) =>
+      let n = generic_param_name_at(n: p, source_indices: source_indices)
+      let c = if clone_param_names |> any(x => x == n) { ["Clone"] } else { [] }
+      let k = if key_param_names |> any(x => x == n) { ["std::cmp::Eq", "std::hash::Hash"] } else { [] }
+      map_insert(m, n, concat(c, k))
+    ),
+    source_indices: source_indices
+  )
+}
+
 fn v1_emit_type_params_with_clone_bounds(
   params: List<Node>,
   clone_param_names: List<String>,
