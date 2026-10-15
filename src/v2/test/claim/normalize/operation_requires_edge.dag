@@ -2,16 +2,16 @@ module v2.test.claim.normalize.operation_requires_edge
 
 import v2.compiler.normalize { normalize, normalize_census }
 import v2.compiler.normalized_tree { CensusTree, NormalizedTree, census_tree_binding_source }
-import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, empty_canonical_symbol_set, resolve_node, resolve_requirement_member_refusal_optional, scope_from_namespace }
+import v2.compiler.resolve { empty_module_outcome_index, Namespace, NotDeclaring, ResolveContext, empty_canonical_symbol_set, resolve_node, resolve_requirement_member_refusal_optional, scope_from_namespace }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.declaration_marker { test_code_index_empty }
-import v2.std.collection { empty_map }
+
 import v2.std.resolution_policy { NamespaceOnlyY }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.std.qualified_name { declaration_reference_node }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, empty_map }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_surface_edge }
 import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
@@ -383,7 +383,7 @@ fn req_refusal_reason(resources: FreeMonoid<Symbol>) -> Symbol {
     test_code: test_code_index_empty(),
     declared_in: module_qn,
     imported_origins: empty_map(),
-    module_outcomes: []
+    module_outcomes: empty_module_outcome_index()
   }
   match resolve_node(
     ctx: ResolveContext {

@@ -120,11 +120,10 @@ data kernel_grounding_rows: List<KernelGrounding> = [
   KernelGrounding { source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat"), min: Present { value: 0 }, max: Absent }
 ]
 
-// WHICH KERNEL MINTS STAND FOR A CORPUS DECLARATION (std.literal_elaboration
 // KernelMintDeclaration). The seed's kernel Optional -- what `T?` resolves to -- is
 // v2.std.optional Optional, the corpus's one declaration of that coproduct. Bound here so a
 // Present or Absent arm carries that declaration's identity whether it was reached through the
-// sugar or through an import.
+// sugar or through an import. This table is the Optional mint only.
 data kernel_optional_mint_name: String = "Optional"
 
 data kernel_mint_declaration_rows: List<KernelMintDeclaration> = [

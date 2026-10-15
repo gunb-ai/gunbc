@@ -514,9 +514,11 @@ fn issue_grant<P, Q, S>(
 
 // DECLARED FRONTIER (DESIGN 3c). grant_authorizes_reservation is consumed by
 // gunbc.runner.runner_attempt_launch plan_attempt_launch, which is the agreement half of FCI-3's
-// re-read: an absent, corrupt, or disagreeing Grant yields zero jailer argv. The durable
-// re-read from fabric_allocation_store remains a frontier of that same launch until the store
-// carries grant facts; this rule stays the agreement counterpart of issue_grant.
+// re-read: an absent, corrupt, or disagreeing Grant yields zero jailer argv. The durable re-read
+// for a cell-backed grant is gunbc.fabric.fabric_cell_grant: the cell's hold owner is the grant key,
+// and the controller plans through gunbc.runner.runner_attempt_launch plan_attempt_launch_cell_granted
+// on a snapshot whose holder was re-derived from the store. This rule stays the agreement
+// counterpart of issue_grant for a grant presented with its money account in one process.
 
 // THE AGREEMENT COUNTERPART OF issue_grant, HOMED BESIDE THE ISSUER RATHER THAN AT A CONSUMER.
 // A grant that fences money proves the money; it proves nothing about WHICH execution was

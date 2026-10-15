@@ -24,7 +24,7 @@ import v2.compiler.parse {
 }
 import v2.std.compilers.lexing { TokenStream, token_stream_remaining_count }
 import v2.std.integer { Int }
-import v2.compiler.normalize { normalize, normalize_scoped }
+import v2.compiler.normalize { normalize_scoped }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.name_resolve {
   Admission,
@@ -210,7 +210,7 @@ fn program_assembly_phase_tokenize(
 // `ParseExprRejected` carries no provenance state, by construction, because the parse core
 // backtracks and a failed branch's mints are abandoned by design. Reusing those ids is sound
 // exactly while nothing retains a refused parse's node loci; the precondition and the carrier that
-// would break it are named on `v2.compiler.compile` `native_test_context_absorb`, which is where
+// would break it are named on `v2.compiler.source_root_eval` `native_test_context_absorb`, which is where
 // the reuse actually happens.
 fn program_assembly_phase_parse_seeded(
   tokens: Outcome<TokenStream>,
@@ -271,7 +271,7 @@ fn program_assembly_phase_normalize_seeded(
   match parsed {
     Rejected { diagnostics: d } => ProgramAssemblyNormalizedPhase { outcome: Rejected { diagnostics: d }, alloc: seed, spans: span_index_empty() }
     Accepted { value: artifact, diagnostics: od } =>
-      match normalize_scoped(parse_tree: artifact.tree, allocator: scoped_occurrence_allocator(alloc: seed, scope: scope)) {
+      match normalize_scoped(parse_tree: artifact.tree, allocator: scoped_occurrence_allocator(alloc: seed, scope: scope), spans: artifact.span_index) {
         Rejected { diagnostics: d } =>
           ProgramAssemblyNormalizedPhase {
             outcome: bind_outcome_accepted(od: od, inner: Rejected { diagnostics: d }),
@@ -372,7 +372,7 @@ fn program_assembly_read_to_normalized_root_seeded(
         produced: Rejected { diagnostics: d }
       }
     Accepted { value: artifact, diagnostics: od } =>
-      match normalize_scoped(parse_tree: artifact.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
+      match normalize_scoped(parse_tree: artifact.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope), spans: artifact.span_index) {
         Rejected { diagnostics: d } =>
           ProgramAssemblySeededReadResult {
             alloc: artifact.alloc,
@@ -393,7 +393,7 @@ fn program_assembly_read_to_normalized_root_seeded(
 // `program_assembly_read_to_normalized_root_prepared` and its nullary sibling
 // `program_assembly_read_to_normalized_root`: a second per-file front-end composition that still
 // performed the per-file allocator reset. This change moved its last real consumer
-// (`v2.compiler.compile` `native_test_context_fold_step`) onto the seeded door, which left the pair
+// (`v2.compiler.source_root_eval` `native_test_context_fold_step`) onto the seeded door, which left the pair
 // reachable from nothing -- DESIGN section 3c's "a pub declaration with no call site in the
 // closure".
 //

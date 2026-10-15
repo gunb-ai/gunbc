@@ -3,7 +3,7 @@ module v2.native_lane_fixture.control
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // THE required-v2-native LANE'S LIVE-VERDICT CONTROL PAIR (authority:
-// gunbc.witness.v2_native_route). These two declarations exist so the lane can prove its
+// v2.workflow.v2_native_route). These two declarations exist so the lane can prove its
 // verdict path is LIVE rather than green-by-construction: a route that cannot distinguish
 // `false` from `true` must never report a pass. The lane's host harness names both identities
 // explicitly — they are controls, never universe members: the declarations are plain `fn`,

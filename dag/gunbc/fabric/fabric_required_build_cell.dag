@@ -8,7 +8,10 @@ import std.content_hash {
 }
 import std.durable_compare_and_set { CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasUnreadableSlot }
 import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldFree, durable_hold_owner_equal }
-import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, WorkKey }
+import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, WorkKey, ExecutionAttemptKey, GrantKey }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import std.durable_compare_and_set { CasGeneration }
+import gunbc.fabric.fabric_cell_grant { cell_grant_owner_at }
 import product.fabric.demand { Demand }
 import product.fabric.supply { SupplierOffer }
 import product.fabric.sanitation { CellId }
@@ -164,7 +167,21 @@ type RequiredBuildCellSnapshot sole_constructor {
   reservation_content: ContentHash
   cell_members: List<FabricCellMember>
   resource_boundary_digest: NonEmptyStr
+  holder: RequiredBuildCellHolder
 }
+
+// WHO THE HOLD IS FOR, AS THE SNAPSHOT'S PRODUCER JUDGED IT. A reservation-held cell (FCI-1, and
+// the workspace path) is owned by the money reservation reference; a grant-held cell (FCI-2,
+// gunbc.fabric.fabric_cell_grant) is owned by the grant key, re-derived here at the generation read.
+// The planner's grant arm reads HeldByGrant off the sealed snapshot, so it cannot be told a cell is
+// granted that this producer did not find granted.
+type RequiredBuildCellHolder
+  = HeldByReservation
+  | HeldByGrant { attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>, grant: GrantKey }
+
+type RequiredBuildCellHolderExpectation
+  = ExpectReservationHolder
+  | ExpectGrantHolder { attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey> }
 
 type RequiredBuildCellObservation
   = RequiredBuildCellObserved { snapshot: RequiredBuildCellSnapshot }
@@ -172,6 +189,10 @@ type RequiredBuildCellObservation
   | ReservationUnreadable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
   | ReservationPayloadUndecodable { slot_key: NonEmptyStr, detail: NonEmptyStr }
   | ReservationPayloadWorkMismatch { slot_key: NonEmptyStr }
+  // A grant was expected and the cell is held under the reservation-reference owner written before
+  // the grant cutover. That reservation may still be running, so this is neither free nor foreign:
+  // nothing is planned over the cell until it is released or proven ended.
+  | ReservationHeldPreCutover { slot_key: NonEmptyStr, generation: Int }
   | SelectedOfferCellMismatch { slot_key: NonEmptyStr, executor: NonEmptyStr }
   | CellSubstrateNotConverged { cell: CellId }
   | UnownedCell { cell: CellId }
@@ -278,12 +299,66 @@ fn observe_required_build_cell_wet(
     work: demand.work, demand: demand.id, offer: offer.id, executor: offer.executor)
 }
 
+// The grant-held cell: the same hold and substrate reads, with the owner judged as the grant key
+// for this attempt at the generation the slot reports.
+fn observe_granted_cell_wet(
+  root: NonEmptyStr,
+  host: HostIdentity,
+  slot: RunnerSlotIdentity,
+  demand: Demand<NonEmptyStr>,
+  offer: SupplierOffer<NonEmptyStr>,
+  attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
+) -> RequiredBuildCellObservation {
+  observe_required_build_cell_expecting(root: root, host: host, slot: slot,
+    work: demand.work, demand: demand.id, offer: offer.id, executor: offer.executor,
+    expected: ExpectGrantHolder { attempt: attempt })
+}
+
+type HolderJudgement
+  = HolderMatches { holder: RequiredBuildCellHolder }
+  | HolderPreCutover
+  | HolderMismatch
+
+fn judge_cell_holder(
+  held: DurableHoldOwnerRef,
+  expected: RequiredBuildCellHolderExpectation,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+  slot_key: NonEmptyStr,
+  generation: CasGeneration,
+) -> HolderJudgement {
+  let reservation_owner = fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand, offer: offer))
+  match expected {
+    ExpectReservationHolder =>
+      if durable_hold_owner_equal(left: held, right: reservation_owner) { HolderMatches { holder: HeldByReservation } }
+      else { HolderMismatch }
+    ExpectGrantHolder { attempt: attempt } => {
+      let owner = cell_grant_owner_at(work: work, attempt: attempt, offer: offer, slot_key: slot_key, generation: generation)
+      if durable_hold_owner_equal(left: held, right: owner) { HolderMatches { holder: HeldByGrant { attempt: attempt, grant: (owner as String) as GrantKey } } }
+      else if durable_hold_owner_equal(left: held, right: reservation_owner) { HolderPreCutover }
+      else { HolderMismatch }
+    }
+  }
+}
+
 // Both CI and workspace consumers observe the same actual hold and owned substrate.
 fn observe_required_build_cell_for_identity(
   root: NonEmptyStr, host: HostIdentity, slot: RunnerSlotIdentity,
   work: FabricIdentity<NonEmptyStr, WorkKey>,
   demand: FabricIdentity<NonEmptyStr, DemandKey>, offer: FabricIdentity<NonEmptyStr, OfferKey>,
   executor: NonEmptyStr,
+) -> RequiredBuildCellObservation {
+  observe_required_build_cell_expecting(root: root, host: host, slot: slot, work: work, demand: demand,
+    offer: offer, executor: executor, expected: ExpectReservationHolder)
+}
+
+fn observe_required_build_cell_expecting(
+  root: NonEmptyStr, host: HostIdentity, slot: RunnerSlotIdentity,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>, offer: FabricIdentity<NonEmptyStr, OfferKey>,
+  executor: NonEmptyStr,
+  expected: RequiredBuildCellHolderExpectation,
 ) -> RequiredBuildCellObservation {
   let slot_key = fabric_cell_allocation_key(slot: slot)
   if (executor as String) != (slot_key as String) {
@@ -297,12 +372,11 @@ fn observe_required_build_cell_for_identity(
           HoldPayloadUndecodable { detail: d } => ReservationPayloadUndecodable { slot_key: slot_key, detail: d }
           HoldPayloadDecoded { state: DurableHoldFree { released_by: _ } } => ReservationAbsent { slot_key: slot_key }
           HoldPayloadDecoded { state: DurableHoldHeld { owner: held } } =>
-            if !durable_hold_owner_equal(
-              left: held,
-              right: fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand, offer: offer)),
-            ) {
-              ReservationPayloadWorkMismatch { slot_key: slot_key }
-            } else {
+            match judge_cell_holder(held: held, expected: expected, work: work, demand: demand, offer: offer,
+              slot_key: slot_key, generation: version.generation) {
+            HolderMismatch => ReservationPayloadWorkMismatch { slot_key: slot_key }
+            HolderPreCutover => ReservationHeldPreCutover { slot_key: slot_key, generation: version.generation as Int }
+            HolderMatches { holder: holder } =>
               match fabric_cell_observation_outcome(decision: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host))) {
                 FabricCellObservationDenied { host: _, blocked: _ } => CellSubstrateNotConverged { cell: fabric_cell_id_for_slot(slot: slot) }
                 FabricCellObservationNotApplicable { host: _ } => CellSubstrateNotConverged { cell: fabric_cell_id_for_slot(slot: slot) }
@@ -326,6 +400,7 @@ fn observe_required_build_cell_for_identity(
                         reservation_content: version.content,
                         cell_members: selected,
                         resource_boundary_digest: shape.boundary.state_digest,
+                        holder: holder,
                       } }
                     }
                   }
@@ -398,6 +473,7 @@ fn required_build_cell_lifetime_sample(observation: RequiredBuildCellObservation
     ReservationUnreadable { slot_key: _, cause: _ } => RequiredBuildCellLifetimeSampleUndecodable
     ReservationPayloadUndecodable { slot_key: _, detail: _ } => RequiredBuildCellLifetimeSampleUndecodable
     ReservationPayloadWorkMismatch { slot_key: _ } => RequiredBuildCellLifetimeSampleUndecodable
+    ReservationHeldPreCutover { slot_key: _, generation: _ } => RequiredBuildCellLifetimeSampleUndecodable
     SelectedOfferCellMismatch { slot_key: _, executor: _ } => RequiredBuildCellLifetimeSampleUndecodable
     CellSubstrateNotConverged { cell: _ } => RequiredBuildCellLifetimeSampleUndecodable
     UnownedCell { cell: _ } => RequiredBuildCellLifetimeSampleUndecodable
@@ -508,6 +584,7 @@ fn required_build_cell_lifetime_verdict(
       }
     ReservationPayloadUndecodable { slot_key: _, detail: _ } => RequiredBuildCellObservationRefused
     ReservationPayloadWorkMismatch { slot_key: _ } => RequiredBuildCellObservationRefused
+    ReservationHeldPreCutover { slot_key: _, generation: _ } => RequiredBuildCellObservationRefused
     SelectedOfferCellMismatch { slot_key: _, executor: _ } => RequiredBuildCellObservationRefused
     CellSubstrateNotConverged { cell: _ } => RequiredBuildCellObservationRefused
     UnownedCell { cell: _ } => RequiredBuildCellObservationRefused

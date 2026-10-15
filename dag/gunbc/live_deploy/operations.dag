@@ -26,6 +26,8 @@ import extdeps.tools.gnu_coreutils {
 import extdeps.tools.diffutils { diffutils_cmp_program }
 import gunbc.fleet.fleet_posix_accounts { fleet_visudo_binary_path, fleet_cp_binary_path, fleet_mv_binary_path }
 import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.exec.command { argv_words }
+import extdeps.sudo.visudo { visudo_policy_check_command }
 import gunbc.shell_command_text {
   shell_command_intent,
   shell_literal_words,
@@ -254,7 +256,7 @@ fn deploy_stage_visudo_check_command(stage_name: String) -> String {
 // file sudo will IGNORE for its ownership (root:ghrunner, say) passes -c. sudo reads a drop-in only
 // when it is owned by sudoers_uid:sudoers_gid (default 0:0) and is not group- or world-writable.
 fn installed_visudo_policy_check_command(path: String) -> String {
-  shell_privileged_command_text_of_argv(argv: [fleet_visudo_binary_path as String, "-c", "-O", "-P", "-f", path])
+  shell_command_text_of_argv(argv: argv_words(command: visudo_policy_check_command(file: path)))
 }
 
 // A PRIVILEGED FIXED-PATH READ INTO THE STAGE: install copies a root-only file to the staging
