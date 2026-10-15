@@ -56,6 +56,7 @@ import gunbc.remote_shell_command {
   RemoteExecCommandLiveConfirmationObserved,
   remote_exec_command_live_confirmation,
   SimpleCommandArgvRefused,
+  RedirectNewlineInRemoteCommandString,
   Unknown,
   openbmc_dropbear_interpretation,
   remote_exec_command_rendered,
@@ -1517,6 +1518,8 @@ fn openbmc_remote_jq_refusal_text(cause: OpenBmcRemoteJqRefusal) -> String {
           "remote jq cutover is gated on the remote-shell interpretation: the RFC 4254 command string must be single-quote encoded for a POSIX shell, but no live target has confirmed one -- run remote_exec_command_live_confirmation against a live OpenBMC/Dropbear target and supply the observed interpretation (DESIGN 4b/5: refuse rather than fabricate)"
         SimpleCommandArgvRefused { cause: _ } =>
           "remote jq command string could not be emitted by the grammar-owned shell encoder"
+        RedirectNewlineInRemoteCommandString =>
+          "remote jq command string refused: a redirection pathname carried a newline, which cannot inhabit an RFC 4254 command string"
       }
   }
 }

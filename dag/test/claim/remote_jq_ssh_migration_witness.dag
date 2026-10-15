@@ -29,6 +29,7 @@ import gunbc.remote_shell_command {
   RemoteExecCommandLiveConfirmationUnexecuted,
   RemoteExecInterpretationUnknown,
   SimpleCommandArgvRefused,
+  RedirectNewlineInRemoteCommandString,
   remote_exec_command_rendered,
   Unknown,
 }
@@ -183,6 +184,7 @@ test fn remote_jq_execute_gates_on_unknown_interpretation() -> Bool {
               match inner {
                 RemoteExecInterpretationUnknown => true
                 SimpleCommandArgvRefused { cause: _ } => false
+                RedirectNewlineInRemoteCommandString => false
               }
           }
       }
