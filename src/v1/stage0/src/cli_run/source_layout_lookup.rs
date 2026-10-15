@@ -7,6 +7,8 @@
 //! `LayoutTreeDag` → `dag`) and the one eliding root (`v2`). Drift against that
 //! policy source is the unit test `layout_tree_directory_literals_match_policy_source`.
 //! The self-host inhabitance of `module_file` is `v2.test.claim.source_layout_lookup`.
+//! Seed-growth receipt: `gunbc.run_demand_acquire_seed_growth`
+//! `run_demand_acquire_seed_growth_justification`.
 
 #![allow(dead_code)]
 

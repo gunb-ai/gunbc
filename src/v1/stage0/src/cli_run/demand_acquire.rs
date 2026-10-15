@@ -10,6 +10,9 @@
 //! Remaining tree-scale reads on this path: none. Census, graph facts and
 //! reconcile underlays run over the acquired set. `gunbc compile` still walks
 //! the tree (parse-as-check); that is a named other consumer, not this verb.
+//!
+//! Seed-growth receipt: `gunbc.run_demand_acquire_seed_growth`
+//! `run_demand_acquire_seed_growth_justification`.
 
 use super::entry_resolve::{
     new_multi_entry_index_acquired, parsed_file_references, resolve_entry_with_index,
