@@ -16,6 +16,7 @@ pub use crate::std_measure::Second;
 pub use crate::std_measure::{second, second_count};
 pub use crate::std_nat::nat_range_inclusive;
 pub use crate::std_nat::Nat;
+pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, HttpStatus};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -72,16 +73,7 @@ pub fn rfc5789_patch_authority() -> Rc<ExternalAuthority> {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum HttpMethod {
@@ -111,16 +103,7 @@ pub fn rfc9110_status_codes_authority() -> Rc<ExternalAuthority> {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum HttpStatusClass {

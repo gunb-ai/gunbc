@@ -128,7 +128,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceFile {
     pub path: String,
     pub content: String,
@@ -143,7 +143,7 @@ pub fn compiler_pipeline_entry() -> CompilerEntryDriver {
     CACHED.with(|c: &CompilerEntryDriver| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PipelineResult {
     pub files: Rc<Vec<Rc<TextFile>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -190,7 +190,7 @@ pub fn frontend_prepared_authored_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendPrepared {
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub annotations: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
@@ -391,14 +391,12 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
     })
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TestReferenceOccurrence {
     pub module_name: String,
     pub referrer: String,
@@ -3435,17 +3433,17 @@ pub fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CensusFillParse {
+pub struct ParsedRevisionDeclarations {
     pub modules: Rc<Vec<Rc<Node>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub occurrence_transport: Rc<OccurrenceTransport>,
 }
 
-pub fn parse_census_fill_sources_with(
+pub fn parse_revision_declarations_with_environment(
     sources: Rc<Vec<Rc<SourceFile>>>,
     environment: Rc<ParseEnvironment>,
-) -> Rc<CensusFillParse> {
+) -> Rc<ParsedRevisionDeclarations> {
     {
         let parsed = sources.iter().cloned().fold(
             Rc::new(FrontendAccum {
@@ -3513,7 +3511,7 @@ pub fn parse_census_fill_sources_with(
         );
         let parse_results = parsed.parse_results.clone();
         let module_inputs = parsed.module_inputs.clone();
-        Rc::new(CensusFillParse {
+        Rc::new(ParsedRevisionDeclarations {
             modules: Rc::new({
                 let mut __result = Vec::new();
                 for input in module_inputs.iter().cloned() {
@@ -3538,17 +3536,6 @@ pub fn parse_census_fill_sources_with(
             })),
         })
     }
-}
-
-pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusFillParse> {
-    parse_census_fill_sources_with(sources.clone(), dag_parse_environment())
-}
-
-pub fn parse_census_fill_sources_with_environment(
-    sources: Rc<Vec<Rc<SourceFile>>>,
-    environment: Rc<ParseEnvironment>,
-) -> Rc<CensusFillParse> {
-    parse_census_fill_sources_with(sources.clone(), environment.clone())
 }
 
 pub fn resolve_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CompileResult> {

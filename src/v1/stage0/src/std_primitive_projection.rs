@@ -22,7 +22,7 @@ pub fn primitive_identity_slug_prefix() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PrimitiveIdentity {
     pub slug: NonEmptyStr,
 }
@@ -44,7 +44,7 @@ pub fn primitive_identity_runtime_name(identity: Rc<PrimitiveIdentity>) -> Strin
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ProjectionFidelity {
     HostRealizedSeam,
@@ -63,14 +63,14 @@ impl ProjectionFidelity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PrimitiveProjection {
     pub primitive: Rc<PrimitiveIdentity>,
     pub declaration: Rc<DeclarationRef>,
     pub fidelity: Rc<ProjectionFidelity>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PrimitiveProjectionAnswer {
     DeclarationProjectsPrimitive {
@@ -340,25 +340,25 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
         ),
         primitive_projection_row(
             primitive_empty_map(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "empty_map_primitive_delegate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
             primitive_map_insert(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "map_insert_primitive_delegate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
             primitive_lookup(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "map_lookup_primitive_delegate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
             primitive_get(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "list_at_primitive_delegate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
@@ -412,31 +412,31 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
         ),
         primitive_projection_row(
             primitive_map_insert(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "map_insert".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
             primitive_lookup(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "map_lookup".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
             primitive_get(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "list_at_optional".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
             primitive_empty_map(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "empty_map".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
             primitive_map_get(),
-            "v2.std.collection".to_string(),
+            "v2.std.witness".to_string(),
             "map_get_checked".to_string(),
             Rc::new(ProjectionFidelity::DivergentProjection {
                 divergence:

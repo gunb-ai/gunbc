@@ -34,7 +34,7 @@ import v2.extdeps.languages.typescript {
   ts_fn_add_lex,
   ts_fn_add_lex_rules
 }
-import std.algebra { Cons, Empty, list_append }
+import std.algebra { Cons, Empty, list_append, empty_map }
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
@@ -46,10 +46,7 @@ import v2.std.compilers.target_model {
   value_expr_projection_bundle_node, target_model_emit_transforms_empty}
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v2.std.collection {
-  Map,
-  empty_map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,

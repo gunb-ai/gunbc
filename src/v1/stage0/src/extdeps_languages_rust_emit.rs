@@ -14,6 +14,7 @@ pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_emit_model::SimpleMethodSpec;
+pub use crate::std_optional::Optional;
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::*;
 use crate::std_trait_derive_shape::PairCompletionBody::{
@@ -218,12 +219,12 @@ pub fn fresh_rust_value_binding_name(blocked: Rc<Vec<String>>, prefix: String) -
                 (blocked.clone().len() as i64),
             )]),
         );
-        candidates.iter().cloned().fold(
-            std::option::Option::None,
-            |found: Option<String>, candidate: String| {
+        candidates
+            .iter()
+            .cloned()
+            .fold(std::option::Option::None, |found: _, candidate: String| {
                 rust_value_binding_choose_unblocked(found, candidate.clone(), blocked.clone())
-            },
-        )
+            })
     }
 }
 
@@ -626,7 +627,7 @@ pub fn rust_refusing_int_negation_helper() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RuntimeFunction {
     pub name: String,
     pub bridge_name: String,
@@ -728,7 +729,7 @@ pub fn rt_passes_by_ref(name: String) -> bool {
     v1_rt::map_contains_key(&rt_ref_map_functions(), name.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HigherOrderMethodSpec {
     pub method_name: String,
     pub inline_template: String,
@@ -764,7 +765,7 @@ pub fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustPairCompletionSpelling {
     pub capability_key: PairCompletionOp,
     pub method: String,

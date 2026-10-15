@@ -98,7 +98,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum SizeExpr {
     SizeConst {
@@ -120,7 +120,7 @@ pub enum SizeExpr {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CostExpr {
     CostConst {
@@ -156,16 +156,7 @@ pub enum CostExpr {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    serde::Serialize,
-    serde::Deserialize,
-    std::hash::Hash,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[serde(tag = "_variant")]
 pub enum Certainty {
@@ -173,7 +164,7 @@ pub enum Certainty {
     Conservative,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexitySummary {
     pub work: Rc<CostExpr>,
     pub span: Rc<CostExpr>,
@@ -182,7 +173,7 @@ pub struct ComplexitySummary {
     pub peak_space: Option<Rc<CostExpr>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostInternTable {
     pub summaries: Rc<HashMap<String, Rc<ComplexitySummary>>>,
 }
@@ -228,20 +219,20 @@ pub fn evict_summary(table: Rc<CostInternTable>, func_name: String) -> Rc<CostIn
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccInfo {
     pub members: Rc<Vec<String>>,
     pub member_set: Rc<BTreeSet<String>>,
     pub pattern: Rc<LoweringTarget>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccBuildAcc {
     pub assigned: Rc<BTreeSet<String>>,
     pub index: Rc<HashMap<String, Rc<SccInfo>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccResult {
     pub index: Rc<HashMap<String, Rc<SccInfo>>>,
     pub topo_order: Rc<Vec<String>>,
@@ -249,13 +240,13 @@ pub struct SccResult {
     pub call_graph: Rc<CallGraph>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserStateParam {
     pub name: String,
     pub index: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ParserResultSource {
     ParserResultAdvance {
@@ -289,38 +280,38 @@ impl ParserResultSource {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserProgressEdge {
     pub caller: String,
     pub callee: String,
     pub progress: DescentEvidence,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserProgressEnv {
     pub state_aliases: Rc<HashMap<String, DescentEvidence>>,
     pub result_sources: Rc<HashMap<String, Rc<ParserResultSource>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserProgressAcc {
     pub edges: Rc<Vec<Rc<ParserProgressEdge>>>,
     pub env: Rc<ParserProgressEnv>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescentCheckAcc {
     pub ok: bool,
     pub vars: Rc<HashMap<String, bool>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EvidenceBlockAcc {
     pub evidence: Option<DescentEvidence>,
     pub vars: Rc<HashMap<String, bool>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccEdgeBlockAcc {
     pub edges: Rc<Vec<Rc<ParserProgressEdge>>>,
     pub vars: Rc<HashMap<String, bool>>,
@@ -7121,14 +7112,16 @@ pub fn collect_scc_independent_dim_edges(
             for name in members.iter().cloned() {
                 __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-            let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+            let tree_edge_seed = v1_rt::rc_empty_map::<String, DescentEvidence>();
+let tree_edge_map = entry.params.clone().iter().cloned().fold(tree_edge_seed.clone(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
 let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
 let param_map = param_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
 });
-let list_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+let list_edge_seed = v1_rt::rc_empty_map::<String, DescentEvidence>();
+let list_edge_map = entry.params.clone().iter().cloned().fold(list_edge_seed.clone(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
 let list_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), false, true, si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), list_vars.clone(), scc_name_set.clone(), false, true, measure_params.clone(), si.clone());
@@ -7136,7 +7129,8 @@ let param_map = param_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, D
 pick_best_param_edges(best_map, param_map.clone())
 });
 let all_keys = v1_rt::concat(Rc::new(v1_rt::map_keys(&tree_edge_map)), Rc::new(v1_rt::map_keys(&list_edge_map)));
-let unique_keys = all_keys.iter().cloned().fold(v1_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
+let unique_seed = v1_rt::rc_empty_map::<String, bool>();
+let unique_keys = all_keys.iter().cloned().fold(unique_seed.clone(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
 Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
                 let tree_ev = match v1_rt::map_get(&tree_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
@@ -7208,7 +7202,8 @@ pub fn collect_scc_tree_parser_dim_edges(
                     for name in members.iter().cloned() {
                         __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-                    let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+                    let tree_edge_seed = v1_rt::rc_empty_map::<String, DescentEvidence>();
+let tree_edge_map = entry.params.clone().iter().cloned().fold(tree_edge_seed.clone(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                         let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
 let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
@@ -7218,7 +7213,8 @@ pick_best_param_edges(best_map, param_map.clone())
 let my_parser_edges = Rc::new({ let mut __result = Vec::new(); for pe in all_parser_edges.iter().cloned() { if (pe.caller.clone() == name.clone()) { __result.push(pe); } } __result });
 let parser_edge_map = my_parser_edges.iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 let all_keys = v1_rt::concat(Rc::new(v1_rt::map_keys(&tree_edge_map)), Rc::new(v1_rt::map_keys(&parser_edge_map)));
-let unique_keys = all_keys.iter().cloned().fold(v1_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
+let unique_seed = v1_rt::rc_empty_map::<String, bool>();
+let unique_keys = all_keys.iter().cloned().fold(unique_seed.clone(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
 Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
                         let tree_ev = match v1_rt::map_get(&tree_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
@@ -8488,14 +8484,14 @@ pub fn cost_of_method_by_shape(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexityViolation {
     pub func_name: String,
     pub reason: String,
     pub span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructuralBoundResult {
     pub func_name: String,
     pub param: String,
@@ -8504,7 +8500,7 @@ pub struct StructuralBoundResult {
     pub span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexityReport {
     pub function_classes: Rc<HashMap<String, String>>,
     pub space_classes: Rc<HashMap<String, String>>,
@@ -8988,7 +8984,7 @@ pub fn short_var_name(index: i64) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Legend {
     pub substitution: Rc<HashMap<String, String>>,
     pub suffix: String,
@@ -9214,7 +9210,7 @@ pub fn collect_size_vars(expr: Rc<CostExpr>) -> Rc<Vec<String>> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeduplicateAcc {
     pub seen: Rc<HashMap<String, bool>>,
     pub out: Rc<Vec<String>>,
@@ -9242,7 +9238,7 @@ pub fn deduplicate(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FuncEntry {
     pub name: String,
     pub body: Rc<Node>,
@@ -9251,18 +9247,16 @@ pub struct FuncEntry {
     pub is_tail_recursive: bool,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RecursionContext;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SummaryResult {
     pub summary: Rc<ComplexitySummary>,
     pub table: Rc<CostInternTable>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopoBuildAcc {
     pub table: Rc<CostInternTable>,
     pub classes: Rc<HashMap<String, String>>,
@@ -9273,7 +9267,7 @@ pub struct TopoBuildAcc {
     pub processed: Rc<HashMap<String, bool>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MatchCostAccum {
     pub result: Rc<SummaryResult>,
     pub branch_costs: Rc<Vec<Rc<CostExpr>>>,
@@ -10560,8 +10554,9 @@ pub fn build_complexity_report(
 ) -> Rc<ComplexityReport> {
     {
         let si = source_indices.clone();
+        let func_index_seed = v1_rt::rc_empty_map::<String, Rc<FuncEntry>>();
         let func_index = func_entries.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<FuncEntry>>(),
+            func_index_seed.clone(),
             |acc: Rc<HashMap<String, Rc<FuncEntry>>>, entry: Rc<FuncEntry>| {
                 v1_rt::rc_map_insert(acc, entry.name.clone(), entry.clone())
             },
@@ -10613,15 +10608,17 @@ pub fn build_complexity_report(
             }),
             scc_result.call_graph.clone(),
         );
+        let fan_in_seed = v1_rt::rc_empty_map::<String, i64>();
         let fan_in = func_entries.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, i64>(),
+            fan_in_seed.clone(),
             |acc: Rc<HashMap<String, i64>>, entry: Rc<FuncEntry>| {
                 let callees = match v1_rt::map_get(&call_forward, entry.name.clone()) {
                     Some(cs) => cs.clone(),
                     std::option::Option::None => Rc::new(vec![]),
                 };
+                let unique_set_seed = v1_rt::rc_empty_map::<String, bool>();
                 let unique_set = callees.iter().cloned().fold(
-                    v1_rt::rc_empty_map::<String, bool>(),
+                    unique_set_seed.clone(),
                     |s: Rc<HashMap<String, bool>>, c: String| {
                         v1_rt::rc_map_insert(s, c.clone(), true)
                     },
@@ -10709,8 +10706,9 @@ pub fn build_complexity_report(
                         Some(cs) => cs.clone(),
                         std::option::Option::None => Rc::new(vec![]),
                     };
+                    let unique_set_seed = v1_rt::rc_empty_map::<String, bool>();
                     let unique_set = callees.iter().cloned().fold(
-                        v1_rt::rc_empty_map::<String, bool>(),
+                        unique_set_seed.clone(),
                         |s: Rc<HashMap<String, bool>>, c: String| {
                             v1_rt::rc_map_insert(s, c.clone(), true)
                         },

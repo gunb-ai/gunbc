@@ -27,6 +27,7 @@ pub use crate::std_occurrence_identity::{
     OccurrenceRole, OccurrenceTransport, OccurrenceTransportRefusal, OccurrenceTransportValidation,
     ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
+pub use crate::std_optional::Optional;
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -35,7 +36,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OccurrenceCategoryBindingVerdict {
     OccurrenceCategoryBindingAdmissible,

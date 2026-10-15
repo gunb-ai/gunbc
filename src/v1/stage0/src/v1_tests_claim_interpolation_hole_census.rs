@@ -30,7 +30,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum HoleShape {
     HoleIdentifier,
@@ -49,7 +49,7 @@ impl HoleShape {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum HoleTypeReading {
     HoleTypedString,
@@ -70,7 +70,7 @@ impl HoleTypeReading {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum HoleSite {
     HoleInBody,
@@ -96,7 +96,7 @@ impl HoleSite {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HoleRow {
     pub file: String,
     pub start: i64,
@@ -110,26 +110,26 @@ pub struct HoleRow {
     pub fused: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IhcHole {
     pub node: Rc<Node>,
     pub fused: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HoleWalkContext {
     pub file_decl: String,
     pub si: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub site: Rc<HoleSite>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ObservedTemplate {
     pub file: String,
     pub holes: Rc<Vec<Rc<HoleRow>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LexicalTemplateCount {
     pub file: String,
     pub templates: i64,
@@ -137,7 +137,7 @@ pub struct LexicalTemplateCount {
     pub hole_starts: Rc<Vec<i64>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IhcHoleStartScan {
     pub after_opener: bool,
     pub starts: Rc<Vec<i64>>,
@@ -620,9 +620,10 @@ pub fn ihc_module_templates(
 
 pub fn ihc_number_holes(rows: Rc<Vec<Rc<HoleRow>>>) -> Rc<Vec<Rc<HoleRow>>> {
     {
+        let seen_seed = v1_rt::rc_empty_map::<String, i64>();
         let numbered = rows.iter().cloned().fold(
             Rc::new(IhcNumbering {
-                seen: v1_rt::rc_empty_map::<String, i64>(),
+                seen: seen_seed.clone(),
                 out: Rc::new(vec![]),
             }),
             |acc: Rc<IhcNumbering>, r: Rc<HoleRow>| {
@@ -658,13 +659,13 @@ pub fn ihc_number_holes(rows: Rc<Vec<Rc<HoleRow>>>) -> Rc<Vec<Rc<HoleRow>>> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IhcNumbering {
     pub seen: Rc<HashMap<String, i64>>,
     pub out: Rc<Vec<Rc<HoleRow>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IhcCensus {
     pub templates: Rc<Vec<Rc<ObservedTemplate>>>,
     pub rows: Rc<Vec<Rc<HoleRow>>>,
@@ -850,13 +851,18 @@ pub fn ihc_row_tsv(r: Rc<HoleRow>) -> String {
 }
 
 pub fn ihc_tally(keys: Rc<Vec<String>>) -> Rc<HashMap<String, i64>> {
-    keys.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
-            Some(n) => v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1)),
-            std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
-        },
-    )
+    {
+        let tally_seed = v1_rt::rc_empty_map::<String, i64>();
+        keys.iter().cloned().fold(
+            tally_seed.clone(),
+            |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
+                Some(n) => {
+                    v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1))
+                }
+                std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
+            },
+        )
+    }
 }
 
 pub fn ihc_tally_lines(prefix: String, tally: Rc<HashMap<String, i64>>) -> Rc<Vec<String>> {

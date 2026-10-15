@@ -72,7 +72,7 @@ pub struct ResolvedModule {
     pub occurrence_transport: Rc<OccurrenceTransport>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedImport {
     pub module_path: String,
     pub is_all: bool,
@@ -80,13 +80,13 @@ pub struct ResolvedImport {
     pub target_module: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DepEdge {
     pub from_module: String,
     pub to_module: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolveAccum {
     pub imports_by_name: Rc<HashMap<String, Rc<Vec<Rc<ResolvedImport>>>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -296,7 +296,7 @@ pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) ->
     v1_rt::map_get(&module_index, path.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleResolveResult {
     pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -376,7 +376,7 @@ pub fn resolve_module_imports(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportResolveResult {
     pub resolved: Rc<ResolvedImport>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -788,7 +788,7 @@ pub fn get_variant_names(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DuplicateCheckState {
     pub seen_names: Rc<HashMap<String, bool>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -887,7 +887,7 @@ pub fn check_duplicate_declarations(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopoResult {
     pub sorted: Rc<Vec<String>>,
     pub cycle_error: Option<Rc<ErrorNode>>,
@@ -1091,7 +1091,7 @@ pub fn topological_sort(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KahnDrainState {
     pub sorted: Rc<Vec<String>>,
     pub in_degree_map: Rc<HashMap<String, i64>>,
@@ -1155,6 +1155,7 @@ pub fn kahn_drain(
                 }
             },
         );
+        let new_zero_seed = v1_rt::rc_empty_map::<String, bool>();
         let new_zero_set = Rc::new({
             let mut __result = Vec::new();
             for neighbor in Rc::new({
@@ -1186,7 +1187,7 @@ pub fn kahn_drain(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<String, bool>(),
+            new_zero_seed.clone(),
             |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },

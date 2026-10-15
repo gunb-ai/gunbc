@@ -60,7 +60,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
@@ -79,7 +79,7 @@ pub struct TypeEnv {
     pub unit_variant_index_observed: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeBinding {
     pub name: String,
     pub resolved: Rc<Node>,
@@ -87,7 +87,7 @@ pub struct TypeBinding {
     pub alias_rhs: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UnitVariantContribution {
     pub count: i64,
     pub variant: Rc<Node>,
@@ -117,39 +117,42 @@ pub fn binding_unit_variant_contributions(
     {
         let ty = variant_lookup_structural(binding.resolved.clone());
         match ty.connective.clone() {
-            Connective::Disj => ty.children.clone().iter().cloned().fold(
-                v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
-                |acc: Rc<HashMap<String, Rc<UnitVariantContribution>>>, v: Rc<Node>| {
-                    if is_unit_variant_node(v.clone()) {
-                        {
-                            let vname = crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                v.clone(),
-                            );
-                            match v1_rt::map_get(&acc, vname.clone()) {
-                                Some(prev) => v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    vname.clone(),
-                                    Rc::new(UnitVariantContribution {
-                                        count: v1_rt::int_add(prev.count.clone(), 1),
-                                        variant: prev.variant.clone(),
-                                    }),
-                                ),
-                                std::option::Option::None => v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    vname.clone(),
-                                    Rc::new(UnitVariantContribution {
-                                        count: 1,
-                                        variant: v.clone(),
-                                    }),
-                                ),
+            Connective::Disj => {
+                let seed = v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>();
+                ty.children.clone().iter().cloned().fold(
+                    seed.clone(),
+                    |acc: Rc<HashMap<String, Rc<UnitVariantContribution>>>, v: Rc<Node>| {
+                        if is_unit_variant_node(v.clone()) {
+                            {
+                                let vname = crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    v.clone(),
+                                );
+                                match v1_rt::map_get(&acc, vname.clone()) {
+                                    Some(prev) => v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        vname.clone(),
+                                        Rc::new(UnitVariantContribution {
+                                            count: v1_rt::int_add(prev.count.clone(), 1),
+                                            variant: prev.variant.clone(),
+                                        }),
+                                    ),
+                                    std::option::Option::None => v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        vname.clone(),
+                                        Rc::new(UnitVariantContribution {
+                                            count: 1,
+                                            variant: v.clone(),
+                                        }),
+                                    ),
+                                }
                             }
+                        } else {
+                            acc.clone()
                         }
-                    } else {
-                        acc.clone()
-                    }
-                },
-            ),
+                    },
+                )
+            }
             _ => v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
         }
     }
@@ -308,13 +311,13 @@ pub fn global_bare_fallback_invariant() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobalBareCandidate {
     pub module_path: String,
     pub binding: Rc<TypeBinding>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum GlobalBareLookupState {
     GlobalBareUniqueBinding {
@@ -326,26 +329,26 @@ pub enum GlobalBareLookupState {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportBinding {
     pub name: String,
     pub resolved: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScopeBinding {
     pub name: String,
     pub resolved: Rc<Node>,
     pub provenance: Rc<SubValueRelation>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceCensusEntry {
     pub module_path: String,
     pub item: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SymbolIndex {
     pub entries: Rc<HashMap<String, Rc<Node>>>,
     pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
@@ -356,7 +359,7 @@ pub struct SymbolIndex {
     pub module_named_imports: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Scope {
     pub locals: Rc<HashMap<String, Rc<ScopeBinding>>>,
 }
@@ -409,7 +412,7 @@ pub fn overlay_skips_kernel_name(name: String) -> bool {
         || (name.clone() == "Absent".to_string()))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum BareOccurrenceBinding {
     BareOccurrenceDeclaredInItsFile {
@@ -774,7 +777,7 @@ pub fn scope_push(scope: Rc<Scope>, binding: Rc<ScopeBinding>) -> Rc<Scope> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnvCache {
     pub deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
@@ -791,7 +794,7 @@ pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnvCacheMergeConflict {
     pub name: String,
     pub import_path: String,
@@ -834,7 +837,7 @@ pub fn conflict_is_cross_tree(c: Rc<TypeEnvCacheMergeConflict>) -> bool {
     (source_tree_of(c.existing_site.clone()) != source_tree_of(c.incoming_site.clone()))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GuardedTypeEnvCacheMerge {
     pub cache: Rc<TypeEnvCache>,
     pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
@@ -1014,7 +1017,7 @@ pub fn guarded_union_str_bindings(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GuardedStrBindingsUnion {
     pub bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
@@ -1338,7 +1341,7 @@ pub fn lookup_qualified_module_projection(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SegmentLcpScan {
     pub remaining: Rc<Vec<String>>,
     pub matched: i64,
@@ -1386,14 +1389,14 @@ pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobalBareNearestScan {
     pub best_lcp: i64,
     pub best: Option<Rc<TypeBinding>>,
     pub tie: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobalBareNearestCandidateScan {
     pub best_lcp: i64,
     pub best: Option<Rc<GlobalBareCandidate>>,
@@ -2056,7 +2059,7 @@ pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: 
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum UnitVariantPhantomLookup {
     UnitVariantPhantomPresent { variant: Rc<Node> },
@@ -2448,20 +2451,23 @@ pub fn merge_inductive_fields(
 pub fn inductive_fields_list_to_map(
     fields: Rc<Vec<Rc<InductiveField>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    fields.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
-            let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
-                Some(fs) => fs.clone(),
-                std::option::Option::None => Rc::new(vec![]),
-            };
-            v1_rt::rc_map_insert(
-                acc.clone(),
-                field.type_name.clone(),
-                v1_rt::concat(existing.clone(), Rc::new(vec![field.clone()])),
-            )
-        },
-    )
+    {
+        let seed = v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>();
+        fields.iter().cloned().fold(
+            seed.clone(),
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
+                let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
+                    Some(fs) => fs.clone(),
+                    std::option::Option::None => Rc::new(vec![]),
+                };
+                v1_rt::rc_map_insert(
+                    acc.clone(),
+                    field.type_name.clone(),
+                    v1_rt::concat(existing.clone(), Rc::new(vec![field.clone()])),
+                )
+            },
+        )
+    }
 }
 
 pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String>>) -> Rc<TypeEnv> {
@@ -2734,7 +2740,7 @@ pub fn operand_declaration_from_qualified_name(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TypeNodeDeclarationReading {
     TypeNodeNamesDeclaration {
@@ -2745,7 +2751,7 @@ pub enum TypeNodeDeclarationReading {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TypeNodeUnidentifiedCause {
     TypeNodeAuthoredNameEmpty,
@@ -2900,7 +2906,7 @@ pub fn declaration_ref_of_type_node(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TypeReferenceDeclarationReading {
     TypeReferenceNamesDeclaration {

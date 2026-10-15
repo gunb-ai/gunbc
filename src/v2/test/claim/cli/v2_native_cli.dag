@@ -483,6 +483,39 @@ test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
   }
 }
 
+// AN UNBOUND EMIT LINE NAMES WHAT FAILED BEFORE FATAL AT (review 80097). Same door as the trailing-
+// token claims: v2_cli_run over a supplied ingest. The fatal stays last; the census projection rides
+// in front of it. Dropping the CLI wiring while keeping the census renderer greens every census
+// claim and reds this one.
+data cli_probe_unbound_source: String = "module v2.cli_probe.unbound\n\nfn go() {\n  never_declared\n}\n"
+
+data cli_probe_unbound_ingest: SourceRootIngest = [
+  cli_probe_read(source: cli_probe_unbound_source, id: ^cli_probe_unbound_artifact, unit: ^cli_probe_unbound_cu, path: "dag/cli_probe_unbound.dag")
+]
+
+fn cli_probe_unbound_outcome() -> CliRunOutcome {
+  v2_cli_run(
+    plan: CliPlanParsed {
+      verb: CliEmitClosure {
+        entry: "v2.cli_probe.unbound",
+        source_roots: Empty,
+        target: CliTargetRust
+      }
+    },
+    ingest: cli_probe_unbound_ingest
+  )
+}
+
+test fn an_unbound_emit_line_names_what_is_unbound_before_fatal_at_RED() -> Bool {
+  match cli_probe_unbound_outcome() {
+    CliRunRefused { reason: _, detail: detail } =>
+      string_contains(s: detail, pattern: "unbound_name=never_declared | FATAL AT")
+    CliUsageRefused { reason: _, detail: _ } => false
+    CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => false
+    CliPopulationReported { text: _, held: _, detail: _ } => false
+  }
+}
+
 // THE WHOLE-POPULATION VERBS TAKE SOURCE ROOTS AND NO ENTRY. Their parse is one walk shared by three
 // verbs (`if-arm-reader-differential`, `check-layout`, `parse-population`), so the claim that matters
 // is that each SPELLING selects its OWN verb: a parser that mapped every roots verb to the first arm

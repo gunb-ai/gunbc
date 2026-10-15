@@ -25,18 +25,19 @@ import gunbc.secret_provision_actuator {
   observe_secret_container, create_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused, SecretObservationOutcome, SecretContainerCreation,
   SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown,
 }
-import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, estate_refused_texts, GcpIamEstatePartialNoop, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
+import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, estate_refused_texts, GcpIamEstatePartialNoop, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
 import gunbc.auth.heal_publisher_provision {
   standing_principal_set,
-  DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present,
+  DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present, dedicated_federation_input_refusals,
   FederationClassified, FederationUnclassified, rest_refusal_text, outcome_is_not_found,
 }
 import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_capability_bindings, iam_bootstrap_trust_bindings,
-  iam_bootstrap_apply_federation, iam_bootstrap_deny_policy_id, iam_bootstrap_attachment_point,
+  iam_bootstrap_deny_policy_id, iam_bootstrap_attachment_point,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
+  iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_bound_secrets,
 }
 
 import gunbc.auth.gcp_iam_bootstrap_authority {
@@ -92,7 +93,7 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     concat("deny principal serviceAccount:", iam_converge_service_account as String),
     concat("deny permissions ", join(iam_converge_denied_permissions, ",")),
     "Target bootstrap creates only bare pools/accounts; target providers and workload trust remain approval-gated.",
-    concat("Grant-set secrets created bare (no version) when absent; their accessor cells remain approval-gated: ", join(map(gcp_iam_converge_grant_set_secrets(), x => x as String), ",")),
+    concat("Bound secrets created bare (no version) when absent; grant-set accessor cells remain approval-gated: ", join(map(iam_bootstrap_bound_secrets(), x => x as String), ",")),
     bootstrap_authority_dependency_plan(),
     concat("Empty pool initialization requires the separately confirmed exclusive window: GUNBC_IAM_BOOTSTRAP_POOL_WINDOW=", iam_bootstrap_pool_window),
     "Initializer: declared empty pool only -> one journaled publication -> exact independent readback with etag -> normal CAS updates. Uncertain publication is never replayed.",
@@ -104,8 +105,10 @@ fn iam_bootstrap_plan() -> CliWireResponse {
   let cells = map(iam_bootstrap_capability_bindings() + iam_bootstrap_trust_bindings(), b => join([
     "binding ", iam_bootstrap_resource_key(resource: b.resource), " ", cell_preimage(c: b.cell),
   ], ""))
+  let input_refusals = dedicated_federation_input_refusals(federations: iam_bootstrap_identity_federations())
   CliWirePrintable { bytes: join(["Bootstrap stages: ", join(map(iam_bootstrap_stages, s => iam_bootstrap_stage_wire(stage: s)), " -> "), "\n", join(boundary + roles + cells, "\n")], ""),
-    exit: if iam_bootstrap_model_admitted() { ExitSuccess } else { exit_failure(reason: "bootstrap model does not preserve the declared trust boundary") } }
+    exit: if !iam_bootstrap_model_admitted() { exit_failure(reason: "bootstrap model does not preserve the declared trust boundary") }
+      else if count(input_refusals) > 0 { exit_failure(reason: join(input_refusals, "; ")) } else { ExitSuccess } }
 }
 
 fn iam_bootstrap_ensure_identity(f: DedicatedFederation, own_trust: Bool, token: Secret) -> String {
@@ -129,10 +132,11 @@ fn iam_bootstrap_ensure_identity(f: DedicatedFederation, own_trust: Bool, token:
   }
 }
 
-// A GRANT SET'S SECRET IS CREATED BARE HERE, as a target's pool and account are, so iam-converge's
-// per-secret policy role has a resource to be bound on and no recurring identity needs the
-// project-level secretmanager.secrets.create. Bare means no version: the container carries no
-// payload until the mint flow adds one.
+// EVERY SECRET THE CAPABILITIES STAGE BINDS ON IS CREATED BARE HERE (iam_bootstrap_bound_secrets: a
+// grant set's, a target's, the job's own), as a target's pool and account are, so each per-secret
+// role has a resource to be bound on and no recurring identity needs the project-level
+// secretmanager.secrets.create. Bare means no version: the container carries no payload until the
+// mint flow adds one.
 //
 // A CREATE IS JOURNALED ACROSS RUNS, with the election pattern this module already uses for the
 // temporary authority and the pool initialization (iam_authority_record, iam_authority_pin,
@@ -306,13 +310,13 @@ fn iam_bootstrap_ensure_custody_container(secret: NonEmptyStr, token: Secret) ->
 
 // THE ONLY RETIREMENT OF AN UNRESOLVED CREATE THAT NO OBSERVATION SETTLES: an operator names the
 // secret and the operation, having established out of band that the create did not commit. It
-// refuses for a secret outside the grant sets, an unsafe operation, an election that does not exist,
-// or one already closed, refused or disposed.
+// refuses for a secret the identities stage does not create, an unsafe operation, an election that
+// does not exist, or one already closed, refused or disposed.
 fn iam_bootstrap_custody_create_dispose() -> ProcessExit {
   let secret = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_CUSTODY_SECRET")
   let op = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_CUSTODY_OPERATION")
-  match filter(gcp_iam_converge_grant_set_secrets(), x => (x as String) == secret).first() {
-    Absent => exit_failure(reason: "the named secret is not a grant-set custody secret")
+  match filter(iam_bootstrap_bound_secrets(), x => (x as String) == secret).first() {
+    Absent => exit_failure(reason: "the named secret is not one the bootstrap creates bare")
     Present { value: s } => if !path_segment_is_safe(raw: op) { exit_failure(reason: "the operation identity is not a safe receipt") }
       else { match custody_journal_read(secret: s) {
         CustodyJournalUnreadable { cause } => exit_failure(reason: cause)
@@ -486,11 +490,9 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
   match stage {
     BootstrapServices => fold(iam_bootstrap_required_services, init: "", f: (prior, api) => if prior != "" { prior } else { iam_bootstrap_ensure_service(service: api, token: token) })
     BootstrapIdentities => {
-      let own = fold([gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()], init: "", f: (prior, f) =>
-        if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: f, own_trust: true, token: token) })
-      let targets = if own != "" { own } else { fold(gcp_iam_converge_targets, init: "", f: (prior, f) =>
-        if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: f, own_trust: false, token: token) }) }
-      if targets != "" { targets } else { fold(gcp_iam_converge_grant_set_secrets(), init: "", f: (prior, secret) =>
+      let identities = fold(iam_bootstrap_identity_population(), init: "", f: (prior, i) =>
+        if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: i.federation, own_trust: i.own_trust, token: token) })
+      if identities != "" { identities } else { fold(iam_bootstrap_bound_secrets(), init: "", f: (prior, secret) =>
         if prior != "" { prior } else { iam_bootstrap_ensure_custody_container(secret: secret, token: token) }) }
     }
     BootstrapRoles => fold(iam_bootstrap_roles, init: "", f: (prior, role) => if prior != "" { prior } else { iam_bootstrap_ensure_role(role: role, token: token) })
@@ -523,7 +525,9 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
 // re-observed under a new receipt identity, never silently counted as completed from an exit code.
 fn iam_bootstrap_apply() -> ProcessExit {
   let receipt = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_RECEIPT")
+  let input_refusals = dedicated_federation_input_refusals(federations: iam_bootstrap_identity_federations())
   if !path_segment_is_safe(raw: receipt) || !iam_bootstrap_model_admitted() { exit_failure(reason: "bootstrap requires a safe receipt identity and an admitted model") }
+  else if count(input_refusals) > 0 { exit_failure(reason: join(input_refusals, "; ")) }
   else { match read_supplied_access_token() {
     SuppliedTokenUnavailable { cause } => exit_failure(reason: cause as String)
     SuppliedTokenReady { token } => {

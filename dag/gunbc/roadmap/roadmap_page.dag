@@ -24,7 +24,7 @@ import gunbc.site.avatar_marks { unknown_avatar_svg, group_avatar_svg, unassigne
 import gunbc.roadmap.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, membership_index, project_root_for_node_in }
 import gunbc.roadmap.roadmap_lineage { lineage_lookup }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup }
 
 import gunbc.roadmap.roadmap_issue_command { IssueFormContext }
 
@@ -43,7 +43,7 @@ import gunbc.principal_projection {
 }
 import gunbc.auth.profile_projection { PrincipalProfile }
 import gunbc.roadmap.roadmap_component { standing_chip_class }
-import std.types { list_length }
+import std.types { list_length, Map }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation,
   RoundSegment, RoundSegmentKind, ReadRound, WriteRound, UnmeasuredRound, round_segments, round_segment_kind_word, round_playback, RoundPlayback, round_remaining_flex, harness_round_budget_steps,
