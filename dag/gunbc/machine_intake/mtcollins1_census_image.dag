@@ -122,14 +122,27 @@ fn census_program_on_medium(nocloud_dir: NonEmptyStr, program_file: NonEmptyStr)
 // a roster that appends stages after the census ones yields a different image with a different
 // digest and name, built by the same derivation. Nothing here may run before the census stages or
 // between them and the envelope's END.
-// THE SEED'S USER-DATA: run the census program before any installer section, leave every section
-// to a human. The derivation builds the payload from the seed's location, so this row is the
-// MEASURED RECEIPT for mt. collins unit 1 -- the payload the derivation builds for its seed
-// directory and program file, and what the seeded user-data of the pinned image records.
-data mtcollins1_census_live_commands: UbuntuAutoinstallLiveCommands = UbuntuAutoinstallLiveCommands {
-  autoinstall_version: 1,
-  early_commands: [concat("sh ", census_program_on_medium(nocloud_dir: mtcollins1_census_nocloud_dir, program_file: mtcollins1_census_program_file) as String) as NonEmptyStr],
+// THE SEED'S EARLY COMMANDS: the single helper that builds the user-data payload from the seed's
+// location -- one fact in one place (DESIGN 3 minimization). Both the derivation (line 219) and the
+// mt. collins receipt row below consume it, so the early command and the seed file cannot drift:
+// the command the installer runs and the file the seed carry are built from the same
+// (nocloud_dir, program_file) by this one author.
+fn census_live_commands(nocloud_dir: NonEmptyStr, program_file: NonEmptyStr) -> UbuntuAutoinstallLiveCommands {
+  UbuntuAutoinstallLiveCommands {
+    autoinstall_version: 1,
+    early_commands: [concat("sh ", census_program_on_medium(nocloud_dir: nocloud_dir, program_file: program_file) as String) as NonEmptyStr],
+  }
 }
+
+// THE SEED'S USER-DATA: run the census program before any installer section, leave every section
+// to a human. The derivation builds the payload from the seed's location via census_live_commands,
+// so this row is the MEASURED RECEIPT for mt. collins unit 1 -- the payload the derivation builds
+// for its seed directory and program file, and what the seeded user-data of the pinned image
+// records. Built by the same helper the derivation uses, so the two cannot drift.
+data mtcollins1_census_live_commands: UbuntuAutoinstallLiveCommands = census_live_commands(
+  nocloud_dir: mtcollins1_census_nocloud_dir,
+  program_file: mtcollins1_census_program_file,
+)
 
 // THE KERNEL CMDLINE, IN TWO ROWS. The PINNED row is the cmdline of the image the boot medium row pins
 // (output 30ca88d4..., built under builder revision 1 as key 8d357a525f078cb4): the census seed and the
@@ -216,10 +229,7 @@ fn census_image_derivation(
   program_file: NonEmptyStr,
 ) -> CensusImage {
   let program = census_capture_program(machine: machine, console_device: console_device, halt_command: halt_command, stages: stages)
-  let live_commands = UbuntuAutoinstallLiveCommands {
-    autoinstall_version: 1,
-    early_commands: [concat("sh ", census_program_on_medium(nocloud_dir: nocloud_dir, program_file: program_file) as String) as NonEmptyStr],
-  }
+  let live_commands = census_live_commands(nocloud_dir: nocloud_dir, program_file: program_file)
   match autoinstall_live_commands_user_data(payload: live_commands) {
     AutoinstallUserDataRefused { reason: r } => CensusImageRefused { reason: r }
     AutoinstallUserDataRendered { content: body } =>
