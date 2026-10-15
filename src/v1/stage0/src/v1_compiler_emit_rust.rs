@@ -40847,16 +40847,6 @@ pub fn hop_argv_element_type(mut rt: Rc<Node>, scope: Rc<InferScope>, mut fuel: 
     }
 }
 
-pub fn shell_argv_param_is_word_list(
-    param: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    type_node_is_ordered_element_run(
-        crate::v1_std_core::param_node_type_expr(param.clone()),
-        source_indices.clone(),
-    )
-}
-
 pub fn shell_argv_element_is_word_list(
     arg: Rc<Node>,
     scope: Rc<InferScope>,

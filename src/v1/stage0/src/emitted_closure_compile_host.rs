@@ -2259,6 +2259,16 @@ const FIXTURE_EMPTY_MAP_TURBOFISH_GREEN_PATH: &str =
 const FIXTURE_ARGV_WORD_LIST_GREEN_PATH: &str =
     "fixtures/fixture_closure_rustc/argv_word_list_splice_probe.dag";
 
+/// THE RED FOR THE LOCATED ARGV-TYPE REFUSAL: an Int in a shell argv must emit compile_error!,
+/// never emit_simple_expr leftover. rustc refusing this fixture's emitted module with that
+/// sentence is the class; E0308 is a different subject (the route's text-boundary red).
+#[cfg(test)]
+const FIXTURE_ARGV_NON_STRING_RED_PATH: &str =
+    "fixtures/fixture_closure_rustc/argv_non_string_element_probe.dag";
+
+#[cfg(test)]
+const FIXTURE_ARGV_NON_STRING_EXPECTED: &str = "argv element is not String or List<String>";
+
 /// See `FIXTURE_EMPTY_MAP_TURBOFISH_GREEN_PATH`.
 #[cfg(test)]
 const FIXTURE_APPEND_CONCAT_GREEN_PATH: &str =
@@ -2276,14 +2286,26 @@ pub(crate) fn run_empty_map_turbofish_discrimination(
 }
 
 /// The argv word-list splice pair -- subject `v1.compiler.emit_rust` `emit_shell_call`.
+/// Green: List<String> splices compile. Red: a non-string argv element is a located compile_error!
+/// in the fixture's own emitted module (not the route's E0308 text-boundary red).
 #[cfg(test)]
 pub(crate) fn run_argv_word_list_splice_discrimination(
     probe_root: &PrivateProbeRoot,
 ) -> FixtureDiscrimination {
     FixtureDiscrimination {
         green: fixture_arm_verdict(FIXTURE_ARGV_WORD_LIST_GREEN_PATH, probe_root),
-        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_ARGV_NON_STRING_RED_PATH, probe_root),
     }
+}
+
+#[cfg(test)]
+pub(crate) fn fixture_argv_non_string_discrimination_passed(pair: &FixtureDiscrimination) -> bool {
+    fixture_closure_compiled(&pair.green)
+        && fixture_closure_reached_rustc(&pair.red)
+        && !fixture_closure_compiled(&pair.red)
+        && fixture_closure_attributed_line(&pair.red).is_some()
+        && fixture_closure_attributed_diagnostic(&pair.red)
+            .is_some_and(|diagnostic| diagnostic.contains(FIXTURE_ARGV_NON_STRING_EXPECTED))
 }
 
 /// The append concat-form pair -- subject `v1.compiler.emit_rust`
