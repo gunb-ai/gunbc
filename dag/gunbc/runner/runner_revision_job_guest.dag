@@ -59,6 +59,11 @@ import gunbc.runner.runner_guest_image {
 // ${NAME} substitution from the spec environment file (systemd.service(5), "Command lines"); every
 // other word is literal.
 
+// DECLARED FRONTIER (DESIGN 3c): revision_job_guest_unit is installed by the revision-job guest image
+// recipe, and the drives it reads are attached by the revision-job launch plan; both land in S4b-3
+// with the host staging (exact-commit tree archive, lockfile-keyed vendor set). TRIGGER: S4b-3's
+// stand-in inhabitance claim, which runs these same steps over staged files with the light claim set.
+
 data revision_job_spec_device: NonEmptyStr = "/dev/vdb"
 data revision_job_tree_device: String = "/dev/vdc"
 data revision_job_vendor_device: String = "/dev/vdd"

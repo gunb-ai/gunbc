@@ -35,6 +35,10 @@ import gunbc.runner.runner_claim_set_results { ClaimSetResult, claim_set_results
 // frame alone would make a stand-in file and the device differ. Writing exactly the declared size
 // makes them byte-identical, and a frame larger than the device refuses rather than being cut.
 
+// DECLARED FRONTIER (DESIGN 3c): claim_set_guest_main is the ExecStart of
+// gunbc.runner.runner_revision_job_guest revision_job_guest_unit, whose installer and launch plan land
+// in S4b-3. TRIGGER: S4b-3's stand-in inhabitance claim.
+
 data claim_set_guest_claims_env: NonEmptyStr = "GUNBC_CLAIM_SET_CLAIMS"
 data claim_set_guest_commit_env: NonEmptyStr = "GUNBC_CLAIM_SET_COMMIT"
 data claim_set_guest_tree_env: NonEmptyStr = "GUNBC_CLAIM_SET_TREE"
