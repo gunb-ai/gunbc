@@ -124,7 +124,7 @@ fn infer_fatal_at(context: NativeTestContext, entry: NativeCensusModule, outcome
       }
     NativeInferCensusFileRefused => FileRefusalAtUnresolvedNode
     NativeInferCensusResolveRefused { first: _, rest: _, observation: _ } => FileRefusalAtUnresolvedNode
-    NativeInferCensusInferred { resolved: _, inferred: _ } => FileRefusalAtUnresolvedNode
+    NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } => FileRefusalAtUnresolvedNode
   }
 }
 
