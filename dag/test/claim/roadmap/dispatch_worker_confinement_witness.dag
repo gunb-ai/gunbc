@@ -15,15 +15,11 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   attempt_unit_substate_has_exited,
   dispatch_review_unit_properties,
 }
-import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
-import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
-import extdeps.exec.command { argv_words }
 import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_path_for_instance }
 import std.filesystem { path_parent_directory }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, systemd_run_property_assignment,
   SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused,
-  SystemdRunCommandReady, SystemdRunCommandRefused,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import std.measure { kibibyte }
@@ -65,18 +61,11 @@ fn has_property(props: List<SystemdRunProperty>, needle: String) -> Bool {
   any(property_words(props: props), p => string_contains(s: p, pattern: needle))
 }
 
-test fn the_worker_unit_confines_writes_to_the_instance_root() -> Bool {
+test fn the_worker_unit_confines_writes_to_the_worktree_scratch_and_git_carve_outs() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
   let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "mkdir -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr)
   let expected = dispatch_worker_writable_paths(instance: inst, attempt_worktree: "/wt", scratch_directory: "/wt")
   has_property(props: props, needle: "ProtectSystem=strict")
-    && !has_property(props: props, needle: join(["Slice=", user_work_slice_unit_name as String], ""))
-    && match gunbc_user_work_transient_command(unit: "gunbc-attempt-t.service" as NonEmptyStr, properties: props, setenv_bindings: [], command_argv: ["true"]) {
-      SystemdRunCommandRefused { cause: _ } => false
-      SystemdRunCommandReady { command } =>
-        filter(argv_words(command: command), w => string_contains(s: w, pattern: join(["Slice=", user_work_slice_unit_name as String], ""))).length() == 1
-          && filter(argv_words(command: command), w => string_contains(s: w, pattern: "MemorySwapMax=0")).length() == 1
-    }
     && has_property(props: props, needle: "ProtectHome=read-only")
     && has_property(props: props, needle: "PrivateTmp=yes")
     && has_property(props: props, needle: "NoNewPrivileges=yes")

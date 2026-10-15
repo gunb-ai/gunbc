@@ -41,7 +41,7 @@ import gunbc.live_deploy.release_locus {
 }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.measure { Kibibyte, kibibyte, kibibyte_count, Second }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, Second, byte_size_count }
 import std.human_intervention { EveryProvision }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -63,7 +63,7 @@ import gunbc.host.host_layout {
 import extdeps.tools.util_linux_flock { flock_exclusive_wait_words }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
 import extdeps.systemd {
-  User,
+  User, MemorySwapMax, SliceProperty,
   SystemdUnitName, systemd_service_unit_name, systemd_unit_name_wire,
   SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
   SystemdUnitNameOverlong,
@@ -105,6 +105,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_entry_separator,
 }
 import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
+import gunbc.live_deploy.slice_bounds { live_deploy_slice_memory_swap_max }
 
 data attempt_system_unit_launch_entry: String = "dag/gunbc/roadmap/attempt_system_unit_launch.dag"
 data attempt_system_unit_launch_function: String = "attempt_system_unit_launch_cli"
@@ -289,9 +290,38 @@ fn attempt_system_unit_user_property(user: NonEmptyStr) -> SystemdRunProperty {
   NamedUnitSetting { property: User, value: user }
 }
 
+// SLICE PLACEMENT IS THIS ROW, not a wrap-prefix default. The user-manager start prepended
+// Slice=gunbc-user-work.slice inside user_work_run_properties; system-manager units cannot join
+// a user slice, and putting them in gunbc-roadmap.slice is a budget decision still with the
+// operator. This row is the one place that decision lands. MemorySwapMax comes from the
+// deployment-wide swap-zero (gunbc.live_deploy.slice_bounds live_deploy_slice_memory_swap_max),
+// not a literal 0 and not the user-work wrap's copy of the same zero.
+type AttemptWorkerSlice {
+  unit: NonEmptyStr
+}
+
+data attempt_system_unit_worker_slice: AttemptWorkerSlice = AttemptWorkerSlice {
+  unit: "gunbc-attempt-worker.slice" as NonEmptyStr
+}
+
+fn attempt_system_unit_slice_property() -> SystemdRunProperty {
+  NamedUnitSetting { property: SliceProperty, value: attempt_system_unit_worker_slice.unit }
+}
+
+fn attempt_system_unit_memory_swap_max_property() -> SystemdRunProperty {
+  NamedUnitSetting {
+    property: MemorySwapMax,
+    value: to_string(value: byte_size_count(b: live_deploy_slice_memory_swap_max)) as NonEmptyStr,
+  }
+}
+
 fn attempt_system_unit_properties(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, user: NonEmptyStr) -> List<SystemdRunProperty> {
   concat(
-    [attempt_system_unit_user_property(user: user)],
+    [
+      attempt_system_unit_user_property(user: user),
+      attempt_system_unit_slice_property(),
+      attempt_system_unit_memory_swap_max_property(),
+    ],
     dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: granted, process_bounds: session_process_bounds),
   )
 }

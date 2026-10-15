@@ -2,7 +2,7 @@ module test.claim.roadmap.attempt_system_unit_launch_witness
 
 import std.types { Bool, NonEmptyStr, List, String, FilePath }
 import std.optional { Present, Absent }
-import std.measure { kibibyte, kibibyte_count, second_count }
+import std.measure { kibibyte, kibibyte_count, second_count, byte_size_count }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
 import extdeps.systemd {
@@ -17,6 +17,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceForId, DashboardInstanceIdUnknown,
 }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
+import gunbc.live_deploy.slice_bounds { live_deploy_slice_memory_swap_max, user_work_slice_unit_name }
 import gunbc.live_deploy.emit {
   attempt_system_unit_grant_steps, attempt_system_unit_grant_steps_for_instance,
   attempt_system_unit_grant_launch_argv_refused_poison, apply_intent_from_effects,
@@ -39,6 +40,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitSudoersText, AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
   attempt_system_unit_sudoers_path, attempt_system_unit_instance_for_root,
   attempt_system_unit_systemd_run_command, attempt_system_unit_plan_from_facts,
+  attempt_system_unit_worker_slice,
   attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_dir,
   AttemptSystemUnitStartRequest, attempt_system_unit_start_facts_for_request,
   AttemptSystemUnitStartDerived, AttemptSystemUnitStartUnderivable,
@@ -579,6 +581,42 @@ fn launcher_execstoppost_words_are_short_and_single_dollar(words: List<String>) 
     && !any(words, w => string_contains(s: w, pattern: "--property=ExecStopPost="))
     && any(stop, w => string_contains(s: w, pattern: dollar))
     && !any(stop, w => string_contains(s: w, pattern: doubled))
+}
+
+test fn the_launcher_systemd_run_argv_places_the_worker_and_forbids_swap() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  match claim_start_facts(
+    instance: inst,
+    node_id: "n",
+    attempt_key: "k",
+    user: inst.directory_owner.user as NonEmptyStr,
+    inner_argv: [inst.serve_binary as String],
+    exit_hook: "true" as NonEmptyStr,
+  ) {
+    Absent => false
+    Present { value: facts } =>
+      match attempt_system_unit_start_admitted(instance: inst, facts: facts) {
+        AttemptSystemUnitRefused { reason: _ } => false
+        AttemptSystemUnitAdmitted { unit: unit, facts: admitted } =>
+          match attempt_system_unit_systemd_run_command(
+            instance: inst,
+            plan: attempt_system_unit_plan_from_facts(facts: admitted, unit: unit),
+            granted: admitted.granted,
+            user: admitted.user,
+          ) {
+            SystemdRunCommandRefused { cause: _ } => false
+            SystemdRunCommandReady { command } => {
+              let words = argv_words(command: command)
+              let swap = join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], "")
+              let slice = join(["Slice=", attempt_system_unit_worker_slice.unit as String], "")
+              let user_slice = join(["Slice=", user_work_slice_unit_name as String], "")
+              filter(words, w => string_contains(s: w, pattern: swap)).length() == 1
+                && filter(words, w => string_contains(s: w, pattern: slice)).length() == 1
+                && filter(words, w => string_contains(s: w, pattern: user_slice)).length() == 0
+            }
+          }
+      }
+  }
 }
 
 // DISCRIMINATING: systemd-run specifier-escapes `$` inside one `--property=ExecStopPost=...${VAR}`
