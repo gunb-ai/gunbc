@@ -118,11 +118,12 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // UserSessionAbsent refuses: a host that owes the bound and has no user manager must not run
 // unbounded (review 80042). CiExempt / RunnerSlotExempt skip because those processes already sit
 // in a declared slot cgroup, not because the user manager is missing.
-// ExemptSystemUnit skips only when the enclosing slice is a modeled system slice that
-// declares MemoryMax (gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes).
-// A named .service under system.slice or any other uncapped/unmodeled slice refuses
-// UncappedSystemSlice { unit, slice } — silent exemption would let an unbounded system
-// unit escape the wrap. Path from /proc/self/cgroup, never User= or an env var.
+// ExemptSystemUnit skips when any cgroup path segment is a modeled capped slice
+// (declared_system_slice_memory_maxes), including sessions.slice/<container scope>
+// under user.slice. A named .service under system.slice or any other uncapped/unmodeled
+// slice refuses UncappedSystemSlice { unit, slice }. A session cgroup with no modeled
+// cap and no user manager refuses UserSessionAbsent rather than wrapping. Path from
+// /proc/self/cgroup, never User= or an env var.
 //
 // THIS REFUSAL IS OUTSIDE DECIDE-BEFORE-MUTATE. compose_host_script drops Mutate only when a
 // Decide fragment is HostScriptRefused. slice-control is Mutate with HostScriptProceed; the
@@ -133,6 +134,7 @@ data user_work_scope_xdg_runtime_dir_env_name: String = "XDG_RUNTIME_DIR"
 data user_work_scope_user_slice_cgroup_needle: String = "/user.slice/"
 data user_work_scope_service_unit_suffix: String = ".service"
 data user_work_scope_slice_unit_suffix: String = ".slice"
+data user_work_scope_scope_unit_suffix: String = ".scope"
 
 type UserWorkScopeCgroupRead
   = CgroupText { text: String }
@@ -186,6 +188,37 @@ fn last_cgroup_unit_with_dot_suffix(text: String, suffix: String) -> String? {
   }
 }
 
+fn innermost_modeled_capped_slice(text: String) -> String? {
+  match reverse(
+    cgroup_path_segments(text: text)
+      |> filter(seg => match modeled_system_slice_memory_max(unit: seg) {
+        Present { value: _ } => true
+        Absent => false
+      })
+  ).first() {
+    Absent => none
+    Present { value: slice } => Present { value: slice }
+  }
+}
+
+fn cgroup_leaf_unit(text: String) -> String {
+  match last_cgroup_unit_with_dot_suffix(text: text, suffix: user_work_scope_scope_unit_suffix) {
+    Present { value: unit } => unit
+    Absent => match last_cgroup_unit_with_dot_suffix(text: text, suffix: user_work_scope_service_unit_suffix) {
+      Present { value: unit } => unit
+      Absent => ""
+    }
+  }
+}
+
+fn modeled_slice_standing_from_cgroup(text: String) -> UserWorkScopeStanding? {
+  match innermost_modeled_capped_slice(text: text) {
+    Absent => none
+    Present { value: slice } =>
+      Present { value: ExemptSystemUnit { unit: cgroup_leaf_unit(text: text), slice: slice } }
+  }
+}
+
 fn system_service_unit_from_cgroup(text: String) -> SystemServiceCgroup {
   if string_contains(s: text, pattern: user_work_scope_user_slice_cgroup_needle) {
     NotSystemService
@@ -232,15 +265,19 @@ fn user_work_scope_standing(
         } else if string_contains(s: text, pattern: runner_unit_prefix) {
           RunnerSlotExempt
         } else {
-          match system_unit_standing_from_cgroup(text: text) {
+          match modeled_slice_standing_from_cgroup(text: text) {
             Present { value: s } => s
             Absent =>
-              if user_manager_reachable {
-                UserManagerOwed
-              } else if xdg_runtime_dir {
-                UserManagerProbeFailed
-              } else {
-                UserSessionAbsent
+              match system_unit_standing_from_cgroup(text: text) {
+                Present { value: s } => s
+                Absent =>
+                  if user_manager_reachable {
+                    UserManagerOwed
+                  } else if xdg_runtime_dir {
+                    UserManagerProbeFailed
+                  } else {
+                    UserSessionAbsent
+                  }
               }
           }
         }

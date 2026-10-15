@@ -19,6 +19,7 @@ import gunbc.live_deploy.slice_bounds {
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
   repository_convergence_slice_memory_max, repository_convergence_slice_unit_name,
   declared_system_slice_memory_maxes, modeled_system_slice_memory_max,
+  sessions_slice_unit_name,
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, user_work_charged_slots }
 import gunbc.live_deploy.served_slice_charge {
@@ -32,7 +33,7 @@ import gunbc.compute.unit_bounds {
   user_work_scope_standing, user_work_scope_standing_effect, user_work_scope_standing_wire,
   user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
   user_work_scope_user_slice_cgroup_needle, user_work_scope_service_unit_suffix,
-  user_work_scope_slice_unit_suffix,
+  user_work_scope_slice_unit_suffix, user_work_scope_scope_unit_suffix,
   system_service_unit_from_cgroup,
   user_work_scope_standing_for_wrap,
   user_work_wrap_envelope_properties,
@@ -283,6 +284,9 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     )
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_slice_unit_suffix`")
     && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_slice_unit_suffix, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_scope_unit_suffix`")
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_scope_unit_suffix, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds innermost_modeled_capped_slice`")
     && string_contains(s: seed, pattern: "ExemptSystemUnit")
     && string_contains(s: seed, pattern: "UncappedSystemSlice")
     && string_contains(s: seed, pattern: "UserWorkScopeStanding::UserSessionAbsent =>")
@@ -362,6 +366,47 @@ test fn a_user_session_cgroup_still_owes_the_wrap() -> Bool {
         _ => false
       }
     SystemServiceNamed { unit: _, slice: _ } => false
+  }
+}
+
+test fn a_session_container_cgroup_under_sessions_slice_is_exempt() -> Bool {
+  let cg = join([
+    "0::",
+    user_work_scope_user_slice_cgroup_needle,
+    "user-1000.slice/user@1000.service/app.slice/",
+    sessions_slice_unit_name as String,
+    "/docker-deadbeef.scope",
+  ], "")
+  match modeled_system_slice_memory_max(unit: sessions_slice_unit_name as String) {
+    Absent => false
+    Present { value: _ } =>
+      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
+        ExemptSystemUnit { unit, slice } =>
+          unit == "docker-deadbeef.scope"
+            && slice == (sessions_slice_unit_name as String)
+            && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: unit, slice: slice }) {
+              SkipUserWorkScope { standing: ExemptSystemUnit { unit: eu, slice: es } } =>
+                eu == unit && es == slice
+              _ => false
+            }
+        _ => false
+      }
+  }
+}
+
+test fn a_session_cgroup_without_a_modeled_cap_refuses() -> Bool {
+  let cg = join([
+    "0::",
+    user_work_scope_user_slice_cgroup_needle,
+    "user-1000.slice/user@1000.service/app.slice/run-u.scope",
+  ], "")
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
+    UserSessionAbsent =>
+      match user_work_scope_standing_effect(s: UserSessionAbsent) {
+        RefuseUserWorkScope { standing: UserSessionAbsent } => true
+        _ => false
+      }
+    _ => false
   }
 }
 

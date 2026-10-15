@@ -25,6 +25,8 @@ const USER_SLICE_CGROUP_NEEDLE: &str = "/user.slice/";
 const SERVICE_UNIT_SUFFIX: &str = ".service";
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_slice_unit_suffix`
 const SLICE_UNIT_SUFFIX: &str = ".slice";
+// SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_scope_unit_suffix`
+const SCOPE_UNIT_SUFFIX: &str = ".scope";
 // SEED MIRROR of `gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes` unit names
 // (rows already filtered by byte_size_count(memory_max) > 0 in modeled_system_slice_memory_max).
 // Wrap cannot eval the DAG; this list is seed-retained with user_work_scope.rs. A census name
@@ -32,6 +34,7 @@ const SLICE_UNIT_SUFFIX: &str = ".slice";
 const MODELED_CAPPED_SYSTEM_SLICES: &[&str] = &[
     "gunbc-repository-convergence.slice",
     "gunbc-approval-broker.slice",
+    "sessions.slice",
 ];
 
 enum UserWorkScopeStanding {
@@ -301,6 +304,15 @@ fn last_cgroup_unit_with_suffix(text: &str, suffix: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+// SEED MIRROR of `gunbc.compute.unit_bounds innermost_modeled_capped_slice`
+fn innermost_modeled_capped_slice(text: &str) -> Option<String> {
+    text.split(['/', '\n'])
+        .map(str::trim)
+        .filter(|seg| MODELED_CAPPED_SYSTEM_SLICES.contains(seg))
+        .last()
+        .map(str::to_string)
+}
+
 // SEED MIRROR of `gunbc.compute.unit_bounds system_service_unit_from_cgroup`
 fn system_service_unit_from_cgroup(text: &str) -> Option<(String, String)> {
     if text.contains(USER_SLICE_CGROUP_NEEDLE) {
@@ -327,6 +339,12 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
     }
     if cg.contains(RUNNER_SLOT_CGROUP_NEEDLE) {
         return UserWorkScopeStanding::RunnerSlotExempt;
+    }
+    if let Some(slice) = innermost_modeled_capped_slice(&cg) {
+        let unit = last_cgroup_unit_with_suffix(&cg, SCOPE_UNIT_SUFFIX)
+            .or_else(|| last_cgroup_unit_with_suffix(&cg, SERVICE_UNIT_SUFFIX))
+            .unwrap_or_default();
+        return UserWorkScopeStanding::ExemptSystemUnit { unit, slice };
     }
     if let Some((unit, slice)) = system_service_unit_from_cgroup(&cg) {
         if MODELED_CAPPED_SYSTEM_SLICES.contains(&slice.as_str()) {

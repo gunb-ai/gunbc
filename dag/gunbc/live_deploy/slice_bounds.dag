@@ -5,6 +5,7 @@ import std.optional { Present, Absent }
 import std.nat { Nat, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.session_reservation_policy { srv1_session_slice_memory_max }
 
 // ── THE CGROUP BOUNDS THIS DEPLOYMENT'S SERVED PROCESSES RUN UNDER ──────────────────────────
 // THEY LIVE IN A LEAF MODULE BECAUSE TWO LAYERS NEED THEM AND ONE OF THEM IS UPSTREAM OF THE
@@ -314,6 +315,8 @@ type DeclaredSliceMemoryMax {
   memory_max: ByteSize
 }
 
+data sessions_slice_unit_name: NonEmptyStr = "sessions.slice"
+
 fn declared_system_slice_memory_maxes() -> List<DeclaredSliceMemoryMax> {
   [
     DeclaredSliceMemoryMax {
@@ -323,6 +326,10 @@ fn declared_system_slice_memory_maxes() -> List<DeclaredSliceMemoryMax> {
     DeclaredSliceMemoryMax {
       unit: approval_broker_slice_unit_name,
       memory_max: approval_broker_slice_memory_max,
+    },
+    DeclaredSliceMemoryMax {
+      unit: sessions_slice_unit_name,
+      memory_max: srv1_session_slice_memory_max,
     },
   ]
 }
