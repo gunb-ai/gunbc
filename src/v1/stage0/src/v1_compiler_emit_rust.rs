@@ -2522,6 +2522,9 @@ pub fn render_rust_shared_type_if_needed(
     shared_types: Rc<BTreeSet<String>>,
 ) -> String {
     {
+        if is_host_freemonoid_vec_alias(type_name.clone()) {
+            return rendered.clone();
+        }
         let may_wrap_leaf = ((crate::std_types::is_container_type(type_name.clone())
             || v1_rt::contains(type_name.clone(), ".".to_string()))
             || ((type_name.clone() != "".to_string())
@@ -6414,8 +6417,9 @@ pub fn maybe_mark_shared_type(
                 }
                 std::option::Option::None => false,
             };
-        if (summary_declares_grounded_coproduct_native_alias(summary.clone())
+        if ((summary_declares_grounded_coproduct_native_alias(summary.clone())
             || alias_holds_container_wrap.clone())
+            || is_host_freemonoid_vec_alias(summary.name.clone()))
         {
             acc.clone()
         } else {
@@ -6495,7 +6499,11 @@ pub fn build_shared_types(
             user_shared.clone(),
             |acc: Rc<BTreeSet<String>>, key: String| {
                 let pascal = crate::v1_compiler_emit_core_support::to_pascal(key.clone());
-                v1_rt::rc_set_insert(acc, pascal.clone())
+                if is_host_freemonoid_vec_alias(pascal.clone()) {
+                    acc.clone()
+                } else {
+                    v1_rt::rc_set_insert(acc, pascal.clone())
+                }
             },
         )
     }
@@ -6569,6 +6577,36 @@ pub fn rust_spread_clone_by_layer(answer: Rc<SharedLayerAnswer>, base_str: Strin
             SharedLayerAnswer::SharedLayerRefuse { leaf, cause, .. } => {
                 shared_layer_refuse_expr(leaf.clone(), cause.clone())
             }
+        }
+    }
+}
+
+pub fn rust_adapt_shared_layer(
+    from: Rc<SharedLayerAnswer>,
+    to: Rc<SharedLayerAnswer>,
+    raw: String,
+) -> String {
+    let from_refuse = shared_layer_refuse_text(from.clone());
+    if (from_refuse.clone() != "".to_string()) {
+        return from_refuse.clone();
+    }
+    let to_refuse = shared_layer_refuse_text(to.clone());
+    if (to_refuse.clone() != "".to_string()) {
+        return to_refuse.clone();
+    }
+    match (*from.clone()).clone() {
+        SharedLayerAnswer::SharedLayerAtValue => match (*to.clone()).clone() {
+            SharedLayerAnswer::SharedLayerAtShared => rust_shared_wrap_ctor(raw.clone()),
+            _ => raw.clone(),
+        },
+        SharedLayerAnswer::SharedLayerAtShared => match (*to.clone()).clone() {
+            SharedLayerAnswer::SharedLayerAtValue => {
+                rust_spread_clone_by_layer(from.clone(), raw.clone())
+            }
+            _ => raw.clone(),
+        },
+        SharedLayerAnswer::SharedLayerRefuse { leaf, cause, .. } => {
+            shared_layer_refuse_expr(leaf.clone(), cause.clone())
         }
     }
 }
@@ -6731,6 +6769,10 @@ pub fn shared_layer_of_type_expr(
     generic_param_names: Rc<Vec<String>>,
 ) -> Rc<SharedLayerAnswer> {
     {
+        let orig_leaf = rust_fn_sig_leaf_name(source_indices.clone(), type_expr.clone());
+        if is_host_freemonoid_vec_alias(orig_leaf.clone()) {
+            return Rc::new(SharedLayerAnswer::SharedLayerAtValue);
+        }
         let judged = match rust_operand_alias_or_refinement_continue(
             type_expr.clone(),
             emit_alias_hop_scope(source_indices.clone()),
@@ -16768,6 +16810,25 @@ pub fn needs_box_wrapping(
     {
         let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
         let name = crate::v1_std_core::qualified_last_segment(authored.clone());
+        if is_host_freemonoid_vec_alias(name.clone())
+            || is_host_text_carrier_type(n.clone(), source_indices.clone())
+        {
+            return Rc::new(NeedsBoxAnswer::NeedsNoBox);
+        }
+        let hopped_leaf = rust_fn_sig_leaf_name(
+            source_indices.clone(),
+            match rust_operand_alias_or_refinement_continue(
+                n.clone(),
+                emit_alias_hop_scope(source_indices.clone()),
+                1,
+            ) {
+                Some(next) => next,
+                std::option::Option::None => n.clone(),
+            },
+        );
+        if is_host_freemonoid_vec_alias(hopped_leaf.clone()) {
+            return Rc::new(NeedsBoxAnswer::NeedsNoBox);
+        }
         let layer = shared_layer_of_type_expr(
             shared_types.clone(),
             n.clone(),
@@ -16816,6 +16877,9 @@ pub fn needs_box_wrapping(
                         TypeDeclResolution::TypeDeclKernelSpellingUndecided {
                             leaf: und, ..
                         } => {
+                            if crate::std_types::is_kernel_type(und.clone()) {
+                                Rc::new(NeedsBoxAnswer::NeedsNoBox)
+                            } else {
                             let corpus =
                                 crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
                                     type_decl_items.clone(),
@@ -16836,8 +16900,7 @@ pub fn needs_box_wrapping(
                             {
                                 Rc::new(NeedsBoxAnswer::NeedsBox)
                             } else {
-                                if ((rec_n.clone() == 0)
-                                    || crate::std_types::is_kernel_type(und.clone()))
+                                if (rec_n.clone() == 0)
                                 {
                                     Rc::new(NeedsBoxAnswer::NeedsNoBox)
                                 } else {
@@ -16846,6 +16909,7 @@ pub fn needs_box_wrapping(
     cause: "TypeDeclKernelSpellingUndecided candidates disagree on box".to_string(),
 })
                                 }
+                            }
                             }
                         }
                         TypeDeclResolution::TypeDeclNotDeclared => {
@@ -18001,11 +18065,9 @@ pub fn rust_field_carrier_final_type(
             source_indices.clone(),
             generic_param_names.clone(),
         );
-        match (*layer.clone()).clone() {
-            SharedLayerAnswer::SharedLayerRefuse { leaf, cause, .. } => {
-                return shared_layer_refuse_expr(leaf.clone(), cause.clone())
-            }
-            _ => layer.clone(),
+        let layer_refuse = shared_layer_refuse_text(layer.clone());
+        if layer_refuse.clone() != "" {
+            return layer_refuse;
         }
         let native_scalar = crate::v1_compiler_coercion::realization_host_numeric_spelling(
             type_reference_realization_in_env(
@@ -28474,12 +28536,55 @@ pub fn emit_typed_call(
                                 func.clone(),
                                 scope.type_env.clone().source_indices.clone(),
                             );
-                            rust_call_arg_function_value_adapt(
+                            let adapted = rust_call_arg_function_value_adapt(
                                 unwrapped.clone(),
                                 crate::v1_std_core::arg_value(a.clone()),
                                 callee.clone(),
                                 idx.clone(),
-                            )
+                            );
+                            let expected_ty = match application_plan
+                                .clone()
+                                .get((idx.clone()) as usize)
+                            {
+                                Some(application) => {
+                                    Some(application.formal.clone().substitution_basis.clone())
+                                }
+                                std::option::Option::None => match callee.clone() {
+                                    Some(info) => match function_value_params(
+                                        info.params.clone(),
+                                    )
+                                    .get((idx.clone()) as usize)
+                                    {
+                                        Some(param) => Some(
+                                            crate::v1_std_core::param_node_type_expr(param.clone()),
+                                        ),
+                                        std::option::Option::None => std::option::Option::None,
+                                    },
+                                    std::option::Option::None => std::option::Option::None,
+                                },
+                            };
+                            match expected_ty {
+                                Some(pty) => rust_adapt_shared_layer(
+                                    shared_layer_of_type_expr(
+                                        shared_types.clone(),
+                                        crate::v1_std_core::resolved_type(
+                                            crate::v1_std_core::arg_value(a.clone()),
+                                        ),
+                                        emit_info.type_decl_items.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                        emit_info.fn_generic_param_names.clone(),
+                                    ),
+                                    shared_layer_of_type_expr(
+                                        shared_types.clone(),
+                                        pty.clone(),
+                                        emit_info.type_decl_items.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                        emit_info.fn_generic_param_names.clone(),
+                                    ),
+                                    adapted.clone(),
+                                ),
+                                std::option::Option::None => adapted.clone(),
+                            }
                         }
                     }
                 });
@@ -33974,6 +34079,28 @@ pub fn rust_struct_field_type_node(
     }
 }
 
+pub fn rust_named_type_generic_param_names(
+    scope: Rc<InferScope>,
+    type_name: String,
+) -> Rc<Vec<String>> {
+    match crate::v1_compiler_infer_env::lookup_type_by_name(
+        scope.type_env.clone(),
+        type_name.clone(),
+    ) {
+        Some(item) => {
+            let mut names = Vec::new();
+            for p in item.params.iter().cloned() {
+                names.push(crate::v1_std_core::generic_param_name_at(
+                    p.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ));
+            }
+            Rc::new(names)
+        }
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
 pub fn rust_record_field_needs_fn_rc(
     scope: Rc<InferScope>,
     struct_name: String,
@@ -34153,14 +34280,56 @@ pub fn rust_record_field_needs_box(
         struct_name.clone(),
         field_name.clone(),
     ) {
-        Some(field_type) => needs_box_wrapping(
-            field_type.clone(),
-            emit_info.recursive_type_set.clone(),
-            shared_types.clone(),
-            scope.type_env.clone().source_indices.clone(),
-            emit_info.type_decl_items.clone(),
-            emit_info.fn_generic_param_names.clone(),
-        ),
+        Some(field_type) => {
+            let generic_param_names = crate::v1_compiler_emit_core_support::unique_strings({
+                let mut names = (*emit_info.fn_generic_param_names.clone()).clone();
+                names.extend(
+                    (*rust_named_type_generic_param_names(scope.clone(), struct_name.clone()))
+                        .clone(),
+                );
+                Rc::new(names)
+            });
+            let boxed = needs_box_wrapping(
+                field_type.clone(),
+                emit_info.recursive_type_set.clone(),
+                shared_types.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                emit_info.type_decl_items.clone(),
+                generic_param_names.clone(),
+            );
+            match (*boxed.clone()).clone() {
+                NeedsBoxAnswer::NeedsBoxRefuse { leaf, cause, .. } => {
+                    Rc::new(NeedsBoxAnswer::NeedsBoxRefuse {
+                        leaf: leaf.clone(),
+                        cause: cause.clone(),
+                    })
+                }
+                NeedsBoxAnswer::NeedsNoBox => Rc::new(NeedsBoxAnswer::NeedsNoBox),
+                NeedsBoxAnswer::NeedsBox => {
+                    let ty = render_rust_type(
+                        field_type.clone(),
+                        shared_types.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                        emit_info.clone(),
+                    );
+                    let final_ty = rust_field_carrier_final_type(
+                        field_type.clone(),
+                        ty.clone(),
+                        emit_info.recursive_type_set.clone(),
+                        shared_types.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                        scope.type_env.clone(),
+                        emit_info.type_decl_items.clone(),
+                        generic_param_names.clone(),
+                    );
+                    if v1_rt::starts_with(final_ty.clone(), "Box<".to_string()) {
+                        Rc::new(NeedsBoxAnswer::NeedsBox)
+                    } else {
+                        Rc::new(NeedsBoxAnswer::NeedsNoBox)
+                    }
+                }
+            }
+        }
         std::option::Option::None => Rc::new(NeedsBoxAnswer::NeedsNoBox),
     }
 }
@@ -34185,7 +34354,7 @@ pub fn wrap_rust_record_field_value(
             {
                 rust_callable_field_value_wrap(raw.clone(), value_node.clone(), scope.clone())
             } else {
-                match (*rust_record_field_needs_box(
+                let boxed = match (*rust_record_field_needs_box(
                     scope.clone(),
                     emit_info.clone(),
                     shared_types.clone(),
@@ -34202,7 +34371,44 @@ pub fn wrap_rust_record_field_value(
                     NeedsBoxAnswer::NeedsBoxRefuse { leaf, cause, .. } => {
                         shared_layer_refuse_expr(leaf.clone(), cause.clone())
                     }
-                }
+                };
+                let generic_param_names = crate::v1_compiler_emit_core_support::unique_strings({
+                    let mut names = (*emit_info.fn_generic_param_names.clone()).clone();
+                    names.extend(
+                        (*rust_named_type_generic_param_names(
+                            scope.clone(),
+                            struct_name.clone(),
+                        ))
+                        .clone(),
+                    );
+                    Rc::new(names)
+                });
+                let field_layer = match rust_struct_field_type_node_variant_aware(
+                    scope.clone(),
+                    emit_info.clone(),
+                    struct_name.clone(),
+                    field_name.clone(),
+                ) {
+                    Some(field_type) => shared_layer_of_type_expr(
+                        shared_types.clone(),
+                        field_type.clone(),
+                        emit_info.type_decl_items.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                        generic_param_names.clone(),
+                    ),
+                    std::option::Option::None => Rc::new(SharedLayerAnswer::SharedLayerAtValue),
+                };
+                let value_layer = match value_node.clone() {
+                    Some(vn) => shared_layer_of_type_expr(
+                        shared_types.clone(),
+                        crate::v1_std_core::resolved_type(vn.clone()),
+                        emit_info.type_decl_items.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                        generic_param_names.clone(),
+                    ),
+                    std::option::Option::None => field_layer.clone(),
+                };
+                rust_adapt_shared_layer(value_layer.clone(), field_layer.clone(), boxed.clone())
             }
         }
     }

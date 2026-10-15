@@ -1627,6 +1627,9 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
 }
 
 fn render_rust_shared_type_if_needed(type_name: String, rendered: String, shared_types: Set<String>) -> String {
+  if is_host_freemonoid_vec_alias(name: type_name) {
+    return rendered
+  }
   // Unique-owner user leaves are in the shared set (build_shared_types dual key) and must wrap.
   // Restricting wrap to containers / dotted names left FinitePowerSet and every other shared
   // struct at the value layer in fn-parameter position -- E0308 against the seed field types
@@ -1738,6 +1741,9 @@ fn rust_carrier_realizes_as_machine_scalar(n: Node, type_name: String) -> Bool {
 // route to and no second layer enum to merge away first.
 fn rust_carrier_shared_layer(n: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> SharedLayerAnswer {
   let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+  if is_host_freemonoid_vec_alias(name: leaf) {
+    return SharedLayerAtValue
+  }
   if leaf == "" || rust_carrier_realizes_as_machine_scalar(n: n, type_name: leaf) || (n.return_cardinality == CardOptional) {
     SharedLayerAtValue
   } else {
@@ -3377,7 +3383,7 @@ fn maybe_mark_shared_type(acc: Set<String>, summary: TypeSummary, recursive_type
       is_type_alias_item(item: item, source_indices: source_indices) || (is_container_type(name: rhs_leaf) && rhs_leaf != summary.name)
     Absent => false
   }
-  if summary_declares_grounded_coproduct_native_alias(summary: summary) || alias_holds_container_wrap {
+  if summary_declares_grounded_coproduct_native_alias(summary: summary) || alias_holds_container_wrap || is_host_freemonoid_vec_alias(name: summary.name) {
     acc
   } else if needs_sharing && !is_type_constant(summary: summary, recursive_type_set: recursive_type_set) {
     set_insert(acc, summary.key)
@@ -3408,7 +3414,7 @@ fn build_shared_types(type_summaries: TypeSummaryIndex, recursive_type_set: Set<
     |> filter(k => sharing.needs_sharing && k != "optional" && k != "boolean_algebra")
   collection_keys |> fold(init: user_shared, f: (acc, key) =>
     let pascal = to_pascal(name: key)
-    set_insert(acc, pascal)
+    if is_host_freemonoid_vec_alias(name: pascal) { acc } else { set_insert(acc, pascal) }
   )
 }
 
@@ -3434,6 +3440,26 @@ fn rust_spread_clone_by_layer(answer: SharedLayerAnswer, base_str: String) -> St
   match answer {
     SharedLayerAtShared => apply_type_template1(template: sharing.deref_clone, arg0: base_str)
     SharedLayerAtValue => apply_type_template1(template: sharing.clone_value, arg0: base_str)
+    SharedLayerRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
+  }
+}
+
+fn rust_adapt_shared_layer(from: SharedLayerAnswer, to: SharedLayerAnswer, raw: String) -> String {
+  let from_refuse = shared_layer_refuse_text(answer: from)
+  if from_refuse != "" { return from_refuse }
+  let to_refuse = shared_layer_refuse_text(answer: to)
+  if to_refuse != "" { return to_refuse }
+  match from {
+    SharedLayerAtValue =>
+      match to {
+        SharedLayerAtShared => rust_shared_wrap_ctor(inner_expr: raw)
+        _ => raw
+      }
+    SharedLayerAtShared =>
+      match to {
+        SharedLayerAtValue => rust_spread_clone_by_layer(answer: from, base_str: raw)
+        _ => raw
+      }
     SharedLayerRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
   }
 }
@@ -3522,6 +3548,10 @@ fn emit_alias_hop_scope(source_indices: Map<String, NewlineIndex>) -> InferScope
 // (v1.compiler.emit_rust; tidy-swift-183 #13941). When the use-site node is not stamped, the same
 // alias arm is applied to the routed declaration item.
 fn shared_layer_of_type_expr(shared_types: Set<String>, type_expr: Node, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>, generic_param_names: List<String>) -> SharedLayerAnswer {
+  let orig_leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: type_expr)
+  if is_host_freemonoid_vec_alias(name: orig_leaf) {
+    return SharedLayerAtValue
+  }
   let judged = match rust_operand_alias_or_refinement_continue(rt: type_expr, scope: emit_alias_hop_scope(source_indices: source_indices), fuel: 1) {
     Present { value: next } => next
     Absent =>
@@ -8023,6 +8053,16 @@ fn box_type_by_needs_box(answer: NeedsBoxAnswer, ty: String) -> String {
 fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> NeedsBoxAnswer {
   let authored = authored_name_at(source_indices: source_indices, node: n)
   let name = qualified_last_segment(name: authored)
+  if is_host_freemonoid_vec_alias(name: name) || is_host_text_carrier_type(n: n, source_indices: source_indices) {
+    return NeedsNoBox
+  }
+  let hopped_leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: match rust_operand_alias_or_refinement_continue(rt: n, scope: emit_alias_hop_scope(source_indices: source_indices), fuel: 1) {
+    Present { value: next } => next
+    Absent => n
+  })
+  if is_host_freemonoid_vec_alias(name: hopped_leaf) {
+    return NeedsNoBox
+  }
   let layer = shared_layer_of_type_expr(shared_types: shared_types, type_expr: n, type_decl_items: type_decl_items, source_indices: source_indices, generic_param_names: generic_param_names)
   match layer {
     SharedLayerRefuse { leaf: leaf, cause: cause } => NeedsBoxRefuse { leaf: leaf, cause: cause }
@@ -8036,14 +8076,18 @@ fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<S
             if set_contains(recursive_types, identity) { NeedsBox } else { NeedsNoBox }
           TypeDeclLeafAmbiguous { leaf: amb } => NeedsBoxRefuse { leaf: amb, cause: "TypeDeclLeafAmbiguous" }
           TypeDeclKernelSpellingUndecided { leaf: und } =>
-            let corpus = type_decl_identities_of_leaf(index: type_decl_items, leaf: und)
-            let rec_n = corpus |> filter(id => set_contains(recursive_types, id)) |> count
-            if rec_n == (corpus |> count) && (corpus |> count) > 0 {
-              NeedsBox
-            } else if rec_n == 0 || is_kernel_type(name: und) {
+            if is_kernel_type(name: und) {
               NeedsNoBox
             } else {
-              NeedsBoxRefuse { leaf: und, cause: "TypeDeclKernelSpellingUndecided candidates disagree on box" }
+              let corpus = type_decl_identities_of_leaf(index: type_decl_items, leaf: und)
+              let rec_n = corpus |> filter(id => set_contains(recursive_types, id)) |> count
+              if rec_n == (corpus |> count) && (corpus |> count) > 0 {
+                NeedsBox
+              } else if rec_n == 0 {
+                NeedsNoBox
+              } else {
+                NeedsBoxRefuse { leaf: und, cause: "TypeDeclKernelSpellingUndecided candidates disagree on box" }
+              }
             }
           TypeDeclNotDeclared => NeedsNoBox
         }
@@ -8573,9 +8617,9 @@ fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Se
     return ty
   }
   let layer = shared_layer_of_type_expr(shared_types: shared_types, type_expr: rt_field, type_decl_items: type_decl_items, source_indices: source_indices, generic_param_names: generic_param_names)
-  match layer {
-    SharedLayerRefuse { leaf: leaf, cause: cause } => return shared_layer_refuse_expr(leaf: leaf, cause: cause)
-    _ => layer
+  let layer_refuse = shared_layer_refuse_text(answer: layer)
+  if layer_refuse != "" {
+    return layer_refuse
   }
   let native_scalar = realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: rt_field, dag_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: rt_field), env: env, source_indices: source_indices))
   match needs_box_wrapping(n: rt_field, recursive_types: recursive_types, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names) {
@@ -13463,7 +13507,28 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     } else {
       let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: arg_emit_info)
       let unwrapped = rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func, source_indices: scope.type_env.source_indices)
-      rust_call_arg_function_value_adapt(arg_str: unwrapped, arg: arg_value(n: a), callee: callee, idx: idx)
+      let adapted = rust_call_arg_function_value_adapt(arg_str: unwrapped, arg: arg_value(n: a), callee: callee, idx: idx)
+      let expected_ty = match application_plan |> skip(idx) |> first {
+        Present { value: application } => Present { value: application.formal.substitution_basis }
+        Absent =>
+          match callee {
+            Present { value: info } =>
+              match function_value_params(params: info.params) |> skip(idx) |> first {
+                Present { value: param } => Present { value: param_node_type_expr(n: param) }
+                Absent => none
+              }
+            Absent => none
+          }
+      }
+      match expected_ty {
+        Present { value: pty } =>
+          rust_adapt_shared_layer(
+            from: shared_layer_of_type_expr(shared_types: shared_types, type_expr: resolved_type(n: arg_value(n: a)), type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices, generic_param_names: emit_info.fn_generic_param_names),
+            to: shared_layer_of_type_expr(shared_types: shared_types, type_expr: pty, type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices, generic_param_names: emit_info.fn_generic_param_names),
+            raw: adapted
+          )
+        Absent => adapted
+      }
     }
   )
   let extra_args = match callee {
@@ -15444,6 +15509,13 @@ fn rust_struct_field_type_node(scope: InferScope, struct_name: String, field_nam
   }
 }
 
+fn rust_named_type_generic_param_names(scope: InferScope, type_name: String) -> List<String> {
+  match lookup_type_by_name(env: scope.type_env, name: type_name) {
+    Present { value: item } => item.params |> map(p => generic_param_name_at(n: p, source_indices: scope.type_env.source_indices))
+    Absent => []
+  }
+}
+
 fn rust_record_field_needs_fn_rc(scope: InferScope, struct_name: String, field_name: String) -> Bool {
   rust_struct_field_lookup_candidates(struct_name: struct_name, scope: scope) |> any(candidate =>
     match rust_struct_field_type_node(scope: scope, struct_name: candidate, field_name: field_name) {
@@ -15529,7 +15601,16 @@ fn rust_struct_field_type_node_from_container(container: Node, field_name: Strin
 fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> NeedsBoxAnswer {
   match rust_struct_field_type_node_variant_aware(scope: scope, emit_info: emit_info, struct_name: struct_name, field_name: field_name) {
     Present { value: field_type } =>
-      needs_box_wrapping(n: field_type, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names)
+      let generic_param_names = unique_strings(items: concat(emit_info.fn_generic_param_names, rust_named_type_generic_param_names(scope: scope, type_name: struct_name)))
+      let boxed = needs_box_wrapping(n: field_type, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: generic_param_names)
+      match boxed {
+        NeedsBoxRefuse { leaf: leaf, cause: cause } => NeedsBoxRefuse { leaf: leaf, cause: cause }
+        NeedsNoBox => NeedsNoBox
+        NeedsBox =>
+          let ty = render_rust_type(n: field_type, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
+          let final_ty = rust_field_carrier_final_type(rt_field: field_type, ty: ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices, env: scope.type_env, type_decl_items: emit_info.type_decl_items, generic_param_names: generic_param_names)
+          if starts_with(s: final_ty, prefix: "Box<") { NeedsBox } else { NeedsNoBox }
+      }
     Absent => NeedsNoBox
   }
 }
@@ -15541,11 +15622,21 @@ fn wrap_rust_record_field_value(raw: String, value_node: Node?, scope: InferScop
   } else if is_bounded_lattice_field && (field_name == "meet" || field_name == "join") {
     rust_callable_field_value_wrap(raw: raw, value_node: value_node, scope: scope)
   } else {
-    match rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name) {
+    let boxed = match rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name) {
       NeedsBox => concat("Box::new(", raw, ")")
       NeedsNoBox => raw
       NeedsBoxRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
     }
+    let generic_param_names = unique_strings(items: concat(emit_info.fn_generic_param_names, rust_named_type_generic_param_names(scope: scope, type_name: struct_name)))
+    let field_layer = match rust_struct_field_type_node_variant_aware(scope: scope, emit_info: emit_info, struct_name: struct_name, field_name: field_name) {
+      Present { value: field_type } => shared_layer_of_type_expr(shared_types: shared_types, type_expr: field_type, type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices, generic_param_names: generic_param_names)
+      Absent => SharedLayerAtValue
+    }
+    let value_layer = match value_node {
+      Present { value: vn } => shared_layer_of_type_expr(shared_types: shared_types, type_expr: resolved_type(n: vn), type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices, generic_param_names: generic_param_names)
+      Absent => field_layer
+    }
+    rust_adapt_shared_layer(from: value_layer, to: field_layer, raw: boxed)
   }
 }
 
