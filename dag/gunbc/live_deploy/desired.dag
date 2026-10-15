@@ -48,9 +48,11 @@ import gunbc.live_deploy.spec {
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
 }
-import gunbc.live_deploy.lab_host_plan {
-  lab_deploy_plan_for_compute_host,
-  lab_plan_deploy_fields,
+import gunbc.live_deploy.lab_host_plan { lab_deploy_plan_for_compute_host }
+import gunbc.host.host_software_surface {
+  host_software_surface_for_identity,
+  host_os_package_manager_optional,
+  host_tailscale_client,
 }
 
 // SELECTION, NOT CONVERGENCE. This roster names the desired realizations a live_deploy
@@ -114,14 +116,15 @@ fn srv1_lab_desired_deployment() -> DesiredDeployment {
 }
 
 fn deployment_srv2_target() -> DeploymentHostTarget {
-  let fields = lab_plan_deploy_fields(plan: lab_deploy_plan_for_compute_host(host: srv2_host))
+  let surface = host_software_surface_for_identity(identity: srv2_host.identity)
   DeploymentHostTarget {
     host: srv2_host,
     ssh_host: operator_host_srv2 as NonEmptyStr,
     tailscale_endpoint: srv2_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
-    os_package_manager: fields.os_package_manager,
-    tailscale_client: fields.tailscale_client,
+    lab_plan: lab_deploy_plan_for_compute_host(host: srv2_host),
+    os_package_manager: host_os_package_manager_optional(surface: surface),
+    tailscale_client: host_tailscale_client(surface: surface),
     host_directories: [],
   }
 }

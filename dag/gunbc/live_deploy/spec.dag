@@ -27,8 +27,13 @@ import extdeps.tailscale.serve {
 }
 import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
 import gunbc.live_deploy.lab_host_plan {
+  LabDeployPlan,
   srv1_lab_deploy_plan,
-  lab_plan_deploy_fields,
+}
+import gunbc.host.host_software_surface {
+  srv1_software_surface,
+  host_os_package_manager_optional,
+  host_tailscale_client,
 }
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
 import gunbc.fleet.fleet_intent_network {
@@ -251,6 +256,7 @@ type DeploymentHostTarget {
   ssh_host: NonEmptyStr
   tailscale_endpoint: NetworkEndpoint
   tailnet_domain: NonEmptyStr?
+  lab_plan: LabDeployPlan
   os_package_manager: OsPackageManager?
   tailscale_client: TailscaleServeCapability
   host_directories: List<OwnedDirectoryTarget>
@@ -1358,14 +1364,15 @@ fn deployment_owned_steps_retract_order(spec: DeploymentSpec) -> List<Deployment
 }
 
 fn deployment_srv1_target() -> DeploymentHostTarget {
-  let fields = lab_plan_deploy_fields(plan: srv1_lab_deploy_plan())
+  let surface = srv1_software_surface()
   DeploymentHostTarget {
     host: srv1_host,
     ssh_host: operator_host_srv1 as NonEmptyStr,
     tailscale_endpoint: srv1_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
-    os_package_manager: fields.os_package_manager,
-    tailscale_client: fields.tailscale_client,
+    lab_plan: srv1_lab_deploy_plan(),
+    os_package_manager: host_os_package_manager_optional(surface: surface),
+    tailscale_client: host_tailscale_client(surface: surface),
     host_directories: deployment_srv1_host_directories(),
   }
 }

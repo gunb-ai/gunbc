@@ -22,13 +22,12 @@ import gunbc.host.host_software_surface {
 }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_intent { ComputeHost }
-import extdeps.tailscale.serve { TailscaleServeCapability, ScopedRemovalUnobserved }
+import extdeps.tailscale.serve { TailscaleServeCapability }
 
-// FIRST CONSUMER of the per-host software surface (DESIGN 3c). gunbc.live_deploy.spec
-// deployment_srv1_target matches srv1_lab_deploy_plan: LabPlanReady fills os_package_manager and
-// tailscale_client; LabPlanRefused maps to none / ScopedRemovalUnobserved so emit refuses to
-// produce a retract (and apply, once the client is unobserved) rather than deploying past a
-// refused plan. Witnesses are not this consumer.
+// FIRST CONSUMER of the per-host software surface (DESIGN 3c). DeploymentHostTarget.lab_plan
+// carries the LabDeployPlan. emit matches LabPlanRefused before TailscaleServeCapability, so a
+// sandbox or toolchain refusal is not nicknamed ScopedRemovalUnobserved. os_package_manager and
+// tailscale_client stay host readings, not a collapsed plan cause. Witnesses are not this consumer.
 //
 // WORKER-SANDBOX SELECTION. A host whose user manager does not enforce ProtectHome must not yield a
 // plan that claims user-manager confinement (sysctl 1 → system-manager launcher). Sysctl 0 is a
@@ -142,24 +141,17 @@ fn lab_plan_refusal_reason(cause: LabDeployPlanRefusal) -> NonEmptyStr {
   }
 }
 
-type LabPlanDeployFields {
-  os_package_manager: OsPackageManager?
-  tailscale_client: TailscaleServeCapability
-}
-
-fn lab_plan_deploy_fields(plan: LabDeployPlan) -> LabPlanDeployFields {
-  match plan {
-    LabPlanReady { host: _, os_package_manager: m, tailscale_client: ts, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
-      LabPlanDeployFields {
-        os_package_manager: Present { value: m },
-        tailscale_client: ts,
-      }
-    LabPlanRefused { cause: c } =>
-      LabPlanDeployFields {
-        os_package_manager: none,
-        tailscale_client: ScopedRemovalUnobserved { reason: lab_plan_refusal_reason(cause: c) as String },
-      }
-  }
+fn lab_plan_refused_emit_line(cause: LabDeployPlanRefusal, fold_label: String) -> String {
+  concat(
+    "__GUNBC_DEPLOY_REFUSED__ live-deploy ",
+    concat(
+      fold_label,
+      concat(
+        " NOT EMITTED: lab plan refused (",
+        concat(lab_plan_refusal_reason(cause: cause) as String, ") (DESIGN 5: refuse, never widen)"),
+      ),
+    ),
+  )
 }
 
 // WHY DispatchHostEnvironment SUBSTRING PROBES ARE NOT REPLACED HERE. Those probes are a live

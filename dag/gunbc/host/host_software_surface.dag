@@ -434,6 +434,13 @@ fn host_os_package_manager(surface: HostSoftwareSurface) -> HostPackageManagerRe
   }
 }
 
+fn host_os_package_manager_optional(surface: HostSoftwareSurface) -> OsPackageManager? {
+  match host_os_package_manager(surface: surface) {
+    HostPackageManagerKnown { manager: m } => Present { value: m }
+    HostPackageManagerUnobserved { obligation: _ } => none
+  }
+}
+
 type UserManagerSandboxEnforcement
   = UserManagerDoesNotEnforceSandbox { wrote_into_home: NonEmptyStr }
   | UserManagerSandboxUnobserved { obligation: NonEmptyStr }
