@@ -6,15 +6,13 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String, NonEmptyStr, List, Int, Bool, FilePath, Port }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
-import std.os.types { NobleNumbat2404Lts, OsPackageManager }
-import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
+import std.os.types { OsPackageManager }
+import std.optional { Present }
 import extdeps.package_managers.apt {
   package_tailscale,
   package_tmux,
 }
-import extdeps.version.semver { SemVerVersion, semver_version_parse }
 import extdeps.tailscale.serve {
-  tailscale_scoped_removal_capability,
   tailscale_serve_unix_target,
   tailscale_serve_unix_target_path,
   TailscaleServeEndpoint,
@@ -28,6 +26,15 @@ import extdeps.tailscale.serve {
   tailscale_serve_route_member_path,
 }
 import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
+import gunbc.live_deploy.lab_host_plan {
+  LabDeployPlan,
+  srv1_lab_deploy_plan,
+}
+import gunbc.host.host_software_surface {
+  srv1_software_surface,
+  host_os_package_manager_optional,
+  host_tailscale_client,
+}
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, attempt_worker_slice_unit_name }
 import gunbc.fleet.fleet_intent_network {
   srv1_tailscale_endpoint,
@@ -231,7 +238,7 @@ fn deployment_step_teardown_disposition(step: DeploymentStep) -> TeardownDisposi
 // rather than a constant in the emitter. The tailscale Serve CLI CHANGED in client 1.52, so `serve
 // <flags> off` is available on some hosts and not others, and the previous code answered the
 // question with a data row asserting it for every host at every time.\n\nsrv1 was measured at
-// 1.98.3 and its row says so, with the measurement carried as the observed string rather than as a
+// 1.102.2 (inhabitance receipt 2026-10-15) and its row says so, with the measurement carried as the observed string rather than as a
 // Bool — a verdict that has forgotten what it was computed from cannot be re-checked when the host
 // is upgraded. srv2 and srv3 are ScopedRemovalUnobserved, which is NOT a claim that they lack the
 // capability: it is the statement that nobody looked. Collapsing that to either pole is the
@@ -249,7 +256,8 @@ type DeploymentHostTarget {
   ssh_host: NonEmptyStr
   tailscale_endpoint: NetworkEndpoint
   tailnet_domain: NonEmptyStr?
-  os_package_manager: OsPackageManager
+  lab_plan: LabDeployPlan
+  os_package_manager: OsPackageManager?
   tailscale_client: TailscaleServeCapability
   host_directories: List<OwnedDirectoryTarget>
 }
@@ -1038,10 +1046,6 @@ fn tree_sync_unit_path(names: DeploymentNames) -> NonEmptyStr {
   ], "") as NonEmptyStr
 }
 
-fn ubuntu_noble_os_package_manager() -> OsPackageManager {
-  ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
-}
-
 type DeploymentSpec {
   target: DeploymentHostTarget
   steps: List<DeploymentStep>
@@ -1364,26 +1368,16 @@ fn deployment_owned_steps_retract_order(spec: DeploymentSpec) -> List<Deployment
 }
 
 fn deployment_srv1_target() -> DeploymentHostTarget {
+  let surface = srv1_software_surface()
   DeploymentHostTarget {
     host: srv1_host,
     ssh_host: operator_host_srv1 as NonEmptyStr,
     tailscale_endpoint: srv1_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
-    os_package_manager: ubuntu_noble_os_package_manager(),
-    tailscale_client: srv1_observed_tailscale_client(),
+    lab_plan: srv1_lab_deploy_plan(),
+    os_package_manager: host_os_package_manager_optional(surface: surface),
+    tailscale_client: host_tailscale_client(surface: surface),
     host_directories: deployment_srv1_host_directories(),
-  }
-}
-
-// THE OBSERVED VERSION IS THE PARSE RESULT, never a hand-built record: SemVerVersion fields
-// are confined code-point runs, so the label arrives through the parser and an unadmitted
-// label is carried as a refusal, not a fabricated version (review 77150).
-data srv1_tailscale_client_observed_version: SemVerVersion? = semver_version_parse(cps: chars(s: "1.98.3" as String))
-
-fn srv1_observed_tailscale_client() -> TailscaleServeCapability {
-  match srv1_tailscale_client_observed_version {
-    Absent => ScopedRemovalUnobserved { reason: "the observed client version label failed to parse — a defect in the observed-version row, not an observation gap" }
-    Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
   }
 }
 

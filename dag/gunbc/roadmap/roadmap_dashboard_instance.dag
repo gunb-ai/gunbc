@@ -61,6 +61,7 @@ import gunbc.roadmap.roadmap_execution_contract {
   dispatch_host_realization,
   dispatch_platform_required_capabilities,
 }
+import gunbc.host.srv1_software_inhabitance_receipt { srv1_software_inhabitance_receipt }
 import gunbc.host.host_layout {
   srv1_gunbc_repo_root,
   srv1_gunbc_serve_binary,
@@ -554,16 +555,16 @@ data srv1_linux_toolchain: DashboardToolchain = DashboardToolchain {
   path_test: "/usr/bin/test" as FilePath,
   path_stat: "/usr/bin/stat" as FilePath,
   path_list: "/usr/bin/ls" as FilePath,
-  git: "/usr/bin/git" as FilePath,
+  git: srv1_software_inhabitance_receipt.git_path,
   tmux: "/usr/bin/tmux" as FilePath,
   pipe_shell: "/usr/bin/sh" as FilePath,
   tee: "/usr/bin/tee" as FilePath,
-  jq: "/usr/bin/jq" as FilePath,
+  jq: srv1_software_inhabitance_receipt.jq_path,
   environment_binding: dashboard_environment_binding_executable,
   install: "/usr/bin/install" as FilePath,
   link: "/usr/bin/ln" as FilePath,
-  timeout: "/usr/bin/timeout" as FilePath,
-  systemd_run: Present { value: "/usr/bin/systemd-run" as FilePath },
+  timeout: srv1_software_inhabitance_receipt.timeout_path,
+  systemd_run: Present { value: srv1_software_inhabitance_receipt.systemd_run_path },
   cargo: "/home/briansrls/.cargo/bin/cargo" as FilePath,
   rustc: "/home/briansrls/.cargo/bin/rustc" as FilePath,
   rustfmt: "/home/briansrls/.cargo/bin/rustfmt" as FilePath,

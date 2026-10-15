@@ -264,19 +264,23 @@ pub fn census_declaration_identity(
     type_env: Rc<TypeEnv>,
     func_name: String,
 ) -> Option<Rc<BorrowedCensusDecl>> {
-    match (*borrowed_census_decl(type_env.clone(), func_name.clone())).clone() {
-        BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
-            declaration: bd, ..
-        } => match crate::v1_compiler_infer_items::item_kind(bd.node.clone()) {
-            ItemKind::TypeItem => std::option::Option::None,
-            ItemKind::ServiceItem => std::option::Option::None,
-            ItemKind::DataItem => std::option::Option::None,
-            _ => Some(bd.clone()),
-        },
-        BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous { candidates: _, .. } => {
-            std::option::Option::None
+    if crate::std_algebra::algebra_method_template_name(func_name.clone()) {
+        std::option::Option::None
+    } else {
+        match (*borrowed_census_decl(type_env.clone(), func_name.clone())).clone() {
+            BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+                declaration: bd, ..
+            } => match crate::v1_compiler_infer_items::item_kind(bd.node.clone()) {
+                ItemKind::TypeItem => std::option::Option::None,
+                ItemKind::ServiceItem => std::option::Option::None,
+                ItemKind::DataItem => std::option::Option::None,
+                _ => Some(bd.clone()),
+            },
+            BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous { candidates: _, .. } => {
+                std::option::Option::None
+            }
+            BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound => std::option::Option::None,
         }
-        BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound => std::option::Option::None,
     }
 }
 

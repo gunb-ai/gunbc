@@ -176,6 +176,12 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_launch_argv_refused_detail,
   attempt_system_unit_launcher_locus, attempt_system_unit_launcher_revision_receipt_path,
 }
+import gunbc.live_deploy.lab_host_plan {
+  LabPlanReady,
+  LabPlanRefused,
+  lab_plan_refused_emit_line,
+  SystemManagerLauncherSelected,
+}
 import gunbc.live_deploy.spec {
   HoldsProdRoleSingletons, HoldsNoRoleSingleton, deployment_fabric_storage_door_socket,
   deployment_slice_unit_name, deployment_slice_unit_path,
@@ -303,7 +309,7 @@ import v2.std.orchestration {
   Do, If, Run, Comment, Let, Exit, ExprCmdSubst,
   FailFast, ExitZero, Not, DiscardAll
 }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, None }
 import v2.compiler.emit_orchestration { orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
@@ -1254,6 +1260,23 @@ fn attempt_system_unit_grant_steps(spec: DeploymentSpec, principal: GroundedPosi
         ]
         DashboardInstanceForId { instance: instance } =>
           attempt_system_unit_grant_steps_for_instance(spec: spec, principal: principal, instance: instance, revision: revision)
+      }
+  }
+}
+
+// THE PLAN'S WORKER-SANDBOX CHOICE IS THE REALIZATION SELECTOR. User-manager ProtectHome is not
+// an option on a host whose user manager does not enforce; LabPlanReady.worker_sandbox is
+// SystemManagerLauncherSelected, and that identity is this grant plus the attempt-worker slice,
+// not a second start path beside them.
+fn apply_selected_worker_sandbox_steps(spec: DeploymentSpec, principal: GroundedPosixPrincipal, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  match spec.target.lab_plan {
+    LabPlanRefused { cause: _ } => []
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
+      match choice {
+        SystemManagerLauncherSelected => concat(
+          apply_attempt_worker_slice_install_steps(),
+          attempt_system_unit_grant_steps(spec: spec, principal: principal, revision: revision),
+        )
       }
   }
 }
@@ -3643,11 +3666,8 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       LiveDeployServeUnitEmitted { file } => concat(
         if !plan_writes_unit(plan: plan) { [] } else { concat(
           concat(
-            apply_attempt_worker_slice_install_steps(),
-            concat(
-              apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
-              attempt_system_unit_grant_steps(spec: spec, principal: principal, revision: revision),
-            ),
+            apply_selected_worker_sandbox_steps(spec: spec, principal: principal, revision: revision),
+            apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
           ),
           concat(
             apply_systemd_unit_write_steps(spec: spec, file: file),
@@ -4584,6 +4604,16 @@ fn retract_unobserved_client_poison(reason: String) -> String {
   )
 }
 
+fn apply_unobserved_client_poison(reason: String) -> String {
+  concat(
+    "__GUNBC_DEPLOY_REFUSED__ live-deploy apply NOT EMITTED: this target's tailscale client version is UNOBSERVED (",
+    concat(
+      reason,
+      "), so whether scoped serve exists on it is unknown. An unobserved version is not a capable one (DESIGN 5: refuse, never widen)",
+    ),
+  )
+}
+
 // THE RETRACT FRAME'S COMMENT BLOCK, DECLARED ONCE SO A CLAIM CAN READ IT WITHOUT RENDERING THE
 // WHOLE PROGRAM.
 //
@@ -4874,6 +4904,39 @@ fn live_deploy_apply_script_for(
   oidc_now: Second?,
   access: DeployAccess,
 ) -> String {
+  match spec.target.lab_plan {
+    LabPlanRefused { cause: c } => lab_plan_refused_emit_line(cause: c, fold_label: "apply")
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
+      match choice {
+        SystemManagerLauncherSelected =>
+          match spec.target.tailscale_client {
+            ScopedRemovalUnobserved { reason: r } => apply_unobserved_client_poison(reason: r)
+            ScopedRemovalUnsupported { observed: _ } => live_deploy_apply_script_when_client_observed(
+              spec: spec,
+              plan: plan,
+              cap_authorization: cap_authorization,
+              oidc_now: oidc_now,
+              access: access,
+            )
+            ScopedRemovalSupported { observed: _ } => live_deploy_apply_script_when_client_observed(
+              spec: spec,
+              plan: plan,
+              cap_authorization: cap_authorization,
+              oidc_now: oidc_now,
+              access: access,
+            )
+          }
+      }
+  }
+}
+
+fn live_deploy_apply_script_when_client_observed(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  cap_authorization: CapConvergeDecision,
+  oidc_now: Second?,
+  access: DeployAccess,
+) -> String {
   match membership_effects(plan: deployment_apply_plan(spec: spec)) {
     EffectsReady { effects: es } =>
       emit_pipeline_or_poison(
@@ -4893,13 +4956,17 @@ fn live_deploy_apply_script_for(
 }
 
 fn live_deploy_retract_script_for(spec: DeploymentSpec, access: DeployAccess) -> String {
-  match spec.target.tailscale_client {
-    ScopedRemovalUnsupported { observed: v } =>
-      retract_unsupported_client_poison(observed: semver_version_label(v: v))
-    ScopedRemovalUnobserved { reason: r } =>
-      retract_unobserved_client_poison(reason: r)
-    ScopedRemovalSupported { observed: _ } =>
-      live_deploy_retract_script_with_scoped_removal(spec: spec, access: access)
+  match spec.target.lab_plan {
+    LabPlanRefused { cause: c } => lab_plan_refused_emit_line(cause: c, fold_label: "retract")
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
+      match spec.target.tailscale_client {
+        ScopedRemovalUnsupported { observed: v } =>
+          retract_unsupported_client_poison(observed: semver_version_label(v: v))
+        ScopedRemovalUnobserved { reason: r } =>
+          retract_unobserved_client_poison(reason: r)
+        ScopedRemovalSupported { observed: _ } =>
+          live_deploy_retract_script_with_scoped_removal(spec: spec, access: access)
+      }
   }
 }
 

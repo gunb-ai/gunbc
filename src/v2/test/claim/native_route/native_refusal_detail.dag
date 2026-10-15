@@ -26,7 +26,7 @@ import v2.compiler.native_test_vocabulary {
   NativeTestVerdict
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.collection { Map }
+
 import v2.std.integer { Int }
 import std.algebra { Cons, Empty, count_where, fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
@@ -90,7 +90,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   referencing node, so the row must identify that node's occurrence.
 // - clean: a module that resolves, so a route that refused everything cannot green the rest.
 
-data ndp_shadow_outer_source: String = "module v2.ndp.shadow\n\nimport std.types { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
+data ndp_shadow_outer_source: String = "module v2.ndp.shadow\n\nimport std.types { Bool, Map }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
 
 data ndp_shadow_inner_source: String = "module v2.ndp.shadow.inner\n\nimport std.types { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
 

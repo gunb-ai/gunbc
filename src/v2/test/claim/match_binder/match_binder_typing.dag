@@ -2,7 +2,7 @@ module v2.test.claim.match_binder.match_binder_typing
 
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.body_lowering_fold { type_declaration_modifiers_covering_no_modules }
-import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.resolve { empty_module_outcome_index, ResolvedTree }
 import v2.compiler.infer { infer, inferred_facts_resolved_type }
 import v2.std.qualified_name { declaration_reference_path_optional, lexical_reference_label_optional, qualified_name_last_segment }
 import v2.std.witness { Holds, Violates }
@@ -11,7 +11,7 @@ import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Cons, Empty, contains, list_map, list_append }
+import std.algebra { Cons, Empty, contains, list_map, list_append, empty_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NodeLocus, NonEmptyDiagnostics, None, Outcome, Rejected, Some, node_locus }
@@ -52,7 +52,7 @@ import v2.compiler.infer {
 import v2.compiler.inferred_tree { InferredFacts, InferredFactsEntry, ObligatedInferredTree }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.types { List }
-import v2.std.collection { empty_map }
+
 import v2.std.integer { Int }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -749,7 +749,7 @@ fn mbt_resolved() -> ResolvedTree {
     symbol_index: mbt_index(),
     resolved_declarations: empty_symbol_index(),
     lexical_bindings: empty_map(),
-    module_outcomes: [],
+    module_outcomes: [], outcome_index: empty_module_outcome_index(),
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),
     constructing_module: optional_absent()

@@ -13,9 +13,9 @@ import extdeps.systemd {
   SystemdUnitNameOverlong,
 }
 import extdeps.exec.command { argv_words }
-import v2.std.collection { List }
+
 import std.algebra { fold_list }
-import std.types { GitRef }
+import std.types { GitRef, List }
 import std.types { NonEmptyStr, GitRef, FilePath, path_segment_is_safe }
 import std.measure { byte_size_count }
 import std.disposition { Scaffold, Terminal }
