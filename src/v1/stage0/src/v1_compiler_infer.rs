@@ -8933,7 +8933,7 @@ pub fn type_node_is_arrow(n: Rc<Node>) -> bool {
 
 fn unify_position_is_type_variable(n: Rc<Node>) -> bool {
     match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { .. }) => true,
+        Some(InferredNode::TypeVariable { id: _, .. }) => true,
         _ => false,
     }
 }
@@ -8965,14 +8965,12 @@ fn unify_concrete_heads_or_arity_disagree(
     } else if ((formal.children.clone().len() as i64) == 1)
         && ((actual.children.clone().len() as i64) == 1)
     {
-        match (
-            formal.children.clone().first().cloned(),
-            actual.children.clone().first().cloned(),
-        ) {
-            (Some(fc), Some(ac)) => {
-                unify_concrete_heads_or_arity_disagree(fc, ac, source_indices, text)
-            }
-            _ => false,
+        match formal.children.clone().first().cloned() {
+            Some(fc) => match actual.children.clone().first().cloned() {
+                Some(ac) => unify_concrete_heads_or_arity_disagree(fc, ac, source_indices, text),
+                std::option::Option::None => false,
+            },
+            std::option::Option::None => false,
         }
     } else {
         let f_n = formal.children.clone().len() as i64;
@@ -9037,41 +9035,40 @@ pub fn direct_call_arg_type_mismatch(
                     ) {
                         true
                     } else {
-                            if produced_is_kernel_grounded_carrier_or_its_alias(
-                                crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    formal.clone(),
-                                ),
-                                crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    actual.clone(),
-                                ),
+                        if produced_is_kernel_grounded_carrier_or_its_alias(
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                formal.clone(),
+                            ),
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                actual.clone(),
+                            ),
+                            type_env.clone(),
+                        ) {
+                            false
+                        } else {
+                            (((crate::v1_compiler_infer_env::text_crossing_by_identity(
+                                formal.clone(),
+                                actual.clone(),
                                 type_env.clone(),
-                            ) {
-                                false
-                            } else {
-                                (((crate::v1_compiler_infer_env::text_crossing_by_identity(
-                                    formal.clone(),
-                                    actual.clone(),
-                                    type_env.clone(),
-                                ) || nominal_call_arg_brand_mismatch(
-                                    formal.clone(),
-                                    actual.clone(),
-                                    type_env.clone(),
-                                    source_indices.clone(),
-                                )) || container_element_nominal_brand_mismatch(
-                                    formal.clone(),
-                                    actual.clone(),
-                                    type_env.clone(),
-                                    module_name.clone(),
-                                    source_indices.clone(),
-                                )) || kernel_value_declared_type_mismatch(
-                                    formal.clone(),
-                                    actual.clone(),
-                                    type_env.clone(),
-                                    source_indices.clone(),
-                                ))
-                            }
+                            ) || nominal_call_arg_brand_mismatch(
+                                formal.clone(),
+                                actual.clone(),
+                                type_env.clone(),
+                                source_indices.clone(),
+                            )) || container_element_nominal_brand_mismatch(
+                                formal.clone(),
+                                actual.clone(),
+                                type_env.clone(),
+                                module_name.clone(),
+                                source_indices.clone(),
+                            )) || kernel_value_declared_type_mismatch(
+                                formal.clone(),
+                                actual.clone(),
+                                type_env.clone(),
+                                source_indices.clone(),
+                            ))
                         }
                     }
                 }
