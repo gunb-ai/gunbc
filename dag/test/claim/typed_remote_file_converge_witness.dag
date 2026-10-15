@@ -1,9 +1,11 @@
 module test.claim.typed_remote_file_converge_witness
 
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
+import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
 import gunbc.file_access { FileTreeScope }
 import std.materialization_ladder { string_list_contains }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, ssh_target_wire }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture {
   fleet_ssh_execution_context_hermetic_witness_fixture,
 }
@@ -45,7 +47,7 @@ data unit_dir_scope: FileTreeScope = FileTreeScope { root_path: "/home/gunbc/.co
 data subject_path: FilePath = "/home/gunbc/.config/systemd/user/gunbc-serving.service" as FilePath
 
 data witness_converge_ssh_target: SshTarget = SshTarget {
-  endpoint: "srv-test.example" as NonEmptyStr,
+  address: socket_address(host: host_by_name(name: HostName { name: DomainName { labels: ["srv-test" as DnsLabel, "example" as DnsLabel] }, qualification: PartiallyQualified }), port: 22),
   principal: "gunbc-automation" as NonEmptyStr,
 }
 
@@ -333,7 +335,7 @@ test fn the_converge_route_yields_a_receipt_naming_the_exact_write_and_target() 
             TypedRemoteFileConverged { converged: c } =>
               ((c.write.path as String) == (subject_path as String))
                 && (c.write.content == subject_content)
-                && ((c.target.endpoint as String) == (witness_converge_ssh_target.endpoint as String))
+                && ((ssh_target_wire(target: c.target) as String) == (ssh_target_wire(target: witness_converge_ssh_target) as String))
                 && ((c.target.principal as String) == (witness_converge_ssh_target.principal as String))
             TypedRemoteFileConvergenceRefused { step: _, reason: _ } => false
           }

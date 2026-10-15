@@ -6,7 +6,7 @@ import std.optional { Absent, Optional, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   CensusDiffClearedAndNewlyExposed,
   CensusDiffDuplicateObligation,
   CensusDiffIncompleteEvidence,

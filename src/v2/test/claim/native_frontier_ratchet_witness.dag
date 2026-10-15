@@ -1,4 +1,4 @@
-module test.claim.native_frontier_ratchet_witness
+module v2.test.claim.native_frontier_ratchet_witness
 
 import std.algebra { is_empty, length }
 import std.optional { Present, Absent, optional_absent }
@@ -7,27 +7,28 @@ import extdeps.bazel.label { PackagePath }
 import extdeps.bazel.target_pattern { SubtreeTargets, TargetPattern }
 import v2.compiler.native_test_vocabulary {
   NativeTestPassed, NativeTestReturnedOther,
-  NativeTestStage, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval
+  NativeTestStage, NativeTestStagePrepare, NativeTestStageEntry, NativeTestStageEval,
+  NativeRouteTestIdentity, NativeRouteMemberRow
 }
-import gunbc.witness.v2_native_route {
-  NativeRouteTestIdentity, NativeRouteMemberRow, NativeRouteExclusionCause,
+import v2.workflow.v2_native_route {
+  NativeRouteExclusionCause,
   NativeEntryResolutionLimit, CompilerFrontierAttributed,
   NativeAgreementPass, NativeExclusion,
   NativeRouteAdmission, NativeRouteAdmitted, NativeRouteRefused,
   DivergencesPresent, UnattributedExclusionsPresent, EmittedBuildNotClean, PopulationOmissionsPresent
 }
-import gunbc.native_route_progress_guard {
+import v2.workflow.native_route_progress_guard {
   NativeProgressObservedReading, NativeProgressDispositionRow, SubjectDeleted, SubjectRenamed,
   AttainAgreed, AttainDiverged, native_progress_read_observed
 }
-import gunbc.native_frontier_debt {
+import v2.workflow.native_frontier_debt {
   NativeFrontierDebtRow, DebtRefused, NativeFrontierRosterStanding, RosterUnminted, RosterMinted,
   NativeFrontierMintReceipt
 }
 import v2.workflow.compile_door_cause_ownership {
   CauseOwnership, CorrectnessFlipDeclaration, MigrationOwned
 }
-import gunbc.native_frontier_ratchet {
+import v2.workflow.native_frontier_ratchet {
   NativeFrontierVerdict, FrontierHeld, FrontierAdvanced, FrontierGrewByOwnedCorrectnessFlip,
   NativeFrontierFlipAuthority, FrontierLost, FrontierUnminted, FrontierNotAMeasurement,
   native_frontier_verdict_over, native_frontier_verdict_word, native_frontier_reading,
