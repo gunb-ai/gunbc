@@ -1,6 +1,7 @@
 module gunbc.live_deploy.slice_bounds
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String, List, Bool }
+import std.optional { Present, Absent }
 import std.nat { Nat, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
@@ -214,6 +215,8 @@ data approval_broker_slice_memory_max: ByteSize = byte_size(17179869184)
 
 data approval_broker_slice_memory_high: ByteSize = byte_size(15032385536)
 
+data approval_broker_slice_unit_name: NonEmptyStr = "gunbc-approval-broker.slice"
+
 // ── THE REPOSITORY CONVERGENCE ONESHOT'S OWN BOUND ──────────────────────────────────────────
 // IT HAS ITS OWN ENVELOPE BECAUSE A SHARED ONE IS A MOVING TARGET. The oneshot ran inside the roadmap
 // deployment slice beside the serving members, so its headroom was whatever those members had not
@@ -241,6 +244,8 @@ data approval_broker_slice_memory_high: ByteSize = byte_size(15032385536)
 data repository_convergence_slice_memory_max: ByteSize = byte_size(25769803776)
 
 data repository_convergence_slice_memory_high: ByteSize = byte_size(21474836480)
+
+data repository_convergence_slice_unit_name: NonEmptyStr = "gunbc-repository-convergence.slice"
 
 // THE CONVERGENCE SLICE FORBIDS SWAP FOR ITS OWN REASON, NOT THE SERVED SLICES'. The deployment-wide
 // row above denies swap because the served processes are latency-bound and operator-facing, which
@@ -299,4 +304,35 @@ fn user_slice_backstop_memory_max_of(work_slice_max: ByteSize) -> ByteSize {
 
 fn user_slice_backstop_memory_swap_max() -> ByteSize {
   user_work_slice_memory_swap_max
+}
+
+// SYSTEM SLICES THAT DECLARE MemoryMax. Exemption from the user-work wrap may skip only when the
+// enclosing slice is one of these rows with a positive max — the unit name is the row's identity,
+// not a separate list. user-work is a --user slice and is not in this census.
+type DeclaredSliceMemoryMax {
+  unit: NonEmptyStr
+  memory_max: ByteSize
+}
+
+fn declared_system_slice_memory_maxes() -> List<DeclaredSliceMemoryMax> {
+  [
+    DeclaredSliceMemoryMax {
+      unit: repository_convergence_slice_unit_name,
+      memory_max: repository_convergence_slice_memory_max,
+    },
+    DeclaredSliceMemoryMax {
+      unit: approval_broker_slice_unit_name,
+      memory_max: approval_broker_slice_memory_max,
+    },
+  ]
+}
+
+fn modeled_system_slice_memory_max(unit: String) -> ByteSize? {
+  match (
+    declared_system_slice_memory_maxes()
+      |> filter(row => (row.unit as String) == unit && byte_size_count(b: row.memory_max) > 0)
+  ).first() {
+    Absent => none
+    Present { value: row } => Present { value: row.memory_max }
+  }
 }
