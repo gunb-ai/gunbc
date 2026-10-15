@@ -256,12 +256,34 @@ own provenance — plus the documentary rung-drop prose row (`fabric_evidence_ga
   dag has its only real consumer in the two shell files. (Orphaned but not harmful — the
   unused-declaration lens covers unused *parameters*, is not in the required floor, and an unused
   top-level fn is legal.)
-- **Evidence-dag `fabric_ci_calibration_*` surface (27 of 34 exports — PROVISIONAL, re-derive
-  against royal-otter-526's PR, not main)** of
-  `gunbc.instruments.fabric_ci_evidence`: the calibration step plan, the transport/forgery/wire
-  calibration fns and their coproduct arms have no consumer other than the calibration shell
-  *on main*. Any of them the wave-1 actuator consumes (the step plan it walks, the fns it drives
-  for the REDs, the final assertion) survive with the actuator, not die with the shell.
+- **Evidence-dag `fabric_ci_calibration_*` surface (16 of the 34 top-level exports of
+  `gunbc.instruments.fabric_ci_evidence` — PROVISIONAL main-based count; re-derive the actuator
+  split against royal-otter-526's PR, not main).** All 16 have no consumer beyond the
+  calibration shell, the step plan's `function:` fields, or internal self-use on main. Pre-derived
+  per-symbol split (what the actuator inherits):
+  - **The 12-row step plan `fabric_ci_calibration_steps()`** (the actuator walks it; every RED row
+    is required in every PR body): 3 `ExpectStatus` rows
+    (`fabric_ci_calibration_assertion_success` status 0, `fabric_ci_calibration_bool_must_refuse`
+    status 2, `fabric_ci_calibration_raw_coproduct_must_not_cross` status 2), 2 `TransportAssert`
+    rows (`transport_alpha`/`transport_beta` asserted by
+    `fabric_ci_calibration_assert_transport` / `fabric_ci_calibration_assert_beta_transport`),
+    1 `TransportCrossRed` (beta through the alpha assert), 1 `DiagnosticNotChannel`
+    (`fabric_ci_calibration_diagnostic_forgery`), 1 `AlteredByteRed` (`transport_alpha`
+    `alpha-alter`), 1 `AssertionRed` (`fabric_ci_calibration_collapsed_projection_must_red`),
+    1 `WriteFailureRed` (`transport_alpha`, `/proc/fci-evidence-write-refusal`),
+    1 `IgnoredWriteRed` (`fabric_ci_calibration_transport_ignores_write_failure`),
+    1 `DeleteProjectionArmRed` (subject: the fixture, §5.2), 1 `FinalAssertion`
+    (`fabric_ci_calibration_assertion_success`).
+  - **The final assertion** `fabric_ci_calibration_assertion_success` — the shell's single
+    `--function` invocation and the GREEN/RED end-state the delete-projection-arm RED observes.
+    (Its one non-shell "consumer" is a prose string literal in
+    `materialization_kernel_closing_frontier_audit.dag`, not a dependency.)
+  - **The plan producer + wire helpers** `fabric_ci_calibration_steps`,
+    `fabric_ci_calibration_write_plan` (the shell's plan consumer),
+    `fabric_ci_calibration_plan_wire`, `fabric_ci_calibration_step_wire`,
+    `fabric_ci_calibration_alpha_wire`, `fabric_ci_calibration_beta_wire` — survive with the typed
+    plan only if the actuator consumes it; the actuator design decides (wave 1).
+  - The other 18 of the 34 exports are the wire surface (§5.2), not calibration.
 - **The emit dag** `gunbc.fabric.fci1_bounded_execution_context_emit` — its only consumers are the
   `generated_artifact_emit` / `tier_o_artifact_emit` arms that serve the `.env` registration
   (tier-o lanes, not required) and the `decl_ref` binding. Dies with the registration.
@@ -330,11 +352,15 @@ re-pointed together) — that, not a verdict, is the failure mode. The non-requi
 `heal` lanes are the only consumers that would later flag a stray `.env` registration.
 
 ## 6. Open / needs confirmation
-- **Re-derive the `fabric_ci_calibration_*` 27/34 split against royal-otter-526's PR, not
+- **Re-derive the `fabric_ci_calibration_*` split against royal-otter-526's PR, not
   main**, once it is up: the wave-1 actuator replaces the calibration shell as the consumer of
   the evidence authority's calibration surface, and whichever decls it consumes survive. The
-  projection fixture is already settled as MUST-NOT-DIE (subject of the actuator's
-  delete-projection-arm RED, which the brief requires in every PR body).
+  main-based pre-derivation is in §5.1: 16 of the 34 evidence-dag exports are
+  `fabric_ci_calibration_*`; all 16 are consumed by the calibration shell, the 12-row step plan,
+  or internal self-use on main; the 12 plan rows name 9 distinct RED-producing fns plus
+  `fabric_ci_calibration_assertion_success`. The projection fixture is already settled as
+  MUST-NOT-DIE (subject of the actuator's delete-projection-arm RED, which the brief requires in
+  every PR body).
 - The `FabricCiCalibrationDeleteProjectionArmRed { subject, selector }` step of the evidence dag
   (the `delete-projection-arm-red` row in `fabric_ci_calibration_steps()`, subject + selector as
   in 5.2) is the actuator's RED contract: the actuator must keep a child process that mutates the
