@@ -29782,8 +29782,7 @@ fn nfr_parse_params(s: &str) -> std::collections::BTreeMap<String, String> {
 }
 
 /// The closed-coproduct type names of the corpus, read from `type` declarations' text. The
-/// parameter-keyed site scan that once shared this set was deleted with its census roster
-/// (DESIGN §3 replacement: the typed walk `typed_fallback_arm_walk` is the one site authority);
+/// floor-scoped typed walk that once shared this set is deleted with `run_required_floor`;
 /// the complexity-linearity audit and the fallback-arm census still key on these names.
 fn nfr_closed_coproduct_name_set() -> &'static std::collections::BTreeSet<String> {
     static NAMES: std::sync::OnceLock<std::collections::BTreeSet<String>> =
