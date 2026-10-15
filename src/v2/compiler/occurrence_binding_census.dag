@@ -1,14 +1,14 @@
 module v2.compiler.occurrence_binding_census
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_snoc_item, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup, map_support_keys }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_snoc_item, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup, map_support_keys, map_contains_key }
 import std.optional { Optional, Present, Absent }
-import std.occurrence_identity { OccurrenceId }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
 import std.types { List, Map }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.node { Symbol, symbol_lexeme }
-import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import v2.std.node { Node, Symbol, symbol_lexeme, node_subtree_nodes }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string, declaration_reference_path_optional }
 import v2.compiler.resolve {
   ResolvedTree, OccurrenceBinding, OccurrenceBindingRecord, ResolvedReferenceIdentity,
   ResolvedToKernelSymbol, ResolvedToDeclaration,
@@ -53,6 +53,7 @@ type OccurrenceBindingContribution {
   rows: List<OccurrenceBindingCensusRow>
   duplicate_records: Int
   unreadable_spellings: Int
+  unrecorded_references: Int
 }
 
 fn ambient_binding_table_label(table: AmbientBindingTable) -> String {
@@ -123,7 +124,29 @@ fn occurrence_binding_contribution(module: String, tree: ResolvedTree) -> Occurr
     module: module,
     rows: folded.rows,
     duplicate_records: length(xs: tree.duplicate_binding_records),
-    unreadable_spellings: folded.unreadable
+    unreadable_spellings: folded.unreadable,
+    unrecorded_references: unrecorded_declaration_references(tree: tree)
+  }
+}
+
+// THE OTHER HALF OF EXACTLY ONE SOURCE PER OCCURRENCE: a declaration reference in the resolved tree
+// carrying a minted occurrence that the record does not hold. resolve_atom_bound is the one producer of
+// a resolved corpus reference and writes the record as it mints, so this is zero unless some other
+// door minted a reference without passing through it -- which is the defect it exists to name.
+fn unrecorded_declaration_references(tree: ResolvedTree) -> Int {
+  length(xs: node_subtree_nodes(root: tree.root) |> filter(n => declaration_reference_unrecorded(tree: tree, n: n)))
+}
+
+fn declaration_reference_unrecorded(tree: ResolvedTree, n: Node) -> Bool {
+  match declaration_reference_path_optional(node: n) {
+    Absent => false
+    Present { value: _ } =>
+      match n.occurrence_id {
+        OccurrenceMinted { id: id } => !map_contains_key(m: tree.occurrence_bindings, key: id)
+        OccurrenceProjected { id: id, caused_by: _ } => !map_contains_key(m: tree.occurrence_bindings, key: id)
+        OccurrenceSynthetic => false
+        OccurrencePending { caused_by: _ } => false
+      }
   }
 }
 
@@ -181,6 +204,6 @@ fn occurrence_binding_census_line(row: OccurrenceBindingCensusRow) -> String {
 fn occurrence_binding_contribution_lines(c: OccurrenceBindingContribution) -> List<String> {
   list_snoc_item(
     xs: fold_list(xs: c.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: occurrence_binding_census_line(row: row)) }),
-    item: "binding_module\t" + c.module + "\t" + to_string(length(xs: c.rows)) + "\t" + to_string(c.duplicate_records) + "\t" + to_string(c.unreadable_spellings)
+    item: "binding_module\t" + c.module + "\t" + to_string(length(xs: c.rows)) + "\t" + to_string(c.duplicate_records) + "\t" + to_string(c.unreadable_spellings) + "\t" + to_string(c.unrecorded_references)
   )
 }

@@ -101,15 +101,21 @@ fn fixture_join_failure(stdout: String) -> Optional<String> {
   }
 }
 
-// binding_module <module> <rows> <duplicates> <unreadable>
+// binding_module <module> <rows> <duplicates> <unreadable> <unrecorded>
 fn module_lines(stdout: String) -> List<String> {
   split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_module\t"))
 }
 
+// binding_module's fields: 3 the occurrences recorded twice, 5 the declaration references the resolved
+// tree carries with no record at all. Either is a breach of exactly one source per occurrence.
 fn duplicate_record_failure(stdout: String) -> Optional<String> {
   match first(module_lines(stdout: stdout) |> filter(l => field_at(line: l, index: 3) != "0")) {
     Present { value: l } => Present { value: "module " + field_at(line: l, index: 1) + " recorded " + field_at(line: l, index: 3) + " occurrence(s) twice: each occurrence must carry exactly one binding source" }
-    Absent => Absent
+    Absent =>
+      match first(module_lines(stdout: stdout) |> filter(l => field_at(line: l, index: 5) != "0")) {
+        Present { value: l } => Present { value: "module " + field_at(line: l, index: 1) + " has " + field_at(line: l, index: 5) + " declaration reference(s) with no binding record: each occurrence must carry exactly one binding source" }
+        Absent => Absent
+      }
   }
 }
 
