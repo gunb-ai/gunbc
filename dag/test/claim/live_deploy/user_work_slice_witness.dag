@@ -583,6 +583,26 @@ test fn a_buildbuddy_namespaced_root_without_memory_max_is_externally_bounded() 
   }
 }
 
+test fn an_unbounded_root_memory_max_refuses_even_with_a_buildbuddy_run_id() -> Bool {
+  match user_work_scope_standing_with_root_memory(
+    unit_test: false,
+    github_actions: true,
+    cgroup: CgroupText { text: "0::/" },
+    systemd_manager_present: false,
+    user_manager_reachable: false,
+    xdg_runtime_dir: false,
+    root_memory: RootMemoryUnbounded,
+    buildbuddy_run_id: BuildBuddyRunIdPresent { id: "measured-rbe-run" },
+  ) {
+    BoundedContainerUncapped =>
+      match user_work_scope_standing_effect(s: BoundedContainerUncapped) {
+        RefuseUserWorkScope { standing: BoundedContainerUncapped } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
 test fn a_namespaced_root_with_a_systemd_manager_still_wraps() -> Bool {
   match user_work_scope_standing_with_root_memory(
     unit_test: false,

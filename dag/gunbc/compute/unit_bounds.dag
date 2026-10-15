@@ -123,10 +123,12 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // in declared_system_slice_memory_maxes with unreadable or unbounded memory.max
 // refuses UncappedSystemSlice. sessions.slice is host policy, not a wrap census
 // name; a namespaced-root container is ExemptBoundedContainer only from a live
-// finite memory.max. A named .service under an unmodeled slice refuses
-// UncappedSystemSlice { unit, slice }. A session cgroup with no modeled cap and
-// no user manager refuses UserSessionAbsent. Path from /proc/self/cgroup, never
-// User= or an env var.
+// finite memory.max. An observed unbounded root memory.max refuses even when a
+// BuildBuddy run id is present. Unreadable root memory.max plus a non-empty
+// BUILDBUDDY_RUN_ID is ExternallyBoundedExecutor (the measured RBE case). A named
+// .service under an unmodeled slice refuses UncappedSystemSlice { unit, slice }.
+// A session cgroup with no modeled cap and no user manager refuses
+// UserSessionAbsent. Path from /proc/self/cgroup; User= is never consulted.
 //
 // THIS REFUSAL IS OUTSIDE DECIDE-BEFORE-MUTATE. compose_host_script drops Mutate only when a
 // Decide fragment is HostScriptRefused. slice-control is Mutate with HostScriptProceed; the
@@ -306,16 +308,18 @@ type BuildBuddyRunIdRead
 fn namespaced_root_standing(root_memory: RootCgroupMemoryRead, buildbuddy_run_id: BuildBuddyRunIdRead) -> UserWorkScopeStanding {
   match bounded_container_standing(root_memory: root_memory) {
     ExemptBoundedContainer { bytes } => ExemptBoundedContainer { bytes: bytes }
-    refused =>
+    BoundedContainerUncapped => BoundedContainerUncapped
+    BoundedContainerUnreadable =>
       match buildbuddy_run_id {
-        BuildBuddyRunIdAbsent => refused
+        BuildBuddyRunIdAbsent => BoundedContainerUnreadable
         BuildBuddyRunIdPresent { id } =>
           if id == "" {
-            refused
+            BoundedContainerUnreadable
           } else {
             ExternallyBoundedExecutor { run_id: id }
           }
       }
+    other => other
   }
 }
 

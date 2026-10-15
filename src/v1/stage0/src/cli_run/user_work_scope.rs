@@ -401,14 +401,12 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
                 Some(MemoryBound::Capped(n)) if n > 0 => {
                     UserWorkScopeStanding::ExemptBoundedContainer { bytes: n }
                 }
-                other => match std::env::var(BUILDBUDDY_RUN_ID_ENV) {
+                Some(_) => UserWorkScopeStanding::BoundedContainerUncapped,
+                None => match std::env::var(BUILDBUDDY_RUN_ID_ENV) {
                     Ok(id) if !id.is_empty() => {
                         UserWorkScopeStanding::ExternallyBoundedExecutor { run_id: id }
                     }
-                    _ => match other {
-                        Some(_) => UserWorkScopeStanding::BoundedContainerUncapped,
-                        None => UserWorkScopeStanding::BoundedContainerUnreadable,
-                    },
+                    _ => UserWorkScopeStanding::BoundedContainerUnreadable,
                 },
             };
         }
