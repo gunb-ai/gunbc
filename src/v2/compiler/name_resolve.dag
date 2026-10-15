@@ -58,7 +58,8 @@ import v2.std.resolution_policy {
   default_name_resolution_policy
 }
 import v2.extdeps.languages.dag {
-  qualified_name_from_module_node
+  qualified_name_from_module_node,
+  namespace_graft_node_is_module_body
 }
 import v2.compiler.namespace_graft {
   namespace_graft_module_body_root
@@ -1270,28 +1271,45 @@ fn closure_callee_blocking_refusal(
   }
 }
 
+// THE PUBLISHED ROOT KEEPS ITS MODULE SHELL AND SPINE WHOLE. Only the marked module body's members are
+// declarations: the shell's grammar_production_* edges and each spine segment are Authored edges too, but
+// they name the module, not a declaration, and dropping them leaves a root whose name
+// qualified_name_from_module_node cannot read -- the fill then indexes nothing for the module.
 fn closure_filter_root_published(root: Node, published: Map<Symbol, Node>) -> Node {
-  Node {
-    kind: root.kind,
-    children: fold(root.children, init: [], f: fn(acc, e) {
-      if module_binding_edge_is_namespace_body(e: e) {
+  if namespace_graft_node_is_module_body(node: root) {
+    Node {
+      kind: root.kind,
+      children: fold(root.children, init: [], f: fn(acc, e) {
+        if module_binding_edge_is_namespace_body(e: e) {
+          list_snoc_item(
+            xs: acc,
+            item: Edge { label: e.label, target: closure_filter_root_published(root: e.target, published: published) }
+          )
+        } else {
+          match try_edge_declared_binding(e: e) {
+            Present { value: b } =>
+              match map_lookup(m: published, key: b.name) {
+                Present { value: resolved } =>
+                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: resolved })
+                Absent => acc
+              }
+            Absent => list_snoc_item(xs: acc, item: e)
+          }
+        }
+      }),
+      occurrence_id: root.occurrence_id
+    }
+  } else {
+    Node {
+      kind: root.kind,
+      children: fold(root.children, init: [], f: fn(acc, e) {
         list_snoc_item(
           xs: acc,
           item: Edge { label: e.label, target: closure_filter_root_published(root: e.target, published: published) }
         )
-      } else {
-        match try_edge_declared_binding(e: e) {
-          Present { value: b } =>
-            match map_lookup(m: published, key: b.name) {
-              Present { value: resolved } =>
-                list_snoc_item(xs: acc, item: Edge { label: e.label, target: resolved })
-              Absent => acc
-            }
-          Absent => list_snoc_item(xs: acc, item: e)
-        }
-      }
-    }),
-    occurrence_id: root.occurrence_id
+      }),
+      occurrence_id: root.occurrence_id
+    }
   }
 }
 
