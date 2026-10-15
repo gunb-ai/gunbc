@@ -9790,7 +9790,7 @@ fn infer_sole_constructor_path_diags(
   constructing_module: Optional<Symbol>,
   tree: ResolvedTree
 ) -> Diagnostics {
-  match symbol_index_declaring_path_of(index: tree.resolved_declarations, target: type_path) {
+  match symbol_index_declaring_path_of(index: tree.symbol_index, target: type_path) {
     MentionDeclaringUnavailable =>
       infer_admission_diags_of([
         infer_declaration_identity_unavailable_diagnostic(at: at)
@@ -9801,40 +9801,40 @@ fn infer_sole_constructor_path_diags(
           infer_admission_diags_of(Cons { head: head, tail: tail })
       }
     MentionDeclaringUnique { declaring: declaring_path } =>
-  match qualified_name_last_segment(qn: declaring_path) {
-    Absent =>
-      infer_admission_diags_of([
-        Diagnostic {
-          reason: ^infer_reason_sole_constructor_ownership_unreadable,
-          at: node_locus(node: at),
-          correction: Unavailable { reason: UserInputBoundary }
-        }
-      ])
-    Present { value: name } =>
-      let module = qualified_name_init(qn: declaring_path)
-      match type_declaration_modifier_row_at(
-        channel: tree.type_declaration_modifiers,
-        module: module,
-        name: name
-      ) {
-        TypeDeclModifierRowAbsent => None
-        TypeDeclModifierModuleUncovered =>
+      match qualified_name_last_segment(qn: declaring_path) {
+        Absent =>
           infer_admission_diags_of([
             Diagnostic {
-              reason: ^infer_reason_sole_constructor_modifiers_unreadable,
+              reason: ^infer_reason_sole_constructor_ownership_unreadable,
               at: node_locus(node: at),
               correction: Unavailable { reason: UserInputBoundary }
             }
           ])
-        TypeDeclModifierRowPresent { modifiers: modifiers } =>
-          infer_sole_constructor_owner_diags(
-            at: at,
-            declaring_module: module,
-            modifiers: modifiers,
-            constructing_module: constructing_module
-          )
+        Present { value: name } =>
+          let module = qualified_name_init(qn: declaring_path)
+          match type_declaration_modifier_row_at(
+            channel: tree.type_declaration_modifiers,
+            module: module,
+            name: name
+          ) {
+            TypeDeclModifierRowAbsent => None
+            TypeDeclModifierModuleUncovered =>
+              infer_admission_diags_of([
+                Diagnostic {
+                  reason: ^infer_reason_sole_constructor_modifiers_unreadable,
+                  at: node_locus(node: at),
+                  correction: Unavailable { reason: UserInputBoundary }
+                }
+              ])
+            TypeDeclModifierRowPresent { modifiers: modifiers } =>
+              infer_sole_constructor_owner_diags(
+                at: at,
+                declaring_module: module,
+                modifiers: modifiers,
+                constructing_module: constructing_module
+              )
+          }
       }
-  }
   }
 }
 
