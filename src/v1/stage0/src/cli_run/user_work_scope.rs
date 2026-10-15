@@ -640,6 +640,36 @@ mod standing_fixture_tests {
     }
 
     #[test]
+    fn namespaced_root_unbounded_memory_max_refuses_even_with_a_buildbuddy_run_id() {
+        let got = wire(
+            false,
+            Some("0::/"),
+            false,
+            false,
+            false,
+            RootMemoryRead::Unbounded,
+            RootMemoryRead::Unreadable,
+            Some("measured-rbe-run"),
+        );
+        assert_eq!(got, "BoundedContainerUncapped");
+    }
+
+    #[test]
+    fn namespaced_root_unreadable_memory_max_with_buildbuddy_run_id_is_externally_bounded() {
+        let got = wire(
+            false,
+            Some("0::/"),
+            false,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Unreadable,
+            Some("measured-rbe-run"),
+        );
+        assert_eq!(got, "ExternallyBoundedExecutor:measured-rbe-run");
+    }
+
+    #[test]
     fn modeled_slice_with_finite_memory_max_skips() {
         let cg = "0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service";
         let got = wire(
