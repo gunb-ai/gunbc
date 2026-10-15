@@ -24246,8 +24246,8 @@ pub fn unify_generics(
                     match formal.children.clone().first().cloned() {
                         Some(fc) => match actual.children.clone().first().cloned() {
                             Some(ac) => {
-                                let __tco_0 = fc.clone();
-                                let __tco_1 = ac.clone();
+                                let __tco_0 = unify_container_element(fc.clone());
+                                let __tco_1 = unify_container_element(ac.clone());
                                 let __tco_2 = generic_names;
                                 let __tco_3 = source_indices;
                                 let __tco_4 = acc;
@@ -24340,8 +24340,8 @@ pub fn unify_generic_children(
                     let __tco_2 = generic_names.clone();
                     let __tco_3 = source_indices.clone();
                     let __tco_4 = unify_generics(
-                        crate::v1_compiler_infer_types::child_type_node(f.clone()),
-                        crate::v1_compiler_infer_types::child_type_node(a.clone()),
+                        unify_container_element(f.clone()),
+                        unify_container_element(a.clone()),
                         generic_names.clone(),
                         source_indices.clone(),
                         acc,
@@ -24355,6 +24355,17 @@ pub fn unify_generic_children(
                 }
             },
         }
+    }
+}
+
+pub fn unify_container_element(ch: Rc<Node>) -> Rc<Node> {
+    if ((((ch.children.clone().len() as i64) == 0)
+        && (ch.connective.clone() == Connective::NoConnective))
+        && (ch.inferred.clone() != std::option::Option::None))
+    {
+        crate::v1_compiler_infer_types::child_type_node(ch.clone())
+    } else {
+        ch.clone()
     }
 }
 
