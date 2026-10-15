@@ -2,7 +2,7 @@ module gunbc.site.avatar_marks
 
 import std.types { String, Bool }
 import std.markup { Fragment, Element, attr }
-import gunbc.site.robot_mark { robot_mark_body_path, robot_mark_body_transform, robot_mark_antenna_path }
+import gunbc.design.brand_mark { RobotMark, brand_mark_body_path, brand_mark_body_transform, brand_mark_antenna_path }
 
 // Missing-picture treatments compose the existing brand geometry without changing it.
 // The host supplies the neutral circular background and foreground through its theme.
@@ -10,10 +10,10 @@ import gunbc.site.robot_mark { robot_mark_body_path, robot_mark_body_transform, 
 // through the front figure. Border paint is too close to ink in the night theme.
 fn avatar_robot_face(antenna: Bool, opaque: Bool = false) -> Fragment {
   Element { tag: "g", attributes: [], children: concat([
-    Element { tag: "g", attributes: [attr(name: "transform", value: robot_mark_body_transform)], children: concat(if opaque { [Element { tag: "path", attributes: [attr(name: "fill", value: "var(--surface)"), attr(name: "d", value: robot_mark_body_path)], children: [] }] } else { [] }, [
-      Element { tag: "path", attributes: [attr(name: "fill", value: "currentColor"), attr(name: "fill-rule", value: "evenodd"), attr(name: "d", value: robot_mark_body_path)], children: [] },
+    Element { tag: "g", attributes: [attr(name: "transform", value: brand_mark_body_transform)], children: concat(if opaque { [Element { tag: "path", attributes: [attr(name: "fill", value: "var(--surface)"), attr(name: "d", value: brand_mark_body_path(variant: RobotMark))], children: [] }] } else { [] }, [
+      Element { tag: "path", attributes: [attr(name: "fill", value: "currentColor"), attr(name: "fill-rule", value: "evenodd"), attr(name: "d", value: brand_mark_body_path(variant: RobotMark))], children: [] },
     ]) },
-  ], if antenna { [Element { tag: "path", attributes: [attr(name: "fill", value: "currentColor"), attr(name: "d", value: robot_mark_antenna_path)], children: [] }] } else { [] }) }
+  ], if antenna { [Element { tag: "path", attributes: [attr(name: "fill", value: "currentColor"), attr(name: "d", value: brand_mark_antenna_path)], children: [] }] } else { [] }) }
 }
 
 fn unknown_avatar_svg(class_name: String, label: String) -> Fragment {

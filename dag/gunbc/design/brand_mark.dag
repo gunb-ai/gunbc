@@ -1,0 +1,172 @@
+module gunbc.design.brand_mark
+
+import std.types { Int, String, List }
+import std.decimal { fixed_point_wire }
+import std.markup { Fragment, Element, attr }
+import extdeps.color.srgb { Srgb8 }
+import gunbc.design.palette { Swatch }
+
+// THE GUNB MARKS, AND THE ONE PLACE THEY ARE DRAWN. Every surface that shows a gunb mark -- the
+// workspace's header and favicon, the robot chips, avatars and build-meter worker, and (as their
+// generation lands) gunb.ai's assets, the iOS app icon and the GitHub App avatars -- derives from
+// the numbers below. This repository is the authority and gunb-ai/frontend consumes what it emits;
+// a mark copied into another repository by hand is a second authority for one drawing.
+//
+// ONE TEMPLATE, TWO VARIANTS. Both marks are the same squircle body, the same flat mouth and two
+// eyes on the same centres, drawn under one transform. They differ only in the eyes' shape -- round
+// on the face, square on the robot -- and in the robot's antenna. So the shared parts are declared
+// once and the variant chooses only what differs; an edit to the body or the mouth moves both marks.
+//
+// The geometry was first authored in gunb-ai/frontend legacy/moodboard.html (symbols #stoic-idle
+// and #stoic-robot) and assets/mark.svg; the numbers are theirs, unchanged.
+
+type BrandMarkVariant = FaceMark | RobotMark
+
+type BrandMarkBox {
+  x: Int
+  y: Int
+  w: Int
+  h: Int
+  r: Int
+}
+
+type BrandMarkDisc {
+  cx: Int
+  cy: Int
+  r: Int
+}
+
+data brand_mark_view_box: String = "0 0 120 120"
+
+data brand_mark_body: BrandMarkBox = BrandMarkBox { x: 10, y: 20, w: 100, h: 80, r: 30 }
+data brand_mark_mouth: BrandMarkBox = BrandMarkBox { x: 52, y: 54, w: 16, h: 6, r: 2 }
+
+// The eyes' centres are the template's; each variant draws its own eye about them.
+data brand_mark_left_eye_cx: Int = 35
+data brand_mark_right_eye_cx: Int = 85
+data brand_mark_eye_cy: Int = 48
+
+data brand_mark_face_eye_radius: Int = 8
+data brand_mark_robot_eye_side: Int = 14
+data brand_mark_robot_eye_corner: Int = 2
+
+fn brand_mark_face_eye(cx: Int) -> BrandMarkDisc {
+  BrandMarkDisc { cx: cx, cy: brand_mark_eye_cy, r: brand_mark_face_eye_radius }
+}
+
+fn brand_mark_robot_eye(cx: Int) -> BrandMarkBox {
+  BrandMarkBox {
+    x: cx - brand_mark_robot_eye_side / 2,
+    y: brand_mark_eye_cy - brand_mark_robot_eye_side / 2,
+    w: brand_mark_robot_eye_side,
+    h: brand_mark_robot_eye_side,
+    r: brand_mark_robot_eye_corner,
+  }
+}
+
+data brand_mark_robot_left_eye: BrandMarkBox = brand_mark_robot_eye(cx: brand_mark_left_eye_cx)
+data brand_mark_robot_right_eye: BrandMarkBox = brand_mark_robot_eye(cx: brand_mark_right_eye_cx)
+
+// The antenna is drawn in frame coordinates, OUTSIDE the body's transform, in the headroom the
+// transformed body leaves above it.
+data brand_mark_antenna_stem: BrandMarkBox = BrandMarkBox { x: 58, y: 6, w: 4, h: 6, r: 0 }
+data brand_mark_antenna_ball: BrandMarkDisc = BrandMarkDisc { cx: 60, cy: 5, r: 5 }
+
+// The body group's transform: a uniform scale in tenths, then a translation of both axes, which
+// makes the body span the frame's full width.
+data brand_mark_body_scale_tenths: Int = 12
+data brand_mark_body_offset: Int = -12
+
+// ═══ THE TWO BADGE PAINTS ═══
+//
+// The background is the owner's badge ruling (2026-09-30: "Badge background color #f4f1ec"), a
+// warm stone; the ink is the frontend's #0F0F0F. Named swatches so every stylesheet and badge
+// paints from them rather than restating hex.
+data brand_mark_badge_stone: Swatch = Swatch { name: "brand-badge-stone", color: Srgb8 { r: 244, g: 241, b: 236 } }
+
+data brand_mark_ink: Swatch = Swatch { name: "brand-mark-ink", color: Srgb8 { r: 15, g: 15, b: 15 } }
+
+// ═══ SVG SPELLING ═══
+
+fn brand_mark_n(v: Int) -> String {
+  to_string(v)
+}
+
+fn brand_mark_arc(r: Int, x: Int, y: Int) -> String {
+  join(["A", brand_mark_n(v: r), ",", brand_mark_n(v: r), " 0 0,1 ", brand_mark_n(v: x), ",", brand_mark_n(v: y)], "")
+}
+
+// A box with no corner radius is spelled as a plain rectangle: four lines, no zero-radius arcs.
+fn brand_mark_box_path(b: BrandMarkBox) -> String {
+  if b.r == 0 {
+    join(["M", brand_mark_n(v: b.x), ",", brand_mark_n(v: b.y), " H", brand_mark_n(v: b.x + b.w), " V", brand_mark_n(v: b.y + b.h), " H", brand_mark_n(v: b.x), " Z"], "")
+  } else {
+    join([
+      "M", brand_mark_n(v: b.x + b.r), ",", brand_mark_n(v: b.y),
+      " H", brand_mark_n(v: b.x + b.w - b.r),
+      " ", brand_mark_arc(r: b.r, x: b.x + b.w, y: b.y + b.r),
+      " V", brand_mark_n(v: b.y + b.h - b.r),
+      " ", brand_mark_arc(r: b.r, x: b.x + b.w - b.r, y: b.y + b.h),
+      " H", brand_mark_n(v: b.x + b.r),
+      " ", brand_mark_arc(r: b.r, x: b.x, y: b.y + b.h - b.r),
+      " V", brand_mark_n(v: b.y + b.r),
+      " ", brand_mark_arc(r: b.r, x: b.x + b.r, y: b.y),
+      " Z",
+    ], "")
+  }
+}
+
+fn brand_mark_disc_path(c: BrandMarkDisc) -> String {
+  join(["M", brand_mark_n(v: c.cx - c.r), ",", brand_mark_n(v: c.cy), " ", brand_mark_arc(r: c.r, x: c.cx + c.r, y: c.cy), " ", brand_mark_arc(r: c.r, x: c.cx - c.r, y: c.cy), " Z"], "")
+}
+
+fn brand_mark_eyes_path(variant: BrandMarkVariant) -> String {
+  match variant {
+    FaceMark => join(map([brand_mark_left_eye_cx, brand_mark_right_eye_cx], cx => brand_mark_disc_path(c: brand_mark_face_eye(cx: cx))), " ")
+    RobotMark => join(map([brand_mark_robot_left_eye, brand_mark_robot_right_eye], b => brand_mark_box_path(b: b)), " ")
+  }
+}
+
+// The body with the eyes and mouth as its holes, for an evenodd fill: one path, one paint, and the
+// features show whatever is behind the mark.
+fn brand_mark_body_path(variant: BrandMarkVariant) -> String {
+  join([brand_mark_box_path(b: brand_mark_body), brand_mark_eyes_path(variant: variant), brand_mark_box_path(b: brand_mark_mouth)], " ")
+}
+
+data brand_mark_body_transform: String = join([
+  "translate(", brand_mark_n(v: brand_mark_body_offset), " ", brand_mark_n(v: brand_mark_body_offset), ") scale(",
+  fixed_point_wire(value: brand_mark_body_scale_tenths, decimals: 1), ")",
+], "")
+
+data brand_mark_antenna_path: String = join([brand_mark_box_path(b: brand_mark_antenna_stem), brand_mark_disc_path(c: brand_mark_antenna_ball)], " ")
+
+// The mark's drawing in its 120-unit frame, filled with currentColor so its host decides the paint.
+fn brand_mark_figure(variant: BrandMarkVariant) -> List<Fragment> {
+  let body = Element { tag: "g", attributes: [ attr(name: "transform", value: brand_mark_body_transform) ], children: [
+    Element { tag: "path", attributes: [
+      attr(name: "fill-rule", value: "evenodd"),
+      attr(name: "fill", value: "currentColor"),
+      attr(name: "d", value: brand_mark_body_path(variant: variant)),
+    ], children: [] },
+  ] }
+  match variant {
+    FaceMark => [body]
+    RobotMark => [body, Element { tag: "path", attributes: [
+      attr(name: "fill", value: "currentColor"),
+      attr(name: "d", value: brand_mark_antenna_path),
+    ], children: [] }]
+  }
+}
+
+fn brand_mark_svg(variant: BrandMarkVariant, class_name: String, label: String) -> Fragment {
+  Element {
+    tag: "svg",
+    attributes: [
+      attr(name: "class", value: class_name),
+      attr(name: "viewBox", value: brand_mark_view_box),
+      attr(name: "role", value: "img"),
+      attr(name: "aria-label", value: label),
+    ],
+    children: brand_mark_figure(variant: variant),
+  }
+}

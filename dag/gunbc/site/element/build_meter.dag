@@ -10,7 +10,7 @@ import gunbc.design.material {
 }
 import gunbc.design.scale { scale_var, scale_pair, scale_border, space_0, space_1, space_2, space_4, border_1, border_2 }
 import gunbc.site.element.tokens { radius_element }
-import gunbc.site.robot_mark { robot_mark_body, robot_mark_left_eye, robot_mark_mouth, robot_mark_body_scale_tenths }
+import gunbc.design.brand_mark { brand_mark_body, brand_mark_robot_left_eye, brand_mark_mouth, brand_mark_body_scale_tenths }
 import gunbc.site.element.palette {
   PaletteSlot, palette_var, SlotAction, SlotBorder, SlotError, SlotHover, SlotSurface, SlotTextDim,
   SlotMeterReason, SlotMeterRead, SlotMeterWrite, SlotMeterEdit, SlotMeterRun, SlotMeterSearch, SlotMeterReport,
@@ -741,7 +741,7 @@ fn build_meter_edge_mark_width(view: BuildMeterView) -> Int {
   }
 }
 
-// The worker is the Fabric workflow's mark (gunbc.site.robot_mark), the gunbai robot variant, at
+// The worker is the Fabric workflow's mark (gunbc.design.brand_mark), the gunbai robot variant, at
 // strip size: the squircle body, two square eyes, a flat mouth and a ball-topped antenna. Every
 // position is read from the mark's own numbers and scaled so the body is the worker's width; one
 // unit of the drawing is one CSS pixel, so each value is rounded to the nearest unit. Three
@@ -763,7 +763,7 @@ fn build_meter_box(x: Int, y: Int, w: Int, h: Int) -> BuildMeterBox {
 
 // The mark's tenths of a unit across the body, after the body group's scale.
 fn build_meter_mark_span() -> Int {
-  robot_mark_body.w * robot_mark_body_scale_tenths
+  brand_mark_body.w * brand_mark_body_scale_tenths
 }
 
 // A length of the mark, in tenths of its units after the body's scale, as the nearest whole unit
@@ -773,22 +773,22 @@ fn build_meter_sprite_units(tenths: Int) -> Int {
 }
 
 fn build_meter_mark_length(v: Int) -> Int {
-  build_meter_sprite_units(tenths: v * robot_mark_body_scale_tenths)
+  build_meter_sprite_units(tenths: v * brand_mark_body_scale_tenths)
 }
 
-data build_meter_body_height: Int = build_meter_mark_length(v: robot_mark_body.h)
-data build_meter_corner_radius: Int = build_meter_mark_length(v: robot_mark_body.r)
-data build_meter_eye_size: Int = build_meter_mark_length(v: robot_mark_left_eye.w)
-data build_meter_eye_left: Int = build_meter_mark_length(v: robot_mark_left_eye.x - robot_mark_body.x)
-data build_meter_eye_top: Int = build_meter_mark_length(v: robot_mark_left_eye.y - robot_mark_body.y)
+data build_meter_body_height: Int = build_meter_mark_length(v: brand_mark_body.h)
+data build_meter_corner_radius: Int = build_meter_mark_length(v: brand_mark_body.r)
+data build_meter_eye_size: Int = build_meter_mark_length(v: brand_mark_robot_left_eye.w)
+data build_meter_eye_left: Int = build_meter_mark_length(v: brand_mark_robot_left_eye.x - brand_mark_body.x)
+data build_meter_eye_top: Int = build_meter_mark_length(v: brand_mark_robot_left_eye.y - brand_mark_body.y)
 data build_meter_eye_lefts: List<Int> = [build_meter_eye_left, build_meter_worker_width - build_meter_eye_left - build_meter_eye_size]
-data build_meter_mouth_top: Int = build_meter_mark_length(v: robot_mark_mouth.y - robot_mark_body.y)
+data build_meter_mouth_top: Int = build_meter_mark_length(v: brand_mark_mouth.y - brand_mark_body.y)
 
 fn build_meter_even_width(w: Int) -> Int {
   if (build_meter_worker_width - w) % 2 == 0 { w } else { w + 1 }
 }
 
-data build_meter_mouth_width: Int = build_meter_even_width(w: build_meter_mark_length(v: robot_mark_mouth.w))
+data build_meter_mouth_width: Int = build_meter_even_width(w: build_meter_mark_length(v: brand_mark_mouth.w))
 data build_meter_mouth: BuildMeterBox = build_meter_box(x: (build_meter_worker_width - build_meter_mouth_width) / 2, y: build_meter_mouth_top, w: build_meter_mouth_width, h: 1)
 
 // The squircle's corner, pixel by pixel: on each row within the corner radius of the top or the
