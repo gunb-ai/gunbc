@@ -32,7 +32,7 @@ import extdeps.ssh.client_options {
   ServerAliveInterval,
   ServerAliveCountMax,
 }
-import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, host_key_provenance_label }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, known_host_row_field, host_key_provenance_label }
 import gunbc.spark.fabric_reach { fabric_rail_known_host_rows }
 
 // THE TRUST ANCHOR AN SSH INVOCATION IS VERIFIED AGAINST, carried as a value rather than left as
@@ -190,9 +190,11 @@ fn canonical_known_hosts_identity(rows: List<KnownHostKeyRow>) -> ContentHash {
 // A DUPLICATE ENDPOINT IS A CONFLICT, not a redundancy. known_hosts accepts a host key matching ANY
 // line for that endpoint, so two rows naming one endpoint with different keys widen what is trusted
 // while the registry reads as if it pinned one key -- and the digest would happily identify that
-// widened set. Counted at endpoint grain because the endpoint is what ssh matches on.
+// widened set. Counted at the grain ssh matches on, the host field: host AND port, so one host's sshd
+// on 22 and a forwarded sshd on another port are two endpoints, and two rows for one host on one port
+// conflict.
 fn known_hosts_endpoint_conflict(rows: List<KnownHostKeyRow>) -> String? {
-  let endpoints = map(rows, k => k.endpoint) |> sort_by(e => e)
+  let endpoints = map(rows, k => known_host_row_field(k: k)) |> sort_by(e => e)
   fold(endpoints, init: none, f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
@@ -290,7 +292,7 @@ fn materialize_known_hosts_anchor(attempt: FleetSshAttemptIdentity, rows: List<K
                   " rows=", to_string(length(rows)), "\n",
                 ], "")],
                 map(rows, k => join([
-                  "  enrolled host=", k.host as String, " endpoint=", k.endpoint,
+                  "  enrolled host=", k.host as String, " endpoint=", known_host_row_field(k: k),
                   " provenance=", host_key_provenance_label(p: k.provenance), "\n",
                 ], "")),
               ),
