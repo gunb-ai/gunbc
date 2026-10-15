@@ -4001,7 +4001,7 @@ fn resolve_instantiation_walk_arguments(ctx: ResolveContext, n: Node, head_walk:
       child_walk_step(
         w: acc,
         e: e,
-        r: resolve_instantiation_argument_edge(ctx: resolve_instantiation_argument_ctx(ctx: ctx, kinds: kinds, ordinal: acc.ordinal), e: e)
+        r: resolve_instantiation_argument_edge(arg_ctx: resolve_instantiation_argument_ctx(ctx: ctx, kinds: kinds, ordinal: acc.ordinal), e: e)
       )
     }
   }))
