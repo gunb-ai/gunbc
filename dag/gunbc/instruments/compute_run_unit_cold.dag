@@ -392,26 +392,33 @@ fn observe_sccache_stats_debug() -> String {
   }
 }
 
-fn ci_cache_uds_path() -> String {
+fn ci_cache_uds_path() -> String? {
   match ci_cache_instance(host: operator_host_srv1).endpoint {
-    SccacheServerUnixSocket { path } => path as String
-    SccacheServerTcpPort { port: _ } => ""
+    SccacheServerUnixSocket { path } => Present { value: path as String }
+    SccacheServerTcpPort { port: _ } => none
+  }
+}
+
+fn observe_ci_cache_uds_stat() -> String {
+  match ci_cache_uds_path() {
+    Absent => "=== stat CI UDS ===\nCI endpoint is TCP; UDS stat not applicable\n"
+    Present { value: uds } =>
+      join([
+        "=== stat CI UDS ", uds, " ===\n",
+        observe_argv(program: stat_program().invocation as String, args: ["-c", "%U %u %a %n", uds]),
+        "\n",
+      ], "")
   }
 }
 
 fn observe_sccache_host_probe() -> String {
   let tcp_sport = join(["sport = :", to_string(value: sccache_server_default_tcp_port)], "")
-  let uds = ci_cache_uds_path()
   let user_mgr = systemctl_user_manager_probe_command()
   let id_out = observe_argv(program: id_binary_path as String, args: [])
   let host_out = observe_argv(program: "/usr/bin/hostname", args: [])
   let ps_out = observe_argv(program: "/usr/bin/ps", args: ["-eo", "user,uid,pid,args"])
   let ss_out = observe_argv(program: ss_binary_path as String, args: ["-ltnp", tcp_sport])
   let mgr_env = observe_argv(program: user_mgr.program.invocation as String, args: user_mgr.arguments)
-  let sock_stat = observe_argv(
-    program: stat_program().invocation as String,
-    args: ["-c", "%U %u %a %n", uds],
-  )
   let ss_unix = observe_argv(program: ss_binary_path as String, args: ["-xlp"])
   join([
     "=== id ===\n", id_out, "\n",
@@ -422,7 +429,7 @@ fn observe_sccache_host_probe() -> String {
     "=== systemctl --user show-environment SCCACHE/RUSTC_WRAPPER ===\n",
     lines_with_needle(text: mgr_env, needle: "SCCACHE"), "\n",
     lines_with_needle(text: mgr_env, needle: "RUSTC_WRAPPER"), "\n",
-    "=== stat CI UDS ", uds, " ===\n", sock_stat, "\n",
+    observe_ci_cache_uds_stat(),
     "=== ss -xlp sccache/server.sock ===\n",
     lines_with_needle(text: ss_unix, needle: "sccache"), "\n",
     lines_with_needle(text: ss_unix, needle: "server.sock"), "\n",

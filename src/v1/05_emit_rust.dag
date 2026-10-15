@@ -3451,7 +3451,8 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
 }
 
 fn group_unlisted_type_names(diags: List<ErrorNode>) -> Map<String, List<String>> {
-  diags |> fold(init: empty_map(), f: (acc, en) =>
+  let seed: Map<String, List<String>> = empty_map()
+  diags |> fold(init: seed, f: (acc, en) =>
     match en.diagnostic {
       UnlistedImportUse { name: nm, span: _ } =>
         let existing = match map_get(acc, en.module_name) { Present { value: v } => v  Absent => [] }
@@ -6034,14 +6035,16 @@ type ModuleIndex {
 }
 
 fn build_module_index(modules: List<TypedModule>, leaf_owner_modules: Map<String, LeafOwner>) -> ModuleIndex {
-  let by_name = modules |> fold(init: empty_map(), f: (acc, tm) =>
+  let by_name_seed: Map<String, TypedModule> = empty_map()
+  let by_name = modules |> fold(init: by_name_seed, f: (acc, tm) =>
     let nm = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     match map_get(acc, nm) {
       Present { value: _ } => acc
       Absent => map_insert(acc, nm, tm)
     }
   )
-  let by_filename = modules |> fold(init: empty_map(), f: (acc, tm) =>
+  let by_filename_seed: Map<String, List<TypedModule>> = empty_map()
+  let by_filename = modules |> fold(init: by_filename_seed, f: (acc, tm) =>
     let fname = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
     match map_get(acc, fname) {
       Present { value: prior } => map_insert(acc, fname, list_push(prior, tm))
@@ -8350,7 +8353,7 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
   } else if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
     render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, source_indices: source_indices, env: env)
   } else if authored_type.connective == NoConnective && authored_type.children |> count > 0 {
-    render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+    render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: generic_param_names, env: env))
   } else {
     render_rust_type_with_applied_binding(n: resolved_type(n: field), shared_types: shared_types, source_indices: source_indices, env: env)
   }
@@ -8884,7 +8887,8 @@ fn v1_fn_bounds_by_param(
   set_element_param_names: List<String>,
   static_param_names: List<String>
 ) -> Map<String, List<String>> {
-  let with_clone = clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"]))
+  let bounds_seed: Map<String, List<String>> = empty_map()
+  let with_clone = clone_param_names |> fold(init: bounds_seed, f: (m, n) => map_insert(m, n, ["Clone"]))
   let with_eq = eq_param_names |> fold(init: with_clone, f: (m, n) =>
     match map_get(m, n) {
       Present { value: traits } => map_insert(m, n, concat(traits, ["PartialEq"]))
@@ -12016,22 +12020,22 @@ fn rust_runtime_bridge_name(function_name: String) -> String {
   }
 }
 
-fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match map_type.children |> skip(1) |> first {
     Present { value: value_child } =>
-      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
       if rendered == "" { "" } else { rendered }
     Absent => ""
   }
 }
 
-fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let key_str = match map_type.children |> first {
     Present { value: key_child } =>
-      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     Absent => ""
   }
-  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
+  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if key_str != "" && val_str != "" {
     concat(key_str, ", ", val_str)
   } else { "" }
@@ -12064,21 +12068,28 @@ fn type_node_carries_erased_type_argument(n: Node) -> Bool {
     (t.inferred != none && is_compiler_error(inferred: t.inferred.value)) || type_node_carries_erased_type_argument(n: t))
 }
 
+// Uninstantiated Map formals arrive as TypeVariable children of map_type. render_rust_type
+// matches TypeVariable ids against emit_info.fn_generic_param_names by spelling, so Map's own
+// parameter V is captured as the enclosing fn's V and an unbound K renders `_`. Those children
+// are the typed fact that instantiation never reached this call; defer `::<_, _>()` from that,
+// not from the rendered string. Instantiated Map<K2, Entry<V>> children are not TypeVariables:
+// render their argument types (Entry<V> then correctly names the fn parameter).
+fn type_node_child_is_type_variable(c: Node) -> Bool {
+  let ch = child_type_node(ch: c)
+  if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
+}
+
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
+  let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
   } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)
-    || type_node_carries_erased_type_argument(n: map_type) {
+    || type_node_carries_erased_type_argument(n: map_type)
+    || map_type.children |> any(c => type_node_child_is_type_variable(c: c)) {
     "v1_rt::rc_empty_map::<_, _>()"
   } else {
     concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
   }
-}
-
-fn type_node_child_is_type_variable(c: Node) -> Bool {
-  let ch = child_type_node(ch: c)
-  if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
@@ -19308,7 +19319,7 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
 }
 
 // The retained eval driver's synchronous boundary binds the existing emitted Filesystem service
-// and invokes the .dag acquisition folds of v2.compiler.compile. Which modules are read, the storage
+// and invokes the .dag acquisition folds of v2.compiler.source_root_eval. Which modules are read, the storage
 // rule that places them, the verification that the read set is the requested closure exactly and every
 // read refusal live in v2.compiler.module_acquisition; no std::fs walk or byte read is authored in
 // this shim. The adjudicating run asks for a CLOSURE (native_lane_acquire); the census verbs ask for
@@ -19847,7 +19858,7 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String, b
 // the v1 interpreter, and to hand its printed verdicts back to the seed, which then evaluated the
 // admission authority through the interpreter as well. Both ends were the interpreter, so the
 // lane that exists to prove a pristine v2 process could not run without one. The universe is now
-// derived and the receipt judged INSIDE this binary (the v2.compiler.compile native_lane_* folds), and
+// derived and the receipt judged INSIDE this binary (the v2.compiler.source_root_eval native_lane_* folds), and
 // the only thing the host still supplies is what this process cannot observe of itself: the
 // identities of the seed that emitted it, of the closure and of its own executable, the
 // how the old route's fallback was closed - withdrawn, or absent at that path for the whole
@@ -19888,11 +19899,11 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String, b
 //
 // THE PREPARE-REFUSAL FAN-OUT AND THE CONTEXT RECLASSIFICATION are no longer rendered here or
 // performed by the host: both are the same per-module decision and live in the `.dag` fold this
-// main calls (v2.compiler.compile native_lane_module_resolution then native_lane_module_inference),
+// main calls (v2.compiler.source_root_eval native_lane_module_resolution then native_lane_module_inference),
 // so the row count still equals the
 // universe size and every refusal stays located per test identity.
 //
-// FILESYSTEM ACQUISITION is a call into v2.compiler.compile (native_lane_acquire for the lane,
+// FILESYSTEM ACQUISITION is a call into v2.compiler.source_root_eval (native_lane_acquire for the lane,
 // native_lane_census_ingest for the census verbs) with the existing emitted Filesystem handler. The
 // retained main owns neither which modules are read nor traversal nor any byte-read decision, and it
 // never holds a whole-repository ingest: the lane reads the closure its pattern requests, exactly.
@@ -19913,7 +19924,7 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String, b
 // first is irreducible.
 //
 // HOST BOUNDARY, retained by cause and not by schedule: argv (`main` reads it and hands it to
-// v2.compiler.compile `native_driver_parse`, which decides the verb, every argv refusal and its
+// v2.compiler.source_root_eval `native_driver_parse`, which decides the verb, every argv refusal and its
 // status; the literal mode comparisons this main used to render are deleted),
 // the executor binding for the modeled source-root acquisition,
 // the clocks (the thread CPU reading behind `cpu_mark`, which the partition is judged on, and the
@@ -19944,6 +19955,9 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String, b
 // a new driver.
 fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
+  let native_route_mod = module_to_filename(name: "v2.workflow.v2_native_route")
+  let frontier_mod = module_to_filename(name: "v2.workflow.native_frontier_ratchet")
+  let type_census_mod = module_to_filename(name: "v2.compiler.type_declaration_use_census")
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
@@ -19954,7 +19968,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use std::rc::Rc;", "\n",
       "use std::time::Instant;", "\n",
       "\n",
-      "use ", crate_name, "::gunbc_witness_v2_native_route::\{NativeRouteEmittedBuild, NativeRouteMalformedControl, NativeRouteOldRouteControl\};", "\n",
+      "use ", crate_name, "::", native_route_mod, "::\{NativeRouteEmittedBuild, NativeRouteMalformedControl, NativeRouteOldRouteControl\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
       "    native_census_module_completeness, native_census_module_resolution, native_census_modules,", "\n",
       "    native_census_module_inference, native_census_infer_type_contribution,", "\n",
@@ -19995,11 +20009,11 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    program_assembly_phase_parse_seeded,", "\n",
       "    program_assembly_phase_token_count, program_assembly_phase_tokenize,", "\n",
       "\};", "\n",
-      "use ", crate_name, "::gunbc_witness_v2_native_route::\{", "\n",
+      "use ", crate_name, "::", native_route_mod, "::\{", "\n",
       "    native_route_admission, native_route_admission_summary, native_route_admitted,", "\n",
       "    native_route_file_refusal_tally, native_route_member_row_text,", "\n",
       "\};", "\n",
-      "use ", crate_name, "::gunbc_native_frontier_ratchet::\{", "\n",
+      "use ", crate_name, "::", frontier_mod, "::\{", "\n",
       "    native_frontier_proposal_file_lines, native_frontier_report_lines, native_frontier_verdict,", "\n",
       "    native_frontier_verdict_word,", "\n",
       "\};", "\n",
@@ -20017,7 +20031,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::std_measure::\{nanosecond, nanosecond_count\};", "\n",
       "use ", crate_name, "::v1_rt::observed_thread_cpu_nanos;", "\n",
       "use ", crate_name, "::v1_rt::bytes_identity_hash;", "\n",
-      "use ", crate_name, "::gunbc_instruments_type_declaration_use_census::\{type_census_receipt, type_census_run_add, type_census_run_empty\};", "\n",
+      "use ", crate_name, "::", type_census_mod, "::\{type_census_receipt, type_census_run_add, type_census_run_empty\};", "\n",
       "use ", crate_name, "::std_compiler_entry::NativeClaimTerminal;", "\n",
       "\n",
       emit_host_acquisition_rs(crate_name: crate_name),
@@ -20142,8 +20156,8 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        println!(\"{}\", serde_json::json!(\{ \"accepted_file_advisories\": advised \}));", "\n",
       "    \}", "\n",
       "    // GROUPED BY THE FATAL REASON, BY THE FOLD THAT OWNS THE GROUPING", "\n",
-      "    // (v2.compiler.compile native_census_cause_groups_add); this main only prints the groups.", "\n",
-      "    // Each root carries its closure fan-out (v2.compiler.compile native_census_closure_index);", "\n",
+      "    // (v2.compiler.source_root_eval native_census_cause_groups_add); this main only prints the groups.", "\n",
+      "    // Each root carries its closure fan-out (v2.compiler.source_root_eval native_census_closure_index);", "\n",
       "    // this mode does not resolve, so no root claims an observed resolve refusal.", "\n",
       "    let closure = native_census_closure_index(", "\n",
       "        context.clone(),", "\n",
@@ -20223,7 +20237,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let roster_nanos = span_nanos(roster_started);", "\n",
       "    // THE CAUSE GROUPS START FROM THE FRONT-END REFUSALS -- each a root carrying its closure", "\n",
       "    // fan-out -- and take each module as it is resolved: a cascade member once under its root,", "\n",
-      "    // any other refusal per chain (v2.compiler.compile native_census_cause_groups_add_module).", "\n",
+      "    // any other refusal per chain (v2.compiler.source_root_eval native_census_cause_groups_add_module).", "\n",
       "    let closure = native_census_closure_index(context.clone(), refusal_index.clone(), modules.clone());", "\n",
       "    let mut groups = native_census_cause_groups_from_file_refusals(context.file_refusals.clone(), closure.clone(), true);", "\n",
       "    let mut resolve_total_nanos: u128 = 0;", "\n",
@@ -20290,7 +20304,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    for group in cause_groups.iter() \{", "\n",
       "        println!(\"{}\", serde_json::json!(\{ \"cause_group\": group \}));", "\n",
       "    \}", "\n",
-      "    // THE ROOTS, RANKED BY CLOSURE FAN-OUT (v2.compiler.compile native_census_roots_ranked).", "\n",
+      "    // THE ROOTS, RANKED BY CLOSURE FAN-OUT (v2.compiler.source_root_eval native_census_roots_ranked).", "\n",
       "    let roots = native_census_roots_ranked(cause_groups.clone());", "\n",
       "    for root in roots.iter() \{", "\n",
       "        println!(\"{}\", serde_json::json!(\{ \"census_root\": root \}));", "\n",
@@ -20325,7 +20339,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    );", "\n",
       "\}", "\n",
       "\n",
-      "// THE FOURTH MODE: D13's DEPENDENCY-DEMAND CENSUS (v2.compiler.compile native_demand_census_output).", "\n",
+      "// THE FOURTH MODE: D13's DEPENDENCY-DEMAND CENSUS (v2.compiler.source_root_eval native_demand_census_output).", "\n",
       "// The fold decides every line and the exit -- 0 held, 1 a census whose rows do not account for", "\n",
       "// every uses fn, 2 no observation -- and this function only reads the ingest, prints and exits.", "\n",
       "fn run_demand_census(source_roots: &[String]) \{", "\n",
@@ -20344,6 +20358,12 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "", "\n",
       "// THE FIFTH MODE: THE WHOLE TREE, RESOLVED AND INFERRED PER MODULE (`census-infer`).", "\n",
       "//", "\n",
+      "// Every decision is a .dag fold: the per-module step (v2.compiler.source_root_eval", "\n",
+      "// native_census_module_inference), the type-declaration census's contribution from it", "\n",
+      "// (native_census_infer_type_contribution), the run it accumulates into and the receipt and", "\n",
+      "// terminal that run decides (v2.compiler.type_declaration_use_census). This loop reads the", "\n",
+      "// roots, threads the context, prints and sets the status -- the operations no fold can. A module's", "\n",
+      "// trees live for one step; what is kept is the census's rows, not the trees.", "\n",
       "fn run_census_infer(source_roots: &[String]) \{", "\n",
       "    if source_roots.is_empty() \{", "\n",
       "        eprintln!(\"REFUSED: no source roots given\");", "\n",
@@ -20430,7 +20450,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());", "\n",
       "    let modules = native_census_modules(ingest.clone());", "\n",
       "    // THE INFER CENSUS'S GROUPS START FROM THE FRONT-END ROOTS, as census-resolve's do, and take each", "\n",
-      "    // module's step through ONE fold (v2.compiler.compile native_census_cause_groups_add_infer_module):", "\n",
+      "    // module's step through ONE fold (v2.compiler.source_root_eval native_census_cause_groups_add_infer_module):", "\n",
       "    // a resolve refusal filed as census-resolve files it, an infer refusal as one Infer-stage row.", "\n",
       "    let closure = native_census_closure_index(context.clone(), refusal_index.clone(), modules.clone());", "\n",
       "    let module_paths = native_census_module_paths(modules.clone());", "\n",
@@ -20493,7 +20513,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            NativeCensusScope::NativeCensusScopeClosed \{ subject, .. \} => (subject.clone(), \"closed\", 0),", "\n",
       "            NativeCensusScope::NativeCensusScopeBlocked \{ subject, blocked_rest, .. \} => (subject.clone(), \"blocked\", 1 + blocked_rest.len()),", "\n",
       "        \};", "\n",
-      "        // THE RUN'S OWN RECORD, decided by v2.compiler.compile census_scoped_run_record from what this walk held.", "\n",
+      "        // THE RUN'S OWN RECORD, decided by v2.compiler.source_root_eval census_scoped_run_record from what this walk held.", "\n",
       "        let record = census_scoped_run_record(scope.clone(), Rc::new(im::vector::Vector::from(obligation_rows.clone())), Rc::new(walk.digests.iter().cloned().collect()));", "\n",
       "        println!(\"\{\}\", serde_json::json!(\{ \"census_run_record\": record.clone() \}));", "\n",
       "        // THE PROJECTION A LATER RUN READS BACK (census_comparable_record): plain data, so it deserializes", "\n",
@@ -20543,7 +20563,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        \}));", "\n",
       "        std::process::exit(0);", "\n",
       "    \}", "\n",
-      "    // EACH ROOT IS MARKED AGAINST THE NATIVE TEST TARGET'S CLOSURE (v2.compiler.compile", "\n",
+      "    // EACH ROOT IS MARKED AGAINST THE NATIVE TEST TARGET'S CLOSURE (v2.compiler.source_root_eval", "\n",
       "    // native_census_subject_closure): derived from the label, never from a list.", "\n",
       "    let subject = native_census_subject_closure(closure.clone(), modules.clone(), native_census_subject_label());", "\n",
       "    println!(\"{}\", serde_json::json!(\{ \"census_subject\": subject.clone() \}));", "\n",
@@ -20830,7 +20850,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        // this returns the seed unchanged. Not because nothing was minted -- a refused parse", "\n",
       "        // HAS minted ids -- but because ParseExprRejected carries no provenance state, so the", "\n",
       "        // mark the attempt reached is not recoverable. See the precondition on", "\n",
-      "        // v2.compiler.compile native_test_context_absorb.", "\n",
+      "        // v2.compiler.source_root_eval native_test_context_absorb.", "\n",
       "        let file_alloc = program_assembly_parsed_alloc(parsed.clone(), file_seed);", "\n",
       "        let normalize_started = cpu_mark();", "\n",
       "        // NORMALIZE ADVANCES THE ALLOCATOR: lowering allocates every image member an id, so the", "\n",
@@ -20997,7 +21017,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    \}", "\n",
       "    let engine_prepare_nanos = native_demand_prepare_nanos(run.clone()).max(0) as u128;", "\n",
       "    let engine_eval_nanos = native_demand_eval_nanos(run.clone()).max(0) as u128;", "\n",
-      "    // OBSERVATION ONLY (v2.compiler.compile native_demand_occurrence_census_lines): the census is its", "\n",
+      "    // OBSERVATION ONLY (v2.compiler.source_root_eval native_demand_occurrence_census_lines): the census is its", "\n",
       "    // own demand kind, so its cost is the engine-reported ExclusiveOccurrenceCensus row, not a host span.", "\n",
       "    let occurrence_census_nanos = native_demand_occurrence_census_nanos(run.clone()).max(0) as u128;", "\n",
       "    prepare_total_nanos += engine_prepare_nanos;", "\n",
@@ -21075,7 +21095,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        .collect();", "\n",
       "    let admitted = native_route_admitted(admission.clone());", "\n",
       "    // THE FRONTIER RATCHET, OVER THE SAME RECEIPT AND INSIDE THE SAME SPAN: the verdict is", "\n",
-      "    // gunbc.native_frontier_ratchet's, and this main only carries its word to the terminal marker", "\n",
+      "    // v2.workflow.native_frontier_ratchet's, and this main only carries its word to the terminal marker", "\n",
       "    // and its lines to stderr. It is measured under receipt_admission because it is judgement of", "\n",
       "    // the receipt, the row that span already names.", "\n",
       "    let frontier = native_frontier_verdict(receipt.clone(), admission.clone(), pattern.clone());", "\n",

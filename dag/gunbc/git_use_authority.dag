@@ -1,9 +1,9 @@
 module gunbc.git_use_authority
 
-import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.types { Bool, Int, List, String, NonEmptyStr, Map }
 import std.decl_ref { DeclarationRef }
-import std.algebra { Cons }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.algebra { Cons, empty_map, map_insert, map_lookup }
+
 
 // COVERAGE: direct .dag Git/GitHub imports only; the required-lane wall is not yet executing.
 // Rust uses are unreached: next capability is a Node dependency producer including Rust sources.

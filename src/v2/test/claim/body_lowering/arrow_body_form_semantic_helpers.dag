@@ -11,7 +11,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Map }
+import std.types { Map }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.integer {
   Int,

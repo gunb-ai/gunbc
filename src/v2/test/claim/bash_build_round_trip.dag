@@ -16,9 +16,7 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_cmd_wc_minus_c_emitted,
   bash_fold_target_model_for_emitted_witness
 }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,

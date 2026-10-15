@@ -1,9 +1,9 @@
 module v2.test.claim.grammar_reach
 
-import std.types { Bool }
+import std.algebra { empty_map, map_insert }
+import std.types { Bool, Map }
 import v2.compiler.grammar_reach { Reach, ReachUnbounded, Reaches, grammar_production_tail }
 import v2.extdeps.languages.dag { dag_grammar_production }
-import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.grammar {
   AfterLineBreak,
   Choice,

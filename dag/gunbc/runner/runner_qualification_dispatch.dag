@@ -366,7 +366,7 @@ fn qualification_dispatch_subject_over(
                       subject: QualificationDispatchSubject {
                         registration: registration,
                         slot: h,
-                        host: h.host.host.host,
+                        host: h.host.host,
                         attempt: h.attempt,
                         runner_id: runner_id,
                         pin: pin,
