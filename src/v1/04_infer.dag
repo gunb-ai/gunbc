@@ -14149,7 +14149,7 @@ fn unify_generic_children(formals: List<Node>, actuals: List<Node>, generic_name
             actuals: actuals |> skip(1),
             generic_names: generic_names,
             source_indices: source_indices,
-            acc: unify_generics(formal: child_type_node(ch: f), actual: child_type_node(ch: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
+            acc: unify_generics(formal: f, actual: a, generic_names: generic_names, source_indices: source_indices, acc: acc)
           )
       }
   }
