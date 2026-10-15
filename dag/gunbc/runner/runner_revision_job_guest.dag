@@ -1,0 +1,159 @@
+module gunbc.runner.runner_revision_job_guest
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { string_contains }
+import std.optional { Present, Absent }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.tar { tar_extract_command }
+import extdeps.git {
+  git_init_quiet_command, git_add_all_force_command, git_commit_snapshot_command, git_diff_tree_equal_command,
+}
+import extdeps.rust.cargo_build { cargo_build_release_bins_offline_command }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, Description, SuccessAction, FailureAction, ServiceType, ExecMode,
+  Restart, WorkingDirectory, Environment, EnvironmentFile, ServiceStandardOutput, ServiceStandardError,
+  OutputJournalAndConsole, ExecStartPre, ExecStart, Installable, WantedBy, UnitActionPoweroffForce,
+  systemd_environment_reference,
+}
+import gunbc.cli_invoke { release_bin_rel_path, gunbc_bin_name, gunbc_run_invocation_words, invocation_words_bare }
+import gunbc.runner.runner_guest_image {
+  runner_guest_job_path, runner_guest_job_home, runner_guest_agent_target,
+}
+
+// THE REVISION JOB'S GUEST UNIT: EVERY INPUT ON A READ-ONLY DEVICE, NO NETWORK, VERIFY BEFORE EXECUTE.
+//
+// A revision job runs one admitted tree's claims in a fresh VM whose only inputs are what the host
+// staged, each digest-pinned (bright-moth-475's hermetic ruling, 2026-10-15):
+//   /dev/vda  the image rootfs, which carries git, tar and the toolchain the host already matched
+//             against the tree's rust-toolchain.toml before launch;
+//   /dev/vdb  the job spec, an environment file: commit, tree, claims, results device and size;
+//   /dev/vdc  the tree, a tar archive of exactly the admitted tree's files;
+//   /dev/vdd  the vendored crates the tree's Cargo.lock pins, a tar archive;
+//   /dev/vde  the results drive, raw, zeroed by the host (gunbc.runner.runner_claim_set_results).
+// The device names follow the order the launch plan attaches drives (S4b-2's host half); a drive
+// out of that order is a launch-plan defect, not something the guest guesses around.
+//
+// The steps are ExecStartPre lines, each one typed argv command, and systemd runs them in order and
+// stops at the first that fails. The VM then powers off (SuccessAction=/FailureAction=) with the
+// results drive still zeroed, which the host decodes as unwritten: no receipt. In order:
+//   1. the tree: unpack, then prove it equal to the admitted tree object (extdeps.git's staged-tree
+//      steps) -- BEFORE anything from the tree executes. A mismatch is diff-tree's nonzero exit;
+//   2. the crates: unpack the vendor set;
+//   3. the build: cargo, release, --locked --offline (extdeps.rust.cargo_build), from the verified
+//      tree, with the image's /work/.cargo/config.toml pointing crates-io at /work/vendor;
+//   4. ExecStart: the built gunbc runs gunbc.runner.runner_claim_set_guest claim_set_guest_main,
+//      which runs each claim and frames the exits onto /dev/vde.
+// The job's per-job values (the tree id the diff compares against) reach the argv through systemd's
+// ${NAME} substitution from the spec environment file (systemd.service(5), "Command lines"); every
+// other word is literal.
+
+data revision_job_spec_device: NonEmptyStr = "/dev/vdb"
+data revision_job_tree_device: String = "/dev/vdc"
+data revision_job_vendor_device: String = "/dev/vdd"
+data revision_job_tree_dir: String = "/work/tree"
+data revision_job_vendor_dir: String = "/work/vendor"
+data revision_job_snapshot_identity_name: String = "gunbc-revision-job"
+data revision_job_snapshot_identity_email: String = "revision-job@gunbc.invalid"
+
+// THE TREE STEPS, parameterised by where the archive and the working directory are and which tree to
+// compare against, so the hermetic stand-in runs exactly these commands over a file and a temp
+// directory, and the unit runs them over the devices.
+fn revision_job_tree_steps(tree_archive: String, work_dir: String, tree: String) -> List<ArgvCommand> {
+  [
+    mkdir_parents_command(path: work_dir),
+    tar_extract_command(archive: tree_archive, into_directory: work_dir, strip_components: 0),
+    git_init_quiet_command(repository_dir: work_dir),
+    git_add_all_force_command(repository_dir: work_dir),
+    git_commit_snapshot_command(repository_dir: work_dir, identity_name: revision_job_snapshot_identity_name,
+      identity_email: revision_job_snapshot_identity_email, message: "revision-job-tree"),
+    git_diff_tree_equal_command(repository_dir: work_dir, tree: tree, revision: "HEAD"),
+  ]
+}
+
+fn revision_job_vendor_steps(vendor_archive: String, vendor_dir: String) -> List<ArgvCommand> {
+  [
+    mkdir_parents_command(path: vendor_dir),
+    tar_extract_command(archive: vendor_archive, into_directory: vendor_dir, strip_components: 0),
+  ]
+}
+
+fn revision_job_pre_steps() -> List<ArgvCommand> {
+  revision_job_tree_steps(tree_archive: revision_job_tree_device, work_dir: revision_job_tree_dir, tree: systemd_environment_reference(name: "GUNBC_CLAIM_SET_TREE") as String)
+    + revision_job_vendor_steps(vendor_archive: revision_job_vendor_device, vendor_dir: revision_job_vendor_dir)
+    + [cargo_build_release_bins_offline_command()]
+}
+
+// ── the systemd command line ───────────────────────────────────────────────────────────────────
+
+// A WORD IS WRITTEN AS ITSELF, AND A WORD SYSTEMD WOULD REINTERPRET REFUSES. The fleet's unit lines
+// join argv words with spaces (gunbc.runner.runner_microvm_slot_unit microvm_locus_execstart); that is
+// faithful only for a word with no whitespace, quote, backslash, `%` (a systemd specifier) or `$`
+// (environment substitution). The one admitted `$` form is a whole word `${NAME}`, which systemd
+// substitutes as exactly one argument -- the job's per-job value.
+type RevisionJobExecLine
+  = RevisionJobExecLineRendered { line: NonEmptyStr }
+  | RevisionJobExecWordRefused { word: String }
+
+// The one admitted `$` word: exactly what extdeps.systemd.unit_file systemd_environment_reference
+// renders for the job spec's tree variable, the only per-job value an argv here carries.
+fn exec_word_is_env_reference(word: String) -> Bool {
+  word == (systemd_environment_reference(name: "GUNBC_CLAIM_SET_TREE") as String)
+}
+
+fn exec_word_is_literal(word: String) -> Bool {
+  word != "" && !string_contains(s: word, pattern: " ") && !string_contains(s: word, pattern: "\t")
+    && !string_contains(s: word, pattern: "\"") && !string_contains(s: word, pattern: "'")
+    && !string_contains(s: word, pattern: "\\") && !string_contains(s: word, pattern: "%")
+    && !string_contains(s: word, pattern: "$")
+}
+
+fn revision_job_exec_line(command: ArgvCommand) -> RevisionJobExecLine {
+  let words = argv_words(command: command)
+  match filter(words, w => !(exec_word_is_literal(word: w) || exec_word_is_env_reference(word: w))).first() {
+    Present { value: w } => RevisionJobExecWordRefused { word: w }
+    Absent => RevisionJobExecLineRendered { line: join(words, " ") as NonEmptyStr }
+  }
+}
+
+fn revision_job_entry_exec_words() -> List<String> {
+  [concat(concat(revision_job_tree_dir, "/"), release_bin_rel_path(bin_name: gunbc_bin_name))]
+    + invocation_words_bare(words: gunbc_run_invocation_words(
+      source_roots: ["dag", "src/v2"],
+      entry: "dag/gunbc/runner/runner_claim_set_guest.dag",
+      function: "claim_set_guest_main",
+      claim_run: false,
+    ))
+}
+
+type RevisionJobGuestUnit
+  = RevisionJobGuestUnitRendered { unit: SystemdUnitFile }
+  | RevisionJobGuestUnitRefused { word: String }
+
+fn revision_job_guest_unit() -> RevisionJobGuestUnit {
+  let rendered = map(revision_job_pre_steps(), c => revision_job_exec_line(command: c))
+  match filter(rendered, r => match r { RevisionJobExecWordRefused { word: _ } => true  RevisionJobExecLineRendered { line: _ } => false }).first() {
+    Present { value: RevisionJobExecWordRefused { word: w } } => RevisionJobGuestUnitRefused { word: w }
+    _ => RevisionJobGuestUnitRendered { unit: ServiceUnitFile {
+      unit: [
+        Description { text: "gunbc revision job: verify the staged tree, build offline, run the claims" as NonEmptyStr },
+        SuccessAction { action: UnitActionPoweroffForce },
+        FailureAction { action: UnitActionPoweroffForce },
+      ],
+      service: [
+        ServiceType { mode: ExecMode },
+        Restart { policy: "no" as NonEmptyStr },
+        WorkingDirectory { path: revision_job_tree_dir as NonEmptyStr },
+        Environment { assignment: runner_guest_job_path },
+        Environment { assignment: runner_guest_job_home },
+        EnvironmentFile { path: revision_job_spec_device },
+        ServiceStandardOutput { stream: OutputJournalAndConsole },
+        ServiceStandardError { stream: OutputJournalAndConsole },
+      ] + flat_map(rendered, r => match r {
+        RevisionJobExecLineRendered { line: l } => [ExecStartPre { command: l }]
+        RevisionJobExecWordRefused { word: _ } => []
+      }) + [ExecStart { command: join(revision_job_entry_exec_words(), " ") as NonEmptyStr }],
+      install: Installable { directives: [WantedBy { target: runner_guest_agent_target }] },
+    } }
+  }
+}
