@@ -310,3 +310,26 @@ test fn kpj_accepted() -> Bool { match cref_eval_of_call_to(o: cref_assemble(src
 test fn kpj_rejected() -> Bool { match cref_eval_of_call_to(o: cref_assemble(src: kps2_src()), name: ^width_of) { Present { value: Rejected { diagnostics: _ } } => true
   _ => false } }
 test fn kpj_no_outcome() -> Bool { cref_eval_of_call_to(o: cref_assemble(src: kps2_src()), name: ^width_of) == Absent }
+test fn kpzz_g_plain_fn() -> Bool { kpp_ok(src: concat("module p\n\nfn k() -> Int {\n  0\n}\n", "")) }
+test fn kpzz_h_ctor_box8() -> Bool { kpp_ok(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn mk8() -> Box<8> {\n  Box { v: 0 }\n}\n") }
+test fn kpzz_i_ctor_boxp() -> Bool { kpp_ok(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn mkp() -> Box<Pointer> {\n  Box { v: 0 }\n}\n") }
+test fn kpzz_j_ctor_unannotated() -> Bool { kpp_ok(src: "module p\n\ntype Plain {\n  v: Int\n}\n\nfn mk() -> Plain {\n  Plain { v: 0 }\n}\n") }
+test fn kpzz_k_param_only() -> Bool { kpp_ok(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> {\n  v: Int\n}\n\nfn take(x: Box<8>) -> Int {\n  1\n}\n") }
+test fn kpzz_type_node() -> Bool { kpa_reason() == Present { value: ^eval_rejected_type_node } }
+test fn kpzz_unsupported_callee() -> Bool { kpa_reason() == Present { value: ^eval_rejected_unsupported_callee } }
+test fn kpzz_runtime_value_node_unrepresentable() -> Bool { kpa_reason() == Present { value: ^eval_rejected_runtime_value_node_unrepresentable } }
+test fn kpzz_argument_bind_absent() -> Bool { kpa_reason() == Present { value: ^eval_rejected_argument_bind_absent } }
+test fn kpzz_bind_value_absent() -> Bool { kpa_reason() == Present { value: ^eval_rejected_bind_value_absent } }
+test fn kpzz_invalid_node() -> Bool { kpa_reason() == Present { value: ^eval_rejected_invalid_node } }
+test fn kpzz_callee_absent() -> Bool { kpa_reason() == Present { value: ^eval_rejected_callee_absent } }
+test fn kpzz_grounding_node_mismatch() -> Bool { kpa_reason() == Present { value: ^eval_rejected_grounding_node_mismatch } }
+test fn kpzz_resolved_type_mismatch() -> Bool { kpa_reason() == Present { value: ^eval_rejected_resolved_type_mismatch } }
+test fn kpzz_inhabitance_mismatch() -> Bool { kpa_reason() == Present { value: ^eval_rejected_inhabitance_mismatch } }
+test fn kpzz_grounding_not_derived() -> Bool { kpa_reason() == Present { value: ^eval_rejected_grounding_not_derived } }
+test fn kpzz_parameter_reference_unbound() -> Bool { kpa_reason() == Present { value: ^eval_rejected_parameter_reference_unbound } }
+test fn kpzz_runtime_binding_lookup_miss() -> Bool { kpa_reason() == Present { value: ^eval_rejected_runtime_binding_lookup_miss } }
+test fn kpzz_type_argument_instance_absent() -> Bool { kpa_reason() == Present { value: ^eval_rejected_type_argument_instance_absent } }
+test fn kpzz_type_argument_read_as_value() -> Bool { kpa_reason() == Present { value: ^eval_rejected_type_argument_read_as_value } }
+test fn kpzz_canonical_mismatch() -> Bool { kpa_reason() == Present { value: ^eval_rejected_canonical_mismatch } }
+test fn kpzz_function_value_body() -> Bool { kpa_reason() == Present { value: ^eval_rejected_function_value_body } }
+test fn kpzz_absent() -> Bool { kpa_reason() == Absent }
