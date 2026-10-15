@@ -61,6 +61,20 @@ test fn empty_match_on_never_is_admitted() -> Bool {
   never_eliminator_no_arms_blocking_count(source: empty_match_never_source) == 0
 }
 
+// THE EMITTED IMAGE of an admitted empty uninhabited match is rustc's empty-enum exhaustiveness
+// form `match n {}` (parent: lower it to match x {} on an empty enum). Seed emit_typed_match
+// concatenates match + scrutinee + braces with zero arms; rustfmt may collapse the braces onto
+// one line. It must not become unreachable!/panic!/todo!. dissolve-on: none -- permanent
+// regression control per DESIGN 4b(4).
+test fn empty_uninhabited_match_emits_match_on_empty_enum() -> Bool {
+  compile_dag_rust_emit_check(
+    empty_match_never_source,
+    "src/neverprobe_nv.rs",
+    ["match n {"],
+    ["unreachable!(", "todo!(", "panic!("]
+  )
+}
+
 data empty_match_opaque_host_source: String = "module neverprobe.opaque\n\ntype Handle\n\nfn f(h: Handle) -> Int {\n  match (h) {\n  }\n}\n"
 
 test fn empty_match_on_opaque_host_type_must_refuse() -> Bool {
