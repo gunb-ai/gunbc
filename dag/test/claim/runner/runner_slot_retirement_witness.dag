@@ -946,7 +946,7 @@ test fn srv4s_authorization_does_not_cover_srv1s_obligation() -> Bool {
     }
 }
 
-// srv1'S OWN AUTHORIZATION COVERS ITS OBLIGATION (07..12 and 14..50). This is the positive
+// srv1'S OWN AUTHORIZATION COVERS ITS OBLIGATION (07..11). This is the positive
 // coverage control; a sibling srv4 length==0 row was deleted because an empty obligation
 // cannot admit coverage. Without this row the production observer stays absent.
 test fn srv1s_obligation_is_fully_covered_by_its_declared_scope() -> Bool {
@@ -1021,8 +1021,8 @@ test fn a_host_with_no_open_transition_has_no_obligation() -> Bool {
 test fn an_open_transition_derives_the_prior_minus_target_obligation() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesKnown { units: units } =>
-      list_length(items: units) == 43
-        && any(units, u => (u as String) == "actions-runner@srv1-50.service")
+      list_length(items: units) == 5
+        && any(units, u => (u as String) == "actions-runner@srv1-11.service")
         && !any(units, u => (u as String) == "actions-runner@srv1-01.service")
     RetireesUnresolved { host: _, cause: _ } => false
   }
@@ -1089,19 +1089,19 @@ test fn a_derived_target_width_yields_the_prior_minus_target_obligation() -> Boo
 }
 
 // THE OBLIGATION IS PRIOR COMMITTED IDENTITIES MINUS TARGET COMMITTED IDENTITIES. On srv1, width 7
-// is 01..06 plus shakedown 13; prior 50 is 01..50; the delta is 07..12 and 14..50 and never 13.
+// is 01..06 plus shakedown 13; prior 12 is 01..11 plus 13; the delta is 07..11 and never 13.
 test fn the_obligation_excludes_a_committed_member_above_the_fleet_range() -> Bool {
   match transition_row_for_host(host: operator_host_srv1).first() {
     Absent => false
     Present { value: t } =>
       match transition_required_retirees_at(t: t, target_width: RunnerWidthDerived { slots: 7 }) {
         RetireesKnown { units: units } =>
-          list_length(items: units) == 43
+          list_length(items: units) == 5
             && any(units, u => (u as String) == "actions-runner@srv1-07.service")
-            && any(units, u => (u as String) == "actions-runner@srv1-12.service")
-            && any(units, u => (u as String) == "actions-runner@srv1-50.service")
+            && any(units, u => (u as String) == "actions-runner@srv1-11.service")
             && !any(units, u => (u as String) == "actions-runner@srv1-13.service")
             && !any(units, u => (u as String) == "actions-runner@srv1-06.service")
+            && !any(units, u => (u as String) == "actions-runner@srv1-12.service")
         RetireesUnresolved { host: _, cause: _ } => false
       }
   }
@@ -1125,23 +1125,23 @@ test fn srv1_at_committed_width_7_desires_six_fleet_plus_shakedown() -> Bool {
   }
 }
 
-test fn srv1_at_width_7_owes_the_open_fifty_slot_delta() -> Bool {
+test fn srv1_at_width_7_owes_retirees_07_through_11() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesUnresolved { host: _, cause: _ } => false
     RetireesKnown { units: units } =>
-      list_length(items: units) == 43
+      list_length(items: units) == 5
         && any(units, u => (u as String) == "actions-runner@srv1-07.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-12.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-14.service")
-        && any(units, u => (u as String) == "actions-runner@srv1-50.service")
-        && !any(units, u => (u as String) == "actions-runner@srv1-13.service")
+        && any(units, u => (u as String) == "actions-runner@srv1-08.service")
+        && any(units, u => (u as String) == "actions-runner@srv1-09.service")
+        && any(units, u => (u as String) == "actions-runner@srv1-10.service")
+        && any(units, u => (u as String) == "actions-runner@srv1-11.service")
+        && !any(units, u => (u as String) == "actions-runner@srv1-12.service")
   }
 }
 
-test fn srv1_keeps_the_open_fifty_row_and_adds_twelve_to_seven() -> Bool {
+test fn srv1_open_transition_is_twelve_to_seven() -> Bool {
   let rows = transition_row_for_host(host: operator_host_srv1)
-  list_length(items: rows) == 2
-    && any(rows, t => (t.transition_id as String) == "runner-slot-26-25-gib" && t.prior_width == 50)
+  list_length(items: rows) == 1
     && any(rows, t => (t.transition_id as String) == "runner-slot-width-12-7" && t.prior_width == 12)
 }
 
@@ -1161,7 +1161,7 @@ test fn a_host_at_its_current_width_owes_no_retirees() -> Bool {
 // production read yields the same derived obligation the decision produces for that width.
 test fn the_production_wrapper_reaches_the_supplied_decision() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
-    RetireesKnown { units: units } => list_length(items: units) == 43
+    RetireesKnown { units: units } => list_length(items: units) == 5
     RetireesUnresolved { host: _, cause: _ } => false
   }
 }

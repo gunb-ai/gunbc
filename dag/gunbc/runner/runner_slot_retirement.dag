@@ -330,11 +330,10 @@ data srv4_transition_interruption_authorization: InterruptionAuthorization = Int
   operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
 }
 
-// srv1'S INTERRUPTION SCOPE COVERS THE OPEN 50-SLOT OBLIGATION.
+// srv1'S INTERRUPTION SCOPE COVERS THE OPEN 12→7 OBLIGATION AND THE HISTORICAL REMAINDER.
 //
-// Committed at 7 is 01..06 plus shakedown 13. Prior 50 is 01..50. The obligation is 07..12
-// and 14..50. Permission names that same set and skips 13 (a committed fabric member). It
-// does not name 01..06.
+// Committed at 7 is 01..06 plus shakedown 13. Prior 12 is 01..11 plus 13. The obligation is
+// 07..11. Permission still names 07..12 and 14..50 and skips 13. It does not name 01..06.
 fn srv1_transition_interruption_scope() -> List<NonEmptyStr> {
   concat(
     desired_unit_names_range(host: operator_host_srv1, slot: 7, limit: 12),
@@ -504,8 +503,8 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 // A SLOT CAN LEAVE THE GITHUB POPULATION WITHOUT THE WIDTH MOVING, AND UNTIL NOW NOTHING SAID SO.
 //
 // required_retirees_for_host derives its set from a WIDTH TRANSITION: prior committed identities
-// minus target committed identities, so srv1's 07..12 and 14..50 at width 7 (prior 50) and srv4
-// empty at width 21 (prior 21). That covers a slot the host stops having. It does not
+// minus target committed identities, so srv1's 07..11 at width 7 (prior 12) and srv4 empty at
+// width 21 (prior 21). That covers a slot the host stops having. It does not
 // cover a slot the host still has whose PURPOSE changed -- and gunbc.runner.runner_slot_allocation
 // reassigns exactly that: a committed index stops serving GitHub Actions and becomes a fabric
 // execution cell. The index is inside the width, so the width transition produces no retiree for it,

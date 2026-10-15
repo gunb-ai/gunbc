@@ -51,23 +51,17 @@ type RunnerWidthTransition sole_constructor {
 // THE OPEN TRANSITION, ENUMERATED PER HOST.
 //
 // srv3 and srv4 were each admitted 21 slots; their committed width is still 21, so the prior
-// equals the target and they owe no retirees. srv1 was admitted at 50 when
-// `runner-slot-26-25-gib` opened; that row stays at prior 50 until THAT transition completes.
-// A later admitted width of 12 did not finish it. The 12→7 cut is a second open transition
-// (`runner-slot-width-12-7`). Required for the host is the union: committed(50) minus
-// committed(7) already contains the 12→7 delta (07..11), plus 12 and 14..50 (13 stays). srv2
-// is absent deliberately.
+// equals the target and they owe no retirees. srv1's 50-slot `runner-slot-26-25-gib` row is
+// gone: sleek-owl-397 run 38785880931 (2026-10-15 18:57Z) converged srv1 on main with 07..11
+// masked and stopped and no live 12/14..50 trees, which is the completion that row required
+// before it could be superseded. The remaining open cut is `runner-slot-width-12-7` (prior 12):
+// committed(12) minus committed(7) = srv1-07..11 (13 stays). srv2 is absent deliberately.
 //
 // A ROW IS SUPERSEDED ONLY WHEN ITS OWN TRANSITION COMPLETES. Editing `prior_width` to match a later
 // observation would destroy the durability the declaration exists for -- the set would track the
 // census again, one indirection further away. `required_retirees_for_host` unions every open
 // row for the host, so a sibling `transition_id` is not unread.
 data slot_width_transition_26_25: List<RunnerWidthTransition> = [
-  RunnerWidthTransition {
-    transition_id: "runner-slot-26-25-gib" as NonEmptyStr,
-    host: operator_host_srv1,
-    prior_width: 50,
-  },
   RunnerWidthTransition {
     transition_id: "runner-slot-width-12-7" as NonEmptyStr,
     host: operator_host_srv1,
