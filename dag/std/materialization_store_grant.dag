@@ -21,10 +21,13 @@ import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_
 //
 // Two fieldless workspace arms share the leaf `materialization-store` under the instance root
 // and differ only in LIFETIME:
-//   PersistentInstanceWorkspace — DurableAcrossRuns. Only constructors whose instance_root is
-//     a declared literal (macbook_local, srv2_deploy) pick this arm.
+//   PersistentInstanceWorkspace — DurableAcrossRuns. The GRANT is the closed pair of declared
+//     persistent scopes (`materialization_store_persistent_macbook_scope`,
+//     `materialization_store_persistent_srv2_scope`); `scope_root` is only the admission
+//     target. A PersistentInstanceWorkspace asked to write `/tmp/...` is Deny, not Permit.
 //   FrameJobWorkspace — EphemeralToFrame. Constructors that take the root as a parameter
-//     (isolated_dashboard_instance, fleet_compute_hermetic_dashboard_instance_at) pick this arm.
+//     (isolated_dashboard_instance, fleet_compute_hermetic_dashboard_instance_at) pick this arm;
+//     the grant is that frame's store, so any scope_root is the frame, not DurableAcrossRuns.
 // Same leaf is not a nickname: durability is the modeled consequence.
 //
 // WitnessScratchRoot is the only arm that takes a path; it admits only /tmp/gunbc_* scratch.
@@ -57,6 +60,30 @@ data materialization_store_frame: Frame = Frame {
 data materialization_store_host_volume_path: String = "/var/lib/gunbc/materialization-store"
 
 data materialization_store_workspace_leaf: String = "materialization-store"
+
+// THE PERSISTENT SCOPES ARE THE GRANT, not a comment on constructors. Roadmap instance_root rows
+// for macbook_local and srv2_deploy are these strings; a third persistent host is a new row here
+// before it can Permit.
+data materialization_store_persistent_macbook_scope: String = "/Users/briansrls/.local/share/gunbc-macbook-local"
+data materialization_store_persistent_srv2_scope: String = "/home/briansrls/.local/share/gunbc-srv2-deploy"
+
+fn materialization_store_persistent_scope_store_path(scope: String) -> String {
+  join([scope, "/", materialization_store_workspace_leaf], "")
+}
+
+fn materialization_store_persistent_workspace_envelope() -> Envelope {
+  Envelope {
+    frame: materialization_store_frame,
+    grants: concat(
+      materialization_store_grants(
+        root_position: absolute_path_position(path: materialization_store_persistent_scope_store_path(scope: materialization_store_persistent_macbook_scope)),
+      ),
+      materialization_store_grants(
+        root_position: absolute_path_position(path: materialization_store_persistent_scope_store_path(scope: materialization_store_persistent_srv2_scope)),
+      ),
+    )
+  }
+}
 
 fn materialization_store_root_path(root: MaterializationStoreRoot, scope_root: String) -> String {
   match root {
@@ -104,9 +131,7 @@ fn materialization_store_grants(root_position: NamespacePosition) -> List<Grant>
 fn materialization_store_envelope(root: MaterializationStoreRoot, scope_root: String) -> Envelope {
   match root {
     DurableHostVolume => materialization_store_host_volume_envelope(path: materialization_store_host_volume_path)
-    PersistentInstanceWorkspace => materialization_store_host_volume_envelope(
-      path: materialization_store_root_path(root: root, scope_root: scope_root)
-    )
+    PersistentInstanceWorkspace => materialization_store_persistent_workspace_envelope()
     FrameJobWorkspace => materialization_store_host_volume_envelope(
       path: materialization_store_root_path(root: root, scope_root: scope_root)
     )
