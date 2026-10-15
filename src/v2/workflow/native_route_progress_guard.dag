@@ -1,8 +1,8 @@
 module v2.workflow.native_route_progress_guard
 
-import std.types { List }
-import std.algebra { list_append, count_where, fold_list, is_empty, length, list_flat_map, list_map }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.types { List, Map }
+import std.algebra { list_append, count_where, fold_list, is_empty, length, list_flat_map, list_map, empty_map, map_insert, map_lookup }
+
 import v2.std.integer { Int }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.compiler.native_test_vocabulary {

@@ -1,8 +1,8 @@
 module gunbc.roadmap.roadmap_authority
 
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
-import std.types { FilePath, NonEmptyStr, Set }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.types { FilePath, NonEmptyStr, Set, Map }
+import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap.roadmap_model {
   RoadmapNode,

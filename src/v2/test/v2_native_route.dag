@@ -1,6 +1,6 @@
 module v2.test.v2_native_route
 
-import std.types { List }
+import std.types { List, Map }
 
 import extdeps.bazel.label { LabelParsed, LabelRefused, render_label }
 import extdeps.bazel.target_pattern {
@@ -55,7 +55,7 @@ import v2.compiler.source_root_eval {
   native_lane_declared_module_name,
   native_lane_module_reachable
 }
-import v2.std.collection { Map, empty_map, map_insert }
+
 import v2.compiler.module_acquisition { AcquiredModule }
 import v2.compiler.source_authority { ModuleFileRef }
 import v2.std.cross_tree.import_model { V2Tree }
@@ -74,7 +74,7 @@ import std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
-import std.algebra { Cons, FreeSemigroup, fold_list, length }
+import std.algebra { Cons, FreeSemigroup, fold_list, length, empty_map, map_insert }
 import v2.std.node { Symbol }
 import std.integer { Int }
 

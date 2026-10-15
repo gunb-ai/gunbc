@@ -13,8 +13,8 @@ import v2.std.compilers.target_model {
   ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
-import std.algebra { Empty }
-import v2.std.collection { empty_map }
+import std.algebra { Empty, empty_map }
+
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v2.test.claim.manual.infer_ground_add { fixture_add_resolved_tree }
 

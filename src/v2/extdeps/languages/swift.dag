@@ -1,5 +1,5 @@
 module v2.extdeps.languages.swift
-import std.types { List }
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
@@ -57,12 +57,7 @@ import v2.std.compilers.lexing {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v2.std.collection {
-  Map,
-  PointwisePower,
-  empty_map,
-  map_insert
-}
+
 import std.optional {
   Absent,
   Present,
@@ -100,7 +95,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.logic { bool_boolean_algebra }
-import std.algebra { Cons, Empty, list_append, BooleanAlgebra, fold_list, list_flat_map, list_map }
+import std.algebra { Cons, Empty, list_append, BooleanAlgebra, fold_list, list_flat_map, list_map, PointwisePower, empty_map, map_insert }
 import v2.std.algebra_structure_signature { approximate_field_type_node, boolean_algebra_type_node, commutative_semiring_type_node, free_monoid_type_node, ordered_ring_type_node }
 import v2.std.text { String }
 

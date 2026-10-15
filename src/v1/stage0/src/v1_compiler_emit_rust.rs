@@ -6639,27 +6639,30 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
 pub fn group_unlisted_type_names(
     diags: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    diags.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, en: Rc<ErrorNode>| match (*en
-            .diagnostic
-            .clone())
-        .clone()
-        {
-            CompilerDiagnostic::UnlistedImportUse { name: nm, .. } => {
-                let existing = match v1_rt::map_get(&acc, en.module_name.clone()) {
-                    Some(v) => v.clone(),
-                    std::option::Option::None => Rc::new(vec![]),
-                };
-                v1_rt::rc_map_insert(
-                    acc.clone(),
-                    en.module_name.clone(),
-                    v1_rt::concat(existing.clone(), Rc::new(vec![nm.clone()])),
-                )
-            }
-            _ => acc.clone(),
-        },
-    )
+    {
+        let seed = v1_rt::rc_empty_map::<String, Rc<Vec<String>>>();
+        diags.iter().cloned().fold(
+            seed.clone(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, en: Rc<ErrorNode>| match (*en
+                .diagnostic
+                .clone())
+            .clone()
+            {
+                CompilerDiagnostic::UnlistedImportUse { name: nm, .. } => {
+                    let existing = match v1_rt::map_get(&acc, en.module_name.clone()) {
+                        Some(v) => v.clone(),
+                        std::option::Option::None => Rc::new(vec![]),
+                    };
+                    v1_rt::rc_map_insert(
+                        acc.clone(),
+                        en.module_name.clone(),
+                        v1_rt::concat(existing.clone(), Rc::new(vec![nm.clone()])),
+                    )
+                }
+                _ => acc.clone(),
+            },
+        )
+    }
 }
 
 pub fn v1_item_signature_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -11759,8 +11762,9 @@ pub fn build_module_index(
     leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
 ) -> Rc<ModuleIndex> {
     {
+        let by_name_seed = v1_rt::rc_empty_map::<String, Rc<TypedModule>>();
         let by_name = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
+            by_name_seed.clone(),
             |acc: Rc<HashMap<String, Rc<TypedModule>>>, tm: Rc<TypedModule>| {
                 let nm = crate::v1_std_core::authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
@@ -11774,8 +11778,9 @@ pub fn build_module_index(
                 }
             },
         );
+        let by_filename_seed = v1_rt::rc_empty_map::<String, Rc<Vec<Rc<TypedModule>>>>();
         let by_filename = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<TypedModule>>>>(),
+            by_filename_seed.clone(),
             |acc: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>, tm: Rc<TypedModule>| {
                 let fname = crate::gunbc_rust_emitted_edge::module_to_filename(
                     crate::v1_std_core::authored_name_at(
@@ -18923,8 +18928,9 @@ pub fn v1_fn_bounds_by_param(
     static_param_names: Rc<Vec<String>>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
+        let bounds_seed = v1_rt::rc_empty_map::<String, Rc<Vec<String>>>();
         let with_clone = clone_param_names.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            bounds_seed.clone(),
             |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
                 v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
             },

@@ -33,7 +33,7 @@ import v2.compiler.dependency_demand_census {
   RowTypeUnresolved
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.collection { List }
+
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic {

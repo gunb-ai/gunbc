@@ -49,10 +49,8 @@ import v2.test.claim.manual.infer_ground_add {
   infer_receipt_context
 }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v2.std.collection {
-  Map,
-  empty_map
-}
+import std.types { Map }
+import std.algebra { empty_map }
 import std.optional {
   Optional,
   Present,

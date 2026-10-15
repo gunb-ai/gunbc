@@ -21,9 +21,10 @@ import v2.std.diagnostic {
   UserInputBoundary,
   Unavailable
 }
-import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, map_lookup }
+import std.optional { Absent, Optional, Present }
+import std.types { Map }
 import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, empty_map, map_insert, map_lookup }
 import v2.std.node { Edge, Node, Symbol, content_hash }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 import v2.std.member_declaration_kind { DeclaredMember }

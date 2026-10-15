@@ -333,6 +333,7 @@ import std.content_hash {
 import std.types {
   NonEmptyStr,
   List,
+  Map,
 }
 import std.algebra {
   Cons,
@@ -349,9 +350,6 @@ import std.algebra {
   list_map,
   list_reverse,
   list_starts_with,
-}
-import v2.std.collection {
-  Map,
   empty_map,
   map_contains_key,
   map_insert,
@@ -2076,7 +2074,7 @@ type NativeLaneClosureStep {
 // over the import graph the census read: one walk, two directions, no second closure fold.
 //
 // `seen` IS CARRIED IN BOTH FORMS ON PURPOSE. The ordered list is the ANSWER -- callers receive the
-// closure in discovery order -- and the map is the MEMBERSHIP TEST. v2.std.collection exposes insert
+// closure in discovery order -- and the map is the MEMBERSHIP TEST. std.algebra exposes insert
 // and lookup and no key enumeration, so a map alone could not produce the returned list and a list
 // alone is the scan this walk avoids.
 //
