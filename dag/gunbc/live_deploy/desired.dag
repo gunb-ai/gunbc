@@ -32,6 +32,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
   srv2_deploy_dashboard_instance,
+  dispatch_base_branch,
 }
 import v2.std.collection { Present, Absent }
 import gunbc.deployment_risk { ProdRoleSelection }
@@ -62,7 +63,6 @@ import gunbc.live_deploy.spec {
 // admitted_branch is a fact of the row. NonEmptyStr makes an undeclared branch unwritable;
 // there is no class default and no empty-string stand-in.
 data production_admitted_branch: NonEmptyStr = "main"
-data lab_integration_branch: NonEmptyStr = "lab-dev"
 
 type DesiredDeployment {
   instance: HostDashboardInstance
@@ -108,6 +108,8 @@ fn srv1_production_desired_deployment() -> DesiredDeployment {
   }
 }
 
+// THE LAB ADMITS ITS OWN INTEGRATION BRANCH, read from the instance rather than restated. The lab
+// publishes into that branch and deploys builds of it, so the branch is one fact of the instance.
 fn srv1_lab_desired_deployment() -> DesiredDeployment {
   let instance = srv1_lab_dashboard_instance()
   DesiredDeployment {
@@ -115,7 +117,7 @@ fn srv1_lab_desired_deployment() -> DesiredDeployment {
     target: deployment_srv1_target(),
     names: srv1_lab_deployment_names(instance: instance),
     selected_identity: srv1_lab_selected_identity(),
-    admitted_branch: lab_integration_branch,
+    admitted_branch: dispatch_base_branch(instance: instance),
   }
 }
 
