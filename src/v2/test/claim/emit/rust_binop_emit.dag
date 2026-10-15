@@ -20,9 +20,7 @@ import v2.extdeps.languages.rust_fixtures {
   rust_binop_target_model_staging,
   rust_target_model_with_operators_and_lex
 }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,

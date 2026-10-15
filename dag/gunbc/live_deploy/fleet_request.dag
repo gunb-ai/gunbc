@@ -2,7 +2,7 @@ module gunbc.live_deploy.fleet_request
 
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.decl_ref { DeclarationRef }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { Empty, Cons }
 import std.goal_assessment {
   ObservationAttempt,

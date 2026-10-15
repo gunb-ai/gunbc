@@ -1,9 +1,7 @@
 module v2.std.runtime
 
-import std.types { List }
-import v2.std.collection {
-  Map
-}
+import std.types { List, Map }
+
 import std.optional {
   Absent,
   Optional,

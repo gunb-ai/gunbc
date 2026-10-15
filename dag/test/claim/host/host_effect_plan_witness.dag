@@ -22,7 +22,7 @@ import v2.std.orchestration {
   ExitZero,
   Run,
 }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import std.realization_reconcile { Converged, NotConverged }
 import gunbc.fleet.fleet_intent { srv1_host }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

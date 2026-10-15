@@ -1,6 +1,6 @@
 module v2.test.claim.manual.bind_demand_driven_eval
 
-import std.types { List }
+import std.types { List, Map }
 import v2.std.arrow_signature { declared_signature }
 import std.occurrence_identity { OccurrenceMinted, OccurrenceSynthetic }
 import v2.compiler.eval {
@@ -26,11 +26,7 @@ import v2.extdeps.runtimes.v2_evaluator {
   v2_evaluator_interpretation_structure_witness
 }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection {
-  Map,
-  map_get_checked,
-  map_insert
-}
+import std.algebra { map_insert }
 import std.optional {
   Optional,
   Absent,
@@ -38,7 +34,7 @@ import std.optional {
   optional_present,
   optional_absent
 }
-import v2.std.witness { Holds, Witness }
+import v2.std.witness { Holds, Witness, map_get_checked }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -171,7 +167,7 @@ fn bind_eval_int_from_runtime(value: RuntimeValue) -> Int {
 }
 
 fn bind_eval_touch_from_env(env: EvaluationEnvironment, key: EnvironmentBindingKey) -> Int {
-  match v2.std.collection.map_get_checked(m: env.bindings, key: key) {
+  match map_get_checked(m: env.bindings, key: key) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
         Present { value: v } => bind_eval_int_from_runtime(value: v)

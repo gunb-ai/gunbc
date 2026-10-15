@@ -1,7 +1,7 @@
 module v2.test.claim.provenance.occurrence_file_attribution
 
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   NativeCensusPositionTable,
   native_census_locate,
   native_census_position_table_empty,
@@ -19,7 +19,7 @@ import v2.compiler.program_assembly {
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { list_at_optional }
+
 import v2.std.artifact { Artifact, SourceFile }
 import v2.cli.compile_cli {
   CliEmitClosure,
@@ -37,7 +37,7 @@ import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Diagnostics, Externa
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_with_occurrence_id, symbol_intern_lexeme, symbol_lexeme }
 import v2.compiler.normalized_tree { NormalizedTree }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, list_starts_with }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, list_starts_with, list_at_optional }
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance {

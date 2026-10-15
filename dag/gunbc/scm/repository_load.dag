@@ -43,7 +43,7 @@ module gunbc.scm.repository_load
 // names as authority substitution.
 
 import std.types { List, String, Map }
-import v2.std.collection { map_lookup }
+import std.algebra { map_lookup }
 import std.content_hash { Fnv1a64Structural }
 import extdeps.filesystem.filesystem_io { Filesystem,
   FilesystemReadOutcome,
