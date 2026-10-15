@@ -1,6 +1,7 @@
 module extdeps.posix.shell_command_language
 
 import std.types { String, NonEmptyStr, Bool, Char }
+import std.optional { Optional, Present, Absent }
 import std.algebra { Cons, Empty, FreeMonoid, contains, for_all, string_contains }
 import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -253,16 +254,20 @@ fn emit_posix_redirection(redir: PosixRedirection) -> String {
   }
 }
 
-fn posix_redirection_carries_newline(redir: PosixRedirection) -> Bool {
+fn posix_redirection_word(redir: PosixRedirection) -> Optional<PosixRedirectPathname> {
   match redir {
-    PosixRedirectStdoutClobber { word: w } =>
+    PosixRedirectStdoutClobber { word: w } => Present { value: w }
+    PosixRedirectStdoutAppend { word: w } => Present { value: w }
+    PosixRedirectStderrClobber { word: w } => Present { value: w }
+    PosixRedirectStderrAppend { word: w } => Present { value: w }
+    PosixRedirectStderrDupStdout => Absent
+  }
+}
+
+fn posix_redirection_carries_newline(redir: PosixRedirection) -> Bool {
+  match posix_redirection_word(redir: redir) {
+    Absent => false
+    Present { value: w } =>
       string_contains(s: posix_redirect_pathname_spelling(path: w) as String, pattern: "\n")
-    PosixRedirectStdoutAppend { word: w } =>
-      string_contains(s: posix_redirect_pathname_spelling(path: w) as String, pattern: "\n")
-    PosixRedirectStderrClobber { word: w } =>
-      string_contains(s: posix_redirect_pathname_spelling(path: w) as String, pattern: "\n")
-    PosixRedirectStderrAppend { word: w } =>
-      string_contains(s: posix_redirect_pathname_spelling(path: w) as String, pattern: "\n")
-    PosixRedirectStderrDupStdout => false
   }
 }
