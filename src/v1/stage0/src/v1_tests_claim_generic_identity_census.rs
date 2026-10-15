@@ -1040,14 +1040,26 @@ pub fn gi_supplied_node_reading_lines(
             Rc::new(vec!["T".to_string()]),
             si.clone(),
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        );
+            Rc::new(crate::v1_compiler_infer_types::TextJudgment::TextNotAsked {
+                reason: crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes,
+            }),
+            "v1.tests.claim.generic_identity_census".to_string(),
+        )
+        .subst
+        .clone();
         let bound_by_name_alone = crate::v1_compiler_infer::unify_generics(
             renamed_xs.substitution_basis.clone(),
             list_of_int.clone(),
             Rc::new(vec!["M".to_string()]),
             si.clone(),
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        );
+            Rc::new(crate::v1_compiler_infer_types::TextJudgment::TextNotAsked {
+                reason: crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes,
+            }),
+            "v1.tests.claim.generic_identity_census".to_string(),
+        )
+        .subst
+        .clone();
         let renamed_child_key = match gi_first_child(renamed_xs.substitution_basis.clone()) {
             Some(c) => gi_declaration_label(c.declaration.clone()),
             std::option::Option::None => "no child".to_string(),
