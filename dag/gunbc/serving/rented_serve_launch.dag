@@ -6,7 +6,7 @@ import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.content_hash { Sha256Digest }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.serving.rented_startup_placement { RentedStoreRoots, RentedLinkReading, RentedLinkSwitchNoop, RentedLinkSwitchCommands, rented_link_switch }
 import extdeps.tools.util_linux_setsid { setsid_fork_words }
 import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable }
@@ -121,3 +121,17 @@ data rented_serve_launch_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "a modeled route that sets a launched program's stdout and stderr to a file over the card's transport, sufficient for the launch leg to emit the detached launch command"),
   ),
 ]
+
+// THE VERSIONED RECEIPT (the runner_guest_image standing shape): the program's rendered text, one placement
+// command per line then the launch leg's standing, so a reader sees what the lab would run and where it stops.
+fn rented_launch_leg_text(leg: RentedLaunchLeg) -> String {
+  match leg {
+    RentedLaunchNoop => "launch: noop (already serving the pinned model)"
+    RentedLaunchRefusedReadback { cause: c } => concat("launch: refused on readback: ", c)
+    RentedLaunchRefusedUnmetCauses { key_grant: g, detach: _ } => concat("launch: refused: serve key grant unbound (", concat(g as String, "); and no modeled stdout-to-file route for the detach)"))
+  }
+}
+
+fn rented_startup_program_text(program: RentedStartupProgram) -> String {
+  concat(join(map(program.placement_commands, c => shell_command_render(command: c)), "\n"), concat("\n", rented_launch_leg_text(leg: program.launch)))
+}

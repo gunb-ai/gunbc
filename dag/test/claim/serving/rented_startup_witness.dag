@@ -20,7 +20,7 @@ import gunbc.serving.rented_startup_placement {
 }
 import gunbc.serving.rented_serve_launch {
   RentedServeNotListening, RentedServeAnswering, RentedServeUnreadable, RentedServeNoop, RentedServeStart, RentedServeRefused, rented_serve_decision,
-  RentedServeKeyUnbound, RentedLaunchRefusedUnmetCauses, rented_startup_program,
+  RentedServeKeyUnbound, RentedLaunchRefusedUnmetCauses, rented_startup_program, rented_startup_program_text,
 }
 import gunbc.serving.rented_startup_placement { RentedLinkAbsent }
 
@@ -149,4 +149,15 @@ test fn the_full_sequence_refuses_at_the_launch_leg_with_no_earlier_leg_skipped(
   (match p.launch { RentedLaunchRefusedUnmetCauses { key_grant: _, detach: _ } => true  _ => false })
     && !rented_sequence_endangers(commands: p.placement_commands, protected: w_protected)
     && list_length(items: p.placement_commands) == 2
+}
+
+// THE RECEIPT TEXT on the real producer: it names both unmet causes and carries the link switch it emitted.
+test fn the_receipt_text_names_both_unmet_causes_and_the_link_switch() -> Bool {
+  let p = rented_startup_program(
+    roots: w_roots, digest: w_digest, link: RentedLinkAbsent,
+    launch: operator_pod_ninfer_launch, launch_argv: ninfer_serve_launch_argv(launch: operator_pod_ninfer_launch, model_path: "/root/serve/model/model.ninfer" as NonEmptyStr, listen_port: operator_pod_listen_port), reading: RentedServeNotListening,
+    key: RentedServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr },
+  )
+  let t = rented_startup_program_text(program: p)
+  string_contains(s: t, pattern: "serve key grant unbound") && string_contains(s: t, pattern: "no modeled stdout-to-file route") && string_contains(s: t, pattern: "model.ninfer")
 }
