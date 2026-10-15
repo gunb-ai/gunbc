@@ -5507,6 +5507,21 @@ fn kernel_container_carrier_verdict(formal: Node, owner: DeclarationRef?, scope:
   }
 }
 
+// AN OPTIONAL-MARKED FORMAL IS INHABITED BY THE OPTIONAL LITERAL. `xs: List<T>?` is a formal whose
+// optionality lives in a cardinality marker (std.optional::Optional is the nominal representation of
+// the same fact), so a `Present { .. }` literal whose owner IS std.optional::Optional is the value
+// the formal states. The kernel-container identity verdict judges the literal against the container
+// carrier alone and, once the owner is recovered, would refuse it as a non-List.
+fn optional_marked_formal_takes_optional_literal(formal: Node, formal_peeled: Node, lit_name: String, scope: InferScope) -> Bool {
+  let marked = formal.return_cardinality == CardOptional || formal_peeled.return_cardinality == CardOptional
+  if !marked { false } else {
+    match structured_literal_owner_declaration(lit_name: lit_name, scope: scope) {
+      Present { value: owner } => declaration_is_std_optional(d: owner)
+      Absent => false
+    }
+  }
+}
+
 fn structured_application_site_type_mismatch_with_peeled(
   formal: Node,
   formal_peeled: Node,
@@ -5528,7 +5543,7 @@ fn structured_application_site_type_mismatch_with_peeled(
           match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
             Present { value: lit_name } =>
               match structured_kernel_container_identity_verdict(formal_peeled: formal_peeled, lit_name: lit_name, scope: scope) {
-                Present { value: admitted } => !admitted
+                Present { value: admitted } => !admitted && !optional_marked_formal_takes_optional_literal(formal: formal, formal_peeled: formal_peeled, lit_name: lit_name, scope: scope)
                 Absent =>
               if application_type_names_compatible(
                 formal_name: formal_name, lit_name: lit_name,

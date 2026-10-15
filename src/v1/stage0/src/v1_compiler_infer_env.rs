@@ -2841,11 +2841,11 @@ pub fn declaration_ref_of_declaration_node(
         if (decl_name.clone() == "".to_string()) {
             return std::option::Option::None;
         }
-        if crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+        let minted = if crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
             decl.clone(),
             decl_name.clone(),
         ) {
-            return match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
+            match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
                 kernel_mint_declaration_rows(),
                 decl_name.clone(),
             ))
@@ -2855,7 +2855,12 @@ pub fn declaration_ref_of_declaration_node(
                     declaration: d, ..
                 } => Some(d.clone()),
                 _ => std::option::Option::None,
-            };
+            }
+        } else {
+            std::option::Option::None
+        };
+        if (minted.clone() != std::option::Option::None) {
+            return minted.clone();
         }
         match decl.ident_span.clone() {
             std::option::Option::None => std::option::Option::None,

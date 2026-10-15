@@ -1118,6 +1118,27 @@ fn ct_user_declared_optional_is_not_stamped_test() -> String {
     "    }\n\n")
 }
 
+fn ct_present_list_into_optional_list_formal_is_admitted_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn present_list_into_an_optional_marked_list_formal_is_admitted() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(16 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"probe_opt_list.dag\".to_string(),\n",
+    "                    content: \"module probe.opt_list\\ntype Occ { id: Int }\\nfn take(xs: List<Occ>?) -> List<Occ>? { xs }\\nfn give(occ: Occ, xs: List<Occ>) -> List<Occ>? { take(xs: Present { value: list_push(xs, occ) }) }\\n\".to_string(),\n",
+    "                });\n",
+    "                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));\n",
+    "                let messages: Vec<String> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "                assert!(!messages.iter().any(|m| m.contains(\"type mismatch\")), \"a Present literal inhabits an optional-marked List formal; refused: {:?}\", messages);\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"present_list_into_an_optional_marked_list_formal_is_admitted panicked\");\n",
+    "    }\n\n")
+}
+
 fn ct_pub_use_crate_lines_two_emission_byte_identity_test() -> String {
   concat(
     "    #[test]\n",
@@ -5616,6 +5637,7 @@ fn compiler_tests_source() -> String {
     ct_generic_optional_over_a_type_application_keeps_the_optional_test(),
     ct_optional_nested_list_stamps_the_collection_test(),
     ct_user_declared_optional_is_not_stamped_test(),
+    ct_present_list_into_optional_list_formal_is_admitted_test(),
     ct_pub_use_crate_lines_two_emission_byte_identity_test(),
     ct_overlapping_use_line_dedupe_permutation_test(),
     ct_fixture_closure_rustc_discrimination_test(),

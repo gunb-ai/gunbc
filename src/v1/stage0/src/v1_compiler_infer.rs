@@ -7573,6 +7573,26 @@ pub fn kernel_container_carrier_verdict(
     }
 }
 
+pub fn optional_marked_formal_takes_optional_literal(
+    formal: Rc<Node>,
+    formal_peeled: Rc<Node>,
+    lit_name: String,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let marked = ((formal.return_cardinality.clone() == Cardinality::CardOptional)
+            || (formal_peeled.return_cardinality.clone() == Cardinality::CardOptional));
+        if !marked.clone() {
+            false
+        } else {
+            match structured_literal_owner_declaration(lit_name.clone(), scope.clone()) {
+                Some(owner) => declaration_is_std_optional(owner.clone()),
+                std::option::Option::None => false,
+            }
+        }
+    }
+}
+
 pub fn structured_application_site_type_mismatch_with_peeled(
     formal: Rc<Node>,
     formal_peeled: Rc<Node>,
@@ -7606,7 +7626,15 @@ pub fn structured_application_site_type_mismatch_with_peeled(
                                         lit_name.clone(),
                                         scope.clone(),
                                     ) {
-                                        Some(admitted) => !admitted.clone(),
+                                        Some(admitted) => {
+                                            (!admitted.clone()
+                                                && !optional_marked_formal_takes_optional_literal(
+                                                    formal.clone(),
+                                                    formal_peeled.clone(),
+                                                    lit_name.clone(),
+                                                    scope.clone(),
+                                                ))
+                                        }
                                         std::option::Option::None => {
                                             if application_type_names_compatible(
                                                 formal_name.clone(),

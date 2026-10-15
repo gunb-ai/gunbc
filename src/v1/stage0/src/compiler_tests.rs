@@ -1006,6 +1006,24 @@ mod compiler_tests {
     }
 
     #[test]
+    fn present_list_into_an_optional_marked_list_formal_is_admitted() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_opt_list.dag".to_string(),
+                    content: "module probe.opt_list\ntype Occ { id: Int }\nfn take(xs: List<Occ>?) -> List<Occ>? { xs }\nfn give(occ: Occ, xs: List<Occ>) -> List<Occ>? { take(xs: Present { value: list_push(xs, occ) }) }\n".to_string(),
+                });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));
+                let messages: Vec<String> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();
+                assert!(!messages.iter().any(|m| m.contains("type mismatch")), "a Present literal inhabits an optional-marked List formal; refused: {:?}", messages);
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("present_list_into_an_optional_marked_list_formal_is_admitted panicked");
+    }
+
+    #[test]
     fn pub_use_crate_lines_are_sorted_and_two_emissions_are_byte_identical() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
