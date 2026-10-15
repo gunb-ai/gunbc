@@ -84,6 +84,20 @@ fn workload_identity_pool_display_name_admitted(name: NonEmptyStr) -> Bool {
   string_length(s: name as String) <= workload_identity_pool_display_name_max_characters
 }
 
+// CreateWorkloadIdentityPoolProvider refuses a provider id outside 4..32: live 400 INVALID_ARGUMENT
+// on fleet-converge 38673630844, "The WorkloadIdentityPoolProvider ID length must be between 4 and 32
+// characters." The id github-fleet-converge-dispatch-oidc is 35. Same class as the display-name cap:
+// NonEmptyStr still admits the literal; DedicatedFederation routes refuse through
+// workload_identity_pool_provider_id_admitted before they POST.
+data workload_identity_pool_provider_id_min_characters: Int = 4
+
+data workload_identity_pool_provider_id_max_characters: Int = 32
+
+fn workload_identity_pool_provider_id_admitted(id: NonEmptyStr) -> Bool {
+  let n = string_length(s: id as String)
+  n >= workload_identity_pool_provider_id_min_characters && n <= workload_identity_pool_provider_id_max_characters
+}
+
 type GcpPoolPolicyWire {
   audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs"
   bindings: List<GcpBinding>?
