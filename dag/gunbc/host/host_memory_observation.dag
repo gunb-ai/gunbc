@@ -146,11 +146,7 @@ fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
   } else if (host as String) == (operator_host_srv4 as String) {
     gunbc_ci_managed_host_fixed_overhead
   } else if (host as String) == (operator_host_mtcollins1 as String) {
-    match host_fixed_overhead_from_mtcollins1_census_receipt() {
-      ObservationEstablished { observed: o } => o
-      ObservationRefused { cause: c } =>
-        HostFixedOverheadUnmeasured { reason: census_meminfo_unread_text(c: c) as NonEmptyStr }
-    }
+    host_fixed_overhead_from_census_envelope_attempt(attempt: mtcollins1_census_envelope_attempt())
   } else {
     HostFixedOverheadUnmeasured {
       reason: "host is not classified in gunbc_ci_host_fixed_overhead_for" as NonEmptyStr,
@@ -288,11 +284,7 @@ fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
   } else if (host as String) == (operator_host_srv4 as String) {
     gunbc_ci_srv4_memtotal_measured
   } else if (host as String) == (operator_host_mtcollins1 as String) {
-    match host_usable_ram_from_mtcollins1_census_receipt() {
-      ObservationEstablished { observed: r } => r
-      ObservationRefused { cause: c } =>
-        HostUsableRamUnmeasured { reason: census_meminfo_unread_text(c: c) as NonEmptyStr }
-    }
+    host_usable_ram_from_census_envelope_attempt(attempt: mtcollins1_census_envelope_attempt())
   } else {
     HostUsableRamUnmeasured {
       reason: "host is not classified in gunbc_ci_host_usable_ram_for" as NonEmptyStr,
@@ -445,44 +437,74 @@ fn host_fixed_overhead_from_capture(envelope: BoundHostCaptureEnvelope) -> Obser
 
 data mtcollins1_census_boot_capture_path: String = "artifacts/bmc/mtcollins1-boot-run-38789347052/mtcollins1-boot-sol.capture"
 
-fn host_usable_ram_from_census_capture_text(capture: String) -> ObservationAttempt<HostUsableRam, CensusMeminfoUnread> {
-  match host_capture_bind_transcript(capture: capture, machine: "mtcollins1" as NonEmptyStr) {
-    HostCaptureBound { envelope: e } => host_usable_ram_from_capture(envelope: e)
+fn census_envelope_from_capture_text(capture: String, machine: NonEmptyStr) -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread> {
+  match host_capture_bind_transcript(capture: capture, machine: machine) {
+    HostCaptureBound { envelope: e } => ObservationEstablished { observed: e }
     HostCaptureOpen { envelope: _ } => ObservationRefused { cause: CensusMeminfoEnvelopeOpen }
     HostCaptureNotBegun => ObservationRefused { cause: CensusMeminfoEnvelopeNotBegun }
     HostCaptureUnbound { reason: r } => ObservationRefused { cause: CensusMeminfoCaptureUnbound { reason: r } }
   }
 }
 
-fn host_fixed_overhead_from_census_capture_text(capture: String) -> ObservationAttempt<HostFixedOverhead, CensusMeminfoUnread> {
-  match host_capture_bind_transcript(capture: capture, machine: "mtcollins1" as NonEmptyStr) {
-    HostCaptureBound { envelope: e } => host_fixed_overhead_from_capture(envelope: e)
-    HostCaptureOpen { envelope: _ } => ObservationRefused { cause: CensusMeminfoEnvelopeOpen }
-    HostCaptureNotBegun => ObservationRefused { cause: CensusMeminfoEnvelopeNotBegun }
-    HostCaptureUnbound { reason: r } => ObservationRefused { cause: CensusMeminfoCaptureUnbound { reason: r } }
-  }
-}
-
-fn host_usable_ram_from_census_read(success: Bool, content: String, error: String) -> ObservationAttempt<HostUsableRam, CensusMeminfoUnread> {
+fn census_envelope_from_read(success: Bool, content: String, error: String, machine: NonEmptyStr) -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread> {
   match filesystem_read_outcome(content: content, success: success, error: error) {
-    FilesystemReadSucceeded { content: c } => host_usable_ram_from_census_capture_text(capture: c)
+    FilesystemReadSucceeded { content: c } => census_envelope_from_capture_text(capture: c, machine: machine)
     FilesystemReadRefused { error: e } => ObservationRefused { cause: CensusMeminfoReceiptUnreadable { error: e } }
   }
 }
 
-fn host_fixed_overhead_from_census_read(success: Bool, content: String, error: String) -> ObservationAttempt<HostFixedOverhead, CensusMeminfoUnread> {
-  match filesystem_read_outcome(content: content, success: success, error: error) {
-    FilesystemReadSucceeded { content: c } => host_fixed_overhead_from_census_capture_text(capture: c)
-    FilesystemReadRefused { error: e } => ObservationRefused { cause: CensusMeminfoReceiptUnreadable { error: e } }
+fn mtcollins1_census_envelope_attempt() -> ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread> {
+  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path)
+  census_envelope_from_read(
+    success: read.success,
+    content: read.content,
+    error: read.error,
+    machine: operator_host_mtcollins1 as NonEmptyStr,
+  )
+}
+
+fn host_usable_ram_from_census_envelope_attempt(attempt: ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread>) -> HostUsableRam {
+  match attempt {
+    ObservationRefused { cause: c } =>
+      HostUsableRamUnmeasured { reason: census_meminfo_unread_text(c: c) as NonEmptyStr }
+    ObservationEstablished { observed: e } =>
+      match host_usable_ram_from_capture(envelope: e) {
+        ObservationEstablished { observed: r } => r
+        ObservationRefused { cause: c } =>
+          HostUsableRamUnmeasured { reason: census_meminfo_unread_text(c: c) as NonEmptyStr }
+      }
   }
 }
 
-fn host_usable_ram_from_mtcollins1_census_receipt() -> ObservationAttempt<HostUsableRam, CensusMeminfoUnread> {
-  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path)
-  host_usable_ram_from_census_read(success: read.success, content: read.content, error: read.error)
+fn host_fixed_overhead_from_census_envelope_attempt(attempt: ObservationAttempt<BoundHostCaptureEnvelope, CensusMeminfoUnread>) -> HostFixedOverhead {
+  match attempt {
+    ObservationRefused { cause: c } =>
+      HostFixedOverheadUnmeasured { reason: census_meminfo_unread_text(c: c) as NonEmptyStr }
+    ObservationEstablished { observed: e } =>
+      match host_fixed_overhead_from_capture(envelope: e) {
+        ObservationEstablished { observed: o } => o
+        ObservationRefused { cause: c } =>
+          HostFixedOverheadUnmeasured { reason: census_meminfo_unread_text(c: c) as NonEmptyStr }
+      }
+  }
 }
 
-fn host_fixed_overhead_from_mtcollins1_census_receipt() -> ObservationAttempt<HostFixedOverhead, CensusMeminfoUnread> {
-  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path)
-  host_fixed_overhead_from_census_read(success: read.success, content: read.content, error: read.error)
+type HostMemoryObservation {
+  usable_ram: HostUsableRam
+  fixed_overhead: HostFixedOverhead
+}
+
+fn gunbc_ci_host_memory_observation_for(host: HostIdentity) -> HostMemoryObservation {
+  if (host as String) == (operator_host_mtcollins1 as String) {
+    let attempt = mtcollins1_census_envelope_attempt()
+    HostMemoryObservation {
+      usable_ram: host_usable_ram_from_census_envelope_attempt(attempt: attempt),
+      fixed_overhead: host_fixed_overhead_from_census_envelope_attempt(attempt: attempt),
+    }
+  } else {
+    HostMemoryObservation {
+      usable_ram: gunbc_ci_host_usable_ram_for(host: host),
+      fixed_overhead: gunbc_ci_host_fixed_overhead_for(host: host),
+    }
+  }
 }

@@ -13,7 +13,6 @@ import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_by
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.host_capture_envelope {
   BoundHostCaptureEnvelope, HostCaptureBoundSection, KernelBootId,
-  host_capture_bind_transcript, HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.machine_intake.mtcollins1_socket1_investigation_observation { MtCollins1Socket1InvestigationBoot, mtcollins1_socket1_investigation_boots }
@@ -25,8 +24,7 @@ import gunbc.host.host_memory_observation {
   HostFixedOverheadMeasured, HostFixedOverheadUnmeasured, host_fixed_overhead_from_capture,
   gunbc_ci_host_usable_ram_for, gunbc_ci_host_fixed_overhead_for,
   mtcollins1_census_boot_capture_path,
-  host_usable_ram_from_census_capture_text, host_fixed_overhead_from_census_capture_text,
-  host_usable_ram_from_census_read, host_fixed_overhead_from_census_read,
+  mtcollins1_census_envelope_attempt, census_envelope_from_capture_text, census_envelope_from_read,
 }
 import gunbc.session_residency { SessionResidency, NoInteractiveSessions, HostsInteractiveSessions, host_session_residency }
 import gunbc.session_reservation_policy { HostSessionReservationOutcome, SessionReservationNotApplicable, host_session_reservation_outcome }
@@ -185,55 +183,49 @@ test fn mtcollins1_census_capture_file_is_the_committed_receipt() -> Bool {
 }
 
 test fn mtcollins1_production_usable_ram_is_the_census_capture_reading() -> Bool {
-  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path)
-  let from_file = match host_capture_bind_transcript(capture: read.content, machine: "mtcollins1" as NonEmptyStr) {
-    HostCaptureBound { envelope: e } => host_usable_ram_from_capture(envelope: e)
-    HostCaptureOpen { envelope: _ } => ObservationRefused { cause: CensusMeminfoEnvelopeOpen }
-    HostCaptureNotBegun => ObservationRefused { cause: CensusMeminfoEnvelopeNotBegun }
-    HostCaptureUnbound { reason: r } => ObservationRefused { cause: CensusMeminfoCaptureUnbound { reason: r } }
-  }
   let production = gunbc_ci_host_usable_ram_for(host: operator_host_mtcollins1)
-  match from_file {
+  match mtcollins1_census_envelope_attempt() {
     ObservationRefused { cause: _ } => false
-    ObservationEstablished { observed: r } =>
-      match r {
-        HostUsableRamMeasured { bytes: b, provenance: p } =>
-          match production {
-            HostUsableRamMeasured { bytes: pb, provenance: pp } =>
-              byte_size_count(b: b) == byte_size_count(b: pb)
-                && (p as String) == (pp as String)
-                && string_contains(s: p as String, pattern: "66141451-278b-4eb0-bc57-595563e1247b")
-                && string_contains(s: p as String, pattern: "census_meminfo_reading")
+    ObservationEstablished { observed: e } =>
+      match host_usable_ram_from_capture(envelope: e) {
+        ObservationRefused { cause: _ } => false
+        ObservationEstablished { observed: r } =>
+          match r {
+            HostUsableRamMeasured { bytes: b, provenance: p } =>
+              match production {
+                HostUsableRamMeasured { bytes: pb, provenance: pp } =>
+                  byte_size_count(b: b) == byte_size_count(b: pb)
+                    && (p as String) == (pp as String)
+                    && string_contains(s: p as String, pattern: "66141451-278b-4eb0-bc57-595563e1247b")
+                    && string_contains(s: p as String, pattern: "census_meminfo_reading")
+                _ => false
+              }
             _ => false
           }
-        _ => false
       }
   }
 }
 
 test fn mtcollins1_production_overhead_is_the_census_capture_reading() -> Bool {
-  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path)
-  let from_file = match host_capture_bind_transcript(capture: read.content, machine: "mtcollins1" as NonEmptyStr) {
-    HostCaptureBound { envelope: e } => host_fixed_overhead_from_capture(envelope: e)
-    HostCaptureOpen { envelope: _ } => ObservationRefused { cause: CensusMeminfoEnvelopeOpen }
-    HostCaptureNotBegun => ObservationRefused { cause: CensusMeminfoEnvelopeNotBegun }
-    HostCaptureUnbound { reason: r } => ObservationRefused { cause: CensusMeminfoCaptureUnbound { reason: r } }
-  }
   let production = gunbc_ci_host_fixed_overhead_for(host: operator_host_mtcollins1)
-  match from_file {
+  match mtcollins1_census_envelope_attempt() {
     ObservationRefused { cause: _ } => false
-    ObservationEstablished { observed: o } =>
-      match o {
-        HostFixedOverheadMeasured { bytes: b, provenance: p } =>
-          match production {
-            HostFixedOverheadMeasured { bytes: pb, provenance: pp } =>
-              byte_size_count(b: b) == byte_size_count(b: pb)
-                && (p as String) == (pp as String)
-                && string_contains(s: p as String, pattern: "66141451-278b-4eb0-bc57-595563e1247b")
-                && string_contains(s: p as String, pattern: "quiescent census boot")
+    ObservationEstablished { observed: e } =>
+      match host_fixed_overhead_from_capture(envelope: e) {
+        ObservationRefused { cause: _ } => false
+        ObservationEstablished { observed: o } =>
+          match o {
+            HostFixedOverheadMeasured { bytes: b, provenance: p } =>
+              match production {
+                HostFixedOverheadMeasured { bytes: pb, provenance: pp } =>
+                  byte_size_count(b: b) == byte_size_count(b: pb)
+                    && (p as String) == (pp as String)
+                    && string_contains(s: p as String, pattern: "66141451-278b-4eb0-bc57-595563e1247b")
+                    && string_contains(s: p as String, pattern: "quiescent census boot")
+                _ => false
+              }
             _ => false
           }
-        _ => false
       }
   }
 }
@@ -248,30 +240,18 @@ data open_complete_meminfo_capture: String = join([
 ], "")
 
 test fn mtcollins1_RED_open_envelope_does_not_mint_measured_ram_or_overhead() -> Bool {
-  match host_capture_bind_transcript(capture: open_complete_meminfo_capture, machine: "mtcollins1" as NonEmptyStr) {
-    HostCaptureOpen { envelope: _ } =>
-      match host_usable_ram_from_census_capture_text(capture: open_complete_meminfo_capture) {
-        ObservationRefused { cause: CensusMeminfoEnvelopeOpen } =>
-          match host_fixed_overhead_from_census_capture_text(capture: open_complete_meminfo_capture) {
-            ObservationRefused { cause: CensusMeminfoEnvelopeOpen } => true
-            _ => false
-          }
-        _ => false
-      }
+  match census_envelope_from_capture_text(capture: open_complete_meminfo_capture, machine: operator_host_mtcollins1 as NonEmptyStr) {
+    ObservationRefused { cause: CensusMeminfoEnvelopeOpen } => true
     _ => false
   }
 }
 
 test fn mtcollins1_RED_unread_receipt_is_not_an_unbegun_capture() -> Bool {
-  match host_usable_ram_from_census_read(success: false, content: "", error: "No such file") {
+  match census_envelope_from_read(success: false, content: "", error: "No such file", machine: operator_host_mtcollins1 as NonEmptyStr) {
     ObservationRefused { cause: CensusMeminfoReceiptUnreadable { error: e } } =>
       e == "No such file"
-        && match host_usable_ram_from_census_capture_text(capture: "") {
-          ObservationRefused { cause: CensusMeminfoEnvelopeNotBegun } =>
-            match host_fixed_overhead_from_census_read(success: false, content: "", error: "No such file") {
-              ObservationRefused { cause: CensusMeminfoReceiptUnreadable { error: _ } } => true
-              _ => false
-            }
+        && match census_envelope_from_capture_text(capture: "", machine: operator_host_mtcollins1 as NonEmptyStr) {
+          ObservationRefused { cause: CensusMeminfoEnvelopeNotBegun } => true
           _ => false
         }
     _ => false
