@@ -898,9 +898,9 @@ fn type_heads_agree(left: Node, right: Node, left_name: String, right_name: Stri
       Present { value: ld } =>
         match right.declaration {
           Present { value: rd } => ld.module_path == rd.module_path && ld.decl_name == rd.decl_name
-          Absent => type_name_compatible(a: left_name, b: right_name)
+          Absent => false
         }
-      Absent => type_name_compatible(a: left_name, b: right_name)
+      Absent => false
     }
   }
 }
@@ -952,7 +952,11 @@ fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String
       } else if is_map {
         concat("Map(", node_type_shape_argument_list(args: n.children, source_indices: source_indices), ")")
       } else if (n.children |> count) > 0 {
-        concat("Node(", n_name, "<", node_type_shape_argument_list(args: n.children, source_indices: source_indices), ">)")
+        let args = node_type_shape_argument_list(args: n.children, source_indices: source_indices)
+        match n.declaration {
+          Present { value: _ } => concat("Node(", n_name, "<", args, ">)")
+          Absent => concat("UnresolvedDecl(", n_name, "<", args, ">)")
+        }
       } else {
         concat("Node(", n_name, ")")
       }

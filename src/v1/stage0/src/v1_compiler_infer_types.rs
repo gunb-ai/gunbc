@@ -2382,19 +2382,25 @@ pub fn node_type_shape(
                                             )
                                         } else {
                                             if ((n.children.clone().len() as i64) > 0) {
+                                                let args = node_type_shape_argument_list(
+                                                    n.children.clone(),
+                                                    source_indices.clone(),
+                                                );
+                                                let tag = if n.declaration.is_some() {
+                                                    "Node("
+                                                } else {
+                                                    "UnresolvedDecl("
+                                                };
                                                 v1_rt::concat(
                                                     v1_rt::concat(
                                                         v1_rt::concat(
                                                             v1_rt::concat(
-                                                                "Node(".to_string(),
+                                                                tag.to_string(),
                                                                 n_name.clone(),
                                                             ),
                                                             "<".to_string(),
                                                         ),
-                                                        node_type_shape_argument_list(
-                                                            n.children.clone(),
-                                                            source_indices.clone(),
-                                                        ),
+                                                        args,
                                                     ),
                                                     ">)".to_string(),
                                                 )
@@ -2886,7 +2892,7 @@ fn type_heads_agree(
                 ld.module_path.clone() == rd.module_path.clone()
                     && ld.decl_name.clone() == rd.decl_name.clone()
             }
-            _ => crate::v1_std_core::type_name_compatible(left_name, right_name),
+            _ => false,
         }
     }
 }

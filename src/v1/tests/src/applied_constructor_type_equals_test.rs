@@ -51,6 +51,26 @@ fn list_int_equals_freemonoid_int() {
 }
 
 #[test]
+fn bare_box_vs_qualified_other_decl_is_refused() {
+    let result = compile_multi(&[
+        ("q/boxmod.dag", "module q.boxmod\ntype Box<T>\n"),
+        (
+            "locate/bareq.dag",
+            "module locate.bareq\nimport q.boxmod\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: q.boxmod.Box<Int>) -> Bool { same_arm(a: x, b: y) }\n",
+        ),
+    ]);
+    let msgs = blocking_of(&result);
+    assert!(
+        has_rebind(&msgs)
+            || msgs.iter().any(|m| m.contains("UnresolvedDecl")
+                || m.contains("TypeMismatch")
+                || m.contains("type mismatch")),
+        "bare Box<Int> vs q.boxmod.Box<Int> must not equal by last segment: blocking={msgs:?} all={:?}",
+        diagnostic_messages(&result)
+    );
+}
+
+#[test]
 fn two_decls_same_leaf_applied_compare_unequal() {
     let result = compile_multi(&[
         ("p/boxmod.dag", "module p.boxmod\ntype Box<T>\n"),
