@@ -105,7 +105,7 @@ type ObligatedInferredTree {
 // sound only if no tree holds two DIFFERENT nodes under one authored occurrence. This walk measures
 // exactly that and nothing else; a synthetic node has no authored occurrence and is not counted. It is
 // the one authority a later key admission would refuse with, so the census and the refusal cannot
-// disagree. The native lane reports it per module (v2.compiler.compile native_lane_occurrence_census).
+// disagree. The native lane reports it per module (v2.compiler.source_root_eval native_lane_occurrence_census).
 fn authored_occurrence_id(n: Node) -> Optional<OccurrenceId> {
   match n.occurrence_id {
     OccurrenceMinted { id: id } => Present { value: id }

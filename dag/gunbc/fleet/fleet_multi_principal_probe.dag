@@ -11,6 +11,10 @@ import gunbc.typed_argv_exec { typed_argv_probe_over_ssh, TypedArgvExecOutcome, 
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTargetResolved,
+  SshTargetRefused,
+  fleet_ssh_target_at_standard_port,
+  ssh_target_refusal_text,
   FleetSshAttemptIdentity,
   fleet_ssh_attempt_identity,
   FleetSshExecutionContext,
@@ -114,28 +118,34 @@ data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-prin
 // repository provisioned. Deriving the session here would silently swap the question: the briansrls
 // row would become a password-session probe and report reach that says nothing about the key. So the
 // key shaper is the subject of this probe, not its transport choice, and it stays named.
-fn probe_leg(context: FleetSshExecutionContext, host: String, principal: String, raw_words: List<String>) -> SshSessionExecResult? {
+//
+// A LEG THAT DID NOT RUN SAYS WHY. Two causes stop it before ssh: remote words the far-side shell
+// would re-parse, and an endpoint that is not a host. Each keeps its own cause in the receipt, so a
+// target refusal is never reported as a non-portable word.
+type ProbeLegOutcome
+  = ProbeLegRan { result: SshSessionExecResult }
+  | ProbeLegRefused { cause: String }
+
+fn probe_leg(context: FleetSshExecutionContext, host: String, principal: String, raw_words: List<String>) -> ProbeLegOutcome {
   match portable_remote_words(raws: raw_words) {
-    Absent => none
-    Present { value: words } => Present {
-      value: ssh_session_exec_portable_words(
-        client_args: shape_fleet_ssh_exec(
-          context: context,
-          target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
-            principal: principal as NonEmptyStr,
-          },
-          words: words,
-        ),
-      ),
-    }
+    Absent => ProbeLegRefused { cause: "non-portable-remote-word" }
+    Present { value: words } =>
+      match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host), principal: principal as NonEmptyStr) {
+        SshTargetRefused { endpoint: e, refusal: why } => ProbeLegRefused { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
+        SshTargetResolved { target: target } =>
+          ProbeLegRan {
+            result: ssh_session_exec_portable_words(
+              client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
+            ),
+          }
+      }
   }
 }
 
 fn multi_principal_reach_line(context: FleetSshExecutionContext, host: String, principal: String) -> String {
   match probe_leg(context: context, host: host, principal: principal, raw_words: ["hostname"]) {
-    Absent => join(["reach host=", host, " principal=", principal, " probe-refused cause=non-portable-remote-word\n"], "")
-    Present { value: r } =>
+    ProbeLegRefused { cause: why } => join(["reach host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
+    ProbeLegRan { result: r } =>
       if r.success {
         join(["reach host=", host, " principal=", principal, " auth=accepted command=executed hostname=", trim(s: r.stdout), "\n"], "")
       } else {
@@ -146,8 +156,8 @@ fn multi_principal_reach_line(context: FleetSshExecutionContext, host: String, p
 
 fn multi_principal_sudo_line(context: FleetSshExecutionContext, host: String, principal: String) -> String {
   match probe_leg(context: context, host: host, principal: principal, raw_words: ["sudo", "-n", "-l"]) {
-    Absent => join(["sudo  host=", host, " principal=", principal, " probe-refused cause=non-portable-remote-word\n"], "")
-    Present { value: r } =>
+    ProbeLegRefused { cause: why } => join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
+    ProbeLegRan { result: r } =>
       if r.success {
         join(["sudo  host=", host, " principal=", principal, " sudo-n-l=listed grants=", trim(s: r.stdout), "\n"], "")
       } else {
@@ -464,12 +474,12 @@ fn spark_exact_grant_row(context: FleetSshExecutionContext, host: String, princi
     host: host,
     principal: principal,
     inspect_dropins: match probe_leg(context: context, host: host, principal: principal, raw_words: spark_sudoers_dropin_listing_argv()) {
-      Absent => InspectDropinShapeUnobserved { cause: "non-portable-remote-word" as NonEmptyStr }
-      Present { value: r } => spark_inspect_dropin_shape_of_listing(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+      ProbeLegRefused { cause: why } => InspectDropinShapeUnobserved { cause: why as NonEmptyStr }
+      ProbeLegRan { result: r } => spark_inspect_dropin_shape_of_listing(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
     },
     outcome: match probe_leg(context: context, host: host, principal: principal, raw_words: ["sudo", "-n", "-l"]) {
-      Absent => GrantProbeRefused { cause: "non-portable-remote-word" }
-      Present { value: r } =>
+      ProbeLegRefused { cause: why } => GrantProbeRefused { cause: why }
+      ProbeLegRan { result: r } =>
         if r.success {
           GrantEnumerated { listing: r.stdout }
         } else {
@@ -611,8 +621,8 @@ fn principal_observation(
     host: host as HostIdentity,
     principal_login_name: principal as NonEmptyStr,
     credential_identity: credential_identity,
-    authenticated: match reach { Present { value: r } => r.success Absent => false },
-    holds_any_passwordless_grant: match sudo { Present { value: r } => r.success Absent => false },
+    authenticated: match reach { ProbeLegRan { result: r } => r.success ProbeLegRefused { cause: _ } => false },
+    holds_any_passwordless_grant: match sudo { ProbeLegRan { result: r } => r.success ProbeLegRefused { cause: _ } => false },
   }
 }
 
