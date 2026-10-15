@@ -280,6 +280,7 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds system_service_unit_from_cgroup`")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes` unit names")
     && string_contains(s: seed, pattern: concat("\"", concat(repository_convergence_slice_unit_name as String, "\"")))
+    && !string_contains(s: seed, pattern: concat("\"", concat(sessions_slice_unit_name as String, "\"")))
     && !any(
       declared_system_slice_memory_maxes(),
       row => byte_size_count(b: row.memory_max) > 0
@@ -388,7 +389,7 @@ test fn a_user_session_cgroup_still_owes_the_wrap() -> Bool {
   }
 }
 
-test fn a_host_visible_sessions_slice_cgroup_is_exempt() -> Bool {
+test fn sessions_slice_is_not_a_fleet_wide_wrap_exempt() -> Bool {
   let cg = join([
     "0::",
     user_work_scope_user_slice_cgroup_needle,
@@ -397,17 +398,14 @@ test fn a_host_visible_sessions_slice_cgroup_is_exempt() -> Bool {
     "/docker-deadbeef.scope",
   ], "")
   match modeled_system_slice_memory_max(unit: sessions_slice_unit_name as String) {
-    Absent => false
-    Present { value: _ } =>
+    Present { value: _ } => false
+    Absent =>
       match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
-        ExemptSystemUnit { unit, slice } =>
-          unit == "docker-deadbeef.scope"
-            && slice == (sessions_slice_unit_name as String)
-            && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: unit, slice: slice }) {
-              SkipUserWorkScope { standing: ExemptSystemUnit { unit: eu, slice: es } } =>
-                eu == unit && es == slice
-              _ => false
-            }
+        UserSessionAbsent =>
+          match user_work_scope_standing_effect(s: UserSessionAbsent) {
+            RefuseUserWorkScope { standing: UserSessionAbsent } => true
+            _ => false
+          }
         _ => false
       }
   }

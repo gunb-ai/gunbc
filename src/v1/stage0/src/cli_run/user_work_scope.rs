@@ -37,7 +37,6 @@ const SCOPE_UNIT_SUFFIX: &str = ".scope";
 const MODELED_CAPPED_SYSTEM_SLICES: &[&str] = &[
     "gunbc-repository-convergence.slice",
     "gunbc-approval-broker.slice",
-    "sessions.slice",
 ];
 
 enum UserWorkScopeStanding {

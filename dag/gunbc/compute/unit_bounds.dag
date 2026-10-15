@@ -119,8 +119,10 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // unbounded (review 80042). CiExempt / RunnerSlotExempt skip because those processes already sit
 // in a declared slot cgroup, not because the user manager is missing.
 // ExemptSystemUnit skips when any cgroup path segment is a modeled capped slice
-// (declared_system_slice_memory_maxes), including sessions.slice/<container scope>
-// under user.slice. A named .service under system.slice or any other uncapped/unmodeled
+// (declared_system_slice_memory_maxes). sessions.slice is host policy
+// (gunbc.session_reservation_policy), not a fleet-wide wrap census name: a
+// namespaced-root container is ExemptBoundedContainer only from a live finite
+// memory.max. A named .service under system.slice or any other uncapped/unmodeled
 // slice refuses UncappedSystemSlice { unit, slice }. A session cgroup with no modeled
 // cap and no user manager refuses UserSessionAbsent rather than wrapping. Path from
 // /proc/self/cgroup, never User= or an env var.
