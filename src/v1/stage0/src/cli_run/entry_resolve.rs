@@ -1498,7 +1498,6 @@ fn multi_entry_index_shell_body(
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
         ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
-        schedule_retention: RefCell::new(None),
         source_roots: source_roots.to_vec(),
         pool_parse: RefCell::new(None),
         reference_pool_names: RefCell::new(None),
