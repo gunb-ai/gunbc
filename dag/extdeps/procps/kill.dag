@@ -1,6 +1,6 @@
 module extdeps.procps.kill
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr, String }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
 import extdeps.uri { Uri, Https }
@@ -23,7 +23,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.procps.kill",
-      decl_name: "procps_ng_kill_negative_pgid_requires_end_of_options",
+      decl_name: "procps_ng_kill_term_pgid_argv",
       field: WholeDeclaration
     }
   },
@@ -36,10 +36,6 @@ fn procps_kill_standing() -> CitedFigureStanding {
 }
 
 fn kill_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/kill")
-
-fn procps_ng_kill_negative_pgid_requires_end_of_options() -> Bool {
-  true
-}
 
 fn procps_ng_kill_term_pgid_argv(pgid: Int) -> List<String> {
   ["kill", "-TERM", "--", concat("-", to_string(pgid))]

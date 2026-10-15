@@ -1,6 +1,6 @@
 module gunbc.live_deploy.lab_host_plan
 
-import std.types { Bool, NonEmptyStr, String, FilePath }
+import std.types { Bool, Int, NonEmptyStr, String, FilePath }
 import std.optional { Absent, Present }
 import std.os.types { OsPackageManager, Apt, Winget, HomebrewDeFacto }
 import gunbc.host.host_software_surface {
@@ -133,16 +133,6 @@ fn lab_deploy_plan_for_compute_host(host: ComputeHost) -> LabDeployPlan {
 
 fn srv1_lab_deploy_plan() -> LabDeployPlan {
   lab_deploy_plan_from_software(surface: srv1_software_surface())
-}
-
-fn plan_claims_user_manager_protect_home(plan: LabDeployPlan) -> Bool {
-  match plan {
-    LabPlanRefused { cause: _ } => false
-    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
-      match choice {
-        SystemManagerLauncherSelected => false
-      }
-  }
 }
 
 fn plan_selects_system_manager_launcher(plan: LabDeployPlan) -> Bool {
