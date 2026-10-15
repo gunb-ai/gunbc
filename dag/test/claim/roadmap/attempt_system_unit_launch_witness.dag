@@ -1,8 +1,8 @@
 module test.claim.roadmap.attempt_system_unit_launch_witness
 
 import std.types { Bool, NonEmptyStr, List, String }
-import std.optional { Present }
-import std.measure { kibibyte, second_count }
+import std.optional { Present, Absent }
+import std.measure { kibibyte, kibibyte_count, second_count }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
@@ -29,8 +29,15 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_dir,
   AttemptSystemUnitStartRequest, attempt_system_unit_start_facts_for_request,
   AttemptSystemUnitStartDerived, AttemptSystemUnitStartUnderivable,
+  AttemptSystemUnitStartVerb, StartDetached, StartAndWait,
   attempt_system_unit_encode_start, attempt_system_unit_start_request_decode,
+  AttemptSystemUnitStartEncoded, AttemptSystemUnitStartUnencodable,
+  AttemptSystemUnitStartUnencodableCause,
+  AttemptSystemUnitArgvEmpty, AttemptSystemUnitArgvWordContainsUnitSeparator,
+  AttemptSystemUnitArgvWordContainsNewline,
   AttemptSystemUnitStartRequestDecoded, AttemptSystemUnitStartRequestMalformed,
+  AttemptSystemUnitStartVerbUnknown,
+  attempt_system_unit_start_verb_wire,
   attempt_system_unit_request_entry_name,
   attempt_system_unit_decode_answer, attempt_system_unit_harness_start_from_answer,
   AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
@@ -298,17 +305,110 @@ test fn a_wide_request_body_naming_a_root_exit_hook_is_malformed() -> Bool {
   ], "\n"), delimiter: "\n")
   match attempt_system_unit_start_request_decode(lines: wide) {
     AttemptSystemUnitStartRequestMalformed { reason: _ } => true
-    AttemptSystemUnitStartRequestDecoded { request: _ } => false
+    AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
+    AttemptSystemUnitStartVerbUnknown { tag: _ } => false
   }
 }
 
 test fn a_narrow_request_body_round_trips() -> Bool {
-  let req = claim_request(node_id: "n1", attempt_key: "k1")
-  match attempt_system_unit_start_request_decode(lines: split(s: attempt_system_unit_encode_start(request: req), delimiter: "\n")) {
+  start_request_round_trips(verb: StartDetached, request: claim_request(node_id: "n1", attempt_key: "k1"))
+}
+
+fn start_verbs_equal(got: AttemptSystemUnitStartVerb, expected: AttemptSystemUnitStartVerb) -> Bool {
+  match expected {
+    StartDetached =>
+      match got {
+        StartDetached => true
+        StartAndWait => false
+      }
+    StartAndWait =>
+      match got {
+        StartAndWait => true
+        StartDetached => false
+      }
+  }
+}
+
+fn start_request_round_trips(verb: AttemptSystemUnitStartVerb, request: AttemptSystemUnitStartRequest) -> Bool {
+  match attempt_system_unit_encode_start(verb: verb, request: request) {
+    AttemptSystemUnitStartUnencodable { cause: _ } => false
+    AttemptSystemUnitStartEncoded { body } =>
+      match attempt_system_unit_start_request_decode(lines: split(s: body, delimiter: "\n")) {
+        AttemptSystemUnitStartRequestMalformed { reason: _ } => false
+        AttemptSystemUnitStartVerbUnknown { tag: _ } => false
+        AttemptSystemUnitStartRequestDecoded { verb: got_verb, request: got } =>
+          start_verbs_equal(got: got_verb, expected: verb)
+            && got.node_id == request.node_id
+            && got.attempt_key == request.attempt_key
+            && kibibyte_count(k: got.granted) == kibibyte_count(k: request.granted)
+            && got.inner_argv == request.inner_argv
+      }
+  }
+}
+
+fn encode_refuses_cause(request: AttemptSystemUnitStartRequest) -> AttemptSystemUnitStartUnencodableCause? {
+  match attempt_system_unit_encode_start(verb: StartDetached, request: request) {
+    AttemptSystemUnitStartEncoded { body: _ } => none
+    AttemptSystemUnitStartUnencodable { cause } => Present { value: cause }
+  }
+}
+
+fn request_with_argv(argv: List<String>) -> AttemptSystemUnitStartRequest {
+  AttemptSystemUnitStartRequest {
+    node_id: "n1",
+    attempt_key: "k1",
+    granted: kibibyte(count: 1),
+    inner_argv: argv,
+  }
+}
+
+test fn each_unencodable_argv_refuses_at_encode() -> Bool {
+  match encode_refuses_cause(request: request_with_argv(argv: [])) {
+    Absent => false
+    Present { value: AttemptSystemUnitArgvEmpty } => true
+    Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => false
+    Present { value: AttemptSystemUnitArgvWordContainsNewline } => false
+  }
+    && match encode_refuses_cause(request: request_with_argv(argv: ["a\u{1f}b"])) {
+      Absent => false
+      Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => true
+      Present { value: AttemptSystemUnitArgvEmpty } => false
+      Present { value: AttemptSystemUnitArgvWordContainsNewline } => false
+    }
+    && match encode_refuses_cause(request: request_with_argv(argv: ["a\nb"])) {
+      Absent => false
+      Present { value: AttemptSystemUnitArgvWordContainsNewline } => true
+      Present { value: AttemptSystemUnitArgvEmpty } => false
+      Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator } => false
+    }
+}
+
+test fn every_encodable_request_round_trips_exactly() -> Bool {
+  let argv = ["/opt/gunbc/bin/gunbc", "run", "--arg", "k=v", "path with spaces", join(["quote", "\"", "here"], ""), "dollar$ID"]
+  start_request_round_trips(verb: StartDetached, request: request_with_argv(argv: argv))
+    && start_request_round_trips(verb: StartAndWait, request: request_with_argv(argv: argv))
+}
+
+test fn an_unknown_verb_on_the_wire_is_a_typed_refusal() -> Bool {
+  match attempt_system_unit_start_request_decode(lines: ["stop", "n1", "k1", "1", "/bin/true"]) {
+    AttemptSystemUnitStartVerbUnknown { tag } => tag == "stop"
     AttemptSystemUnitStartRequestMalformed { reason: _ } => false
-    AttemptSystemUnitStartRequestDecoded { request: got } =>
-      got.node_id == req.node_id && got.attempt_key == req.attempt_key
-        && got.inner_argv == req.inner_argv
+    AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
+  }
+}
+
+test fn each_start_verb_wire_round_trips() -> Bool {
+  start_request_round_trips(verb: StartDetached, request: request_with_argv(argv: ["/bin/true"]))
+    && start_request_round_trips(verb: StartAndWait, request: request_with_argv(argv: ["/bin/true"]))
+    && attempt_system_unit_start_verb_wire(verb: StartDetached) == "start"
+    && attempt_system_unit_start_verb_wire(verb: StartAndWait) == "start-wait"
+}
+
+test fn an_empty_argv_line_is_malformed() -> Bool {
+  match attempt_system_unit_start_request_decode(lines: ["start", "n1", "k1", "1", ""]) {
+    AttemptSystemUnitStartRequestMalformed { reason: why } => why == "start request argv is empty"
+    AttemptSystemUnitStartVerbUnknown { tag: _ } => false
+    AttemptSystemUnitStartRequestDecoded { verb: _, request: _ } => false
   }
 }
 
