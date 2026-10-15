@@ -233,8 +233,7 @@ import gunbc.host.host_layout {
 }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
-  slice_control_caps_for,
-  SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
+  slice_control_plan_for, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
 }
 import gunbc.host.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
@@ -2327,24 +2326,24 @@ fn slice_control_refused_command(host: HostIdentity, cause: String) -> String {
 }
 
 fn apply_slice_control_converge_steps(spec: DeploymentSpec) -> List<PipelineStep> {
-  match slice_control_caps_for(host: spec.target.host.identity) {
-    SliceControlDerived { caps: _ } =>
+  match slice_control_plan_for(host: spec.target.host.identity) {
+    SliceControlPlanDerived { units: _ } =>
       [deploy_raw(command: deploy_slice_control_converge_script(host: spec.target.host.identity))]
-    SliceControlNotOwed => []
-    SliceControlRefused { cause: _ } => []
+    SliceControlPlanNotOwed => []
+    SliceControlPlanRefused { cause: _ } => []
   }
 }
 
 fn apply_slice_control_converge_fragments(spec: DeploymentSpec) -> List<HostScriptFragment> {
   let host = spec.target.host.identity
-  match slice_control_caps_for(host: host) {
-    SliceControlNotOwed => []
-    SliceControlDerived { caps: _ } =>
+  match slice_control_plan_for(host: host) {
+    SliceControlPlanNotOwed => []
+    SliceControlPlanDerived { units: _ } =>
       host_script_member_proceed(
         member: "slice-control" as NonEmptyStr,
         mutate_steps: apply_slice_control_converge_steps(spec: spec),
       )
-    SliceControlRefused { cause } =>
+    SliceControlPlanRefused { cause } =>
       host_script_member_refused(
         member: "slice-control" as NonEmptyStr,
         cause: cause,

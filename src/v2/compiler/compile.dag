@@ -87,6 +87,7 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   Locus,
   Outcome,
+  None,
   Some,
   invariant_port_locus,
   Rejected,
@@ -1132,4 +1133,3 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
     )
   pipeline(source)
 }
-
