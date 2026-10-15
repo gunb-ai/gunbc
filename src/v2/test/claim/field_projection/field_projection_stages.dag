@@ -40,7 +40,7 @@ import v2.std.runtime {
   RuntimeValue
 }
 import v2.std.integer { Int, integer_int_to_signed_i32_le_bytes, integer_signed_i32_le_bytes_to_int }
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceSynthetic, TypeOccurrence }
 import v2.std.witness { Holds, Violates }
 import v2.std.node { NodeFold, fold_node }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -819,7 +819,7 @@ fn fps_qualified_path_reads_as_the_declaration() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: index, diagnostics: _ } =>
       match resolve_dotted_path_reading(
-        ctx: claim_resolve_context(module: [^p], index: index),
+        ctx: claim_resolve_context(module: [^p], index: index, category: TypeOccurrence),
         n: claim_lowered_path(segments: [^a, ^b, ^c, ^Box], n: 50),
         path: [^a, ^b, ^c, ^Box],
         head_binding: BoundAtRoot { canonical: ^a },
