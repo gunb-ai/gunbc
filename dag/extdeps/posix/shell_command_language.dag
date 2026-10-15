@@ -209,9 +209,17 @@ type PosixRedirectPathRefusal
   | RedirectPathContainsNul
   | RedirectPathContainsNewline
 
+type PosixRedirectPathname sole_constructor {
+  spelling: NonEmptyStr
+}
+
 type PosixRedirectPathAdmission
-  = PosixRedirectPathAdmitted { path: NonEmptyStr }
+  = PosixRedirectPathAdmitted { path: PosixRedirectPathname }
   | PosixRedirectPathRefused { cause: PosixRedirectPathRefusal }
+
+fn posix_redirect_pathname_spelling(path: PosixRedirectPathname) -> NonEmptyStr {
+  path.spelling
+}
 
 fn admit_posix_redirect_pathname(path: String) -> PosixRedirectPathAdmission {
   if path == "" {
@@ -221,36 +229,31 @@ fn admit_posix_redirect_pathname(path: String) -> PosixRedirectPathAdmission {
   } else if string_contains(s: path, pattern: "\n") {
     PosixRedirectPathRefused { cause: RedirectPathContainsNewline }
   } else {
-    PosixRedirectPathAdmitted { path: path as NonEmptyStr }
+    PosixRedirectPathAdmitted { path: PosixRedirectPathname { spelling: path as NonEmptyStr } }
   }
 }
 
-// XCU 2.7.2 Redirecting Output: `>|word` shall ignore noclobber. This corpus cannot read a remote
-// login shell's `set -C`, and gunbc.remote_shell_command openssh_login_shell_interpretation does
-// not pin shell options, so the truncate render is `>|` rather than `>` — total regardless of
-// noclobber. 2.7.3 is `>>word` (append). 2.7.5 is `[n]>&word` (`2>&1` duplicates stderr onto
-// stdout's already-redirected description). The path is a word, so it is posix_single_quote-wrapped.
+// XCU 2.7 operators as a tree, not a suffix string. emit_posix_redirection is the one serializer
+// (DESIGN §4: emit selects from the same rows). 2.7.2 `>|word` ignores noclobber; 2.7.3 is `>>word`;
+// 2.7.5 is `[n]>&word`. The word is posix_single_quote-wrapped.
 
-fn posix_redirect_stdout_clobber_word(path: NonEmptyStr) -> String {
-  concat(" >|", posix_single_quote(spelling: path as String))
-}
+type PosixRedirection
+  = PosixRedirectStdoutClobber { word: PosixRedirectPathname }
+  | PosixRedirectStdoutAppend { word: PosixRedirectPathname }
+  | PosixRedirectStderrClobber { word: PosixRedirectPathname }
+  | PosixRedirectStderrAppend { word: PosixRedirectPathname }
+  | PosixRedirectStderrDupStdout
 
-fn posix_redirect_stdout_append_word(path: NonEmptyStr) -> String {
-  concat(" >>", posix_single_quote(spelling: path as String))
-}
-
-fn posix_redirect_stderr_clobber_word(path: NonEmptyStr) -> String {
-  concat(" 2>|", posix_single_quote(spelling: path as String))
-}
-
-fn posix_redirect_stderr_append_word(path: NonEmptyStr) -> String {
-  concat(" 2>>", posix_single_quote(spelling: path as String))
-}
-
-fn posix_redirect_stderr_dup_stdout() -> String {
-  " 2>&1"
-}
-
-fn posix_stdout_and_stderr_to_one_file_truncate_suffix(path: NonEmptyStr) -> String {
-  concat(posix_redirect_stdout_clobber_word(path: path), posix_redirect_stderr_dup_stdout())
+fn emit_posix_redirection(redir: PosixRedirection) -> String {
+  match redir {
+    PosixRedirectStdoutClobber { word: w } =>
+      concat(" >|", posix_single_quote(spelling: posix_redirect_pathname_spelling(path: w) as String))
+    PosixRedirectStdoutAppend { word: w } =>
+      concat(" >>", posix_single_quote(spelling: posix_redirect_pathname_spelling(path: w) as String))
+    PosixRedirectStderrClobber { word: w } =>
+      concat(" 2>|", posix_single_quote(spelling: posix_redirect_pathname_spelling(path: w) as String))
+    PosixRedirectStderrAppend { word: w } =>
+      concat(" 2>>", posix_single_quote(spelling: posix_redirect_pathname_spelling(path: w) as String))
+    PosixRedirectStderrDupStdout => " 2>&1"
+  }
 }

@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, String, Bool, Int, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
+import extdeps.posix.shell_command_language { PosixRedirectPathname }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -103,10 +104,10 @@ type PosixFileOpenMode
 
 type PosixProcessStdio
   = PosixProcessStdioUnchanged
-  | PosixProcessStdoutAndStderrToOneFile { path: String, mode: PosixFileOpenMode }
+  | PosixProcessStdoutAndStderrToOneFile { path: PosixRedirectPathname, mode: PosixFileOpenMode }
   | PosixProcessStdoutAndStderrToSeparateFiles {
-      stdout_path: String,
-      stderr_path: String,
+      stdout_path: PosixRedirectPathname,
+      stderr_path: PosixRedirectPathname,
       stdout_mode: PosixFileOpenMode,
       stderr_mode: PosixFileOpenMode,
     }

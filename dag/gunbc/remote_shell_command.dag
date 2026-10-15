@@ -4,16 +4,14 @@ import std.types { String, List, NonEmptyStr, Bool, Int }
 import std.algebra { list_map }
 import extdeps.posix.shell_command_language {
   posix_single_quote,
-  admit_posix_redirect_pathname,
-  posix_redirect_stdout_clobber_word,
-  posix_redirect_stdout_append_word,
-  posix_redirect_stderr_clobber_word,
-  posix_redirect_stderr_append_word,
-  posix_redirect_stderr_dup_stdout,
-  posix_stdout_and_stderr_to_one_file_truncate_suffix,
-  PosixRedirectPathAdmitted,
-  PosixRedirectPathRefused,
-  PosixRedirectPathRefusal,
+  emit_posix_redirection,
+  PosixRedirection,
+  PosixRedirectStdoutClobber,
+  PosixRedirectStdoutAppend,
+  PosixRedirectStderrClobber,
+  PosixRedirectStderrAppend,
+  PosixRedirectStderrDupStdout,
+  PosixRedirectPathname,
 }
 import extdeps.posix.process {
   PosixProcessStdio,
@@ -105,6 +103,7 @@ data openbmc_dropbear_interpretation: RemoteExecCommandInterpretation = PosixShe
 
 type ShellSimpleCommand {
   words: List<NonEmptyStr>
+  redirections: List<PosixRedirection>
 }
 
 type SimpleCommandRefusalCause
@@ -118,7 +117,7 @@ fn simple_command(argv: List<NonEmptyStr>) -> SimpleCommandOutcome {
   if length(xs: argv) == 0 {
     SimpleCommandRefused { cause: SimpleCommandEmptyArgv {} }
   } else {
-    SimpleCommandBuilt { command: ShellSimpleCommand { words: argv } }
+    SimpleCommandBuilt { command: ShellSimpleCommand { words: argv, redirections: [] } }
   }
 }
 
@@ -132,7 +131,10 @@ fn shell_quote_word(word: NonEmptyStr) -> NonEmptyStr {
 }
 
 fn emit_remote_shell(command: ShellSimpleCommand) -> NonEmptyStr {
-  join(list_map(xs: command.words, f: fn(w) { shell_quote_word(word: w) as String }), " ") as NonEmptyStr
+  concat(
+    join(list_map(xs: command.words, f: fn(w) { shell_quote_word(word: w) as String }), " "),
+    join(list_map(xs: command.redirections, f: fn(r) { emit_posix_redirection(redir: r) }), ""),
+  ) as NonEmptyStr
 }
 
 // THE ONE CARRIER FOR AN RFC 4254 COMMAND STRING. Only this module may construct one: the admitted
@@ -146,7 +148,6 @@ type RemoteExecCommand sole_constructor {
 type RemoteExecCommandRefusalCause
   = SimpleCommandArgvRefused { cause: SimpleCommandRefusalCause }
   | RemoteExecInterpretationUnknown
-  | RedirectPathRefused { cause: PosixRedirectPathRefusal }
 
 type RemoteExecCommandOutcome
   = RemoteExecCommandBuilt { command: RemoteExecCommand }
@@ -182,32 +183,35 @@ fn remote_exec_command_string(
   }
 }
 
-fn posix_stdout_redirect_word(path: NonEmptyStr, mode: PosixFileOpenMode) -> String {
+fn posix_stdout_redirection(path: PosixRedirectPathname, mode: PosixFileOpenMode) -> PosixRedirection {
   match mode {
-    PosixFileTruncate => posix_redirect_stdout_clobber_word(path: path)
-    PosixFileAppend => posix_redirect_stdout_append_word(path: path)
+    PosixFileTruncate => PosixRedirectStdoutClobber { word: path }
+    PosixFileAppend => PosixRedirectStdoutAppend { word: path }
   }
 }
 
-fn posix_stderr_redirect_word(path: NonEmptyStr, mode: PosixFileOpenMode) -> String {
+fn posix_stderr_file_redirection(path: PosixRedirectPathname, mode: PosixFileOpenMode) -> PosixRedirection {
   match mode {
-    PosixFileTruncate => posix_redirect_stderr_clobber_word(path: path)
-    PosixFileAppend => posix_redirect_stderr_append_word(path: path)
+    PosixFileTruncate => PosixRedirectStderrClobber { word: path }
+    PosixFileAppend => PosixRedirectStderrAppend { word: path }
   }
 }
 
-fn remote_exec_built_simple_plus_suffix(
-  argv: List<NonEmptyStr>,
-  suffix: String,
-) -> RemoteExecCommandOutcome {
-  match simple_command(argv: argv) {
-    SimpleCommandRefused { cause: c } => RemoteExecCommandRefused { cause: SimpleCommandArgvRefused { cause: c } }
-    SimpleCommandBuilt { command: cmd } =>
-      RemoteExecCommandBuilt {
-        command: RemoteExecCommand {
-          rendered: concat(emit_remote_shell(command: cmd) as String, suffix) as NonEmptyStr
-        }
-      }
+fn posix_stdio_redirections(stdio: PosixProcessStdio) -> List<PosixRedirection> {
+  match stdio {
+    PosixProcessStdioUnchanged => []
+    PosixProcessStdoutAndStderrToOneFile { path: path, mode: mode } =>
+      [posix_stdout_redirection(path: path, mode: mode), PosixRedirectStderrDupStdout]
+    PosixProcessStdoutAndStderrToSeparateFiles {
+      stdout_path: out_p,
+      stderr_path: err_p,
+      stdout_mode: out_m,
+      stderr_mode: err_m,
+    } =>
+      [
+        posix_stdout_redirection(path: out_p, mode: out_m),
+        posix_stderr_file_redirection(path: err_p, mode: err_m),
+      ]
   }
 }
 
@@ -219,58 +223,19 @@ fn remote_exec_command_string_with_stdio(
   match interpretation {
     Unknown => RemoteExecCommandRefused { cause: RemoteExecInterpretationUnknown }
     PosixShellInterpreted =>
-      match stdio {
-        PosixProcessStdioUnchanged => remote_exec_command_string(argv: argv, interpretation: interpretation)
-        PosixProcessStdoutAndStderrToOneFile { path: path, mode: mode } =>
-          match admit_posix_redirect_pathname(path: path) {
-            PosixRedirectPathRefused { cause: c } => RemoteExecCommandRefused { cause: RedirectPathRefused { cause: c } }
-            PosixRedirectPathAdmitted { path: admitted } =>
-              remote_exec_built_simple_plus_suffix(
-                argv: argv,
-                suffix: match mode {
-                  PosixFileTruncate => posix_stdout_and_stderr_to_one_file_truncate_suffix(path: admitted)
-                  PosixFileAppend => concat(
-                    posix_stdout_redirect_word(path: admitted, mode: mode),
-                    posix_redirect_stderr_dup_stdout(),
-                  )
-                },
-              )
-          }
-        PosixProcessStdoutAndStderrToSeparateFiles {
-          stdout_path: out_p,
-          stderr_path: err_p,
-          stdout_mode: out_m,
-          stderr_mode: err_m,
-        } =>
-          match admit_posix_redirect_pathname(path: out_p) {
-            PosixRedirectPathRefused { cause: c } => RemoteExecCommandRefused { cause: RedirectPathRefused { cause: c } }
-            PosixRedirectPathAdmitted { path: out_admitted } =>
-              match admit_posix_redirect_pathname(path: err_p) {
-                PosixRedirectPathRefused { cause: c } => RemoteExecCommandRefused { cause: RedirectPathRefused { cause: c } }
-                PosixRedirectPathAdmitted { path: err_admitted } =>
-                  remote_exec_built_simple_plus_suffix(
-                    argv: argv,
-                    suffix: concat(
-                      posix_stdout_redirect_word(path: out_admitted, mode: out_m),
-                      posix_stderr_redirect_word(path: err_admitted, mode: err_m),
-                    ),
-                  )
-              }
+      match simple_command(argv: argv) {
+        SimpleCommandRefused { cause: c } => RemoteExecCommandRefused { cause: SimpleCommandArgvRefused { cause: c } }
+        SimpleCommandBuilt { command: cmd } =>
+          RemoteExecCommandBuilt {
+            command: RemoteExecCommand {
+              rendered: emit_remote_shell(command: ShellSimpleCommand {
+                words: cmd.words,
+                redirections: posix_stdio_redirections(stdio: stdio),
+              })
+            }
           }
       }
   }
-}
-
-fn remote_exec_command_string_with_stdout_and_stderr_to_file(
-  argv: List<NonEmptyStr>,
-  path: String,
-  interpretation: RemoteExecCommandInterpretation
-) -> RemoteExecCommandOutcome {
-  remote_exec_command_string_with_stdio(
-    argv: argv,
-    stdio: PosixProcessStdoutAndStderrToOneFile { path: path, mode: PosixFileTruncate },
-    interpretation: interpretation,
-  )
 }
 
 type RemoteExecCommandLiveConfirmation
