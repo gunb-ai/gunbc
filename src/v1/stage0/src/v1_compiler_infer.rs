@@ -187,11 +187,12 @@ use crate::v1_compiler_infer_lookup::DeclaredArgContract::{
 pub use crate::v1_compiler_infer_lookup::{
     census_declaration_identity, constructor_declaration_for_admission,
     declared_arg_types_for_method, field_summary_for_type, func_env_declared_func_sig,
-    global_bare_callable_node, lookup_coproduct_common_field_node, lookup_field_type_node,
-    lookup_func_sig, lookup_in_scope, lookup_structural_method, map_key_type_in_env,
-    map_value_type_in_env, product_field_result_type, resolve_known_method_node,
-    resolve_method_receiver_type, resolve_scrutinee_type_node, resolved_declaration_call_target,
-    resolved_plain_call_target_for_outcome, set_element_type_in_env,
+    func_sig_from_global_bare, global_bare_callable_node, lookup_coproduct_common_field_node,
+    lookup_field_type_node, lookup_func_sig, lookup_in_scope, lookup_structural_method,
+    map_key_type_in_env, map_value_type_in_env, product_field_result_type,
+    resolve_known_method_node, resolve_method_receiver_type, resolve_scrutinee_type_node,
+    resolved_declaration_call_target, resolved_plain_call_target_for_outcome,
+    set_element_type_in_env,
 };
 pub use crate::v1_compiler_infer_lookup::{
     ConstructorDeclarationLookup, DeclarationLookupFailure, DeclaredArgContract,
@@ -14475,16 +14476,10 @@ Rc::new(InferResult {
     Some(ctor_result) => ctor_result.clone(),
     std::option::Option::None => {
                                                 let type_match = match (*call_target.clone()).clone() {
-    CallTargetOutcome::DeclaredCallableIdentityResolved {
-        borrowed_declaration: bn,
-        ..
-    } => match crate::v1_compiler_infer_items::item_kind(bn.clone()) {
-        crate::v1_compiler_infer_items::ItemKind::FnItem => std::option::Option::None,
-        _ => crate::v1_compiler_infer_env::lookup_type_by_name(
-            scope.type_env.clone(),
-            func_name.clone(),
-        ),
-    },
+    CallTargetOutcome::DeclaredCallableIdentityResolved { borrowed_declaration: bn, .. } => match crate::v1_compiler_infer_items::item_kind(bn.clone()) {
+    ItemKind::FnItem => std::option::Option::None,
+    _ => crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), func_name.clone()),
+},
     _ => crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), func_name.clone()),
 };
 let global_bare_callable = match type_match.clone() {
@@ -24022,127 +24017,66 @@ pub fn call_target_for_direct_call(
     func_name: String,
 ) -> Rc<CallTargetOutcome> {
     match v1_rt::map_get(&scope.body_locals.clone(), func_name.clone()) {
-        Some(_) => match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
-            Some(b) => Rc::new(CallTargetOutcome::LocallyBoundCallee {
-                name: func_name.clone(),
-                binding: b.clone(),
-            }),
-            std::option::Option::None => Rc::new(CallTargetOutcome::LocallyBoundBindingMissing {
-                name: func_name.clone(),
-            }),
-        },
-        std::option::Option::None => {
-            match (*crate::v1_compiler_infer_lookup::func_env_declared_func_sig(
-                scope.func_env.clone(),
-                scope.type_env.clone(),
-                func_name.clone(),
-            ))
-            .clone()
-            {
-                FuncSigLookup::FuncSigResolved {
-                    sig: s,
-                    declared: d,
-                    ..
-                } => Rc::new(CallTargetOutcome::DeclaredCallableResolved {
-                    sig: s.clone(),
-                    declared: d.clone(),
-                }),
-                FuncSigLookup::FuncSigAmbiguous { candidates: cs, .. } => {
-                    Rc::new(CallTargetOutcome::CallableAmbiguous {
-                        candidates: cs.clone(),
-                    })
-                }
-                FuncSigLookup::FuncSigUnresolved => {
-                    match crate::v1_compiler_infer_method::bare_call_non_declaration_binding(
-                        func_name.clone(),
-                    ) {
-                        NonDeclarationBinding::EmptyCollectionConstructor => {
-                            Rc::new(CallTargetOutcome::BuiltinCallableResolved {
-                                primitive_name: func_name.clone(),
-                            })
-                        }
-                        NonDeclarationBinding::BuiltinFunction => {
-                            Rc::new(CallTargetOutcome::BuiltinCallableResolved {
-                                primitive_name: func_name.clone(),
-                            })
-                        }
-                        NonDeclarationBinding::KernelMethodOnly => {
-                            match crate::v1_compiler_infer_lookup::census_declaration_identity(
-                                scope.type_env.clone(),
-                                func_name.clone(),
-                            ) {
-                                Some(bd) => {
-                                    Rc::new(CallTargetOutcome::DeclaredCallableIdentityResolved {
-                                        declared: Rc::new(DeclaredCallableIdentity {
-                                            owner_module_path: bd.owner_module_path.clone(),
-                                            decl_name: crate::v1_std_core::qualified_last_segment(
-                                                func_name.clone(),
-                                            ),
-                                        }),
-                                        borrowed_declaration: bd.node.clone(),
-                                    })
-                                }
-                                std::option::Option::None => {
-                                    Rc::new(CallTargetOutcome::CallableUnresolved {
-                                        name: func_name.clone(),
-                                    })
-                                }
-                            }
-                        }
-                        NonDeclarationBinding::DeclarationOnly => {
-                            match crate::v1_compiler_infer_lookup::census_declaration_identity(
-                                scope.type_env.clone(),
-                                func_name.clone(),
-                            ) {
-                                Some(bd) => {
-                                    match (*crate::v1_compiler_infer_lookup::func_sig_from_global_bare(
-                                        scope.type_env.clone(),
-                                        func_name.clone(),
-                                    ))
-                                    .clone()
-                                    {
-                                        FuncSigLookup::FuncSigResolved {
-                                            sig: s,
-                                            declared: d,
-                                            ..
-                                        } => Rc::new(CallTargetOutcome::DeclaredCallableResolved {
-                                            sig: s.clone(),
-                                            declared: d.clone(),
-                                        }),
-                                        FuncSigLookup::FuncSigUnresolved => {
-                                            Rc::new(
-                                                CallTargetOutcome::DeclaredCallableIdentityResolved {
-                                                    declared: Rc::new(DeclaredCallableIdentity {
-                                                        owner_module_path: bd
-                                                            .owner_module_path
-                                                            .clone(),
-                                                        decl_name: crate::v1_std_core::qualified_last_segment(
-                                                            func_name.clone(),
-                                                        ),
-                                                    }),
-                                                    borrowed_declaration: bd.node.clone(),
-                                                },
-                                            )
-                                        }
-                                        FuncSigLookup::FuncSigAmbiguous { .. } => {
-                                            Rc::new(CallTargetOutcome::CallableUnresolved {
-                                                name: func_name.clone(),
-                                            })
-                                        }
-                                    }
-                                }
-                                std::option::Option::None => {
-                                    Rc::new(CallTargetOutcome::CallableUnresolved {
-                                        name: func_name.clone(),
-                                    })
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    Some(_) => match v1_rt::map_get(&scope.locals.clone(), func_name.clone()) {
+    Some(b) => Rc::new(CallTargetOutcome::LocallyBoundCallee {
+    name: func_name.clone(),
+    binding: b.clone(),
+}),
+    std::option::Option::None => Rc::new(CallTargetOutcome::LocallyBoundBindingMissing {
+    name: func_name.clone(),
+}),
+},
+    std::option::Option::None => match (*crate::v1_compiler_infer_lookup::func_env_declared_func_sig(scope.func_env.clone(), scope.type_env.clone(), func_name.clone())).clone() {
+    FuncSigLookup::FuncSigResolved { sig: s, declared: d, .. } => Rc::new(CallTargetOutcome::DeclaredCallableResolved {
+    sig: s.clone(),
+    declared: d.clone(),
+}),
+    FuncSigLookup::FuncSigAmbiguous { candidates: cs, .. } => Rc::new(CallTargetOutcome::CallableAmbiguous {
+    candidates: cs.clone(),
+}),
+    FuncSigLookup::FuncSigUnresolved => match crate::v1_compiler_infer_method::bare_call_non_declaration_binding(func_name.clone()) {
+    NonDeclarationBinding::EmptyCollectionConstructor => Rc::new(CallTargetOutcome::BuiltinCallableResolved {
+    primitive_name: func_name.clone(),
+}),
+    NonDeclarationBinding::BuiltinFunction => Rc::new(CallTargetOutcome::BuiltinCallableResolved {
+    primitive_name: func_name.clone(),
+}),
+    NonDeclarationBinding::KernelMethodOnly => match crate::v1_compiler_infer_lookup::census_declaration_identity(scope.type_env.clone(), func_name.clone()) {
+    Some(bd) => Rc::new(CallTargetOutcome::DeclaredCallableIdentityResolved {
+    declared: Rc::new(DeclaredCallableIdentity {
+    owner_module_path: bd.owner_module_path.clone(),
+    decl_name: crate::v1_std_core::qualified_last_segment(func_name.clone()),
+}),
+    borrowed_declaration: bd.node.clone(),
+}),
+    std::option::Option::None => Rc::new(CallTargetOutcome::CallableUnresolved {
+    name: func_name.clone(),
+}),
+},
+    NonDeclarationBinding::DeclarationOnly => match crate::v1_compiler_infer_lookup::census_declaration_identity(scope.type_env.clone(), func_name.clone()) {
+    Some(bd) => match (*crate::v1_compiler_infer_lookup::func_sig_from_global_bare(scope.type_env.clone(), func_name.clone())).clone() {
+    FuncSigLookup::FuncSigResolved { sig: s, declared: d, .. } => Rc::new(CallTargetOutcome::DeclaredCallableResolved {
+    sig: s.clone(),
+    declared: d.clone(),
+}),
+    FuncSigLookup::FuncSigUnresolved => Rc::new(CallTargetOutcome::DeclaredCallableIdentityResolved {
+    declared: Rc::new(DeclaredCallableIdentity {
+    owner_module_path: bd.owner_module_path.clone(),
+    decl_name: crate::v1_std_core::qualified_last_segment(func_name.clone()),
+}),
+    borrowed_declaration: bd.node.clone(),
+}),
+    FuncSigLookup::FuncSigAmbiguous { candidates: _, .. } => Rc::new(CallTargetOutcome::CallableUnresolved {
+    name: func_name.clone(),
+}),
+},
+    std::option::Option::None => Rc::new(CallTargetOutcome::CallableUnresolved {
+    name: func_name.clone(),
+}),
+},
+},
+},
+}
 }
 
 pub fn split_sig_params(
