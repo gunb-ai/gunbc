@@ -9,7 +9,10 @@
 //!
 //! Remaining whole-tree index: none. Unique-bare fill runs over the acquired
 //! same-root files (`tree_bare_census_for_root` on that index), not a walk of
-//! `--source-root`. `gunbc compile` still walks the tree.
+//! `--source-root`. Governed roots `dag` and `src/v2` stay a layout lookup.
+//! Any other `--source-root` (a temp fixture, an out-of-tree tree) is indexed
+//! by walking *that* root only — never the 8409-file repo trees. `gunbc compile`
+//! still walks the tree.
 //!
 //! Seed-growth receipt: `gunbc.run_demand_acquire_seed_growth`
 //! `run_demand_acquire_seed_growth_justification`.
@@ -82,6 +85,7 @@ pub(crate) fn acquire_layout_closure(
         ));
     };
     let entry_rel = workspace_relative_repo_path(entry_file);
+    let custom = custom_root_module_census(source_roots)?;
     let mut index: ModuleSourceIndex = HashMap::new();
     index.insert(
         entry_module.clone(),
@@ -97,12 +101,12 @@ pub(crate) fn acquire_layout_closure(
         let Some(source) = index.get(&module).cloned() else {
             continue;
         };
-        let demanded = demanded_module_names(&source.path, &source.content, &known);
+        let demanded = demanded_module_names(&source.path, &source.content, &known, &custom);
         for name in demanded {
             if index.contains_key(&name) {
                 continue;
             }
-            let Some(acquired) = read_layout_module(source_roots, &name)? else {
+            let Some(acquired) = read_layout_module(source_roots, &custom, &name)? else {
                 continue;
             };
             known.insert(name.clone());
@@ -113,7 +117,12 @@ pub(crate) fn acquire_layout_closure(
     Ok(index)
 }
 
-fn demanded_module_names(path: &str, content: &str, known: &HashSet<String>) -> Vec<String> {
+fn demanded_module_names(
+    path: &str,
+    content: &str,
+    known: &HashSet<String>,
+    custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
+) -> Vec<String> {
     let mut names: HashSet<String> = extract_import_paths(content).into_iter().collect();
     let self_module = extract_module_path(content).unwrap_or_default();
     if let Ok(refs) = parsed_file_references(path, content, &self_module, known) {
@@ -128,13 +137,79 @@ fn demanded_module_names(path: &str, content: &str, known: &HashSet<String>) -> 
         for name in refs.bare.iter().chain(refs.authored_types.iter()) {
             if name.contains('.') {
                 let segs: Vec<String> = name.split('.').map(str::to_string).collect();
-                if let Some(found) = longest_layout_module_prefix(&segs) {
+                if let Some(found) = longest_layout_module_prefix(&segs, custom) {
                     names.insert(found);
                 }
             }
         }
     }
     names.into_iter().collect()
+}
+
+/// `dag` and `src/v2` are the layout trees. Every other `--source-root` is a custom
+/// tree whose files are not at `<root(a)>/b/c.dag` under the workspace.
+fn source_root_is_governed_layout(root: &str) -> bool {
+    let spelling = root.trim_end_matches('/');
+    if spelling == "dag" || spelling == "src/v2" {
+        return true;
+    }
+    let anchored = super::anchor_source_root(root);
+    let abs = Path::new(&anchored);
+    let abs = if abs.is_absolute() {
+        abs.to_path_buf()
+    } else {
+        workspace_root().join(abs)
+    };
+    let Ok(canon) = abs.canonicalize() else {
+        return false;
+    };
+    let ws = workspace_root();
+    matches!(ws.join("dag").canonicalize(), Ok(d) if d == canon)
+        || matches!(ws.join("src/v2").canonicalize(), Ok(v) if v == canon)
+}
+
+/// Walk only non-governed roots. A wet `gunbc run --source-root dag --source-root src/v2`
+/// never enters this walk.
+fn custom_root_module_census(
+    source_roots: &[String],
+) -> Result<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>, String> {
+    let mut by_module: std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
+        std::collections::HashMap::new();
+    for root in source_roots {
+        if source_root_is_governed_layout(root) {
+            continue;
+        }
+        let anchored = super::anchor_source_root(root);
+        let root_path = Path::new(&anchored);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files = Vec::new();
+        super::collect_dag_files_result(root_path, &mut files)?;
+        for acquired in files {
+            let path = acquired.path();
+            let content = acquired
+                .read()
+                .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+            let Some(name) = extract_module_path(&content) else {
+                continue;
+            };
+            let src = Rc::new(v1_compiler_compile::SourceFile {
+                path: super::module_index_path_key(path),
+                content,
+            });
+            if let Some(existing) = by_module.get(&name) {
+                if existing.path != src.path {
+                    return Err(format!(
+                        "module {name} is declared in both {} and {}",
+                        existing.path, src.path
+                    ));
+                }
+            }
+            by_module.insert(name, src);
+        }
+    }
+    Ok(by_module)
 }
 
 thread_local! {
@@ -156,13 +231,16 @@ fn layout_module_file_exists(name: &str) -> bool {
     })
 }
 
-fn longest_layout_module_prefix(chain: &[String]) -> Option<String> {
+fn longest_layout_module_prefix(
+    chain: &[String],
+    custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
+) -> Option<String> {
     if chain.len() < 2 {
         return None;
     }
     for len in (2..=chain.len()).rev() {
         let name = chain[..len].join(".");
-        if layout_module_file_exists(&name) {
+        if custom.contains_key(&name) || layout_module_file_exists(&name) {
             return Some(name);
         }
     }
@@ -171,10 +249,20 @@ fn longest_layout_module_prefix(chain: &[String]) -> Option<String> {
 
 fn read_layout_module(
     source_roots: &[String],
+    custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
     name: &str,
 ) -> Result<Option<Rc<v1_compiler_compile::SourceFile>>, String> {
     if let Some(derived) = read_derived_roster_module(name)? {
         return Ok(Some(derived));
+    }
+    if let Some(custom_src) = custom.get(name) {
+        return Ok(Some(custom_src.clone()));
+    }
+    if !source_roots
+        .iter()
+        .any(|root| source_root_is_governed_layout(root))
+    {
+        return Ok(None);
     }
     let Ok(rel) = module_storage_relative(name) else {
         return Ok(None);
@@ -352,6 +440,96 @@ mod tests {
             without.is_ok(),
             with.is_ok(),
             "an unparseable sibling outside the layout closure must not change resolve: without={without:?} with={with:?}"
+        );
+    }
+
+    fn write_identity_fixture(dir: &PathBuf) -> (String, String) {
+        fs::write(
+            dir.join("imported.dag"),
+            "module test.scoped_identity.imported\n\nfn imported_claim() -> Bool { true }\n",
+        )
+        .unwrap();
+        let entry = dir.join("entry.dag");
+        fs::write(
+            &entry,
+            "module test.scoped_identity.entry\n\nimport test.scoped_identity.imported { imported_claim }\n",
+        )
+        .unwrap();
+        (
+            dir.to_string_lossy().into_owned(),
+            entry.to_string_lossy().into_owned(),
+        )
+    }
+
+    fn acquired_module_names(g: &crate::v1_compiler_compile::ResolvedGraph) -> Vec<String> {
+        let mut names: Vec<String> = g
+            .modules
+            .iter()
+            .map(|m| m.type_env.module_path.clone())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// Custom `--source-root` files are not at `dag/<a>/<b>.dag`. Acquisition must
+    /// still bind `import test.scoped_identity.imported` to `imported.dag` in the
+    /// same temp tree (`scoped_declaration_identity_follows_the_selected_function_node`).
+    #[test]
+    fn custom_source_root_acquires_an_imported_sibling() {
+        let dir = fixture_dir();
+        let (root, entry) = write_identity_fixture(&dir);
+        let roots = [root];
+        let outcome = resolve_entry_graph_demand_acquired(&roots, &entry);
+        let names = match &outcome {
+            Ok((g, _)) => acquired_module_names(g),
+            Err(e) => {
+                let _ = fs::remove_dir_all(&dir);
+                panic!("demand acquire of custom-root import: {e}");
+            }
+        };
+        let _ = fs::remove_dir_all(&dir);
+        assert!(
+            names.iter().any(|n| n == "test.scoped_identity.imported"),
+            "imported sibling must be in the acquired graph: {names:?}"
+        );
+    }
+
+    /// Demand-acquire and the tree walk of the *same* custom root (not `dag`/`src/v2`)
+    /// both bind the imported module. Walking the custom root is the preserved
+    /// `--source-root` semantics; it is not a walk of the repo trees.
+    #[test]
+    fn custom_source_root_demand_and_tree_arms_acquire_the_imported_module() {
+        let dir = fixture_dir();
+        let (root, entry) = write_identity_fixture(&dir);
+        let roots = [root];
+        let demand = resolve_entry_graph_demand_acquired(&roots, &entry);
+        let tree = crate::cli_run::resolve_entry_graph(&roots, &entry);
+        let demand_names = match &demand {
+            Ok((g, _)) => acquired_module_names(g),
+            Err(e) => {
+                let _ = fs::remove_dir_all(&dir);
+                panic!("demand arm: {e}");
+            }
+        };
+        let tree_names = match &tree {
+            Ok((g, _)) => acquired_module_names(g),
+            Err(e) => {
+                let _ = fs::remove_dir_all(&dir);
+                panic!("tree arm: {e}");
+            }
+        };
+        let _ = fs::remove_dir_all(&dir);
+        assert!(
+            demand_names
+                .iter()
+                .any(|n| n == "test.scoped_identity.imported"),
+            "demand arm missing imported: {demand_names:?}"
+        );
+        assert!(
+            tree_names
+                .iter()
+                .any(|n| n == "test.scoped_identity.imported"),
+            "tree arm missing imported: {tree_names:?}"
         );
     }
 
