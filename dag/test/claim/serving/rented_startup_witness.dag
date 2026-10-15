@@ -20,7 +20,9 @@ import gunbc.serving.rented_startup_placement {
 }
 import gunbc.serving.rented_serve_launch {
   RentedServeNotListening, RentedServeAnswering, RentedServeUnreadable, RentedServeNoop, RentedServeStart, RentedServeRefused, rented_serve_decision,
+  RentedServeKeyUnbound, RentedLaunchRefusedKeyUnbound, rented_startup_program,
 }
+import gunbc.serving.rented_startup_placement { RentedLinkAbsent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -131,4 +133,17 @@ test fn the_launch_argv_has_every_read_flag_and_omits_the_unread_ones() -> Bool 
     && has("--kv-dtype") && has("--device-state-slots") && has("--spec") && has("--draft-tokens") && has("--lm-head-draft")
     && has("--preserve-thinking") && has("--host-context-mib")
     && !has("--max-pending-requests") && !has("--pending-timeout-ms") && !has("--default-max-tokens") && !has("--api-key")
+}
+
+// THE FULL SEQUENCE: an absent engine reaches the launch leg, which refuses on the unbound key grant, AFTER the
+// placement legs emitted the link switch (two commands).
+test fn the_full_sequence_refuses_at_the_launch_leg_with_no_earlier_leg_skipped() -> Bool {
+  let p = rented_startup_program(
+    roots: w_roots, digest: w_digest, link: RentedLinkAbsent,
+    launch: operator_pod_ninfer_launch, reading: RentedServeNotListening,
+    key: RentedServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr },
+  )
+  (match p.launch { RentedLaunchRefusedKeyUnbound { grant_name: _ } => true  _ => false })
+    && !rented_sequence_endangers(commands: p.placement_commands, protected: w_protected)
+    && (match p.placement_commands { [_, _] => true  _ => false })
 }

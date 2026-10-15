@@ -1,6 +1,13 @@
 module gunbc.serving.rented_serve_launch
 
 import std.types { String, NonEmptyStr, Bool, List }
+import std.algebra { list_append }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.content_hash { Sha256Digest }
+import extdeps.exec.command { ArgvCommand }
+import gunbc.serving.rented_startup_placement { RentedStoreRoots, RentedLinkReading, RentedLinkSwitchNoop, RentedLinkSwitchCommands, rented_link_switch }
 import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable }
 
 // THE SERVE-LAUNCH LEG IS CONVERGENCE, NOT A SCRIPT (DESIGN 3d). Before it acts it takes an independent
@@ -37,3 +44,64 @@ fn rented_serve_decision(launch: NinferServeLaunch, reading: RentedServeReading)
       }
   }
 }
+
+// THE SERVE API KEY IS A GRANT BOUND TO THE ALLOCATION, never a literal, and no such binding exists yet:
+// gunbc.serving.rented_host_grant is the ssh-access authorization and not this key. So the only arm is the
+// unbound one, and a launch that would need the key refuses on it. The detach mechanism is likewise a host
+// fact nobody has read (whether the card's PID 1 is systemd), so it is a typed refusal and not an assumption.
+type RentedServeKeyBinding
+  = RentedServeKeyUnbound { grant_name: NonEmptyStr }
+
+type RentedLaunchLeg
+  = RentedLaunchNoop
+  | RentedLaunchRefusedReadback { cause: String }
+  | RentedLaunchRefusedKeyUnbound { grant_name: NonEmptyStr }
+  | RentedLaunchRefusedDetachUnread
+
+fn rented_launch_leg(launch: NinferServeLaunch, reading: RentedServeReading, key: RentedServeKeyBinding) -> RentedLaunchLeg {
+  match rented_serve_decision(launch: launch, reading: reading) {
+    RentedServeNoop => RentedLaunchNoop
+    RentedServeRefused { cause: c } => RentedLaunchRefusedReadback { cause: c }
+    RentedServeStart =>
+      match key {
+        RentedServeKeyUnbound { grant_name: g } => RentedLaunchRefusedKeyUnbound { grant_name: g }
+      }
+  }
+}
+
+// THE WHOLE PROGRAM IN ORDER: the placement legs first, the launch leg last, so a refusal at the launch leg
+// still shows the earlier legs were emitted and not skipped.
+type RentedStartupProgram {
+  placement_commands: List<ArgvCommand>
+  launch: RentedLaunchLeg
+}
+
+fn rented_startup_program(
+  roots: RentedStoreRoots,
+  digest: Sha256Digest,
+  link: RentedLinkReading,
+  launch: NinferServeLaunch,
+  reading: RentedServeReading,
+  key: RentedServeKeyBinding,
+) -> RentedStartupProgram {
+  RentedStartupProgram {
+    placement_commands: match rented_link_switch(roots: roots, digest: digest, link: link) {
+      RentedLinkSwitchNoop => []
+      RentedLinkSwitchCommands { commands: cs } => cs
+    },
+    launch: rented_launch_leg(launch: launch, reading: reading, key: key),
+  }
+}
+
+data rented_serve_launch_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_serve_launch", decl_name: "rented_launch_leg"),
+    reason: "the serving API key has no typed binding to the allocation, so a launch that needs it refuses and no launch command is emitted by the full sequence",
+    dissolution: unbound_dissolution(description: "trigger:S4 binds the serving API key as a grant to the allocation — sufficient for the full-sequence claim to emit the launch command"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_serve_launch", decl_name: "RentedLaunchRefusedDetachUnread"),
+    reason: "whether the card's PID 1 is systemd is an unread host fact, so the detach mechanism (extdeps.systemd.systemd_run or another) is not assumed",
+    dissolution: unbound_dissolution(description: "feature:rented-host-pid1-read — a read-only reading of /proc/1/comm and the detach tools on PATH selects the mechanism"),
+  ),
+]
