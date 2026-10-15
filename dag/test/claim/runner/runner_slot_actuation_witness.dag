@@ -30,6 +30,7 @@ import gunbc.runner.runner_host_file_converge {
   RunnerHostFileWithheld,
   runner_host_cpu_dropin_gate,
   RunnerHostFilesApply,
+  ActuationAdmitted,
 }
 import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path }
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead }
@@ -159,8 +160,8 @@ fn cpu_file() -> RunnerHostFileDesired {
 // RED: one unsettled actuation withholds the CPU drop-in (and a withheld file refuses apply);
 // POSITIVE CONTROL: all settled, it is written.
 test fn the_cpu_dropin_waits_for_the_slot_population() -> Bool {
-  let pending = runner_host_cpu_dropin_gate(files: [cpu_file()], withheld: [], actuations: [SlotActivated { unit: slot_u }, SlotDrainPending { unit: "actions-runner@srv3-07.service" as NonEmptyStr, cause: DrainPendingJobRunning }], mode: RunnerHostFilesApply)
-  let settled = runner_host_cpu_dropin_gate(files: [cpu_file()], withheld: [], actuations: [SlotActivated { unit: slot_u }, SlotActuationNoop { unit: "actions-runner@srv3-07.service" as NonEmptyStr, state: "masked-and-stopped" }], mode: RunnerHostFilesApply)
+  let pending = runner_host_cpu_dropin_gate(files: [cpu_file()], withheld: [], actuations: [SlotActivated { unit: slot_u }, SlotDrainPending { unit: "actions-runner@srv3-07.service" as NonEmptyStr, cause: DrainPendingJobRunning }], admission: ActuationAdmitted)
+  let settled = runner_host_cpu_dropin_gate(files: [cpu_file()], withheld: [], actuations: [SlotActivated { unit: slot_u }, SlotActuationNoop { unit: "actions-runner@srv3-07.service" as NonEmptyStr, state: "masked-and-stopped" }], admission: ActuationAdmitted)
   length(pending.files) == 0 && length(pending.withheld) == 1
     && length(settled.files) == 1 && length(settled.withheld) == 0
 }
