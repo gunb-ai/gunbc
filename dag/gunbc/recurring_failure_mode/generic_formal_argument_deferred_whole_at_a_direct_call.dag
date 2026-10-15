@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.generic_formal_argument_deferred_whole_at_a_direct_call
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data generic_formal_argument_deferred_whole_at_a_direct_call: RecurringFailureMode = RecurringFailureMode {
+  identity: "generic_formal_argument_deferred_whole_at_a_direct_call" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a direct call whose declared formal mentions a type variable anywhere (List<Bar<K>>, Map<K, V>, Wrapper<T>) is handed an argument of a different shape (List<Foo<K>>, a String) and compiles clean. CHARACTERISATION ONLY, found by quiet-dove-220 while writing the N-ary unify_generics controls for the K4 prerequisite; the fix is owned by the infer-floor lane (quiet-hawk-507).",
+    "WHERE THE DEFERRAL SITS: v1.compiler.infer `direct_call_arg_type_mismatch`. Its arm `direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }` answers `no mismatch` for the WHOLE argument as soon as ANY node beneath the formal (children or params, depth 16) is a TypeVariable. The question it should ask is per position: the concrete skeleton around the variable (head label, arity) is decidable and is never compared. The next arm `type_node_is_callable(formal) || type_node_is_callable(actual) { false }` is the same shape for params-carrying callables. The caller is `direct_call_arg_mismatch_diags`, which also skips ExprRecordLit arguments outright.",
+    "WHY THE N-ARY ARM EXPOSES IT: unify_generics binds variables structurally and never judges the skeleton, and the argument check never reaches the skeleton because of the deferral above, so nothing owns the head/arity disagreement. Two probes in dag/test/claim/unify_generics_nary_descent_witness.dag (a_different_head_at_a_two_parameter_position_is_still_refused, a_generic_bound_through_a_two_parameter_constructor_is_checked_against_the_return) FAIL on the base mirror: the programs are ACCEPTED today, independent of any change in the K4 lane.",
+    "POPULATION (derived, not yet measured): every direct call to a fn with a generic-parameter declaration whose formal type expression contains the variable below the root, with an argument whose resolved type disagrees in head label or arity at a position that is not itself the variable. The count of such sites on main is an INSTRUMENT, not a number to transcribe: re-derive it by removing the arm under an observe-only collector and counting the diagnostics (std.keyed_roster, v1.trait_derive_emit and the generic_identity_census population are the first places to look). Related recorded siblings: generic_application_admits_distinct_unit_variant_arguments, generic_position_admits_a_foreign_constructor.",
+    "RUNG FOUND AT AND CURRENT RUNG: OutsideTheLadder (silent acceptance). CEILING: structurally guaranteed once the skeleton is compared per position and a variable position is exempt only for the variable itself. NEXT-RUNG TRIGGER: a per-position argument judgment at generic formals that reuses unify_generics' descent (one walker, not a second), refusing a head or arity disagreement with a located TypeMismatch and admitting the identical-skeleton pair; the a_different_head and wrong-return probes then go green.",
+  ],
+
+  evidence: [],
+}
