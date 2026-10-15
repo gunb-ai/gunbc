@@ -8,9 +8,12 @@ import gunbc.compile_diagnostic_census {
   census_total_count,
 }
 import std.types { Bool, Int, String, List }
+import std.algebra { string_contains }
 import std.decl_ref { DeclarationRef, decl_ref }
 import v2.std.decl_ref_resolution { cited_declaration_ref_refusal_count_live }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_traits }
+import extdeps.languages.rust.emit { rust_trait_derive_attr_from_traits }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -111,6 +114,21 @@ test fn emitted_never_is_empty_enum() -> Bool {
     ["enum Never {}"],
     ["pub struct Never(", "type Never = !"]
   )
+}
+
+// Never is emitted as `enum Never {}` with phantom_opaque_carrier_derive_traits(). That roster
+// must not include Default (or any derive that needs a variant); rustc would refuse the empty
+// enum. compile_dag_rust_emit_check is a text oracle; the roster spelling is the build-facing
+// control that would go red if Default joined the list used on this enum.
+test fn emitted_never_empty_enum_derive_roster_needs_no_variant() -> Bool {
+  let attr = rust_trait_derive_attr_from_traits(traits: phantom_opaque_carrier_derive_traits())
+  !string_contains(s: attr, pattern: "Default")
+    && compile_dag_rust_emit_check(
+      never_emit_source,
+      "src/std_error_primitives.rs",
+      ["enum Never {}", attr],
+      ["Default"]
+    )
 }
 
 data empty_match_nested_in_call_source: String = "module neverprobe.nested\n\nimport std.types { Int, String }\nimport std.error_primitives { Never }\n\nfn g(x: Int) -> Int { x }\n\nfn f(n: Never) -> String {\n  g(x: match (n) { })\n}\n"
