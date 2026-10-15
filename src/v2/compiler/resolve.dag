@@ -2340,7 +2340,7 @@ fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending
 // by a name the index does not bind and a name it binds only as a kind the position excludes.
 fn resolve_atom_unscoped_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
   match resolve_kernel_type_atom_optional(n: n, identity: identity) {
-    Present { value: kernel } => resolve_kernel_type_at_position(ctx: ctx, n: n, kernel: kernel, pending: pending)
+    Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
     Absent =>
       match collection_roster_primitive_call_row_optional(head: identity) {
         Present { value: r } =>
@@ -2351,19 +2351,6 @@ fn resolve_atom_unscoped_unbound(ctx: ResolveContext, n: Node, identity: Symbol,
           }
         Absent => resolve_atom_primitive_authority(ctx: ctx, n: n, identity: identity, pending: pending)
       }
-  }
-}
-
-// A KERNEL TYPE IS A TYPE-CATEGORY DECLARATION, judged by the same category verdict as an indexed one
-// (std.occurrence_identity occurrence_category_binding_verdict): it binds where a type is required and is a
-// category mismatch at a position that admits only values or constructors (Width<Int> at a coproduct-kinded
-// argument). There is no second route to the mismatch -- the index route and this one differ only in where
-// the declaration's category comes from.
-fn resolve_kernel_type_at_position(ctx: ResolveContext, n: Node, kernel: Node, pending: Diagnostics) -> Outcome<Node> {
-  match occurrence_category_binding_verdict(reference: ctx.reference_category, declaration: TypeOccurrence) {
-    OccurrenceCategoryBindingAdmissible => Accepted { value: kernel, diagnostics: pending }
-    OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } =>
-      Rejected { diagnostics: rejected_with_pending(pending: pending, rejected: diagnostics_singleton(d: resolve_type_application_diagnostic(reason: ^resolve_reason_reference_category_mismatch, at: n))) }
   }
 }
 
@@ -4014,10 +4001,40 @@ fn resolve_instantiation_walk_arguments(ctx: ResolveContext, n: Node, head_walk:
       child_walk_step(
         w: acc,
         e: e,
-        r: resolve_child_edge(ctx: resolve_instantiation_argument_ctx(ctx: ctx, kinds: kinds, ordinal: acc.ordinal), e: e)
+        r: resolve_instantiation_argument_edge(ctx: resolve_instantiation_argument_ctx(ctx: ctx, kinds: kinds, ordinal: acc.ordinal), e: e)
       )
     }
   }))
+}
+
+// ONE ARGUMENT OF A TYPE APPLICATION, judged in the context its position gives it. A kernel type is a
+// TypeOccurrence declaration, so the same category verdict an indexed declaration gets
+// (occurrence_category_binding_verdict) refuses it where the position admits only constructors -- Width<Int>
+// at a coproduct-kinded argument -- as the reference category mismatch. The verdict is applied here, at the
+// argument, rather than at every kernel atom: a refinement or alias declaration body inherits the ambient
+// category (type_decl_member_child_walk), so Int under `type Pos = Int where positive` is read in a value
+// context and is correctly a type there.
+fn resolve_instantiation_argument_edge(arg_ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
+  if resolve_argument_kernel_type_excluded(ctx: arg_ctx, n: e.target) {
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: resolve_type_application_diagnostic(reason: ^resolve_reason_reference_category_mismatch, at: e.target)))
+  } else {
+    resolve_child_edge(ctx: arg_ctx, e: e)
+  }
+}
+
+fn resolve_argument_kernel_type_excluded(ctx: ResolveContext, n: Node) -> Bool {
+  match type_binder_atom_identity_optional(n: n) {
+    Absent => false
+    Present { value: id } =>
+      match resolve_kernel_type_atom_optional(n: n, identity: id) {
+        Absent => false
+        Present { value: _ } =>
+          match occurrence_category_binding_verdict(reference: ctx.reference_category, declaration: TypeOccurrence) {
+            OccurrenceCategoryBindingAdmissible => false
+            OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } => true
+          }
+      }
+  }
 }
 
 // The kind each declared binder ADMITS, in authored order: Present where the kind names a coproduct (it
