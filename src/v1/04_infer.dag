@@ -14115,7 +14115,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     match formal.children |> first {
       Present { value: fc } =>
         match actual.children |> first {
-          Present { value: ac } => unify_generics(formal: fc, actual: ac, generic_names: generic_names, source_indices: source_indices, acc: acc)
+          Present { value: ac } => unify_generics(formal: fc, actual: unify_container_element(ch: ac), generic_names: generic_names, source_indices: source_indices, acc: acc)
           Absent => acc
         }
       Absent => acc
@@ -14149,9 +14149,21 @@ fn unify_generic_children(formals: List<Node>, actuals: List<Node>, generic_name
             actuals: actuals |> skip(1),
             generic_names: generic_names,
             source_indices: source_indices,
-            acc: unify_generics(formal: f, actual: a, generic_names: generic_names, source_indices: source_indices, acc: acc)
+            acc: unify_generics(formal: f, actual: unify_container_element(ch: a), generic_names: generic_names, source_indices: source_indices, acc: acc)
           )
       }
+  }
+}
+
+// A kernel container (List, Set, Map) denotes each type argument as a childless parameter node whose
+// resolved element sits in `inferred` (make_container_type), while the authored formal carries the
+// argument type itself. Reading the actual's argument through that element makes the two comparable;
+// every other child is read as it is.
+fn unify_container_element(ch: Node) -> Node {
+  if (ch.children |> count) == 0 && ch.connective == NoConnective && ch.inferred != none {
+    child_type_node(ch: ch)
+  } else {
+    ch
   }
 }
 
