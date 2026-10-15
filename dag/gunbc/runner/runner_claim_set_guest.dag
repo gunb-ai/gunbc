@@ -5,28 +5,37 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import gunbc.gunbc_cli_command { gunbc_test_command }
 import gunbc.durable_cas_file_store { cas_name_is_digits }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult, claim_set_results_frame }
 
-// THE GUEST'S HALF OF THE RESULTS DRIVE: the revision-job guest program runs each claim, records
-// `<label> <exit>` per claim in the Work's order, and then runs THIS entry -- from the gunbc it just
-// built out of the verified tree -- to frame those exits onto the raw results device. The frame is
-// spelled by gunbc.runner.runner_claim_set_results claim_set_results_frame, the same function the
-// host's decoder is written against, so the guest and the host cannot disagree about the spelling,
-// and the digest is computed in .dag rather than re-implemented in shell.
+// THE GUEST'S HALF OF A REVISION JOB, AFTER THE TREE IS VERIFIED AND BUILT.
 //
-// The commit and tree written into every record are the ones the guest program verified
-// (`git rev-parse HEAD`, `git rev-parse HEAD^{tree}` after checking the tree against the job spec);
-// the host refuses any record naming another revision. A malformed exits file writes NOTHING, so the
-// zeroed device decodes as unwritten and the attempt is unreceipted -- never a partial frame.
+// The guest unit (S4b-2's revision-job guest image) verifies the staged tree against the admitted
+// tree, checks the toolchain, and builds offline, each as a typed argv step that ends the unit on
+// failure. Only then does it run THIS entry, from the gunbc it just built out of the verified tree:
+// one `gunbc test <label>` per claim of the job spec, in the spec's order, and the exits framed onto
+// the raw results device by gunbc.runner.runner_claim_set_results claim_set_results_frame -- the
+// same function the host's decoder is written against, so guest and host cannot disagree about the
+// spelling, and the digest is computed in .dag rather than re-implemented in shell.
+//
+// The commit and tree in every record are the ones the unit verified; the host refuses any record
+// naming another revision. A claim whose process did not spawn, or whose exit is not a `gunbc test`
+// standing (0 held, 1 did not hold, 2 no observation), writes NOTHING: the zeroed device decodes as
+// unwritten and the attempt is unreceipted, never a partial frame.
 //
 // THE WHOLE DEVICE IS WRITTEN: the frame, then NUL to the device's declared size. A raw block device
 // keeps its size whatever is written, but a plain file truncates to what was written, so writing the
-// frame alone would make the stand-in and the device differ. Writing exactly the declared size makes
-// them byte-identical, and a frame larger than the device refuses rather than being cut.
+// frame alone would make a stand-in file and the device differ. Writing exactly the declared size
+// makes them byte-identical, and a frame larger than the device refuses rather than being cut.
 
-data claim_set_guest_exits_env: NonEmptyStr = "GUNBC_CLAIM_SET_EXITS"
+data claim_set_guest_spec_env: NonEmptyStr = "GUNBC_CLAIM_SET_SPEC"
 data claim_set_guest_commit_env: NonEmptyStr = "GUNBC_CLAIM_SET_COMMIT"
 data claim_set_guest_tree_env: NonEmptyStr = "GUNBC_CLAIM_SET_TREE"
 data claim_set_guest_device_env: NonEmptyStr = "GUNBC_CLAIM_SET_RESULTS_DEVICE"
@@ -34,38 +43,9 @@ data claim_set_guest_device_bytes_env: NonEmptyStr = "GUNBC_CLAIM_SET_RESULTS_BY
 
 type ClaimSetGuestWrite
   = ClaimSetGuestWritten { records: Int }
-  | ClaimSetGuestExitsUnreadable { path: String, detail: String }
-  | ClaimSetGuestExitsMalformed { line: String }
-  | ClaimSetGuestExitsEmpty
-  | ClaimSetGuestDeviceWriteRefused { device: String, detail: String }
+  | ClaimSetGuestNoClaims
   | ClaimSetGuestFrameExceedsDevice { frame: Int, device: Int }
-
-fn claim_set_guest_exit_record(line: String, commit: NonEmptyStr, tree: NonEmptyStr) -> ClaimSetResult? {
-  let parts: List<String> = line.split(delimiter: " ")
-  if count(parts) != 2 { none } else {
-    let label = match parts.first() { Present { value: l } => l  Absent => "" }
-    let exit = match skip(parts, 1).first() { Present { value: e } => e  Absent => "" }
-    if label == "" || !cas_name_is_digits(s: exit) { none } else { match parse_int(s: exit) {
-      Absent => none
-      Present { value: e } => Present { value: ClaimSetResult { label: label as NonEmptyStr, exit: e, commit: commit, tree: tree } }
-    } }
-  }
-}
-
-type ClaimSetGuestRecords
-  = ClaimSetGuestRecordsRead { records: List<ClaimSetResult> }
-  | ClaimSetGuestRecordsMalformed { line: String }
-
-fn claim_set_guest_records(text: String, commit: NonEmptyStr, tree: NonEmptyStr) -> ClaimSetGuestRecords {
-  let lines = filter(text.split(delimiter: "\n"), l => trim(s: l) != "")
-  fold(lines, init: ClaimSetGuestRecordsRead { records: [] }, f: (acc, line) => match acc {
-    ClaimSetGuestRecordsMalformed { line: l } => ClaimSetGuestRecordsMalformed { line: l }
-    ClaimSetGuestRecordsRead { records: rs } => match claim_set_guest_exit_record(line: trim(s: line), commit: commit, tree: tree) {
-      Absent => ClaimSetGuestRecordsMalformed { line: line }
-      Present { value: r } => ClaimSetGuestRecordsRead { records: rs + [r] }
-    }
-  })
-}
+  | ClaimSetGuestDeviceWriteRefused { device: String, detail: String }
 
 // NUL to `n` characters, by doubling: the padding is built to the declared size, never spelled.
 fn nul_padding(n: Int) -> String {
@@ -77,23 +57,63 @@ fn nul_padding(n: Int) -> String {
   }
 }
 
-fn write_claim_set_results(exits_path: String, commit: NonEmptyStr, tree: NonEmptyStr, device: String, device_bytes: Int) -> ClaimSetGuestWrite {
-  let read = Filesystem.Read(path: exits_path)
-  if !read.success { ClaimSetGuestExitsUnreadable { path: exits_path, detail: read.error } }
-  else { match claim_set_guest_records(text: read.content, commit: commit, tree: tree) {
-    ClaimSetGuestRecordsMalformed { line: l } => ClaimSetGuestExitsMalformed { line: l }
-    ClaimSetGuestRecordsRead { records: rs } =>
-      if count(rs) == 0 { ClaimSetGuestExitsEmpty }
+fn write_claim_set_frame(records: List<ClaimSetResult>, device: String, device_bytes: ByteSize) -> ClaimSetGuestWrite {
+  let size = byte_size_count(b: device_bytes)
+  if count(records) == 0 { ClaimSetGuestNoClaims }
+  else {
+    let frame = claim_set_results_frame(results: records)
+    if length(frame) > size { ClaimSetGuestFrameExceedsDevice { frame: length(frame), device: size } }
+    else {
+      let w = Filesystem.Write(path: device, content: concat(frame, nul_padding(n: size - length(frame))))
+      if w.success { ClaimSetGuestWritten { records: count(records) } }
+      else { ClaimSetGuestDeviceWriteRefused { device: device, detail: w.error } }
+    }
+  }
+}
+
+// ── running the claims ─────────────────────────────────────────────────────────────────────────
+
+// The spec names the claims one per line, `claim <label>`, in the Work's declared order (the host
+// renders it from the Work's FreeSemigroup<Label>; S4b-2's launch plan).
+fn claim_set_spec_labels(text: String) -> List<String>? {
+  let lines = filter(text.split(delimiter: "\n"), l => trim(s: l) != "")
+  fold(lines, init: Present { value: [] }, f: (acc, line) => match acc {
+    Absent => none
+    Present { value: labels } =>
+      if !trim(s: line).starts_with("claim ") { none }
       else {
-        let frame = claim_set_results_frame(results: rs)
-        if length(frame) > device_bytes { ClaimSetGuestFrameExceedsDevice { frame: length(frame), device: device_bytes } }
-        else {
-          let w = Filesystem.Write(path: device, content: concat(frame, nul_padding(n: device_bytes - length(frame))))
-          if w.success { ClaimSetGuestWritten { records: count(rs) } }
-          else { ClaimSetGuestDeviceWriteRefused { device: device, detail: w.error } }
-        }
+        let label = trim(s: substring(s: trim(s: line), start: length("claim "), end: length(trim(s: line))))
+        if label == "" || count(label.split(delimiter: " ")) != 1 { none } else { Present { value: labels + [label] } }
       }
-  } }
+  })
+}
+
+type ClaimRun
+  = ClaimRunExited { label: String, exit: Int }
+  | ClaimRunRefused { label: String, detail: String }
+
+fn run_claim(label: String) -> ClaimRun {
+  match run_shell_command_observe_outcome(command: gunbc_test_command(label: label), transport: LocalExec) {
+    ProcessNotSpawned { program: p, cause: c } => ClaimRunRefused { label: label, detail: join(["did not spawn ", p as String, ": ", c as String], "") }
+    ProcessRan { observation: o } =>
+      if o.exit_code == 0 || o.exit_code == 1 || o.exit_code == 2 { ClaimRunExited { label: label, exit: o.exit_code } }
+      else { ClaimRunRefused { label: label, detail: join(["exit ", to_string(o.exit_code), " is not a gunbc test standing"], "") } }
+  }
+}
+
+type ClaimSetGuestRun
+  = ClaimSetGuestRan { records: List<ClaimSetResult> }
+  | ClaimSetGuestClaimRefused { label: String, detail: String }
+
+fn run_claim_set(labels: List<String>, commit: NonEmptyStr, tree: NonEmptyStr) -> ClaimSetGuestRun {
+  fold(labels, init: ClaimSetGuestRan { records: [] }, f: (acc, label) => match acc {
+    ClaimSetGuestClaimRefused { label: l, detail: d } => ClaimSetGuestClaimRefused { label: l, detail: d }
+    ClaimSetGuestRan { records: rs } => match run_claim(label: label) {
+      ClaimRunRefused { label: l, detail: d } => ClaimSetGuestClaimRefused { label: l, detail: d }
+      ClaimRunExited { label: l, exit: e } =>
+        ClaimSetGuestRan { records: rs + [ClaimSetResult { label: l as NonEmptyStr, exit: e, commit: commit, tree: tree }] }
+    }
+  })
 }
 
 fn claim_set_guest_env(name: NonEmptyStr) -> String {
@@ -103,20 +123,41 @@ fn claim_set_guest_env(name: NonEmptyStr) -> String {
   }
 }
 
-fn claim_set_guest_write_results_main() -> ProcessExit {
-  let exits = claim_set_guest_env(name: claim_set_guest_exits_env)
+fn claim_set_guest_main() -> ProcessExit {
+  let spec = claim_set_guest_env(name: claim_set_guest_spec_env)
   let commit = claim_set_guest_env(name: claim_set_guest_commit_env)
   let tree = claim_set_guest_env(name: claim_set_guest_tree_env)
   let device = claim_set_guest_env(name: claim_set_guest_device_env)
   let bytes_text = claim_set_guest_env(name: claim_set_guest_device_bytes_env)
-  if exits == "" || commit == "" || tree == "" || device == "" || !cas_name_is_digits(s: bytes_text) {
-    exit_failure(reason: "claim_set_guest_write_results: GUNBC_CLAIM_SET_EXITS, _COMMIT, _TREE, _RESULTS_DEVICE and a decimal _RESULTS_BYTES must all be set")
-  } else { match write_claim_set_results(exits_path: exits, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr, device: device, device_bytes: match parse_int(s: bytes_text) { Present { value: n } => n  Absent => 0 }) {
-    ClaimSetGuestWritten { records: _ } => ExitSuccess
-    ClaimSetGuestExitsUnreadable { path: p, detail: d } => exit_failure(reason: join(["exits file unreadable at ", p, ": ", d], ""))
-    ClaimSetGuestExitsMalformed { line: l } => exit_failure(reason: join(["exits line malformed: ", l], ""))
-    ClaimSetGuestExitsEmpty => exit_failure(reason: "exits file names no claims")
-    ClaimSetGuestDeviceWriteRefused { device: d, detail: e } => exit_failure(reason: join(["results device write refused at ", d, ": ", e], ""))
-    ClaimSetGuestFrameExceedsDevice { frame: f, device: d } => exit_failure(reason: join(["the results frame (", to_string(f), " bytes) exceeds the device (", to_string(d), " bytes)"], ""))
-  } }
+  if spec == "" || commit == "" || tree == "" || device == "" || !cas_name_is_digits(s: bytes_text) {
+    exit_failure(reason: "claim_set_guest: GUNBC_CLAIM_SET_SPEC, _COMMIT, _TREE, _RESULTS_DEVICE and a decimal _RESULTS_BYTES must all be set")
+  } else {
+    let read = Filesystem.Read(path: spec)
+    if !read.success { exit_failure(reason: join(["claim_set_guest: spec unreadable at ", spec, ": ", read.error], "")) }
+    else { match claim_set_spec_labels(text: read.content) {
+      Absent => exit_failure(reason: "claim_set_guest: the spec is not one `claim <label>` per line")
+      Present { value: labels } => match run_claim_set(labels: labels, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr) {
+        ClaimSetGuestClaimRefused { label: l, detail: d } => exit_failure(reason: join(["claim_set_guest: claim ", l, " refused: ", d], ""))
+        ClaimSetGuestRan { records: rs } => match parse_int(s: bytes_text) {
+          Absent => exit_failure(reason: "claim_set_guest: _RESULTS_BYTES did not parse")
+          Present { value: n } => match checked_device_bytes(n: n) {
+            Absent => exit_failure(reason: "claim_set_guest: _RESULTS_BYTES is not a byte size")
+            Present { value: size } => match write_claim_set_frame(records: rs, device: device, device_bytes: size) {
+              ClaimSetGuestWritten { records: _ } => ExitSuccess
+              ClaimSetGuestNoClaims => exit_failure(reason: "claim_set_guest: the spec names no claims")
+              ClaimSetGuestFrameExceedsDevice { frame: f, device: d } => exit_failure(reason: join(["claim_set_guest: frame ", to_string(f), " bytes exceeds device ", to_string(d)], ""))
+              ClaimSetGuestDeviceWriteRefused { device: d, detail: e } => exit_failure(reason: join(["claim_set_guest: results device write refused at ", d, ": ", e], ""))
+            }
+          }
+        }
+      }
+    } }
+  }
+}
+
+fn checked_device_bytes(n: Int) -> ByteSize? {
+  match checked_int_to_nat(n: n) {
+    Absent => none
+    Present { value: v } => Present { value: byte_size(count: v) }
+  }
 }

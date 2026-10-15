@@ -12,8 +12,10 @@ import gunbc.runner.runner_claim_set_results {
 }
 import gunbc.runner.runner_claim_set_receipt { read_results_drive }
 import gunbc.runner.runner_claim_set_guest {
-  ClaimSetGuestWrite, ClaimSetGuestWritten, ClaimSetGuestExitsMalformed, write_claim_set_results,
+  ClaimSetGuestWrite, ClaimSetGuestWritten, ClaimSetGuestNoClaims, write_claim_set_frame, claim_set_spec_labels,
 }
+import gunbc.runner.runner_claim_set_results { ClaimSetResult }
+import std.optional { Present, Absent }
 import test.claim.runner.runner_claim_set_results_witness { revision, commit_hex, tree_hex }
 
 // THE GUEST WRITER AND THE HOST READER, JOINED BY REAL EXECUTION OVER A FILE STANDING IN FOR THE
@@ -39,9 +41,12 @@ fn claims() -> FreeSemigroup<Label> {
   FreeSemigroup { head: self_host_label(), tail: [v2_native_cli_label()] }
 }
 
-fn stage(root: String, exits: String) -> Bool {
+fn stage(root: String) -> Bool {
   Filesystem.Write(path: concat(root, "/device"), content: zeroed()).success
-    && Filesystem.Write(path: concat(root, "/exits"), content: exits).success
+}
+
+fn record(label: Label, exit: Int) -> ClaimSetResult {
+  ClaimSetResult { label: render_label(l: label) as NonEmptyStr, exit: exit, commit: commit_hex as NonEmptyStr, tree: tree_hex as NonEmptyStr }
 }
 
 fn admitted(root: String) -> String {
@@ -57,9 +62,8 @@ fn admitted(root: String) -> String {
 
 test fn the_guest_frame_on_a_zeroed_device_is_admitted_by_the_host_reader_by_real_execution() -> Bool {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_claimset.XXXXXX").path
-  let exits = join([render_label(l: self_host_label()), " 0\n", render_label(l: v2_native_cli_label()), " 1\n"], "")
-  let staged = stage(root: root, exits: exits)
-  let wrote = match write_claim_set_results(exits_path: concat(root, "/exits"), commit: commit_hex as NonEmptyStr, tree: tree_hex as NonEmptyStr, device: concat(root, "/device"), device_bytes: 4096) {
+  let staged = stage(root: root)
+  let wrote = match write_claim_set_frame(records: [record(label: self_host_label(), exit: 0), record(label: v2_native_cli_label(), exit: 1)], device: concat(root, "/device"), device_bytes: device_bytes()) {
     ClaimSetGuestWritten { records: n } => n == 2
     _ => false
   }
@@ -68,14 +72,23 @@ test fn the_guest_frame_on_a_zeroed_device_is_admitted_by_the_host_reader_by_rea
   staged && wrote && verdict == "admitted:2" && removed.success
 }
 
-test fn a_malformed_exits_file_writes_nothing_and_the_host_reads_unwritten_by_real_execution() -> Bool {
+test fn no_claims_writes_nothing_and_the_host_reads_unwritten_by_real_execution() -> Bool {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_claimset.XXXXXX").path
-  let staged = stage(root: root, exits: "//gunbc/instruments:self-host zero\n")
-  let refused = match write_claim_set_results(exits_path: concat(root, "/exits"), commit: commit_hex as NonEmptyStr, tree: tree_hex as NonEmptyStr, device: concat(root, "/device"), device_bytes: 4096) {
-    ClaimSetGuestExitsMalformed { line: _ } => true
+  let staged = stage(root: root)
+  let refused = match write_claim_set_frame(records: [], device: concat(root, "/device"), device_bytes: device_bytes()) {
+    ClaimSetGuestNoClaims => true
     _ => false
   }
   let verdict = admitted(root: root)
   let removed = shell.Remove.RecursiveForce(path: root)
   staged && refused && verdict == "unwritten" && removed.success
+}
+
+test fn the_spec_is_one_claim_per_line_or_nothing() -> Bool {
+  let good = claim_set_spec_labels(text: "claim //gunbc/instruments:self-host\nclaim //gunbc/instruments:v2-native-cli\n")
+  let bad = claim_set_spec_labels(text: "claim //gunbc/instruments:self-host\nrun everything\n")
+  let spaced = claim_set_spec_labels(text: "claim a b\n")
+  (match good { Present { value: ls } => count(ls) == 2  Absent => false })
+    && (match bad { Present { value: _ } => false  Absent => true })
+    && (match spaced { Present { value: _ } => false  Absent => true })
 }
