@@ -1,0 +1,47 @@
+module test.claim.generic_argument_recheck_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_count_for }
+
+// Discriminating specimens for sparse generic-argument recheck
+// (v1.compiler.infer infer_call_arguments_generic_pass, argument_needs_generic_recheck).
+// A compiler that never rechecks the right-bound lambda fails the Int identity call;
+// one that still replays every nested left-bound lambda still accepts these, so the
+// nested chain is an acceptance control plus the architecture's recheck predicate
+// (argument_needs_generic_recheck): a left-bound lambda's missing-context set is empty.
+
+data left_bound_lambda_source: String = "module test.claim.gar_left_bound\nimport std.types { Int }\nfn gar_bind<T, R>(o: T, f: fn(T) -> R) -> R { f(o) }\nfn probe() -> Int { gar_bind(o: 1, f: fn(v) { v }) }\n"
+
+data right_bound_lambda_source: String = "module test.claim.gar_right_bound\nimport std.types { Int }\nfn gar_app<T, R>(f: fn(T) -> R, x: T) -> R { f(x) }\nfn probe() -> Int { gar_app(f: fn(v) { v }, x: 1) }\n"
+
+data nested_left_bound_chain_source: String = "module test.claim.gar_nested_left\nimport std.types { Int }\nfn gar_bind<T, R>(o: T, f: fn(T) -> R) -> R { f(o) }\nfn probe() -> Int {\n  gar_bind(o: 1, f: fn(a) {\n    gar_bind(o: a, f: fn(b) {\n      gar_bind(o: b, f: fn(c) { c })\n    })\n  })\n}\n"
+
+data later_literal_context_source: String = "module test.claim.gar_later_literal\nimport std.types { Int }\nfn gar_pair<T>(x: T, y: T) -> T { y }\nfn probe() -> Int { gar_pair(x: 1, y: 2) }\n"
+
+data later_record_context_source: String = "module test.claim.gar_later_record\nimport std.types { Int }\ntype GarBox<T> { v: T }\nfn gar_box_pair<T>(x: GarBox<T>, y: T) -> T { y }\nfn probe() -> Int { gar_box_pair(x: GarBox { v: 1 }, y: 2) }\n"
+
+data lambda_return_mismatch_source: String = "module test.claim.gar_mismatch\nimport std.types { Bool, Int }\nfn gar_ap<T, R>(f: fn(T) -> R, x: T, r: R) -> R { r }\nfn probe() -> Bool { gar_ap(f: fn(v) { v }, x: 1, r: true) }\n"
+
+test fn a_lambda_after_the_argument_that_binds_its_parameter_is_accepted() -> Bool {
+  total_blocking_count_for(source: left_bound_lambda_source) == 0
+}
+
+test fn a_lambda_before_the_argument_that_binds_its_parameter_is_accepted_under_the_final_context() -> Bool {
+  total_blocking_count_for(source: right_bound_lambda_source) == 0
+}
+
+test fn a_nested_left_bound_bind_chain_is_accepted() -> Bool {
+  total_blocking_count_for(source: nested_left_bound_chain_source) == 0
+}
+
+test fn an_earlier_literal_whose_generic_is_bound_later_is_accepted() -> Bool {
+  total_blocking_count_for(source: later_literal_context_source) == 0
+}
+
+test fn an_earlier_record_literal_whose_generic_is_bound_later_is_accepted() -> Bool {
+  total_blocking_count_for(source: later_record_context_source) == 0
+}
+
+test fn a_lambda_return_that_disagrees_with_the_substituted_callable_refuses() -> Bool {
+  blocking_class_count_for(source: lambda_return_mismatch_source, wanted_class: "TypeMismatch") >= 1
+}
