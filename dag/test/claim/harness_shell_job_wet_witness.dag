@@ -24,7 +24,7 @@ import gunbc.harness.harness_tool {
 import gunbc.harness.harness_shell_job {
   HarnessShellJob, JobFinished, JobExitedOutcome,
   harness_observe_job, JobStillRunning, JobExited, JobSignaled, JobReapRefused,
-  harness_job_is_running,
+  harness_job_is_running, StdioAtDestination,
 }
 import gunbc.harness.harness_turn {
   harness_prepare_hand_in_round, HandInRoundBlocked, HandInRoundClear,
@@ -398,9 +398,8 @@ test fn unread_job_output_is_typed_unreadable_not_empty() -> Bool {
     id: "1",
     pid: 1,
     command: "true",
-    stdout_file: missing as FilePath,
-    stderr_file: missing as FilePath,
-    stdio_note: "",
+    stdout: StdioAtDestination { path: missing as FilePath },
+    stderr: StdioAtDestination { path: missing as FilePath },
     started_at: "1970-01-01T00:00:00Z" as Timestamp,
     backstop: second(count: 20),
     state: JobFinished { outcome: JobExitedOutcome { code: 0 }, elapsed: Present { value: second(count: 0) } },

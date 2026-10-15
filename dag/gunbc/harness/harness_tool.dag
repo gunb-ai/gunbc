@@ -31,7 +31,7 @@ import gunbc.harness.harness_shell_job {
   JobRunning, JobFinished, JobExitedOutcome, JobSignaledOutcome,
   JobReapRefusedOutcome,
   harness_start_shell_job, harness_await_pid, harness_command_table, harness_read_job_text,
-  harness_finish_job,
+  harness_finish_job, harness_job_stdio_note,
   JobTextRead, JobTextUnreadable,
   harness_replace_job, harness_find_job, harness_wait_until_any,
   WaitLoopFinished, WaitLoopExpired, WaitLoopNoRunningJob, harness_kill_running_job,
@@ -308,10 +308,11 @@ fn harness_job_output_for_state(
   jobs: List<HarnessShellJob>,
   text: String,
 ) -> HarnessToolOutcome {
-  let with_note = if job.stdio_note == "" {
+  let note = harness_job_stdio_note(job: job)
+  let with_note = if note == "" {
     text
   } else {
-    join([text, "\n", job.stdio_note], "")
+    join([text, "\n", note], "")
   }
   let bounded = harness_bounded_tool_text(
     text: join([with_note, "\n", harness_command_table(jobs: jobs)], ""),
@@ -409,7 +410,7 @@ fn harness_run_command_scheduled(
                 " (still running after the inline hold of ",
                 to_string(value: schedule_seconds(s: schedule.inline_hold)),
                 "s; not killed). Wait with wait; read with job_output; stop with job_kill.",
-                if job.stdio_note == "" { "" } else { join(["\n", job.stdio_note], "") },
+                if harness_job_stdio_note(job: job) == "" { "" } else { join(["\n", harness_job_stdio_note(job: job)], "") },
                 "\n",
                 harness_command_table(jobs: jobs),
               ], ""),

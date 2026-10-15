@@ -39,9 +39,8 @@ type HarnessShellJob {
   id: String
   pid: Int
   command: String
-  stdout_file: FilePath
-  stderr_file: FilePath
-  stdio_note: String
+  stdout: HarnessJobStdio
+  stderr: HarnessJobStdio
   started_at: Timestamp
   backstop: Second
   state: HarnessShellJobState
@@ -156,9 +155,8 @@ fn harness_job_with_state(job: HarnessShellJob, state: HarnessShellJobState) -> 
     id: job.id,
     pid: job.pid,
     command: job.command,
-    stdout_file: job.stdout_file,
-    stderr_file: job.stderr_file,
-    stdio_note: job.stdio_note,
+    stdout: job.stdout,
+    stderr: job.stderr,
     started_at: job.started_at,
     backstop: job.backstop,
     state: state,
@@ -262,39 +260,58 @@ type HarnessJobText
   | JobTextUnreadable { path: String, cause: String }
 
 fn harness_read_job_text(job: HarnessShellJob) -> HarnessJobText {
-  let out = Filesystem.Read(path: job.stdout_file as String)
-  let err = Filesystem.Read(path: job.stderr_file as String)
+  let out_path = harness_job_stdio_path_of(stdio: job.stdout)
+  let err_path = harness_job_stdio_path_of(stdio: job.stderr)
+  let out = Filesystem.Read(path: out_path as String)
+  let err = Filesystem.Read(path: err_path as String)
   if !out.success {
-    JobTextUnreadable { path: job.stdout_file as String, cause: out.error }
+    JobTextUnreadable { path: out_path as String, cause: out.error }
   } else if !err.success {
-    JobTextUnreadable { path: job.stderr_file as String, cause: err.error }
+    JobTextUnreadable { path: err_path as String, cause: err.error }
   } else {
     JobTextRead { text: join([out.content, err.content], "") }
   }
 }
 
-fn harness_kept_stdio_path(pending: FilePath, dest: FilePath, moved: Bool) -> FilePath {
-  if moved {
-    dest
-  } else {
-    pending
+// WHERE ONE STREAM'S BYTES ACTUALLY ARE. The stream is opened at a mktemp path (the fd the job writes
+// through) and renamed to its pid-keyed destination after spawn. A rename that fails leaves the bytes at the
+// pending path, so the location is this value, read by the reader, and never the intended destination.
+type HarnessJobStdio
+  = StdioAtDestination { path: FilePath }
+  | StdioKeptAtPending { path: FilePath, intended: FilePath }
+
+fn harness_job_stdio_path_of(stdio: HarnessJobStdio) -> FilePath {
+  match stdio {
+    StdioAtDestination { path } => path
+    StdioKeptAtPending { path, intended: _ } => path
   }
 }
 
-fn harness_stdio_move_note(
-  moved_out: Bool,
-  moved_err: Bool,
-  pending_out: FilePath,
-  pending_err: FilePath,
-) -> String {
-  if moved_out && moved_err {
+fn harness_job_stdio_after_move(pending: FilePath, dest: FilePath, moved: Bool) -> HarnessJobStdio {
+  if moved {
+    StdioAtDestination { path: dest }
+  } else {
+    StdioKeptAtPending { path: pending, intended: dest }
+  }
+}
+
+// The tool text renders the degradation from the typed location: nothing when both streams reached their
+// destinations, one line naming each kept stream otherwise.
+fn harness_job_stdio_kept_line(stream: String, stdio: HarnessJobStdio) -> String {
+  match stdio {
+    StdioAtDestination { path: _ } => ""
+    StdioKeptAtPending { path, intended } =>
+      join([" (", stream, " kept at ", path as String, ", not ", intended as String, ")"], "")
+  }
+}
+
+fn harness_job_stdio_note(job: HarnessShellJob) -> String {
+  let out = harness_job_stdio_kept_line(stream: "stdout", stdio: job.stdout)
+  let err = harness_job_stdio_kept_line(stream: "stderr", stdio: job.stderr)
+  if out == "" && err == "" {
     ""
   } else {
-    join([
-      "job output kept at the mktemp paths that hold the live fds",
-      if !moved_out { join([" (stdout: ", pending_out as String, ")"], "") } else { "" },
-      if !moved_err { join([" (stderr: ", pending_err as String, ")"], "") } else { "" },
-    ], "")
+    join(["job output kept at the mktemp paths that hold the live fds", out, err], "")
   }
 }
 
@@ -438,22 +455,8 @@ fn harness_start_shell_job(
             id: to_string(value: pid),
             pid: pid,
             command: command,
-            stdout_file: harness_kept_stdio_path(
-              pending: pending_out.path,
-              dest: dest_out,
-              moved: moved_out.success,
-            ),
-            stderr_file: harness_kept_stdio_path(
-              pending: pending_err.path,
-              dest: dest_err,
-              moved: moved_err.success,
-            ),
-            stdio_note: harness_stdio_move_note(
-              moved_out: moved_out.success,
-              moved_err: moved_err.success,
-              pending_out: pending_out.path,
-              pending_err: pending_err.path,
-            ),
+            stdout: harness_job_stdio_after_move(pending: pending_out.path, dest: dest_out, moved: moved_out.success),
+            stderr: harness_job_stdio_after_move(pending: pending_err.path, dest: dest_err, moved: moved_err.success),
             started_at: started_at,
             backstop: schedule.backstop,
             state: JobRunning,

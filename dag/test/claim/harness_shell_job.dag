@@ -10,7 +10,8 @@ import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int
 import gunbc.harness.harness_wire { WireToolUseBlock }
 import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellJobState, JobRunning, JobFinished, JobExitedOutcome,
-  harness_hand_in_blocked_by_running_jobs, harness_kept_stdio_path, harness_stdio_move_note,
+  harness_hand_in_blocked_by_running_jobs,
+  StdioAtDestination, StdioKeptAtPending, harness_job_stdio_after_move, harness_job_stdio_path_of, harness_job_stdio_note,
   HarnessTerminateProcessGroup, harness_kill_signal_note,
   harness_exit_is_harness_backstop, harness_command_table_exit_label,
   harness_backstop_standing, JobBackstopHit, JobOwnExit, JobBackstopUndecided,
@@ -37,9 +38,8 @@ fn fixture_job(state: HarnessShellJobState) -> HarnessShellJob {
     id: "42",
     pid: 42,
     command: "sleep 1",
-    stdout_file: "/tmp/job-42.out" as FilePath,
-    stderr_file: "/tmp/job-42.err" as FilePath,
-    stdio_note: "",
+    stdout: StdioAtDestination { path: "/tmp/job-42.out" as FilePath },
+    stderr: StdioAtDestination { path: "/tmp/job-42.err" as FilePath },
     started_at: "1970-01-01T00:00:00Z" as Timestamp,
     backstop: second(count: 20),
     state: state,
@@ -271,15 +271,27 @@ test fn a_124_one_clock_second_shy_of_the_backstop_is_not_the_commands_own_exit(
   }
 }
 
+// A FAILED RENAME IS A TYPED LOCATION, AND THE READER FOLLOWS IT (review 80277): the kept stream's path is the
+// pending one, the moved stream's is its destination, and the note is rendered from those values.
 test fn a_failed_stdio_rename_keeps_the_mktemp_path_and_says_so() -> Bool {
   let pending = "/tmp/pending-out" as FilePath
   let dest = "/tmp/job-9.out" as FilePath
-  harness_kept_stdio_path(pending: pending, dest: dest, moved: true) == dest
-    && harness_kept_stdio_path(pending: pending, dest: dest, moved: false) == pending
-    && harness_stdio_move_note(
-      moved_out: false,
-      moved_err: true,
-      pending_out: pending,
-      pending_err: "/tmp/pending-err" as FilePath,
-    ).contains("mktemp paths")
+  let kept = harness_job_stdio_after_move(pending: pending, dest: dest, moved: false)
+  let moved = harness_job_stdio_after_move(pending: "/tmp/pending-err" as FilePath, dest: "/tmp/job-9.err" as FilePath, moved: true)
+  let job = HarnessShellJob {
+    id: "9",
+    pid: 9,
+    command: "true",
+    stdout: kept,
+    stderr: moved,
+    started_at: "1970-01-01T00:00:00Z" as Timestamp,
+    backstop: second(count: 20),
+    state: JobRunning,
+  }
+  harness_job_stdio_path_of(stdio: kept) == pending
+    && harness_job_stdio_path_of(stdio: moved) == ("/tmp/job-9.err" as FilePath)
+    && (match kept { StdioKeptAtPending { path: _, intended: i } => i == dest  StdioAtDestination { path: _ } => false })
+    && harness_job_stdio_note(job: job).contains("stdout kept at /tmp/pending-out")
+    && !harness_job_stdio_note(job: job).contains("stderr")
+    && harness_job_stdio_note(job: fixture_job(state: JobRunning)) == ""
 }
