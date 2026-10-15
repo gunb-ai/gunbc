@@ -79,11 +79,25 @@ pub fn take_lines() -> Vec<String> {
     })
 }
 
+thread_local! {
+    static DEMAND_ACQUIRED_MODULES: std::cell::Cell<Option<usize>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Record the demand-acquired set size for `gunbc run` so the population line is
+/// the closure, not `refused` from a missing whole-tree shared index.
+pub(crate) fn record_demand_acquired_modules(n: usize) {
+    DEMAND_ACQUIRED_MODULES.with(|c| c.set(Some(n)));
+}
+
 /// The indexed pool's module count for `source_roots` (the population the `tree` rows scale
 /// with), or `None` when no index exists for them. Reads ONLY the index a resolve already
 /// memoized: it never builds one, so a resolve that refused on pool discovery is reported as
 /// such rather than re-walked -- or, through the panicking `process_shared_index`, turned from a
-/// typed refusal into a panic.
+/// typed refusal into a panic. A demand-acquired `gunbc run` records its set here instead.
 pub fn pool_module_count(source_roots: &[String]) -> Option<usize> {
+    if let Some(n) = DEMAND_ACQUIRED_MODULES.with(|c| c.get()) {
+        return Some(n);
+    }
     super::memoized_process_shared_index(source_roots).map(|index| index.source_files.len())
 }
