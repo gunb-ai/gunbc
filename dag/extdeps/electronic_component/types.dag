@@ -1,6 +1,7 @@
 module extdeps.electronic_component.types
 
 import std.types { List, NonEmptyStr }
+import std.nat { Nat }
 import std.measure { Volt, Ampere }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -60,4 +61,36 @@ type ElectronicComponentRow {
   voltage_rating: ComponentVoltageRating
   current_rating: Ampere?
   vendor_application_statements: List<NonEmptyStr>
+}
+
+// A SIGNAL PART'S DATASHEET IDENTITY: a part a board reading identifies by marking but whose relevance
+// is its pins, not a voltage it tolerates on a power path -- a sensor or controller whose bus a board
+// trace follows. pins are the datasheet's pin table, verbatim names, so a continuity trace can name the
+// pin it reached.
+type DatasheetPin {
+  number: Nat
+  name: NonEmptyStr
+  function: NonEmptyStr
+}
+
+type SignalComponentRow {
+  vendor: Vendor<Hardware>
+  ordering_code: NonEmptyStr
+  package: NonEmptyStr
+  top_marking: NonEmptyStr
+  function: NonEmptyStr
+  supply_range: NonEmptyStr
+  pins: List<DatasheetPin>
+}
+
+// A CONNECTOR'S CATALOG IDENTITY, as far as a board reading consumes it: which family a housing is,
+// how many positions at what pitch, and how it mounts. Pitch is in
+// micrometres so a 0.60 mm pitch is an exact integer.
+type ConnectorComponentRow {
+  vendor: Vendor<Hardware>
+  ordering_code: NonEmptyStr
+  series: NonEmptyStr
+  positions: Nat
+  pitch_micrometers: Nat
+  mounting: NonEmptyStr
 }

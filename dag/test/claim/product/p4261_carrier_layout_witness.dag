@@ -2,43 +2,54 @@ module test.claim.product.p4261_carrier_layout_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { volt, volt_count, ampere }
+import std.measure { volt, volt_count }
+import product.placement_supply { physical_asset_identity_eq }
+import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
 import extdeps.electronic_component.types { ComponentVoltageRating, CapacitorRatedVoltage, FuseInterruptRating }
 import product.p4261_carrier_layout {
   CarrierLayoutObservation,
   ObservedComponent,
   PathMembership,
+  IdentifiedByDatasheetMarking,
+  MarkingSharedByMakers,
   RatingPrintedOnBody,
   ResistanceCodeRead,
   MarkingUnresolved,
-  MainInputPath,
-  AuxiliaryInputPath,
+  GreyBlindMatePath,
+  J20InputPath,
   OnPathByAdjacency,
   RatingAcrossInputRail,
-  IdentifiedByDatasheetMarking,
-  MeasuredCircuit,
-  CircuitNode,
-  e1_j20_input_circuit,
-  membership_by_circuit,
-  j20_supply_node,
-  board_ground_node,
-  k1_adjacency_aux,
+  BoundByRatedParts,
+  NoEstablishedBound,
   PinRowContinuity,
   ToGround,
   ToFuse,
-  BoundByRatedParts,
-  NoEstablishedBound,
+  MeasuredCircuit,
+  CircuitNode,
+  CathodeOn,
+  OrientationUnread,
   p4261_k1_layout,
-  p4261_main_bus_hypothesis,
+  p4261_e1_layout,
+  p4261_grey_path_hypothesis,
+  e1_j20_input_circuit,
+  e1_adjacency_j20,
+  membership_by_circuit,
+  orientation_between,
+  readings_between,
+  j20_supply_node,
+  board_ground_node,
   path_bound,
   carrier_input_reading,
+  management_io_text,
 }
 
-// THE REAL PATH: every rated part on the K1's main path was placed by adjacency in a photograph, so no
-// part's rating is shown to apply across the input rail and the photographs establish NO input bound.
-// The 75 V fuse rating is carried as an observation and named, never promoted to a ceiling.
+// ── THE K1 UNIT: its listing photographs, and nothing measured on another board ──────────────
+
+// Every rated part on the K1's grey-block path was placed by adjacency in a photograph, so no part's
+// rating is shown to apply across that input and the photographs establish NO bound. The 75 V fuse
+// rating is carried as an observation and named, never promoted to a ceiling.
 test fn the_photographs_establish_no_input_bound() -> Bool {
-  match path_bound(layout: p4261_k1_layout, path: MainInputPath) {
+  match path_bound(layout: p4261_k1_layout, path: GreyBlindMatePath) {
     NoEstablishedBound { observed_ratings: rs } =>
       any(rs, r => (r as String).contains("75 V fuse voltage rating, placed by adjacency only"))
         && any(rs, r => (r as String).contains("100 V drain-source maximum"))
@@ -46,28 +57,99 @@ test fn the_photographs_establish_no_input_bound() -> Bool {
   }
 }
 
-// J20'S INPUT IS BOUNDED BY D2, AND ONLY BY D2. D2 (5.0SMDJ60A by code, 60 V standoff) was traced by
-// continuity across J20's supply and ground, so its standoff bounds J20's working voltage at 60 V.
-// The 63 V capacitors are identified too, but continuity found a one-way junction between them and
-// J20's supply, so they stay observed and do not enter the bound: an identified rating is not a
-// placed one.
+// THE E1 READINGS DO NOT REACH THE K1. Both boards are P4261s, and that licenses nothing: the K1's J20
+// path still has no bound, no pin rows, its own listing count, and its undecoded parts; the measured
+// circuit names the E1 asset and not the K1's.
+test fn a_reading_on_the_e1_does_not_describe_the_k1() -> Bool {
+  let k1_j20 = match path_bound(layout: p4261_k1_layout, path: J20InputPath) {
+    NoEstablishedBound { observed_ratings: rs } => count(rs) == 0
+    BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
+  }
+  k1_j20
+    && count(p4261_k1_layout.j20_rows) == 0
+    && p4261_k1_layout.j20_positions == 16
+    && count(p4261_k1_layout.identified_signal_parts) == 0
+    && physical_asset_identity_eq(a: e1_j20_input_circuit.asset, b: p4261_e1_b)
+    && !physical_asset_identity_eq(a: e1_j20_input_circuit.asset, b: p4261_k1_a)
+}
+
+// ── THE E1 UNIT: the measured circuit and what it deduces ────────────────────────────────────
+
+fn is_capacitor_row(c: ObservedComponent) -> Bool {
+  match c.identification {
+    IdentifiedByDatasheetMarking { row: r, marking_read: _ } => (r.ordering_code as String).contains("EEH-ZU1J151")
+    MarkingSharedByMakers { rows: _, marking_read: _ } => false
+    RatingPrintedOnBody { voltage: _, current: _, marking_read: _ } => false
+    ResistanceCodeRead { milliohms: _, marking_read: _ } => false
+    MarkingUnresolved { marking_read: _, discriminator: _ } => false
+  }
+}
+
+fn is_adjacent(m: PathMembership) -> Bool {
+  match m {
+    OnPathByAdjacency { basis: _ } => true
+    RatingAcrossInputRail { evidence: _ } => false
+  }
+}
+
+// J20'S INPUT IS BOUNDED BY D2, AND ONLY BY D2. The measured circuit puts D2's tabs on J20's supply
+// and ground, so its 60 V standoff bounds J20's working voltage; the evidence carries the raw diode
+// reading and says the reverse direction was not read. The probed 63 V cans are on a separate node, so
+// they stay observed and do not enter the bound: an identified rating is not a placed one.
 test fn d2_bounds_j20_and_the_capacitors_do_not() -> Bool {
-  match path_bound(layout: p4261_k1_layout, path: AuxiliaryInputPath) {
+  match path_bound(layout: p4261_e1_layout, path: J20InputPath) {
     BoundByRatedParts { maximum: m, limiting: l, relation: r } =>
       volt_count(v: m) == 60
         && (l as String).contains("TVS")
-        && (r as String).contains("'D2 tab nearer J20' is on node 'J20 supply'")
-        && all(filter(p4261_k1_layout.power_components, c => is_capacitor_row(c: c)), c => match c.membership {
-          OnPathByAdjacency { basis: _ } => true
-          RatingAcrossInputRail { evidence: _ } => false
-        })
+        && (r as String).contains("'D2 tab nearer J20' on node 'J20 supply'")
+        && (r as String).contains("red on 'ground', black on 'J20 supply': 600 mV; the reverse direction was not read; cathode on 'J20 supply'")
+        && all(filter(p4261_e1_layout.power_components, c => is_capacitor_row(c: c)), c => is_adjacent(m: c.membership))
     NoEstablishedBound { observed_ratings: _ } => false
   }
 }
 
+fn with_components(base: CarrierLayoutObservation, cs: List<ObservedComponent>) -> CarrierLayoutObservation {
+  CarrierLayoutObservation {
+    labels: base.labels,
+    module_receptacles: base.module_receptacles,
+    grey_edge_connectors: base.grey_edge_connectors,
+    j20_connector: base.j20_connector,
+    j20_positions: base.j20_positions,
+    j20_rows: base.j20_rows,
+    edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_observed: base.management_io_observed,
+    power_components: cs,
+    identified_signal_parts: base.identified_signal_parts,
+    unresolved_parts: base.unresolved_parts,
+  }
+}
+
+fn with_component(c: ObservedComponent) -> CarrierLayoutObservation {
+  with_components(base: p4261_k1_layout, cs: concat(p4261_k1_layout.power_components, [c]))
+}
+
+// THE SAME CANS, PLACED ACROSS THE RAIL, WOULD BOUND IT AT 63 V: the RED for the rule above. The row
+// is the live one, so this fails if the cited rating drifts from 63 V.
+test fn the_capacitors_placed_across_the_rail_would_bound_it() -> Bool {
+  let caps = filter(p4261_e1_layout.power_components, c => is_capacitor_row(c: c))
+  let placed = map(caps, c => ObservedComponent {
+    designators: c.designators,
+    quantity: c.quantity,
+    role: c.role,
+    identification: c.identification,
+    path: c.path,
+    membership: RatingAcrossInputRail { evidence: "supplied: positive terminals joined to J20's supply under power" },
+  })
+  let bounded = match path_bound(layout: with_components(base: p4261_e1_layout, cs: placed), path: J20InputPath) {
+    BoundByRatedParts { maximum: m, limiting: _, relation: _ } => volt_count(v: m) == 63
+    NoEstablishedBound { observed_ratings: _ } => false
+  }
+  count(caps) == 1 && bounded
+}
+
 fn moved_d2_circuit() -> MeasuredCircuit {
   MeasuredCircuit {
-    unit: e1_j20_input_circuit.unit,
+    asset: e1_j20_input_circuit.asset,
     read_on: e1_j20_input_circuit.read_on,
     conditions: "supplied: D2's near tab read on the capacitor rail instead",
     nodes: [
@@ -75,17 +157,14 @@ fn moved_d2_circuit() -> MeasuredCircuit {
       CircuitNode { name: board_ground_node, terminals: ["J20 ground row (9 pins)", "D2 tab farther from J20"] },
       CircuitNode { name: "capacitor rail", terminals: ["C10_P5 positive", "D2 tab nearer J20"] },
     ],
-    junctions: [],
+    diode_readings: [],
   }
 }
 
 // THE DEDUCTION DISCRIMINATES. The same D2 with its near tab on the capacitor rail instead of J20's
 // supply is not across J20, so it falls back to adjacency and bounds nothing.
 test fn d2_off_the_supply_node_is_not_across_j20() -> Bool {
-  match membership_by_circuit(c: moved_d2_circuit(), positive: "D2 tab nearer J20", negative: "D2 tab farther from J20", supply: j20_supply_node, otherwise: k1_adjacency_aux) {
-    OnPathByAdjacency { basis: _ } => true
-    RatingAcrossInputRail { evidence: _ } => false
-  }
+  is_adjacent(m: membership_by_circuit(c: moved_d2_circuit(), positives: ["D2 tab nearer J20"], returns: ["D2 tab farther from J20"], supply: j20_supply_node, ground: board_ground_node, otherwise: e1_adjacency_j20))
 }
 
 // A terminal belongs to at most one node: two nodes claiming one terminal would be joined, and the
@@ -93,35 +172,51 @@ test fn d2_off_the_supply_node_is_not_across_j20() -> Bool {
 test fn measured_nodes_share_no_terminal() -> Bool {
   let all_terminals = flat_map(e1_j20_input_circuit.nodes, n => n.terminals)
   all(all_terminals, t => count(filter(all_terminals, u => u == t)) == 1)
-    && count(e1_j20_input_circuit.junctions) == 2
 }
 
-fn is_capacitor_row(c: ObservedComponent) -> Bool {
-  match c.identification {
-    IdentifiedByDatasheetMarking { row: r, marking_read: _ } => (r.ordering_code as String).contains("EEH-ZU1J151")
+// THE RAW READING UNDERLIES THE ORIENTATION. One forward reading with red on ground and black on J20
+// supply puts the cathode on the supply; the reverse direction is unread, not open. The capacitor
+// rail's two readings have no recorded probe placement, so they establish no orientation at all.
+test fn orientation_is_derived_from_raw_readings_only() -> Bool {
+  let d2 = match orientation_between(c: e1_j20_input_circuit, a: board_ground_node, b: j20_supply_node) {
+    CathodeOn { cathode_node: k, anode_node: a } => k == j20_supply_node && a == board_ground_node
+    OrientationUnread => false
+  }
+  let caps = match orientation_between(c: e1_j20_input_circuit, a: "capacitor rail", b: j20_supply_node) {
+    CathodeOn { cathode_node: _, anode_node: _ } => false
+    OrientationUnread => true
+  }
+  d2 && caps && count(readings_between(c: e1_j20_input_circuit, a: board_ground_node, b: j20_supply_node)) == 1
+}
+
+// 5PGK IDENTIFIES AN ELECTRICAL CLASS, NOT A MAKER. D2 carries both makers' rows for the code, with
+// distinct vendors and one 60 V standoff, and the bound it yields is that standoff.
+test fn d2_is_identified_by_class_not_maker() -> Bool {
+  let parts = filter(p4261_e1_layout.power_components, c => any(c.designators, d => d == "D2"))
+  count(parts) == 1 && all(parts, c => match c.identification {
+    MarkingSharedByMakers { rows: rs, marking_read: _ } =>
+      count(rs) == 2
+        && all(rs, r => volt_count(v: r.voltage_rating.maximum) == 60)
+        && any(rs, r => (r.vendor.legal_name as String) == "Bourns")
+        && any(rs, r => (r.vendor.legal_name as String) == "Alpha and Omega Semiconductor")
+    IdentifiedByDatasheetMarking { row: _, marking_read: _ } => false
     RatingPrintedOnBody { voltage: _, current: _, marking_read: _ } => false
     ResistanceCodeRead { milliohms: _, marking_read: _ } => false
     MarkingUnresolved { marking_read: _, discriminator: _ } => false
-  }
+  })
 }
 
-// THE SAME CAPACITORS, PLACED ACROSS THE RAIL, WOULD BOUND IT AT 63 V: the RED for the rule above. The
-// row is the live one, so this fails if the cited rating drifts from 63 V.
-test fn the_capacitors_placed_across_the_rail_would_bound_it() -> Bool {
-  let caps = filter(p4261_k1_layout.power_components, c => is_capacitor_row(c: c))
-  let placed = map(caps, c => ObservedComponent {
-    designators: c.designators,
-    quantity: c.quantity,
-    role: c.role,
-    identification: c.identification,
-    path: c.path,
-    membership: RatingAcrossInputRail { evidence: "supplied: positive terminal joined to J20's supply under power" },
+// THE UNPROBED THIRD CAN INHERITS NOTHING from the two probed ones: neither their identity nor their
+// node. It is its own component, unresolved and adjacent.
+test fn the_third_can_inherits_nothing() -> Bool {
+  let third = filter(p4261_e1_layout.power_components, c => (c.role as String).contains("third SMD can"))
+  count(third) == 1 && all(third, c => is_adjacent(m: c.membership) && match c.identification {
+    MarkingUnresolved { marking_read: _, discriminator: _ } => true
+    IdentifiedByDatasheetMarking { row: _, marking_read: _ } => false
+    MarkingSharedByMakers { rows: _, marking_read: _ } => false
+    RatingPrintedOnBody { voltage: _, current: _, marking_read: _ } => false
+    ResistanceCodeRead { milliohms: _, marking_read: _ } => false
   })
-  let bounded = match path_bound(layout: with_components(cs: placed), path: AuxiliaryInputPath) {
-    BoundByRatedParts { maximum: m, limiting: _, relation: _ } => volt_count(v: m) == 63
-    NoEstablishedBound { observed_ratings: _ } => false
-  }
-  count(caps) == 1 && bounded
 }
 
 fn is_ground_row(r: PinRowContinuity) -> Bool {
@@ -138,36 +233,25 @@ fn is_f1_row(r: PinRowContinuity) -> Bool {
   }
 }
 
-// J20 IS A POWER INPUT BY CONTINUITY: 18 positions, nine to ground and nine joined to F1, and the
-// rendered reading says so while still stating the voltage contract unknown.
-test fn j20_reads_as_a_fused_power_input() -> Bool {
-  let rows = p4261_k1_layout.auxiliary_connector_rows
-  let r = carrier_input_reading(layout: p4261_k1_layout)
-  p4261_k1_layout.auxiliary_connector_positions == 18
+// J20 IS A POWER INPUT BY CONTINUITY: 18 positions, nine to ground and nine joined to F1. Its bound does
+// not leak onto the grey-block path, which on this unit has no rated part placed and no bound.
+test fn j20_reads_as_a_fused_power_input_and_stays_on_its_path() -> Bool {
+  let rows = p4261_e1_layout.j20_rows
+  let grey = match path_bound(layout: p4261_e1_layout, path: GreyBlindMatePath) {
+    NoEstablishedBound { observed_ratings: _ } => true
+    BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
+  }
+  p4261_e1_layout.j20_positions == 18
     && count(filter(rows, x => is_ground_row(r: x) && x.pins == 9)) == 1
     && count(filter(rows, x => is_f1_row(r: x) && x.pins == 9 && x.tied_together)) == 1
-    && fold(rows, init: 0, f: (acc, x) => acc + x.pins) == p4261_k1_layout.auxiliary_connector_positions
-    && r.contains("9 pins joined, to ground; 9 pins joined, to fuse F1")
-    && r.contains("The input voltage contract is unknown")
+    && fold(rows, init: 0, f: (acc, x) => acc + x.pins) == p4261_e1_layout.j20_positions
+    && grey
 }
 
-fn with_component(c: ObservedComponent) -> CarrierLayoutObservation {
-  with_components(cs: concat(p4261_k1_layout.power_components, [c]))
-}
-
-fn with_components(cs: List<ObservedComponent>) -> CarrierLayoutObservation {
-  CarrierLayoutObservation {
-    labels: p4261_k1_layout.labels,
-    module_receptacles: p4261_k1_layout.module_receptacles,
-    main_input_connectors: p4261_k1_layout.main_input_connectors,
-    auxiliary_connector: p4261_k1_layout.auxiliary_connector,
-    auxiliary_connector_positions: p4261_k1_layout.auxiliary_connector_positions,
-    auxiliary_connector_rows: p4261_k1_layout.auxiliary_connector_rows,
-    edge_high_speed_connectors: p4261_k1_layout.edge_high_speed_connectors,
-    management_io_observed: p4261_k1_layout.management_io_observed,
-    power_components: cs,
-    unresolved_parts: p4261_k1_layout.unresolved_parts,
-  }
+// U522 is identified as a management-bus part, and the management text names the pins to trace.
+test fn the_tmp275_is_a_trace_target() -> Bool {
+  let t = management_io_text(layout: p4261_e1_layout)
+  t.contains("U522 ('TI 31 / T275') is TMP275AIDGKR") && t.contains("1 SDA, 2 SCL, 3 ALERT")
 }
 
 fn rated_part(volts: Nat, kind_is_fuse: Bool, membership: PathMembership) -> ObservedComponent {
@@ -180,7 +264,7 @@ fn rated_part(volts: Nat, kind_is_fuse: Bool, membership: PathMembership) -> Obs
       current: Absent,
       marking_read: "supplied",
     },
-    path: MainInputPath,
+    path: GreyBlindMatePath,
     membership: membership,
   }
 }
@@ -190,42 +274,36 @@ fn rated_part(volts: Nat, kind_is_fuse: Bool, membership: PathMembership) -> Obs
 // bounds nothing. The same part with its rating established across the input rail does bound it, and
 // the lowest such rating wins.
 test fn only_a_rating_across_the_input_rail_bounds_it() -> Bool {
-  let adjacent = match path_bound(layout: with_component(c: rated_part(volts: 16, kind_is_fuse: false, membership: OnPathByAdjacency { basis: "supplied: shares the region" })), path: MainInputPath) {
+  let adjacent = match path_bound(layout: with_component(c: rated_part(volts: 16, kind_is_fuse: false, membership: OnPathByAdjacency { basis: "supplied: shares the region" })), path: GreyBlindMatePath) {
     NoEstablishedBound { observed_ratings: rs } => any(rs, r => (r as String).contains("16 V capacitor rated voltage, placed by adjacency only"))
     BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
   }
   let across = RatingAcrossInputRail { evidence: "supplied: traced from the input terminal block" }
   let one = with_component(c: rated_part(volts: 75, kind_is_fuse: true, membership: across))
-  let bounded = match path_bound(layout: one, path: MainInputPath) {
+  let bounded = match path_bound(layout: one, path: GreyBlindMatePath) {
     BoundByRatedParts { maximum: m, limiting: _, relation: r } => volt_count(v: m) == 75 && (r as String).contains("traced from the input terminal block")
     NoEstablishedBound { observed_ratings: _ } => false
   }
-  let two = CarrierLayoutObservation {
-    labels: one.labels,
-    module_receptacles: one.module_receptacles,
-    main_input_connectors: one.main_input_connectors,
-    auxiliary_connector: one.auxiliary_connector,
-    auxiliary_connector_positions: one.auxiliary_connector_positions,
-    auxiliary_connector_rows: one.auxiliary_connector_rows,
-    edge_high_speed_connectors: one.edge_high_speed_connectors,
-    management_io_observed: one.management_io_observed,
-    power_components: concat(one.power_components, [rated_part(volts: 63, kind_is_fuse: false, membership: across)]),
-    unresolved_parts: one.unresolved_parts,
-  }
-  let lowest = match path_bound(layout: two, path: MainInputPath) {
+  let two = with_components(base: one, cs: concat(one.power_components, [rated_part(volts: 63, kind_is_fuse: false, membership: across)]))
+  let lowest = match path_bound(layout: two, path: GreyBlindMatePath) {
     BoundByRatedParts { maximum: m, limiting: _, relation: _ } => volt_count(v: m) == 63
     NoEstablishedBound { observed_ratings: _ } => false
   }
   adjacent && bounded && lowest
 }
 
-// The rendered reading states the input contract as unknown and carries the 48-54 V idea as a sourced
-// hypothesis with what would decide it -- never as a derived class.
+// The rendered readings state the input contract as unknown and carry the grey-path idea as a sourced
+// hypothesis with what would decide it -- never as a derived class. The K1 reading has no bound; the E1
+// reading carries J20's measured 60 V bound and still says which connector powers the module is open.
 test fn the_reading_names_its_limits() -> Bool {
-  let r = carrier_input_reading(layout: p4261_k1_layout)
-  r.contains("main input: no input bound established")
-    && r.contains("hypothesis, not a derivation: the P4261 main input is a 48-54 V-class bus")
-    && r.contains("at most 60 V, limited by the unidirectional TVS diode beside J20")
-    && r.contains("The input voltage contract is unknown")
-    && count(p4261_main_bus_hypothesis.sources) == 2
+  let k1 = carrier_input_reading(layout: p4261_k1_layout)
+  let e1 = carrier_input_reading(layout: p4261_e1_layout)
+  k1.contains("grey blind-mate path: no input bound established")
+    && k1.contains("hypothesis, not a derivation: the grey blind-mate connectors carry the P4261's main input")
+    && k1.contains("The input voltage contract is unknown")
+    && !k1.contains("at most")
+    && e1.contains("J20 input path at J20")
+    && e1.contains("at most 60 V, limited by the unidirectional TVS diode beside J20")
+    && e1.contains("Which connector carries the module's power is not established")
+    && count(p4261_grey_path_hypothesis.sources) == 2
 }

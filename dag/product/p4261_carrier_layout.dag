@@ -3,61 +3,67 @@ module product.p4261_carrier_layout
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Volt, Ampere, volt, ampere, volt_count, ampere_count }
+import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
 import extdeps.electronic_component.types {
   ElectronicComponentRow,
+  SignalComponentRow,
+  ConnectorComponentRow,
   ComponentVoltageRating,
   VoltageRatingKind,
   DrainSourceMaximum,
   FuseInterruptRating,
   CapacitorRatedVoltage,
+  TvsReverseStandoff,
 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
+import extdeps.electronic_component.aos_5_0smdj60a { aos_tvs_5_0smdj60a }
+import extdeps.electronic_component.ti_tmp275 { tmp275_dgk }
+import extdeps.connector.amphenol_g97v22332hr { g97v22332hr }
 
 // GH200-3 (2026-10-04). THE P4261 CARRIER AS PHOTOGRAPHED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
-// document names this board, so everything here is the operator's observation of one unit, kept in
+// document names this board, so everything here is the operator's observation of a unit, kept in
 // the product layer (DESIGN §3: observations are receipts downstream, never upstream facts). What
 // IS upstream -- a part's datasheet ratings once its marking is matched -- lives in
-// extdeps.electronic_component and is consumed here.
+// extdeps.electronic_component and extdeps.connector and is consumed here.
 //
-// Three photographs: the full component side; the label close-up; the left-edge close-up around the
-// connector silkscreened J20. Every marking is transcribed as read, and three standings are kept
-// apart because they license different conclusions:
+// Every marking is transcribed as read, and the standings are kept apart because they license
+// different conclusions:
 //
-//   IdentifiedByDatasheetMarking  the marking matches a datasheet's marking table, so the part's
+//   IdentifiedByDatasheetMarking  the marking matches one maker's marking table, so the part's
 //                                 ratings are cited facts
+//   MarkingSharedByMakers         the marking matches the same code in several makers' tables and the
+//                                 maker is not identified: the electrical class is cited, the maker is
+//                                 not, and the lowest rating among the candidates is the one carried
 //   RatingPrintedOnBody           the part prints its own rating; no datasheet, but no decoding either
 //   MarkingUnresolved             the marking is read and NOT decoded; it contributes nothing, and the
 //                                 discriminator says what would decode it
 //
-// Which circuit a part sits on is a fourth fact, and from a photograph it is ADJACENCY, not traced
-// copper. Adjacency places a part in a region of the board; it does not say what voltage appears
-// across the part's rated terminals, which is the only relation under which a rating bounds a rail.
+// Which circuit a part sits on is a further fact. From a photograph it is ADJACENCY, not copper, and
+// bounds nothing. From a multimeter it is a MEASURED CIRCUIT (below), which is the one authority for
+// whether a part sits across an input.
 //
-// GH200-P9 (2026-10-15): THE OPERATOR'S OWN BENCH READINGS of a received carrier. The operator read
-// J20 and its neighbourhood with a multimeter, unpowered, and photographed the parts beside it, on a
-// carrier whose label reads revision E1 -- not this K1; the operator believes it is the board bought
-// from Central Valley. Both are P4261 boards (E1 and K1 revisions), and J20's continuity is taken as
-// a property of the board design rather than of one unit: a revision change could alter it, so the
-// readings carry their unit, and lot codes and labels are recorded with that caveat. A continuity reading is stronger than
-// adjacency (it says two points are joined, or are not) and weaker than a traced net under power (a
-// switch that is open while unpowered hides the rail behind it).
+// GH200-P9 (2026-10-15): ONE OBSERVATION PER PHYSICAL CARRIER. The K1 observation is the K1 listing's
+// photographs and nothing else. The operator's bench readings are of a different board, whose model
+// label the operator reads as revision E1 (asset p4261_e1_b), and live in its own observation; no
+// reading transfers between them because both are P4261 boards. The paths are named by connector,
+// not by role: which connector carries the module's power is not established.
 
 type ComponentIdentification
   = IdentifiedByDatasheetMarking { row: ElectronicComponentRow, marking_read: NonEmptyStr }
+  | MarkingSharedByMakers { rows: List<ElectronicComponentRow>, marking_read: NonEmptyStr }
   | RatingPrintedOnBody { voltage: ComponentVoltageRating?, current: Ampere?, marking_read: NonEmptyStr }
   | ResistanceCodeRead { milliohms: Nat, marking_read: NonEmptyStr }
   | MarkingUnresolved { marking_read: NonEmptyStr, discriminator: NonEmptyStr }
 
-type PowerPath = MainInputPath | AuxiliaryInputPath
+type PowerPath = GreyBlindMatePath | J20InputPath
 
 // WHAT RELATES A PART'S RATING TO A RAIL. RatingAcrossInputRail is the one relation that licenses a
-// bound: the evidence must say that the rated terminals see the input rail (a fuse in series with the
-// input, a bulk capacitor across it, a hot-swap FET's drain-source in its path) in the condition the
-// rating applies to -- a traced net, a schematic, or the vendor's reference design for the board.
-// OnPathByAdjacency places the part near a path and bounds nothing: an input-stage part and a
-// downstream converted rail can share one region of the board.
+// bound: the evidence must say that the rated terminals see the input rail -- a measured circuit, a
+// schematic, or the vendor's reference design. OnPathByAdjacency places the part near a path and
+// bounds nothing: an input-stage part and a downstream converted rail can share one region.
 type PathMembership
   = RatingAcrossInputRail { evidence: NonEmptyStr }
   | OnPathByAdjacency { basis: NonEmptyStr }
@@ -69,6 +75,13 @@ type ObservedComponent {
   identification: ComponentIdentification
   path: PowerPath
   membership: PathMembership
+}
+
+// A signal part identified by its marking: a sensor or controller whose relevance is where its pins go.
+type IdentifiedSignalPart {
+  designators: List<NonEmptyStr>
+  marking_read: NonEmptyStr
+  row: SignalComponentRow
 }
 
 // J20'S PINS BY CONTINUITY, unpowered. Each row of pins is read against ground and against the fuse
@@ -83,85 +96,84 @@ type PinRowContinuity {
   tied_together: Bool
 }
 
-// THE MEASURED CIRCUIT: the part of the board's netlist a multimeter has established, unpowered. A
-// node is a set of terminals continuity found joined to each other; a junction is a diode-mode reading
-// between two nodes. This is the single authority for whether a rated part sits ACROSS an input: its
-// two terminals on the input's supply node and on ground. A terminal no reading reached is absent,
-// never assumed. The circuit is an observation of one unit, so it carries the unit and conditions.
+// THE MEASURED CIRCUIT: the part of one board's netlist a multimeter has established, unpowered. A node
+// is a set of terminals continuity found joined to each other. A diode-mode reading is kept RAW -- which
+// node the red probe touched, which the black, and what the meter displayed -- and orientation is
+// derived from it: in diode mode the red probe is positive, so a forward reading with red on X and
+// black on Y puts an anode on X and a cathode on Y. A direction nobody read is absent, not open. A
+// terminal no reading reached is absent, never assumed. The circuit binds to the physical asset it was
+// read on, so it cannot describe another carrier.
 type CircuitNode {
   name: NonEmptyStr
   terminals: List<NonEmptyStr>
 }
 
-type JunctionDirection
-  = ForwardFrom { anode_node: NonEmptyStr, cathode_node: NonEmptyStr }
-  | DirectionUnrecorded
+type ProbePoint
+  = OnNode { node: NonEmptyStr }
+  | ProbePlacementUnrecorded
 
-type JunctionReading {
-  between: List<NonEmptyStr>
-  forward_millivolts: Nat
-  direction: JunctionDirection
-  reverse_open: Bool
+type MeterDisplay
+  = ForwardMillivolts { millivolts: Nat }
+  | OverLimit
+
+type DiodeModeReading {
+  red_on: ProbePoint
+  black_on: ProbePoint
+  display: MeterDisplay
+}
+
+type NodePairReadings {
+  nodes: List<NonEmptyStr>
+  readings: List<DiodeModeReading>
 }
 
 type MeasuredCircuit {
-  unit: NonEmptyStr
+  asset: PhysicalAssetIdentity
   read_on: NonEmptyStr
   conditions: NonEmptyStr
   nodes: List<CircuitNode>
-  junctions: List<JunctionReading>
+  diode_readings: List<NodePairReadings>
+}
+
+type JunctionOrientation
+  = CathodeOn { cathode_node: NonEmptyStr, anode_node: NonEmptyStr }
+  | OrientationUnread
+
+// A connector family read off one housing, and which unit it was read on.
+type ConnectorFamilyCandidate {
+  row: ConnectorComponentRow
+  marking_read: NonEmptyStr
+  read_on_unit: NonEmptyStr
 }
 
 type ConnectorCensus
   = CensusComplete { count: Nat, family: NonEmptyStr }
-  | CensusPartial { counted_at_least: Nat, obligation: NonEmptyStr }
+  | CensusPartial { counted_at_least: Nat, obligation: NonEmptyStr, family_candidate: ConnectorFamilyCandidate? }
 
 type CarrierLayoutObservation {
   labels: List<NonEmptyStr>
   module_receptacles: List<NonEmptyStr>
-  main_input_connectors: NonEmptyStr
-  auxiliary_connector: NonEmptyStr
-  auxiliary_connector_positions: Nat
-  auxiliary_connector_rows: List<PinRowContinuity>
+  grey_edge_connectors: NonEmptyStr
+  j20_connector: NonEmptyStr
+  j20_positions: Nat
+  j20_rows: List<PinRowContinuity>
   edge_high_speed_connectors: ConnectorCensus
   management_io_observed: List<NonEmptyStr>
   power_components: List<ObservedComponent>
+  identified_signal_parts: List<IdentifiedSignalPart>
   unresolved_parts: List<NonEmptyStr>
 }
 
-// ── THE K1 UNIT ──────────────────────────────────────────────────────────────────────────────
-
-data k1_adjacency_main: PathMembership = OnPathByAdjacency {
-  basis: "left-edge close-up: the two MOSFETs, the fuse body at F300/F302 and the Coilcraft inductor sit together in the power stage below the top-edge input blocks, above J20; adjacency, not a traced net",
+// One housing's marking, read from an operator photograph 2026-10-15. Which of the two received
+// carriers it was photographed on was not recorded, so each observation carries it as a candidate for
+// its own housings, never as a reading of them.
+data operator_carrier_edge_family: ConnectorFamilyCandidate = ConnectorFamilyCandidate {
+  row: g97v22332hr,
+  marking_read: "G97V22332HR / 2248 / Amphenol",
+  read_on_unit: "one of the operator's two carriers; which one was not recorded",
 }
 
-data k1_adjacency_aux: PathMembership = OnPathByAdjacency {
-  basis: "left-edge close-up: fuse F1, the R010 shunt, the R150 resistors and the polymer capacitors cluster beside connector J20; adjacency, not a traced net",
-}
-
-// J20'S INPUT CIRCUIT AS MEASURED on the E1 carrier, 2026-10-15. The nine J20 supply pins, both ends
-// of F1 (it tests intact, so its ends read joined) and D2's tab nearer J20 form one node; the nine
-// J20 ground pins, D2's farther tab and the cans' negative terminals form ground. The cans' positive
-// terminals are NOT joined to J20's supply: a one-way junction separates them (0.523 V one way, open
-// the other; which way was not recorded). D2 itself reads 0.6 V forward from ground to J20's supply,
-// so its cathode is on the supply. R010, the switch candidate and the third can were not probed.
-data j20_supply_node: NonEmptyStr = "J20 supply"
-data board_ground_node: NonEmptyStr = "ground"
-
-data e1_j20_input_circuit: MeasuredCircuit = MeasuredCircuit {
-  unit: "the E1-revision P4261 the operator believes was bought from Central Valley",
-  read_on: "2026-10-15",
-  conditions: "unpowered, module removed, handheld multimeter in continuity and diode modes",
-  nodes: [
-    CircuitNode { name: j20_supply_node, terminals: ["J20 supply row (9 pins)", "F1 end nearer J20", "F1 end farther from J20", "D2 tab nearer J20"] },
-    CircuitNode { name: board_ground_node, terminals: ["J20 ground row (9 pins)", "mounting-hole copper ring", "D2 tab farther from J20", "C10_P5 negative", "C12_P5 negative"] },
-    CircuitNode { name: "capacitor rail", terminals: ["C10_P5 positive", "C12_P5 positive"] },
-  ],
-  junctions: [
-    JunctionReading { between: [board_ground_node, j20_supply_node], forward_millivolts: 600, direction: ForwardFrom { anode_node: board_ground_node, cathode_node: j20_supply_node }, reverse_open: false },
-    JunctionReading { between: ["capacitor rail", j20_supply_node], forward_millivolts: 523, direction: DirectionUnrecorded, reverse_open: true },
-  ],
-}
+// ── THE MEASURED CIRCUIT AND ITS DEDUCTIONS ──────────────────────────────────────────────────
 
 fn node_of(c: MeasuredCircuit, terminal: NonEmptyStr) -> NonEmptyStr? {
   match filter(c.nodes, n => any(n.terminals, t => t == terminal)).first() {
@@ -177,43 +189,120 @@ fn on_node(c: MeasuredCircuit, terminal: NonEmptyStr, node: NonEmptyStr) -> Bool
   }
 }
 
-// THE DEDUCTION. A part whose positive terminal is on the input's supply node and whose return
-// terminal is on ground is across that input, and the evidence says so from the circuit itself; any
-// other part keeps the membership it would have without the circuit.
-fn membership_by_circuit(c: MeasuredCircuit, positive: NonEmptyStr, negative: NonEmptyStr, supply: NonEmptyStr, otherwise: PathMembership) -> PathMembership {
-  if on_node(c: c, terminal: positive, node: supply) && on_node(c: c, terminal: negative, node: board_ground_node) {
+fn pair_joins(p: NodePairReadings, a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  any(p.nodes, n => n == a) && any(p.nodes, n => n == b)
+}
+
+fn readings_between(c: MeasuredCircuit, a: NonEmptyStr, b: NonEmptyStr) -> List<DiodeModeReading> {
+  flat_map(filter(c.diode_readings, p => pair_joins(p: p, a: a, b: b)), p => p.readings)
+}
+
+fn reading_orientation(r: DiodeModeReading) -> JunctionOrientation {
+  match r.display {
+    OverLimit => OrientationUnread
+    ForwardMillivolts { millivolts: _ } => match r.red_on {
+      ProbePlacementUnrecorded => OrientationUnread
+      OnNode { node: anode } => match r.black_on {
+        ProbePlacementUnrecorded => OrientationUnread
+        OnNode { node: cathode } => CathodeOn { cathode_node: cathode, anode_node: anode }
+      }
+    }
+  }
+}
+
+fn is_oriented(o: JunctionOrientation) -> Bool {
+  match o {
+    CathodeOn { cathode_node: _, anode_node: _ } => true
+    OrientationUnread => false
+  }
+}
+
+// The orientation the raw readings between two nodes establish, if any reading establishes one.
+fn orientation_between(c: MeasuredCircuit, a: NonEmptyStr, b: NonEmptyStr) -> JunctionOrientation {
+  match filter(map(readings_between(c: c, a: a, b: b), r => reading_orientation(r: r)), o => is_oriented(o: o)).first() {
+    Absent => OrientationUnread
+    Present { value: o } => o
+  }
+}
+
+fn probe_text(p: ProbePoint) -> String {
+  match p {
+    OnNode { node: n } => join(["'", n as String, "'"], "")
+    ProbePlacementUnrecorded => "an unrecorded node"
+  }
+}
+
+fn display_text(d: MeterDisplay) -> String {
+  match d {
+    ForwardMillivolts { millivolts: mv } => join([to_string(mv), " mV"], "")
+    OverLimit => "over limit (open)"
+  }
+}
+
+fn reading_text(r: DiodeModeReading) -> String {
+  join(["red on ", probe_text(p: r.red_on), ", black on ", probe_text(p: r.black_on), ": ", display_text(d: r.display)], "")
+}
+
+fn junction_text(c: MeasuredCircuit, a: NonEmptyStr, b: NonEmptyStr) -> String {
+  let rs = readings_between(c: c, a: a, b: b)
+  match rs.first() {
+    Absent => "no diode-mode reading between these nodes"
+    Present { value: _ } => join([
+      "diode mode: ", join(map(rs, r => reading_text(r: r)), "; "),
+      if count(rs) == 1 { "; the reverse direction was not read" } else { "" },
+      match orientation_between(c: c, a: a, b: b) {
+        CathodeOn { cathode_node: k, anode_node: _ } => join(["; cathode on '", k as String, "'"], "")
+        OrientationUnread => "; orientation not established"
+      },
+    ], "")
+  }
+}
+
+// THE DEDUCTION. A part every one of whose positive terminals is on the input's supply node, and every
+// one of whose return terminals is on ground, is across that input; the evidence is rendered from the
+// circuit itself, raw diode readings included. Any other part keeps the membership it would have
+// without the circuit.
+fn membership_by_circuit(c: MeasuredCircuit, positives: List<NonEmptyStr>, returns: List<NonEmptyStr>, supply: NonEmptyStr, ground: NonEmptyStr, otherwise: PathMembership) -> PathMembership {
+  let placed = count(positives) > 0 && count(returns) > 0
+    && all(positives, t => on_node(c: c, terminal: t, node: supply))
+    && all(returns, t => on_node(c: c, terminal: t, node: ground))
+  if placed {
     RatingAcrossInputRail { evidence: join([
-      "measured circuit (", c.unit as String, ", ", c.read_on as String, ", ", c.conditions as String, "): '", positive as String,
-      "' is on node '", supply as String, "' and '", negative as String, "' is on node '", board_ground_node as String, "'",
+      "measured circuit on asset ", c.asset as String, " (", c.read_on as String, ", ", c.conditions as String, "): ",
+      join(map(positives, t => join(["'", t as String, "'"], "")), ", "), " on node '", supply as String, "', ",
+      join(map(returns, t => join(["'", t as String, "'"], "")), ", "), " on node '", ground as String, "'; ",
+      junction_text(c: c, a: ground, b: supply),
     ], "") as NonEmptyStr }
   } else { otherwise }
 }
 
-// THE CAPACITORS' RAIL IS NOT SHOWN TO BE J20'S. Their rating is now a cited fact (63 V); what is not
-// established is that the rail they sit on is J20's input, so they stay placed by adjacency and bound
-// nothing. The reading that would place them: their positive terminal shown joined to J20's supply
-// pins with the board powered, or the board's schematic.
-data k1_aux_caps_membership: PathMembership = OnPathByAdjacency {
-  basis: "operator continuity readings on the E1 carrier, unpowered, 2026-10-15: each can's negative terminal is tied to ground; its positive terminal is NOT tied to J20's supply pins, and a diode-mode reading between them gives 0.523 V one way and open the other -- a one-way junction separates them, consistent with the body diode of the switch between R010 and the cans, and equally with a converter's switch, which would put the cans on a different rail",
+// ── THE K1 UNIT (listing photographs) ────────────────────────────────────────────────────────
+
+data k1_adjacency_grey: PathMembership = OnPathByAdjacency {
+  basis: "left-edge close-up: the two MOSFETs, the fuse body at F300/F302 and the Coilcraft inductor sit together in the power stage below the top-edge grey blocks, above J20; adjacency, not a traced net",
 }
+
+data k1_adjacency_j20: PathMembership = OnPathByAdjacency {
+  basis: "left-edge close-up: fuse F1, the R010 shunt, the R150 resistors and the polymer capacitors cluster beside connector J20; adjacency, not a traced net",
+}
+
+data polymer_cap_discriminator: NonEmptyStr = "read the rated voltage from the maker's datasheet for the series printed as 'ZU' (or measure the can's diameter and height to find it). 'J' is NOT decoded as 6.3 V: that EIA letter convention belongs to tantalum and some polymer-chip lines, and assuming it here would invent a rating" as NonEmptyStr
 
 data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   labels: [
     "sticker: Model: P4261, 694-24261-0000-100 K1, Made In USA. The listing photographs show TWO serials on this label, S/N 1582023110038 in one close-up and S/N 1582023110033 in another, so the listing photographed more than one unit (or one was misread); the received unit's serial is unread",
     "silkscreen: 'Rework' above '180-14261-DAAF-A01' -- a printed marking; whether rework was performed is unknown",
-    "sticker on the top edge between the two grey blocks: 'REV. 215-EV1 / SN.1582023110033' (photograph supplied by the operator 2026-10-15; the serial is one of the two in the listing photographs). '215' matches the module part number 699-2G530-0215; whether it names the module variant the board is built for is not established",
+    "a second sticker on the top edge between the grey blocks, in a photograph the operator supplied 2026-10-15 of a board carrying S/N 1582023110033 -- one of the two serials in this listing's photographs: 'REV. 215-EV1' (a zoomed crop reads 215; a reviewer read 216). What the revision names is not established, and which received board carries this sticker is unread",
   ],
   module_receptacles: ["J3", "J4"],
-  main_input_connectors: "two large grey blind-mate blocks on the top edge, J2 silkscreened beside the left one, each a grid of small contacts (4 rows of 8 to 9 cells as photographed) under a row of larger openings -- a mixed power-and-signal board-to-board layout by eye (TE's MULTI-BEAM XLE family has been proposed as a visual candidate, unconfirmed); maker, part number and pin assignment unread. If they are blind-mate connectors, they mated a power-distribution or midplane board that is not in hand. That they carry the main input is itself not established: the main-stage fuse and FETs sit beside them by adjacency, and on the Ng reference board (a sibling two-module NVIDIA board, not a P4261) similar edge connectors are unoccupied in the working build",
-  auxiliary_connector: "J20, a black shrouded 2 x 9 power receptacle on the left edge, its positions keyed square and rounded; a power input by continuity (auxiliary_connector_rows): one row of nine to ground, the other row of nine joined and tied to fuse F1, which tests intact. Its voltage is unread, and which physical row is which was not recorded: re-read polarity before any connection",
-  auxiliary_connector_positions: 18,
-  auxiliary_connector_rows: [
-    PinRowContinuity { pins: 9, tied_to: ToGround, tied_together: true },
-    PinRowContinuity { pins: 9, tied_to: ToFuse { designator: "F1" }, tied_together: true },
-  ],
+  grey_edge_connectors: "two large grey blocks on the top edge; position count, rating and pin assignment unread",
+  j20_connector: "J20, a black shrouded two-row power-style receptacle on the left edge, its 16 positions counted from a listing photograph (the E1 carrier, read in hand, has 18: recount on this unit); rating and pin assignment unread",
+  j20_positions: 16,
+  j20_rows: [],
   edge_high_speed_connectors: CensusPartial {
     counted_at_least: 10,
-    obligation: "confirm the count on this unit and photograph each J-number. FAMILY READ 2026-10-15: one housing's marking on the operator's board reads 'G97V22332HR / 2248 / Amphenol', which DigiKey lists as Amphenol's Mini Cool Edge IO series, a 74-position dual-row receptacle at 0.60 mm pitch -- the MCIO family; the other receptacles are assumed alike until read. Before that reading, the leading candidate was vertical 74-contact MCIO, from a close-up whose shell, open top and paired latch windows match Amphenol's published MCIO receptacles (a visual match, no part number read), and ASRock's documented GH200 carrier ARLINGTON-MB uses six MCIO PCIe 5.0 x8 connectors. A 74-contact MCIO is not thereby a PCIe x8 port on P4261: what this board routes through each one is a separate fact. A listing photograph of a P4261 (Central Valley watermark, label reading -DAAF-000 rather than this unit's -A01) shows ten narrow shrouded receptacles: two on one long edge's centre, three plus one at that edge's far corner, one mid-way down the short edge and three on the opposite corner. GH200 exposes 64 PCIe Gen5 lanes (whitepaper Table 1), which would fill eight x8 connectors, a consistency check rather than an identification",
+    obligation: "confirm the count on this unit and name the family by reading one housing's marking or test-fitting a known MCIO 8i cable unpowered (MCIO SFF-TA-1016 and SlimSAS SFF-8654 do not mate). Leading candidate: vertical 74-contact MCIO, from a close-up whose shell, open top and paired latch windows match Amphenol's published MCIO receptacles (a visual match, no part number read), and ASRock's documented GH200 carrier ARLINGTON-MB uses six MCIO PCIe 5.0 x8 connectors. A 74-contact MCIO is not thereby a PCIe x8 port on P4261: what this board routes through each one is a separate fact. A listing photograph of a P4261 (Central Valley watermark, label reading -DAAF-000 rather than this unit's -A01) shows ten narrow shrouded receptacles: two on one long edge's centre, three plus one at that edge's far corner, one mid-way down the short edge and three on the opposite corner. GH200 exposes 64 PCIe Gen5 lanes (whitepaper Table 1), which would fill eight x8 connectors, a consistency check rather than an identification",
+    family_candidate: Present { value: operator_carrier_edge_family },
   },
   management_io_observed: [
     "one small metal receptacle on the edge beside the two thin white flat-cable connectors, shaped like micro-USB (seen in the listing photograph; unconfirmed on this unit); a micro-USB console is the pattern NVIDIA's MGX GH200 guide uses for its BMC UART, but no controller behind it is identified",
@@ -224,8 +313,8 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       quantity: 2,
       role: "N-channel MOSFET pair in the main input stage",
       identification: IdentifiedByDatasheetMarking { row: ipb017n10n5lf, marking_read: "017N10LF, lot line HAL225" },
-      path: MainInputPath,
-      membership: k1_adjacency_main,
+      path: GreyBlindMatePath,
+      membership: k1_adjacency_grey,
     },
     ObservedComponent {
       designators: ["F300", "F302"],
@@ -234,74 +323,58 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       identification: RatingPrintedOnBody {
         voltage: Present { value: ComponentVoltageRating { kind: FuseInterruptRating, maximum: volt(count: 75) } },
         current: Present { value: ampere(count: 100) },
-        marking_read: "LF 75V 100A (the 'LF' maker glyph read 2026-10-15; Littelfuse's 881 series sells a 75 VDC / 100 A part, 0881100, and a sibling 881 part is listed with the marking 'LF 75V 60A' -- a pattern, the 100 A marking itself not read from a Littelfuse table)",
+        marking_read: "75V 100A (leading maker glyph not legible)",
       },
-      path: MainInputPath,
-      membership: k1_adjacency_main,
+      path: GreyBlindMatePath,
+      membership: k1_adjacency_grey,
     },
     ObservedComponent {
       designators: [],
       quantity: 1,
       role: "power inductor in the main input stage",
       identification: MarkingUnresolved { marking_read: "A850 / Coilcraft / D", discriminator: "look up Coilcraft's part for code A850 and read its current and inductance" },
-      path: MainInputPath,
-      membership: k1_adjacency_main,
+      path: GreyBlindMatePath,
+      membership: k1_adjacency_grey,
     },
     ObservedComponent {
       designators: ["D2"],
-      quantity: 1,
-      role: "unidirectional TVS diode beside J20, in an SMC-class package",
-      identification: IdentifiedByDatasheetMarking { row: tvs_5_0smdj60a, marking_read: "5PGK / ZCN5U under a boxed maker logo (read 2026-10-15 from an in-focus close-up; the earlier reading '5P0X / ZCNSU' was a misread). 5PGK is 5.0SMDJ60A in Bourns's marking table; the logo is not Bourns-identified, so the match is by code" },
-      path: AuxiliaryInputPath,
-      membership: membership_by_circuit(c: e1_j20_input_circuit, positive: "D2 tab nearer J20", negative: "D2 tab farther from J20", supply: j20_supply_node, otherwise: k1_adjacency_aux),
-    },
-    ObservedComponent {
-      designators: [],
-      quantity: 1,
-      role: "diode in the main input stage, SMA/SMB-class package",
-      identification: MarkingUnresolved { marking_read: "not read separately; the 2026-10-04 transcription '5P0X / ZCNSU' may have been of D2", discriminator: "a close-up of this diode's own marking" },
-      path: MainInputPath,
-      membership: k1_adjacency_main,
+      quantity: 2,
+      role: "diodes in SMA/SMB-class packages, one in the main stage and D2 beside J20",
+      identification: MarkingUnresolved { marking_read: "5P0X / ZCNSU (as read)", discriminator: "a sharper photograph of the marking, matched to a diode maker's marking table" },
+      path: J20InputPath,
+      membership: k1_adjacency_j20,
     },
     ObservedComponent {
       designators: ["F1"],
       quantity: 1,
       role: "fuse beside J20",
-      identification: RatingPrintedOnBody { voltage: Absent, current: Present { value: ampere(count: 12) }, marking_read: "LF 12A (read 2026-10-15; the same 'LF' maker glyph as F300)" },
-      path: AuxiliaryInputPath,
-      membership: k1_adjacency_aux,
+      identification: RatingPrintedOnBody { voltage: Absent, current: Present { value: ampere(count: 12) }, marking_read: "12A (leading maker glyph not legible)" },
+      path: J20InputPath,
+      membership: k1_adjacency_j20,
     },
     ObservedComponent {
       designators: [],
       quantity: 1,
       role: "current-sense resistor beside F1",
       identification: ResistanceCodeRead { milliohms: 10, marking_read: "R010" },
-      path: AuxiliaryInputPath,
-      membership: k1_adjacency_aux,
+      path: J20InputPath,
+      membership: k1_adjacency_j20,
     },
     ObservedComponent {
       designators: [],
       quantity: 2,
       role: "resistors marked R150, one above the upper capacitor and one below F1",
       identification: ResistanceCodeRead { milliohms: 150, marking_read: "R150" },
-      path: AuxiliaryInputPath,
-      membership: k1_adjacency_aux,
+      path: J20InputPath,
+      membership: k1_adjacency_j20,
     },
     ObservedComponent {
       designators: ["C10_P5", "C12_P5"],
       quantity: 3,
-      role: "SMD hybrid polymer capacitors, 150 uF 63 V; the third sits below J20 by U522",
-      identification: IdentifiedByDatasheetMarking { row: eeh_zu1j151, marking_read: "150 / J ZU / 26AL on the two cans beside J20 (operator close-ups, 2026-10-15; an earlier transcription from listing photographs gave the lot line as 29AH)" },
-      path: AuxiliaryInputPath,
-      membership: membership_by_circuit(c: e1_j20_input_circuit, positive: "C10_P5 positive", negative: "C10_P5 negative", supply: j20_supply_node, otherwise: k1_aux_caps_membership),
-    },
-    ObservedComponent {
-      designators: [],
-      quantity: 1,
-      role: "switch candidate between the R010 shunt and the capacitors, in a flat leadless power package; Q1_P1, Q4_P1 and Q6_P1 are silkscreened beside it",
-      identification: MarkingUnresolved { marking_read: "...08N10 / SWAC (partly legible, photographed upside down, 2026-10-15)", discriminator: "a sharp close-up of the marking matched to its maker's marking table; 'N10' is how Infineon names its 100 V parts, a lead rather than an identification" },
-      path: AuxiliaryInputPath,
-      membership: k1_adjacency_aux,
+      role: "SMD polymer/aluminium capacitors, 150 uF by their first line; the third sits below J20 by U522",
+      identification: MarkingUnresolved { marking_read: "150 / J ZU / 29AH on all three (C10_P5 is photographed upside down)", discriminator: polymer_cap_discriminator },
+      path: J20InputPath,
+      membership: k1_adjacency_j20,
     },
   ],
   unresolved_parts: [
@@ -310,7 +383,157 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     "three small BGAs beside U4 marked '2FA17 / RW186' (two) and 'RW251': two-line marks in Micron's FBGA format, read through Micron's FBGA decoder; a neighbouring code (RW187) is identified elsewhere as Micron serial NOR boot flash, so configuration or firmware flash is the leading reading, undecoded",
     "two thin white flat-cable connectors at one corner: low-speed sideband by shape, function unread",
     "PCB fab mark 'TTM 94V0 RFB1 2923' in the listing photograph: TTM Technologies, UL 94V-0; '2923' reads as a week-29-of-2023 date code, format unconfirmed",
-    "U522, beside J20's end, reads 'TI 31 / T275' (2026-10-15): TI's TMP275 datasheet ordering table gives T275 as the marking of TMP275 in the 8-pin DGK (VSSOP) package -- a digital temperature sensor on I2C/SMBus with an ALERT output, not a power controller. Where its SDA, SCL and ALERT pins go (J20, the grey edge connectors, U4) is unread, and is a lead to the board's management path",
+    "U522 and the 28-pin TSSOP below the lower capacitor: markings not legible in the close-up",
+  ],
+  identified_signal_parts: [],
+}
+
+// ── THE E1 UNIT (the operator's bench readings, asset p4261_e1_b) ──────────────────────────────
+//
+// J20'S INPUT CIRCUIT AS MEASURED, 2026-10-15. The nine J20 supply pins, both ends of F1 (it tests
+// intact, so its ends read joined) and D2's tab nearer J20 form one node; the nine J20 ground pins,
+// D2's farther tab and the two probed cans' negative terminals form ground. Those cans' positive
+// terminals are NOT joined to J20's supply: two diode-mode readings between them gave 523 mV and open,
+// with the probe placement unrecorded. D2 read 600 mV with red on ground and black on J20 supply; its
+// reverse direction was not read. R010, the switch candidate and the third can were not probed.
+data j20_supply_node: NonEmptyStr = "J20 supply"
+data board_ground_node: NonEmptyStr = "ground"
+data capacitor_rail_node: NonEmptyStr = "capacitor rail"
+
+data e1_j20_input_circuit: MeasuredCircuit = MeasuredCircuit {
+  asset: p4261_e1_b,
+  read_on: "2026-10-15",
+  conditions: "unpowered, module removed, handheld multimeter in continuity and diode modes",
+  nodes: [
+    CircuitNode { name: j20_supply_node, terminals: ["J20 supply row (9 pins)", "F1 end nearer J20", "F1 end farther from J20", "D2 tab nearer J20"] },
+    CircuitNode { name: board_ground_node, terminals: ["J20 ground row (9 pins)", "mounting-hole copper ring", "D2 tab farther from J20", "C10_P5 negative", "C12_P5 negative"] },
+    CircuitNode { name: capacitor_rail_node, terminals: ["C10_P5 positive", "C12_P5 positive"] },
+  ],
+  diode_readings: [
+    NodePairReadings {
+      nodes: [board_ground_node, j20_supply_node],
+      readings: [
+        DiodeModeReading { red_on: OnNode { node: board_ground_node }, black_on: OnNode { node: j20_supply_node }, display: ForwardMillivolts { millivolts: 600 } },
+      ],
+    },
+    NodePairReadings {
+      nodes: [capacitor_rail_node, j20_supply_node],
+      readings: [
+        DiodeModeReading { red_on: ProbePlacementUnrecorded, black_on: ProbePlacementUnrecorded, display: ForwardMillivolts { millivolts: 523 } },
+        DiodeModeReading { red_on: ProbePlacementUnrecorded, black_on: ProbePlacementUnrecorded, display: OverLimit },
+      ],
+    },
+  ],
+}
+
+data e1_adjacency_j20: PathMembership = OnPathByAdjacency {
+  basis: "operator close-ups of the E1 carrier, 2026-10-15: the part sits beside J20 and was not probed; adjacency, not a traced net",
+}
+
+data e1_adjacency_grey: PathMembership = OnPathByAdjacency {
+  basis: "operator close-up of the E1 carrier, 2026-10-15: F300 sits toward the top edge above J20's region and was not probed; adjacency, not a traced net",
+}
+
+// The probed cans' fallback when the circuit does not place them across J20 -- which it does not.
+data e1_caps_not_across_j20: PathMembership = OnPathByAdjacency {
+  basis: "measured circuit on the E1 carrier: the cans' negative terminals are on ground, their positive terminals on a separate 'capacitor rail' node, joined to J20's supply only through a one-way junction (523 mV / open, probe placement unrecorded) -- consistent with the body diode of the switch between R010 and the cans, and equally with a converter's switch, which would put the cans on a different rail",
+}
+
+data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
+  labels: [
+    "model label: revision E1, as read by the operator 2026-10-15; the full part number and serial are unread",
+  ],
+  module_receptacles: [],
+  grey_edge_connectors: "not photographed or read on this unit",
+  j20_connector: "J20, a black shrouded 2 x 9 receptacle on the left edge, its positions keyed square and rounded; a power input by continuity (j20_rows): one row of nine to ground, the other row of nine joined and tied to fuse F1, which tests intact. Which physical row is which was not recorded: re-read polarity before any connection",
+  j20_positions: 18,
+  j20_rows: [
+    PinRowContinuity { pins: 9, tied_to: ToGround, tied_together: true },
+    PinRowContinuity { pins: 9, tied_to: ToFuse { designator: "F1" }, tied_together: true },
+  ],
+  edge_high_speed_connectors: CensusPartial {
+    counted_at_least: 0,
+    obligation: "count this unit's edge receptacles, read their J-numbers and one housing's marking",
+    family_candidate: Present { value: operator_carrier_edge_family },
+  },
+  management_io_observed: [],
+  power_components: [
+    ObservedComponent {
+      designators: ["F300"],
+      quantity: 1,
+      role: "fuse toward the top edge, above J20's region",
+      identification: RatingPrintedOnBody {
+        voltage: Present { value: ComponentVoltageRating { kind: FuseInterruptRating, maximum: volt(count: 75) } },
+        current: Present { value: ampere(count: 100) },
+        marking_read: "LF 75V 100A (Littelfuse's 881 series sells a 75 VDC / 100 A part, 0881100, and lists a sibling's marking as 'LF 75V 60A' -- a pattern, the 100 A marking itself not read from a Littelfuse table)",
+      },
+      path: GreyBlindMatePath,
+      membership: e1_adjacency_grey,
+    },
+    ObservedComponent {
+      designators: ["D2"],
+      quantity: 1,
+      role: "unidirectional TVS diode beside J20, in an SMC-class package",
+      identification: MarkingSharedByMakers {
+        rows: [tvs_5_0smdj60a, aos_tvs_5_0smdj60a],
+        marking_read: "5PGK / ZCN5U under a boxed maker logo that is not identified: 5PGK is 5.0SMDJ60A in both Bourns's and Alpha and Omega Semiconductor's marking tables",
+      },
+      path: J20InputPath,
+      membership: membership_by_circuit(c: e1_j20_input_circuit, positives: ["D2 tab nearer J20"], returns: ["D2 tab farther from J20"], supply: j20_supply_node, ground: board_ground_node, otherwise: e1_adjacency_j20),
+    },
+    ObservedComponent {
+      designators: ["F1"],
+      quantity: 1,
+      role: "fuse in series with J20's supply row (both ends on the J20 supply node)",
+      identification: RatingPrintedOnBody { voltage: Absent, current: Present { value: ampere(count: 12) }, marking_read: "LF 12A" },
+      path: J20InputPath,
+      membership: e1_adjacency_j20,
+    },
+    ObservedComponent {
+      designators: [],
+      quantity: 1,
+      role: "current-sense resistor beside F1",
+      identification: ResistanceCodeRead { milliohms: 10, marking_read: "R010" },
+      path: J20InputPath,
+      membership: e1_adjacency_j20,
+    },
+    ObservedComponent {
+      designators: [],
+      quantity: 3,
+      role: "resistors marked R150 around J20's capacitors",
+      identification: ResistanceCodeRead { milliohms: 150, marking_read: "R150" },
+      path: J20InputPath,
+      membership: e1_adjacency_j20,
+    },
+    ObservedComponent {
+      designators: ["C10_P5", "C12_P5"],
+      quantity: 2,
+      role: "SMD hybrid polymer capacitors beside J20, 150 uF 63 V, probed",
+      identification: IdentifiedByDatasheetMarking { row: eeh_zu1j151, marking_read: "150 / J ZU / 26AL on both cans" },
+      path: J20InputPath,
+      membership: membership_by_circuit(c: e1_j20_input_circuit, positives: ["C10_P5 positive", "C12_P5 positive"], returns: ["C10_P5 negative", "C12_P5 negative"], supply: j20_supply_node, ground: board_ground_node, otherwise: e1_caps_not_across_j20),
+    },
+    ObservedComponent {
+      designators: [],
+      quantity: 1,
+      role: "third SMD can below J20 by U522, not probed",
+      identification: MarkingUnresolved { marking_read: "partly visible '...ZU / ...AL'", discriminator: "a full read of its top marking" },
+      path: J20InputPath,
+      membership: e1_adjacency_j20,
+    },
+    ObservedComponent {
+      designators: [],
+      quantity: 1,
+      role: "switch candidate between the R010 shunt and the capacitors, in a flat leadless power package; Q1_P1, Q4_P1 and Q6_P1 are silkscreened beside it",
+      identification: MarkingUnresolved { marking_read: "...08N10 / SWAC (partly legible, photographed upside down)", discriminator: "a sharp close-up of the marking matched to its maker's marking table; 'N10' is how Infineon names its 100 V parts, a lead rather than an identification" },
+      path: J20InputPath,
+      membership: e1_adjacency_j20,
+    },
+  ],
+  identified_signal_parts: [
+    IdentifiedSignalPart { designators: ["U522"], marking_read: "TI 31 / T275", row: tmp275_dgk },
+  ],
+  unresolved_parts: [
     "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up",
   ],
 }
@@ -328,9 +551,19 @@ type InputVoltageBound
   = BoundByRatedParts { maximum: Volt, limiting: NonEmptyStr, relation: NonEmptyStr }
   | NoEstablishedBound { observed_ratings: List<NonEmptyStr> }
 
+// Several makers' rows for one code: the lowest rating among them is carried, so the class bounds no
+// more than its weakest candidate allows.
+fn lowest_rating(rows: List<ElectronicComponentRow>) -> ComponentVoltageRating? {
+  match rows.first() {
+    Absent => Absent
+    Present { value: first } => Present { value: fold(rows, init: first.voltage_rating, f: (acc, r) => if volt_count(v: r.voltage_rating.maximum) < volt_count(v: acc.maximum) { r.voltage_rating } else { acc }) }
+  }
+}
+
 fn component_rating(c: ObservedComponent) -> ComponentVoltageRating? {
   match c.identification {
     IdentifiedByDatasheetMarking { row: r, marking_read: _ } => Present { value: r.voltage_rating }
+    MarkingSharedByMakers { rows: rs, marking_read: _ } => lowest_rating(rows: rs)
     RatingPrintedOnBody { voltage: v, current: _, marking_read: _ } => v
     ResistanceCodeRead { milliohms: _, marking_read: _ } => Absent
     MarkingUnresolved { marking_read: _, discriminator: _ } => Absent
@@ -339,8 +572,8 @@ fn component_rating(c: ObservedComponent) -> ComponentVoltageRating? {
 
 fn path_key(p: PowerPath) -> Nat {
   match p {
-    MainInputPath => 0
-    AuxiliaryInputPath => 1
+    GreyBlindMatePath => 0
+    J20InputPath => 1
   }
 }
 
@@ -418,13 +651,13 @@ type InvestigationHypothesis {
   decided_by: NonEmptyStr
 }
 
-data p4261_main_bus_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
-  claim: "the P4261 main input is a 48-54 V-class bus",
+data p4261_grey_path_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "the grey blind-mate connectors carry the P4261's main input, and it is a 48-54 V-class bus",
   sources: [
-    "the main-stage MOSFETs are Infineon IPB017N10N5LF, a 100 V part its vendor presents for hot-swap and e-fuse use and characterizes at VDS=56V (extdeps.electronic_component.infineon_ipb017n10n5lf): consistent with a 48-54 V stage, not a determination of one",
+    "the input-stage MOSFETs beside the grey blocks are Infineon IPB017N10N5LF, a 100 V part its vendor presents for hot-swap and e-fuse use and characterizes at VDS=56V (extdeps.electronic_component.infineon_ipb017n10n5lf): consistent with a 48-54 V stage, not a determination of one",
     "the module part number 699-2G530-0215 reads as SKU215, which an uncited earlier NVIDIA guide revision tied to a 54 V module rail (extdeps.systems.nvidia_gh200 gh200_rail_variants): a lead about the module, not the carrier's input",
   ],
-  decided_by: "the input rating read off the original power-distribution board or harness, the carrier's schematic or vendor documentation, or a measurement of the original system's supply output",
+  decided_by: "the grey blocks' power contacts traced to that stage on a measured circuit, plus the input rating read off the original power-distribution board or harness, the carrier's schematic or vendor documentation, or a measurement of the original system's supply output",
 }
 
 fn bound_text(b: InputVoltageBound) -> String {
@@ -461,23 +694,40 @@ fn rows_text(rows: List<PinRowContinuity>) -> String {
 
 fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
   join([
-    "main input: ", bound_text(b: path_bound(layout: layout, path: MainInputPath)), ". ", hypothesis_text(h: p4261_main_bus_hypothesis),
-    ". Auxiliary input at ", layout.auxiliary_connector as String, " (", to_string(layout.auxiliary_connector_positions), " positions; ", rows_text(rows: layout.auxiliary_connector_rows), "): ",
-    bound_text(b: path_bound(layout: layout, path: AuxiliaryInputPath)),
-    ". The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
+    "grey blind-mate path: ", bound_text(b: path_bound(layout: layout, path: GreyBlindMatePath)), ". ", hypothesis_text(h: p4261_grey_path_hypothesis),
+    ". J20 input path at ", layout.j20_connector as String, " (", to_string(layout.j20_positions), " positions; ", rows_text(rows: layout.j20_rows), "): ",
+    bound_text(b: path_bound(layout: layout, path: J20InputPath)),
+    ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
+  ], "")
+}
+
+fn signal_part_text(p: IdentifiedSignalPart) -> String {
+  join([
+    join(map(p.designators, d => d as String), ", "), " ('", p.marking_read as String, "') is ", p.row.ordering_code as String, ", a ", p.row.function as String,
+    "; trace pins ", join(map(filter(p.row.pins, x => x.name != "GND" && x.name != "V+"), x => join([to_string(x.number), " ", x.name as String], "")), ", "),
   ], "")
 }
 
 fn management_io_text(layout: CarrierLayoutObservation) -> String {
-  match layout.management_io_observed.first() {
+  let io = match layout.management_io_observed.first() {
     Absent => "the photographed P4261 shows no RJ45, USB, video, console header or coin cell"
     Present { value: _ } => join(["the photographed P4261 shows no RJ45, video or coin cell; it shows ", join(map(layout.management_io_observed, s => s as String), "; ")], "")
+  }
+  match layout.identified_signal_parts.first() {
+    Absent => io
+    Present { value: _ } => join([io, ". Identified management-bus parts: ", join(map(layout.identified_signal_parts, p => signal_part_text(p: p)), "; ")], "")
   }
 }
 
 fn edge_connector_text(layout: CarrierLayoutObservation) -> String {
   match layout.edge_high_speed_connectors {
     CensusComplete { count: n, family: f } => join([to_string(n), " ", f as String, " connectors"], "")
-    CensusPartial { counted_at_least: n, obligation: o } => join(["at least ", to_string(n), " cabled high-speed connectors (", o as String, ")"], "")
+    CensusPartial { counted_at_least: n, obligation: o, family_candidate: f } => join([
+      "at least ", to_string(n), " cabled high-speed connectors (", o as String, ")",
+      match f {
+        Absent => ""
+        Present { value: fc } => join(["; family candidate ", fc.row.ordering_code as String, " (", fc.row.series as String, ", ", to_string(fc.row.positions), " positions), marking '", fc.marking_read as String, "' read on ", fc.read_on_unit as String], "")
+      },
+    ], "")
   }
 }

@@ -1,0 +1,49 @@
+module extdeps.electronic_component.ti_tmp275
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.texas_instruments { texas_instruments }
+import extdeps.electronic_component.types { SignalComponentRow, DatasheetPin }
+
+// TI's TMP275 datasheet, SBOS363F (June 2006, revised May 2018), read 2026-10-15: the title "TMP275
+// +/-0.5 C Temperature Sensor With I2C and SMBus Interface in Industry Standard LM75 Form Factor and
+// Pinout", "Wide Supply Range: 2.7 V to 5.5 V", the D and DGK pin table, and the package option
+// addendum, which gives orderable TMP275AIDGKR (VSSOP, DGK, 8 pins) the part marking T275.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/lit/gpn/tmp275"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.ti_tmp275",
+      decl_name: "tmp275_dgk",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data tmp275_dgk: SignalComponentRow = SignalComponentRow {
+  vendor: texas_instruments,
+  ordering_code: "TMP275AIDGKR",
+  package: "VSSOP-8 (DGK)",
+  top_marking: "T275",
+  function: "digital temperature sensor with I2C and SMBus interface and an SMBus overtemperature alert",
+  supply_range: "2.7 V to 5.5 V",
+  pins: [
+    DatasheetPin { number: 1, name: "SDA", function: "serial data; open-drain, requires a pullup" },
+    DatasheetPin { number: 2, name: "SCL", function: "serial clock; requires a pullup" },
+    DatasheetPin { number: 3, name: "ALERT", function: "overtemperature alert; open-drain output, requires a pullup" },
+    DatasheetPin { number: 4, name: "GND", function: "ground" },
+    DatasheetPin { number: 5, name: "A2", function: "address select; to GND or V+" },
+    DatasheetPin { number: 6, name: "A1", function: "address select; to GND or V+" },
+    DatasheetPin { number: 7, name: "A0", function: "address select; to GND or V+" },
+    DatasheetPin { number: 8, name: "V+", function: "supply" },
+  ],
+}
