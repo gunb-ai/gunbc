@@ -4,7 +4,9 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr, String }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium }
 import gunbc.host.boot_medium { BootImageExport, BootMedium, stock_installer_boot_medium }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, ssh_target_wire }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
+import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import gunbc.machine_intake.mtcollins1_census_member_readback {
   census_member_readback_from_readings, census_member_readback_holds, render_census_member_readback,
   MemberReading, MemberRead, MemberUnread, IsoReading, IsoMeasured, IsoUnmeasured,
@@ -36,21 +38,26 @@ data census: BootMedium = mtcollins1_census_boot_medium(output_digest: census_is
 // export's SSH target differs: another endpoint, or another principal at the supported endpoint. Its
 // bytes live on an exporter these readers never read, so a successful readback from the supported one
 // would answer for bytes the medium did not name (side-chat review at cad3011782).
-fn census_at(endpoint: String, principal: String) -> BootMedium {
+// Another exporter host, by name, at the standard port.
+fn other_exporter_address() -> SocketAddress {
+  socket_address(host: host_by_name(name: HostName { name: DomainName { labels: ["fixture-other-exporter" as DnsLabel] }, qualification: PartiallyQualified }), port: 22)
+}
+
+fn census_at(address: SocketAddress, principal: String) -> BootMedium {
   BootMedium {
     image_name: census.image_name,
     digest: census.digest,
-    export: BootImageExport { target: SshTarget { endpoint: endpoint as NonEmptyStr, principal: principal as NonEmptyStr }, dir: census.export.dir },
+    export: BootImageExport { target: SshTarget { address: address, principal: principal as NonEmptyStr }, dir: census.export.dir },
     terminal: census.terminal,
   }
 }
 
 fn census_at_other_endpoint() -> BootMedium {
-  census_at(endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
+  census_at(address: other_exporter_address(), principal: census.export.target.principal as String)
 }
 
 fn census_as_other_principal() -> BootMedium {
-  census_at(endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
+  census_at(address: census.export.target.address, principal: "fixture-other-principal")
 }
 
 fn read(d: NonEmptyStr) -> MemberReading { MemberRead { digest: d } }
@@ -282,7 +289,7 @@ test fn a_reported_rm_failure_and_an_undispatched_rm_are_distinct_from_a_lost_re
 
 fn member_exporter_unsupported_naming(r: CensusMemberReadback, endpoint: String, principal: String) -> Bool {
   match r {
-    BootChainMediumExporterUnsupported { supported: _, named: n } => (n.target.endpoint as String) == endpoint && (n.target.principal as String) == principal
+    BootChainMediumExporterUnsupported { supported: _, named: n } => (ssh_target_wire(target: n.target) as String) == endpoint && (n.target.principal as String) == principal
     _ => false
   }
 }
@@ -293,7 +300,7 @@ test fn the_pin_gate_refuses_a_census_medium_naming_another_exporter() -> Bool {
   let e = census_at_other_endpoint()
   let p = census_as_other_principal()
   let pe = census.export.target.principal as String
-  let ee = census.export.target.endpoint as String
+  let ee = ssh_target_wire(target: census.export.target) as String
   (match census_pin_gate(medium: e, stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
     PinsRefused { readback: r } => member_exporter_unsupported_naming(r: r, endpoint: "fixture-other-exporter", principal: pe)
     PinsAdmitted { stock_iso: _, census_iso: _ } => false
@@ -302,7 +309,7 @@ test fn the_pin_gate_refuses_a_census_medium_naming_another_exporter() -> Bool {
       PinsRefused { readback: r } => member_exporter_unsupported_naming(r: r, endpoint: ee, principal: "fixture-other-principal")
       PinsAdmitted { stock_iso: _, census_iso: _ } => false
     })
-    && (match census_pin_gate(medium: census_at(endpoint: ee, principal: pe), stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
+    && (match census_pin_gate(medium: census_at(address: census.export.target.address, principal: pe), stock_iso: IsoMeasured { digest: stock_iso }, census_iso: IsoMeasured { digest: census_iso }) {
       PinsAdmitted { stock_iso: _, census_iso: _ } => true
       PinsRefused { readback: _ } => false
     })
@@ -314,5 +321,5 @@ test fn the_member_readback_refuses_another_exporter_before_any_leg() -> Bool {
   let ae = census_member_readback(medium: census_at_other_endpoint())
   let ap = census_member_readback(medium: census_as_other_principal())
   member_exporter_unsupported_naming(r: ae.readback, endpoint: "fixture-other-exporter", principal: census.export.target.principal as String) && !census_member_attempt_holds(attempt: ae)
-    && member_exporter_unsupported_naming(r: ap.readback, endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
+    && member_exporter_unsupported_naming(r: ap.readback, endpoint: ssh_target_wire(target: census.export.target) as String, principal: "fixture-other-principal")
 }

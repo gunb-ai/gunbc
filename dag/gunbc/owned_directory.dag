@@ -1,9 +1,9 @@
 module gunbc.owned_directory
 
 import std.types { String, NonEmptyStr, Bool, List, Int, FilePath }
-import std.algebra { trim }
+import std.algebra { trim, list_at_optional }
 import std.optional { Optional, Present, Absent }
-import v2.std.collection { list_at_optional }
+
 import extdeps.access.posix { FileMode, file_mode_octal, file_mode_of_octal_text }
 import extdeps.posix.identity { PosixOwnerNames, posix_owner_names_text }
 import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_argv }

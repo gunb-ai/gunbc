@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.one_type_variable_bound_to_two_distinct_coproducts
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data one_type_variable_bound_to_two_distinct_coproducts: RecurringFailureMode = RecurringFailureMode {
+  identity: "one_type_variable_bound_to_two_distinct_coproducts" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a generic fn `same_arm<T>(a: T, b: T)` is called with one argument of coproduct Pa and the other of a DIFFERENT coproduct Pb, so one type variable T is bound to two distinct declarations. It compiles and runs, answering false. (An `==` over `ConstructorTag<T>` against `ConstructorTag<U>` was probed earlier in the session but no probe for it is enrolled, so it is NOT claimed here.) This is DESIGN section 4b's compiler floor, `values inhabit declared types`, not a property of any carrier.",
+    "RECEIPT (executed 2026-10-14, remote runner, main b69fc48027 plus the probe modules cited as evidence, `gunbc run --claim-run`): v1 route (--source-root dag) and v2 route (--source-root src/v2) BOTH print `FAIL same_arm_one_t_two_coproducts_must_refuse`, a false verdict from a run that should have been a typecheck refusal. The same-coproduct controls pass on both routes: five PASS over a 12-variant payload-bearing coproduct, so the probe is not failing for an unrelated reason.",
+    "HARM: a silent wrong answer wherever a typed capability would be built on a generic parameter. A constructor-tag carrier keyed by T cannot refuse comparing a tag of one coproduct with a tag of another, which is the property that makes it better than a raw String discriminant. It is the hand-written mirror's own failure at scale: on a held branch of #14009 a mirror equated AttestationValidationCategoryAbsent with AttestationNonceMismatch, and nothing refused it.",
+    "RUNG FOUND AT: below mitigatable for this shape: the program is accepted and answers falsely. ACCEPTANCE LOCATED (receipt: quiet-hawk-507's locate probes, run after the b69fc48027 run below, which stays as the historical receipt that both routes accept): v1 `v1.compiler.infer` `unify_generics` binds first-wins and never compares a later actual (fix in #14037), and v2 `v2.compiler.infer` `infer_match_generic_formal`. Not separately measured: whether the `==` Equivalence judgment (#13938) also waives the type-argument check for `ConstructorTag<T>` against `ConstructorTag<U>`. RUNG HONESTY (review 80322): the enrolled probe is a POLARITY-red, not a discriminating RED on the acceptance path. It asserts a runtime value (`true`) that the correct runtime answer (`false`: distinct discriminant names) contradicts, so it reads red while the defect (the accepted cross-coproduct binding) is present, but it does not itself witness the acceptance, and once infer refuses the call it stops compiling rather than greening. The authorable RED is an expect-typecheck-refusal fixture handed to the compiler; PreVerdictCause has no arm for this class and the pre-verdict admission arm is not a harness for 'must be refused', so that harness is the missing capability and this class is held at its current rung until it exists. Variant names are corpus-global, so a same-arm-name variant of the probe cannot be written. CEILING: structurally guaranteed, the checker refusing a call where one type variable resolves to two distinct declarations. NEXT TRIGGER: the infer fix, scoped as its own lane by the debt-paydown parent because it touches load-bearing stages; the constructor-tag carrier work is gated on it through its RED (iii).",
+    "NOT SETTLED: whether the emitted Rust for a phantom `ConstructorTag<T>` builds (rustc E0392, unused type parameter). The standalone rustc check could not resolve the emitted crate's own imports, so it neither confirmed nor excluded E0392.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.constructor_tag_route_probe_red", decl_name: "same_arm_one_t_two_coproducts_must_refuse", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.manual.constructor_tag_route_probe_red", decl_name: "same_arm_one_t_two_coproducts_must_refuse", field: WholeDeclaration },
+  ],
+}

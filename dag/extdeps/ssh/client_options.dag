@@ -1,6 +1,6 @@
 module extdeps.ssh.client_options
 
-import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.types { NonEmptyStr, String, Bool, Int, List, Port }
 import std.measure { Second, second, second_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -110,7 +110,10 @@ type UpdateHostKeysValue
 // on TCP alone, which is how fleet-converge run 37156689444 sat ~1h inside one leg.
 // ConnectTimeout takes an Int because ssh_config(5) specifies seconds;
 // BatchMode takes a Bool because its domain is yes|no and Bool is that domain already grounded
-// (section 2: no net new concepts by re-invention).
+// (section 2: no net new concepts by re-invention). Port is ssh_config(5) "Specifies the port number to
+// connect on the remote host. The default is 22." -- carried as std.types Port, the grounded 1..65535 domain.
+// The arm is RemotePort, not Port, only because a variant named Port would shadow the std.types Port
+// type it carries in this module; the wire keyword is still "Port" (ssh_client_option_keyword).
 type SshClientOption
   = StrictHostKeyChecking { value: StrictHostKeyCheckingValue }
   | UserKnownHostsFile { path: NonEmptyStr }
@@ -131,6 +134,7 @@ type SshClientOption
   | PasswordAuthentication { enabled: Bool }
   | KbdInteractiveAuthentication { enabled: Bool }
   | User { name: NonEmptyStr }
+  | RemotePort { port: Port }
 
 // The ONE place each keyword's wire spelling lives. A rename upstream is a one-line edit here
 // rather than a corpus-wide grep.
@@ -155,6 +159,7 @@ fn ssh_client_option_keyword(option: SshClientOption) -> String {
     PasswordAuthentication { enabled: _ } => "PasswordAuthentication"
     KbdInteractiveAuthentication { enabled: _ } => "KbdInteractiveAuthentication"
     User { name: _ } => "User"
+    RemotePort { port: _ } => "Port"
   }
 }
 
@@ -205,6 +210,7 @@ fn ssh_client_option_value(option: SshClientOption) -> String {
     PasswordAuthentication { enabled: e } => if e { "yes" } else { "no" }
     KbdInteractiveAuthentication { enabled: e } => if e { "yes" } else { "no" }
     User { name: n } => n as String
+    RemotePort { port: n } => to_string(n)
   }
 }
 
@@ -362,5 +368,6 @@ fn serialize_ssh_config_file_flag(option: SshClientOption) -> List<String> {
     PasswordAuthentication { enabled: _ } => serialize_ssh_client_option(option: option)
     KbdInteractiveAuthentication { enabled: _ } => serialize_ssh_client_option(option: option)
     User { name: _ } => serialize_ssh_client_option(option: option)
+    RemotePort { port: _ } => serialize_ssh_client_option(option: option)
   }
 }

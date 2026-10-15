@@ -2,8 +2,8 @@ module v2.std.compilers.cli_surface
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty, list_snoc_item, fold_list }
-import std.types { NonEmptyStr, String, List }
-import v2.std.collection { Map }
+import std.types { NonEmptyStr, String, List, Map }
+
 import v2.std.compilers.target_model {
   BoundToken,
   ConcreteSyntaxToken,
@@ -11,7 +11,7 @@ import v2.std.compilers.target_model {
   LexRules,
   lex_rules_literal_for_class
 }
-import v2.std.collection { map_get_checked }
+import v2.std.witness { map_get_checked }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
