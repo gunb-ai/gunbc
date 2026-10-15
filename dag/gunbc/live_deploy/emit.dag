@@ -3612,7 +3612,11 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
       deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
+<<<<<<< HEAD
     ], concat(approval_broker_lifecycle_steps(spec: spec), attempt_system_unit_grant_steps(spec: spec, principal: principal, revision: revision)))
+=======
+    ], concat(approval_broker_lifecycle_steps(spec: spec), attempt_system_unit_grant_steps(spec: spec, principal: principal))))
+>>>>>>> origin/session/bold-dove-819
     PublicationHelperPathUnit => concat(
       concat(
         apply_publication_spool_steps(spec: spec),
