@@ -304,3 +304,9 @@ test fn kpi_is_a_value() -> Bool { kpi_int() != Absent }
 test fn kpi_is_not_8() -> Bool { kpi_int() != Present { value: 8 } }
 test fn kpi_is_not_0() -> Bool { kpi_int() != Present { value: 0 } }
 test fn kpi_reason_present() -> Bool { kpa_reason() != Absent }
+test fn kpj_reason_is_absent() -> Bool { kpa_reason() == Absent }
+test fn kpj_accepted() -> Bool { match cref_eval_of_call_to(o: cref_assemble(src: kps2_src()), name: ^width_of) { Present { value: Accepted { value: _, diagnostics: _ } } => true
+  _ => false } }
+test fn kpj_rejected() -> Bool { match cref_eval_of_call_to(o: cref_assemble(src: kps2_src()), name: ^width_of) { Present { value: Rejected { diagnostics: _ } } => true
+  _ => false } }
+test fn kpj_no_outcome() -> Bool { cref_eval_of_call_to(o: cref_assemble(src: kps2_src()), name: ^width_of) == Absent }
