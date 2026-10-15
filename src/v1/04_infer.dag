@@ -11506,8 +11506,8 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           }
       }
     }
-    // THE PAYLOAD ARM OF THE OPTIONAL, BY THE DECLARATION IT RESOLVES TO, never the parent's spelling.
-    let is_present_ctor = type_name.value == "Present" && type_is_optional_declaration(t: raw_resolved)
+    let expected_optional_parent = Present { value: "Optional" }
+    let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
     let applied_expected_owner = if is_present_ctor { none } else {
       variant_literal_expected_application(owner: raw_resolved, expected: expected, scope: scope)
     }
