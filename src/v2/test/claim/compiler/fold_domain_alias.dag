@@ -27,7 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // BOUNDARY: source text in, through the production assembly route, then v2.compiler.infer infer.
 //
 // MUTATION: reading the domain type without infer_type_alias_normalized in infer_fold_member_frame turns
-// the three aliased claims red; the v2.std.collection List claim and the assembly control stay green.
+// the three aliased claims red; the std.types List claim and the assembly control stay green.
 
 data fda_types_artifact: Artifact = Artifact { kind: SourceFile, id: ^fda_types_artifact, file_path: "src/v2/pilot/fda_types.dag" }
 
@@ -109,7 +109,7 @@ fn fda_fold(import_line: String, step: String) -> String {
 
 data fda_alias_import: String = "import q.types { List }\n"
 
-data fda_collection_import: String = "import v2.std.collection { List }\n"
+data fda_std_types_import: String = "import std.types { List }\n"
 
 // THE SAME FOLD over a list whose type arrives through q.types's alias of FreeMonoid: its member's field
 // reaches a Bool formal as the Int an authored Pair's does.
@@ -121,8 +121,8 @@ test fn fda_a_fold_over_an_aliased_list_uses_its_member_at_its_declared_type() -
   fda_member_use_accepted(import_line: fda_alias_import)
 }
 
-test fn fda_the_v2_collection_list_fold_still_types_its_member() -> Bool {
-  fda_member_typed(import_line: fda_collection_import) && fda_member_use_accepted(import_line: fda_collection_import)
+test fn fda_the_std_types_list_fold_still_types_its_member() -> Bool {
+  fda_member_typed(import_line: fda_std_types_import) && fda_member_use_accepted(import_line: fda_std_types_import)
 }
 
 // A WRONG FIELD on the aliased domain's member still refuses at the projection: the member is typed,

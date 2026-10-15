@@ -1,7 +1,7 @@
 module v2.std.source_position
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse }
-import v2.std.collection { Absent, Present, list_at_optional }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse, list_at_optional }
+import std.optional { Absent, Present }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import v2.std.integer { Int }
 import v2.std.text { String }

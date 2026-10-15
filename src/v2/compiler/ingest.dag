@@ -1,19 +1,12 @@
 module v2.compiler.ingest
 
-import std.types { List }
+import std.types { List, Map }
 import v2.compiler.resolve { ResolvedTree }
-import std.optional { optional_absent }
+import std.optional { optional_absent, Absent, Present }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.refinement_discharge { infer_and_discharge }
-import std.algebra { Empty, list_append }
-import v2.std.collection {
-  Absent,
-  Map,
-  Present,
-  empty_map,
-  map_get_checked,
-  map_insert
-}
+import std.algebra { Empty, list_append, empty_map, map_insert }
+
 import v2.std.grammar {
   ParseTree,
   grammar_relation_emitted_rebuild_from_token_spine,
@@ -21,7 +14,7 @@ import v2.std.grammar {
   grammar_relation_rules_formal_productions,
   node_atom_identity_optional
 }
-import v2.std.witness { Holds, Violates }
+import v2.std.witness { Holds, Violates, map_get_checked }
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model {
   TargetModel,

@@ -1,7 +1,7 @@
 module v2.compiler.reference_conservation
 
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules }
-import std.types { List }
+import std.types { List, Map }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly {
@@ -18,7 +18,7 @@ import v2.extdeps.languages.dag {
   dag_language_model,
   qualified_name_from_module_node
 }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+
 import v2.std.compilers.lexing { ModeledLexRules, VoidLexRules, lex_rule_set_token_class_map }
 import v2.std.diagnostic {
   Accepted,
@@ -49,7 +49,7 @@ import v2.std.text { String }
 import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
 import v2.std.witness { Holds, Violates }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, empty_map, map_insert, map_lookup }
 import std.occurrence_identity {
   DeclarationRole,
   OccurrenceCategoryModuleScopeExposed,

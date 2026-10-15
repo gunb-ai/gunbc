@@ -15,7 +15,7 @@ import gunbc.fabric.fabric_storage_placement { fabric_storage_door_socket, fabri
 import extdeps.access.posix { file_mode_octal }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.live_deploy.spec {
   HoldsNoRoleSingleton,
   DeploymentArtifactStep,

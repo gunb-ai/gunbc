@@ -11,13 +11,13 @@ import v2.compiler.compile { compile_inferred, TranslateTo, TranslateResult, Eva
 import v2.compiler.emit_produced { emit_produced_module }
 import v2.extdeps.languages.rust { rust_target_model_staging }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { list_at_optional }
+
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, DeclarationLocus, Diagnostic, InvariantPortLocus, NodeLocus, NonEmptyDiagnostics, SourcePortLocus, Textual, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, StructuralLabel, Positional, Symbol, node_synthetic, symbol_lexeme }
 import std.optional { Optional, Present, Absent }
-import std.algebra { Cons, Empty, fold_list, length }
+import std.algebra { Cons, Empty, fold_list, length, list_at_optional }
 import std.types { Int, List, NonEmptyStr, String }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 

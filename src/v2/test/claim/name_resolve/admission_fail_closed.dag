@@ -1,49 +1,14 @@
 module v2.test.claim.name_resolve.admission_fail_closed
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.name_resolve {
-  ResolutionContext,
-  Admission,
-  AdmissionAccepted,
-  AdmissionRejected,
-  AdmissionState,
-  Import,
-  ImportVisible,
-  ResolutionSubject,
-  admit_import_entry,
-  admit_imported_modules,
-  resolution_context,
-  resolve_in_context,
-  resolve_with_admission,
-  resolve_with_admission_policy,
-  subject_module_root_for_name,
-  module_root_find,
-  validate_module_roots
-}
+import v2.compiler.name_resolve { ResolutionContext, Admission, AdmissionAccepted, AdmissionRejected, AdmissionState, Import, ImportVisible, ResolutionSubject, admit_import_entry, admit_imported_modules, resolution_context, resolve_in_context, resolve_with_admission, resolve_with_admission_policy, subject_module_root_for_name, module_root_find, validate_module_roots }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_imported_modules, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.std.cross_tree.resolution { source_root_index_empty }
-import v2.extdeps.languages.dag {
-  dag_grammar_atom,
-  dag_language_model_surface_empty_prelude,
-  dag_named_edge,
-  dag_surface_edge
-}
-import std.algebra { Cons, Empty, FreeMonoid, fold_list }
-import v2.std.collection { empty_map }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_named_edge, dag_surface_edge }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, empty_map }
 import v2.std.namespace_alias { CapturedImportTarget }
-import v2.std.diagnostic {
-  Accepted,
-  ByteRange,
-  None,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted,
-  Textual,
-  diagnostics_eq,
-  non_empty_diagnostics_eq
-}
+import v2.std.diagnostic { Accepted, ByteRange, None, Outcome, Rejected, bind_outcome, outcome_accepted, Textual, diagnostics_eq, non_empty_diagnostics_eq }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme, fold_list_node }
 import v2.std.resolution_policy { ImportScoped }

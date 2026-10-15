@@ -28,7 +28,7 @@ import v2.std.node { Atom, Authored, Conj, Edge, Node, Symbol, TypeNode, allocat
 import std.occurrence_identity { LexicalValueOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic, scoped_occurrence_allocator }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
 import std.optional { Absent, Present, Optional, optional_absent, optional_present }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.integer { Int }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_map, list_snoc_item }
 
