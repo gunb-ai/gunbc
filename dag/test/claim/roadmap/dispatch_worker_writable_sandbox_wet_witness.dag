@@ -52,7 +52,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_request_entry_name, attempt_system_unit_read_claimed_body,
   AttemptSystemUnitClaimedBodyRead, AttemptSystemUnitClaimedBodyRefused,
   attempt_system_unit_launch_entry, attempt_system_unit_launch_function,
-  attempt_system_unit_launcher_busy_exit,
+  attempt_system_unit_launcher_busy_exit, attempt_system_unit_launcher_flock_wait,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
@@ -737,7 +737,8 @@ fn wet_answer_is_started_or_refused(reading: AttemptSystemUnitAnswerRead) -> Boo
 }
 
 // TWO REAL DRAINS, NOT FLOCK-WAIT EXPIRY. The holder is the first gunbc launch_cli over this
-// spool; the second wait (30s) is longer than that hold (a refuse-fast undeclared instance_root).
+// spool. The second wait is the production drain wait (belt_tick_run_bound), which outlasts
+// that hold; a 30s waiter would expire while the first eval still held the lock.
 // Discriminating RED: the same cell on aff3ea58ee9 (pre-flock) leaves a Missing answer.
 test fn two_concurrent_launcher_runs_each_read_their_own_answer() -> Bool {
   let tmp = shell.Mktemp.Dir()
@@ -746,8 +747,8 @@ test fn two_concurrent_launcher_runs_each_read_their_own_answer() -> Bool {
   } else {
     let root = tmp.path as String
     let inst = srv1_lab_dashboard_instance()
-    let first = wet_flocked_launch_cli_words(instance: inst, spool_root: root, wait: second(count: 5))
-    let second = wet_flocked_launch_cli_words(instance: inst, spool_root: root, wait: second(count: 30))
+    let first = wet_flocked_launch_cli_words(instance: inst, spool_root: root, wait: second(count: 60))
+    let second = wet_flocked_launch_cli_words(instance: inst, spool_root: root, wait: attempt_system_unit_launcher_flock_wait)
     if count(first) == 0 || count(second) == 0 {
       false
     } else {
