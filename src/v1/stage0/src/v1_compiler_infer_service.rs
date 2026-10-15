@@ -42,13 +42,13 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UniqueAccum {
     pub seen: Rc<HashMap<String, bool>>,
     pub result: Rc<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OpEntry {
     pub name: String,
     pub outputs: Rc<Vec<Rc<Node>>>,
@@ -56,7 +56,7 @@ pub struct OpEntry {
     pub rest: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceMethodResult {
     pub result_type: Rc<Node>,
     pub op_params: Rc<Vec<Rc<Node>>>,
@@ -168,7 +168,7 @@ pub fn collect_typed_service_calls_into(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CalleeEdge {
     ResolvedCallee {
@@ -208,7 +208,7 @@ impl CalleeEdge {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CalleeAccum {
     pub seen: Rc<HashMap<String, bool>>,
     pub result: Rc<Vec<Rc<CalleeEdge>>>,
@@ -258,7 +258,7 @@ pub fn callee_edge_of_semantics(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CalleeEdgeDedup {
     Tracked { key: String },
@@ -355,14 +355,14 @@ pub fn collect_callee_edges(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemCallees {
     pub item_identity: Rc<DeclaredCallableIdentity>,
     pub has_body: bool,
     pub called: Rc<Vec<Rc<CalleeEdge>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleCallees {
     pub items: Rc<Vec<Rc<ItemCallees>>>,
 }
@@ -554,7 +554,7 @@ pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
         })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ServiceEffectAnalysis {
     EffectsComplete {
@@ -566,7 +566,7 @@ pub enum ServiceEffectAnalysis {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EffectIncompleteness {
     UnresolvedCalleeEdge {
