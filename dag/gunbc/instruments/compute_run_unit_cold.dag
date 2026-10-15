@@ -1,7 +1,7 @@
 module gunbc.instruments.compute_run_unit_cold
 
 import std.types { String, Bool, Int, List, FilePath, GitRef, NonEmptyStr }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.measure {
   ByteSize, Kibibyte, gibibyte, gibibyte_to_byte_size,
@@ -15,6 +15,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import extdeps.shell
 import extdeps.rust.cargo { cargo_environment_variable_name, CargoHomeEnv }
+import extdeps.cache.sccache { sccache_installed_binary_path }
 import extdeps.rust.rustup { rustup_home_env_name }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
@@ -346,4 +347,42 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
     }
   }
 }
+}
+
+fn observe_argv(program: String, args: List<String>) -> String {
+  match compute_exec(program: program, workdir: ".", args: args) {
+    ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
+    ComputeExecFailed { exit_code, stdout, stderr } =>
+      join(["exit=", to_string(value: exit_code), "\n", stdout, stderr], "")
+  }
+}
+
+fn lines_with_needle(text: String, needle: String) -> String {
+  join(filter(split(s: text, delimiter: "\n"), l => length(xs: split(s: l, delimiter: needle)) > 1), "\n")
+}
+
+fn compute_run_unit_sccache_probe_exit() -> CliWireResponse {
+  let id_out = observe_argv(program: "/usr/bin/id", args: [])
+  let host_out = observe_argv(program: "/usr/bin/hostname", args: [])
+  let ps_out = observe_argv(program: "/usr/bin/ps", args: ["-eo", "user,pid,args"])
+  let ss_out = observe_argv(program: "/usr/bin/ss", args: ["-ltnp"])
+  let stats_out = observe_argv(program: sccache_installed_binary_path, args: ["--show-stats"])
+  let tcp4 = Filesystem.Read(path: "/proc/net/tcp")
+  let tcp6 = Filesystem.Read(path: "/proc/net/tcp6")
+  CliWirePrintable {
+    bytes: join([
+      "compute-run-unit-sccache-probe\n",
+      "=== id ===\n", id_out, "\n",
+      "=== hostname ===\n", host_out, "\n",
+      "=== ps sccache ===\n", lines_with_needle(text: ps_out, needle: "sccache"), "\n",
+      "=== ss 4226 ===\n", lines_with_needle(text: ss_out, needle: "4226"), "\n",
+      "=== ss sccache ===\n", lines_with_needle(text: ss_out, needle: "sccache"), "\n",
+      "=== sccache --show-stats ===\n", stats_out, "\n",
+      "=== /proc/net/tcp 107A (4226) ===\n",
+      if tcp4.success { lines_with_needle(text: tcp4.content, needle: "107A") } else { "unreadable" }, "\n",
+      "=== /proc/net/tcp6 107A (4226) ===\n",
+      if tcp6.success { lines_with_needle(text: tcp6.content, needle: "107A") } else { "unreadable" }, "\n",
+    ], ""),
+    exit: ExitSuccess,
+  }
 }

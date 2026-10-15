@@ -36,7 +36,7 @@ import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_events_path,
   CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
 }
-import extdeps.cache.sccache { sccache_installed_binary_path, sccache_cache_dir_env_var, sccache_no_daemon_env_var }
+import extdeps.cache.sccache { sccache_installed_binary_path }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
@@ -506,8 +506,6 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       setenv_bindings: concat([
         SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
         SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
-        SystemdSetenvBinding { name: sccache_cache_dir_env_var, value: join([layout.root, "/sccache"], "") },
-        SystemdSetenvBinding { name: sccache_no_daemon_env_var as NonEmptyStr, value: "1" as NonEmptyStr },
       ], env),
       command_argv: argv,
     ) {
