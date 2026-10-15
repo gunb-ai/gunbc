@@ -2497,6 +2497,12 @@ fn observation_meet(a: ObservationCompleteness, b: ObservationCompleteness) -> O
   }
 }
 
+// What a type application head admits at each argument position, or that the head is outside the arity
+// check (a head the index does not hold, a malformed binder order, a refused head walk).
+type InstantiationKinds
+  = InstantiationKindsOutsideCheck
+  | InstantiationKindsDeclared { admitted: List<Optional<Node>> }
+
 // ONE RESOLUTION OBSERVATION OF ONE NODE. The refused arm carries the ORDERED POPULATION of
 // independent failure chains, `first` then `rest`, so "refused with no chain" has no constructor;
 // the accepted arm carries no completeness because incompleteness only ever follows a refusal, so
@@ -2508,12 +2514,6 @@ fn observation_meet(a: ObservationCompleteness, b: ObservationCompleteness) -> O
 // (each chain's fatal and its locus); reversing sibling order reverses those chains' positions and
 // changes nothing else. `first` is therefore the one the old short-circuiting walk would have
 // stopped at, which is what makes the legacy projection below answer exactly what it answered.
-// What a type application's head admits at each argument position, or that the head is outside the arity
-// check (a head the index does not hold, a malformed binder order, a refused head walk).
-type InstantiationKinds
-  = InstantiationKindsOutsideCheck
-  | InstantiationKindsDeclared { admitted: List<Optional<Node>> }
-
 type ResolveNodeWalk
   = ResolveWalkAccepted { value: Node, diagnostics: Diagnostics, lexical: List<LexicalBindingEntry> }
   | ResolveWalkRefused {
@@ -3995,8 +3995,8 @@ fn resolve_instantiation_walk_from_head(ctx: ResolveContext, n: Node, head_walk:
 }
 
 fn resolve_no_admitted_kinds() -> List<Optional<Node>> {
-  let none: List<Optional<Node>> = Empty
-  none
+  let no_kinds: List<Optional<Node>> = Empty
+  no_kinds
 }
 
 fn resolve_instantiation_head_kinds(ctx: ResolveContext, head_walk: ResolveNodeWalk) -> InstantiationKinds {
@@ -4018,17 +4018,6 @@ fn resolve_instantiation_walk_arguments(ctx: ResolveContext, n: Node, head_walk:
       )
     }
   }))
-}
-
-fn resolve_instantiation_argument_is_kinded(kinds: List<Optional<Node>>, ordinal: Int) -> Bool {
-  match list_at_optional(xs: kinds, index: ordinal - 1) {
-    Absent => false
-    Present { value: admitted } =>
-      match admitted {
-        Absent => false
-        Present { value: _ } => true
-      }
-  }
 }
 
 // The kind each declared binder ADMITS, in authored order: Present where the kind names a coproduct (it
