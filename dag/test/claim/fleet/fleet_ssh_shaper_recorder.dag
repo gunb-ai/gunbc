@@ -1,0 +1,31 @@
+module test.claim.fleet.fleet_ssh_shaper_recorder
+
+import std.types { String, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
+import gunbc.fleet.fleet_ssh_locus { fleet_automation_principal_login }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTarget, portable_remote_words, shape_fleet_ssh_exec, shape_fleet_ssh_password_exec_trusting,
+}
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+
+// RECORDER, NOT A CLAIM: run once at the S2(b1) head to capture the pre-SshTarget-address renders
+// that S2(b2)'s byte-identity control pins. One line per enrolled host and shaper.
+fn fleet_ssh_shaper_renders() -> String {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => "NO-CONTEXT"
+    Present { value: ctx } =>
+      match portable_remote_words(raws: ["hostname"]) {
+        Absent => "NO-WORDS"
+        Present { value: words } =>
+          join(map(fleet_reach_probe_targets, h => {
+            let t = SshTarget { endpoint: fleet_probe_endpoint_for(host: h) as NonEmptyStr, principal: fleet_automation_principal_login }
+            join([
+              "host=", h, " wire=", t.endpoint as String, "\n",
+              "key=", join(shape_fleet_ssh_exec(context: ctx, target: t, words: words), "\n  | "), "\n",
+              "pw=", join(shape_fleet_ssh_password_exec_trusting(trust: ctx.trust, target: t, words: words), "\n  | "), "\n",
+            ], "")
+          }), "")
+      }
+  }
+}
