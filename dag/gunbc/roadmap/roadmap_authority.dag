@@ -1,8 +1,8 @@
 module gunbc.roadmap.roadmap_authority
 
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
-import std.types { FilePath, NonEmptyStr, Set }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.types { FilePath, NonEmptyStr, Set, Map }
+import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap.roadmap_model {
   RoadmapNode,
@@ -2727,7 +2727,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "The native route gates every landing and becomes the production route",
           boundary: "The v2-native-frontier ratchet runs as a required merge_group step, which retires gunbc.rung_drop v2_native_route_off_the_merge_path and v2_native_frontier_nightly_cadence. Then the whole-route NativeProductionAdmission verdict (D10) admits it, with every refusal and divergence dispositioned. The effects the route needs (D11: Filesystem plus the Gap-B host facts) are a prerequisite, not this project's work.",
-          approach: "Mint the roster first (gunbc.native_frontier_roster is RosterUnminted), then add the merge-queue-only step inside an existing lane (operator ruling Q4, 2026-09-30: accepted, no new job). Admission comes after that. v1/v2 disagreements are investigated and neither side wins by age (D10).",
+          approach: "Mint the roster first (v2.workflow.native_frontier_roster is RosterUnminted), then add the merge-queue-only step inside an existing lane (operator ruling Q4, 2026-09-30: accepted, no new job). Admission comes after that. v1/v2 disagreements are investigated and neither side wins by age (D10).",
           red_control: "A landing that grows the native-frontier debt roster refuses, once the lane is required. Admission refuses on any refusal or divergence left undispositioned.",
           displaced_cost: "Nothing runs the ratchet today, so native regressions land silently. The nightly job was deleted (#12439), and the lane is not yet required.",
           handback: "SelfHostNativeRouteRequiredLane CLEAR, both drops retired, and NativeProductionAdmitted over the required subject denominator."
@@ -3173,7 +3173,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/rung_drop.dag"),
       line: ticket(t: fields(
           headline: "The native-frontier ratchet runs on every landing",
-          boundary: "Mint gunbc.native_frontier_roster (RosterUnminted today) from a //gunbc/instruments:v2-native-frontier run. Then add a merge-queue-only STEP inside an existing fleet lane: no new job, and the job roster stays closed (operator ruling Q4, 2026-09-30). Time budget: about 35 minutes per landing; revisit trigger: re-examine the step if it exceeds about 35 minutes per landing or stops catching regressions. Retires drops v2_native_route_off_the_merge_path and v2_native_frontier_nightly_cadence. The emit-build job was made blocking by #12468 but is still labelled NON-REQUIRED; fix the label.",
+          boundary: "Mint v2.workflow.native_frontier_roster (RosterUnminted today) from a //gunbc/instruments:v2-native-frontier run. Then add a merge-queue-only STEP inside an existing fleet lane: no new job, and the job roster stays closed (operator ruling Q4, 2026-09-30). Time budget: about 35 minutes per landing; revisit trigger: re-examine the step if it exceeds about 35 minutes per landing or stops catching regressions. Retires drops v2_native_route_off_the_merge_path and v2_native_frontier_nightly_cadence. The emit-build job was made blocking by #12468 but is still labelled NON-REQUIRED; fix the label.",
           displaced_cost: "Nothing runs the ratchet between the deleted nightly and a lane that is not yet live.",
           first_slice: "Mint the roster (S7).",
           red_control: "A landing that adds a debt row refuses. A green run over an unminted roster refuses.",
@@ -3181,7 +3181,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "The roster minted, the step required, and both drops Retired."
         )),
       parent: in_project(project: "native-route-to-live", contribution: "The ratchet running on every landing is what turns native regressions from silent into refused."),
-      centering: plan(text: "Roster mint slice only. Run gunbc test //gunbc/instruments:v2-native-frontier on a fleet host. Capture the [native-frontier-roster] proposal it prints. Open one PR that sets gunbc.native_frontier_roster from RosterUnminted to the minted proposal, citing the run. Do not touch CI YAML or rung drops. Stop if the run refuses or prints no proposal."),
+      centering: plan(text: "Roster mint slice only. Run gunbc test //gunbc/instruments:v2-native-frontier on a fleet host. Capture the [native-frontier-roster] proposal it prints. Open one PR that sets v2.workflow.native_frontier_roster from RosterUnminted to the minted proposal, citing the run. Do not touch CI YAML or rung drops. Stop if the run refuses or prints no proposal."),
     ),
     roadmap_node(
       identity: "rn_YEHRGCZXNVT39XA761ENMGZ4WR",

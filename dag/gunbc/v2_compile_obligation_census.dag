@@ -13,7 +13,7 @@ import gunbc.guarantee_rung {
   MechanicallyPreventable,
   StructurallyGuaranteed
 }
-import gunbc.witness.v2_native_route { native_route_module_in_boundary }
+import gunbc.native_route_universe { native_route_universe_member }
 import gunbc.derived_obligation_row {
   WitnessSubject,
   witness_subject,
@@ -190,8 +190,8 @@ data unverified_entry_premise: DeclarationRef = decl_ref(
 // in the only sense the census ever meant.
 //
 // SO THE ROSTER IS ASKED, NOT ASSUMED, exactly like the interpreted column: the lane declares its
-// own boundary predicate, gunbc.witness.v2_native_route native_route_module_in_boundary, and this
-// module calls it rather than re-deriving the boundary. A census that hand-authored "RouteGapHeld"
+// own universe predicate, gunbc.native_route_universe native_route_universe_member, and this
+// module calls it rather than re-deriving the prefix. A census that hand-authored "RouteGapHeld"
 // after the lane landed would have been the stale present-tense coverage claim in reverse — a
 // pessimistic one, which is not more honest, only wrong in the safer direction.
 //
@@ -240,8 +240,8 @@ data native_route_merge_path_drop: DeclarationRef = decl_ref(
 )
 
 // LANE MEMBERSHIP IS THE BOUNDARY INTERSECTED WITH FLOOR DISCOVERY, NOT THE BOUNDARY ALONE, and the
-// first cut of this fold got it wrong in the direction that flatters. native_route_module_in_boundary
-// is the lane's PREDICATE over a module name; the lane's own header states that the population it
+// first cut of this fold got it wrong in the direction that flatters. native_route_universe_member
+// is the dag-safe PREDICATE over a module name; the lane's own header states that the population it
 // applies to is "derived by the host harness from the floor's own discovery producer joined against
 // each entry's authored module header". So an entry a gunbc.ci.ci_layer_roots witness_exclusion_frontier
 // pattern carves out of discovery never reaches the native harness either, however well its module
@@ -257,7 +257,7 @@ data native_route_merge_path_drop: DeclarationRef = decl_ref(
 // subject below is also excluded — and where a fact is not established the narrower claim is the
 // honest one.
 fn witness_subject_in_native_lane(w: WitnessSubject) -> Bool {
-  !witness_subject_is_excluded(w: w) && native_route_module_in_boundary(module_qn: w.module_path)
+  !witness_subject_is_excluded(w: w) && native_route_universe_member(module_qn: w.module_path)
 }
 
 fn any_witness_in_native_lane(ws: List<WitnessSubject>) -> Bool {

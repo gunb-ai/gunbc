@@ -1292,7 +1292,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 }
 
 /// THE NATIVE FRONTIER PRODUCER: did one complete native run keep the debt
-/// `gunbc.native_frontier_roster` records. The verdict is `gunbc.native_frontier_ratchet`'s, decided
+/// `v2.workflow.native_frontier_roster` records. The verdict is `v2.workflow.native_frontier_ratchet`'s, decided
 /// inside the emitted binary; this arm only maps its word to a termination, and that map is closed:
 /// an unknown word is a harness defect, never a pass.
 ///
@@ -1319,7 +1319,7 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
                         termination: Termination::SubjectUnreached,
                         message: format!(
                             "v2-native-frontier: the emitted binary reported an unknown frontier word {other:?}; \
-                             gunbc.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
+                             v2.workflow.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
                         ),
                     }
                 }
@@ -2663,7 +2663,7 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
     }
 }
 
-/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, READ from the file rendered from
+/// `gunbc.native_route_universe` `native_route_default_pattern`, READ from the file rendered from
 /// it: the native test route's whole universe. An operand CONTAINED in it belongs to that route.
 ///
 /// THIS SEED HAS NO SPELLING OF THAT UNIVERSE. `NATIVE_ROUTE_DEFAULT_PATTERN` is a constant of
@@ -2676,7 +2676,7 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
 /// parse is a refusal the caller reports, never a panic and never a fallback to some other universe.
 ///
 /// The universe the EMITTED binary adjudicates by default is the same declaration read inside the
-/// compiler (`v2.compiler.compile`, `adjudicate` without `--pattern`); the seed passes it a pattern
+/// compiler (`v2.compiler.source_root_eval`, `adjudicate` without `--pattern`); the seed passes it a pattern
 /// only when the operator wrote one, so nothing here is handed to it as text.
 fn native_route_default_pattern() -> Result<TargetPattern, TargetPatternRefusal> {
     parse_target_pattern(crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN)
@@ -2696,7 +2696,7 @@ fn native_route_default_pattern() -> Result<TargetPattern, TargetPatternRefusal>
 /// `gunbc.recurring_failure_mode` `route_scoped_qualification_read_as_one_members_verdict`.
 ///
 /// The route now folds the population it actually emitted through
-/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored in the runner, so this
+/// `v2.workflow.native_route_member_termination` `native_route_member_termination`, mirrored in the runner, so this
 /// caller receives a MEMBER-SCOPED standing and reads it directly. The lane's qualification is
 /// still carried and still reported, because a route-integrity refusal is something an operator
 /// needs to see -- but it no longer decides this verb's exit status.
@@ -2754,7 +2754,7 @@ fn native_member_outcome(
         }
         cli_run::NativeMemberTermination::SubjectUnreached => Termination::SubjectUnreached,
     };
-    // `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored: the
+    // `v2.workflow.native_route_member_termination` `native_route_termination_under_qualification`, mirrored: the
     // lane's qualification GATES a positive answer and nothing else. Several of its clauses are
     // what establish the verdict surface is trustworthy at all -- the false and true controls, and
     // MalformedSpecimenAccepted, whose own note says that when they fail every verdict in the
@@ -3826,7 +3826,7 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
                 message: format!(
                     "gunbc test: the native route's boundary, {:?}, is not an admitted target pattern; \
                      src/v1/stage0/src/native_route_seed_boundary_generated.rs is rendered from \
-                     gunbc.witness.v2_native_route native_route_default_pattern by \
+                     gunbc.native_route_universe native_route_default_pattern by \
                      gunbc.native_route_seed_boundary_emit, so regenerate it rather than route without a boundary\n  cause: {}",
                     crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN,
                     target_pattern_refusal_text(&cause)
@@ -3863,166 +3863,6 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
         }
         Some((_, producer)) => run_producer(producer),
     }
-}
-
-/// THE MEASURED RUN BY PHASE: the child's seam beats, transcribed by the supervisor and folded by
-/// `gunbc.floor.floor_demand` `floor_phase_attribution`, one line per phase in the order the run entered
-/// them. `entry` is the held set the phase inherited, `peak` the largest over its own beats, and
-/// `left` what it left resident -- the next phase's entry, read from that row, so this renderer
-/// does no arithmetic of its own. A phase whose held set could not be represented prints the arm.
-///
-/// This is a reading beside the verdict, never a verdict: a run with no beats (a lane that owns no
-/// floor phase) or a transcription refusal says so here and leaves the qualification unchanged.
-fn floor_phase_attribution_rendered(
-    ctx: &crate::v1_interpreter::InterpContext,
-    beat_lines: &[String],
-) -> String {
-    use crate::v1_interpreter::Value;
-    use cli_run::floor_memory_supervisor as sup;
-    let beats = match sup::transcribe_floor_beats(beat_lines) {
-        Ok(beats) if beats.is_empty() => {
-            return "floor-phase-attribution: no seam beats were printed by the measured child"
-                .to_string();
-        }
-        Ok(beats) => beats,
-        Err(refusal) => return format!("floor-phase-attribution: refused: {refusal}"),
-    };
-    // A COUNTER PAST i64 REFUSES rather than clamping: a clamp would hand the fold a value nobody
-    // read. None of these can reach it on a real host, which is why a refusal costs nothing.
-    if let Some(b) = beats.iter().find(|b| {
-        std::iter::once(b.charge)
-            .chain(b.stall_per_min)
-            .chain(b.swap_bytes)
-            .chain(b.stat.iter().copied())
-            .any(|v| i64::try_from(v).is_err())
-    }) {
-        return format!(
-            "floor-phase-attribution: refused: beat {} carries a counter past the i64 the fold reads",
-            b.beat
-        );
-    }
-    let int = |v: u64| Value::Int(v as i64);
-    // AN UNREAD COUNTER CROSSES AS `Absent`, the fold's own optional, never as a zero beside a flag.
-    let optional = |v: Option<u64>| -> Value {
-        match v {
-            Some(n) => Value::Variant {
-                type_name: ctx.sym("Optional"),
-                variant_name: ctx.sym("Present"),
-                fields: std::rc::Rc::new(vec![(ctx.sym("value"), int(n))]),
-            },
-            None => Value::Variant {
-                type_name: ctx.sym("Optional"),
-                variant_name: ctx.sym("Absent"),
-                fields: std::rc::Rc::new(vec![]),
-            },
-        }
-    };
-    let readings: Vec<Value> = beats
-        .iter()
-        .map(|b| {
-            let mut fields = vec![
-                (ctx.sym("beat"), Value::Int(b.beat as i64)),
-                (ctx.sym("opens_phase"), Value::Bool(b.opens_phase)),
-                (
-                    ctx.sym("seam_before"),
-                    crate::v1_interpreter::str_value(&b.seam_before),
-                ),
-                (
-                    ctx.sym("seam_after"),
-                    crate::v1_interpreter::str_value(&b.seam_after),
-                ),
-                (ctx.sym("stall_per_min"), optional(b.stall_per_min)),
-                (ctx.sym("swap_bytes"), optional(b.swap_bytes)),
-                (ctx.sym("charge"), int(b.charge)),
-            ];
-            for (key, value) in sup::FLOOR_BEAT_STAT_KEYS.iter().zip(b.stat.iter()) {
-                fields.push((ctx.sym(key), int(*value)));
-            }
-            Value::Record {
-                type_name: ctx.sym("FloorBeatReading"),
-                fields: std::rc::Rc::new(fields),
-            }
-        })
-        .collect();
-    let args = vec![(
-        Some("readings".to_string()),
-        crate::v1_interpreter::list_value(readings),
-    )];
-    let attributed = match crate::v1_interpreter::run_in_context_with_args(
-        ctx,
-        "floor_phase_attribution_from_readings",
-        &args,
-        true,
-    ) {
-        Ok(v) => v,
-        Err(cause) => return format!("floor-phase-attribution: not reached: {cause}"),
-    };
-    let Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = &attributed
-    else {
-        return format!(
-            "floor-phase-attribution: unrecognised result {}",
-            ctx.format_value(&attributed)
-        );
-    };
-    if !ctx.sym_eq(*variant_name, "FloorPhasesAttributed") {
-        return format!("floor-phase-attribution: {}", ctx.format_value(&attributed));
-    }
-    let Some(Value::List(rows)) = ctx.field(fields, "phases") else {
-        return format!(
-            "floor-phase-attribution: unrecognised result {}",
-            ctx.format_value(&attributed)
-        );
-    };
-    let held = |v: Option<&Value>| -> String {
-        match v {
-            Some(Value::Variant {
-                variant_name,
-                fields,
-                ..
-            }) if ctx.sym_eq(*variant_name, "HeldSetPeakAt") => match ctx.field(fields, "bytes") {
-                Some(Value::Record { fields, .. }) => match ctx.field(fields, "count") {
-                    Some(Value::Int(n)) => n.to_string(),
-                    other => format!("{other:?}"),
-                },
-                other => format!("{other:?}"),
-            },
-            Some(other) => ctx.format_value(other),
-            None => "<absent>".to_string(),
-        }
-    };
-    let rows: Vec<&Value> = rows.iter().collect();
-    let mut out = vec![format!(
-        "floor-phase-attribution: phases={} beats={} (held set per gunbc.floor.floor_demand beat_held_set, bytes)",
-        rows.len(),
-        beats.len()
-    )];
-    for (i, row) in rows.iter().enumerate() {
-        let Value::Record { fields, .. } = row else {
-            out.push(format!("  unrecognised row {}", ctx.format_value(row)));
-            continue;
-        };
-        let left = match rows.get(i + 1) {
-            Some(Value::Record { fields: next, .. }) => held(ctx.field(next, "entry")),
-            _ => "end-of-run".to_string(),
-        };
-        out.push(format!(
-            "  phase={} opened_at_beat={} entry={} peak={} left={}",
-            ctx.field(fields, "seam")
-                .map(|v| ctx.format_value(v))
-                .unwrap_or_default(),
-            ctx.field(fields, "opened_at")
-                .map(|v| ctx.format_value(v))
-                .unwrap_or_default(),
-            held(ctx.field(fields, "entry")),
-            held(ctx.field(fields, "peak")),
-            left,
-        ));
-    }
-    out.join("\n")
 }
 
 /// THE TYPED GRAPH'S BYTES BY CLASS, READ LEAVE-ONE-OUT. The floor's sequential byte attribution
@@ -4325,7 +4165,7 @@ mod native_route_termination_tests {
         assert!(!within("//gunbc/instruments:self-host"));
     }
 
-    /// `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored here and
+    /// `v2.workflow.native_route_member_termination` `native_route_termination_under_qualification`, mirrored here and
     /// given its own red. The `.dag` witness pins the fold; this pins that THIS host applies it.
     ///
     /// A REFUSED QUALIFICATION CANNOT YIELD A PASS (review 70107). Several qualification clauses
@@ -4922,7 +4762,7 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
 /// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
 /// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
 /// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
-/// the exit are decided by `v2.compiler.compile` `native_demand_census_output`, so the host adds no
+/// the exit are decided by `v2.compiler.source_root_eval` `native_demand_census_output`, so the host adds no
 /// verdict: exit 0 is the census holding (its rows account for every uses fn), 1 is a census finding,
 /// and 2 or a refused preparation is no observation.
 /// `gunbc.instrument_targets` `generic_identity_census_label`. TRANSPORT ONLY: the fixture and the
