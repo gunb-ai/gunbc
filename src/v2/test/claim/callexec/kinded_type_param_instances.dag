@@ -68,9 +68,22 @@ test fn kti_kinded_read_inhabits_its_kind() -> Bool {
   }
 }
 
-// No implicit narrowing: the same read where Int is required refuses; it does not coerce to Int.
+// No implicit narrowing, as a MINIMAL PAIR: the two sources differ only in the return type. The control
+// (-> Resolution) is accepted, so the refusal of the other (-> Int) is the read's type, not an assembly,
+// parse or resolve slip that would refuse both.
+fn kti_return_pair_src(ret: String) -> String {
+  concat(concat("module p\n\ntype Resolution\n  = Static\n  | Pointer\n\nfn read_it<bits: Resolution>(n: Int) -> ", ret), " {\n  bits\n}\n")
+}
+
+test fn kti_kinded_read_accepted_at_its_kind_in_the_minimal_pair() -> Bool {
+  match cref_inferred_of(o: cref_assemble(src: kti_return_pair_src(ret: "Resolution"))) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 test fn kti_kinded_read_where_int_is_required_refuses() -> Bool {
-  match cref_inferred_of(o: cref_assemble(src: "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\nfn as_int<bits: Resolution>(n: Int) -> Int {\n  bits\n}\n")) {
+  match cref_inferred_of(o: cref_assemble(src: kti_return_pair_src(ret: "Int"))) {
     Present { value: _ } => false
     Absent => true
   }
