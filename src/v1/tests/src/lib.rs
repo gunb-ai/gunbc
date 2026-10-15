@@ -27,6 +27,8 @@ mod applied_constructor_type_equals_test;
 #[cfg(test)]
 mod class_b_trim_specimen_test;
 #[cfg(test)]
+mod cross_coproduct_generic_locate_test;
+#[cfg(test)]
 mod decl_facts_dimensionless_projection_test;
 #[cfg(test)]
 mod emitted_symbol_collision_test;

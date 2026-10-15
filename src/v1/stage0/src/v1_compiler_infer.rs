@@ -1956,6 +1956,82 @@ pub fn text_crossing_route_error(
     )
 }
 
+fn generic_binding_is_self(
+    n: Rc<Node>,
+    bind_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((n.children.clone().len() as i64) == 0)
+        && (n.connective.clone() == Connective::NoConnective)
+        && (type_node_label(n.clone(), source_indices) == bind_name)
+}
+
+fn generic_rebind_refusal_diags(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    generic_names: Rc<Vec<String>>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    scope: Rc<InferScope>,
+    at: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    let source_indices = scope.type_env.clone().source_indices.clone();
+    let bind_name = type_node_label(formal.clone(), source_indices.clone());
+    let f_bare = ((formal.children.clone().len() as i64) == 0)
+        && (formal.connective.clone() == Connective::NoConnective);
+    let is_tv = match formal.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { .. }) => true,
+        _ => false,
+    };
+    let is_generic = generic_names.iter().any(|g| g.clone() == bind_name.clone());
+    if !((f_bare || is_tv) && is_generic) {
+        return Rc::new(vec![]);
+    }
+    match v1_rt::map_get(&subst, bind_name.clone()) {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(bound) => {
+            if unify_binding_is_uninformative(bound.clone())
+                || unify_binding_is_uninformative(actual.clone())
+                || generic_binding_is_self(bound.clone(), bind_name.clone(), source_indices.clone())
+                || generic_binding_is_self(
+                    actual.clone(),
+                    bind_name.clone(),
+                    source_indices.clone(),
+                )
+            {
+                Rc::new(vec![])
+            } else if crate::v1_compiler_infer_types::node_type_equals(
+                bound.clone(),
+                actual.clone(),
+                source_indices.clone(),
+                Rc::new(TextJudgment::TextJudgedIn {
+                    env: scope.type_env.clone(),
+                }),
+            ) {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![type_mismatch_error(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("type variable ".to_string(), bind_name.clone()),
+                            " bound as ".to_string(),
+                        ),
+                        crate::v1_compiler_infer_types::node_type_shape(
+                            bound.clone(),
+                            source_indices.clone(),
+                        ),
+                    ) + " (first argument)",
+                    crate::v1_compiler_infer_types::node_type_shape(
+                        actual.clone(),
+                        source_indices.clone(),
+                    ) + " (later argument)",
+                    at,
+                    scope.module_name.clone(),
+                )])
+            }
+        }
+    }
+}
+
 pub fn type_mismatch_error(
     expected: String,
     got: String,
@@ -12147,6 +12223,31 @@ pub fn infer_call_arguments_generic_pass(
                     }
                 }
             };
+            // Match 04_infer.dag unify_step: only the plain unify_generics arm
+            // compares resolved_type(ar.typed). Lambda later-args keep diagnostics: [];
+            // the first lambda unifies lambda_callable_type against an empty subst
+            // (no top-level rebind). Record-lit uses unify_record_lit_generics.
+            let rebind_diags = if !has_formal.clone() {
+                Rc::new(vec![])
+            } else if is_lambda_expr(crate::v1_std_core::arg_value(a.clone())) {
+                Rc::new(vec![])
+            } else if should_unify_record_lit_generics(
+                formal_raw.clone(),
+                crate::v1_std_core::arg_value(a.clone()),
+                generic_names.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ) {
+                Rc::new(vec![])
+            } else {
+                generic_rebind_refusal_diags(
+                    formal_raw.clone(),
+                    crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()),
+                    generic_names.clone(),
+                    st.subst.clone(),
+                    scope.clone(),
+                    a.span.clone(),
+                )
+            };
             Rc::new(ArgGenericFoldState {
                 results: v1_rt::concat(
                     st.results.clone(),
@@ -12161,7 +12262,7 @@ pub fn infer_call_arguments_generic_pass(
                             a.span.clone(),
                             a.span.clone(),
                         ),
-                        diagnostics: ar.diagnostics.clone(),
+                        diagnostics: v1_rt::concat(ar.diagnostics.clone(), rebind_diags),
                     })]),
                 ),
                 subst: next_subst.clone(),
@@ -23825,8 +23926,43 @@ pub fn unify_generics(
                 std::option::Option::None => {
                     break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
                 }
-                Some(_) => {
-                    break acc.clone();
+                Some(bound) => {
+                    if unify_binding_is_uninformative(bound.clone()) {
+                        if unify_binding_is_uninformative(actual.clone()) {
+                            break acc.clone();
+                        } else {
+                            break v1_rt::rc_map_insert(
+                                acc.clone(),
+                                bind_name.clone(),
+                                actual.clone(),
+                            );
+                        }
+                    } else if unify_binding_is_uninformative(actual.clone()) {
+                        break acc.clone();
+                    } else if generic_binding_is_self(
+                        bound.clone(),
+                        bind_name.clone(),
+                        source_indices.clone(),
+                    ) {
+                        break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
+                    } else if generic_binding_is_self(
+                        actual.clone(),
+                        bind_name.clone(),
+                        source_indices.clone(),
+                    ) {
+                        break acc.clone();
+                    } else if crate::v1_compiler_infer_types::node_type_equals(
+                        bound.clone(),
+                        actual.clone(),
+                        source_indices.clone(),
+                        Rc::new(TextJudgment::TextNotAsked {
+                            reason: TextNotAskedForCallableComponentResidue,
+                        }),
+                    ) {
+                        break acc.clone();
+                    } else {
+                        break acc.clone();
+                    }
                 }
             }
         } else {

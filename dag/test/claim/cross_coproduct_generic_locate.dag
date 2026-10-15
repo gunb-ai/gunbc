@@ -1,0 +1,91 @@
+module test.claim.cross_coproduct_generic_locate
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count,
+}
+
+// v1.compiler.infer unify_generics: a second actual at one type variable must agree with the
+// stored binding (node_type_equals). First-wins is not a fallback. dissolve-on: none — permanent
+// regression control per DESIGN 4b(4).
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn prelude() -> String {
+  "module locate.cross\n\ntype P = P1 { x: Int } | P2 { y: Int }\ntype Q = Q1 { x: Int } | Q2 { y: Int }\n\n"
+}
+
+fn same_arm_source(a: String, b: String) -> String {
+  join([
+    prelude(),
+    "fn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: ",
+    a,
+    ", b: ",
+    b,
+    ")\n}\n"
+  ], "")
+}
+
+test fn same_arm_cross_coproduct_is_refused() -> Bool {
+  blocking_count(source: same_arm_source(a: "P1 { x: 1 }", b: "Q1 { x: 1 }")) >= 1
+}
+
+test fn same_arm_int_bool_is_refused() -> Bool {
+  blocking_count(source: "module locate.ib\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: 1, b: true)\n}\n") >= 1
+}
+
+test fn same_arm_same_coproduct_is_accepted() -> Bool {
+  blocking_count(source: same_arm_source(a: "P1 { x: 1 }", b: "P2 { y: 2 }")) == 0
+}
+
+test fn same_arm_int_int_is_accepted() -> Bool {
+  blocking_count(source: "module locate.ii\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: 1, b: 2)\n}\n") == 0
+}
+
+fn phantom_source() -> String {
+  join([
+    prelude(),
+    "type ConstructorTag<T>\nfn probe() -> Bool {\n  ConstructorTag<P> {} == ConstructorTag<Q> {}\n}\n"
+  ], "")
+}
+
+// Observation only -- not a control of this class. ConstructorTag<P>==ConstructorTag<Q>
+// is still Accepted; follow-up C (RFM residual). This must not be cited as a climb.
+test fn phantom_constructor_tag_equality_is_observed() -> Bool {
+  blocking_count(source: phantom_source()) == 0
+}
+
+test fn uninformative_then_int_then_bool_is_refused() -> Bool {
+  blocking_count(source: "module locate.tv3\nfn same_arm<T>(a: T, b: T, c: T) -> Bool { true }\nfn probe<U>(u: U) -> Bool {\n  same_arm(a: u, b: 1, c: true)\n}\n") >= 1
+}
+
+test fn uninformative_then_int_then_int_is_accepted() -> Bool {
+  blocking_count(source: "module locate.tv3ok\nfn same_arm<T>(a: T, b: T, c: T) -> Bool { true }\nfn probe<U>(u: U) -> Bool {\n  same_arm(a: u, b: 1, c: 2)\n}\n") == 0
+}
+
+test fn same_arm_two_lambdas_does_not_compare_return_to_callable() -> Bool {
+  blocking_count(source: "module locate.lam\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: (x: Int) => x, b: (y: Int) => y)\n}\n") == 0
+}
+
+test fn same_arm_two_applied_box_int_is_accepted() -> Bool {
+  blocking_count(source: "module locate.box\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Int>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") == 0
+}
+
+test fn same_arm_applied_box_int_vs_bool_is_refused() -> Bool {
+  blocking_count(source: "module locate.boxx\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") >= 1
+}
+
+test fn nested_list_int_vs_bool_is_refused() -> Bool {
+  blocking_count(source: "module locate.nlist\nfn nest<T>(a: List<T>, b: List<T>) -> Bool { true }\nfn probe(x: List<Int>, y: List<Bool>) -> Bool {\n  nest(a: x, b: y)\n}\n") >= 1
+}
+
+test fn record_box_int_vs_bool_is_refused() -> Bool {
+  blocking_count(source: "module locate.nbox\ntype Box<T> { value: T }\nfn nest<T>(a: Box<T>, b: Box<T>) -> Bool { true }\nfn probe() -> Bool {\n  nest(a: Box { value: 1 }, b: Box { value: true })\n}\n") >= 1
+}
