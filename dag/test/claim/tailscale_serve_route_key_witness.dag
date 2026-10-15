@@ -327,6 +327,3 @@ test fn w_subject_key_over_scoped_key_stays_distinct_on_label() -> Bool {
 test fn w_full_endpoint_scope_projection_would_distinguish_the_pair() -> Bool {
   w_pair_a().scope.node != w_pair_b().scope.node
 }
-  let b = SubjectKey { subject: key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: srv1_root_route_subject()) }
-  a == b
-}

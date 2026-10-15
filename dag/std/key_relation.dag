@@ -10,7 +10,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // (DESIGN Hardware precedent): never construction-reached, not a hollow alias. It does NOT enforce
 // the load-bearing identity law: any content-derived key_of still typechecks and still inhabits a
 // KeyRelation unchanged. GlobalKeyScope is an empty record today, so the scope axis does no work
-// until a consumer grounds a real scope type. Functional-key cardinality for membership_reconcile
+// until a consumer grounds a real scope type.
 // There is no scope_eq/key_eq: a keyed index consults the projected identity's own structural
 // equality, so where a relation's compared identity is narrower than the subject, key_of and scope_of
 // must project to EXACTLY the compared identity (see gunbc.tailscale_serve_scope).
