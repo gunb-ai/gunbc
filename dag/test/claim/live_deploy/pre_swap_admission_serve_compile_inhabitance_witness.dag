@@ -43,14 +43,19 @@ test fn the_checkouts_serve_entry_compiles_clean_through_the_gate_route() -> Boo
   }
 }
 
+// THE STAGED MODULE IS A SOURCE ROOT OF A COMPILE RUN FROM THE CHECKOUT, the shape
+// gunbc.instruments.dag_compile_clean_transport dcc_fixture_only_compile_args proved: gunbc needs a
+// workspace to run in, and a bare scratch directory is not one, so the compile's working directory
+// is the checkout and the scratch is passed as an absolute root.
 fn staged_verdict_is(source: String, file: String, want_blocked: Bool) -> Bool {
   let tmp = shell.Mktemp.Dir()
   if !tmp.success {
     false
   } else {
-    let root = tmp.path as String
-    let wrote = Filesystem.Write(path: join([root, "/", file], ""), content: source)
-    let verdict = observe_serve_entry_compile_clean(repo_root: root, bin_path: checkout_gunbc(), roots: ["."], entry: file)
+    let scratch = tmp.path as String
+    let staged = join([scratch, "/", file], "")
+    let wrote = Filesystem.Write(path: staged, content: source)
+    let verdict = observe_serve_entry_compile_clean(repo_root: checkout_root(), bin_path: checkout_gunbc(), roots: [scratch], entry: staged)
     let _ = shell.Remove.RecursiveForce(path: tmp.path)
     wrote.success && match verdict {
       ServeEntryCompileBlocked { blocking, diagnostics } => want_blocked && blocking > 0 && any(diagnostics, l => string_contains(s: l, pattern: file))
