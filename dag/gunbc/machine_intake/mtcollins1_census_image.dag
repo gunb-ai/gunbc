@@ -123,7 +123,7 @@ fn census_program_on_medium(nocloud_dir: NonEmptyStr, program_file: NonEmptyStr)
 // digest and name, built by the same derivation. Nothing here may run before the census stages or
 // between them and the envelope's END.
 // THE SEED'S EARLY COMMANDS: the single helper that builds the user-data payload from the seed's
-// location -- one fact in one place (DESIGN 3 minimization). Both the derivation (line 219) and the
+// location -- one fact in one place (DESIGN 3 minimization). Both the derivation (census_image_derivation) and the
 // mt. collins receipt row below consume it, so the early command and the seed file cannot drift:
 // the command the installer runs and the file the seed carry are built from the same
 // (nocloud_dir, program_file) by this one author.

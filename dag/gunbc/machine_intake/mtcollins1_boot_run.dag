@@ -28,7 +28,7 @@ import gunbc.host.managed_host_boot {
   AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused,
   boot_subject_admission_for, boot_subject_refusal_cause_text, boot_subject_machine,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv2 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
   boot_run_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal,
