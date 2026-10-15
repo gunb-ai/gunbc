@@ -49,7 +49,7 @@ fn fixture_job(reaped: ProcessReapOutcome, elapsed: Second?) -> HarnessShellJob 
 }
 
 fn fixture_running() -> HarnessShellJob {
-  fixture_job(reaped: StillRunning, elapsed: none)
+  fixture_job(reaped: StillRunning, elapsed: unknown_elapsed())
 }
 
 fn fixture_finished(code: Int, elapsed: Second?) -> HarnessShellJob {
