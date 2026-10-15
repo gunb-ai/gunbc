@@ -16880,36 +16880,35 @@ pub fn needs_box_wrapping(
                             if crate::std_types::is_kernel_type(und.clone()) {
                                 Rc::new(NeedsBoxAnswer::NeedsNoBox)
                             } else {
-                            let corpus =
+                                let corpus =
                                 crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
                                     type_decl_items.clone(),
                                     und.clone(),
                                 );
-                            let rec_n = (Rc::new({
-                                let mut __result = Vec::new();
-                                for id in corpus.iter().cloned() {
-                                    if v1_rt::set_contains(&recursive_types, id.clone()) {
-                                        __result.push(id);
+                                let rec_n = (Rc::new({
+                                    let mut __result = Vec::new();
+                                    for id in corpus.iter().cloned() {
+                                        if v1_rt::set_contains(&recursive_types, id.clone()) {
+                                            __result.push(id);
+                                        }
                                     }
-                                }
-                                __result
-                            })
-                            .len() as i64);
-                            if ((rec_n.clone() == (corpus.clone().len() as i64))
-                                && ((corpus.clone().len() as i64) > 0))
-                            {
-                                Rc::new(NeedsBoxAnswer::NeedsBox)
-                            } else {
-                                if (rec_n.clone() == 0)
+                                    __result
+                                })
+                                .len() as i64);
+                                if ((rec_n.clone() == (corpus.clone().len() as i64))
+                                    && ((corpus.clone().len() as i64) > 0))
                                 {
-                                    Rc::new(NeedsBoxAnswer::NeedsNoBox)
+                                    Rc::new(NeedsBoxAnswer::NeedsBox)
                                 } else {
-                                    Rc::new(NeedsBoxAnswer::NeedsBoxRefuse {
+                                    if (rec_n.clone() == 0) {
+                                        Rc::new(NeedsBoxAnswer::NeedsNoBox)
+                                    } else {
+                                        Rc::new(NeedsBoxAnswer::NeedsBoxRefuse {
     leaf: und.clone(),
     cause: "TypeDeclKernelSpellingUndecided candidates disagree on box".to_string(),
 })
+                                    }
                                 }
-                            }
                             }
                         }
                         TypeDeclResolution::TypeDeclNotDeclared => {
@@ -28550,10 +28549,8 @@ pub fn emit_typed_call(
                                     Some(application.formal.clone().substitution_basis.clone())
                                 }
                                 std::option::Option::None => match callee.clone() {
-                                    Some(info) => match function_value_params(
-                                        info.params.clone(),
-                                    )
-                                    .get((idx.clone()) as usize)
+                                    Some(info) => match function_value_params(info.params.clone())
+                                        .get((idx.clone()) as usize)
                                     {
                                         Some(param) => Some(
                                             crate::v1_std_core::param_node_type_expr(param.clone()),
@@ -34375,11 +34372,8 @@ pub fn wrap_rust_record_field_value(
                 let generic_param_names = crate::v1_compiler_emit_core_support::unique_strings({
                     let mut names = (*emit_info.fn_generic_param_names.clone()).clone();
                     names.extend(
-                        (*rust_named_type_generic_param_names(
-                            scope.clone(),
-                            struct_name.clone(),
-                        ))
-                        .clone(),
+                        (*rust_named_type_generic_param_names(scope.clone(), struct_name.clone()))
+                            .clone(),
                     );
                     Rc::new(names)
                 });
