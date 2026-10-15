@@ -125,7 +125,11 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // consume declared_system_slice_memory_maxes magnitudes, which are host-parametric.
 // Unreadable, unbounded, or zero live memory.max refuses UncappedSystemSlice.
 // sessions.slice is recognized by name (gunbc_oomd_sessions_slice) and still refuses
-// without a local finite cap. A namespaced-root container is ExemptBoundedContainer only from a live
+// without a local finite cap. Wrapping that path into gunbc-user-work.slice when a
+// user manager is reachable is not a fallback: the enclosing slice is already a
+// named memory policy (oomd), so an unread/unbounded local max is UncappedSystemSlice,
+// not UserManagerOwed. WrapIntoUserWorkSlice would hide that deficit behind a second
+// envelope (review 80751). A namespaced-root container is ExemptBoundedContainer only from a live
 // finite memory.max. An observed unbounded or zero root memory.max refuses
 // BoundedContainerUncapped even when a BuildBuddy run id is present (review 80587).
 // ExternallyBoundedExecutor only when root memory.max is absent/unreadable AND
