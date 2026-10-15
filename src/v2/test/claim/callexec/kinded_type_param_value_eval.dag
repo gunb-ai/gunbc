@@ -203,3 +203,11 @@ test fn kpx_runtime_binding_lookup_miss() -> Bool { kpx_reason() == Present { va
 test fn kpx_type_argument_instance_absent() -> Bool { kpx_reason() == Present { value: ^eval_rejected_type_argument_instance_absent } }
 test fn kpx_type_argument_read_as_value() -> Bool { kpx_reason() == Present { value: ^eval_rejected_type_argument_read_as_value } }
 test fn kpx_absent() -> Bool { kpx_reason() == Absent }
+
+fn kpy_pre() -> String {
+  "module p\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> = Int\n\nfn mk8() -> Box<8> {\n  0\n}\n\n"
+}
+test fn kpy_kinded_no_body_read_runs() -> Bool { kpt_runs(src: concat(kpy_pre(), "fn constant<bits: Resolution>(x: Box<bits>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  constant(x: mk8())\n}\n"), name: ^constant) }
+test fn kpy_mk8_runs() -> Bool { kpt_runs(src: concat(kpy_pre(), "fn consumer() -> Int {\n  3\n}\n"), name: ^mk8) }
+test fn kpy_box_param_nongeneric_runs() -> Bool { kpt_runs(src: concat(kpy_pre(), "fn take(x: Box<8>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  take(x: mk8())\n}\n"), name: ^take) }
+test fn kpy_unkinded_box_runs() -> Bool { kpt_runs(src: "module p\n\ntype Box<n> = Int\n\nfn mk8() -> Box<8> {\n  0\n}\n\nfn constant<n>(x: Box<n>) -> Int {\n  3\n}\n\nfn consumer() -> Int {\n  constant(x: mk8())\n}\n", name: ^constant) }
