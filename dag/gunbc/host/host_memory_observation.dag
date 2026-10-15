@@ -10,9 +10,12 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import std.optional { Present }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_mtcollins1 }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.machine_intake.host_capture_envelope {
   BoundHostCaptureEnvelope, host_capture_section_reading, host_capture_run_identity_value,
+  host_capture_bind_transcript,
+  HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound,
   SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
 }
 import gunbc.machine_intake.host_resource_observation {
@@ -140,6 +143,8 @@ fn gunbc_ci_host_fixed_overhead_for(host: HostIdentity) -> HostFixedOverhead {
     gunbc_ci_managed_host_fixed_overhead
   } else if (host as String) == (operator_host_srv4 as String) {
     gunbc_ci_managed_host_fixed_overhead
+  } else if (host as String) == (operator_host_mtcollins1 as String) {
+    host_fixed_overhead_from_census_capture_text(capture: mtcollins1_census_capture_text())
   } else {
     HostFixedOverheadUnmeasured
   }
@@ -274,6 +279,8 @@ fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
     gunbc_ci_srv3_memtotal_measured
   } else if (host as String) == (operator_host_srv4 as String) {
     gunbc_ci_srv4_memtotal_measured
+  } else if (host as String) == (operator_host_mtcollins1 as String) {
+    host_usable_ram_from_census_capture_text(capture: mtcollins1_census_capture_text())
   } else {
     HostUsableRamUnmeasured
   }
@@ -401,5 +408,50 @@ fn host_fixed_overhead_from_capture(envelope: BoundHostCaptureEnvelope) -> Obser
           ], "")),
         },
       }
+  }
+}
+
+data mtcollins1_census_boot_capture_path: String = "artifacts/bmc/mtcollins1-boot-run-38789347052/mtcollins1-boot-sol.capture"
+
+fn mtcollins1_census_capture_text() -> String {
+  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path)
+  if read.success {
+    read.content
+  } else {
+    ""
+  }
+}
+
+fn host_usable_ram_from_census_capture_text(capture: String) -> HostUsableRam {
+  match host_capture_bind_transcript(capture: capture, machine: "mtcollins1" as NonEmptyStr) {
+    HostCaptureBound { envelope: e } =>
+      match host_usable_ram_from_capture(envelope: e) {
+        ObservationEstablished { observed: r } => r
+        ObservationRefused { cause: _ } => HostUsableRamUnmeasured
+      }
+    HostCaptureOpen { envelope: e } =>
+      match host_usable_ram_from_capture(envelope: e) {
+        ObservationEstablished { observed: r } => r
+        ObservationRefused { cause: _ } => HostUsableRamUnmeasured
+      }
+    HostCaptureNotBegun => HostUsableRamUnmeasured
+    HostCaptureUnbound { reason: _ } => HostUsableRamUnmeasured
+  }
+}
+
+fn host_fixed_overhead_from_census_capture_text(capture: String) -> HostFixedOverhead {
+  match host_capture_bind_transcript(capture: capture, machine: "mtcollins1" as NonEmptyStr) {
+    HostCaptureBound { envelope: e } =>
+      match host_fixed_overhead_from_capture(envelope: e) {
+        ObservationEstablished { observed: o } => o
+        ObservationRefused { cause: _ } => HostFixedOverheadUnmeasured
+      }
+    HostCaptureOpen { envelope: e } =>
+      match host_fixed_overhead_from_capture(envelope: e) {
+        ObservationEstablished { observed: o } => o
+        ObservationRefused { cause: _ } => HostFixedOverheadUnmeasured
+      }
+    HostCaptureNotBegun => HostFixedOverheadUnmeasured
+    HostCaptureUnbound { reason: _ } => HostFixedOverheadUnmeasured
   }
 }
